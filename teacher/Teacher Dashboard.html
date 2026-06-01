@@ -6841,12 +6841,12 @@ function renderTerm1SummaryInTerm2() {
     .withFailureHandler(function(err) {
       console.warn('فشل تحميل بيانات نصف العام:', err);
     })
-    .getStudentsForView({
+    .getStudentsProtected({
+      token: App.user.token,
       month: 'نصف العام',
       subject: subject,
-      gradeId: gradeId,
-      section: section,
-      readOnly: true
+      grade: gradeId,
+      section: section
     });
 }
 
@@ -6866,12 +6866,12 @@ function drawTerm1SummaryTable(students) {
 
   for (var i = 0; i < students.length; i++) {
     var s = students[i];
-    var g = s.grades || {};
+    var g = s;   /* الخصائص مسطّحة من getStudentsProtected (monthly_score/exam_score/total_score) */
     html += '<tr>';
     html += '<td>' + (s.name || '—') + '</td>';
-    html += '<td style="text-align:center;">' + (g.monthly_score || '—') + '</td>';
-    html += '<td style="text-align:center;">' + (g.exam_score || '—') + '</td>';
-    html += '<td style="text-align:center;font-weight:bold;color:#166534;">' + (g.total_score || '—') + '</td>';
+    html += '<td style="text-align:center;">' + ((g.monthly_score !== undefined && g.monthly_score !== '') ? g.monthly_score : '—') + '</td>';
+    html += '<td style="text-align:center;">' + ((g.exam_score !== undefined && g.exam_score !== '') ? g.exam_score : '—') + '</td>';
+    html += '<td style="text-align:center;font-weight:bold;color:#166534;">' + ((g.total_score !== undefined && g.total_score !== '') ? g.total_score : '—') + '</td>';
     html += '</tr>';
   }
 
