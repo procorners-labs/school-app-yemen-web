@@ -1336,6 +1336,15 @@ a { color: var(--pr); text-decoration: none; }
 .skel-row.w75 { width: 75%; }
 .skel-row.w50 { width: 50%; }
 .skel-card { height: 100px; margin-bottom: 12px; border-radius: 12px; }
+<!-- ✅ تفعيل الجسر للواجهة الثابتة -->
+<script>
+  // استبدل الرابط برابط نشر مشروع GAS الخاص بمنصة الطالب
+  window.GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec';
+
+  // استخراج schoolId من الرابط
+  window.SCHOOL_ID = (new URLSearchParams(window.location.search)).get('school') || '';
+</script>
+<script src="../assets/gas-bridge.js"></script>
 </style>
 </head>
 <body>
@@ -1647,7 +1656,7 @@ a { color: var(--pr); text-decoration: none; }
      - تحميل كسول، كاش متصفح، معالجة أخطاء شاملة
 ═══════════════════════════════════════════════════════════════ -->
 <script>
-    var SERVER_SCHOOL_ID = '<?= (typeof schoolId !== "undefined" ? schoolId : "") ?>';
+    
 
   // ══════════════════════════════════════════════════════
 // Smart Client Cache + Dedup (P-OPT-04)
@@ -1867,12 +1876,8 @@ function doLogin() {
   btn.disabled = true;
   btn.textContent = 'جارٍ التحقق...';
 
-  // ★ استخراج schoolId من الرابط (إذا وُجد)
-    var urlParams = new URLSearchParams(window.location.search);
-  var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
-                 ? SERVER_SCHOOL_ID
-                 : (urlParams.get('school') || '');
-                  window.SCHOOL_ID = schoolId; 
+  // ✅ استخراج schoolId من المتغير العام (تم تعريفه في <head>) أو من الرابط
+  var schoolId = window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '';
 
   google.script.run
     .withSuccessHandler(function (r) {
@@ -1906,7 +1911,7 @@ function doLogin() {
         class: r.class || '',
         section: r.section || '',
         role: r.role,
-        schoolId: schoolId      // ← أضف هذا السطر
+        schoolId: schoolId   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
       };
 
       $('loginScreen').style.display = 'none';
@@ -1919,7 +1924,7 @@ function doLogin() {
       errEl.textContent = 'تعذّر الاتصال بالخادم: ' + (e.message || e);
       errEl.style.display = 'block';
     })
-    .loginStudent(u, p, getClientId(), schoolId);  // ← أضف المعامل الرابع
+    .loginStudent(u, p, getClientId(), schoolId); // ✅ تمرير schoolId للخادم
 }
 function doLogout() {
   if (!confirm('هل تريد تسجيل الخروج؟')) return;
@@ -2271,115 +2276,84 @@ function renderMonth(idx) {
 
   var isTermMonth = m.isFinal || m.isTermMonth || false;
 
-  // ── تحديد الأعمدة ديناميكياً من بيانات الخادم ──
-  // الفترات (نصف/نهاية العام): الأعمدة = مفاتيح الدرجات كما وردت (فريدة)،
-  //   مع التسمية والحد الأقصى من نفس البيانات — يدعم 3 أعمدة و5 أعمدة تلقائياً.
-  // الشهور العادية: الأعمدة الأربعة المعروفة + عمود المجموع.
-  var colDefs = [];
+  // ── ① تجميع جميع المفاتيح (keys) وظهورها بنفس ترتيب الـ Schema ──
+  var colKeys = [];
+  var colLabels = {};      // key -> label (من grade.type بعد التزيين)
+  var colMax = {};         // key -> أقصى درجة
+  var colLocked = {};      // key -> locked
+  var colIsTotal = {};     // key -> isTotal
+  var seenKeys = {};
 
-  if (isTermMonth) {
-    var seenKey = {};
-    for (var si = 0; si < m.subjects.length; si++) {
-      var gs = m.subjects[si].grades || [];
-      for (var gi = 0; gi < gs.length; gi++) {
-        var g = gs[gi];
-        var kk = g.key || g.type;
-        if (kk && !seenKey[kk]) {
-          seenKey[kk] = true;
-          colDefs.push({ key: kk, label: g.type || kk, max: g.max || 100, isTotal: !!g.isTotal });
-        }
-      }
-    }
-    if (colDefs.length === 0) colDefs.push({ key: 'total_score', label: 'المجموع', max: 50, isTotal: true });
-  } else {
-    var maxByType = {};
-    for (var si2 = 0; si2 < m.subjects.length; si2++) {
-      var gs2 = m.subjects[si2].grades || [];
-      for (var gi2 = 0; gi2 < gs2.length; gi2++) {
-        if (gs2[gi2].type) maxByType[gs2[gi2].type] = (gs2[gi2].max || 100);
-      }
-    }
-    var orderedCols = ['السلوك', 'الواجبات', 'الشفوي', 'التحريري'];
-    var defMax = { 'السلوك': 20, 'الواجبات': 20, 'الشفوي': 20, 'التحريري': 40 };
-    for (var oi = 0; oi < orderedCols.length; oi++) {
-      var ocn = orderedCols[oi];
-      if (maxByType[ocn] !== undefined || true) {
-        colDefs.push({ key: ocn, label: ocn, max: maxByType[ocn] || defMax[ocn] || 100, isTotal: false });
+  for (var si = 0; si < m.subjects.length; si++) {
+    var grades = m.subjects[si].grades || [];
+    for (var gi = 0; gi < grades.length; gi++) {
+      var g = grades[gi];
+      var k = g.key;
+      if (!k) continue;
+      if (!seenKeys[k]) {
+        seenKeys[k] = true;
+        colKeys.push(k);
+        colLabels[k] = g.type || g.label || k;   // التسمية الجديدة (المحصلة، درجة الاختبار...)
+        colMax[k]    = g.max || 100;
+        colLocked[k] = !!g.locked;
+        colIsTotal[k] = g.isTotal || false;
       }
     }
   }
 
-  // ── رأس الجدول ──
+  // ── ② رأس الجدول ──
   var h = '<div class="grades-wrap-scroll"><table class="grades-table"><thead><tr>' +
           '<th>المادة</th>';
 
-  for (var t = 0; t < colDefs.length; t++) {
-    var mxs = colDefs[t].max ? '/' + colDefs[t].max : '';
-    var thStyle = colDefs[t].isTotal ? ' style="background:#e8f5e9;color:#2e7d32;"' : '';
-    h += '<th' + thStyle + '>' + esc(colDefs[t].label) +
-         '<br><small style="font-weight:400;opacity:.75">' + mxs + '</small></th>';
-  }
-
-  // عمود المجموع للشهور العادية
-  if (!isTermMonth) {
-    h += '<th style="background:#e8f5e9;color:#2e7d32;">المجموع<br><small style="font-weight:400">/100</small></th>';
+  for (var ci = 0; ci < colKeys.length; ci++) {
+    var ck = colKeys[ci];
+    var lbl = colLabels[ck] || ck;
+    var mx = colMax[ck] ? '/' + colMax[ck] : '';
+    var isTotal = colIsTotal[ck];
+    var isLocked = colLocked[ck];
+    var bgStyle = (isTotal || isLocked) ? ' style="background:#f8f9fa;"' : '';
+    h += '<th' + bgStyle + '>' + esc(lbl) +
+         '<br><small style="font-weight:400">' + mx + (isLocked ? ' 🔒' : '') + '</small></th>';
   }
   h += '</tr></thead><tbody>';
 
-  // ── صفوف المواد ──
-  for (var xi = 0; xi < m.subjects.length; xi++) {
-    var subj    = m.subjects[xi];
-    var grMap   = {};
-    var lockMap = {};
-    var gsArr   = subj.grades || [];
-
-    for (var gj = 0; gj < gsArr.length; gj++) {
-      var gradeObj = gsArr[gj];
-      var mapKey = gradeObj.key || gradeObj.type;
-      grMap[mapKey]   = gradeObj.value;
-      lockMap[mapKey] = !!gradeObj.locked;
-      if (gradeObj.type) { grMap[gradeObj.type] = gradeObj.value; lockMap[gradeObj.type] = !!gradeObj.locked; }
+  // ── ③ صفوف المواد ──
+  for (var ri = 0; ri < m.subjects.length; ri++) {
+    var subj = m.subjects[ri];
+    var grMap = {};   // key -> grade object
+    var gradesArr = subj.grades || [];
+    for (var gj = 0; gj < gradesArr.length; gj++) {
+      grMap[gradesArr[gj].key] = gradesArr[gj];
     }
 
     h += '<tr><td style="font-weight:600;text-align:right">' + esc(subj.name) + '</td>';
 
-    for (var ti = 0; ti < colDefs.length; ti++) {
-      var def      = colDefs[ti];
-      var cVal     = grMap[def.key] !== undefined ? grMap[def.key] : '';
-      var cMax     = def.max || 100;
-      var isLocked = lockMap[def.key] === true;
+    for (var ci2 = 0; ci2 < colKeys.length; ci2++) {
+      var ck = colKeys[ci2];
+      var gObj = grMap[ck];
+      var val = gObj ? gObj.value : '';
+      var isLocked = gObj ? !!gObj.locked : colLocked[ck];
+      var isTotal = gObj ? !!gObj.isTotal : colIsTotal[ck];
+      var max = gObj ? (gObj.max || 100) : colMax[ck];
 
-      var num   = parseFloat(cVal);
-      var pct   = !isNaN(num) ? (num / cMax * 100) : -1;
+      var num = parseFloat(val);
+      var pct = !isNaN(num) ? (num / max * 100) : -1;
       var color = pct < 0 ? 'var(--muted)' :
                   (pct >= 80 ? 'var(--ok)' : (pct >= 60 ? 'var(--warn)' : 'var(--err)'));
 
-      var bg = def.isTotal ? '#f1f8e9' : (isLocked ? '#f8fafc' : 'transparent');
-      var lockIc = (isLocked && !def.isTotal) ? '<span title="محسوبة آلياً" style="font-size:9px;opacity:.55">🔒 </span>' : '';
-      var fw     = def.isTotal ? '700' : '500';
+      var bg = isTotal ? '#f1f8e9' : (isLocked ? '#f8fafc' : '');
+      var lockIc = isLocked ? '<span title="محسوبة آلياً" style="font-size:9px;opacity:.55">🔒 </span>' : '';
+      var fw = isTotal ? '700' : '500';
 
       h += '<td style="background:' + bg + ';font-weight:' + fw + ';color:' + color + ';">' +
-           lockIc + (cVal !== '' ? esc(String(cVal)) : '—') + '</td>';
+           lockIc + (val !== '' ? esc(String(val)) : '—') + '</td>';
     }
-
-    // عمود المجموع للشهور العادية
-    if (!isTermMonth) {
-      var total = subj.total || '';
-      var tNum  = parseFloat(total);
-      var tColor = isNaN(tNum) ? 'var(--muted)' :
-                   (tNum >= 80 ? 'var(--ok)' : (tNum >= 60 ? 'var(--warn)' : 'var(--err)'));
-      h += '<td style="background:#f1f8e9;font-weight:700;color:' + tColor + ';">' +
-           (total !== '' ? esc(String(total)) : '—') + '</td>';
-    }
-
     h += '</tr>';
   }
 
   h += '</tbody></table></div>';
 
-  // ═══════════════════════════════════════════════════
-  // ⭐ v3.1: عرض نصف العام مرفقاً مع نهاية العام
-  // ═══════════════════════════════════════════════════
+  // ── ④ عرض نتائج نصف العام أسفل نهاية العام (v3.1) ──
   if (m.name === 'نهاية العام') {
     var term1Data = null;
     for (var tmi = 0; tmi < months.length; tmi++) {
@@ -2387,23 +2361,22 @@ function renderMonth(idx) {
     }
 
     if (term1Data) {
-      h += '<div class="term1-summary" style="margin-top:16px;padding:12px;background:#eef2ff;border-radius:8px;border-right:3px solid #6366f1;">';
+      h += '<div style="margin-top:16px;padding:12px;background:#eef2ff;border-radius:8px;border-right:3px solid #6366f1;">';
       h += '<div style="font-weight:bold;color:#4338ca;margin-bottom:8px;">📋 نتائج نصف العام (للمقارنة)</div>';
       h += '<table style="width:100%;font-size:13px;">';
-      h += '<thead><tr style="background:#fff;"><th style="padding:6px;">المادة</th><th>المحصلة /20</th><th>الاختبار /30</th><th>المجموع /50</th></tr></thead>';
-      h += '<tbody>';
+      h += '<thead><tr style="background:#fff;"><th>المادة</th><th>المحصلة /20</th><th>الاختبار /30</th><th>المجموع /50</th></tr></thead><tbody>';
 
       for (var tsi = 0; tsi < term1Data.subjects.length; tsi++) {
         var ts = term1Data.subjects[tsi];
-        var tsg = {};
+        var tg = {};
         for (var tgi = 0; tgi < ts.grades.length; tgi++) {
-          tsg[ts.grades[tgi].key] = ts.grades[tgi].value || '—';
+          tg[ts.grades[tgi].key] = ts.grades[tgi].value || '—';
         }
-        h += '<tr style="border-bottom:1px solid #e0e7ff;">';
+        h += '<tr>';
         h += '<td style="padding:6px;">' + esc(ts.name) + '</td>';
-        h += '<td style="text-align:center;">' + esc(tsg.monthly_score || '—') + '</td>';
-        h += '<td style="text-align:center;">' + esc(tsg.exam_score || '—') + '</td>';
-        h += '<td style="text-align:center;font-weight:bold;">' + esc(tsg.total_score || '—') + '</td>';
+        h += '<td style="text-align:center;">' + esc(tg.monthly_score || '—') + '</td>';
+        h += '<td style="text-align:center;">' + esc(tg.exam_score || '—') + '</td>';
+        h += '<td style="text-align:center;font-weight:bold;">' + esc(tg.total_score || '—') + '</td>';
         h += '</tr>';
       }
       h += '</tbody></table></div>';
