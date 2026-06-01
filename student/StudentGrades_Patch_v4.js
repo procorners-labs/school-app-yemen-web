@@ -37,7 +37,7 @@
  * ══════════════════════════════════════════════════════════════ */
 function getGrades(studentId, schoolId) {
   try {
-    _setActiveTenant(_safe(schoolId || ''));        /* عزل المدرسة (multi-tenant) */
+    _resolveTenant(schoolId);                       /* عزل المدرسة + توحيد schoolId/school */
 
     var sid = _safe(studentId);
     if (!sid) return { ok: false, error: 'كود الطالب مفقود' };
