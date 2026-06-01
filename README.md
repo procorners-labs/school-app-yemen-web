@@ -52,6 +52,20 @@
 
 الرابط الناتج: `https://<USERNAME>.github.io/school-app-yemen/`
 
+## التشغيل بدون VPN (المناطق التي يُحجب فيها github.io — مثل اليمن)
+
+في بعض الدول يُحجب نطاق `github.io` (بينما تعمل خدمات Google عادةً). الحل: وضع
+كل شيء خلف **Cloudflare Worker** على نطاق `workers.dev` غير المحجوب.
+
+- ملف الـ Worker: `worker/school-app-proxy.js`
+- يخدم صفحات الواجهة بجلبها من GitHub Pages، ويمرّر نداءات الـ API على `/gas/<app>`
+  إلى روابط Google Apps Script. المتصفّح يتكلّم فقط مع نطاق Cloudflare.
+- الواجهة تستخدم مساراً نسبياً `/gas/<app>` (لا روابط Google مباشرة) ليعمل الوكيل.
+
+**خطوات النشر:** Cloudflare → Workers & Pages → Create Worker → الصق محتوى
+`worker/school-app-proxy.js` → Deploy. الرابط الناتج (مثل
+`https://school-app.<account>.workers.dev/`) هو رابط التطبيق النهائي للمستخدمين.
+
 ## ملاحظات / قيود معروفة
 - الدالتان `checkSession` (home) و`getStudentsForView` (teacher) تُستدعيان من الواجهة
   لكن **لا تنفيذ خادمي لهما** في الكود الأصلي — سيرد `doPost` بخطأ نظيف يلتقطه معالج

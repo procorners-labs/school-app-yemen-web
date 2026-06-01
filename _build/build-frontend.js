@@ -8,13 +8,15 @@ var path = require('path');
 var ROOT = path.resolve(__dirname, '..');
 var OUT = path.join(ROOT, 'frontend');
 
-var BASE = 'https://script.google.com/macros/s/';
+// المسارات نسبية تُخدَم عبر Cloudflare Worker (/gas/<app>) بدل روابط Google
+// المباشرة، حتى يعمل الموقع بدون VPN في المناطق التي يُحجب فيها github.io.
+// الـ Worker يمرّر هذه المسارات إلى روابط Google الحقيقية (انظر worker/school-app-proxy.js).
 var ENDPOINTS = {
-  home:     BASE + 'AKfycbzDfGEK6IpChVNl9k8xbt_iv5p6bLOktt-TvEzDp8yBpH3Ga3yNMen_0S2ZyuuvGtKFCA/exec',
-  cms:      BASE + 'AKfycbz-iAj9L3ROOn4CAjmwkVBUqpWuxIx1LkgPLwKnHu7kHLWKCy3GVJNo1vZbnekop0VlMA/exec',
-  teacher:  BASE + 'AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND/exec',
-  student:  BASE + 'AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec',
-  schedule: BASE + 'AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag/exec'
+  home:     '/gas/home',
+  cms:      '/gas/cms',
+  teacher:  '/gas/teacher',
+  student:  '/gas/student',
+  schedule: '/gas/schedule'
 };
 
 // خريطة: app -> [ [ملف المصدر, ملف الوجهة, مستوى العمق لمسار assets] ]
