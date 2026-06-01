@@ -3873,8 +3873,29 @@ function onGradeInput(inp) {
 
   App.autoSaveTimers[key] = setTimeout(function() {
     triggerAutoSave(inp);
-  }, 1200);
+  }, 500);   /* أسرع: 500ms بدل 1200ms */
 }
+
+/* ✅ تنقّل سلس بين حقول الدرجات بلوحة المفاتيح:
+   Enter / السهم لأسفل → الطالب التالي في نفس العمود | السهم لأعلى → السابق */
+(function () {
+  if (window._gradeNavBound) return;
+  window._gradeNavBound = true;
+  document.addEventListener('keydown', function (ev) {
+    var t = ev.target;
+    if (!t || !t.classList || !t.classList.contains('grade-input')) return;
+    if (ev.key !== 'Enter' && ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    ev.preventDefault();
+    var type = t.getAttribute('data-type');
+    var list = document.querySelectorAll('input.grade-input[data-type="' + type + '"]');
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) { if (list[i] === t) { idx = i; break; } }
+    if (idx === -1) return;
+    var nx = (ev.key === 'ArrowUp') ? idx - 1 : idx + 1;
+    if (nx >= 0 && nx < list.length) { list[nx].focus(); if (list[nx].select) list[nx].select(); }
+  });
+})();
+
 function triggerAutoSave(inp) {
   // ═══════════════════════════════════════════════════
   // ⭐ v3.1: تجاهل الحفظ التلقائي للحقول المقفلة

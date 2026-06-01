@@ -1033,7 +1033,7 @@ function _findSubjectLocation(month, subject) {
         columns.exam_score    = -1;
         columns.total_score   = -1;
 
-        for (var ti = 0; ti < 5 && (subjectCol + ti) <= endCol; ti++) {
+        for (var ti = 0; ti < 5 && (subjectCol + ti) <= endCol && _safeStr(subjectRow[subjectCol + ti]) === subject; ti++) {
           var label = _safeStr(typeRow[subjectCol + ti] || '');
           if (MONTHLY_NAMES.indexOf(label) !== -1) {
             columns.monthly_score = subjectCol + ti;
@@ -1053,7 +1053,7 @@ function _findSubjectLocation(month, subject) {
         columns.behavior = -1; columns.homework = -1;
         columns.oral     = -1; columns.written  = -1; columns.total = -1;
 
-        for (var gi = 0; gi < 5 && (subjectCol + gi) <= endCol; gi++) {
+        for (var gi = 0; gi < 5 && (subjectCol + gi) <= endCol && _safeStr(subjectRow[subjectCol + gi]) === subject; gi++) {
           var glabel = _safeStr(typeRow[subjectCol + gi] || '');
           if      (glabel === 'السلوك')   columns.behavior = subjectCol + gi;
           else if (glabel === 'الواجبات') columns.homework = subjectCol + gi;
