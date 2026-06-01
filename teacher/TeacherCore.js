@@ -394,7 +394,7 @@ function _tcCacheDel(key) {
 
   function _getGradesStructureInternal(filter) {
     try {
-      var sheet = _getSheet('الدرجات');
+      var sheet = (_getSheet('النصفي') || _getSheet('الدرجات'));
       if (!sheet) {
         sheet = _createGradesSheetTemplate();
       }
@@ -820,7 +820,7 @@ function _readGradesSheetEfficient(grade, section, subjectFilter, monthFilter) {
   var cached = _tcCacheGet(cKey);
   if (cached) return cached;
 
-  var sheet = _getSheet('الدرجات');
+  var sheet = (_getSheet('النصفي') || _getSheet('الدرجات'));
   if (!sheet) return null;
 
   var lastRow = sheet.getLastRow();
@@ -921,7 +921,7 @@ function _findSubjectLocation(month, subject) {
        ✨ الكود الجديد — يستدعي الطبقة الموحّدة
     ═══════════════════════════════════════════════════ */
     try {
-      var sheet = _getSheet('الدرجات');  // أو 'النصفي' حسب اسم الورقة الفعلي
+      var sheet = (_getSheet('النصفي') || _getSheet('الدرجات'));  // أو 'النصفي' حسب اسم الورقة الفعلي
       if (!sheet) throw new Error('ورقة الدرجات غير موجودة');
 
       var lastColumn = sheet.getLastColumn();
@@ -1495,7 +1495,7 @@ function _getStudentRowMap() {
         throw new Error('بيانات Excel غير صالحة أو فارغة');
       }
 
-      var sheet = _getSheet('الدرجات');
+      var sheet = (_getSheet('النصفي') || _getSheet('الدرجات'));
       if (!sheet) throw new Error('ورقة "الدرجات" غير موجودة');
 
       var location = _findSubjectLocation(month, subject);

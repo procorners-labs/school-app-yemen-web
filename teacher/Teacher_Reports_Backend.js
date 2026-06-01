@@ -554,7 +554,7 @@ function _reports_avgGradesForTeacher(myStudents, mySubjects) {
   try {
     if (!myStudents.length) return result;
 
-    var sheet = _getSheet('الدرجات');
+    var sheet = _getSheet('النصفي') || _getSheet('الدرجات');
     if (!sheet) return result;
 
     var lastRow = sheet.getLastRow();
