@@ -54,7 +54,7 @@ function injectionBlock(endpoint) {
     '  (function(){',
     '    var qs = new URLSearchParams(window.location.search);',
     "    window.GAS_ENDPOINT = '" + endpoint + "';",
-    "    window.SCHOOL_ID = qs.get('schoolId') || window.SCHOOL_ID || '';",
+    "    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';",
     '  })();',
     '</script>',
     '<script src="../assets/gas-bridge.js"></script>',
