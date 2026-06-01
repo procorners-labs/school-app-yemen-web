@@ -1,20 +1,6 @@
 /*!
- * gas-bridge.js — Drop-in replacement for google.script.run
+ * gas-bridge.js — متوافق مع CORS proxy (AllOrigins, cors.eu.org)
  * مدارس الإبداع والتميز الدولية
- *
- * يعيد تعريف google.script.run ليوجّه كل الاستدعاءات إلى نقطة doPost في
- * تطبيق Google Apps Script عبر fetch()، بدل عميل HtmlService. هكذا يمكن
- * استضافة الواجهة على GitHub Pages دون رسالة تحذير Google.
- *
- * ملاحظات CORS المهمة:
- *  - لا يمكن لـ GAS ضبط ترويسة Access-Control-Allow-Origin بنفسه، لكن رابط
- *    /exec المنشور يُرجِع ACAO:* تلقائياً.
- *  - نُرسل الطلب بنوع محتوى text/plain ليبقى "طلباً بسيطاً" (simple request)
- *    فلا يُطلَب preflight (OPTIONS) الذي لا يستطيع GAS الرد عليه.
- *
- * الإعداد لكل صفحة: عرّف window.GAS_ENDPOINT قبل تحميل هذا الملف.
- * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية). يُستخدم Proxy لاعتراض
- * أسماء الدوال الديناميكية مثل runner[fn](...) — وهو مدعوم في كل المتصفحات.
  */
 (function () {
   'use strict';
@@ -28,7 +14,7 @@
   function callServer(fnName, args, onSuccess, onFailure, userObject) {
     var endpoint = window.GAS_ENDPOINT;
     if (!endpoint) {
-      if (onFailure) onFailure(new Error('GAS_ENDPOINT غير مُعرّف في هذه الصفحة'), userObject);
+      if (onFailure) onFailure(new Error('GAS_ENDPOINT غير مُعرّف'), userObject);
       return;
     }
     var payload = JSON.stringify({
@@ -39,18 +25,21 @@
 
     fetch(endpoint, {
       method: 'POST',
-      // text/plain = طلب بسيط بلا preflight (لا doOptions في GAS)
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+        'X-Requested-With': 'XMLHttpRequest'  // مفيدة لبعض البروكسيات
+      },
       body: payload,
       redirect: 'follow'
     }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.text();
     }).then(function (text) {
       var data = null;
       try {
         data = JSON.parse(text);
       } catch (parseErr) {
-        if (onFailure) onFailure(new Error('رد غير صالح من الخادم: ' + String(text).slice(0, 200)), userObject);
+        if (onFailure) onFailure(new Error('رد غير صالح من الخادم'), userObject);
         return;
       }
       if (data && data.ok) {
@@ -74,7 +63,6 @@
       get: function (target, prop) {
         if (typeof prop !== 'string') return target[prop];
         if (WITH_HANDLERS[prop]) return target[prop];
-        // أي اسم آخر يُعامَل كاسم دالة خادمية تُستدعى عبر fetch.
         return function () {
           var args = Array.prototype.slice.call(arguments);
           callServer(prop, args, state.success, state.failure, state.userObject);
@@ -86,15 +74,10 @@
 
   var google = window.google = window.google || {};
   google.script = google.script || {};
-
-  // كل وصول إلى google.script.run يُعيد عدّاءً جديداً، لأن المستدعي يربط
-  // المعالجات ثم يستدعي الدالة في كل مرة على حدة.
   Object.defineProperty(google.script, 'run', {
     configurable: true,
     get: function () { return makeRunner(); }
   });
-
-  // أطراف بديلة بسيطة لبقية واجهات google.script المستخدمة في صفحات GAS.
   google.script.host = google.script.host || {
     close: function () {},
     setHeight: function () {},
