@@ -146,6 +146,16 @@ function _gradesReadMonthUnified(monthRow, subjectRow, typeRow, studentRow, mont
   for (var si = 0; si < subjectsList.length; si++) {
     var subject = subjectsList[si];
 
+    /* ✅ نهاية العام: هيكل 5 أعمدة (محصلة1 + نصفي + محصلة2 + نهائي + إجمالي/100)
+       يُقرأ بالاسم مباشرةً (لأن الطبقة الموحّدة تعرف 3 أعمدة فقط) */
+    if (monthName === 'نهاية العام') {
+      var yend = _gradesReadFinalSubject(monthRow, subjectRow, typeRow, studentRow, subject);
+      if (yend && yend.hasGrades) {
+        mData.subjects.push({ name: subject, grades: yend.gradesArr, hasGrades: true });
+      }
+      continue;
+    }
+
     /* نفس الطبقة الموحّدة التي يستخدمها المعلم */
     var loc = GS_findSubjectLocation(monthRow, subjectRow, typeRow, monthName, subject);
     if (!loc.success) continue;
@@ -332,4 +342,118 @@ function _gradesDetectSubjects(monthRow, subjectRow, monthName) {
     }
   }
   return list;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+ *  دعم «نهاية العام» — هيكل 5 أعمدة (نتيجة العام الكامل /100):
+ *    محصلة الفصل الأول (تلقائي محرم+صفر /20)
+ *  + اختبار نصف العام (يُسحب من بلوك نصف العام /30)
+ *  + محصلة الفصل الثاني (تلقائي جماد اول+ثاني /20)
+ *  + الاختبار النهائي (يُدخله المعلم /30)
+ *  = الإجمالي (تلقائي /100)
+ * ══════════════════════════════════════════════════════════════ */
+function _gradesReadFinalSubject(monthRow, subjectRow, typeRow, studentRow, subject) {
+  var LAB = {
+    m1:      ['المحصلة1', 'محصلة1'],
+    midterm: ['النصفي'],
+    m2:      ['المحصلة2', 'محصلة2'],
+    finalEx: ['النهائي', 'الاختبار النهائي'],
+    total:   ['الاجمالي', 'الإجمالي', 'المجموع']
+  };
+  var cols = _gradesFindColsByLabel(monthRow, subjectRow, typeRow, 'نهاية العام', subject, LAB);
+  if (!cols) return null;
+
+  var v_m1  = _gradesCell(studentRow, cols.m1);
+  var v_mid = _gradesCell(studentRow, cols.midterm);
+  var v_m2  = _gradesCell(studentRow, cols.m2);
+  var v_fin = _gradesCell(studentRow, cols.finalEx);
+  var v_tot = _gradesCell(studentRow, cols.total);
+
+  /* محصلة الفصل الأول (تلقائي من محرم + صفر) */
+  if (v_m1 === '') {
+    var a = _gradesSumMonths(monthRow, subjectRow, typeRow, studentRow, subject, ['محرم', 'صفر']);
+    if (a !== null) v_m1 = String(a);
+  }
+  /* محصلة الفصل الثاني (تلقائي من جماد اول + جماد ثاني) */
+  if (v_m2 === '') {
+    var b = _gradesSumMonths(monthRow, subjectRow, typeRow, studentRow, subject, ['جماد اول', 'جماد ثاني']);
+    if (b !== null) v_m2 = String(b);
+  }
+  /* اختبار النصفي: إن كان فارغاً هنا، اسحبه من بلوك «نصف العام» */
+  if (v_mid === '') {
+    var nm = _gradesFindColsByLabel(monthRow, subjectRow, typeRow, 'نصف العام', subject,
+      { midterm: ['النصفي', 'درجة الاختبار', 'الاختبار'] });
+    if (nm && nm.midterm !== undefined) v_mid = _gradesCell(studentRow, nm.midterm);
+  }
+  /* الإجمالي (تلقائي = محصلة1 + نصفي + محصلة2 + نهائي) */
+  if (v_tot === '') {
+    var parts = [v_m1, v_mid, v_m2, v_fin];
+    var sum = 0, any = false;
+    for (var pi = 0; pi < parts.length; pi++) {
+      var nn = _gradesNumOrNull(parts[pi]);
+      if (nn !== null) { sum += nn; any = true; }
+    }
+    if (any) { if (sum > 100) sum = 100; v_tot = String(Math.round(sum * 10) / 10); }
+  }
+
+  var arr = [
+    { key: 'monthly_score',   type: 'محصلة الفصل الأول',  value: v_m1,  max: 20,  locked: true,  auto: true },
+    { key: 'midterm_exam',    type: 'اختبار نصف العام',   value: v_mid, max: 30,  locked: true,  auto: true },
+    { key: 'monthly_score_2', type: 'محصلة الفصل الثاني', value: v_m2,  max: 20,  locked: true,  auto: true },
+    { key: 'final_exam',      type: 'الاختبار النهائي',    value: v_fin, max: 30,  locked: false, auto: false },
+    { key: 'grand_total',     type: 'الإجمالي',            value: v_tot, max: 100, locked: true,  auto: true, isTotal: true }
+  ];
+  var hasGrades = (v_m1 !== '' || v_mid !== '' || v_m2 !== '' || v_fin !== '' || v_tot !== '');
+  return { gradesArr: arr, hasGrades: hasGrades };
+}
+
+/* يحدّد أعمدة مادة في شهر معيّن حسب تطابق اسم النوع (typeRow) مع خريطة التسميات */
+function _gradesFindColsByLabel(monthRow, subjectRow, typeRow, monthName, subject, labelMap) {
+  var filled = [], lastM = '';
+  for (var i = 0; i < monthRow.length; i++) {
+    var mc = _safe(monthRow[i] || '');
+    if (GS_VALID_MONTHS.indexOf(mc) !== -1) { lastM = mc; filled.push(mc); }
+    else if (mc === '' && lastM) { filled.push(lastM); }
+    else { filled.push(''); lastM = ''; }
+  }
+  var start = -1, end = -1;
+  for (var j = 0; j < filled.length; j++) {
+    if (filled[j] === monthName) { if (start === -1) start = j; end = j; }
+  }
+  if (start === -1) return null;
+  var cols = {};
+  for (var c = start; c <= end; c++) {
+    if (_safe(subjectRow[c] || '') !== subject) continue;
+    var lab = _safe(typeRow[c] || '');
+    for (var key in labelMap) {
+      if (labelMap.hasOwnProperty(key) && cols[key] === undefined && labelMap[key].indexOf(lab) !== -1) {
+        cols[key] = c;
+      }
+    }
+  }
+  return cols;
+}
+
+/* مجموع الأعمال المستمرة عبر أشهر مصدر: لكل شهر round(مجموع الأعمدة الأربعة/10) ثم clamp /20 */
+function _gradesSumMonths(monthRow, subjectRow, typeRow, studentRow, subject, monthsArr) {
+  var total = 0, foundAny = false;
+  for (var mi = 0; mi < monthsArr.length; mi++) {
+    var cols = _gradesFindColsByLabel(monthRow, subjectRow, typeRow, monthsArr[mi], subject,
+      { behavior: ['السلوك'], homework: ['الواجبات'], oral: ['الشفوي'], written: ['التحريري'] });
+    if (!cols) continue;
+    var b = _gradesNumOrNull(_gradesCell(studentRow, cols.behavior));
+    var h = _gradesNumOrNull(_gradesCell(studentRow, cols.homework));
+    var o = _gradesNumOrNull(_gradesCell(studentRow, cols.oral));
+    var w = _gradesNumOrNull(_gradesCell(studentRow, cols.written));
+    if (b !== null || h !== null || o !== null || w !== null) {
+      var mt = (b || 0) + (h || 0) + (o || 0) + (w || 0);
+      var sc = Math.round(mt / 10);
+      if (sc > 10) sc = 10;
+      total += sc;
+      foundAny = true;
+    }
+  }
+  if (total > 20) total = 20;
+  return foundAny ? total : null;
 }
