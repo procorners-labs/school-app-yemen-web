@@ -1,0 +1,548 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════════
+  School App Yemen — Teacher Reports UI
+  File: Teacher_Reports.html (snippet)
+  المحتوى: 3 أجزاء يجب إضافتها داخل Teacher_Dashboard.html
+    ① زر القائمة الجانبية (Sidebar)
+    ② تسجيل القسم في showSection و renders
+    ③ دالة renderReports() + CSS مرافق
+
+  ⚠️ ES5 فقط: var / function / لا template literals / لا arrow functions
+  يستخدم نفس متغيرات CSS الموجودة (--primary, --success, --bg, ...)
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+
+<!--
+═════════════════════════════════════════════════════════
+①  أضف هذا الزر في الـ sidebar
+   📍 الموقع: Teacher_Dashboard.html — السطر 920 تقريباً
+   بعد: <button class="sidebar-item" id="si-news" ...>
+   قبل: <button class="sidebar-item" id="si-notes" ...>
+═════════════════════════════════════════════════════════
+-->
+
+<button class="sidebar-item" id="si-reports" onclick="showSection('reports')">
+  <span class="si-icon">📊</span> التقارير
+</button>
+
+
+<!--
+═════════════════════════════════════════════════════════
+②  داخل دالة showSection(name)
+   📍 الموقع: Teacher_Dashboard.html — السطر 1518 تقريباً
+   عدّل المصفوفة sectionsList:
+   من:
+     var sectionsList = ['dashboard','grades','homework','violations',
+       'mySchedule','news','notes','adminTeachers','adminActivities',
+       'adminStudents','profile','attendance','teachers-mgmt','lists-mgmt'];
+   إلى:
+     var sectionsList = ['dashboard','grades','homework','violations',
+       'mySchedule','news','notes','reports','adminTeachers',
+       'adminActivities','adminStudents','profile','attendance',
+       'teachers-mgmt','lists-mgmt'];
+
+   ثم في كائن renders (السطر 1541):
+   من:
+     var renders = {
+       dashboard: renderDashboard, grades: renderGrades, ...
+       adminStudents: renderAdminStudents, profile: renderProfile
+     };
+   إلى:
+     var renders = {
+       dashboard: renderDashboard, grades: renderGrades,
+       homework: renderHomework, violations: renderViolations,
+       news: renderNews, notes: renderNotes,
+       mySchedule: renderMySchedule, reports: renderReports,
+       adminTeachers: renderAdminTeachers,
+       adminActivities: renderAdminActivities,
+       adminStudents: renderAdminStudents, profile: renderProfile
+     };
+═════════════════════════════════════════════════════════
+-->
+
+
+<!--
+═════════════════════════════════════════════════════════
+③  أضف CSS التالي ضمن وسم <style> الموجود
+   📍 الموقع: Teacher_Dashboard.html — قبل </style> الرئيسي
+═════════════════════════════════════════════════════════
+-->
+
+<style>
+/* ══════════ Reports Dashboard Styles ══════════ */
+.rpt-wrap { display: flex; flex-direction: column; gap: 16px; }
+.rpt-scope-bar {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: #fff; padding: 14px 18px; border-radius: 12px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+.rpt-scope-bar .ico { font-size: 1.4rem; }
+.rpt-scope-bar .lbl { font-weight: 700; font-size: 1rem; }
+.rpt-scope-bar .sub { font-size: .82rem; opacity: .92; margin-top: 2px; }
+.rpt-scope-bar .refresh-btn {
+  background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: .82rem;
+  transition: background .15s;
+}
+.rpt-scope-bar .refresh-btn:hover { background: rgba(255,255,255,.32); }
+
+.rpt-stats {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.rpt-stat {
+  background: #fff; border-radius: 12px; padding: 14px;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+  transition: transform .15s, box-shadow .15s;
+}
+.rpt-stat:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,.08); }
+.rpt-stat .ico {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; flex-shrink: 0;
+}
+.rpt-stat .val { font-size: 1.4rem; font-weight: 800; color: var(--text); line-height: 1; }
+.rpt-stat .lbl { font-size: .78rem; color: var(--text-muted); margin-top: 4px; }
+
+.rpt-card {
+  background: #fff; border-radius: 12px; padding: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+.rpt-card-title {
+  font-weight: 700; font-size: 1rem; color: var(--text);
+  margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.rpt-card-title .ico {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 1rem;
+}
+
+/* Bar charts (CSS only) */
+.rpt-bars { display: flex; flex-direction: column; gap: 10px; }
+.rpt-bar { display: flex; align-items: center; gap: 10px; font-size: .85rem; }
+.rpt-bar .name { flex: 0 0 110px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rpt-bar .track {
+  flex: 1; height: 22px; background: var(--bg); border-radius: 6px;
+  position: relative; overflow: hidden;
+}
+.rpt-bar .fill {
+  height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+  transition: width .8s ease-out;
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+  color: #fff; font-weight: 700; font-size: .75rem;
+}
+.rpt-bar .fill.success { background: linear-gradient(90deg, var(--success) 0%, #34d399 100%); }
+.rpt-bar .fill.warn    { background: linear-gradient(90deg, var(--warning) 0%, #fbbf24 100%); }
+.rpt-bar .fill.danger  { background: linear-gradient(90deg, var(--danger)  0%, #f87171 100%); }
+.rpt-bar .num { flex: 0 0 50px; text-align: left; font-weight: 700; color: var(--text); }
+
+/* Weekly timeline (vertical bars) */
+.rpt-week {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+  align-items: end; height: 140px; padding: 8px 0; border-bottom: 1px dashed var(--border);
+}
+.rpt-week-col { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+.rpt-week-col .stack {
+  flex: 1; width: 100%; max-width: 36px; display: flex; flex-direction: column; justify-content: flex-end;
+  border-radius: 6px 6px 0 0; overflow: hidden; background: var(--bg);
+}
+.rpt-week-col .seg { width: 100%; transition: height .8s; }
+.rpt-week-col .seg.h { background: var(--primary); }
+.rpt-week-col .seg.n { background: var(--secondary); }
+.rpt-week-col .seg.v { background: var(--danger); }
+.rpt-week-col .lbl { font-size: .68rem; color: var(--text-muted); }
+.rpt-week-legend { display: flex; gap: 12px; margin-top: 10px; font-size: .78rem; flex-wrap: wrap; justify-content: center; }
+.rpt-week-legend span { display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
+.rpt-week-legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+/* Lists */
+.rpt-list { display: flex; flex-direction: column; gap: 8px; }
+.rpt-list-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; background: var(--bg);
+  border: 1px solid var(--border);
+}
+.rpt-list-item .rank {
+  width: 26px; height: 26px; border-radius: 6px;
+  background: var(--primary); color: #fff; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; font-size: .82rem;
+  flex-shrink: 0;
+}
+.rpt-list-item .rank.gold   { background: #f59e0b; }
+.rpt-list-item .rank.silver { background: #94a3b8; }
+.rpt-list-item .rank.bronze { background: #b45309; }
+.rpt-list-item .body { flex: 1; min-width: 0; }
+.rpt-list-item .ttl { font-size: .85rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rpt-list-item .meta { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
+.rpt-list-item .badge { font-size: .72rem; padding: 2px 8px; border-radius: 6px; background: var(--primary-glow); color: var(--primary); font-weight: 700; }
+
+/* Empty / loading */
+.rpt-empty { text-align: center; padding: 24px; color: var(--text-muted); font-size: .9rem; }
+
+/* Grid layout */
+.rpt-grid-2 { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 900px) {
+  .rpt-grid-2 { grid-template-columns: 1fr 1fr; }
+}
+
+/* Activity timeline */
+.rpt-activity-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.rpt-activity-row:last-child { border-bottom: none; }
+.rpt-activity-row .ico {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--primary-glow); color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 1rem;
+}
+.rpt-activity-row.vio .ico { background: rgba(239,68,68,.12); color: var(--danger); }
+.rpt-activity-row.news .ico { background: rgba(6,182,212,.12); color: var(--secondary); }
+.rpt-activity-row .body { flex: 1; min-width: 0; }
+.rpt-activity-row .lbl { font-weight: 700; font-size: .85rem; color: var(--text); }
+.rpt-activity-row .txt { font-size: .8rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rpt-activity-row .dt  { font-size: .72rem; color: var(--text-light); white-space: nowrap; }
+</style>
+
+
+<!--
+═════════════════════════════════════════════════════════
+④  أضف الكود JS التالي ضمن نفس <script> الذي يحوي
+   showSection و renderDashboard.
+   📍 الموقع: Teacher_Dashboard.html — قبل </script> الرئيسي
+═════════════════════════════════════════════════════════
+-->
+
+<script>
+// ════════════════════════════════════════════════════════
+// REPORTS SECTION — لوحة التقارير المتقدمة
+// ════════════════════════════════════════════════════════
+
+var _RPT_CACHE = null; // cache بسيط داخل المتصفح
+
+function renderReports() {
+  var html = '' +
+    '<div class="rpt-wrap" id="rptRoot">' +
+      '<div class="rpt-scope-bar">' +
+        '<div class="ico">📊</div>' +
+        '<div style="flex:1">' +
+          '<div class="lbl">لوحة التقارير</div>' +
+          '<div class="sub" id="rptScopeLabel">جاري تحميل النطاق...</div>' +
+        '</div>' +
+        '<button class="refresh-btn" onclick="loadReports(true)">🔄 تحديث</button>' +
+      '</div>' +
+      '<div id="rptBody">' +
+        '<div class="rpt-card">' +
+          '<div class="sk-line skeleton"></div>' +
+          '<div class="sk-line skeleton w75"></div>' +
+          '<div class="sk-line skeleton w50"></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.getElementById('dynamicContent').innerHTML = html;
+  loadReports(false);
+}
+
+function loadReports(force) {
+  var bodyEl = document.getElementById('rptBody');
+  if (!bodyEl) return;
+
+  if (!force && _RPT_CACHE) {
+    _renderReportsBody(_RPT_CACHE);
+    return;
+  }
+
+  bodyEl.innerHTML =
+    '<div class="rpt-card">' +
+      '<div class="sk-line skeleton"></div>' +
+      '<div class="sk-line skeleton w75"></div>' +
+      '<div class="sk-line skeleton w50"></div>' +
+    '</div>';
+
+  callServer('getTeacherReportsProtected', {}, function(r) {
+    if (!r || !r.success) {
+      bodyEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
+        ((r && r.error) || 'خطأ غير معروف') + '</div>';
+      return;
+    }
+    _RPT_CACHE = r.data;
+    _renderReportsBody(r.data);
+  }, function(err) {
+    bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
+  });
+}
+
+function _renderReportsBody(data) {
+  var lblEl = document.getElementById('rptScopeLabel');
+  if (lblEl) lblEl.textContent = (data.scopeLabel || '') +
+    (data.fromCache ? ' • (من الذاكرة المؤقتة)' : '');
+
+  var html = '';
+  if (data.scope === 'admin' || data.scope === 'deputy') {
+    html = _rpt_renderAdmin(data);
+  } else if (data.scope === 'supervisor') {
+    html = _rpt_renderSupervisor(data);
+  } else {
+    html = _rpt_renderTeacher(data);
+  }
+  document.getElementById('rptBody').innerHTML = html;
+}
+
+// ── Admin/Deputy ────────────────────────────────────────
+function _rpt_renderAdmin(d) {
+  var s = d.summary || {};
+  var html = '';
+
+  // Stats grid
+  html += '<div class="rpt-stats">';
+  html += _rpt_stat('🎒', s.totalStudents,  'إجمالي الطلاب',     'rgba(79,70,229,.12)');
+  html += _rpt_stat('👨‍🏫', s.totalTeachers, 'إجمالي المعلمين',   'rgba(16,185,129,.12)');
+  html += _rpt_stat('🏫', s.totalClasses,   'الفصول',            'rgba(6,182,212,.12)');
+  html += _rpt_stat('📢', s.totalNews,      'الأخبار المنشورة',  'rgba(245,158,11,.12)');
+  html += _rpt_stat('📝', s.totalHomework,  'الواجبات',          'rgba(139,92,246,.12)');
+  html += _rpt_stat('⚠️', s.totalViolations,'المخالفات',         'rgba(239,68,68,.12)');
+  html += _rpt_stat('✉️', s.totalNotes,     'الملاحظات',         'rgba(20,184,166,.12)');
+  if (s.attendanceRate) {
+    html += _rpt_stat('📋', s.attendanceRate + '%', 'نسبة الحضور', 'rgba(34,197,94,.12)');
+  }
+  html += '</div>';
+
+  // Charts
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
+  html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
+    _rpt_barChart(d.charts.contentByClass, 'value', 8));
+  html += '</div>';
+
+  // Lists
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('🏆', 'أعلى 5 معلمين تفاعلاً',
+    _rpt_topList(d.lists.topTeachers, 'name', 'total', 'نشاط'));
+  html += _rpt_card('⚠️', 'أكثر 5 طلاب مخالفات',
+    _rpt_topList(d.lists.topViolatedStudents, 'name', 'total', 'مخالفة',
+      function(it) { return (it.class || '') + ' ' + (it.section || ''); }));
+  html += '</div>';
+
+  // Latest activities
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('📢', 'آخر الأخبار',
+    _rpt_latestList(d.lists.latestNews, 'news'));
+  html += _rpt_card('📝', 'آخر الواجبات',
+    _rpt_latestList(d.lists.latestHomework, 'hw'));
+  html += '</div>';
+
+  return html;
+}
+
+// ── Supervisor ──────────────────────────────────────────
+function _rpt_renderSupervisor(d) {
+  var s = d.summary || {};
+  var html = '';
+
+  html += '<div class="rpt-stats">';
+  html += _rpt_stat('🎒', s.supervisedStudents, 'الطلاب المُشرف عليهم', 'rgba(79,70,229,.12)');
+  html += _rpt_stat('🏫', s.supervisedClasses,  'الفصول',                'rgba(6,182,212,.12)');
+  html += _rpt_stat('📢', s.totalNews,          'الأخبار',                'rgba(245,158,11,.12)');
+  html += _rpt_stat('📝', s.totalHomework,      'الواجبات',               'rgba(16,185,129,.12)');
+  html += _rpt_stat('⚠️', s.totalViolations,    'المخالفات',              'rgba(239,68,68,.12)');
+  html += '</div>';
+
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
+  html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
+    _rpt_barChart(d.charts.contentByClass, 'value', 8));
+  html += '</div>';
+
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('🏆', 'أعلى المعلمين تفاعلاً',
+    _rpt_topList(d.lists.topTeachers, 'name', 'total', 'نشاط'));
+  html += _rpt_card('⚠️', 'أعلى الطلاب مخالفات',
+    _rpt_topList(d.lists.topViolatedStudents, 'name', 'total', 'مخالفة'));
+  html += '</div>';
+
+  return html;
+}
+
+// ── Teacher ────────────────────────────────────────────
+function _rpt_renderTeacher(d) {
+  var s = d.summary || {};
+  var html = '';
+
+  html += '<div class="rpt-stats">';
+  html += _rpt_stat('🎒', s.myStudents,    'طلابي',              'rgba(79,70,229,.12)');
+  html += _rpt_stat('📅', s.weeklyPeriods, 'حصص أسبوعية',         'rgba(6,182,212,.12)');
+  html += _rpt_stat('📝', s.myHomework,    'واجبات نشرتها',       'rgba(16,185,129,.12)');
+  html += _rpt_stat('📢', s.myNews,        'أخبار نشرتها',        'rgba(245,158,11,.12)');
+  html += _rpt_stat('⚠️', s.myViolations,  'مخالفات سجّلتها',     'rgba(239,68,68,.12)');
+  if (s.avgGrade) {
+    html += _rpt_stat('📊', s.avgGrade,    'متوسط درجات طلابي',   'rgba(139,92,246,.12)');
+  }
+  html += '</div>';
+
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('📊', 'متوسط الدرجات حسب المادة',
+    _rpt_barChart(d.charts.gradesBySubject, 'value', 100, 'success'));
+  html += _rpt_card('⚠️', 'المخالفات حسب الفصل',
+    _rpt_barChart(d.charts.violationsByClass, 'value', null, 'danger'));
+  html += '</div>';
+
+  html += _rpt_card('📈', 'نشاطي خلال 7 أيام',
+    _rpt_weekChart(d.charts.activityTimeline));
+
+  // Recent activities
+  html += _rpt_card('🕐', 'آخر 5 أنشطة',
+    _rpt_recentActivities(d.lists.recentActivities));
+
+  return html;
+}
+
+// ── UI Helpers ──────────────────────────────────────────
+function _rpt_stat(icon, value, label, bgColor) {
+  return '<div class="rpt-stat">' +
+           '<div class="ico" style="background:' + bgColor + '">' + icon + '</div>' +
+           '<div>' +
+             '<div class="val">' + (value !== undefined && value !== null ? value : '--') + '</div>' +
+             '<div class="lbl">' + label + '</div>' +
+           '</div>' +
+         '</div>';
+}
+
+function _rpt_card(icon, title, innerHtml) {
+  return '<div class="rpt-card">' +
+           '<div class="rpt-card-title">' +
+             '<span class="ico" style="background:var(--primary-glow);color:var(--primary);">' +
+               icon + '</span>' + title +
+           '</div>' +
+           innerHtml +
+         '</div>';
+}
+
+function _rpt_barChart(items, valueField, maxOverride, colorClass) {
+  if (!items || !items.length) {
+    return '<div class="rpt-empty">لا توجد بيانات للعرض</div>';
+  }
+  var max = maxOverride || 0;
+  if (!max) {
+    for (var i = 0; i < items.length; i++) {
+      if (items[i][valueField] > max) max = items[i][valueField];
+    }
+    if (max <= 0) max = 1;
+  }
+  var html = '<div class="rpt-bars">';
+  for (var j = 0; j < items.length; j++) {
+    var pct = Math.round((items[j][valueField] / max) * 100);
+    if (pct < 3 && items[j][valueField] > 0) pct = 3;
+    html += '<div class="rpt-bar">' +
+              '<div class="name">' + (items[j].label || '') + '</div>' +
+              '<div class="track">' +
+                '<div class="fill ' + (colorClass || '') + '" style="width:' + pct + '%">' +
+                  (pct > 12 ? items[j][valueField] : '') +
+                '</div>' +
+              '</div>' +
+              '<div class="num">' + items[j][valueField] + '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _rpt_weekChart(days) {
+  if (!days || !days.length) return '<div class="rpt-empty">لا توجد بيانات</div>';
+  var max = 1;
+  for (var i = 0; i < days.length; i++) if (days[i].total > max) max = days[i].total;
+
+  var html = '<div class="rpt-week">';
+  for (var j = 0; j < days.length; j++) {
+    var d = days[j];
+    var totalH = Math.round((d.total / max) * 100);
+    var hH = d.total ? Math.round((d.homework   / d.total) * totalH) : 0;
+    var nH = d.total ? Math.round((d.news       / d.total) * totalH) : 0;
+    var vH = d.total ? Math.round((d.violations / d.total) * totalH) : 0;
+    html += '<div class="rpt-week-col" title="' + d.label + ': ' + d.total + ' نشاط">' +
+              '<div class="stack">' +
+                (vH > 0 ? '<div class="seg v" style="height:' + vH + '%"></div>' : '') +
+                (nH > 0 ? '<div class="seg n" style="height:' + nH + '%"></div>' : '') +
+                (hH > 0 ? '<div class="seg h" style="height:' + hH + '%"></div>' : '') +
+              '</div>' +
+              '<div class="lbl">' + d.label + '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  html += '<div class="rpt-week-legend">' +
+            '<span><span class="dot" style="background:var(--primary)"></span>واجبات</span>' +
+            '<span><span class="dot" style="background:var(--secondary)"></span>أخبار</span>' +
+            '<span><span class="dot" style="background:var(--danger)"></span>مخالفات</span>' +
+          '</div>';
+  return html;
+}
+
+function _rpt_topList(items, nameField, valueField, valueLabel, subFn) {
+  if (!items || !items.length) return '<div class="rpt-empty">لا توجد بيانات</div>';
+  var html = '<div class="rpt-list">';
+  for (var i = 0; i < items.length; i++) {
+    var rankClass = i === 0 ? 'gold' : (i === 1 ? 'silver' : (i === 2 ? 'bronze' : ''));
+    var sub = subFn ? subFn(items[i]) : '';
+    html += '<div class="rpt-list-item">' +
+              '<div class="rank ' + rankClass + '">' + (i + 1) + '</div>' +
+              '<div class="body">' +
+                '<div class="ttl">' + (items[i][nameField] || '') + '</div>' +
+                (sub ? '<div class="meta">' + sub + '</div>' : '') +
+              '</div>' +
+              '<div class="badge">' + items[i][valueField] + ' ' + valueLabel + '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _rpt_latestList(items, type) {
+  if (!items || !items.length) return '<div class="rpt-empty">لا توجد بيانات حديثة</div>';
+  var icons = { news: '📢', hw: '📝', vio: '⚠️' };
+  var html = '<div class="rpt-list">';
+  for (var i = 0; i < items.length; i++) {
+    var content = items[i].content || '';
+    if (content.length > 70) content = content.substring(0, 70) + '...';
+    html += '<div class="rpt-list-item" style="background:#fff">' +
+              '<div class="rank" style="background:var(--secondary)">' + (icons[type] || '•') + '</div>' +
+              '<div class="body">' +
+                '<div class="ttl">' + content + '</div>' +
+                '<div class="meta">' + (items[i].teacher || '') +
+                  ' • ' + (items[i].class || '') + ' ' + (items[i].section || '') +
+                  ' • ' + (items[i].date || '') + '</div>' +
+              '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _rpt_recentActivities(items) {
+  if (!items || !items.length) return '<div class="rpt-empty">لا توجد أنشطة حديثة</div>';
+  var html = '';
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var rowClass = it.type === 'violation' ? 'vio' : (it.type === 'news' ? 'news' : '');
+    var content = it.content || '';
+    if (content.length > 80) content = content.substring(0, 80) + '...';
+    html += '<div class="rpt-activity-row ' + rowClass + '">' +
+              '<div class="ico">' + (it.icon || '•') + '</div>' +
+              '<div class="body">' +
+                '<div class="lbl">' + (it.label || '') +
+                  (it.class ? ' • ' + it.class : '') + '</div>' +
+                '<div class="txt">' + content + '</div>' +
+              '</div>' +
+              '<div class="dt">' + (it.date || '') + '</div>' +
+            '</div>';
+  }
+  return html;
+}
+
+// تنظيف الكاش عند تسجيل الخروج (اختياري)
+function _rpt_clearCache() { _RPT_CACHE = null; }
+</script>

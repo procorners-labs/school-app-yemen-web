@@ -1,0 +1,491 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════════
+  School App Yemen — Student Reports UI
+  File: Student_Reports.html (snippet)
+  المحتوى: 4 أجزاء يجب إضافتها داخل Student_Portal.html
+    ① زر التبويب
+    ② صفحة الـ pgReports
+    ③ CSS مرافق
+    ④ دوال JS
+
+  ⚠️ ES5 فقط — يستخدم نفس متغيرات CSS الموجودة (--pr, --ok, --err, --bg, ...)
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+
+
+<!--
+═════════════════════════════════════════════════════════
+①  أضف زر التبويب في شريط tabbar
+   📍 الموقع: Student_Portal.html — السطر 332 تقريباً
+   بعد: <button class="tbtn" onclick="showPage('pgAtt',this);loadAttendance()">📋 الغياب</button>
+═════════════════════════════════════════════════════════
+-->
+
+<button class="tbtn" onclick="showPage('pgReports',this);loadReports()">📊 تقاريري</button>
+
+
+<!--
+═════════════════════════════════════════════════════════
+②  أضف صفحة pgReports
+   📍 الموقع: Student_Portal.html — قبل <!-- ===== الفوتر ===== --> أو
+   بعد آخر صفحة (pgAtt) في النموذج. تقريباً قبل </div> الذي يغلق main app.
+═════════════════════════════════════════════════════════
+-->
+
+<!-- ===== التقارير ===== -->
+<div class="page" id="pgReports">
+  <div class="srpt-wrap" id="srptRoot">
+
+    <div class="srpt-hero">
+      <div class="srpt-hero-icon">📊</div>
+      <div style="flex:1">
+        <div class="srpt-hero-title">تقريرك الشخصي</div>
+        <div class="srpt-hero-sub" id="srptScopeLabel">عرض تفصيلي لأدائك الدراسي</div>
+      </div>
+      <button class="srpt-refresh" onclick="loadReports(true)">🔄</button>
+    </div>
+
+    <div id="srptBody">
+      <div class="card"><div class="cb">جاري التحميل...</div></div>
+    </div>
+
+  </div>
+</div>
+
+
+<!--
+═════════════════════════════════════════════════════════
+③  CSS — أضفه ضمن وسم <style> في Student_Portal.html
+═════════════════════════════════════════════════════════
+-->
+
+<style>
+/* ══════════ Student Reports Styles ══════════ */
+.srpt-wrap { display: flex; flex-direction: column; gap: 14px; padding: 0 4px; }
+
+.srpt-hero {
+  background: var(--grad);
+  color: #fff; padding: 16px; border-radius: var(--r);
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--sh);
+}
+.srpt-hero-icon { font-size: 1.7rem; }
+.srpt-hero-title { font-size: 1.05rem; font-weight: 800; }
+.srpt-hero-sub   { font-size: .82rem; opacity: .92; margin-top: 3px; }
+.srpt-refresh {
+  background: rgba(255,255,255,.22); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  padding: 8px 12px; border-radius: 10px; cursor: pointer; font-size: 1rem;
+}
+
+.srpt-stats {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (min-width: 600px) {
+  .srpt-stats { grid-template-columns: repeat(4, 1fr); }
+}
+.srpt-stat {
+  background: var(--card); border-radius: var(--rs); padding: 12px;
+  border: 1px solid var(--bdr);
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+.srpt-stat .ico {
+  width: 38px; height: 38px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.srpt-stat .val { font-size: 1.1rem; font-weight: 800; color: var(--txt); line-height: 1.1; }
+.srpt-stat .lbl { font-size: .72rem; color: var(--muted); margin-top: 3px; }
+
+.srpt-card {
+  background: var(--card); border-radius: var(--r); padding: 14px;
+  border: 1px solid var(--bdr); box-shadow: var(--sh);
+}
+.srpt-card-h {
+  font-weight: 700; font-size: .95rem; color: var(--txt);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.srpt-card-h .icon {
+  width: 30px; height: 30px; border-radius: 8px; background: rgba(79,70,229,.12);
+  color: var(--pr); display: flex; align-items: center; justify-content: center; font-size: 1rem;
+}
+
+/* Bars */
+.srpt-bars { display: flex; flex-direction: column; gap: 9px; }
+.srpt-bar { display: flex; align-items: center; gap: 8px; font-size: .8rem; }
+.srpt-bar .name {
+  flex: 0 0 95px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.srpt-bar .track {
+  flex: 1; height: 20px; background: var(--bg); border-radius: 6px;
+  position: relative; overflow: hidden;
+}
+.srpt-bar .fill {
+  height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--pr) 0%, var(--pr-l) 100%);
+  transition: width .8s ease-out;
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+  color: #fff; font-weight: 700; font-size: .72rem;
+}
+.srpt-bar .fill.ok    { background: linear-gradient(90deg, var(--ok)   0%, #34d399 100%); }
+.srpt-bar .fill.warn  { background: linear-gradient(90deg, var(--warn) 0%, #fbbf24 100%); }
+.srpt-bar .fill.err   { background: linear-gradient(90deg, var(--err)  0%, #f87171 100%); }
+.srpt-bar .num { flex: 0 0 44px; text-align: left; font-weight: 800; color: var(--txt); }
+
+/* Comparison: my vs class */
+.srpt-cmp { display: flex; flex-direction: column; gap: 10px; }
+.srpt-cmp-row {
+  background: var(--bg); border: 1px solid var(--bdr);
+  border-radius: 10px; padding: 10px;
+}
+.srpt-cmp-row .head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px; font-size: .85rem;
+}
+.srpt-cmp-row .head .subj { font-weight: 700; color: var(--txt); }
+.srpt-cmp-row .head .val { font-size: .75rem; color: var(--muted); }
+.srpt-cmp-tracks {
+  position: relative; height: 24px;
+  background: rgba(148,163,184,.18); border-radius: 5px; overflow: visible;
+}
+.srpt-cmp-tracks .my-bar, .srpt-cmp-tracks .class-bar {
+  position: absolute; top: 0; height: 50%;
+  border-radius: 4px;
+}
+.srpt-cmp-tracks .my-bar    { top: 0;       background: var(--pr); }
+.srpt-cmp-tracks .class-bar { top: 50%;     background: var(--info); }
+.srpt-cmp-legend { display: flex; gap: 14px; margin-top: 8px; font-size: .72rem; color: var(--muted); }
+.srpt-cmp-legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 4px; }
+
+/* Lists */
+.srpt-list { display: flex; flex-direction: column; gap: 8px; }
+.srpt-list-item {
+  background: var(--bg); border: 1px solid var(--bdr);
+  border-radius: 10px; padding: 10px;
+  display: flex; align-items: center; gap: 10px;
+}
+.srpt-list-item .ico {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(79,70,229,.12); color: var(--pr);
+  display: flex; align-items: center; justify-content: center; font-size: 1rem;
+  flex-shrink: 0;
+}
+.srpt-list-item.vio .ico { background: rgba(239,68,68,.12); color: var(--err); }
+.srpt-list-item.merit .ico { background: rgba(16,185,129,.12); color: var(--ok); }
+.srpt-list-item .body { flex: 1; min-width: 0; }
+.srpt-list-item .ttl { font-size: .85rem; font-weight: 700; color: var(--txt);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srpt-list-item .meta { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+.srpt-list-item .badge {
+  font-size: .72rem; padding: 3px 9px; border-radius: 6px;
+  background: rgba(79,70,229,.12); color: var(--pr); font-weight: 700;
+}
+
+/* Score circle */
+.srpt-score {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0;
+}
+.srpt-score-circle {
+  width: 130px; height: 130px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative;
+  background: conic-gradient(var(--pr) 0%, var(--pr) var(--pct, 0%), rgba(148,163,184,.2) var(--pct, 0%));
+}
+.srpt-score-circle::before {
+  content: ''; position: absolute; inset: 8px;
+  background: var(--card); border-radius: 50%;
+}
+.srpt-score-circle .num {
+  position: relative; font-size: 1.7rem; font-weight: 800; color: var(--txt); z-index: 1;
+}
+.srpt-score-circle .lbl {
+  position: relative; font-size: .72rem; color: var(--muted); z-index: 1;
+}
+
+.srpt-empty { text-align: center; padding: 20px; color: var(--muted); font-size: .88rem; }
+
+.srpt-grid-2 {
+  display: grid; gap: 12px; grid-template-columns: 1fr;
+}
+@media (min-width: 760px) {
+  .srpt-grid-2 { grid-template-columns: 1fr 1fr; }
+}
+</style>
+
+
+<!--
+═════════════════════════════════════════════════════════
+④  JavaScript — أضفه قبل </script> الرئيسي في Student_Portal.html
+═════════════════════════════════════════════════════════
+-->
+
+<script>
+// ════════════════════════════════════════════════════════
+// REPORTS — لوحة التقارير الشخصية للطالب
+// ════════════════════════════════════════════════════════
+
+var _SRPT_CACHE = null;
+
+function loadReports(force) {
+  if (!APP.user || !APP.user.studentId) {
+    document.getElementById('srptBody').innerHTML =
+      '<div class="srpt-empty">يجب تسجيل الدخول أولاً</div>';
+    return;
+  }
+
+  // عرض من الكاش إذا موجود ولم نطلب تحديث
+  if (!force && _SRPT_CACHE) {
+    _renderReportsBody(_SRPT_CACHE);
+    return;
+  }
+
+  document.getElementById('srptBody').innerHTML =
+    '<div class="srpt-card">' +
+      '<div class="empty"><div class="spinner" style="margin:0 auto 10px;width:36px;height:36px;border-width:3px"></div><div class="etitle">جاري تحليل بياناتك...</div></div>' +
+    '</div>';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (r && r.ok && r.data) {
+        _SRPT_CACHE = r.data;
+        _renderReportsBody(r.data);
+      } else {
+        document.getElementById('srptBody').innerHTML =
+          '<div class="srpt-empty">⚠️ ' + ((r && r.error) || 'تعذّر تحميل التقارير') + '</div>';
+      }
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('srptBody').innerHTML =
+        '<div class="srpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
+    })
+    .getStudentReports(APP.user.studentId);
+}
+
+function _renderReportsBody(data) {
+  var lblEl = document.getElementById('srptScopeLabel');
+  if (lblEl && data.student) {
+    lblEl.textContent = data.student.class + ' ' + data.student.section +
+      (data.fromCache ? ' • (محفوظ مؤقتاً)' : '');
+  }
+
+  var s = data.summary || {};
+  var html = '';
+
+  // Score circle + main stats
+  var avg = s.overallAvg || 0;
+  var pctScore = Math.min(100, Math.round((avg / 100) * 100));
+  html += '<div class="srpt-card">' +
+            '<div class="srpt-card-h"><span class="icon">⭐</span>الأداء العام</div>' +
+            '<div class="srpt-score">' +
+              '<div class="srpt-score-circle" style="--pct:' + pctScore + '%">' +
+                '<div class="num">' + avg + '</div>' +
+                '<div class="lbl">من 100</div>' +
+              '</div>' +
+              '<div style="font-size:.85rem;color:var(--muted);text-align:center;">' +
+                'متوسط درجاتك العام عبر <b>' + (s.subjectsCount || 0) + '</b> مادة' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+
+  // Stats grid
+  html += '<div class="srpt-stats">';
+  html += _srpt_stat('📝', s.homeworkAssigned, 'واجبات بفصلك',  'rgba(79,70,229,.12)');
+  html += _srpt_stat('⚠️', s.violationsCount,  'مخالفات',       'rgba(239,68,68,.12)');
+  html += _srpt_stat('🌟', s.meritsCount,      'مميزات',        'rgba(16,185,129,.12)');
+  if (s.attendanceRate) {
+    html += _srpt_stat('📋', s.attendanceRate + '%', 'نسبة الحضور', 'rgba(34,197,94,.12)');
+  } else {
+    html += _srpt_stat('📚', s.subjectsCount,  'موادك',         'rgba(6,182,212,.12)');
+  }
+  html += '</div>';
+
+  // Charts row
+  html += '<div class="srpt-grid-2">';
+
+  // درجاتك حسب المادة
+  html += '<div class="srpt-card">' +
+            '<div class="srpt-card-h"><span class="icon">📊</span>درجاتك حسب المادة</div>' +
+            _srpt_barChart(data.charts.gradesBySubject || [], 100, 'ok') +
+          '</div>';
+
+  // الحضور (إن وُجد)
+  if (data.charts.attendanceBars && data.charts.attendanceBars.length &&
+      (s.attendanceRate || s.absentDays || s.lateDays)) {
+    html += '<div class="srpt-card">' +
+              '<div class="srpt-card-h"><span class="icon">📋</span>سجل الحضور</div>' +
+              _srpt_barChart(data.charts.attendanceBars) +
+            '</div>';
+  } else {
+    // المقارنة مع الفصل بدلاً
+    html += '<div class="srpt-card">' +
+              '<div class="srpt-card-h"><span class="icon">📈</span>أنت مقابل متوسط الفصل</div>' +
+              _srpt_compareChart(data.charts.comparisonChart || []) +
+            '</div>';
+  }
+  html += '</div>';
+
+  // Last grades
+  html += '<div class="srpt-card">' +
+            '<div class="srpt-card-h"><span class="icon">🆕</span>آخر الدرجات المستلمة</div>' +
+            _srpt_lastGradesList(data.lists.lastGrades || []) +
+          '</div>';
+
+  // Merits & Violations
+  html += '<div class="srpt-grid-2">';
+  if (data.lists.topMerits && data.lists.topMerits.length) {
+    html += '<div class="srpt-card">' +
+              '<div class="srpt-card-h"><span class="icon">🌟</span>أحدث المميزات</div>' +
+              _srpt_eventsList(data.lists.topMerits, 'merit') +
+            '</div>';
+  }
+  if (data.lists.topViolations && data.lists.topViolations.length) {
+    html += '<div class="srpt-card">' +
+              '<div class="srpt-card-h"><span class="icon">⚠️</span>أحدث السلوكيات</div>' +
+              _srpt_eventsList(data.lists.topViolations, 'vio') +
+            '</div>';
+  }
+  html += '</div>';
+
+  // Recent events timeline
+  if (data.lists.recentEvents && data.lists.recentEvents.length) {
+    html += '<div class="srpt-card">' +
+              '<div class="srpt-card-h"><span class="icon">🕐</span>آخر الأحداث</div>' +
+              _srpt_recentEventsList(data.lists.recentEvents) +
+            '</div>';
+  }
+
+  document.getElementById('srptBody').innerHTML = html;
+}
+
+// ── UI helpers ─────────────────────────────────────────
+function _srpt_stat(icon, value, label, bgColor) {
+  return '<div class="srpt-stat">' +
+           '<div class="ico" style="background:' + bgColor + '">' + icon + '</div>' +
+           '<div>' +
+             '<div class="val">' + (value !== undefined && value !== null ? value : '--') + '</div>' +
+             '<div class="lbl">' + label + '</div>' +
+           '</div>' +
+         '</div>';
+}
+
+function _srpt_barChart(items, maxOverride, defaultClass) {
+  if (!items || !items.length) return '<div class="srpt-empty">لا توجد بيانات</div>';
+  var max = maxOverride || 0;
+  if (!max) {
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].value > max) max = items[i].value;
+    }
+    if (max <= 0) max = 1;
+  }
+  var html = '<div class="srpt-bars">';
+  for (var j = 0; j < items.length; j++) {
+    var pct = Math.round((items[j].value / max) * 100);
+    if (pct < 3 && items[j].value > 0) pct = 3;
+    var cls = defaultClass || '';
+    if (!cls) {
+      // اختيار اللون بناء على القيمة (لشريط الدرجات /100)
+      if (maxOverride === 100) {
+        if (items[j].value >= 75) cls = 'ok';
+        else if (items[j].value >= 50) cls = '';
+        else if (items[j].value >= 30) cls = 'warn';
+        else cls = 'err';
+      }
+    }
+    html += '<div class="srpt-bar">' +
+              '<div class="name">' + (items[j].label || '') + '</div>' +
+              '<div class="track">' +
+                '<div class="fill ' + cls + '" style="width:' + pct + '%">' +
+                  (pct > 14 ? items[j].value : '') +
+                '</div>' +
+              '</div>' +
+              '<div class="num">' + items[j].value + '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _srpt_compareChart(items) {
+  if (!items || !items.length) return '<div class="srpt-empty">لا توجد بيانات للمقارنة</div>';
+  var max = 100;
+  var html = '<div class="srpt-cmp">';
+  for (var i = 0; i < items.length; i++) {
+    var myPct    = Math.min(100, Math.round((items[i].my       / max) * 100));
+    var classPct = Math.min(100, Math.round((items[i].classAvg / max) * 100));
+    html += '<div class="srpt-cmp-row">' +
+              '<div class="head">' +
+                '<span class="subj">' + items[i].label + '</span>' +
+                '<span class="val">أنت: <b>' + items[i].my + '</b> • الفصل: ' + items[i].classAvg + '</span>' +
+              '</div>' +
+              '<div class="srpt-cmp-tracks">' +
+                '<div class="my-bar"    style="width:' + myPct    + '%"></div>' +
+                '<div class="class-bar" style="width:' + classPct + '%"></div>' +
+              '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  html += '<div class="srpt-cmp-legend">' +
+            '<span><span class="dot" style="background:var(--pr)"></span>أنت</span>' +
+            '<span><span class="dot" style="background:var(--info)"></span>متوسط الفصل</span>' +
+          '</div>';
+  return html;
+}
+
+function _srpt_lastGradesList(items) {
+  if (!items || !items.length) return '<div class="srpt-empty">لا توجد درجات حديثة</div>';
+  var html = '<div class="srpt-list">';
+  for (var i = 0; i < items.length; i++) {
+    var v = items[i].value;
+    var cls = '';
+    if (v >= 75)      cls = 'merit';
+    else if (v < 30)  cls = 'vio';
+    html += '<div class="srpt-list-item ' + cls + '">' +
+              '<div class="ico">📝</div>' +
+              '<div class="body">' +
+                '<div class="ttl">' + items[i].subject + '</div>' +
+                '<div class="meta">شهر: ' + (items[i].month || '—') + '</div>' +
+              '</div>' +
+              '<div class="badge">' + v + '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _srpt_eventsList(items, type) {
+  if (!items || !items.length) return '<div class="srpt-empty">لا يوجد</div>';
+  var html = '<div class="srpt-list">';
+  for (var i = 0; i < items.length; i++) {
+    html += '<div class="srpt-list-item ' + type + '">' +
+              '<div class="ico">' + (type === 'merit' ? '🌟' : '⚠️') + '</div>' +
+              '<div class="body">' +
+                '<div class="ttl">' + (items[i].type || '') + '</div>' +
+                '<div class="meta">' + (items[i].date || '') + '</div>' +
+              '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _srpt_recentEventsList(items) {
+  var html = '<div class="srpt-list">';
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var content = it.content || '';
+    if (content.length > 90) content = content.substring(0, 90) + '...';
+    html += '<div class="srpt-list-item ' + (it.type === 'violation' ? 'vio' : '') + '">' +
+              '<div class="ico">' + (it.icon || '•') + '</div>' +
+              '<div class="body">' +
+                '<div class="ttl">' + (it.label || '') + '</div>' +
+                '<div class="meta">' + content + '</div>' +
+              '</div>' +
+              '<div class="badge">' + (it.date || '') + '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+</script>

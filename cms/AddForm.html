@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>إضافة محتوى جديد</title>
+  <style>
+    /* نفس التنسيقات السابقة – لم تتغير */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI','Tahoma',sans-serif; background:#f4f7fc; padding:25px 15px; color:#1e293b; }
+    .container { max-width:800px; margin:0 auto; background:white; border-radius:32px; padding:30px 25px; box-shadow:0 15px 35px rgba(0,0,0,0.03); border:1px solid #eef2f6; }
+    h2 { font-size:2rem; margin-bottom:25px; color:#0f172a; display:flex; align-items:center; gap:10px; }
+    .user-info-panel { background:linear-gradient(135deg,#e8f0fe,#ffffff); padding:18px 20px; border-radius:24px; margin-bottom:30px; display:flex; flex-wrap:wrap; gap:20px; align-items:flex-end; border:1px solid #dbeafe; }
+    .user-field { flex:1 1 200px; }
+    .user-field label { display:block; font-weight:600; margin-bottom:6px; color:#334155; }
+    .user-field input { width:100%; padding:12px 16px; border:1px solid #cbd5e1; border-radius:16px; font-size:1rem; background:white; }
+    .fingerprint-badge { background:#f1f5f9; padding:10px 16px; border-radius:40px; font-size:0.9rem; color:#475569; display:inline-block; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; border-bottom:2px solid #e2e8f0; margin-bottom:30px; padding-bottom:4px; }
+    .tab { padding:12px 22px; background:transparent; border:none; font-size:1.1rem; font-weight:600; color:#64748b; cursor:pointer; border-radius:40px 40px 0 0; }
+    .tab.active { background:#1a73e8; color:white; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+    .form-group { margin-bottom:22px; }
+    label { display:block; font-weight:600; margin-bottom:8px; color:#334155; }
+    input, textarea, select { width:100%; padding:14px 18px; border:1.5px solid #e2e8f0; border-radius:18px; font-size:1rem; background:white; }
+    textarea { min-height:120px; resize:vertical; }
+    .file-upload-area { border:2px dashed #94a3b8; border-radius:24px; padding:25px 20px; text-align:center; background:#fafcff; margin:15px 0; }
+    .file-upload-area input { padding:8px; border:none; background:transparent; }
+    .upload-hint { font-size:0.85rem; color:#64748b; margin-top:5px; }
+    .btn { background:#1a73e8; color:white; border:none; padding:16px 30px; border-radius:40px; font-size:1.15rem; font-weight:600; cursor:pointer; width:100%; box-shadow:0 6px 14px rgba(26,115,232,0.2); }
+    .status-message { margin-top:18px; padding:14px 18px; border-radius:20px; font-weight:500; }
+    .status-success { background:#dcfce7; color:#166534; border-right:6px solid #22c55e; }
+    .status-error { background:#fee2e2; color:#991b1b; border-right:6px solid #ef4444; }
+    .status-info { background:#dbeafe; color:#1e40af; border-right:6px solid #3b82f6; }
+    .back-link { margin-top:30px; text-align:center; }
+    .back-link a { color:#1a73e8; text-decoration:none; font-weight:500; cursor:pointer; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>📥 إضافة محتوى جديد</h2>
+
+  <div class="user-info-panel">
+    <div class="user-field">
+      <label>👤 اسمك (للتعريف في السجلات):</label>
+      <input type="text" id="userNameInput" placeholder="مثال: أحمد محمد">
+    </div>
+    <div class="user-field">
+      <label>🆔 بصمة المتصفح (تلقائي):</label>
+      <input type="text" id="fingerprintDisplay" readonly disabled style="background:#f8fafc;">
+    </div>
+    <div style="flex:0 0 auto;">
+      <span class="fingerprint-badge" id="fingerprintBadge">⏳ جاري التوليد...</span>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="news">📰 خبر عاجل</button>
+    <button class="tab" data-tab="video">🎬 فيديو</button>
+    <button class="tab" data-tab="image">🖼️ صورة</button>
+    <button class="tab" data-tab="schedule">📅 جدول نشر</button>
+  </div>
+
+  <!-- تبويب الأخبار -->
+  <div id="news" class="tab-content active">
+    <div class="form-group"><label>عنوان الخبر:</label><input type="text" id="newsTitle" placeholder="أدخل عنوان الخبر"></div>
+    <div class="form-group"><label>نص الخبر:</label><textarea id="newsContent" placeholder="تفاصيل الخبر..."></textarea></div>
+    <div class="file-upload-area"><p>📎 إرفاق صورة (اختياري)</p><input type="file" id="newsImage" accept="image/*"><div class="upload-hint">سيتم رفع الصورة إلى مجلد "أرشيف_المحتوى"</div></div>
+    <input type="hidden" id="newsMediaURL">
+    <button class="btn" id="submitNewsBtn">🚀 نشر الخبر</button>
+    <div id="newsStatus" class="status-message"></div>
+  </div>
+
+  <!-- تبويب الفيديو -->
+  <div id="video" class="tab-content">
+    <div class="form-group"><label>عنوان الفيديو:</label><input type="text" id="videoTitle" placeholder="عنوان الفيديو"></div>
+    <div class="form-group"><label>وصف الفيديو:</label><textarea id="videoDesc" rows="3" placeholder="وصف مختصر"></textarea></div>
+    <div class="form-group"><label>رابط الفيديو (YouTube أو Google Drive):</label><input type="text" id="videoURL" placeholder="https://..."><small>يمكنك لصق رابط YouTube أو رابط مشاركة Drive</small></div>
+    <button class="btn" id="submitVideoBtn">🎬 إضافة الفيديو</button>
+    <div id="videoStatus" class="status-message"></div>
+  </div>
+
+  <!-- تبويب الصورة -->
+  <div id="image" class="tab-content">
+    <div class="form-group"><label>اسم الصورة:</label><input type="text" id="imageName" placeholder="اسم مميز للصورة"></div>
+    <div class="form-group"><label>وصف الصورة:</label><textarea id="imageDesc" rows="3" placeholder="وصف أو سياق الاستخدام"></textarea></div>
+    <div class="file-upload-area"><p>🖼️ اختر صورة للرفع</p><input type="file" id="imageFileInput" accept="image/*"><div class="upload-hint">ستُحفظ في مجلد "ملفات_التصميم"</div></div>
+    <input type="hidden" id="imageMediaURL">
+    <button class="btn" id="submitImageBtn">⬆️ رفع الصورة</button>
+    <div id="imageStatus" class="status-message"></div>
+  </div>
+
+  <!-- تبويب جدول النشر -->
+  <div id="schedule" class="tab-content">
+    <div class="form-group"><label>المنصة:</label><select id="platformSelect"><option value="">-- اختر المنصة --</option><option value="فيسبوك">فيسبوك</option><option value="تويتر">تويتر</option><option value="انستغرام">انستغرام</option><option value="لينكدإن">لينكدإن</option><option value="تيك توك">تيك توك</option></select></div>
+    <div class="form-group"><label>نوع المنشور:</label><select id="postTypeSelect" disabled><option value="">اختر المنصة أولاً</option></select></div>
+    <div class="form-group"><label>نص المنشور:</label><textarea id="postContent" rows="4" placeholder="اكتب نص المنشور هنا..."></textarea></div>
+    <div class="form-group"><label>رابط الوسائط (اختياري):</label><input type="text" id="postMediaURL" placeholder="يمكنك لصق رابط أو رفع ملف أدناه"></div>
+    <div class="file-upload-area"><p>🎞️ ارفع وسائط (صورة/فيديو) - اختياري</p><input type="file" id="scheduleMediaFile" accept="image/*,video/*"><div class="upload-hint">سيتم الرفع إلى "المحتوى_المنشور"</div></div>
+    <input type="hidden" id="scheduleMediaURLHidden">
+    <div class="form-group"><label>تاريخ ووقت النشر:</label><input type="datetime-local" id="publishDate"></div>
+    <div class="form-group"><label>الحالة:</label><select id="statusSelect"><option value="مجدول">مجدول</option><option value="قيد المراجعة">قيد المراجعة</option><option value="جاهز للنشر">جاهز للنشر</option></select></div>
+    <button class="btn" id="submitScheduleBtn">💾 حفظ الجدولة</button>
+    <div id="scheduleStatus" class="status-message"></div>
+  </div>
+
+  <div class="back-link"><a onclick="goToPage(''); return false;">🏠 العودة للرئيسية</a></div>
+</div>
+<script>
+  // ★ استخراج schoolId من الرابط لدعم تعدد المدارس (Multi-Tenant)
+  (function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    window.SCHOOL_ID = urlParams.get('school') || '';
+  })();
+
+  window.goToPage = function(p) {
+    google.script.run.withSuccessHandler(function(url) {
+      var finalUrl = url || (p ? '?page=' + encodeURIComponent(p) : './');
+      // ✅ إلحاق schoolId بالرابط للانتقال بين الصفحات مع الحفاظ على عزل المدرسة
+      if (window.SCHOOL_ID) {
+        finalUrl += (finalUrl.indexOf('?') > -1 ? '&' : '?') + 'school=' + encodeURIComponent(window.SCHOOL_ID);
+      }
+      window.top.location.href = finalUrl;
+    }).getPageUrl(p);
+  };
+
+  // تبويبات محسنة (لا تعتمد على event)
+  function switchTab(id) {
+    document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+    document.querySelector('.tab[data-tab="' + id + '"]').classList.add('active');
+  }
+  document.querySelectorAll('.tab').forEach(function(t) {
+    t.addEventListener('click', function() { switchTab(this.dataset.tab); });
+  });
+
+  function setStatus(elId, msg, type) {
+    var el = document.getElementById(elId);
+    el.textContent = msg;
+    el.className = 'status-message';
+    if (type === 'success') el.classList.add('status-success');
+    else if (type === 'error') el.classList.add('status-error');
+    else if (type === 'info') el.classList.add('status-info');
+  }
+
+  function generateFingerprint() {
+    var nav = window.navigator, screen = window.screen;
+    var fp = [nav.userAgent, nav.language, screen.colorDepth, screen.width + 'x' + screen.height, new Date().getTimezoneOffset(), !!window.sessionStorage, !!window.localStorage].join('###');
+    var hash = 0;
+    for (var i = 0; i < fp.length; i++) { hash = ((hash << 5) - hash) + fp.charCodeAt(i); hash = hash & hash; }
+    return 'fp_' + Math.abs(hash).toString(16).substring(0, 10);
+  }
+
+  var fingerprint = generateFingerprint();
+  document.getElementById('fingerprintDisplay').value = fingerprint;
+  document.getElementById('fingerprintBadge').textContent = '🆔 ' + fingerprint;
+
+  var savedName = localStorage.getItem('social_cms_user_name');
+  if (savedName) document.getElementById('userNameInput').value = savedName;
+  document.getElementById('userNameInput').addEventListener('change', function() {
+    localStorage.setItem('social_cms_user_name', this.value);
+  });
+
+  // دالة عامة لرفع الملفات
+  function uploadFile(fileInput, folderType, statusId, urlFieldId) {
+    var file = fileInput.files[0];
+    if (!file) { setStatus(statusId, '⚠️ الرجاء اختيار ملف', 'error'); return; }
+    setStatus(statusId, '⏳ جاري رفع الملف...', 'info');
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res.success) {
+            document.getElementById(urlFieldId).value = res.url;
+            setStatus(statusId, '✅ تم رفع الملف إلى ' + res.folder, 'success');
+          } else {
+            setStatus(statusId, '❌ فشل الرفع: ' + res.error, 'error');
+          }
+        })
+        .uploadFileToDrive(ev.target.result, file.name, folderType);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ربط أحداث الرفع
+  document.getElementById('newsImage').addEventListener('change', function() { uploadFile(this, 'NEWS_IMAGES', 'newsStatus', 'newsMediaURL'); });
+  document.getElementById('imageFileInput').addEventListener('change', function() { uploadFile(this, 'IMAGE_LIBRARY', 'imageStatus', 'imageMediaURL'); });
+  document.getElementById('scheduleMediaFile').addEventListener('change', function() {
+    uploadFile(this, 'PUBLISHED', 'scheduleStatus', 'scheduleMediaURLHidden');
+    var urlField = document.getElementById('scheduleMediaURLHidden');
+    document.getElementById('postMediaURL').value = urlField.value;
+  });
+
+  // دوال الإرسال
+  function submitNews() {
+    var title = document.getElementById('newsTitle').value.trim();
+    var content = document.getElementById('newsContent').value.trim();
+    var mediaURL = document.getElementById('newsMediaURL').value;
+    var mediaType;
+    if (!mediaURL) {
+      mediaType = 'None';
+    } else if (/\.(mp4|webm|mov)(\?|$)/i.test(mediaURL) || mediaURL.indexOf('youtube') !== -1) {
+      mediaType = 'Video';
+    } else if (mediaURL.toLowerCase().indexOf('.pdf') !== -1) {
+      mediaType = 'PDF';
+    } else {
+      mediaType = 'Image';
+    }
+    var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
+    if (!title || !content) { setStatus('newsStatus', '⚠️ الرجاء ملء العنوان والنص', 'error'); return; }
+    // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
+    google.script.run
+      .withSuccessHandler(function(msg) {
+        setStatus('newsStatus', msg, 'success');
+        document.getElementById('newsTitle').value = '';
+        document.getElementById('newsContent').value = '';
+        document.getElementById('newsMediaURL').value = '';
+        document.getElementById('newsImage').value = '';
+      })
+      .withFailureHandler(function(err) { setStatus('newsStatus', '❌ خطأ: ' + err.message, 'error'); })
+      .addNews(title, content, mediaType, mediaURL, userName, fingerprint, window.SCHOOL_ID);
+  }
+
+  function submitVideo() {
+    var title = document.getElementById('videoTitle').value.trim();
+    var desc = document.getElementById('videoDesc').value.trim();
+    var url = document.getElementById('videoURL').value.trim();
+    var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
+    if (!title || !url) { setStatus('videoStatus', '⚠️ العنوان والرابط مطلوبان', 'error'); return; }
+    // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
+    google.script.run
+      .withSuccessHandler(function(msg) {
+        setStatus('videoStatus', msg, 'success');
+        document.getElementById('videoTitle').value = '';
+        document.getElementById('videoDesc').value = '';
+        document.getElementById('videoURL').value = '';
+      })
+      .addVideo(title, desc, url, userName, fingerprint, window.SCHOOL_ID);
+  }
+
+  function submitImage() {
+    var name = document.getElementById('imageName').value.trim();
+    var desc = document.getElementById('imageDesc').value.trim();
+    var url = document.getElementById('imageMediaURL').value;
+    var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
+    if (!name) { setStatus('imageStatus', '⚠️ اسم الصورة مطلوب', 'error'); return; }
+    if (!url) { setStatus('imageStatus', '⚠️ الرجاء اختيار صورة للرفع', 'error'); return; }
+    // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
+    google.script.run
+      .withSuccessHandler(function(msg) {
+        setStatus('imageStatus', msg, 'success');
+        document.getElementById('imageName').value = '';
+        document.getElementById('imageDesc').value = '';
+        document.getElementById('imageMediaURL').value = '';
+        document.getElementById('imageFileInput').value = '';
+      })
+      .addImage(name, desc, url, userName, fingerprint, window.SCHOOL_ID);
+  }
+
+  function updatePostTypes() {
+    var platform = document.getElementById('platformSelect').value;
+    var selectEl = document.getElementById('postTypeSelect');
+    if (!platform) { selectEl.innerHTML = '<option value="">اختر المنصة أولاً</option>'; selectEl.disabled = true; return; }
+    google.script.run
+      .withSuccessHandler(function(types) {
+        selectEl.innerHTML = '';
+        if (!types || types.length === 0) selectEl.innerHTML = '<option value="">لا توجد أنواع محددة</option>';
+        else {
+          for (var i = 0; i < types.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = types[i].type;
+            opt.textContent = types[i].type + ' (' + types[i].description + ')';
+            selectEl.appendChild(opt);
+          }
+        }
+        selectEl.disabled = false;
+      })
+      .getPostTypesForPlatform(platform);
+  }
+  document.getElementById('platformSelect').addEventListener('change', updatePostTypes);
+
+  function submitSchedule() {
+    var platform = document.getElementById('platformSelect').value;
+    var postType = document.getElementById('postTypeSelect').value;
+    var content = document.getElementById('postContent').value.trim();
+    var mediaURL = document.getElementById('scheduleMediaURLHidden').value || document.getElementById('postMediaURL').value.trim();
+    var scheduledDate = document.getElementById('publishDate').value;
+    var status = document.getElementById('statusSelect').value;
+    var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
+    if (!platform || !postType || !content || !scheduledDate) { setStatus('scheduleStatus', '⚠️ الرجاء ملء جميع الحقول المطلوبة', 'error'); return; }
+    // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
+    google.script.run
+      .withSuccessHandler(function(msg) {
+        setStatus('scheduleStatus', msg, 'success');
+        document.getElementById('postContent').value = '';
+        document.getElementById('postMediaURL').value = '';
+        document.getElementById('scheduleMediaURLHidden').value = '';
+        document.getElementById('scheduleMediaFile').value = '';
+        document.getElementById('publishDate').value = '';
+        document.getElementById('platformSelect').value = '';
+        document.getElementById('postTypeSelect').innerHTML = '<option value="">اختر المنصة أولاً</option>';
+        document.getElementById('postTypeSelect').disabled = true;
+      })
+      .withFailureHandler(function(err) { setStatus('scheduleStatus', '❌ خطأ: ' + err.message, 'error'); })
+      .addSchedule(platform, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, window.SCHOOL_ID);
+  }
+
+  // ربط أزرار الإرسال
+  document.getElementById('submitNewsBtn').addEventListener('click', submitNews);
+  document.getElementById('submitVideoBtn').addEventListener('click', submitVideo);
+  document.getElementById('submitImageBtn').addEventListener('click', submitImage);
+  document.getElementById('submitScheduleBtn').addEventListener('click', submitSchedule);
+
+  // تتبع الأخطاء
+  window.addEventListener('error', function(e) {
+    google.script.run.logClientError('AddForm', e.message, '', navigator.userAgent);
+  });
+</script>
+</body>
+</html>

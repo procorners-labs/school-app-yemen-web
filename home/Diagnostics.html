@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_top">
+<title>🔍 تشخيص المنظومة — مدارس الإبداع</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:16px;font-size:13px}
+h1{color:#818cf8;font-size:1.2rem;margin-bottom:4px}
+.sub{color:#64748b;font-size:.78rem;margin-bottom:20px}
+
+/* ── بطاقات ── */
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:14px}
+.card-title{font-size:.88rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-title.ok{color:#34d399}
+.card-title.warn{color:#fbbf24}
+.card-title.err{color:#f87171}
+.card-title.info{color:#60a5fa}
+
+/* ── نتائج ── */
+.result-list{display:flex;flex-direction:column;gap:6px}
+.result-item{display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;font-size:.78rem;line-height:1.5}
+.result-item.ok{background:#064e3b;border:1px solid #065f46;color:#a7f3d0}
+.result-item.warn{background:#451a03;border:1px solid #78350f;color:#fde68a}
+.result-item.err{background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5}
+.result-item.info{background:#0c1a35;border:1px solid #1e3a5f;color:#93c5fd}
+.result-item.neutral{background:#1e293b;border:1px solid #334155;color:#94a3b8}
+.ri-icon{flex-shrink:0;font-size:.9rem}
+.ri-text{flex:1}
+.ri-text strong{display:block;font-weight:700;font-size:.8rem}
+.ri-text span{font-size:.72rem;opacity:.85}
+.ri-code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:.7rem;color:#a5b4fc;word-break:break-all}
+
+/* ── أزرار ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;white-space:nowrap}
+.btn-run{background:#4f46e5;color:#fff}.btn-run:hover{background:#3730a3}
+.btn-copy{background:#0891b2;color:#fff}.btn-copy:hover{background:#0e7490}
+.btn-fix{background:#10b981;color:#fff}.btn-fix:hover{background:#059669}
+.btn-sm{padding:4px 10px;font-size:.72rem}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+
+/* ── شريط التقدم ── */
+.progress-wrap{background:#0f172a;border-radius:50px;height:6px;margin:8px 0;overflow:hidden}
+.progress-fill{height:100%;border-radius:50px;background:linear-gradient(90deg,#4f46e5,#818cf8);transition:width .4s}
+
+/* ── لوج ── */
+#logBox{background:#020617;border:1px solid #1e3a5f;border-radius:8px;padding:12px;font-family:monospace;font-size:.72rem;line-height:1.8;max-height:300px;overflow-y:auto;color:#94a3b8;white-space:pre-wrap;word-break:break-all}
+.log-ok{color:#34d399}
+.log-err{color:#f87171}
+.log-warn{color:#fbbf24}
+.log-info{color:#60a5fa}
+.log-section{color:#818cf8;font-weight:700}
+
+/* ── شارات ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:50px;font-size:.65rem;font-weight:700}
+.badge-ok{background:#064e3b;color:#34d399}
+.badge-err{background:#450a0a;color:#f87171}
+.badge-warn{background:#451a03;color:#fbbf24}
+.badge-info{background:#0c1a35;color:#60a5fa}
+
+/* ── ملخص ── */
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px}
+.summary-card{background:#1e293b;border-radius:10px;padding:12px;text-align:center;border:2px solid #334155}
+.summary-card.ok{border-color:#065f46}
+.summary-card.err{border-color:#7f1d1d}
+.summary-card.warn{border-color:#78350f}
+.summary-num{font-size:1.6rem;font-weight:800}
+.summary-lbl{font-size:.68rem;color:#64748b;margin-top:2px}
+.summary-card.ok .summary-num{color:#34d399}
+.summary-card.err .summary-num{color:#f87171}
+.summary-card.warn .summary-num{color:#fbbf24}
+
+/* ── تبويبات ── */
+.tabs{display:flex;gap:3px;background:#0f172a;border-radius:8px;padding:4px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:6px 12px;border:none;background:none;color:#64748b;border-radius:6px;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;transition:all .2s}
+.tab.active{background:#4f46e5;color:#fff}
+.tc{display:none}.tc.active{display:block}
+
+/* ── loader ── */
+#globalLoader{position:fixed;inset:0;background:rgba(15,23,42,.9);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#globalLoader.hidden{display:none}
+.spin{width:36px;height:36px;border:3px solid #334155;border-top-color:#818cf8;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loaderMsg{color:#94a3b8;font-size:.85rem}
+</style>
+</head>
+<body>
+
+<div id="globalLoader">
+  <div class="spin"></div>
+  <div id="loaderMsg">جاري تهيئة أداة التشخيص...</div>
+</div>
+
+<h1>🔍 أداة التشخيص الشاملة</h1>
+<div class="sub">مدارس الإبداع والتميز الدولية — School App Yemen — <span id="diagTime"></span></div>
+
+<!-- ملخص -->
+<div class="summary-grid" id="summaryGrid">
+  <div class="summary-card"><div class="summary-num" id="s_total">—</div><div class="summary-lbl">إجمالي الفحوصات</div></div>
+  <div class="summary-card ok"><div class="summary-num ok" id="s_ok">—</div><div class="summary-lbl">✅ ناجح</div></div>
+  <div class="summary-card warn"><div class="summary-num warn" id="s_warn">—</div><div class="summary-lbl">⚠️ تحذير</div></div>
+  <div class="summary-card err"><div class="summary-num err" id="s_err">—</div><div class="summary-lbl">❌ خطأ</div></div>
+</div>
+
+<div class="btn-group">
+  <button class="btn btn-run" onclick="runAllDiagnostics()">▶️ تشغيل التشخيص الكامل</button>
+  <button class="btn btn-copy" onclick="copyReport()">📋 نسخ التقرير</button>
+</div>
+
+<!-- التبويبات -->
+<div class="tabs">
+  <button class="tab active" onclick="showTab('t1',this)">🌐 الشبكة والـ CDN</button>
+  <button class="tab" onclick="showTab('t2',this)">📱 الجهاز والبيئة</button>
+  <button class="tab" onclick="showTab('t3',this)">⚙️ Apps Script</button>
+  <button class="tab" onclick="showTab('t4',this)">🎨 الواجهة والـ DOM</button>
+  <button class="tab" onclick="showTab('t5',this)">📋 سجل التشخيص</button>
+</div>
+
+<!-- تبويب 1: الشبكة والـ CDN -->
+<div id="t1" class="tc active">
+  <div class="card">
+    <div class="card-title info">🌐 فحص الموارد الخارجية (CDN)</div>
+    <div id="cdnResults" class="result-list">
+      <div class="result-item neutral"><span class="ri-icon">⏳</span><div class="ri-text">اضغط "تشغيل التشخيص" للبدء</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title info">🔗 فحص الاتصال العام</div>
+    <div id="netResults" class="result-list">
+      <div class="result-item neutral"><span class="ri-icon">⏳</span><div class="ri-text">في انتظار التشخيص...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- تبويب 2: الجهاز والبيئة -->
+<div id="t2" class="tc">
+  <div class="card">
+    <div class="card-title info">📱 معلومات الجهاز والمتصفح</div>
+    <div id="deviceResults" class="result-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-title info">🔧 دعم ميزات المتصفح</div>
+    <div id="featResults" class="result-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-title info">🛡️ Content Security Policy</div>
+    <div id="cspResults" class="result-list"></div>
+  </div>
+</div>
+
+<!-- تبويب 3: Apps Script -->
+<div id="t3" class="tc">
+  <div class="card">
+    <div class="card-title info">⚙️ فحص google.script.run</div>
+    <div id="gsrResults" class="result-list">
+      <div class="result-item neutral"><span class="ri-icon">⏳</span><div class="ri-text">في انتظار التشخيص...</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title info">📡 فحص الدوال المطلوبة</div>
+    <div id="funcResults" class="result-list">
+      <div class="result-item neutral"><span class="ri-icon">⏳</span><div class="ri-text">في انتظار التشخيص...</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title info">⏱️ قياس زمن الاستجابة</div>
+    <div id="pingResults" class="result-list">
+      <div class="result-item neutral"><span class="ri-icon">⏳</span><div class="ri-text">في انتظار التشخيص...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- تبويب 4: الواجهة والـ DOM -->
+<div id="t4" class="tc">
+  <div class="card">
+    <div class="card-title info">🎨 فحص Teacher Dashboard</div>
+    <div id="dashResults" class="result-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-title info">🌍 فحص Index.html (الموقع الرئيسي)</div>
+    <div id="indexResults" class="result-list"></div>
+  </div>
+</div>
+
+<!-- تبويب 5: السجل -->
+<div id="t5" class="tc">
+  <div class="card">
+    <div class="card-title info">📋 سجل التشخيص الكامل</div>
+    <div id="logBox">سيظهر هنا السجل الكامل عند تشغيل التشخيص...\n</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  المتغيرات العالمية
+// ══════════════════════════════════════════════════════
+var _counts   = { ok: 0, warn: 0, err: 0, total: 0 };
+var _logLines = [];
+var _reportLines = [];
+
+// ══════════════════════════════════════════════════════
+//  التهيئة
+// ══════════════════════════════════════════════════════
+document.getElementById('diagTime').textContent = new Date().toLocaleString('ar-SA');
+
+// إخفاء الـ loader بعد التهيئة
+setTimeout(function() {
+  var loader = document.getElementById('globalLoader');
+  if (loader) loader.classList.add('hidden');
+  // تشغيل فحص الجهاز فوراً
+  checkDevice();
+  checkBrowserFeatures();
+  checkCspIssues();
+  checkDashboardDOM();
+  checkIndexDOM();
+}, 600);
+
+// ══════════════════════════════════════════════════════
+//  دوال مساعدة
+// ══════════════════════════════════════════════════════
+function _log(type, msg) {
+  var ts  = new Date().toLocaleTimeString('ar-SA');
+  var cls = { ok:'log-ok', err:'log-err', warn:'log-warn', info:'log-info', section:'log-section' }[type] || '';
+  var icons = { ok:'✅', err:'❌', warn:'⚠️', info:'ℹ️', section:'══' };
+  var line = '[' + ts + '] ' + (icons[type]||'•') + ' ' + msg;
+  _logLines.push('<span class="' + cls + '">' + _esc(line) + '</span>');
+  _reportLines.push(line);
+  var box = document.getElementById('logBox');
+  if (box) box.innerHTML = _logLines.join('\n');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+function _esc(s) {
+  return String(s||'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+function _ri(type, icon, title, detail, code) {
+  _counts.total++;
+  if (type === 'ok')   _counts.ok++;
+  if (type === 'err')  _counts.err++;
+  if (type === 'warn') _counts.warn++;
+  _updateSummary();
+  return '<div class="result-item ' + type + '">' +
+    '<span class="ri-icon">' + icon + '</span>' +
+    '<div class="ri-text"><strong>' + _esc(title) + '</strong>' +
+    (detail ? '<span>' + _esc(detail) + '</span>' : '') +
+    (code   ? '<br><span class="ri-code">' + _esc(code) + '</span>' : '') +
+    '</div></div>';
+}
+
+function _set(id, html) {
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function _append(id, html) {
+  var el = document.getElementById(id);
+  if (el) el.innerHTML += html;
+}
+
+function _updateSummary() {
+  document.getElementById('s_total').textContent = _counts.total;
+  document.getElementById('s_ok').textContent    = _counts.ok;
+  document.getElementById('s_warn').textContent  = _counts.warn;
+  document.getElementById('s_err').textContent   = _counts.err;
+}
+
+function showTab(id, btn) {
+  document.querySelectorAll('.tc').forEach(function(e) { e.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(e) { e.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════
+//  1. فحص CDN والموارد الخارجية
+// ══════════════════════════════════════════════════════
+var CDN_RESOURCES = [
+  {
+    name   : 'xlsx.full.min.js (مكتبة Excel)',
+    url    : 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+    critical: true,
+    usedIn : 'Teacher_Dashboard.html (السطر 9)',
+    impact : 'تعطيل التطبيق كاملاً في WebView عند الفشل — 2.4MB'
+  },
+  {
+    name   : 'Font Awesome CSS (أيقونات)',
+    url    : 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
+    critical: false,
+    usedIn : 'Index.html (السطر 12)',
+    impact : 'اختفاء الأيقونات وتعطل القائمة الجانبية'
+  },
+  {
+    name   : 'Google Fonts — Cairo',
+    url    : 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap',
+    critical: false,
+    usedIn : 'Index.html (السطر 11)',
+    impact : 'تغيير الخط وتأثير التصميم'
+  }
+];
+
+function checkCdnResources() {
+  _log('section', '══ فحص CDN والموارد الخارجية ══');
+  _set('cdnResults', '');
+  var pending = CDN_RESOURCES.length;
+  var allHtml = '';
+
+  CDN_RESOURCES.forEach(function(res) {
+    var start = Date.now();
+    var img = new Image();
+    var done = false;
+
+    // استخدام fetch إن كان متاحاً
+    if (typeof fetch !== 'undefined') {
+      fetch(res.url, { method: 'HEAD', mode: 'no-cors', cache: 'no-cache' })
+        .then(function() {
+          var ms = Date.now() - start;
+          handleCdnResult(res, true, ms, null);
+        })
+        .catch(function(e) {
+          handleCdnResult(res, false, Date.now() - start, e.message);
+        });
+    } else {
+      // Fallback: تحميل script/link
+      var el;
+      if (res.url.endsWith('.js')) {
+        el = document.createElement('script');
+        el.src = res.url;
+      } else {
+        el = document.createElement('link');
+        el.rel = 'stylesheet';
+        el.href = res.url;
+      }
+      el.onload  = function() { handleCdnResult(res, true,  Date.now() - start, null); };
+      el.onerror = function(e) { handleCdnResult(res, false, Date.now() - start, 'فشل التحميل'); };
+      el.setAttribute('data-diag', 'true');
+      // لا نضيفه للـ DOM لتجنب تشغيله
+      handleCdnResult(res, null, 0, 'لا يمكن الفحص في هذه البيئة');
+    }
+
+    function handleCdnResult(r, success, ms, errMsg) {
+      var html = '';
+      if (success === null) {
+        html = _ri('warn', '🔍', r.name, 'لا يمكن فحصه مباشرةً — ' + r.impact, r.url);
+        _log('warn', r.name + ': لا يمكن فحصه في هذه البيئة');
+      } else if (success) {
+        var speedNote = ms < 500 ? 'سريع (' + ms + 'ms)' : ms < 2000 ? 'بطيء (' + ms + 'ms)' : 'بطيء جداً (' + ms + 'ms) ⚠️';
+        html = _ri(ms > 2000 ? 'warn' : 'ok', '🌐', r.name + ' — ' + speedNote,
+          'يعمل بشكل صحيح. مُستخدَم في: ' + r.usedIn, r.url);
+        _log(ms > 2000 ? 'warn' : 'ok', r.name + ': يعمل (' + ms + 'ms)');
+      } else {
+        var detail = (r.critical ? '🔴 حرج: ' : '⚠️ ') + r.impact;
+        html = _ri('err', '❌', r.name + ' — فشل التحميل',
+          detail + '\nالخطأ: ' + (errMsg||'انتهت مهلة الاتصال'), r.url);
+        _log('err', r.name + ': فشل — ' + (errMsg||'timeout'));
+
+        if (r.critical) {
+          html += _ri('warn', '💡', 'الحل المقترح',
+            'احذف السطر من رأس الملف واستخدم Lazy Loading — سيمنع تعطل التطبيق على الهاتف',
+            'استبدل: <script src="' + r.url + '"> بدالة _loadXlsx()');
+        }
+      }
+      _append('cdnResults', html);
+    }
+  });
+
+  // فحص الاتصال العام
+  _set('netResults', '');
+  var netStart = Date.now();
+  if (typeof fetch !== 'undefined') {
+    fetch('https://www.google.com/favicon.ico', { mode: 'no-cors', cache: 'no-cache' })
+      .then(function() {
+        var ms = Date.now() - netStart;
+        _set('netResults', _ri('ok', '🌐', 'الاتصال بالإنترنت', 'يعمل بشكل صحيح — ' + ms + 'ms', null));
+        _log('ok', 'الاتصال بالإنترنت: يعمل (' + ms + 'ms)');
+      })
+      .catch(function(e) {
+        _set('netResults', _ri('err', '❌', 'الاتصال بالإنترنت', 'فشل الاتصال: ' + e.message + '\nتأكد من الإنترنت أو CSP', null));
+        _log('err', 'الاتصال بالإنترنت: فشل — ' + e.message);
+      });
+  } else {
+    _set('netResults', _ri('warn', '⚠️', 'لا يمكن فحص الاتصال', 'fetch API غير متاح في هذه البيئة', null));
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  2. فحص الجهاز والبيئة
+// ══════════════════════════════════════════════════════
+function checkDevice() {
+  _log('section', '══ فحص الجهاز والبيئة ══');
+  var ua   = navigator.userAgent || '';
+  var html = '';
+
+  // نوع الجهاز
+  var isMobile  = /Mobi|Android|iPhone|iPad/i.test(ua);
+  var isWebView = /wv|WebView/.test(ua) ||
+                  (isMobile && /Version\/[\d.]+.*Chrome/.test(ua)) ||
+                  (typeof window.android !== 'undefined') ||
+                  (!window.chrome && isMobile);
+  var isIOS     = /iPhone|iPad|iPod/i.test(ua);
+  var isAndroid = /Android/i.test(ua);
+  var isGAS     = typeof google !== 'undefined' && typeof google.script !== 'undefined';
+
+  html += _ri('info', isMobile ? '📱' : '💻', 'نوع الجهاز',
+    isMobile ? 'جهاز محمول' : 'حاسوب مكتبي', null);
+
+  html += _ri(isWebView ? 'warn' : 'ok', isWebView ? '⚠️' : '🌐', 'بيئة التشغيل',
+    isWebView ? 'WebView مُضمَّن (داخل تطبيق) — قد يحجب بعض الموارد الخارجية' :
+    'متصفح عادي',
+    'UserAgent: ' + ua.substring(0, 80) + '...');
+
+  if (isWebView) {
+    html += _ri('err', '🔴', 'تحذير WebView',
+      'WebView يحجب عادةً:\n• مكتبات CDN الكبيرة (xlsx 2.4MB)\n• بعض طلبات Google Fonts\n• backdrop-filter CSS',
+      'السبب الأكثر احتمالاً لخطأ "تعذر تحميل الصفحة"');
+  }
+
+  html += _ri('info', isIOS ? '🍎' : (isAndroid ? '🤖' : '💻'), 'نظام التشغيل',
+    isIOS ? 'iOS / iPadOS' : (isAndroid ? 'Android' : 'Desktop'), null);
+
+  html += _ri('info', '🔧', 'بيئة Google Apps Script',
+    isGAS ? 'نعم — google.script متاح' : 'لا — قد تكون صفحة مستقلة',
+    null);
+
+  // الشاشة
+  html += _ri('info', '📐', 'أبعاد الشاشة',
+    window.innerWidth + 'px × ' + window.innerHeight + 'px — ' +
+    (window.innerWidth < 768 ? 'موبايل' : window.innerWidth < 900 ? 'تابلت' : 'سطح مكتب'),
+    'devicePixelRatio: ' + (window.devicePixelRatio || 1));
+
+  _log('info', 'الجهاز: ' + (isMobile ? 'موبايل' : 'مكتبي') + ' | WebView: ' + isWebView + ' | GAS: ' + isGAS);
+  _set('deviceResults', html);
+}
+
+// ══════════════════════════════════════════════════════
+//  3. فحص ميزات المتصفح
+// ══════════════════════════════════════════════════════
+function checkBrowserFeatures() {
+  _log('section', '══ فحص ميزات المتصفح ══');
+  var html = '';
+  var features = [
+    {
+      name  : 'CSS backdrop-filter',
+      test  : function() {
+        return CSS && CSS.supports && CSS.supports('backdrop-filter', 'blur(1px)');
+      },
+      impact: 'يُستخدَم في loadingOverlay — إذا غير مدعوم قد يتجمد التطبيق في أجهزة Android القديمة',
+      fix   : 'أضف @supports (-webkit-backdrop-filter: blur(6px)) وفارق CSS'
+    },
+    {
+      name  : 'CSS position:sticky',
+      test  : function() {
+        return CSS && CSS.supports && CSS.supports('position', 'sticky');
+      },
+      impact: 'القائمة الجانبية (sidebar) قد لا تعمل بشكل صحيح',
+      fix   : 'استخدم position:fixed للموبايل بدلاً من sticky'
+    },
+    {
+      name  : 'fetch API',
+      test  : function() { return typeof fetch !== 'undefined'; },
+      impact: 'لا يمكن تحميل الموارد الخارجية ديناميكياً',
+      fix   : 'استخدم XMLHttpRequest كـ fallback'
+    },
+    {
+      name  : 'localStorage',
+      test  : function() {
+        try { localStorage.setItem('_test', '1'); localStorage.removeItem('_test'); return true; }
+        catch(e) { return false; }
+      },
+      impact: 'لا يمكن حفظ جلسة تسجيل الدخول — المعلم سيضطر لتسجيل الدخول في كل مرة',
+      fix   : 'استخدم sessionStorage أو cookie بديلاً'
+    },
+    {
+      name  : 'CSS grid',
+      test  : function() { return CSS && CSS.supports && CSS.supports('display', 'grid'); },
+      impact: 'تخطيط الصفحة قد يتعطل',
+      fix   : 'أضف flexbox كـ fallback'
+    },
+    {
+      name  : 'CSS custom properties (variables)',
+      test  : function() { return CSS && CSS.supports && CSS.supports('color', 'var(--test)'); },
+      impact: 'جميع الألوان والقياسات ستختفي',
+      fix   : 'أضف قيم hardcoded كـ fallback'
+    },
+    {
+      name  : 'CSS animations',
+      test  : function() {
+        var el = document.createElement('div');
+        return typeof el.style.animation !== 'undefined' ||
+               typeof el.style.webkitAnimation !== 'undefined';
+      },
+      impact: 'اختفاء الـ spinner ومؤشرات التحميل',
+      fix   : 'أضف -webkit- prefix'
+    },
+    {
+      name  : 'Promise API',
+      test  : function() { return typeof Promise !== 'undefined'; },
+      impact: 'لا يمكن استخدام async/await أو fetch',
+      fix   : 'استخدم callbacks فقط (ES5)'
+    },
+    {
+      name  : 'JSON.parse / JSON.stringify',
+      test  : function() {
+        try { return JSON.parse('{"ok":true}').ok === true; }
+        catch(e) { return false; }
+      },
+      impact: 'لا يمكن تبادل البيانات مع Apps Script',
+      fix   : 'لا يوجد حل — متصفح قديم جداً'
+    }
+  ];
+
+  features.forEach(function(f) {
+    var supported;
+    try { supported = f.test(); } catch(e) { supported = false; }
+    var type = supported ? 'ok' : (f.name.indexOf('backdrop') !== -1 ? 'warn' : 'err');
+    html += _ri(type, supported ? '✅' : '❌', f.name,
+      supported ? 'مدعوم' : 'غير مدعوم — ' + f.impact,
+      supported ? null : 'الحل: ' + f.fix);
+    _log(type, f.name + ': ' + (supported ? 'مدعوم' : 'غير مدعوم'));
+  });
+
+  _set('featResults', html);
+}
+
+// ══════════════════════════════════════════════════════
+//  4. فحص CSP (Content Security Policy)
+// ══════════════════════════════════════════════════════
+function checkCspIssues() {
+  _log('section', '══ فحص CSP وقيود Google Apps Script ══');
+  var html = '';
+  var isGAS = typeof google !== 'undefined' && typeof google.script !== 'undefined';
+
+  if (isGAS) {
+    html += _ri('warn', '⚠️', 'بيئة Google Apps Script',
+      'GAS تفرض CSP صارم يمنع:\n• تنفيذ scripts من CDN في بعض الحالات\n• بعض WebSocket connections\n• eval() وunsafe-inline',
+      'هذا يؤثر على مكتبات CDN الخارجية في WebView');
+
+    html += _ri('info', '📋', 'القيود المعروفة في GAS WebView',
+      '• مكتبات > 1MB تُسبِّب timeout في WebView\n' +
+      '• Google Fonts قد تُحجَب في بعض الشبكات\n' +
+      '• backdrop-filter: blur() يُعطِّل الصفحة في Android < 7',
+      null);
+
+    html += _ri('err', '🔴', 'السبب الأكثر احتمالاً لعطل الهاتف',
+      'ملف xlsx.full.min.js (2.4MB) يُحمَّل عند بدء التطبيق ويُسبِّب:\n' +
+      '1. انتهاء مهلة الاتصال في WebView (timeout 30 ثانية)\n' +
+      '2. ظهور "تعذر تحميل الصفحة" قبل أن تكتمل الصفحة\n' +
+      '3. حجب المورد بواسطة CSP في بعض الأجهزة',
+      'الحل: احذف السطر 9 واستخدم _loadXlsx() فقط عند الضغط على التصدير');
+  } else {
+    html += _ri('info', 'ℹ️', 'ليس في بيئة GAS', 'الصفحة تعمل خارج Google Apps Script', null);
+  }
+
+  // فحص meta CSP
+  var metaCsp = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  if (metaCsp) {
+    html += _ri('info', '🛡️', 'CSP في الـ meta', metaCsp.content, null);
+  } else {
+    html += _ri('info', '🛡️', 'CSP', 'لا يوجد meta CSP — يعتمد على CSP الخادم', null);
+  }
+
+  _set('cspResults', html);
+}
+
+// ══════════════════════════════════════════════════════
+//  5. فحص google.script.run والدوال
+// ══════════════════════════════════════════════════════
+var REQUIRED_FUNCTIONS = {
+  'Teacher_Dashboard': [
+    'handleTeacherLogin', 'checkSession', 'handleTeacherLogout',
+    'getLists', 'getStudentsProtected', 'saveGradesProtected',
+    'autoSaveSingleGradeProtected', 'addViolationProtected',
+    'addHomeworkProtected', 'addNewsProtected', 'getMyScheduleProtected',
+    'getBlockSettings', 'saveBlockSettings', 'adminGetAllStudents',
+    'getGradesStructureProtected', 'getActivitiesProtected'
+  ],
+  'Student_Portal': [
+    'loginStudent', 'getGrades', 'getStudentFinancialData',
+    'getViolations', 'getStudentNews', 'getSchedule',
+    'submitNote', 'changePassword', 'getStudentNotes',
+    'syncAllFromMaster'
+  ],
+  'TeacherSchedule': [
+    'getTeachersList', 'getSubjectsAndClasses', 'getUniqueClassesList',
+    'getTeacherScheduleData', 'assignPeriod', 'deleteAssignment',
+    'undoLastAssignment', 'populateClassesSheet', 'autoDistributeProtected',
+    'autoDistributeTeacher', 'getAllConflicts', 'getScheduleSystemStats'
+  ]
+};
+
+function checkGoogleScriptRun() {
+  _log('section', '══ فحص google.script.run ══');
+  var html = '';
+
+  if (typeof google === 'undefined' || typeof google.script === 'undefined') {
+    html = _ri('err', '❌', 'google.script غير متاح',
+      'هذا يعني أن الصفحة لا تعمل داخل Google Apps Script WebApp\n' +
+      'أو أن هناك مشكلة في تحميل مكتبة GAS',
+      'تأكد من تشغيل الصفحة عبر Apps Script Web App URL');
+    _log('err', 'google.script غير متاح');
+    _set('gsrResults', html);
+    return;
+  }
+
+  if (typeof google.script.run === 'undefined') {
+    html = _ri('err', '❌', 'google.script.run غير متاح',
+      'google موجود لكن google.script.run مفقود',
+      null);
+    _log('err', 'google.script.run مفقود');
+    _set('gsrResults', html);
+    return;
+  }
+
+  html += _ri('ok', '✅', 'google.script متاح', 'مكتبة GAS محملة بنجاح', null);
+  html += _ri('ok', '✅', 'google.script.run متاح', 'يمكن استدعاء دوال الخادم', null);
+
+  // التحقق من withSuccessHandler
+  if (typeof google.script.run.withSuccessHandler === 'function') {
+    html += _ri('ok', '✅', 'withSuccessHandler', 'متاح', null);
+  } else {
+    html += _ri('err', '❌', 'withSuccessHandler', 'غير متاح — مشكلة في إصدار GAS', null);
+  }
+
+  _log('ok', 'google.script.run متاح ويعمل');
+  _set('gsrResults', html);
+
+  // فحص الدوال
+  checkRequiredFunctions();
+}
+
+function checkRequiredFunctions() {
+  var html = '';
+  _log('section', '══ فحص الدوال المطلوبة ══');
+
+  if (typeof google === 'undefined' || typeof google.script === 'undefined') {
+    _set('funcResults', _ri('err', '❌', 'لا يمكن الفحص', 'google.script غير متاح', null));
+    return;
+  }
+
+  for (var platform in REQUIRED_FUNCTIONS) {
+    var funcs = REQUIRED_FUNCTIONS[platform];
+    var platformHtml = '<div style="margin-bottom:8px;padding:6px 10px;background:#0f172a;border-radius:6px;font-size:.75rem;color:#818cf8;font-weight:700">' + platform + '</div>';
+    var missingFuncs = [];
+
+    for (var i = 0; i < funcs.length; i++) {
+      var fname = funcs[i];
+      var exists = typeof google.script.run[fname] === 'function';
+      platformHtml += _ri(exists ? 'ok' : 'err', exists ? '✅' : '❌',
+        fname,
+        exists ? 'موجودة' : 'مفقودة — تحقق من Apps Script',
+        null);
+      if (!exists) missingFuncs.push(fname);
+      _log(exists ? 'ok' : 'err', platform + '.' + fname + ': ' + (exists ? 'موجودة' : 'مفقودة'));
+    }
+
+    if (missingFuncs.length > 0) {
+      platformHtml += _ri('err', '🔴', 'دوال مفقودة في ' + platform,
+        missingFuncs.length + ' دالة مفقودة: ' + missingFuncs.join(', '),
+        'تحقق من اسم الملف GS وأن الدوال مُعرَّفة فيه');
+    }
+    html += platformHtml;
+  }
+  _set('funcResults', html);
+}
+
+// قياس زمن استجابة Apps Script
+function pingGoogleScript() {
+  _log('section', '══ قياس زمن الاستجابة ══');
+  var html = '';
+
+  if (typeof google === 'undefined' || typeof google.script === 'undefined') {
+    _set('pingResults', _ri('err', '❌', 'لا يمكن القياس', 'google.script غير متاح', null));
+    return;
+  }
+
+  html = _ri('info', '⏳', 'جاري القياس...', 'يتم قياس زمن استجابة 3 دوال رئيسية', null);
+  _set('pingResults', html);
+
+  // قياس checkSession
+  var t1 = Date.now();
+  google.script.run
+    .withSuccessHandler(function(r) {
+      var ms = Date.now() - t1;
+      var type = ms < 1000 ? 'ok' : ms < 3000 ? 'warn' : 'err';
+      var rateHtml = _ri(type, '⏱️', 'checkSession — ' + ms + 'ms',
+        ms < 1000 ? 'ممتاز' : ms < 3000 ? 'مقبول' : 'بطيء جداً — قد يُسبِّب timeout في الهاتف',
+        'النتيجة: ' + JSON.stringify(r).substring(0, 80));
+      _log(type, 'checkSession: ' + ms + 'ms');
+      _set('pingResults', rateHtml);
+    })
+    .withFailureHandler(function(e) {
+      var ms = Date.now() - t1;
+      _set('pingResults', _ri('err', '❌', 'checkSession فشل بعد ' + ms + 'ms',
+        e.message || 'خطأ غير معروف',
+        'هذا يُسبِّب عدم ظهور شاشة تسجيل الدخول'));
+      _log('err', 'checkSession فشل: ' + e.message);
+    })
+    .checkSession('ping_test');
+}
+
+// ══════════════════════════════════════════════════════
+//  6. فحص DOM Teacher Dashboard
+// ══════════════════════════════════════════════════════
+function checkDashboardDOM() {
+  _log('section', '══ فحص Teacher Dashboard DOM ══');
+  var html = '';
+  var isGAS = typeof google !== 'undefined' && typeof google.script !== 'undefined';
+
+  if (!isGAS) {
+    html = _ri('info', 'ℹ️', 'هذا ليس Teacher Dashboard',
+      'أداة التشخيص تعمل كصفحة مستقلة\nلفحص Teacher Dashboard يجب فتح هذه الأداة من مشروع Teacher Dashboard',
+      null);
+
+    // لكن نفحص عناصر يجب أن تكون موجودة
+    var criticalIds = [
+      'loginScreen', 'mainApp', 'loadingOverlay', 'sidebar',
+      'sidebarOverlay', 'menuToggleBtn', 'dynamicContent',
+      'loginPassword', 'loginBtn'
+    ];
+
+    var infoHtml = '<div style="margin-bottom:8px;color:#60a5fa;font-size:.75rem">عناصر يجب أن تكون موجودة في Teacher_Dashboard.html:</div>';
+    criticalIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      infoHtml += _ri(el ? 'ok' : 'info', el ? '✅' : '⚪',
+        '#' + id,
+        el ? 'موجود في الـ DOM' : 'غير موجود هنا (هذه الأداة منفصلة)',
+        null);
+    });
+    html += infoHtml;
+
+    // فحص CSS المشكلات المحتملة
+    html += '<br><div style="color:#fbbf24;font-size:.75rem;margin-bottom:8px">⚠️ نقاط مشكوك فيها في Teacher_Dashboard.html:</div>';
+
+    html += _ri('err', '🔴', 'xlsx.full.min.js في رأس الملف (السطر 9)',
+      'هذا هو السبب الأكثر احتمالاً لعطل الهاتف!\n' +
+      'المكتبة 2.4MB تُحمَّل فور فتح الصفحة وتُعطِّل WebView',
+      'الحل: احذف السطر واستخدم _loadXlsx() عند الحاجة فقط');
+
+    html += _ri('warn', '⚠️', 'backdrop-filter: blur() في #loadingOverlay',
+      'غير مدعوم في Android WebView < 7.0 وقد يتجمد التطبيق',
+      'الحل: استبدل بـ background: rgba(15,23,42,.92) كـ fallback');
+
+    html += _ri('warn', '⚠️', 'sidebar: position:sticky على الهاتف',
+      'يتحول إلى position:fixed عند max-width:900px لكن قد لا تعمل الـ transition',
+      'الحل: تأكيد position:fixed !important في media query');
+
+    _set('dashResults', html);
+    return;
+  }
+
+  // إذا كنا فعلاً في Teacher Dashboard
+  var criticalElements = [
+    { id: 'loginScreen',    required: true,  desc: 'شاشة تسجيل الدخول' },
+    { id: 'mainApp',        required: true,  desc: 'التطبيق الرئيسي' },
+    { id: 'loadingOverlay', required: true,  desc: 'شاشة التحميل' },
+    { id: 'sidebar',        required: true,  desc: 'القائمة الجانبية' },
+    { id: 'sidebarOverlay', required: true,  desc: 'خلفية القائمة الجانبية' },
+    { id: 'menuToggleBtn',  required: true,  desc: 'زر فتح القائمة (☰)' },
+    { id: 'dynamicContent', required: true,  desc: 'منطقة المحتوى الرئيسي' },
+    { id: 'loginPassword',  required: true,  desc: 'حقل كلمة المرور' },
+    { id: 'loginBtn',       required: true,  desc: 'زر تسجيل الدخول' }
+  ];
+
+  criticalElements.forEach(function(item) {
+    var el = document.getElementById(item.id);
+    if (el) {
+      var style = window.getComputedStyle(el);
+      var isVisible = style.display !== 'none' && style.visibility !== 'hidden';
+      html += _ri('ok', '✅', '#' + item.id + ' — ' + item.desc,
+        'موجود' + (isVisible ? ' ومرئي' : ' لكن مخفي (' + style.display + ')'),
+        null);
+      _log('ok', item.id + ': موجود');
+    } else {
+      html += _ri('err', '❌', '#' + item.id + ' — ' + item.desc,
+        'مفقود من الـ DOM! هذا خطأ حرج',
+        null);
+      _log('err', item.id + ': مفقود من DOM');
+    }
+  });
+
+  // فحص XLSX
+  html += _ri(typeof XLSX !== 'undefined' ? 'warn' : 'err', '📦',
+    'مكتبة XLSX',
+    typeof XLSX !== 'undefined' ?
+      '⚠️ محملة — هذا يعني xlsx.full.min.js لا يزال في رأس الملف. احذفه واستخدم Lazy Loading' :
+      'غير محملة بعد — إذا تم حذف السطر 9 وإضافة Lazy Loading فهذا صحيح',
+    null);
+
+  _set('dashResults', html);
+  _log('ok', 'فحص Teacher Dashboard DOM اكتمل');
+}
+
+// ══════════════════════════════════════════════════════
+//  7. فحص Index.html DOM
+// ══════════════════════════════════════════════════════
+function checkIndexDOM() {
+  _log('section', '══ فحص Index.html DOM ══');
+  var html = '';
+
+  var indexElements = [
+    { id: 'burgerBtn',  desc: 'زر القائمة الجانبية (☰)' },
+    { id: 'drawer',     desc: 'القائمة الجانبية المنسدلة' },
+    { id: 'drawerVeil', desc: 'خلفية القائمة' },
+    { id: 'drawerX',    desc: 'زر إغلاق القائمة' }
+  ];
+
+  indexElements.forEach(function(item) {
+    var el = document.getElementById(item.id);
+    if (el) {
+      var style = window.getComputedStyle(el);
+      var display = style.display;
+      var notes = '';
+      if (item.id === 'burgerBtn' && display === 'none') {
+        notes = ' — ⚠️ الزر مخفي! يجب أن يكون display:flex على شاشة ' + window.innerWidth + 'px';
+        if (window.innerWidth < 768) {
+          html += _ri('err', '❌', '#' + item.id + ' — ' + item.desc,
+            'الزر موجود لكن display:none — لا يظهر على الهاتف!\nالـ media query @media(max-width:768px) لا تُطبَّق',
+            '.burger { display: flex !important; } في CSS');
+        } else {
+          html += _ri('ok', '✅', '#' + item.id + ' — ' + item.desc,
+            'مخفي على الشاشة الكبيرة — هذا صحيح',
+            null);
+        }
+      } else if (item.id === 'drawer') {
+        var transform = style.transform;
+        var isOpen = el.classList.contains('open');
+        html += _ri('ok', '✅', '#' + item.id + ' — ' + item.desc,
+          'موجود | transform: ' + transform + ' | ' + (isOpen ? 'مفتوح' : 'مغلق'),
+          null);
+      } else {
+        html += _ri('ok', '✅', '#' + item.id + ' — ' + item.desc,
+          'موجود | display: ' + display, null);
+      }
+      _log('ok', item.id + ': موجود (display:' + display + ')');
+    } else {
+      var note = item.id === 'burgerBtn' ?
+        'هذه الصفحة ليست Index.html أو العنصر مفقود' :
+        'عنصر مطلوب مفقود من الـ DOM';
+      html += _ri('info', '⚪', '#' + item.id + ' — ' + item.desc, note, null);
+      _log('info', item.id + ': غير موجود في هذه الصفحة');
+    }
+  });
+
+  // فحص Font Awesome
+  var faTest = document.createElement('i');
+  faTest.className = 'fas fa-check';
+  faTest.style.position = 'absolute';
+  faTest.style.left = '-9999px';
+  document.body.appendChild(faTest);
+  setTimeout(function() {
+    var w = faTest.offsetWidth;
+    document.body.removeChild(faTest);
+    if (w > 0) {
+      html += _ri('ok', '✅', 'Font Awesome محملة',
+        'الأيقونات تعمل — عرض الأيقونة: ' + w + 'px', null);
+      _log('ok', 'Font Awesome: محملة');
+    } else {
+      html += _ri('err', '❌', 'Font Awesome لم تُحمَّل',
+        'الأيقونات لا تعمل — هذا يعني أن cdnjs.cloudflare.com محجوب\n' +
+        'القائمة الجانبية في Index.html تعتمد على Font Awesome (<i class="fas fa-times">)',
+        'الحل: استخدم Emoji بدلاً من Font Awesome أو احفظ الـ CSS محلياً');
+      _log('err', 'Font Awesome: لم تُحمَّل');
+    }
+    // تحديث النتائج
+    var existing = document.getElementById('indexResults').innerHTML;
+    _set('indexResults', existing + html);
+  }, 1500);
+
+  _set('indexResults', html);
+}
+
+// ══════════════════════════════════════════════════════
+//  التشخيص الكامل
+// ══════════════════════════════════════════════════════
+function runAllDiagnostics() {
+  // إعادة ضبط العدادات
+  _counts = { ok: 0, warn: 0, err: 0, total: 0 };
+  _logLines = [];
+  _reportLines = [];
+  document.getElementById('logBox').innerHTML = '';
+
+  _log('section', '════════════════════════════════════════');
+  _log('info', 'بدء التشخيص الشامل: ' + new Date().toLocaleString('ar-SA'));
+  _log('info', 'URL: ' + window.location.href);
+  _log('info', 'UserAgent: ' + navigator.userAgent);
+  _log('section', '════════════════════════════════════════');
+
+  // 1. شبكة وCDN
+  checkCdnResources();
+
+  // 2. Apps Script
+  setTimeout(function() {
+    checkGoogleScriptRun();
+  }, 500);
+
+  // 3. قياس الاستجابة
+  setTimeout(function() {
+    pingGoogleScript();
+  }, 1000);
+
+  // 4. تذكير بالإصلاحات المطلوبة
+  setTimeout(function() {
+    _log('section', '════════════════════════════════════════');
+    _log('info', 'انتهى التشخيص — راجع النتائج أعلاه');
+    _log('section', '════════════════════════════════════════');
+    showFixSuggestions();
+  }, 5000);
+}
+
+// ══════════════════════════════════════════════════════
+//  اقتراحات الإصلاح الذكية
+// ══════════════════════════════════════════════════════
+function showFixSuggestions() {
+  var issues = [];
+
+  // فحص XLSX
+  if (typeof XLSX !== 'undefined') {
+    issues.push({
+      priority: 1,
+      title: '🔴 إصلاح فوري: احذف xlsx من رأس Teacher_Dashboard.html',
+      steps: [
+        '1. افتح Teacher_Dashboard.html في محرر Apps Script',
+        '2. احذف السطر 9: <script src="...xlsx.full.min.js">',
+        '3. أضف دالة _loadXlsx() في JavaScript',
+        '4. غلّف جميع استخدامات XLSX.utils بـ _loadXlsx(callback)'
+      ]
+    });
+  }
+
+  // فحص backdrop-filter
+  var supportsBackdrop = CSS && CSS.supports && CSS.supports('backdrop-filter', 'blur(1px)');
+  if (!supportsBackdrop) {
+    issues.push({
+      priority: 2,
+      title: '⚠️ إصلاح CSS: backdrop-filter غير مدعوم',
+      steps: [
+        '1. ابحث عن backdrop-filter في Teacher_Dashboard.html',
+        '2. أضف: background: rgba(15,23,42,.92) !important قبله',
+        '3. استخدم @supports للفصل بين الأجهزة'
+      ]
+    });
+  }
+
+  // فحص localStorage
+  try {
+    localStorage.setItem('_t','1');
+    localStorage.removeItem('_t');
+  } catch(e) {
+    issues.push({
+      priority: 1,
+      title: '🔴 localStorage محجوب',
+      steps: [
+        'WebView يمنع localStorage — الجلسة لن تُحفظ',
+        'أضف try/catch حول كل عمليات localStorage',
+        'استخدم sessionStorage كـ fallback'
+      ]
+    });
+  }
+
+  if (issues.length === 0) {
+    _log('ok', 'لا توجد مشاكل بارزة مكتشفة');
+  } else {
+    issues.sort(function(a,b) { return a.priority - b.priority; });
+    issues.forEach(function(issue) {
+      _log('warn', issue.title);
+      issue.steps.forEach(function(s) { _log('info', '  ' + s); });
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  نسخ التقرير
+// ══════════════════════════════════════════════════════
+function copyReport() {
+  var report = [
+    '════════════════════════════════════════',
+    'تقرير تشخيص منظومة مدارس الإبداع والتميز',
+    'التاريخ: ' + new Date().toLocaleString('ar-SA'),
+    'URL: ' + window.location.href,
+    'UserAgent: ' + navigator.userAgent,
+    'الشاشة: ' + window.innerWidth + 'x' + window.innerHeight,
+    '════════════════════════════════════════',
+    'النتائج:',
+    '✅ ناجح: ' + _counts.ok,
+    '⚠️ تحذير: ' + _counts.warn,
+    '❌ خطأ: ' + _counts.err,
+    '════════════════════════════════════════',
+    'سجل التشخيص:',
+    ''
+  ].concat(_reportLines).join('\n');
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(report).then(function() {
+      alert('✅ تم نسخ التقرير! يمكنك لصقه في أي مكان.');
+    }).catch(function() {
+      prompt('انسخ هذا التقرير:', report);
+    });
+  } else {
+    prompt('انسخ هذا التقرير:', report);
+  }
+}
+</script>
+</body>
+</html>

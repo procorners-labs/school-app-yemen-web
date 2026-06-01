@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
+<script>
+  (function(){
+    var qs = new URLSearchParams(window.location.search);
+    window.GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz-iAj9L3ROOn4CAjmwkVBUqpWuxIx1LkgPLwKnHu7kHLWKCy3GVJNo1vZbnekop0VlMA/exec';
+    window.SCHOOL_ID = qs.get('schoolId') || window.SCHOOL_ID || '';
+  })();
+</script>
+<script src="../assets/gas-bridge.js"></script>
+<!-- ▲▲ نهاية الحقن ▲▲ -->
+
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>سجل التدقيق | CMS</title>
+  <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBT8Y75QAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAEYSURBVDiNpZMhTsNAFIa/2U1AcAK4AIIjIHAD7gAcAYmEgMPhOAI1OAA34A5wA0AgsF3T7uzQJE1fPJL9Pf7//9k3M7ujqn8HPgA+3lUVgLqukYh8AHwCvKsqpmYASClFRCRkZ2cAH2ZWR0T0wAsBmBki0pNzTohYAbuq6kREvBEgIpaccxURW845twAF8Cwiq92s67pvmqZ/ATgB9oBd0zRl0zQPwC3wQEQ8jqoq5JwfROSFiHhCRA6Bc+CKiHiMiC+AU+AIuAbOVfVjTQAR8QbcAudm1phZRUS8m9kjcAlcAUdm9gq8AjfA/aaAZ8C1mT2a2bOZfQFm1gLPZnZrZq+ICJjZJ3BrZm+ICIsz1R81wC8vK8wE3g2dEwAAAABJRU5ErkJggg==" type="image/png">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:'Segoe UI', system-ui, 'Helvetica Neue', sans-serif;
+      background:#f5f9ff;
+      padding:24px 20px;
+      color:#0b1e33;
+      line-height:1.5;
+    }
+    .container { max-width:1440px; margin:0 auto; }
+
+    /* الرأس */
+    .app-header {
+      background:rgba(255,255,255,0.85);
+      backdrop-filter:blur(8px);
+      padding:20px 32px;
+      border-radius:48px;
+      margin-bottom:28px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      flex-wrap:wrap;
+      gap:20px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.02);
+      border:1px solid rgba(255,255,255,0.7);
+    }
+    .app-header h1 {
+      font-size:2.2rem;
+      font-weight:700;
+      background:linear-gradient(145deg, #1a5ecc, #0d3e8a);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .btn {
+      background:white;
+      border:1px solid #cfdff0;
+      padding:12px 26px;
+      border-radius:60px;
+      font-weight:600;
+      font-size:1rem;
+      color:#1f3a5f;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      transition:all 0.2s;
+      box-shadow:0 2px 8px rgba(0,0,0,0.02);
+    }
+    .btn:hover { background:#e9f0fe; border-color:#1a73e8; }
+    .btn-primary {
+      background:#1a73e8;
+      color:white;
+      border:none;
+      box-shadow:0 8px 18px rgba(26,115,232,0.25);
+    }
+    .btn-primary:hover { background:#0d5fc5; }
+
+    /* إحصائيات سريعة */
+    .stats-grid {
+      display:grid;
+      grid-template-columns:repeat(6,1fr);
+      gap:16px;
+      margin-bottom:30px;
+    }
+    .stat-card {
+      background:white;
+      padding:22px 12px;
+      border-radius:32px;
+      box-shadow:0 10px 25px rgba(0,0,0,0.02);
+      text-align:center;
+      border:1px solid #eaf0f8;
+    }
+    .stat-value { font-size:2.6rem; font-weight:800; color:#1a73e8; }
+    .stat-label { color:#53718e; font-weight:500; margin-top:6px; }
+
+    /* معلومات المجلد */
+    .folder-info {
+      background:#e1ebfa;
+      padding:16px 24px;
+      border-radius:40px;
+      margin-bottom:25px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      font-weight:500;
+    }
+    .folder-info code {
+      background:white;
+      padding:6px 14px;
+      border-radius:40px;
+      font-size:0.9rem;
+    }
+
+    /* شريط الفلاتر */
+    .filter-bar {
+      display:flex;
+      flex-wrap:wrap;
+      gap:15px;
+      margin-bottom:28px;
+      align-items:center;
+    }
+    .filter-bar input, .filter-bar select {
+      padding:14px 22px;
+      border:1px solid #cfdff0;
+      border-radius:60px;
+      font-size:1rem;
+      background:white;
+      min-width:220px;
+    }
+    .reset-btn {
+      background:#f1f5f9;
+      border:1px solid #cbd5e1;
+      padding:14px 26px;
+      border-radius:60px;
+      cursor:pointer;
+      font-weight:500;
+    }
+
+    /* جدول السجلات */
+    .table-container {
+      background:white;
+      border-radius:36px;
+      padding:8px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.02);
+      border:1px solid #eaf0f8;
+      overflow-x:auto;
+    }
+    table {
+      width:100%;
+      border-collapse:collapse;
+      font-size:0.95rem;
+      min-width:1000px;
+    }
+    th {
+      text-align:right;
+      padding:20px 18px;
+      background:#f8fcff;
+      border-bottom:2px solid #dae6f2;
+      color:#1e3a5f;
+      font-weight:600;
+    }
+    td {
+      padding:18px;
+      border-bottom:1px solid #eef3f9;
+      vertical-align:middle;
+    }
+    tr:hover td { background:#fafdff; }
+
+    .action-badge {
+      display:inline-block;
+      padding:6px 16px;
+      border-radius:60px;
+      font-size:0.8rem;
+      font-weight:600;
+      text-align:center;
+    }
+    .action-add { background:#dcfce7; color:#166534; }
+    .action-edit { background:#fef9c3; color:#854d0e; }
+    .action-delete { background:#fee2e2; color:#991b1b; }
+    .action-default { background:#e2e8f0; color:#1e293b; }
+
+    .user-badge {
+      background:#e6effa;
+      padding:5px 16px;
+      border-radius:60px;
+      font-size:0.85rem;
+      display:inline-block;
+      font-weight:500;
+    }
+
+    .empty-row td {
+      text-align:center;
+      padding:60px;
+      color:#6883a0;
+      font-size:1.2rem;
+    }
+    .loading-row td { text-align:center; padding:50px; }
+
+    .back-link { margin-top:50px; text-align:center; }
+    .back-link a { color:#1a73e8; text-decoration:none; font-weight:600; font-size:1.1rem; cursor:pointer; }
+
+    @media (max-width:900px) {
+      .stats-grid { grid-template-columns:repeat(3,1fr); }
+    }
+    @media (max-width:600px) {
+      .stats-grid { grid-template-columns:repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- الرأس -->
+  <div class="app-header">
+    <h1><span>📋</span> سجل التدقيق</h1>
+    <button class="btn" onclick="loadAuditLog()"><span>🔄</span> تحديث البيانات</button>
+  </div>
+
+  <!-- إحصائيات -->
+  <div class="stats-grid" id="statsContainer">
+    <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">جاري التحميل...</div></div>
+  </div>
+
+  <!-- معلومات المجلد -->
+  <div class="folder-info" id="folderInfo">
+    <span>📁 مجلد التخزين:</span>
+    <span id="folderPath">جاري التحميل...</span>
+  </div>
+
+  <!-- الفلاتر -->
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="🔍 بحث بالبريد أو الاسم أو التفاصيل...">
+    <select id="actionFilter">
+      <option value="">جميع الإجراءات</option>
+      <option value="إضافة_خبر">➕ إضافة خبر</option>
+      <option value="إضافة_فيديو">🎬 إضافة فيديو</option>
+      <option value="إضافة_صورة">🖼️ إضافة صورة</option>
+      <option value="جدولة_منشور">📅 جدولة منشور</option>
+    </select>
+    <select id="sheetFilter">
+      <option value="">جميع الأقسام</option>
+      <option value="News">📰 الأخبار</option>
+      <option value="Videos">🎬 الفيديوهات</option>
+      <option value="Images">🖼️ الصور</option>
+      <option value="Schedule">📅 جدول النشر</option>
+    </select>
+    <button class="reset-btn" onclick="resetFilters()">مسح الفلاتر</button>
+    <span style="margin-right:auto; color:#4f6e8c; font-weight:500;" id="recordCount"></span>
+  </div>
+
+  <!-- الجدول -->
+  <div class="table-container">
+    <table id="auditTable">
+      <thead>
+        <tr>
+          <th>التاريخ والوقت</th>
+          <th>المستخدم</th>
+          <th>البريد الإلكتروني</th>
+          <th>الإجراء</th>
+          <th>التفاصيل</th>
+          <th>القسم</th>
+          <th>رقم السجل</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="7" class="loading-row">⏳ جاري تحميل سجل التدقيق...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- العودة -->
+  <div class="back-link">
+    <a onclick="goToPage(''); return false;">🏠 العودة إلى الرئيسية</a>
+  </div>
+</div>
+
+<script>
+  window.goToPage = function(p) {
+    google.script.run.withSuccessHandler(function(url){ window.top.location.href = url; }).getPageUrl(p);
+  };
+
+  var fullAuditData = [];
+
+  // دوال مساعدة
+  function formatDateTime(timestamp) {
+    if (!timestamp) return '';
+    try {
+      return new Date(timestamp).toLocaleString('ar-SA', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    } catch(e) { return String(timestamp); }
+  }
+  function getActionClass(action) {
+    if (!action) return 'action-default';
+    if (action.indexOf('إضافة') !== -1) return 'action-add';
+    if (action.indexOf('تعديل') !== -1) return 'action-edit';
+    if (action.indexOf('حذف') !== -1) return 'action-delete';
+    return 'action-default';
+  }
+  function escapeHtml(text) {
+    if (text == null) return '';
+    var div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+  }
+
+  // عرض الإحصائيات
+  function displayStats(stats) {
+    var container = document.getElementById('statsContainer');
+    if (!stats) {
+      container.innerHTML = '<div class="stat-card"><div class="stat-value">⚠️</div><div class="stat-label">خطأ</div></div>';
+      return;
+    }
+    var items = [
+      { label:'📰 أخبار', value: stats.News || 0 },
+      { label:'🎬 فيديوهات', value: stats.Videos || 0 },
+      { label:'🖼️ صور', value: stats.Images || 0 },
+      { label:'📅 منشورات', value: stats.Schedule || 0 },
+      { label:'📝 إجراءات', value: stats.AuditLog || 0 },
+      { label:'👥 مستخدمون', value: stats.Users || 0 }
+    ];
+    var html = '';
+    for (var i=0; i<items.length; i++) {
+      html += '<div class="stat-card"><div class="stat-value">' + items[i].value + '</div><div class="stat-label">' + items[i].label + '</div></div>';
+    }
+    container.innerHTML = html;
+
+    var folderSpan = document.getElementById('folderPath');
+    if (stats.driveFolder && !stats.driveFolder.error) {
+      folderSpan.innerHTML = '<code>' + escapeHtml(stats.driveFolder.name) + '</code> (ID: <code>' + escapeHtml(stats.driveFolder.id) + '</code>)';
+    } else {
+      folderSpan.textContent = 'مجلد Drive متصل';
+    }
+  }
+
+  // عرض الجدول
+  function renderTable(data) {
+    var tbody = document.getElementById('tableBody');
+    var countSpan = document.getElementById('recordCount');
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-row">📭 لا توجد سجلات تدقيق متاحة.</td></tr>';
+      countSpan.textContent = '';
+      return;
+    }
+    countSpan.textContent = '(' + data.length + ' سجل)';
+    var html = '';
+    for (var i=0; i<data.length; i++) {
+      var r = data[i]; if (!r) continue;
+      var actionClass = getActionClass(r.action);
+      html += '<tr>' +
+        '<td>' + formatDateTime(r.timestamp) + '</td>' +
+        '<td><span class="user-badge">' + escapeHtml(r.userName || '—') + '</span></td>' +
+        '<td><small>' + escapeHtml(r.userEmail || '—') + '</small></td>' +
+        '<td><span class="action-badge ' + actionClass + '">' + escapeHtml(r.action || '—') + '</span></td>' +
+        '<td>' + escapeHtml(r.details || '—') + '</td>' +
+        '<td>' + escapeHtml(r.sheetName || '—') + '</td>' +
+        '<td>' + (r.recordId || '—') + '</td>' +
+        '</tr>';
+    }
+    tbody.innerHTML = html;
+  }
+
+  // فلترة
+  function filterData() {
+    var searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    var actionFilter = document.getElementById('actionFilter').value;
+    var sheetFilter = document.getElementById('sheetFilter').value;
+    var filtered = [];
+    for (var i=0; i<fullAuditData.length; i++) {
+      var item = fullAuditData[i];
+      var matchesSearch = !searchTerm ||
+        (item.userEmail && item.userEmail.toLowerCase().indexOf(searchTerm) !== -1) ||
+        (item.userName && item.userName.toLowerCase().indexOf(searchTerm) !== -1) ||
+        (item.details && item.details.toLowerCase().indexOf(searchTerm) !== -1);
+      var matchesAction = !actionFilter || item.action === actionFilter;
+      var matchesSheet = !sheetFilter || item.sheetName === sheetFilter;
+      if (matchesSearch && matchesAction && matchesSheet) filtered.push(item);
+    }
+    renderTable(filtered);
+  }
+
+  window.resetFilters = function() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('actionFilter').value = '';
+    document.getElementById('sheetFilter').value = '';
+    renderTable(fullAuditData);
+  };
+
+  // تحميل السجل
+  window.loadAuditLog = function() {
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="7" class="loading-row">⏳ جاري التحميل...</td></tr>';
+
+    google.script.run
+      .withSuccessHandler(displayStats)
+      .withFailureHandler(function(){ displayStats(null); })
+      .getSystemStats();
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        fullAuditData = data || [];
+        renderTable(fullAuditData);
+      })
+      .withFailureHandler(function(err) {
+        document.getElementById('tableBody').innerHTML = '<tr><td colspan="7" class="empty-row">❌ تعذر تحميل السجل: ' + escapeHtml(err.message) + '</td></tr>';
+        fullAuditData = [];
+      })
+      .getAuditLog(500);
+  };
+
+  // ربط الفلاتر
+  document.getElementById('searchInput').addEventListener('keyup', filterData);
+  document.getElementById('actionFilter').addEventListener('change', filterData);
+  document.getElementById('sheetFilter').addEventListener('change', filterData);
+
+  // تحميل تلقائي
+  window.onload = function() {
+    loadAuditLog();
+  };
+
+  // تتبع أخطاء
+  window.addEventListener('error', function(e) {
+    console.error('خطأ في AuditLog: ' + e.message);
+    google.script.run.logClientError('AuditLog', e.message, '', navigator.userAgent);
+  });
+</script>
+</body>
+</html>

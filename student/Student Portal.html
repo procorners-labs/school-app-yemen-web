@@ -1,0 +1,3385 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1e40af">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>منصة الطالب — مدارس الإبداع والتميز الدولية</title>
+
+<!-- ════════════════════════════════════════════════════════════
+     CSS — منصة الطالب
+     - متغيرات موحّدة، تصميم متجاوب، دعم RTL، رسوم متحركة خفيفة
+     - بدون أي مكتبات خارجية (لا CDN، لا fonts خارجية)
+═══════════════════════════════════════════════════════════════ -->
+<style>
+/* ───── متغيرات الألوان والقياسات ───── */
+:root {
+  /* ألوان رئيسية */
+  --pr      : #1e40af;   /* أزرق رئيسي */
+  --pr-d    : #1e3a8a;
+  --pr-l    : #3b82f6;
+  --pr-bg   : #eff6ff;
+
+  /* ألوان دلالية */
+  --ok      : #16a34a;
+  --ok-bg   : #dcfce7;
+  --warn    : #d97706;
+  --warn-bg : #fef3c7;
+  --err     : #dc2626;
+  --err-bg  : #fee2e2;
+  --info    : #0891b2;
+  --info-bg : #cffafe;
+
+  /* ألوان واجهة */
+  --bg      : #f8fafc;
+  --bg-2    : #f1f5f9;
+  --card    : #ffffff;
+  --txt     : #0f172a;
+  --muted   : #64748b;
+  --soft    : #94a3b8;
+  --bdr     : #e2e8f0;
+  --bdr-2   : #cbd5e1;
+
+  /* ظلال */
+  --sh-1    : 0 1px 3px rgba(0,0,0,.06);
+  --sh-2    : 0 4px 12px rgba(0,0,0,.08);
+  --sh-3    : 0 8px 24px rgba(0,0,0,.12);
+  --sh-h    : 0 6px 20px rgba(30,64,175,.15);
+
+  /* قياسات */
+  --rad     : 12px;
+  --rad-s   : 8px;
+  --rad-l   : 16px;
+  --gap     : 12px;
+  --pad     : 16px;
+  --nav-h   : 56px;
+  --tabs-h  : 52px;
+
+  /* رسوم متحركة */
+  --tr      : .25s cubic-bezier(.4,0,.2,1);
+  --tr-s    : .15s ease;
+  --tr-l    : .5s cubic-bezier(.4,0,.2,1);
+}
+
+/* ───── إعادة تهيئة عامة ───── */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: 'Segoe UI', Tahoma, 'Arial', sans-serif;
+  background: var(--bg);
+  color: var(--txt);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, select, textarea { font-family: inherit; font-size: 15px; }
+a { color: var(--pr); text-decoration: none; }
+
+/* ───── رسوم متحركة عامة ───── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .5; }
+}
+.fade-in { animation: fadeIn var(--tr-l) both; }
+.slide-up { animation: slideUp var(--tr-l) both; }
+
+/* ═══════════════════════════════════════════════
+   شاشة تسجيل الدخول
+═══════════════════════════════════════════════ */
+#loginScreen {
+  position: fixed; inset: 0;
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-d) 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+.login-card {
+  background: #fff;
+  border-radius: var(--rad-l);
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.25);
+  animation: slideUp .6s both;
+}
+.login-logo {
+  width: 80px; height: 80px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-l) 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px;
+  color: #fff;
+  box-shadow: var(--sh-h);
+}
+.login-card h1 {
+  text-align: center;
+  margin: 0 0 4px;
+  font-size: 22px;
+  color: var(--pr-d);
+}
+.login-card .subtitle {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 22px;
+}
+.field {
+  margin-bottom: 14px;
+}
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.field input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid var(--bdr);
+  border-radius: var(--rad-s);
+  background: var(--bg);
+  color: var(--txt);
+  transition: border-color var(--tr-s), background var(--tr-s);
+}
+.field input:focus {
+  outline: none;
+  border-color: var(--pr);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--pr-bg);
+}
+.btn-primary {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-l) 100%);
+  color: #fff;
+  border-radius: var(--rad-s);
+  font-size: 16px;
+  font-weight: 700;
+  transition: transform var(--tr-s), box-shadow var(--tr-s), opacity var(--tr-s);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: var(--sh-h); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: .6; cursor: wait; }
+
+.login-err {
+  display: none;
+  background: var(--err-bg);
+  color: var(--err);
+  padding: 10px 12px;
+  border-radius: var(--rad-s);
+  font-size: 13px;
+  margin-bottom: 12px;
+  text-align: center;
+  border-right: 3px solid var(--err);
+}
+
+/* رسالة الحجب */
+#blockedMsg {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.92);
+  color: #fff;
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 24px; text-align: center;
+  z-index: 20;
+  font-size: 16px; line-height: 1.8;
+  flex-direction: column;
+}
+#blockedMsg.show { display: flex; }
+#blockedMsg .ic { font-size: 64px; margin-bottom: 16px; }
+#blockedMsg .ttl { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #fbbf24; }
+#blockedMsg button {
+  margin-top: 18px;
+  padding: 10px 24px;
+  background: #fff;
+  color: var(--pr-d);
+  border-radius: var(--rad-s);
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════
+   التطبيق الرئيسي
+═══════════════════════════════════════════════ */
+#app { display: none; min-height: 100vh; }
+#app.show { display: block; }
+
+/* ── Navbar علوي ── */
+.navbar {
+  position: sticky; top: 0; z-index: 5;
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-d) 100%);
+  color: #fff;
+  height: var(--nav-h);
+  display: flex; align-items: center;
+  padding: 0 16px;
+  box-shadow: var(--sh-2);
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 0;
+}
+.nav-brand .ic {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.nav-brand .info {
+  flex: 1; min-width: 0;
+}
+.nav-brand .name {
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-brand .meta {
+  font-size: 11px;
+  opacity: .85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-actions {
+  display: flex; gap: 6px;
+  flex-shrink: 0;
+}
+.nav-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  font-size: 17px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--tr-s), transform var(--tr-s);
+}
+.nav-btn:hover { background: rgba(255,255,255,.25); }
+.nav-btn:active { transform: scale(.92); }
+
+/* ── شريط التبويبات ── */
+.tabs-bar {
+  position: sticky; top: var(--nav-h); z-index: 4;
+  background: var(--card);
+  border-bottom: 1px solid var(--bdr);
+  height: var(--tabs-h);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs-bar::-webkit-scrollbar { display: none; }
+.tabs-bar .inner {
+  display: inline-flex;
+  height: 100%;
+  padding: 0 8px;
+  gap: 2px;
+}
+.tab-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 14px;
+  height: 100%;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  transition: color var(--tr-s), border-color var(--tr-s), background var(--tr-s);
+  position: relative;
+}
+.tab-btn:hover { color: var(--pr); background: var(--pr-bg); }
+.tab-btn.active {
+  color: var(--pr);
+  border-bottom-color: var(--pr);
+}
+.tab-btn .ic { font-size: 16px; }
+.tab-btn .badge {
+  position: absolute;
+  top: 8px; left: 4px;
+  min-width: 18px; height: 18px;
+  background: var(--err);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 0 5px;
+  display: none;
+  align-items: center; justify-content: center;
+  animation: pulse 2s infinite;
+}
+.tab-btn .badge.show { display: flex; }
+
+/* ── المحتوى الرئيسي ── */
+.main {
+  padding: 16px 14px 40px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+/* ── البطاقات ── */
+.card {
+  background: var(--card);
+  border-radius: var(--rad);
+  padding: var(--pad);
+  box-shadow: var(--sh-1);
+  margin-bottom: var(--gap);
+  border: 1px solid var(--bdr);
+}
+.card-h {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bdr);
+}
+.card-h .ttl {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--txt);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-h .ttl .ic { font-size: 20px; }
+.card-h .actions { display: flex; gap: 6px; }
+
+.refresh-btn {
+  padding: 6px 10px;
+  border-radius: var(--rad-s);
+  background: var(--pr-bg);
+  color: var(--pr);
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex; align-items: center; gap: 4px;
+  transition: background var(--tr-s);
+}
+.refresh-btn:hover { background: #dbeafe; }
+.refresh-btn:disabled { opacity: .5; cursor: wait; }
+
+/* ── حالات فارغة ── */
+.empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--muted);
+}
+.empty .ic {
+  font-size: 56px;
+  margin-bottom: 12px;
+  opacity: .7;
+}
+.empty .ttl {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--txt);
+  margin-bottom: 4px;
+}
+.empty .desc { font-size: 13px; }
+
+/* ── حالات الخطأ ── */
+.err-box {
+  background: var(--err-bg);
+  color: var(--err);
+  padding: 12px 16px;
+  border-radius: var(--rad-s);
+  border-right: 3px solid var(--err);
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px;
+}
+.err-box .ic { font-size: 20px; }
+
+/* ── Loader ── */
+.loader {
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px 16px;
+  color: var(--muted);
+  flex-direction: column; gap: 10px;
+}
+.loader .ring {
+  width: 36px; height: 36px;
+  border: 3px solid var(--bdr);
+  border-top-color: var(--pr);
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+.loader .txt { font-size: 13px; }
+
+#globalLoader {
+  position: fixed; bottom: 24px; right: 50%;
+  transform: translateX(50%);
+  background: rgba(15,23,42,.92); color: #fff;
+  padding: 10px 18px;
+  border-radius: 24px;
+  font-size: 13px;
+  display: none;
+  align-items: center; gap: 8px;
+  z-index: 100;
+  box-shadow: var(--sh-3);
+}
+#globalLoader.show { display: flex; }
+#globalLoader .ring {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+
+/* ── Toast ── */
+#toastBox {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--txt);
+  color: #fff;
+  padding: 11px 18px;
+  border-radius: 22px;
+  font-size: 13px;
+  box-shadow: var(--sh-3);
+  animation: slideUp .3s both;
+  max-width: 90vw;
+  pointer-events: auto;
+}
+.toast.s { background: var(--ok); }
+.toast.e { background: var(--err); }
+.toast.w { background: var(--warn); }
+.toast.i { background: var(--info); }
+
+/* ═══════════════════════════════════════════════
+   الصفحة الرئيسية
+═══════════════════════════════════════════════ */
+.welcome {
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-l) 100%);
+  color: #fff;
+  border-radius: var(--rad);
+  padding: 18px;
+  margin-bottom: var(--gap);
+  box-shadow: var(--sh-h);
+  position: relative;
+  overflow: hidden;
+}
+.welcome::before {
+  content: '🎓';
+  position: absolute;
+  font-size: 120px;
+  opacity: .12;
+  left: -10px; top: -20px;
+  transform: rotate(-15deg);
+}
+.welcome .greet {
+  font-size: 14px;
+  opacity: .9;
+  margin-bottom: 4px;
+  position: relative;
+}
+.welcome h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  position: relative;
+}
+.welcome .meta {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  position: relative;
+}
+.welcome .chip {
+  background: rgba(255,255,255,.2);
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+
+/* بطاقات إحصاء سريعة */
+.q-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+.q-stat {
+  background: var(--card);
+  border-radius: var(--rad);
+  padding: 14px;
+  border: 1px solid var(--bdr);
+  display: flex; align-items: center; gap: 12px;
+  transition: transform var(--tr-s), box-shadow var(--tr-s);
+  cursor: pointer;
+}
+.q-stat:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+.q-stat .ic-wrap {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.q-stat.g .ic-wrap { background: var(--ok-bg); color: var(--ok); }
+.q-stat.b .ic-wrap { background: var(--pr-bg); color: var(--pr); }
+.q-stat.w .ic-wrap { background: var(--warn-bg); color: var(--warn); }
+.q-stat.r .ic-wrap { background: var(--err-bg); color: var(--err); }
+.q-stat .num { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.q-stat .lbl { font-size: 12px; color: var(--muted); }
+
+/* أخبار الرئيسية */
+.home-news .item {
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--bdr);
+}
+.home-news .item:last-child { border-bottom: none; }
+.home-news .meta {
+  display: flex; gap: 8px;
+  font-size: 11px; color: var(--muted);
+  margin-bottom: 4px;
+}
+.home-news .text {
+  font-size: 14px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* دليل سريع */
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.guide-item {
+  text-align: center;
+  padding: 12px 8px;
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  border: 1px solid var(--bdr);
+  cursor: pointer;
+  transition: all var(--tr-s);
+}
+.guide-item:hover {
+  background: var(--pr-bg);
+  border-color: var(--pr);
+  transform: translateY(-2px);
+}
+.guide-item .ic { font-size: 26px; margin-bottom: 4px; }
+.guide-item .lbl { font-size: 12px; font-weight: 600; }
+
+/* ═══════════════════════════════════════════════
+   الدرجات
+═══════════════════════════════════════════════ */
+.months-bar {
+  display: flex; gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 12px;
+  scrollbar-width: none;
+}
+.months-bar::-webkit-scrollbar { display: none; }
+.month-chip {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--bdr);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: all var(--tr-s);
+}
+.month-chip.active {
+  background: var(--pr);
+  color: #fff;
+  border-color: var(--pr);
+  box-shadow: var(--sh-h);
+}
+.month-chip:hover:not(.active) {
+  background: var(--pr-bg);
+  border-color: var(--pr);
+  color: var(--pr);
+}
+
+.grades-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.grades-table th, .grades-table td {
+  padding: 10px 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--bdr);
+}
+.grades-table th {
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  position: sticky;
+  top: 0;
+}
+.grades-table td.subj {
+  text-align: right;
+  font-weight: 600;
+  color: var(--txt);
+}
+.gr-cell {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 36px;
+}
+.gr-cell.high   { background: var(--ok-bg);   color: var(--ok); }
+.gr-cell.mid    { background: var(--warn-bg); color: var(--warn); }
+.gr-cell.low    { background: var(--err-bg);  color: var(--err); }
+.gr-cell.none   { background: var(--bdr);     color: var(--muted); font-weight: 500; }
+
+.grades-wrap-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ═══════════════════════════════════════════════
+   الرسوم
+═══════════════════════════════════════════════ */
+.fin-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.fin-stat {
+  background: var(--bg);
+  padding: 12px 8px;
+  border-radius: var(--rad-s);
+  text-align: center;
+  border: 1px solid var(--bdr);
+}
+.fin-stat .num {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.fin-stat .lbl {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.fin-stat.t .num { color: var(--info); }
+.fin-stat.p .num { color: var(--ok); }
+.fin-stat.r .num { color: var(--err); }
+
+.progress {
+  width: 100%;
+  height: 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ok) 0%, var(--ok) 100%);
+  transition: width .8s cubic-bezier(.4,0,.2,1);
+  border-radius: 6px;
+}
+.progress-bar.low { background: linear-gradient(90deg, var(--err) 0%, var(--warn) 100%); }
+.progress-bar.mid { background: linear-gradient(90deg, var(--warn) 0%, var(--ok) 100%); }
+.progress-info {
+  display: flex; justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.payments-list .item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  margin-bottom: 6px;
+  border-right: 3px solid var(--ok);
+}
+.payments-list .item .info { font-size: 12px; color: var(--muted); }
+.payments-list .item .info .date { font-weight: 600; color: var(--txt); }
+.payments-list .item .amount {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ok);
+}
+
+/* ═══════════════════════════════════════════════
+   الواجبات
+═══════════════════════════════════════════════ */
+.hw-item {
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  padding: 14px;
+  margin-bottom: 10px;
+  border-right: 3px solid var(--info);
+  transition: transform var(--tr-s);
+}
+.hw-item:hover { transform: translateX(-4px); }
+.hw-item .head {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.hw-item .subj-chip {
+  background: var(--info-bg);
+  color: var(--info);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.hw-item .teacher {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex; align-items: center; gap: 4px;
+}
+.hw-item .date {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: auto;
+}
+.hw-item .body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--txt);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ═══════════════════════════════════════════════
+   الأخبار (نظام محسّن)
+═══════════════════════════════════════════════ */
+.news-filters {
+  background: var(--bg);
+  border: 1px solid var(--bdr);
+  border-radius: var(--rad);
+  padding: 12px;
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.news-filters .row { display: contents; }
+.news-filters label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+}
+.news-filters select,
+.news-filters input[type="date"] {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--bdr);
+  border-radius: var(--rad-s);
+  background: var(--card);
+  font-size: 13px;
+  color: var(--txt);
+}
+.news-filters .full { grid-column: 1 / -1; }
+
+.news-card {
+  background: var(--card);
+  border: 1px solid var(--bdr);
+  border-radius: var(--rad);
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: box-shadow var(--tr-s), transform var(--tr-s);
+  animation: slideUp .4s both;
+}
+.news-card:hover { box-shadow: var(--sh-2); transform: translateY(-2px); }
+.news-card .head {
+  padding: 12px 14px 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.news-card .avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-l) 100%);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.news-card .info { flex: 1; min-width: 0; }
+.news-card .info .teacher { font-weight: 700; font-size: 13.5px; }
+.news-card .info .date { font-size: 11px; color: var(--muted); }
+.news-card .scope {
+  font-size: 11px;
+  color: var(--info);
+  background: var(--info-bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.news-card .body {
+  padding: 0 14px 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.news-card .img-wrap {
+  position: relative;
+  background: var(--bg-2);
+  cursor: zoom-in;
+  overflow: hidden;
+  max-height: 360px;
+}
+.news-card .img-wrap img {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+  max-height: 360px;
+  transition: transform var(--tr);
+}
+.news-card .img-wrap:hover img { transform: scale(1.02); }
+.news-card .pdf-wrap, .news-card .video-wrap {
+  padding: 14px;
+  background: var(--bg);
+}
+.news-card .pdf-link, .news-card .video-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--pr);
+  color: #fff;
+  border-radius: var(--rad-s);
+  font-size: 13px;
+  font-weight: 600;
+}
+.news-card .footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--bdr);
+  display: flex; align-items: center; gap: 10px;
+}
+.news-like-btn, .news-stat {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px;
+  background: var(--bg);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  transition: all var(--tr-s);
+  border: 1px solid var(--bdr);
+}
+.news-like-btn { cursor: pointer; }
+.news-like-btn:hover { background: var(--err-bg); color: var(--err); border-color: var(--err); }
+.news-like-btn.liked {
+  background: var(--err-bg);
+  color: var(--err);
+  border-color: var(--err);
+}
+.news-like-btn.liked .heart { animation: pulse .5s; }
+.news-likers {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.load-more {
+  display: block;
+  margin: 16px auto;
+  padding: 10px 28px;
+  background: var(--card);
+  border: 1.5px solid var(--pr);
+  color: var(--pr);
+  border-radius: 22px;
+  font-weight: 700;
+  font-size: 13px;
+  transition: all var(--tr-s);
+}
+.load-more:hover { background: var(--pr); color: #fff; }
+.load-more:disabled { opacity: .5; cursor: wait; }
+
+/* Lightbox للصور */
+.lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.92);
+  display: none;
+  align-items: center; justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  cursor: zoom-out;
+  animation: fadeIn .3s;
+}
+.lightbox.show { display: flex; }
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.lightbox .close {
+  position: absolute;
+  top: 16px; left: 16px;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════
+   السلوكيات (مخالفات/مميزات)
+═══════════════════════════════════════════════ */
+.vio-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.vio-summary .stat {
+  padding: 14px;
+  border-radius: var(--rad-s);
+  text-align: center;
+  border: 1px solid;
+}
+.vio-summary .stat.merit {
+  background: var(--ok-bg);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.vio-summary .stat.violation {
+  background: var(--err-bg);
+  border-color: var(--err);
+  color: var(--err);
+}
+.vio-summary .stat .num { font-size: 22px; font-weight: 700; }
+.vio-summary .stat .lbl { font-size: 12px; }
+
+.vio-item {
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  padding: 12px;
+  margin-bottom: 8px;
+  border-right: 3px solid var(--err);
+}
+.vio-item.merit { border-right-color: var(--ok); }
+.vio-item .head {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.vio-item .badge-t {
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.vio-item .badge-t.v { background: var(--err-bg); color: var(--err); }
+.vio-item .badge-t.m { background: var(--ok-bg);  color: var(--ok); }
+.vio-item .date { font-size: 11px; color: var(--muted); margin-right: auto; }
+.vio-item .teacher { font-size: 12px; color: var(--muted); }
+.vio-item .body {
+  font-size: 14px;
+  margin-top: 4px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.vio-item .reply {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--info-bg);
+  border-radius: var(--rad-s);
+  font-size: 13px;
+  color: var(--info);
+  border-right: 2px solid var(--info);
+}
+.vio-item .reply::before {
+  content: '💬 رد المعلم: ';
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════
+   الجدول الدراسي
+═══════════════════════════════════════════════ */
+.sched-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sched-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 12px;
+  min-width: 600px;
+}
+.sched-table th {
+  background: var(--pr);
+  color: #fff;
+  padding: 8px 4px;
+  border-radius: var(--rad-s);
+  font-weight: 700;
+  font-size: 12px;
+}
+.sched-table td {
+  background: var(--card);
+  border: 1px solid var(--bdr);
+  border-radius: var(--rad-s);
+  padding: 8px 6px;
+  text-align: center;
+  vertical-align: middle;
+  min-width: 90px;
+  height: 64px;
+  transition: background var(--tr-s);
+}
+.sched-table td:hover { background: var(--pr-bg); }
+.sched-table td.day-header {
+  background: var(--bg-2);
+  font-weight: 700;
+  color: var(--pr-d);
+  min-width: 60px;
+}
+.sched-table .subject { font-weight: 700; color: var(--txt); margin-bottom: 2px; }
+.sched-table .teacher { font-size: 10.5px; color: var(--muted); }
+.sched-table .room {
+  display: inline-block;
+  font-size: 9.5px;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 6px;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.sched-table td.empty { background: var(--bg); color: var(--soft); }
+
+/* ألوان الأيام */
+.day-c0 { background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%) !important; }
+.day-c1 { background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%) !important; }
+.day-c2 { background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%) !important; }
+.day-c3 { background: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%) !important; }
+.day-c4 { background: linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%) !important; }
+
+/* ═══════════════════════════════════════════════
+   الملاحظات (ولي الأمر)
+═══════════════════════════════════════════════ */
+.note-form {
+  background: var(--bg);
+  padding: 14px;
+  border-radius: var(--rad-s);
+  margin-bottom: 14px;
+  border: 1px solid var(--bdr);
+}
+.note-form select,
+.note-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--bdr);
+  border-radius: var(--rad-s);
+  background: var(--card);
+  margin-bottom: 10px;
+  resize: vertical;
+}
+.note-form textarea { min-height: 90px; font-family: inherit; }
+.note-form select:focus,
+.note-form textarea:focus {
+  outline: none;
+  border-color: var(--pr);
+  box-shadow: 0 0 0 3px var(--pr-bg);
+}
+
+.note-item {
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  padding: 12px;
+  margin-bottom: 10px;
+  border-right: 3px solid var(--pr);
+}
+.note-item .head {
+  display: flex; flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.note-item .teacher {
+  background: var(--pr-bg);
+  color: var(--pr);
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.note-item .date { color: var(--muted); margin-right: auto; }
+.note-item .body { font-size: 14px; line-height: 1.6; }
+.note-item .reply {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--ok-bg);
+  border-radius: var(--rad-s);
+  border-right: 2px solid var(--ok);
+  font-size: 13px;
+  color: var(--ok);
+  line-height: 1.6;
+}
+.note-item .reply::before {
+  content: '✅ رد المعلم: ';
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════
+   التقارير
+═══════════════════════════════════════════════ */
+.score-circle-wrap {
+  display: flex; flex-direction: column;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.score-circle {
+  width: 140px; height: 140px;
+  position: relative;
+  margin-bottom: 8px;
+}
+.score-circle svg { transform: rotate(-90deg); }
+.score-circle .text {
+  position: absolute;
+  inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-weight: 700;
+}
+.score-circle .text .v {
+  font-size: 32px;
+  color: var(--pr);
+  line-height: 1;
+}
+.score-circle .text .l {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.rpt-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.rpt-stat {
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  padding: 12px;
+  text-align: center;
+  border: 1px solid var(--bdr);
+}
+.rpt-stat .ic { font-size: 22px; margin-bottom: 4px; }
+.rpt-stat .num { font-size: 18px; font-weight: 700; line-height: 1.1; }
+.rpt-stat .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.subj-bar {
+  display: grid;
+  grid-template-columns: 110px 1fr 50px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.subj-bar .lbl { font-weight: 600; }
+.subj-bar .track {
+  background: var(--bdr);
+  height: 18px;
+  border-radius: 9px;
+  overflow: hidden;
+}
+.subj-bar .fill {
+  height: 100%;
+  border-radius: 9px;
+  transition: width .8s cubic-bezier(.4,0,.2,1);
+}
+.subj-bar .v { font-weight: 700; text-align: end; }
+
+/* ═══════════════════════════════════════════════
+   الغياب
+═══════════════════════════════════════════════ */
+.att-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: var(--rad-s);
+  margin-bottom: 8px;
+  border-right: 3px solid var(--err);
+}
+.att-item.late { border-right-color: var(--warn); }
+.att-item .info .date { font-weight: 700; font-size: 14px; }
+.att-item .info .recorder { font-size: 11px; color: var(--muted); }
+.att-item .status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.att-item .status.absent { background: var(--err-bg); color: var(--err); }
+.att-item .status.late   { background: var(--warn-bg); color: var(--warn); }
+
+/* ═══════════════════════════════════════════════
+   Modal
+═══════════════════════════════════════════════ */
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.6);
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 16px;
+  z-index: 500;
+  animation: fadeIn .2s;
+}
+.modal-bg.show { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: var(--rad);
+  width: 100%;
+  max-width: 380px;
+  padding: 20px;
+  box-shadow: var(--sh-3);
+  animation: slideUp .3s both;
+}
+.modal h3 {
+  margin: 0 0 14px;
+  color: var(--pr-d);
+  font-size: 18px;
+  display: flex; align-items: center; gap: 8px;
+}
+.modal-actions {
+  display: flex; gap: 8px;
+  margin-top: 16px;
+}
+.modal-actions button {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--rad-s);
+  font-weight: 700;
+  font-size: 14px;
+  transition: all var(--tr-s);
+}
+.btn-cancel {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--bdr);
+}
+.btn-cancel:hover { background: var(--bdr); }
+.btn-ok {
+  background: var(--pr);
+  color: #fff;
+}
+.btn-ok:hover { background: var(--pr-d); }
+.btn-ok:disabled { opacity: .5; cursor: wait; }
+
+/* ═══════════════════════════════════════════════
+   تجاوب — هواتف
+═══════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  .main { padding: 12px 10px 30px; }
+  .card { padding: 12px; }
+  .welcome { padding: 14px; }
+  .welcome h2 { font-size: 19px; }
+  .nav-brand .name { font-size: 13px; }
+  .news-filters { grid-template-columns: 1fr; }
+  .fin-summary { grid-template-columns: 1fr; }
+  .q-grid { grid-template-columns: 1fr 1fr; }
+  .grades-table { font-size: 12px; }
+  .grades-table th, .grades-table td { padding: 8px 4px; }
+  .news-card .body { font-size: 13.5px; }
+  .vio-summary .stat .num { font-size: 18px; }
+  .score-circle { width: 120px; height: 120px; }
+  .score-circle .text .v { font-size: 26px; }
+  .subj-bar { grid-template-columns: 80px 1fr 36px; font-size: 11.5px; }
+}
+@media (max-width: 380px) {
+  .nav-btn { width: 34px; height: 34px; font-size: 15px; }
+  .tab-btn { padding: 0 10px; font-size: 12.5px; }
+  .tab-btn .ic { font-size: 14px; }
+}
+
+/* ═══════════════════════════════════════════════
+   Print (للتقارير)
+═══════════════════════════════════════════════ */
+@media print {
+  .navbar, .tabs-bar, .refresh-btn, .news-filters, .modal-bg { display: none !important; }
+  body { background: #fff; }
+  .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skel-loading 1.5s infinite;
+  border-radius: 8px;
+}
+@keyframes skel-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skel-row { height: 16px; margin-bottom: 8px; }
+.skel-row.w75 { width: 75%; }
+.skel-row.w50 { width: 50%; }
+.skel-card { height: 100px; margin-bottom: 12px; border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ═════════════════════ شاشة تسجيل الدخول ═════════════════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">🎓</div>
+    <h1>منصة الطالب</h1>
+    <div class="subtitle">مدارس الإبداع والتميز الدولية</div>
+
+    <div class="login-err" id="loginErr"></div>
+
+    <div class="field">
+      <label>اسم المستخدم</label>
+      <input type="text" id="username" autocomplete="username" placeholder="الاسم الأول أو كود الطالب">
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input type="password" id="password" autocomplete="current-password" placeholder="كلمة المرور">
+    </div>
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()">تسجيل الدخول 🚪</button>
+
+    <div style="text-align:center; margin-top:14px; font-size:11px; color:var(--muted);">
+      📞 775189922 · ✉️ info@ebdaa-tamayuz.edu
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════════════ رسالة الحجب ═════════════════════ -->
+<div id="blockedMsg">
+  <div class="ic">🔒</div>
+  <div class="ttl">الحساب معلق مؤقتاً</div>
+  <div id="blockedTxt"></div>
+  <button onclick="resetLogin()">العودة لتسجيل الدخول</button>
+</div>
+
+<!-- ═════════════════════ التطبيق الرئيسي ═════════════════════ -->
+<div id="app">
+
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <span class="ic">🎓</span>
+      <div class="info">
+        <div class="name" id="navName">—</div>
+        <div class="meta" id="navMeta">—</div>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button class="nav-btn" title="تغيير كلمة المرور" onclick="openModal('pwModal')">🔑</button>
+      <button class="nav-btn" title="تسجيل الخروج" onclick="doLogout()">🚪</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs-bar">
+    <div class="inner" id="tabsInner">
+      <button class="tab-btn active" data-tab="home"        onclick="goTab('home', this)"><span class="ic">🏠</span><span>الرئيسية</span></button>
+      <button class="tab-btn"        data-tab="grades"      onclick="goTab('grades', this)"><span class="ic">📊</span><span>الدرجات</span></button>
+      <button class="tab-btn"        data-tab="finance"     onclick="goTab('finance', this)"><span class="ic">💰</span><span>الرسوم</span></button>
+      <button class="tab-btn"        data-tab="homework"    onclick="goTab('homework', this)"><span class="ic">📝</span><span>الواجبات</span><span class="badge" id="badge-homework"></span></button>
+      <button class="tab-btn"        data-tab="news"        onclick="goTab('news', this)"><span class="ic">📢</span><span>الأخبار</span><span class="badge" id="badge-news"></span></button>
+      <button class="tab-btn"        data-tab="violations"  onclick="goTab('violations', this)"><span class="ic">⚠️</span><span>السلوكيات</span><span class="badge" id="badge-violations"></span></button>
+      <button class="tab-btn"        data-tab="schedule"    onclick="goTab('schedule', this)"><span class="ic">📅</span><span>الجدول</span></button>
+      <button class="tab-btn"        data-tab="notes"       onclick="goTab('notes', this)"><span class="ic">✉️</span><span>ملاحظاتي</span><span class="badge" id="badge-notes"></span></button>
+      <button class="tab-btn"        data-tab="reports"     onclick="goTab('reports', this)"><span class="ic">📈</span><span>تقاريري</span></button>
+      <button class="tab-btn"        data-tab="attendance"  onclick="goTab('attendance', this)"><span class="ic">📋</span><span>الغياب</span></button>
+    </div>
+  </nav>
+
+  <!-- المحتوى -->
+  <main class="main">
+
+    <!-- 🏠 الرئيسية -->
+    <section data-section="home">
+      <div class="welcome slide-up">
+        <div class="greet" id="welcomeGreet">مرحباً بعودتك</div>
+        <h2 id="welcomeName">—</h2>
+        <div class="meta" id="welcomeMeta"></div>
+      </div>
+
+      <div class="q-grid" id="quickStats"></div>
+
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📢</span> آخر الإشعارات</div>
+          <button class="refresh-btn" onclick="loadHomeNews(true)" title="تحديث">🔄</button>
+        </div>
+        <div class="home-news" id="homeNews">
+          <div class="loader"><div class="ring"></div><div class="txt">جارٍ التحميل...</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📚</span> الوصول السريع</div>
+        </div>
+        <div class="guide-grid">
+          <div class="guide-item" onclick="goTabByName('grades')"><div class="ic">📊</div><div class="lbl">الدرجات</div></div>
+          <div class="guide-item" onclick="goTabByName('finance')"><div class="ic">💰</div><div class="lbl">الرسوم</div></div>
+          <div class="guide-item" onclick="goTabByName('homework')"><div class="ic">📝</div><div class="lbl">الواجبات</div></div>
+          <div class="guide-item" onclick="goTabByName('news')"><div class="ic">📢</div><div class="lbl">الأخبار</div></div>
+          <div class="guide-item" onclick="goTabByName('schedule')"><div class="ic">📅</div><div class="lbl">الجدول</div></div>
+          <div class="guide-item" onclick="goTabByName('notes')"><div class="ic">✉️</div><div class="lbl">ملاحظاتي</div></div>
+          <div class="guide-item" onclick="goTabByName('reports')"><div class="ic">📈</div><div class="lbl">تقاريري</div></div>
+          <div class="guide-item" onclick="goTabByName('attendance')"><div class="ic">📋</div><div class="lbl">الغياب</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📊 الدرجات -->
+    <section data-section="grades" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📊</span> الدرجات الدراسية</div>
+          <button class="refresh-btn" onclick="loadGrades(true)">🔄</button>
+        </div>
+        <div id="gradesWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 💰 الرسوم -->
+    <section data-section="finance" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">💰</span> ملخص الرسوم</div>
+          <button class="refresh-btn" onclick="loadFinance(true)">🔄</button>
+        </div>
+        <div id="finWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📝 الواجبات -->
+    <section data-section="homework" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📝</span> الواجبات الحالية</div>
+          <button class="refresh-btn" onclick="loadHomework(true)">🔄</button>
+        </div>
+        <div id="hwWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📢 الأخبار -->
+    <section data-section="news" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📢</span> الأخبار والإشعارات</div>
+          <button class="refresh-btn" onclick="resetNewsAndLoad()">🔄</button>
+        </div>
+
+        <div class="news-filters">
+          <div>
+            <label>الترتيب</label>
+            <select id="nsSort" onchange="resetNewsAndLoad()">
+              <option value="newest">الأحدث</option>
+              <option value="oldest">الأقدم</option>
+              <option value="mostLiked">الأكثر إعجاباً</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="refresh-btn" style="width:100%" onclick="clearNewsFilters()">إلغاء الفلاتر</button>
+          </div>
+          <div>
+            <label>من تاريخ</label>
+            <input type="date" id="nsFrom" onchange="resetNewsAndLoad()">
+          </div>
+          <div>
+            <label>إلى تاريخ</label>
+            <input type="date" id="nsTo" onchange="resetNewsAndLoad()">
+          </div>
+        </div>
+
+        <div id="newsList">
+  <div class="skeleton skel-card"></div>
+  <div class="skeleton skel-card"></div>
+  <div class="skeleton skel-card"></div>
+</div>
+<div style="text-align:center; margin-top:12px; display:none;" id="newsMore">
+  <button class="load-more" onclick="loadMoreNews()" id="newsMoreBtn">تحميل المزيد ⬇</button>
+</div>
+    </section>
+
+    <!-- ⚠️ السلوكيات -->
+    <section data-section="violations" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">⚠️</span> السلوكيات والمميزات</div>
+          <button class="refresh-btn" onclick="loadViolations(true)">🔄</button>
+        </div>
+        <div id="vioWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📅 الجدول -->
+    <section data-section="schedule" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📅</span> الجدول الدراسي</div>
+          <button class="refresh-btn" onclick="loadSchedule(true)">🔄</button>
+        </div>
+        <div id="schedWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ✉️ الملاحظات -->
+    <section data-section="notes" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">✉️</span> ملاحظاتي للمعلم</div>
+          <button class="refresh-btn" onclick="loadNotes(true)">🔄</button>
+        </div>
+
+        <div class="note-form">
+          <div style="font-weight:600; margin-bottom:8px; font-size:13px; color:var(--muted);">إرسال ملاحظة جديدة</div>
+          <select id="noteTeacher">
+            <option value="">— اختر المعلم —</option>
+          </select>
+          <textarea id="noteMsg" placeholder="اكتب ملاحظتك هنا (5 أحرف على الأقل)..."></textarea>
+          <button class="btn-primary" id="noteSendBtn" onclick="submitMyNote()">إرسال الملاحظة ✉️</button>
+        </div>
+
+        <div style="font-weight:600; font-size:14px; color:var(--muted); margin:12px 0 8px;">ملاحظاتي السابقة</div>
+        <div id="notesHistory">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📈 التقارير -->
+    <section data-section="reports" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📈</span> تقاريري الشخصية</div>
+          <button class="refresh-btn" onclick="loadReports(true)">🔄</button>
+        </div>
+        <div id="srptBody">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 📋 الغياب -->
+    <section data-section="attendance" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📋</span> سجل الغياب</div>
+          <button class="refresh-btn" onclick="loadAttendance(true)">🔄</button>
+        </div>
+        <div id="attWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═════════════════════ Modals ═════════════════════ -->
+<div class="modal-bg" id="pwModal">
+  <div class="modal">
+    <h3>🔑 تغيير كلمة المرور</h3>
+    <div class="field">
+      <label>كلمة المرور الحالية</label>
+      <input type="password" id="pwCur">
+    </div>
+    <div class="field">
+      <label>كلمة المرور الجديدة</label>
+      <input type="password" id="pwNew">
+    </div>
+    <div class="field">
+      <label>تأكيد كلمة المرور الجديدة</label>
+      <input type="password" id="pwConf">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('pwModal')">إلغاء</button>
+      <button class="btn-ok" id="pwSaveBtn" onclick="changeMyPassword()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div class="close">✕</div>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<!-- مؤشر التحميل -->
+<div id="globalLoader"><div class="ring"></div><span id="globalLoaderTxt">جارٍ المعالجة...</span></div>
+
+<!-- صندوق الإشعارات -->
+<div id="toastBox"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     JavaScript — منصة الطالب (ES5 خالص)
+     - بدون let/const/template literals/arrow functions/optional chaining
+     - تحميل كسول، كاش متصفح، معالجة أخطاء شاملة
+═══════════════════════════════════════════════════════════════ -->
+<script>
+    var SERVER_SCHOOL_ID = '<?= (typeof schoolId !== "undefined" ? schoolId : "") ?>';
+
+  // ══════════════════════════════════════════════════════
+// Smart Client Cache + Dedup (P-OPT-04)
+// ══════════════════════════════════════════════════════
+var ClientCache = {
+  _prefix: 'stu_cache_',
+  set: function(key, data, ttlSeconds) {
+    try {
+      var obj = { d: data, e: Date.now() + (ttlSeconds || 180) * 1000 };
+      sessionStorage.setItem(this._prefix + key, JSON.stringify(obj));
+    } catch (e) {}
+  },
+  get: function(key) {
+    try {
+      var raw = sessionStorage.getItem(this._prefix + key);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (Date.now() > obj.e) { sessionStorage.removeItem(this._prefix + key); return null; }
+      return obj.d;
+    } catch (e) { return null; }
+  }
+};
+
+var _pendingCalls = {};
+
+function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback) {
+  if (cacheKey) {
+    var cached = ClientCache.get(cacheKey);
+    if (cached) { callback(cached); return; }
+    if (_pendingCalls[cacheKey]) { return; }
+    _pendingCalls[cacheKey] = true;
+  }
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (cacheKey && result && result.success !== false) {
+        ClientCache.set(cacheKey, result, ttl);
+      }
+      delete _pendingCalls[cacheKey];
+      callback(result);
+    })
+    .withFailureHandler(function(err) {
+      delete _pendingCalls[cacheKey];
+      if (errorCallback) errorCallback(err);
+    })
+    [fnName](params);
+}
+  function getClientId() {
+  try {
+    var cid = localStorage.getItem('stu_clientId');
+    if (!cid) {
+      cid = 'stu_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('stu_clientId', cid);
+    }
+    return cid;
+  } catch (e) {
+    return 'stu_fallback_' + Date.now();
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// 0. الحالة العامة (APP State)
+// ═══════════════════════════════════════════════════════════
+var APP = {
+  user: null,                        // بيانات المستخدم الحالي
+  currentTab: 'home',                // التبويب النشط
+  loaded: {},                        // أقسام تم تحميلها
+  cache: {},                         // كاش الجلسة (sessionStorage mirror)
+
+  // الأخبار (نظام محسّن)
+  newsState: {
+    items: [], page: 1, pageSize: 8, hasMore: false, loading: false
+  },
+
+  // الدرجات
+  gradesData: null,
+  selectedMonthIdx: 0,
+
+  // الملاحظات
+  teachersList: [],
+
+  // التقارير
+  reportsData: null,
+
+  // Auto-refresh
+  badgeInterval: null
+};
+
+var SS_KEY = 'studentPortal_v2';     // مفتاح sessionStorage
+var BADGE_INTERVAL_MS = 90 * 1000;   // تحديث Badges كل 1.5 دقيقة
+
+// ═══════════════════════════════════════════════════════════
+// 1. أدوات مساعدة عامة
+// ═══════════════════════════════════════════════════════════
+function $(id) { return document.getElementById(id); }
+function $$(sel) { return document.querySelectorAll(sel); }
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function nl2br(s) { return esc(s).replace(/\n/g, '<br>'); }
+
+function fmtDate(s) {
+  if (!s) return '';
+  // التاريخ يأتي بصيغة 'yyyy-MM-dd HH:mm' من الخلفية
+  return String(s).replace('T', ' ').replace(/:\d{2}\.\d+Z?$/, '');
+}
+
+function showLoad(msg) {
+  $('globalLoaderTxt').textContent = msg || 'جارٍ المعالجة...';
+  $('globalLoader').classList.add('show');
+}
+function hideLoad() { $('globalLoader').classList.remove('show'); }
+
+function toast(msg, type) {
+  var box = $('toastBox');
+  var t = document.createElement('div');
+  t.className = 'toast' + (type ? ' ' + type : '');
+  t.textContent = msg;
+  box.appendChild(t);
+  setTimeout(function () {
+    t.style.opacity = '0';
+    t.style.transition = 'opacity .3s';
+    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
+  }, 3500);
+}
+
+function emptyHTML(ic, ttl, desc) {
+  return '<div class="empty">' +
+         '<div class="ic">' + esc(ic) + '</div>' +
+         '<div class="ttl">' + esc(ttl) + '</div>' +
+         (desc ? '<div class="desc">' + esc(desc) + '</div>' : '') +
+         '</div>';
+}
+
+function errHTML(msg) {
+  return '<div class="err-box"><span class="ic">❌</span><span>' + esc(msg) + '</span></div>';
+}
+
+function loaderHTML(msg) {
+  return '<div class="loader"><div class="ring"></div><div class="txt">' +
+         esc(msg || 'جارٍ التحميل...') + '</div></div>';
+}
+
+function openModal(id) {
+  $(id).classList.add('show');
+  // تركيز الحقل الأول
+  var f = $(id).querySelectorAll('input')[0];
+  if (f) setTimeout(function () { f.focus(); }, 100);
+}
+function closeModal(id) { $(id).classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+// 2. كاش الجلسة (sessionStorage)
+// ═══════════════════════════════════════════════════════════
+function ssGet(key) {
+  try {
+    var raw = sessionStorage.getItem(SS_KEY + '_' + key);
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (obj.exp && obj.exp < Date.now()) {
+      sessionStorage.removeItem(SS_KEY + '_' + key);
+      return null;
+    }
+    return obj.data;
+  } catch (e) { return null; }
+}
+
+function ssSet(key, data, ttlSec) {
+  try {
+    var obj = {
+      data: data,
+      exp: ttlSec ? Date.now() + ttlSec * 1000 : 0
+    };
+    sessionStorage.setItem(SS_KEY + '_' + key, JSON.stringify(obj));
+  } catch (e) { /* تجاهل امتلاء التخزين */ }
+}
+
+function ssDel(key) {
+  try { sessionStorage.removeItem(SS_KEY + '_' + key); } catch (e) {}
+}
+
+function ssClearAll() {
+  try {
+    var i;
+    var toRemove = [];
+    for (i = 0; i < sessionStorage.length; i++) {
+      var k = sessionStorage.key(i);
+      if (k && k.indexOf(SS_KEY + '_') === 0) toRemove.push(k);
+    }
+    for (i = 0; i < toRemove.length; i++) sessionStorage.removeItem(toRemove[i]);
+  } catch (e) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+// 3. تسجيل الدخول والخروج
+// ═══════════════════════════════════════════════════════════
+function doLogin() {
+  var u = $('username').value;
+  var p = $('password').value;
+  var btn = $('loginBtn');
+  var errEl = $('loginErr');
+
+  errEl.style.display = 'none';
+
+  if (!u || !p) {
+    errEl.textContent = 'يرجى إدخال اسم المستخدم وكلمة المرور';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'جارٍ التحقق...';
+
+  // ★ استخراج schoolId من الرابط (إذا وُجد)
+    var urlParams = new URLSearchParams(window.location.search);
+  var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
+                 ? SERVER_SCHOOL_ID
+                 : (urlParams.get('school') || '');
+                  window.SCHOOL_ID = schoolId; 
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      btn.disabled = false;
+      btn.textContent = 'تسجيل الدخول 🚪';
+
+      if (!r) {
+        errEl.textContent = 'لم يتم استلام رد من الخادم. حاول مرة أخرى.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      if (r.blocked) {
+        $('loginScreen').style.display = 'none';
+        $('blockedTxt').textContent = r.error || 'حسابك معلق مؤقتاً';
+        $('blockedMsg').classList.add('show');
+        return;
+      }
+
+      if (!r.ok) {
+        errEl.textContent = r.error || 'فشل تسجيل الدخول';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      // نجح الدخول
+      APP.user = {
+        id: r.studentId,
+        name: r.name,
+        firstName: r.firstName,
+        class: r.class || '',
+        section: r.section || '',
+        role: r.role,
+        schoolId: schoolId      // ← أضف هذا السطر
+      };
+
+      $('loginScreen').style.display = 'none';
+      $('app').classList.add('show');
+      initApp();
+    })
+    .withFailureHandler(function (e) {
+      btn.disabled = false;
+      btn.textContent = 'تسجيل الدخول 🚪';
+      errEl.textContent = 'تعذّر الاتصال بالخادم: ' + (e.message || e);
+      errEl.style.display = 'block';
+    })
+    .loginStudent(u, p, getClientId(), schoolId);  // ← أضف المعامل الرابع
+}
+function doLogout() {
+  if (!confirm('هل تريد تسجيل الخروج؟')) return;
+  ssClearAll();
+  if (APP.badgeInterval) {
+    clearInterval(APP.badgeInterval);
+    APP.badgeInterval = null;
+  }
+  APP = {
+    user: null, currentTab: 'home', loaded: {}, cache: {},
+    newsState: { items: [], page: 1, pageSize: 8, hasMore: false, loading: false },
+    gradesData: null, selectedMonthIdx: 0, teachersList: [], reportsData: null,
+    badgeInterval: null
+  };
+  $('app').classList.remove('show');
+  $('blockedMsg').classList.remove('show');
+  $('username').value = '';
+  $('password').value = '';
+  $('loginErr').style.display = 'none';
+  $('loginScreen').style.display = 'flex';
+}
+
+function resetLogin() {
+  $('blockedMsg').classList.remove('show');
+  $('loginScreen').style.display = 'flex';
+}
+
+// ═══════════════════════════════════════════════════════════
+// 4. تهيئة التطبيق بعد الدخول
+// ═══════════════════════════════════════════════════════════
+function initApp() {
+  // تحديث Navbar
+  $('navName').textContent = APP.user.name || '—';
+  var meta = '';
+  if (APP.user.class)   meta += APP.user.class;
+  if (APP.user.section) meta += ' · ' + APP.user.section;
+  if (APP.user.id)      meta += ' · ' + APP.user.id;
+  $('navMeta').textContent = meta;
+
+  // تهيئة الرئيسية
+  $('welcomeName').textContent = APP.user.firstName || APP.user.name || 'الطالب';
+  var wm = '';
+  if (APP.user.class)   wm += '<span class="chip">📚 ' + esc(APP.user.class) + '</span>';
+  if (APP.user.section) wm += '<span class="chip">📌 ' + esc(APP.user.section) + '</span>';
+  if (APP.user.id)      wm += '<span class="chip">🆔 ' + esc(APP.user.id) + '</span>';
+  $('welcomeMeta').innerHTML = wm;
+
+  // تحديث رسالة الترحيب حسب الوقت
+  var hr = new Date().getHours();
+  var greet = 'مرحباً بعودتك';
+  if (hr < 12) greet = 'صباح الخير';
+  else if (hr < 17) greet = 'مساء الخير';
+  else greet = 'مساء النور';
+  $('welcomeGreet').textContent = greet + '،';
+
+  // تحميل أولي للرئيسية
+  loadHomeNews();
+  loadQuickStats();
+
+  // تحميل قائمة المعلمين (للملاحظات) في الخلفية
+  loadTeachersList();
+
+  // Badges تلقائية
+  loadNotificationBadges();
+  APP.badgeInterval = setInterval(loadNotificationBadges, BADGE_INTERVAL_MS);
+
+  // Enter في حقول كلمة المرور
+  bindPwModalEnter();
+
+  // 🆕 تفعيل lazy loading الاحتياطي بعد تحميل التطبيق
+  setTimeout(function() { initLazyImages(); }, 500);
+}
+
+function bindPwModalEnter() {
+  var ids = ['pwCur', 'pwNew', 'pwConf'];
+  for (var i = 0; i < ids.length; i++) {
+    (function (id) {
+      $(id).addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') changeMyPassword();
+      });
+    })(ids[i]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// 5. التنقل بين التبويبات (تحميل كسول)
+// ═══════════════════════════════════════════════════════════
+function goTab(tab, btn) {
+  // إخفاء كل الأقسام
+  var secs = document.querySelectorAll('section[data-section]');
+  for (var i = 0; i < secs.length; i++) secs[i].style.display = 'none';
+
+  // إظهار القسم المطلوب
+  var target = document.querySelector('section[data-section="' + tab + '"]');
+  if (target) {
+    target.style.display = '';
+    target.classList.remove('fade-in');
+    void target.offsetWidth;  // إعادة تشغيل الـ animation
+    target.classList.add('fade-in');
+  }
+
+  // تفعيل زر التبويب
+  var tabs = document.querySelectorAll('.tab-btn');
+  for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+  if (btn) btn.classList.add('active');
+
+  // تمرير للأعلى
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  APP.currentTab = tab;
+
+  // تحميل كسول — كل قسم يُحمَّل أول مرة فقط
+  if (!APP.loaded[tab]) {
+    switch (tab) {
+      case 'grades':     loadGrades();     break;
+      case 'finance':    loadFinance();    break;
+      case 'homework':   loadHomework();   break;
+      case 'news':       loadNews();       break;
+      case 'violations': loadViolations(); break;
+      case 'schedule':   loadSchedule();   break;
+      case 'notes':      loadNotes();      break;
+      case 'reports':    loadReports();    break;
+      case 'attendance': loadAttendance(); break;
+    }
+  }
+}
+
+function goTabByName(name) {
+  var btn = document.querySelector('.tab-btn[data-tab="' + name + '"]');
+  if (btn) goTab(name, btn);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 6. الرئيسية — أخبار وإحصاء سريع
+// ═══════════════════════════════════════════════════════════
+function loadHomeNews(force) {
+  var w = $('homeNews');
+  if (!force) {
+    var c = ssGet('homeNews');
+    if (c) { renderHomeNews(c); return; }
+  }
+  w.innerHTML = loaderHTML('جارٍ تحميل الإشعارات...');
+
+  callServerSmart(
+  'getStudentNews',
+  { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+  'home_news_' + APP.user.class + '_' + APP.user.section,
+  180,
+  function (news) {
+    var arr = (news && news.length) ? news.slice(0, 3) : [];
+    renderHomeNews(arr);
+  },
+  function (e) {
+    w.innerHTML = errHTML('تعذّر تحميل الإشعارات: ' + (e.message || e));
+  }
+);
+}
+
+function renderHomeNews(news) {
+  var w = $('homeNews');
+  if (!news || news.length === 0) {
+    w.innerHTML = emptyHTML('📭', 'لا توجد إشعارات حالياً', '');
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < news.length; i++) {
+    var n = news[i];
+    h += '<div class="item">' +
+         '<div class="meta"><span>👤 ' + esc(n.teacher || 'الإدارة') + '</span>' +
+         '<span>📅 ' + esc(fmtDate(n.date)) + '</span></div>' +
+         '<div class="text">' + nl2br(n.content) + '</div>' +
+         '</div>';
+  }
+  w.innerHTML = h;
+}
+
+function loadQuickStats() {
+  // إحصائيات سريعة من بيانات أساسية (تُحمَّل من تقارير)
+  var w = $('quickStats');
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok || !r.data) {
+        w.innerHTML =
+          '<div class="q-stat g" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">—</div><div class="lbl">معدلي</div></div></div>' +
+          '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">—</div><div class="lbl">واجبات</div></div></div>' +
+          '<div class="q-stat w" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">—</div><div class="lbl">سلوكيات</div></div></div>' +
+          '<div class="q-stat r" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">—</div><div class="lbl">حضوري</div></div></div>';
+        return;
+      }
+      var s = r.data.summary || {};
+      var avg = s.overallAvg || 0;
+      var avgCls = avg >= 80 ? 'g' : (avg >= 60 ? 'w' : 'r');
+      var attRate = (s.attendanceRate !== undefined) ? s.attendanceRate : 100;
+      var attCls  = attRate >= 90 ? 'g' : (attRate >= 75 ? 'w' : 'r');
+      w.innerHTML =
+        '<div class="q-stat ' + avgCls + '" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">' + esc(avg) + '%</div><div class="lbl">المعدل العام</div></div></div>' +
+        '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">' + esc(s.homeworkAssigned || 0) + '</div><div class="lbl">واجبات</div></div></div>' +
+        '<div class="q-stat w" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">' + esc(s.violationsCount || 0) + '</div><div class="lbl">سلوكيات</div></div></div>' +
+        '<div class="q-stat ' + attCls + '" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">' + esc(attRate) + '%</div><div class="lbl">نسبة الحضور</div></div></div>';
+    })
+    .withFailureHandler(function () {
+      w.innerHTML = '';
+    })
+    .getStudentReports(APP.user.id, APP.user.schoolId);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 7. الدرجات
+// ═══════════════════════════════════════════════════════════
+function loadGrades(force) {
+  var w = $('gradesWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل الدرجات...');
+
+  // ✅ زر تحديث يدوي يتجاوز الكاش
+  if (force) {
+    ssDel('grades');
+  }
+
+  if (!force) {
+    var c = ssGet('grades');
+    if (c) { 
+      APP.gradesData = c; 
+      APP.loaded.grades = true; 
+      renderGrades(c); 
+      return; 
+    }
+  }
+
+  // ✅ إضافة زر تحديث في رأس الصفحة
+  google.script.run
+    .withSuccessHandler(function(r) {
+      APP.loaded.grades = true;
+      if (!r || !r.ok) { 
+        w.innerHTML = errHTML('لم يتم استلام بيانات الدرجات: ' + (r.error || '')); 
+        return; 
+      }
+      APP.gradesData = r;
+      ssSet('grades', r);
+      renderGradesWithRefresh(r);
+    })
+    .withFailureHandler(function(e) {
+      w.innerHTML = errHTML('فشل تحميل الدرجات: ' + (e.message || e));
+    })
+    .getGrades(APP.user.id, APP.user.schoolId);
+}
+
+// ✅ غلاف جديد يضيف زر التحديث
+function renderGradesWithRefresh(r) {
+  renderGrades(r);
+  
+  // إضافة زر التحديث أعلى الجدول
+  var refreshBar = document.createElement('div');
+  refreshBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:8px;background:#f8fafc;border-radius:8px';
+  refreshBar.innerHTML =
+    '<span style="font-size:12px;color:#64748b">آخر تحديث: ' + 
+    new Date().toLocaleTimeString('ar-EG') + '</span>' +
+    '<button onclick="loadGrades(true)" style="padding:6px 14px;background:#2196f3;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">🔄 تحديث الدرجات</button>';
+  
+  var w = $('gradesWrap');
+  if (w && w.firstChild) {
+    w.insertBefore(refreshBar, w.firstChild);
+  }
+}
+// ═══════════════════════════════════════════════════════════
+// renderGrades — الدالة الأساسية المفقودة (إصلاح ReferenceError)
+// تبني تبويبات الأشهر + المنطقة الفارغة للجدول التي يملؤها renderMonth
+// ═══════════════════════════════════════════════════════════
+function renderGrades(r) {
+  var w = $('gradesWrap');
+  if (!w) return;
+
+  if (!r || !r.ok) {
+    w.innerHTML = errHTML((r && r.error) ? r.error : 'تعذّر تحميل الدرجات');
+    return;
+  }
+
+  var months = (r && r.months) ? r.months : [];
+  if (months.length === 0) {
+    w.innerHTML = emptyHTML('📊', 'لا توجد درجات مسجَّلة بعد', 'سيتم عرض درجاتك فور إدخالها من قِبل المعلمين');
+    return;
+  }
+
+  // ── رأس بمعلومات الطالب ──
+  var stu = r.student || {};
+  var html = '' +
+    '<div class="grades-head" style="background:linear-gradient(135deg,#eef2ff,#e0f2fe);' +
+        'padding:14px 16px;border-radius:12px;margin-bottom:14px;display:flex;' +
+        'justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+      '<div>' +
+        '<div style="font-weight:700;font-size:15px;color:#1e40af">📚 ' + esc(stu.name || '—') + '</div>' +
+        '<div style="font-size:12px;color:#64748b;margin-top:4px">' +
+          esc(stu.class || '') + (stu.section ? ' • شعبة ' + esc(stu.section) : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#64748b;background:#fff;padding:6px 10px;' +
+          'border-radius:20px;border:1px solid #cbd5e1">' +
+        '🔒 وضع العرض فقط — الدرجات مُغلقة من التعديل' +
+      '</div>' +
+    '</div>';
+
+  // ── شريط أشهر (chips) ──
+  html += '<div id="monthChipsBar" style="display:flex;flex-wrap:wrap;gap:8px;' +
+              'margin-bottom:14px;overflow-x:auto;padding-bottom:6px">';
+
+  for (var i = 0; i < months.length; i++) {
+    var nm = months[i].name || '';
+    var isTerm = !!(months[i].isFinal || months[i].isTermMonth);
+    var ic = isTerm ? '🏆' : '📅';
+    var extraStyle = isTerm ? 'border:2px solid #f59e0b;font-weight:700' : '';
+    html += '<button type="button" class="month-chip" ' +
+            'data-idx="' + i + '" ' +
+            'onclick="renderMonth(' + i + ')" ' +
+            'style="' + extraStyle + '">' +
+            ic + ' ' + esc(nm) + '</button>';
+  }
+  html += '</div>';
+
+  // ── منطقة عرض جدول الشهر ──
+  html += '<div id="monthGradesBox"></div>';
+
+  w.innerHTML = html;
+
+  // عرض أول شهر تلقائياً (يفضّل آخر شهر فيه بيانات)
+  var defaultIdx = 0;
+  for (var k = months.length - 1; k >= 0; k--) {
+    var subs = months[k].subjects || [];
+    for (var s = 0; s < subs.length; s++) {
+      if (subs[s].hasGrades) { defaultIdx = k; break; }
+    }
+    if (defaultIdx === k) break;
+  }
+  renderMonth(defaultIdx);
+}
+// استبدل دالة renderMonth الموجودة بهذه النسخة المُصلحة
+function renderMonth(idx) {
+  APP.selectedMonthIdx = idx;
+  var months = APP.gradesData.months;
+  var m = months[idx];
+
+  var chips = document.querySelectorAll('.month-chip');
+  for (var i = 0; i < chips.length; i++) chips[i].classList.remove('active');
+  if (chips[idx]) chips[idx].classList.add('active');
+
+  var box = $('monthGradesBox');
+  if (!m || !m.subjects || m.subjects.length === 0) {
+    box.innerHTML = emptyHTML('📊', 'لا توجد درجات لهذا الشهر', '');
+    return;
+  }
+
+  var isTermMonth = m.isFinal || m.isTermMonth || false;
+
+  // ── تحديد الأعمدة ──
+  var isNewTermStruct = false;
+  var colTypes = [];
+
+  if (isTermMonth) {
+    for (var si = 0; si < m.subjects.length; si++) {
+      var gs = m.subjects[si].grades || [];
+      for (var gi = 0; gi < gs.length; gi++) {
+        if (gs[gi].type === 'المحصلة /20' || gs[gi].type === 'المحصلة' ||
+            gs[gi].type === 'درجة الاختبار' || gs[gi].type === 'الدرجة الشهرية' ||
+            gs[gi].type === 'الأعمال المستمرة') {
+          isNewTermStruct = true;
+          break;
+        }
+      }
+      if (isNewTermStruct) break;
+    }
+    // ⭐ v3.1: التسميات الموحدة الجديدة
+    colTypes = isNewTermStruct
+      ? ['المحصلة', 'درجة الاختبار', 'المجموع']
+      : ['المجموع'];
+  } else {
+    var typeSet = {};
+    for (var si2 = 0; si2 < m.subjects.length; si2++) {
+      var gs2 = m.subjects[si2].grades || [];
+      for (var gi2 = 0; gi2 < gs2.length; gi2++) {
+        if (gs2[gi2].type) typeSet[gs2[gi2].type] = true;
+      }
+    }
+    var orderedCols = ['السلوك', 'الواجبات', 'الشفوي', 'التحريري'];
+    for (var oi = 0; oi < orderedCols.length; oi++) {
+      if (typeSet[orderedCols[oi]]) colTypes.push(orderedCols[oi]);
+    }
+    if (colTypes.length === 0) colTypes = orderedCols;
+  }
+
+  // ⭐ v3: إضافة العمود الافتراضي "الإجمالي (100)" إذا كان موجوداً في البيانات
+  for (var ci = 0; ci < m.subjects.length; ci++) {
+    var sub = m.subjects[ci];
+    if (sub.grades && sub.grades.length) {
+      for (var gi = 0; gi < sub.grades.length; gi++) {
+        var g = sub.grades[gi];
+        if (g.isVirtual && colTypes.indexOf(g.type) === -1) {
+          colTypes.push(g.type);
+        }
+      }
+    }
+  }
+
+  // ── رأس الجدول ──
+  var maxScores = {
+    'السلوك'          : 20,
+    'الواجبات'         : 20,
+    'الشفوي'           : 20,
+    'التحريري'         : 40,
+    'المحصلة'          : 20,      // ⭐ v3.1: في الفترات الفصلية
+    'المحصلة /20'      : 20,      // للتوافق
+    'درجة الاختبار'    : 30,
+    'المجموع'          : 50,
+    'الإجمالي (100)'   : 100      // عمود افتراضي v3
+  };
+
+  var h = '<div class="grades-wrap-scroll"><table class="grades-table"><thead><tr>' +
+          '<th>المادة</th>';
+
+  for (var t = 0; t < colTypes.length; t++) {
+    var mx = maxScores[colTypes[t]] ? '/' + maxScores[colTypes[t]] : '';
+    var isTotal = (colTypes[t] === 'المجموع');
+    var isVirtual = (colTypes[t] === 'الإجمالي (100)');
+    var thStyle = isTotal ? ' style="background:#e8f5e9;color:#2e7d32;"' : '';
+    if (isVirtual) {
+      thStyle = ' style="background:#fef3c7;color:#92400e;"';
+    }
+    h += '<th' + thStyle + '>' + esc(colTypes[t]) +
+         '<br><small style="font-weight:400;opacity:.75">' + mx + '</small></th>';
+  }
+
+  // عمود المجموع للشهور العادية
+  if (!isTermMonth) {
+    h += '<th style="background:#e8f5e9;color:#2e7d32;">المجموع<br><small style="font-weight:400">/100</small></th>';
+  }
+  h += '</tr></thead><tbody>';
+
+  // ── صفوف المواد ──
+  for (var xi = 0; xi < m.subjects.length; xi++) {
+    var subj    = m.subjects[xi];
+    var grMap   = {};
+    var lockMap = {};
+    var gsArr   = subj.grades || [];
+
+    for (var gj = 0; gj < gsArr.length; gj++) {
+      var gradeObj = gsArr[gj];
+      grMap[gradeObj.type]   = gradeObj.value;
+      lockMap[gradeObj.type] = !!gradeObj.locked;
+    }
+
+    h += '<tr><td style="font-weight:600;text-align:right">' + esc(subj.name) + '</td>';
+
+    for (var ti = 0; ti < colTypes.length; ti++) {
+      var cType    = colTypes[ti];
+      var cVal     = grMap[cType] !== undefined ? grMap[cType] : '';
+      var cMax     = maxScores[cType] || 100;
+      var isTotal2 = (cType === 'المجموع');
+      var isVirtual2 = (cType === 'الإجمالي (100)');
+      var isLocked = lockMap[cType] === true;
+
+      var num   = parseFloat(cVal);
+      var pct   = !isNaN(num) ? (num / cMax * 100) : -1;
+      var color = pct < 0 ? 'var(--muted)' :
+                  (pct >= 80 ? 'var(--ok)' : (pct >= 60 ? 'var(--warn)' : 'var(--err)'));
+
+      var bg = isVirtual2 ? '#fef3c7' : (isTotal2 ? '#f1f8e9' : (isLocked ? '#f8fafc' : 'transparent'));
+      var lockIc = isLocked && !isTotal2 && !isVirtual2 ? '<span title="محسوبة آلياً" style="font-size:9px;opacity:.55">🔒 </span>' : '';
+      var fw     = (isTotal2 || isVirtual2) ? '700' : '500';
+
+      var tdStyle = 'style="background:' + bg + ';font-weight:' + fw + ';color:' + (isVirtual2 ? '#92400e' : color) + ';"';
+      h += '<td ' + tdStyle + '>' + lockIc + (cVal !== '' ? esc(String(cVal)) : '—') + '</td>';
+    }
+
+    // عمود المجموع للشهور العادية
+    if (!isTermMonth) {
+      var total = subj.total || '';
+      var tNum  = parseFloat(total);
+      var tPct  = !isNaN(tNum) ? (tNum / 100 * 100) : -1;
+      var tColor = tPct < 0 ? 'var(--muted)' :
+                   (tPct >= 80 ? 'var(--ok)' : (tPct >= 60 ? 'var(--warn)' : 'var(--err)'));
+      h += '<td style="background:#f1f8e9;font-weight:700;color:' + tColor + ';">' +
+           (total !== '' ? esc(String(total)) : '—') + '</td>';
+    }
+
+    h += '</tr>';
+  }
+
+  h += '</tbody></table></div>';
+
+  // ═══════════════════════════════════════════════════
+  // ⭐ v3.1: عرض نصف العام مرفقاً مع نهاية العام
+  // ═══════════════════════════════════════════════════
+  if (m.name === 'نهاية العام') {
+    var term1Data = null;
+    for (var tmi = 0; tmi < months.length; tmi++) {
+      if (months[tmi].name === 'نصف العام') { term1Data = months[tmi]; break; }
+    }
+
+    if (term1Data) {
+      h += '<div class="term1-summary" style="margin-top:16px;padding:12px;background:#eef2ff;border-radius:8px;border-right:3px solid #6366f1;">';
+      h += '<div style="font-weight:bold;color:#4338ca;margin-bottom:8px;">📋 نتائج نصف العام (للمقارنة)</div>';
+      h += '<table style="width:100%;font-size:13px;">';
+      h += '<thead><tr style="background:#fff;"><th style="padding:6px;">المادة</th><th>المحصلة /20</th><th>الاختبار /30</th><th>المجموع /50</th></tr></thead>';
+      h += '<tbody>';
+
+      for (var tsi = 0; tsi < term1Data.subjects.length; tsi++) {
+        var ts = term1Data.subjects[tsi];
+        var tsg = {};
+        for (var tgi = 0; tgi < ts.grades.length; tgi++) {
+          tsg[ts.grades[tgi].key] = ts.grades[tgi].value || '—';
+        }
+        h += '<tr style="border-bottom:1px solid #e0e7ff;">';
+        h += '<td style="padding:6px;">' + esc(ts.name) + '</td>';
+        h += '<td style="text-align:center;">' + esc(tsg.monthly_score || '—') + '</td>';
+        h += '<td style="text-align:center;">' + esc(tsg.exam_score || '—') + '</td>';
+        h += '<td style="text-align:center;font-weight:bold;">' + esc(tsg.total_score || '—') + '</td>';
+        h += '</tr>';
+      }
+      h += '</tbody></table></div>';
+    }
+  }
+
+  box.innerHTML = h;
+}
+// ═══════════════════════════════════════════════════════════
+// 8. الرسوم
+// ═══════════════════════════════════════════════════════════
+function loadFinance(force) {
+  var w = $('finWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل البيانات المالية...');
+
+  if (!force) {
+    var c = ssGet('finance');
+    if (c) { APP.loaded.finance = true; renderFinance(c); return; }
+  }
+
+ callServerSmart(
+  'getStudentFinancialData',
+  { studentId: APP.user.id, schoolId: APP.user.schoolId },
+  'finance_' + APP.user.id,
+  120,
+  function (r) {
+    APP.loaded.finance = true;
+    renderFinance(r);
+  },
+  function (e) {
+    w.innerHTML = errHTML('فشل تحميل البيانات المالية: ' + (e.message || e));
+  }
+);
+}
+
+function renderFinance(r) {
+  var w = $('finWrap');
+  if (!r || !r.ok) {
+    w.innerHTML = emptyHTML('💰', 'لا توجد بيانات مالية', (r && r.error) ? r.error : '');
+    return;
+  }
+  var pct = r.totalFees > 0 ? (r.totalPaid / r.totalFees) * 100 : 0;
+  var pctR = Math.round(pct);
+  var barCls = pct >= 80 ? '' : (pct >= 50 ? 'mid' : 'low');
+
+  var h = '<div class="fin-summary">' +
+          '<div class="fin-stat t"><div class="num">' + esc(r.formattedTotalFees) + '</div><div class="lbl">إجمالي الرسوم</div></div>' +
+          '<div class="fin-stat p"><div class="num">' + esc(r.formattedTotalPaid) + '</div><div class="lbl">المسدّد</div></div>' +
+          '<div class="fin-stat r"><div class="num">' + esc(r.formattedRemaining) + '</div><div class="lbl">المتبقي</div></div>' +
+          '</div>' +
+          '<div class="progress"><div class="progress-bar ' + barCls + '" style="width:' + pctR + '%"></div></div>' +
+          '<div class="progress-info"><span>' + pctR + '% مسدّد</span><span>' + r.paymentsCount + ' دفعة</span></div>';
+
+  if (r.payments && r.payments.length > 0) {
+    h += '<div style="margin-top:18px;"><div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--muted);">📋 سجل الدفعات</div><div class="payments-list">';
+    for (var i = 0; i < r.payments.length; i++) {
+      var p = r.payments[i];
+      h += '<div class="item">' +
+           '<div class="info"><div class="date">📅 ' + esc(p.date || '—') + '</div>' +
+           '<div>' + (p.method ? '💳 ' + esc(p.method) : '') + '</div></div>' +
+           '<div class="amount">' + esc(p.formattedAmount) + ' ر.ي</div>' +
+           '</div>';
+    }
+    h += '</div></div>';
+  } else {
+    h += '<div style="margin-top:18px;">' + emptyHTML('💳', 'لا توجد دفعات مسجلة', '') + '</div>';
+  }
+
+  w.innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 9. الواجبات
+// ═══════════════════════════════════════════════════════════
+function loadHomework(force) {
+  var w = $('hwWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل الواجبات...');
+
+  if (!force) {
+    var c = ssGet('homework');
+    if (c) { APP.loaded.homework = true; renderHomework(c); return; }
+  }
+
+callServerSmart(
+  'getAssignmentsForStudent',
+  { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+  'homework_' + APP.user.class + '_' + APP.user.section,
+  180,
+  function (data) {
+    APP.loaded.homework = true;
+    renderHomework(data);
+  },
+  function (e) {
+    w.innerHTML = errHTML('فشل تحميل الواجبات: ' + (e.message || e));
+  }
+);
+}
+
+function renderHomework(data) {
+  var w = $('hwWrap');
+  if (!data || data.length === 0) {
+    w.innerHTML = emptyHTML('📝', 'لا توجد واجبات حالياً', 'سيتم عرضها هنا فور إضافتها');
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < data.length; i++) {
+    var hw = data[i];
+    h += '<div class="hw-item">' +
+         '<div class="head">' +
+         '<span class="subj-chip">📚 ' + esc(hw.subject) + '</span>' +
+         '<span class="teacher">👤 ' + esc(hw.teacher) + '</span>' +
+         '<span class="date">📅 ' + esc(fmtDate(hw.date)) + '</span>' +
+         '</div>' +
+         '<div class="body">' + nl2br(hw.details) + '</div>' +
+         '</div>';
+  }
+  w.innerHTML = h;
+}
+// ═══════════════════════════════════════════════════════════
+// 10. الأخبار (نظام محسّن مع فلاتر و pagination)
+// ═══════════════════════════════════════════════════════════
+function loadNews() {
+  APP.loaded.news = true;
+  resetNewsAndLoad();
+}
+
+function resetNewsAndLoad() {
+  APP.newsState.items = [];
+  APP.newsState.page = 1;
+  APP.newsState.hasMore = false;
+
+  var newsList = $('newsList');
+  if (newsList) {
+    newsList.innerHTML = loaderHTML('جارٍ تحميل الأخبار...');
+  }
+
+  var newsMore = $('newsMore');
+  if (newsMore) {
+    newsMore.style.display = 'none';
+  }
+
+  fetchNewsPage();
+}
+
+function clearNewsFilters() {
+  var nsSort = $('nsSort');
+  if (nsSort) nsSort.value = 'newest';
+  var nsFrom = $('nsFrom');
+  if (nsFrom) nsFrom.value = '';
+  var nsTo = $('nsTo');
+  if (nsTo) nsTo.value = '';
+  resetNewsAndLoad();
+}
+
+function loadMoreNews() {
+  if (APP.newsState.loading || !APP.newsState.hasMore) return;
+  APP.newsState.page++;
+  fetchNewsPage();
+}
+
+function fetchNewsPage() {
+  if (APP.newsState.loading) return;
+  APP.newsState.loading = true;
+
+  var moreBtn = $('newsMore');
+  if (APP.newsState.page > 1) {
+    moreBtn.disabled = true;
+    moreBtn.textContent = 'جارٍ التحميل...';
+  }
+
+  var params = {
+    klass: APP.user.class,
+    section: APP.user.section,
+    sortOrder: $('nsSort').value || 'newest',
+    dateFrom: $('nsFrom').value || '',
+    dateTo: $('nsTo').value || '',
+    page: APP.newsState.page,
+    pageSize: APP.newsState.pageSize,
+    studentId: APP.user.id,
+    schoolId: APP.user.schoolId
+};
+
+  callServerSmart(
+  'getStudentNewsFiltered',
+  params,
+  'news_filtered_' + APP.user.class + '_' + APP.user.section + '_' + APP.newsState.page,
+  120,
+  function (r) {
+    APP.newsState.loading = false;
+    moreBtn.disabled = false;
+    moreBtn.textContent = 'تحميل المزيد ⬇';
+    if (!r || !r.success) {
+      $('newsList').innerHTML = errHTML((r && r.error) ? r.error : 'تعذر تحميل الأخبار');
+      return;
+    }
+    for (var i = 0; i < r.news.length; i++) APP.newsState.items.push(r.news[i]);
+    APP.newsState.hasMore = r.hasMore;
+    renderNewsList();
+    moreBtn.style.display = r.hasMore ? 'block' : 'none';
+  },
+  function (e) {
+    APP.newsState.loading = false;
+    moreBtn.disabled = false;
+    moreBtn.textContent = 'تحميل المزيد ⬇';
+    $('newsList').innerHTML = errHTML('فشل الاتصال: ' + (e.message || e));
+  }
+);
+}
+
+function renderNewsList() {
+  var w = $('newsList');
+  var items = APP.newsState.items;
+  if (!items || items.length === 0) {
+    w.innerHTML = emptyHTML('📭', 'لا توجد أخبار', 'لم يتم العثور على أخبار بهذه الفلاتر');
+    return;
+  }
+
+  // يمسح الـ Skeletons أولاً
+  w.innerHTML = '';
+  
+  var h = '';
+  for (var i = 0; i < items.length; i++) {
+    h += newsCardHTML(items[i]);
+  }
+  w.innerHTML = h;
+
+  // تسجيل المشاهدات (مرة واحدة لكل خبر مرئي)
+  setTimeout(function () {
+    for (var k = 0; k < items.length; k++) markNewsViewed(items[k].id);
+  }, 600);
+}
+
+function newsCardHTML(n) {
+  var initials = (n.teacher || '?').charAt(0);
+  var likeCls = n.myLike ? 'liked' : '';
+  var likers = '';
+  if (n.firstLikers && n.firstLikers.length > 0) {
+    likers = 'أعجب: ' + esc(n.firstLikers.join('، '));
+    if (n.likes > n.firstLikers.length) likers += ' و' + (n.likes - n.firstLikers.length) + ' آخرين';
+  }
+
+  var media = '';
+  if (n.hasAttach) {
+    if (n.isImage) {
+      media = '<div class="img-wrap" onclick="openLightbox(\'' + esc(n.attachments) + '\')">' +
+              '<img src="' + esc(n.attachments) + '" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">' +
+              '</div>';
+    } else if (n.isPdf) {
+      media = '<div class="pdf-wrap"><a href="' + esc(n.attachments) + '" target="_blank" class="pdf-link">📄 فتح ملف PDF</a></div>';
+    } else if (n.isVideo) {
+      media = '<div class="video-wrap"><a href="' + esc(n.attachments) + '" target="_blank" class="video-link">🎬 مشاهدة الفيديو</a></div>';
+    } else {
+      media = '<div class="pdf-wrap"><a href="' + esc(n.attachments) + '" target="_blank" class="pdf-link">📎 تحميل المرفق</a></div>';
+    }
+  }
+
+  var scope = '';
+  if (n.grade && n.grade !== 'الجميع') scope = esc(n.grade);
+  if (n.section && n.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(n.section);
+
+  return '<article class="news-card" data-news-id="' + esc(n.id) + '">' +
+         '<div class="head">' +
+           '<div class="avatar">' + esc(initials) + '</div>' +
+           '<div class="info">' +
+             '<div class="teacher">' + esc(n.teacher || 'الإدارة') + '</div>' +
+             '<div class="date">📅 ' + esc(fmtDate(n.date)) + '</div>' +
+           '</div>' +
+           (scope ? '<span class="scope">' + scope + '</span>' : '') +
+         '</div>' +
+         '<div class="body">' + nl2br(n.content) + '</div>' +
+         media +
+         '<div class="footer">' +
+           '<button class="news-like-btn ' + likeCls + '" onclick="nsToggleLike(\'' + esc(n.id) + '\', this)">' +
+             '<span class="heart">❤️</span><span class="count">' + (n.likes || 0) + '</span>' +
+           '</button>' +
+           '<span class="news-stat">👁️ <span class="vc">' + (n.views || 0) + '</span></span>' +
+           '<span class="news-likers">' + likers + '</span>' +
+         '</div>' +
+         '</article>';
+}
+
+function nsToggleLike(newsId, btn) {
+  if (!APP.user || !APP.user.id) return;
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      btn.disabled = false;
+      if (!r || !r.success) return;
+
+      // تبديل حالة الزر
+      if (r.liked) btn.classList.add('liked');
+      else btn.classList.remove('liked');
+      var cnt = btn.querySelector('.count');
+      if (cnt) cnt.textContent = r.likesCount;
+
+      // تحديث في APP.newsState.items
+      for (var i = 0; i < APP.newsState.items.length; i++) {
+        if (APP.newsState.items[i].id === newsId) {
+          APP.newsState.items[i].myLike = r.liked;
+          APP.newsState.items[i].likes = r.likesCount;
+          APP.newsState.items[i].firstLikers = r.firstLikers || [];
+
+          // تحديث قائمة المعجبين في DOM
+          var card = btn.parentNode.parentNode;
+          var likersEl = card.querySelector('.news-likers');
+          if (likersEl) {
+            var lk = '';
+            if (r.firstLikers && r.firstLikers.length > 0) {
+              lk = 'أعجب: ' + r.firstLikers.join('، ');
+              if (r.likesCount > r.firstLikers.length) {
+                lk += ' و' + (r.likesCount - r.firstLikers.length) + ' آخرين';
+              }
+            }
+            likersEl.textContent = lk;
+          }
+          break;
+        }
+      }
+    })
+    .withFailureHandler(function () {
+      btn.disabled = false;
+      toast('تعذّر تنفيذ العملية', 'e');
+    })
+    .toggleStudentNewsLike({
+    newsId: newsId,
+    studentId: APP.user.id,
+    userName: APP.user.name,
+    schoolId: APP.user.schoolId
+});
+}
+
+function markNewsViewed(newsId) {
+  if (!APP.user || !APP.user.id || !newsId) return;
+  google.script.run
+    .withSuccessHandler(function () {})
+    .withFailureHandler(function () {})
+    .recordStudentNewsView({
+    newsId: newsId,
+    studentId: APP.user.id,
+    userName: APP.user.name,
+    schoolId: APP.user.schoolId
+});
+}
+
+function openLightbox(url) {
+  if (!url) return;
+  $('lightboxImg').src = url;
+  $('lightbox').classList.add('show');
+}
+function closeLightbox() {
+  $('lightbox').classList.remove('show');
+  setTimeout(function () { $('lightboxImg').src = ''; }, 300);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 11. السلوكيات (مخالفات/مميزات)
+// ═══════════════════════════════════════════════════════════
+function loadViolations(force) {
+  var w = $('vioWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل سجل السلوك...');
+
+  if (!force) {
+    var c = ssGet('violations');
+    if (c) { APP.loaded.violations = true; renderViolations(c); return; }
+  }
+
+  callServerSmart(
+  'getViolations',
+  { studentId: APP.user.id, schoolId: APP.user.schoolId },
+  'violations_' + APP.user.id,
+  60,
+  function (data) {
+    APP.loaded.violations = true;
+    renderViolations(data);
+  },
+  function (e) {
+    w.innerHTML = errHTML('فشل تحميل السلوكيات: ' + (e.message || e));
+  }
+);
+}
+
+function renderViolations(data) {
+  var w = $('vioWrap');
+  if (!data || data.length === 0) {
+    w.innerHTML = emptyHTML('✅', 'سجلك نظيف!', 'لا توجد ملاحظات سلوكية مسجلة');
+    return;
+  }
+
+  // تصنيف
+  var positive = ['ملتزم', 'متفوق', 'متميز', 'إيجابي', 'إيجابية', 'ميزة', 'تشجيع', 'مجد'];
+  var merits = 0, violations = 0;
+  for (var k = 0; k < data.length; k++) {
+    var item = data[k];
+    var t = item.type || '';
+    var isM = false;
+    for (var pk = 0; pk < positive.length; pk++) {
+      if (t.indexOf(positive[pk]) !== -1) { isM = true; break; }
+    }
+    if (isM) { merits++; data[k]._isMerit = true; }
+    else { violations++; data[k]._isMerit = false; }
+  }
+
+  var h = '<div class="vio-summary">' +
+          '<div class="stat merit"><div class="num">⭐ ' + merits + '</div><div class="lbl">تعزيز إيجابي</div></div>' +
+          '<div class="stat violation"><div class="num">⚠️ ' + violations + '</div><div class="lbl">ملاحظات سلبية</div></div>' +
+          '</div>';
+
+  for (var i = 0; i < data.length; i++) {
+    var v = data[i];
+    var cls = v._isMerit ? ' merit' : '';
+    var bcls = v._isMerit ? 'm' : 'v';
+    var blbl = v._isMerit ? 'تعزيز' : 'ملاحظة';
+    h += '<div class="vio-item' + cls + '">' +
+         '<div class="head">' +
+         '<span class="badge-t ' + bcls + '">' + blbl + '</span>' +
+         '<span class="teacher">👤 ' + esc(v.teacher || '—') + '</span>' +
+         '<span class="date">📅 ' + esc(fmtDate(v.date)) + '</span>' +
+         '</div>' +
+         '<div class="body">' + nl2br(v.details || v.type) + '</div>' +
+         (v.reply ? '<div class="reply">' + nl2br(v.reply) + '</div>' : '') +
+         '</div>';
+  }
+
+  w.innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 12. الجدول الدراسي
+// ═══════════════════════════════════════════════════════════
+function loadSchedule(force) {
+  var w = $('schedWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل الجدول...');
+
+  if (!force) {
+    var c = ssGet('schedule');
+    if (c) { APP.loaded.schedule = true; renderSchedule(c); return; }
+  }
+
+  callServerSmart(
+  'getSchedule',
+  { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+  'schedule_' + APP.user.class + '_' + APP.user.section,
+  600,
+  function (r) {
+    APP.loaded.schedule = true;
+    renderSchedule(r);
+  },
+  function (e) {
+    w.innerHTML = errHTML('فشل تحميل الجدول: ' + (e.message || e));
+  }
+);
+}
+function renderSchedule(r) {
+  var w = $('schedWrap');
+  if (!r || !r.ok || !r.schedule || r.schedule.length === 0) {
+    // ✅ إصلاح [object Object]: نضمن أن msg دائماً نص
+    var msg = '';
+    if (r && r.error) {
+      // محاولة استخراج رسالة نصية من كائن الخطأ
+      if (typeof r.error === 'string') {
+        msg = r.error;                        // الخطأ نص مباشر
+      } else if (r.error && r.error.message) {
+        msg = r.error.message;                // الخطأ كائن بداخله .message
+      } else if (r.message) {
+        msg = r.message;                      // الخطأ في r مباشرة
+      } else {
+        msg = 'الجدول لم يُرفع بعد.';          // حالة افتراضية
+      }
+    } else {
+      msg = 'الجدول لم يُرفع بعد.';
+    }
+    // إزالة أي [object Object] احتياطاً
+    msg = String(msg).replace(/\[object Object\]/g, '');
+    w.innerHTML = emptyHTML('📅', msg, 'سيظهر فور إضافته من قِبل الإدارة');
+    return;
+  }
+
+  var days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+  var periods = 7;
+
+  // بناء شبكة [day][period]
+  var grid = {};
+  for (var d = 0; d < days.length; d++) {
+    grid[days[d]] = {};
+    for (var p = 1; p <= periods; p++) grid[days[d]][p] = null;
+  }
+  for (var i = 0; i < r.schedule.length; i++) {
+    var s = r.schedule[i];
+    var ps = parseInt(s.period, 10);
+    if (grid[s.day] && ps >= 1 && ps <= periods) {
+      grid[s.day][ps] = s;
+    }
+  }
+
+  var h = '<div class="sched-wrap"><table class="sched-table"><thead><tr>' +
+          '<th>اليوم</th>';
+  for (var ph = 1; ph <= periods; ph++) h += '<th>الحصة ' + ph + '</th>';
+  h += '</tr></thead><tbody>';
+
+  for (var dr = 0; dr < days.length; dr++) {
+    h += '<tr><td class="day-header day-c' + dr + '">' + days[dr] + '</td>';
+    for (var pp = 1; pp <= periods; pp++) {
+      var cell = grid[days[dr]][pp];
+      if (cell) {
+        h += '<td>' +
+             '<div class="subject">' + esc(cell.subject || '—') + '</div>' +
+             (cell.teacher ? '<div class="teacher">👤 ' + esc(cell.teacher) + '</div>' : '') +
+             (cell.room ? '<div class="room">🚪 ' + esc(cell.room) + '</div>' : '') +
+             '</td>';
+      } else {
+        h += '<td class="empty">—</td>';
+      }
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table></div>';
+
+  w.innerHTML = h;
+}
+// ═══════════════════════════════════════════════════════════
+// 13. الملاحظات (ولي الأمر)
+// ═══════════════════════════════════════════════════════════
+function loadTeachersList() {
+  google.script.run
+    .withSuccessHandler(function (list) {
+      APP.teachersList = list || [];
+      var sel = $('noteTeacher');
+      sel.innerHTML = '<option value="">— اختر المعلم —</option>';
+      for (var i = 0; i < APP.teachersList.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = APP.teachersList[i];
+        opt.textContent = APP.teachersList[i];
+        sel.appendChild(opt);
+      }
+    })
+    .withFailureHandler(function () { /* تجاهل صامت */ })
+    .getTeachersForClass({ className: APP.user.class, schoolId: APP.user.schoolId });
+}
+
+function submitMyNote() {
+  var teacher = $('noteTeacher').value;
+  var msg = $('noteMsg').value.trim();
+  var btn = $('noteSendBtn');
+
+  if (!teacher) { toast('يرجى اختيار المعلم', 'w'); return; }
+  if (msg.length < 5) { toast('الرسالة قصيرة جداً (5 أحرف على الأقل)', 'w'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'جارٍ الإرسال...';
+  showLoad('جارٍ إرسال الملاحظة...');
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      hideLoad();
+      btn.disabled = false;
+      btn.textContent = 'إرسال الملاحظة ✉️';
+
+      if (r && r.ok) {
+        $('noteMsg').value = '';
+        $('noteTeacher').value = '';
+        toast(r.message || 'تم الإرسال بنجاح', 's');
+        loadNotes(true);
+      } else {
+        toast((r && r.error) || 'تعذّر الإرسال', 'e');
+      }
+    })
+    .withFailureHandler(function (e) {
+      hideLoad();
+      btn.disabled = false;
+      btn.textContent = 'إرسال الملاحظة ✉️';
+      toast('فشل الإرسال: ' + (e.message || e), 'e');
+    })
+    .submitNote({
+    studentName: APP.user.name,
+    studentClass: APP.user.class,
+    studentSection: APP.user.section,
+    teacher: teacher,
+    message: msg,
+    schoolId: APP.user.schoolId
+});
+}
+
+function loadNotes(force) {
+  var w = $('notesHistory');
+  w.innerHTML = loaderHTML('جارٍ تحميل الملاحظات...');
+
+  callServerSmart(
+    'getStudentNotes',
+    { studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId },
+    'notes_' + APP.user.id,
+    120,
+    function (r) {
+      APP.loaded.notes = true;
+      if (!r || !r.ok || !r.notes || r.notes.length === 0) {
+        w.innerHTML = emptyHTML('📭', 'لا توجد ملاحظات سابقة', 'يمكنك إرسال ملاحظة جديدة من الأعلى');
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < r.notes.length; i++) {
+        var n = r.notes[i];
+        h += '<div class="note-item">' +
+             '<div class="head">' +
+             '<span class="teacher">👤 ' + esc(n.teacher) + '</span>' +
+             '<span class="date">📅 ' + esc(fmtDate(n.date)) + '</span>' +
+             '</div>' +
+             '<div class="body">' + nl2br(n.message) + '</div>' +
+             (n.reply ? '<div class="reply">' + nl2br(n.reply) + '</div>' : '') +
+             '</div>';
+      }
+      w.innerHTML = h;
+    },
+    function (e) {
+      w.innerHTML = errHTML('فشل تحميل الملاحظات: ' + (e.message || e));
+    }
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 14. التقارير الشخصية
+// ═══════════════════════════════════════════════════════════
+function loadReports(force) {
+  var body = $('srptBody');
+  body.innerHTML = loaderHTML('جارٍ توليد التقرير...');
+
+  if (!force && APP.reportsData) {
+    renderReportsBody(APP.reportsData);
+    return;
+  }
+
+  callServerSmart(
+  'getStudentReports',
+  { studentId: APP.user.id, schoolId: APP.user.schoolId },
+  'reports_' + APP.user.id,
+  180,
+  function (r) {
+    APP.loaded.reports = true;
+    if (r && r.ok && r.data) {
+      APP.reportsData = r.data;
+      renderReportsBody(r.data);
+    } else {
+      body.innerHTML = emptyHTML('📈', 'تعذّر توليد التقرير', (r && r.error) || '');
+    }
+  },
+  function (e) {
+    body.innerHTML = errHTML('خطأ في تحميل التقرير: ' + (e.message || e));
+  }
+);
+}
+
+function renderReportsBody(data) {
+  var s = data.summary || {};
+  var charts = data.charts || {};
+  var lists = data.lists || {};
+
+  // دائرة الأداء
+  var avg = s.overallAvg || 0;
+  var color = avg >= 80 ? '#16a34a' : (avg >= 60 ? '#d97706' : '#dc2626');
+  var radius = 56;
+  var circ = 2 * Math.PI * radius;
+  var dash = circ * (avg / 100);
+
+  var h = '<div class="score-circle-wrap">' +
+          '<div class="score-circle">' +
+          '<svg width="140" height="140">' +
+          '<circle cx="70" cy="70" r="' + radius + '" stroke="#e2e8f0" stroke-width="10" fill="none"/>' +
+          '<circle cx="70" cy="70" r="' + radius + '" stroke="' + color + '" stroke-width="10" fill="none" ' +
+            'stroke-dasharray="' + dash + ' ' + circ + '" stroke-linecap="round"/>' +
+          '</svg>' +
+          '<div class="text"><div class="v">' + esc(avg) + '%</div><div class="l">المعدل العام</div></div>' +
+          '</div>' +
+          '<div style="font-size:13px; color:var(--muted); text-align:center;">' +
+          'بناءً على ' + (s.subjectsCount || 0) + ' مادة' +
+          '</div></div>';
+
+  // إحصائيات
+  h += '<div class="rpt-stats">' +
+       '<div class="rpt-stat"><div class="ic">📝</div><div class="num">' + esc(s.homeworkAssigned || 0) + '</div><div class="lbl">واجبات</div></div>' +
+       '<div class="rpt-stat"><div class="ic">⚠️</div><div class="num">' + esc(s.violationsCount || 0) + '</div><div class="lbl">ملاحظات</div></div>' +
+       '<div class="rpt-stat"><div class="ic">⭐</div><div class="num">' + esc(s.meritsCount || 0) + '</div><div class="lbl">تعزيز إيجابي</div></div>' +
+       '<div class="rpt-stat"><div class="ic">📋</div><div class="num">' + esc(s.attendanceRate || 0) + '%</div><div class="lbl">نسبة الحضور</div></div>' +
+       '</div>';
+
+  // درجاتك حسب المادة
+  if (charts.gradesBySubject && charts.gradesBySubject.length > 0) {
+    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--pr-d);">📊 درجاتك حسب المادة</div>';
+    for (var i = 0; i < charts.gradesBySubject.length; i++) {
+      var sb = charts.gradesBySubject[i];
+      var v = sb.value || 0;
+      var bcolor = v >= 80 ? 'var(--ok)' : (v >= 60 ? 'var(--warn)' : 'var(--err)');
+      h += '<div class="subj-bar">' +
+           '<span class="lbl">' + esc(sb.label) + '</span>' +
+           '<div class="track"><div class="fill" style="width:' + Math.min(100, v) + '%; background:' + bcolor + ';"></div></div>' +
+           '<span class="v" style="color:' + bcolor + ';">' + esc(v) + '</span>' +
+           '</div>';
+    }
+  }
+
+  // مقارنة مع متوسط الفصل
+  if (charts.comparisonChart && charts.comparisonChart.length > 0) {
+    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--pr-d);">📈 مقارنة بمتوسط الفصل</div>';
+    for (var c = 0; c < charts.comparisonChart.length; c++) {
+      var cm = charts.comparisonChart[c];
+      var diff = (cm.my || 0) - (cm.classAvg || 0);
+      var diffSign = diff >= 0 ? '+' : '';
+      var diffColor = diff >= 0 ? 'var(--ok)' : 'var(--err)';
+      h += '<div class="subj-bar">' +
+           '<span class="lbl">' + esc(cm.label) + '</span>' +
+           '<div style="font-size:12px; color:var(--muted);">' +
+             'أنت: <b>' + esc(cm.my) + '</b> · الفصل: <b>' + esc(cm.classAvg) + '</b>' +
+           '</div>' +
+           '<span class="v" style="color:' + diffColor + ';">' + diffSign + diff.toFixed(1) + '</span>' +
+           '</div>';
+    }
+  }
+
+  // آخر الدرجات
+  if (lists.lastGrades && lists.lastGrades.length > 0) {
+    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--pr-d);">🆕 آخر الدرجات المستلمة</div>';
+    for (var lg = 0; lg < lists.lastGrades.length; lg++) {
+      var g = lists.lastGrades[lg];
+      var gc = g.value >= 80 ? 'high' : (g.value >= 60 ? 'mid' : 'low');
+      h += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg); border-radius:8px; margin-bottom:6px;">' +
+           '<div><div style="font-weight:600;">' + esc(g.subject) + '</div>' +
+           '<div style="font-size:11px; color:var(--muted);">' + esc(g.month || '') + '</div></div>' +
+           '<span class="gr-cell ' + gc + '">' + esc(g.value) + '</span>' +
+           '</div>';
+    }
+  }
+
+  // أحدث المميزات
+  if (lists.topMerits && lists.topMerits.length > 0) {
+    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--ok);">⭐ آخر التعزيزات الإيجابية</div>';
+    for (var tm = 0; tm < lists.topMerits.length; tm++) {
+      var m = lists.topMerits[tm];
+      h += '<div class="vio-item merit"><div class="head">' +
+           '<span class="badge-t m">تعزيز</span>' +
+           '<span class="date">📅 ' + esc(m.date || '—') + '</span>' +
+           '</div><div class="body">' + esc(m.type) + '</div></div>';
+    }
+  }
+
+  // آخر السلوكيات
+  if (lists.topViolations && lists.topViolations.length > 0) {
+    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--err);">⚠️ آخر الملاحظات السلبية</div>';
+    for (var tv = 0; tv < lists.topViolations.length; tv++) {
+      var vv = lists.topViolations[tv];
+      h += '<div class="vio-item"><div class="head">' +
+           '<span class="badge-t v">ملاحظة</span>' +
+           '<span class="date">📅 ' + esc(vv.date || '—') + '</span>' +
+           '</div><div class="body">' + esc(vv.type) + '</div></div>';
+    }
+  }
+
+  h += '<div style="text-align:center; font-size:11px; color:var(--muted); margin-top:18px; padding-top:12px; border-top:1px dashed var(--bdr);">' +
+       'تم التوليد في: ' + esc(data.generatedAt || '—') + '</div>';
+
+  $('srptBody').innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 15. الغياب
+// ═══════════════════════════════════════════════════════════
+function loadAttendance(force) {
+  var w = $('attWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل سجل الغياب...');
+
+  if (!force) {
+    var c = ssGet('attendance');
+    if (c) { APP.loaded.attendance = true; renderAttendance(c); return; }
+  }
+
+  callServerSmart(
+  'getAttendanceForStudent',
+  { studentId: APP.user.id, schoolId: APP.user.schoolId },
+  'attendance_' + APP.user.id,
+  120,
+  function (r) {
+    APP.loaded.attendance = true;
+    renderAttendance(r);
+  },
+  function (e) {
+    w.innerHTML = errHTML('فشل تحميل سجل الغياب: ' + (e.message || e));
+  }
+);
+}
+
+function renderAttendance(r) {
+  var w = $('attWrap');
+  if (!r || !r.ok || !r.records || r.records.length === 0) {
+    w.innerHTML = emptyHTML('✅', 'سجل الغياب نظيف!', 'لم يتم تسجيل أي غياب');
+    return;
+  }
+
+  var h = '<div style="margin-bottom:12px; padding:12px; background:var(--err-bg); border-radius:var(--rad-s); text-align:center; color:var(--err); font-weight:700;">' +
+          '📋 إجمالي السجلات: ' + r.total + '</div>';
+
+  for (var i = 0; i < r.records.length; i++) {
+    var rec = r.records[i];
+    var cls = rec.status === 'متأخر' ? ' late' : '';
+    var stCls = rec.status === 'متأخر' ? 'late' : 'absent';
+    h += '<div class="att-item' + cls + '">' +
+         '<div class="info">' +
+         '<div class="date">📅 ' + esc(rec.date) + '</div>' +
+         (rec.recorder ? '<div class="recorder">سجّله: ' + esc(rec.recorder) + '</div>' : '') +
+         '</div>' +
+         '<span class="status ' + stCls + '">' + esc(rec.status) + '</span>' +
+         '</div>';
+  }
+  w.innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 16. تغيير كلمة المرور
+// ═══════════════════════════════════════════════════════════
+function changeMyPassword() {
+  var cur = $('pwCur').value.trim();
+  var ne  = $('pwNew').value.trim();
+  var cf  = $('pwConf').value.trim();
+  var btn = $('pwSaveBtn');
+
+  if (!cur || !ne || !cf) { toast('يرجى تعبئة جميع الحقول', 'w'); return; }
+  if (ne.length < 4) { toast('كلمة المرور الجديدة قصيرة (4 أحرف على الأقل)', 'w'); return; }
+  if (ne !== cf) { toast('كلمتا المرور غير متطابقتين', 'e'); return; }
+  if (ne === cur) { toast('كلمة المرور الجديدة يجب أن تختلف عن الحالية', 'w'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'جارٍ الحفظ...';
+  showLoad('جارٍ تغيير كلمة المرور...');
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      hideLoad();
+      btn.disabled = false;
+      btn.textContent = 'حفظ';
+
+      if (r && r.ok) {
+        closeModal('pwModal');
+        $('pwCur').value = '';
+        $('pwNew').value = '';
+        $('pwConf').value = '';
+        toast(r.message || 'تم تغيير كلمة المرور بنجاح', 's');
+      } else {
+        toast((r && r.error) || 'تعذّر التغيير', 'e');
+      }
+    })
+    .withFailureHandler(function (e) {
+      hideLoad();
+      btn.disabled = false;
+      btn.textContent = 'حفظ';
+      toast('فشل: ' + (e.message || e), 'e');
+    })
+    .changePassword(APP.user.id, cur, ne, APP.user.schoolId);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 17. شارات الإشعارات (Badges)
+// ═══════════════════════════════════════════════════════════
+function loadNotificationBadges() {
+  if (!APP.user || !APP.user.id) return;
+
+  // تاريخ آخر دخول مخزّن في sessionStorage
+  var lastLogin = ssGet('lastLogin');
+  if (!lastLogin) {
+    lastLogin = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // قبل أسبوع
+  }
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok || !r.badge) return;
+      var b = r.badge;
+      setBadge('badge-news', b.news);
+      setBadge('badge-violations', b.violations);
+      setBadge('badge-notes', b.notes);
+      setBadge('badge-homework', b.homework);
+    })
+    .withFailureHandler(function () { /* صامت */ })
+    .getStudentNotificationBadge(
+    APP.user.id, APP.user.name,
+    APP.user.class, APP.user.section,
+    lastLogin, APP.user.schoolId
+);
+}
+
+function setBadge(id, count) {
+  var el = $(id);
+  if (!el) return;
+  if (count && count > 0) {
+    el.textContent = count > 99 ? '99+' : count;
+    el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// 18. تثبيت الأحداث (Login بـ Enter)
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function () {
+  // Enter في حقول تسجيل الدخول
+  var u = $('username'), p = $('password');
+  if (u) u.addEventListener('keydown', function (e) { if (e.key === 'Enter') p.focus(); });
+  if (p) p.addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+
+  // إغلاق Modal بـ Escape
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      var modals = document.querySelectorAll('.modal-bg.show');
+      for (var i = 0; i < modals.length; i++) modals[i].classList.remove('show');
+      if ($('lightbox').classList.contains('show')) closeLightbox();
+    }
+  });
+
+  // إغلاق Modal بالنقر على الخلفية
+  var bgs = document.querySelectorAll('.modal-bg');
+  for (var b = 0; b < bgs.length; b++) {
+    bgs[b].addEventListener('click', function (e) {
+      if (e.target === this) this.classList.remove('show');
+    });
+  }
+});
+function initLazyImages() {
+  if ('IntersectionObserver' in window) {
+    var observer = new IntersectionObserver(function(entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          var img = entries[i].target;
+          if (img.dataset.src) {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+            observer.unobserve(img);
+          }
+        }
+      }
+    });
+    var lazyImages = document.querySelectorAll('img[data-src]');
+    for (var j = 0; j < lazyImages.length; j++) {
+      observer.observe(lazyImages[j]);
+    }
+  } else {
+    var imgs = document.querySelectorAll('img[data-src]');
+    for (var k = 0; k < imgs.length; k++) {
+      imgs[k].src = imgs[k].dataset.src;
+    }
+  }
+}
+</script>
+
+</body>
+</html>

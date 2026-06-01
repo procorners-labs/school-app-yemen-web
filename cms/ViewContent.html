@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة المحتوى | CMS</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, 'Helvetica Neue', sans-serif;
+      background: #f5f9ff;
+      padding: 24px 20px;
+      color: #0b1e33;
+      line-height: 1.5;
+    }
+    .container { max-width: 1440px; margin: 0 auto; }
+
+    .app-header {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(8px);
+      padding: 20px 32px;
+      border-radius: 48px;
+      margin-bottom: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.02);
+      border: 1px solid rgba(255,255,255,0.7);
+    }
+    .app-header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(145deg, #1a5ecc, #0d3e8a);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn-group { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      background: white;
+      border: 1px solid #cfdff0;
+      padding: 12px 26px;
+      border-radius: 60px;
+      font-weight: 600;
+      font-size: 1rem;
+      color: #1f3a5f;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    }
+    .btn:hover { background: #e9f0fe; border-color: #1a73e8; }
+    .btn-primary {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      box-shadow: 0 8px 18px rgba(26,115,232,0.25);
+    }
+    .btn-primary:hover { background: #0d5fc5; }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+      margin-bottom: 32px;
+    }
+    .stat-tile {
+      background: white;
+      padding: 24px 16px;
+      border-radius: 32px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.02);
+      text-align: center;
+      border: 1px solid #eaf0f8;
+      transition: transform 0.15s;
+    }
+    .stat-tile:hover { transform: translateY(-4px); }
+    .stat-value {
+      font-size: 3.2rem;
+      font-weight: 800;
+      color: #1a73e8;
+      line-height: 1.2;
+    }
+    .stat-label { color: #53718e; font-weight: 500; margin-top: 6px; }
+
+    .tabs-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .tab {
+      background: white;
+      border: 1px solid #dae3ed;
+      padding: 14px 34px;
+      border-radius: 60px;
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #314e6e;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.01);
+      transition: all 0.15s;
+    }
+    .tab.active {
+      background: #1a73e8;
+      color: white;
+      border-color: #1a73e8;
+      box-shadow: 0 12px 24px rgba(26,115,232,0.2);
+    }
+    .tab:hover:not(.active) { background: #e5efff; }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 26px;
+      margin-top: 12px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 36px;
+      padding: 28px 24px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.02);
+      border: 1px solid #f0f5fc;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .card:hover {
+      box-shadow: 0 28px 45px rgba(0,0,0,0.04);
+      border-color: #cddef5;
+    }
+    .card h3 {
+      font-size: 1.7rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+      color: #0b1e33;
+      line-height: 1.3;
+    }
+    .card p { color: #25475d; margin-bottom: 18px; flex: 1; }
+    .card img {
+      max-width: 100%;
+      border-radius: 28px;
+      margin: 18px 0;
+      border: 1px solid #e4ecf5;
+    }
+    .video-wrapper {
+      position: relative;
+      padding-bottom: 56.25%;
+      height: 0;
+      margin: 18px 0;
+      border-radius: 28px;
+      overflow: hidden;
+    }
+    .video-wrapper iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    .meta {
+      margin-top: 22px;
+      padding-top: 20px;
+      border-top: 1px dashed #b9cee4;
+      font-size: 0.9rem;
+      color: #456f94;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badge {
+      background: #e2eaf5;
+      padding: 6px 18px;
+      border-radius: 60px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #1e3a5f;
+    }
+
+    .empty-state {
+      background: white;
+      border-radius: 36px;
+      padding: 70px 40px;
+      text-align: center;
+      color: #6883a0;
+      font-size: 1.2rem;
+      border: 1px dashed #bed3e9;
+      grid-column: 1 / -1;
+    }
+
+    .loading-spinner {
+      text-align: center;
+      padding: 60px;
+      color: #1a73e8;
+      font-size: 1.3rem;
+      grid-column: 1 / -1;
+    }
+
+    .back-link { margin-top: 50px; text-align: center; }
+    .back-link a { color: #1a73e8; text-decoration: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; }
+
+    /* بطاقة عرض خاصة لروابط التواصل الاجتماعي */
+    .social-preview {
+      margin: 16px 0;
+      text-align: center;
+      background: linear-gradient(145deg, #f0f7ff, #ffffff);
+      border-radius: 24px;
+      padding: 24px 16px;
+      border: 1px solid #d6e6ff;
+    }
+    .social-icon {
+      font-size: 3.5rem;
+      margin-bottom: 8px;
+    }
+    .social-name {
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #1e3a5f;
+      font-size: 1.1rem;
+    }
+    .social-link-btn {
+      display: inline-block;
+      background: #1a73e8;
+      color: white;
+      padding: 12px 28px;
+      border-radius: 40px;
+      text-decoration: none;
+      font-weight: 600;
+      box-shadow: 0 6px 14px rgba(26,115,232,0.2);
+      transition: all 0.15s;
+    }
+    .social-link-btn:hover {
+      background: #0d5fc5;
+      transform: scale(1.02);
+    }
+
+    @media (max-width: 700px) {
+      .mini-stats { grid-template-columns: repeat(2, 1fr); }
+      .app-header h1 { font-size: 1.8rem; }
+      .tab { padding: 12px 24px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- الرأس -->
+  <div class="app-header">
+    <h1>
+      <span>📊</span> لوحة المحتوى والتحليلات
+    </h1>
+    <div class="btn-group">
+      <button class="btn" onclick="refreshAllContent()"><span>🔄</span> تحديث الكل</button>
+      <button class="btn btn-primary" onclick="goToPage('')"><span>🏠</span> الرئيسية</button>
+    </div>
+  </div>
+
+  <!-- إحصائيات سريعة -->
+  <div class="mini-stats" id="statsMiniContainer">
+    <div class="stat-tile"><div class="stat-value">—</div><div class="stat-label">أخبار</div></div>
+    <div class="stat-tile"><div class="stat-value">—</div><div class="stat-label">فيديوهات</div></div>
+    <div class="stat-tile"><div class="stat-value">—</div><div class="stat-label">صور</div></div>
+    <div class="stat-tile"><div class="stat-value">—</div><div class="stat-label">منشورات مجدولة</div></div>
+  </div>
+
+  <!-- تبويبات المحتوى -->
+  <div class="tabs-bar">
+    <div class="tab active" data-section="news">📰 الأخبار</div>
+    <div class="tab" data-section="videos">🎬 الفيديوهات</div>
+    <div class="tab" data-section="images">🖼️ الصور</div>
+    <div class="tab" data-section="schedule">📅 جدول النشر</div>
+  </div>
+
+  <!-- الأقسام -->
+  <div id="news" class="section active">
+    <div class="grid" id="newsGrid"><div class="loading-spinner">⏳ جاري تحميل الأخبار...</div></div>
+  </div>
+  <div id="videos" class="section">
+    <div class="grid" id="videosGrid"><div class="loading-spinner">⏳ جاري تحميل الفيديوهات...</div></div>
+  </div>
+  <div id="images" class="section">
+    <div class="grid" id="imagesGrid"><div class="loading-spinner">⏳ جاري تحميل الصور...</div></div>
+  </div>
+  <div id="schedule" class="section">
+    <div class="grid" id="scheduleGrid"><div class="loading-spinner">⏳ جاري تحميل جدول النشر...</div></div>
+  </div>
+
+  <!-- العودة -->
+  <div class="back-link">
+    <a onclick="goToPage(''); return false;">🏠 العودة إلى الرئيسية</a>
+  </div>
+</div>
+<script>
+  // ★ استخراج schoolId من الرابط لدعم تعدد المدارس (Multi-Tenant)
+  (function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    window.SCHOOL_ID = urlParams.get('school') || '';
+  })();
+
+  window.goToPage = function(p) {
+    google.script.run.withSuccessHandler(function(url) {
+      var finalUrl = url;
+      // ✅ إلحاق schoolId بالرابط للانتقال بين الصفحات مع الحفاظ على عزل المدرسة
+      if (window.SCHOOL_ID) {
+        finalUrl += (finalUrl.indexOf('?') > -1 ? '&' : '?') + 'school=' + encodeURIComponent(window.SCHOOL_ID);
+      }
+      window.top.location.href = finalUrl;
+    }).getPageUrl(p);
+  };
+
+  // التبويبات
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      var id = this.dataset.section;
+      document.querySelectorAll('.section').forEach(function(s){ s.classList.remove('active'); });
+      document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
+      document.getElementById(id).classList.add('active');
+      this.classList.add('active');
+    });
+  });
+
+  function formatDate(d) { if (!d) return ''; try { return new Date(d).toLocaleString('ar-SA'); } catch(e) { return String(d); } }
+  function esc(t) { if (t == null) return ''; var div = document.createElement('div'); div.textContent = String(t); return div.innerHTML; }
+
+  // عرض الأخبار
+  function displayNews(data) {
+    var grid = document.getElementById('newsGrid');
+    if (!data || data.length === 0) { grid.innerHTML = '<div class="empty-state">📭 لا توجد أخبار بعد</div>'; return; }
+    var html = '';
+    for (var i = data.length - 1; i >= 0; i--) {
+      var r = data[i]; if (!r) continue;
+      html += '<div class="card"><h3>' + esc(r.title) + '</h3><p>' + esc(r.content) + '</p>';
+      if (r.mediaURL && r.mediaType === 'Image') html += '<img src="' + esc(r.mediaURL) + '" loading="lazy">';
+      html += '<div class="meta"><span>📅 ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
+    }
+    grid.innerHTML = html;
+  }
+
+  // عرض الفيديوهات (مع دعم فيسبوك/إنستغرام)
+  function displayVideos(data) {
+    var grid = document.getElementById('videosGrid');
+    if (!data || data.length === 0) { grid.innerHTML = '<div class="empty-state">🎬 لا توجد فيديوهات</div>'; return; }
+    var html = '';
+    for (var i = data.length - 1; i >= 0; i--) {
+      var r = data[i]; if (!r) continue;
+      var embed = '';
+      if (r.videoURL) {
+        var u = r.videoURL;
+        var isFacebook = u.indexOf('facebook.com') !== -1 || u.indexOf('fb.com') !== -1;
+        var isInstagram = u.indexOf('instagram.com') !== -1;
+        if (u.indexOf('youtube.com/watch') !== -1) {
+          var id = u.split('v=')[1]; if (id) { var amp = id.indexOf('&'); if (amp !== -1) id = id.substring(0,amp); embed = '<div class="video-wrapper"><iframe src="https://www.youtube.com/embed/' + id + '" allowfullscreen loading="lazy"></iframe></div>'; }
+        } else if (u.indexOf('youtu.be/') !== -1) {
+          var id = u.split('youtu.be/')[1]; if (id) { var q = id.indexOf('?'); if (q !== -1) id = id.substring(0,q); embed = '<div class="video-wrapper"><iframe src="https://www.youtube.com/embed/' + id + '" allowfullscreen loading="lazy"></iframe></div>'; }
+        } else if (u.indexOf('drive.google.com') !== -1) {
+          embed = '<div class="video-wrapper"><iframe src="' + u.replace('/view?usp=sharing','/preview') + '" allowfullscreen loading="lazy"></iframe></div>';
+        } else if (isFacebook) {
+          embed = '<div class="social-preview">' +
+                    '<div class="social-icon">📘</div>' +
+                    '<div class="social-name">فيسبوك</div>' +
+                    '<a href="' + esc(u) + '" target="_blank" class="social-link-btn">🔗 مشاهدة الفيديو على فيسبوك</a>' +
+                  '</div>';
+        } else if (isInstagram) {
+          embed = '<div class="social-preview">' +
+                    '<div class="social-icon">📷</div>' +
+                    '<div class="social-name">إنستغرام</div>' +
+                    '<a href="' + esc(u) + '" target="_blank" class="social-link-btn">🔗 مشاهدة الفيديو على إنستغرام</a>' +
+                  '</div>';
+        } else {
+          embed = '<p><a href="' + esc(u) + '" target="_blank" class="social-link-btn" style="margin-top:12px;">🔗 رابط الفيديو</a></p>';
+        }
+      }
+      html += '<div class="card"><h3>' + esc(r.title) + '</h3><p>' + esc(r.description) + '</p>' + embed;
+      html += '<div class="meta"><span>📅 ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
+    }
+    grid.innerHTML = html;
+  }
+
+  // عرض الصور
+  function displayImages(data) {
+    var grid = document.getElementById('imagesGrid');
+    if (!data || data.length === 0) { grid.innerHTML = '<div class="empty-state">🖼️ لا توجد صور</div>'; return; }
+    var html = '';
+    for (var i = data.length - 1; i >= 0; i--) {
+      var r = data[i]; if (!r) continue;
+      html += '<div class="card"><h3>' + esc(r.name) + '</h3><p>' + esc(r.description) + '</p>';
+      if (r.imageURL) html += '<img src="' + esc(r.imageURL) + '" loading="lazy">';
+      html += '<div class="meta"><span>📅 ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
+    }
+    grid.innerHTML = html;
+  }
+
+  // عرض جدول النشر
+  function displaySchedule(data) {
+    var grid = document.getElementById('scheduleGrid');
+    if (!data || data.length === 0) { grid.innerHTML = '<div class="empty-state">📅 لا توجد منشورات مجدولة</div>'; return; }
+    data.sort(function(a,b){ return new Date(a.scheduledDate) - new Date(b.scheduledDate); });
+    var html = '';
+    for (var i = 0; i < data.length; i++) {
+      var r = data[i]; if (!r) continue;
+      html += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><h3>' + esc(r.platform) + '</h3><span class="badge">' + esc(r.postType) + '</span></div>';
+      html += '<p>' + esc(r.content) + '</p>';
+      if (r.mediaURL) html += '<img src="' + esc(r.mediaURL) + '" loading="lazy">';
+      html += '<div style="margin-top:18px;"><div><strong>📅 موعد النشر:</strong> ' + (r.scheduledDate ? formatDate(r.scheduledDate) : 'غير محدد') + '</div>';
+      html += '<div><strong>📌 الحالة:</strong> ' + esc(r.status) + '</div></div>';
+      html += '<div class="meta"><span>🕒 أُضيف: ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
+    }
+    grid.innerHTML = html;
+  }
+
+  // جلب المحتوى
+  function fetchContent(fnName, gridId, displayFn) {
+    var grid = document.getElementById(gridId);
+    grid.innerHTML = '<div class="loading-spinner">⏳ جاري التحميل...</div>';
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data) { grid.innerHTML = '<div class="empty-state">⚠️ تعذر جلب البيانات</div>'; return; }
+        displayFn(data);
+      })
+      .withFailureHandler(function(err) {
+        grid.innerHTML = '<div class="empty-state">⚠️ فشل الاتصال</div>';
+      })
+      [fnName]();
+  }
+
+  function updateMiniStats(stats) {
+    if (!stats) return;
+    var container = document.getElementById('statsMiniContainer');
+    var values = [stats.News || 0, stats.Videos || 0, stats.Images || 0, stats.Schedule || 0];
+    var labels = ['أخبار', 'فيديوهات', 'صور', 'منشورات مجدولة'];
+    var html = '';
+    for (var i = 0; i < 4; i++) {
+      html += '<div class="stat-tile"><div class="stat-value">' + values[i] + '</div><div class="stat-label">' + labels[i] + '</div></div>';
+    }
+    container.innerHTML = html;
+  }
+
+  function loadStats() {
+    // ✅ تمرير schoolId لعرض إحصائيات المدرسة الصحيحة
+    google.script.run.withSuccessHandler(updateMiniStats).getSystemStats(window.SCHOOL_ID);
+  }
+
+  function loadAllContent() {
+    loadStats();
+    fetchContent('getNewsData', 'newsGrid', displayNews);
+    fetchContent('getVideosData', 'videosGrid', displayVideos);
+    fetchContent('getImagesData', 'imagesGrid', displayImages);
+    fetchContent('getScheduleData', 'scheduleGrid', displaySchedule);
+  }
+
+  window.refreshAllContent = function() {
+    loadAllContent();
+  };
+
+  window.onload = function() {
+    loadAllContent();
+  };
+</script>
+</body>
+</html>
