@@ -2271,81 +2271,53 @@ function renderMonth(idx) {
 
   var isTermMonth = m.isFinal || m.isTermMonth || false;
 
-  // ── تحديد الأعمدة ──
-  var isNewTermStruct = false;
-  var colTypes = [];
+  // ── تحديد الأعمدة ديناميكياً من بيانات الخادم ──
+  // الفترات (نصف/نهاية العام): الأعمدة = مفاتيح الدرجات كما وردت (فريدة)،
+  //   مع التسمية والحد الأقصى من نفس البيانات — يدعم 3 أعمدة و5 أعمدة تلقائياً.
+  // الشهور العادية: الأعمدة الأربعة المعروفة + عمود المجموع.
+  var colDefs = [];
 
   if (isTermMonth) {
+    var seenKey = {};
     for (var si = 0; si < m.subjects.length; si++) {
       var gs = m.subjects[si].grades || [];
       for (var gi = 0; gi < gs.length; gi++) {
-        if (gs[gi].type === 'المحصلة /20' || gs[gi].type === 'المحصلة' ||
-            gs[gi].type === 'درجة الاختبار' || gs[gi].type === 'الدرجة الشهرية' ||
-            gs[gi].type === 'الأعمال المستمرة') {
-          isNewTermStruct = true;
-          break;
+        var g = gs[gi];
+        var kk = g.key || g.type;
+        if (kk && !seenKey[kk]) {
+          seenKey[kk] = true;
+          colDefs.push({ key: kk, label: g.type || kk, max: g.max || 100, isTotal: !!g.isTotal });
         }
       }
-      if (isNewTermStruct) break;
     }
-    // ⭐ v3.1: التسميات الموحدة الجديدة
-    colTypes = isNewTermStruct
-      ? ['المحصلة', 'درجة الاختبار', 'المجموع']
-      : ['المجموع'];
+    if (colDefs.length === 0) colDefs.push({ key: 'total_score', label: 'المجموع', max: 50, isTotal: true });
   } else {
-    var typeSet = {};
+    var maxByType = {};
     for (var si2 = 0; si2 < m.subjects.length; si2++) {
       var gs2 = m.subjects[si2].grades || [];
       for (var gi2 = 0; gi2 < gs2.length; gi2++) {
-        if (gs2[gi2].type) typeSet[gs2[gi2].type] = true;
+        if (gs2[gi2].type) maxByType[gs2[gi2].type] = (gs2[gi2].max || 100);
       }
     }
     var orderedCols = ['السلوك', 'الواجبات', 'الشفوي', 'التحريري'];
+    var defMax = { 'السلوك': 20, 'الواجبات': 20, 'الشفوي': 20, 'التحريري': 40 };
     for (var oi = 0; oi < orderedCols.length; oi++) {
-      if (typeSet[orderedCols[oi]]) colTypes.push(orderedCols[oi]);
-    }
-    if (colTypes.length === 0) colTypes = orderedCols;
-  }
-
-  // ⭐ v3: إضافة العمود الافتراضي "الإجمالي (100)" إذا كان موجوداً في البيانات
-  for (var ci = 0; ci < m.subjects.length; ci++) {
-    var sub = m.subjects[ci];
-    if (sub.grades && sub.grades.length) {
-      for (var gi = 0; gi < sub.grades.length; gi++) {
-        var g = sub.grades[gi];
-        if (g.isVirtual && colTypes.indexOf(g.type) === -1) {
-          colTypes.push(g.type);
-        }
+      var ocn = orderedCols[oi];
+      if (maxByType[ocn] !== undefined || true) {
+        colDefs.push({ key: ocn, label: ocn, max: maxByType[ocn] || defMax[ocn] || 100, isTotal: false });
       }
     }
   }
 
   // ── رأس الجدول ──
-  var maxScores = {
-    'السلوك'          : 20,
-    'الواجبات'         : 20,
-    'الشفوي'           : 20,
-    'التحريري'         : 40,
-    'المحصلة'          : 20,      // ⭐ v3.1: في الفترات الفصلية
-    'المحصلة /20'      : 20,      // للتوافق
-    'درجة الاختبار'    : 30,
-    'المجموع'          : 50,
-    'الإجمالي (100)'   : 100      // عمود افتراضي v3
-  };
-
   var h = '<div class="grades-wrap-scroll"><table class="grades-table"><thead><tr>' +
           '<th>المادة</th>';
 
-  for (var t = 0; t < colTypes.length; t++) {
-    var mx = maxScores[colTypes[t]] ? '/' + maxScores[colTypes[t]] : '';
-    var isTotal = (colTypes[t] === 'المجموع');
-    var isVirtual = (colTypes[t] === 'الإجمالي (100)');
-    var thStyle = isTotal ? ' style="background:#e8f5e9;color:#2e7d32;"' : '';
-    if (isVirtual) {
-      thStyle = ' style="background:#fef3c7;color:#92400e;"';
-    }
-    h += '<th' + thStyle + '>' + esc(colTypes[t]) +
-         '<br><small style="font-weight:400;opacity:.75">' + mx + '</small></th>';
+  for (var t = 0; t < colDefs.length; t++) {
+    var mxs = colDefs[t].max ? '/' + colDefs[t].max : '';
+    var thStyle = colDefs[t].isTotal ? ' style="background:#e8f5e9;color:#2e7d32;"' : '';
+    h += '<th' + thStyle + '>' + esc(colDefs[t].label) +
+         '<br><small style="font-weight:400;opacity:.75">' + mxs + '</small></th>';
   }
 
   // عمود المجموع للشهور العادية
@@ -2363,40 +2335,39 @@ function renderMonth(idx) {
 
     for (var gj = 0; gj < gsArr.length; gj++) {
       var gradeObj = gsArr[gj];
-      grMap[gradeObj.type]   = gradeObj.value;
-      lockMap[gradeObj.type] = !!gradeObj.locked;
+      var mapKey = gradeObj.key || gradeObj.type;
+      grMap[mapKey]   = gradeObj.value;
+      lockMap[mapKey] = !!gradeObj.locked;
+      if (gradeObj.type) { grMap[gradeObj.type] = gradeObj.value; lockMap[gradeObj.type] = !!gradeObj.locked; }
     }
 
     h += '<tr><td style="font-weight:600;text-align:right">' + esc(subj.name) + '</td>';
 
-    for (var ti = 0; ti < colTypes.length; ti++) {
-      var cType    = colTypes[ti];
-      var cVal     = grMap[cType] !== undefined ? grMap[cType] : '';
-      var cMax     = maxScores[cType] || 100;
-      var isTotal2 = (cType === 'المجموع');
-      var isVirtual2 = (cType === 'الإجمالي (100)');
-      var isLocked = lockMap[cType] === true;
+    for (var ti = 0; ti < colDefs.length; ti++) {
+      var def      = colDefs[ti];
+      var cVal     = grMap[def.key] !== undefined ? grMap[def.key] : '';
+      var cMax     = def.max || 100;
+      var isLocked = lockMap[def.key] === true;
 
       var num   = parseFloat(cVal);
       var pct   = !isNaN(num) ? (num / cMax * 100) : -1;
       var color = pct < 0 ? 'var(--muted)' :
                   (pct >= 80 ? 'var(--ok)' : (pct >= 60 ? 'var(--warn)' : 'var(--err)'));
 
-      var bg = isVirtual2 ? '#fef3c7' : (isTotal2 ? '#f1f8e9' : (isLocked ? '#f8fafc' : 'transparent'));
-      var lockIc = isLocked && !isTotal2 && !isVirtual2 ? '<span title="محسوبة آلياً" style="font-size:9px;opacity:.55">🔒 </span>' : '';
-      var fw     = (isTotal2 || isVirtual2) ? '700' : '500';
+      var bg = def.isTotal ? '#f1f8e9' : (isLocked ? '#f8fafc' : 'transparent');
+      var lockIc = (isLocked && !def.isTotal) ? '<span title="محسوبة آلياً" style="font-size:9px;opacity:.55">🔒 </span>' : '';
+      var fw     = def.isTotal ? '700' : '500';
 
-      var tdStyle = 'style="background:' + bg + ';font-weight:' + fw + ';color:' + (isVirtual2 ? '#92400e' : color) + ';"';
-      h += '<td ' + tdStyle + '>' + lockIc + (cVal !== '' ? esc(String(cVal)) : '—') + '</td>';
+      h += '<td style="background:' + bg + ';font-weight:' + fw + ';color:' + color + ';">' +
+           lockIc + (cVal !== '' ? esc(String(cVal)) : '—') + '</td>';
     }
 
     // عمود المجموع للشهور العادية
     if (!isTermMonth) {
       var total = subj.total || '';
       var tNum  = parseFloat(total);
-      var tPct  = !isNaN(tNum) ? (tNum / 100 * 100) : -1;
-      var tColor = tPct < 0 ? 'var(--muted)' :
-                   (tPct >= 80 ? 'var(--ok)' : (tPct >= 60 ? 'var(--warn)' : 'var(--err)'));
+      var tColor = isNaN(tNum) ? 'var(--muted)' :
+                   (tNum >= 80 ? 'var(--ok)' : (tNum >= 60 ? 'var(--warn)' : 'var(--err)'));
       h += '<td style="background:#f1f8e9;font-weight:700;color:' + tColor + ';">' +
            (total !== '' ? esc(String(total)) : '—') + '</td>';
     }

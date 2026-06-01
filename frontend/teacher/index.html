@@ -3710,7 +3710,7 @@ function renderGradesTable() {
       // ═══════════════════════════════════════════════════
       // ⭐ v3.1: العمود الأول مقفل دائماً في الفترات الفصلية
       // ═══════════════════════════════════════════════════
-      html += '<td class="locked-cell" style="background:#f9fafb;color:#374151;font-weight:600;text-align:center;" title="محسوبة تلقائياً">' +
+      html += '<td class="locked-cell" data-locked-monthly="' + st.code + '" style="background:#f9fafb;color:#374151;font-weight:600;text-align:center;" title="محسوبة تلقائياً">' +
               (msV !== '' ? msV : '—') +
               '</td>';
 
@@ -3936,6 +3936,17 @@ function triggerAutoSave(inp) {
     if (r && r.success) {
       inp.classList.add('has-grade');
       inp.classList.remove('error');
+      // ✅ تحديث فوري للأعمدة المحسوبة آلياً (المحصلة/الإجمالي) من رد الخادم
+      if (r.calculated) {
+        var msCell = document.querySelector('[data-locked-monthly="' + code + '"]');
+        if (msCell && r.calculated.monthly !== undefined && r.calculated.monthly !== null && r.calculated.monthly !== '') {
+          msCell.textContent = r.calculated.monthly;
+        }
+        var tsSpan = document.querySelector('.row-total-final[data-code="' + code + '"]');
+        if (tsSpan && r.calculated.total !== undefined && r.calculated.total !== null && r.calculated.total !== '') {
+          tsSpan.textContent = r.calculated.total;
+        }
+      }
     } else {
       inp.classList.add('error');
       if (r && r.error) toast('خطأ: ' + r.error, 'error');

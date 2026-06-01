@@ -1322,7 +1322,7 @@ function _resolveColumnKey(month, columnLabel) {
     if (isTermMonth && month === 'نهاية العام' && gradeType === 'exam_score') {
       var yres = _saveYearEndGrade(sheet, rowIndex, subject, value);
       SpreadsheetApp.flush();
-      return { success: true, monthly: yres.m1, total: yres.total };
+      return { success: true, message: 'تم الحفظ', calculated: { monthly: yres.m1, total: yres.total } };
     }
 
     // ★ التحقق من الحدود
