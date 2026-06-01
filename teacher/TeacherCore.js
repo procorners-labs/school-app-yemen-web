@@ -1181,10 +1181,13 @@ function _resolveColumnKey(month, columnLabel) {
       }
 
       if (isTermMonth) {
+        if (month === 'نهاية العام') {
+          /* ✅ نهاية العام (5 أعمدة): يكتب النهائي + يحسب محصلة1/محصلة2/النصفي/الإجمالي(100) */
+          _saveYearEndGrade(sheet, rowIndex, subject, s.exam_score);
+          savedCount++;
+        } else {
         // ═══════════════════════════════════════════════════════
-        // ★ في الشهر الفصلي نحفظ فقط درجة الاختبار.
-        //   المحصلة (monthly_score) والمجموع (total_score) يحسبهما
-        //   السيرفر تلقائياً ولا يُقبل أي إدخال خارجي عليهما.
+        // ★ نصف العام: نحفظ فقط درجة الاختبار. المحصلة والمجموع تلقائياً.
         // ═══════════════════════════════════════════════════════
         var es = _safeStr(s.exam_score);
 
@@ -1210,6 +1213,7 @@ function _resolveColumnKey(month, columnLabel) {
             }
             savedCount++;
           }
+        }
         }
       } else {
         // ★ حفظ الأعمدة الأربعة للشهر العادي (بدون تغيير)
@@ -1312,6 +1316,13 @@ function _resolveColumnKey(month, columnLabel) {
     var numValue = _safeNum(value);
     if (numValue === null) {
       return { success: false, error: 'القيمة المدخلة غير صالحة' };
+    }
+
+    // ✅ نهاية العام: مسار مخصّص (يكتب النهائي + يحسب الأعمدة الخمسة /100)
+    if (isTermMonth && month === 'نهاية العام' && gradeType === 'exam_score') {
+      var yres = _saveYearEndGrade(sheet, rowIndex, subject, value);
+      SpreadsheetApp.flush();
+      return { success: true, monthly: yres.m1, total: yres.total };
     }
 
     // ★ التحقق من الحدود
@@ -6388,6 +6399,103 @@ function _calcTermMonthlyScore(sheet, studentCode, subject, termMonth) {
   };
 
   return GS_computeTermMonthly(termMonth, subject, readMonthTotal);
+}
+
+/* ════════════════════════════════════════════════════════════════
+ *  حفظ «نهاية العام» — هيكل 5 أعمدة (نتيجة العام /100):
+ *    المحصلة1 (تلقائي محرم+صفر /20) | النصفي (محمول من نصف العام /30)
+ *    المحصلة2 (تلقائي جماد اول+ثاني /20) | النهائي (يُدخله المعلم /30)
+ *    الاجمالي (تلقائي = المجموع /100)
+ *  examValue = درجة الاختبار النهائي القادمة من واجهة المعلم.
+ * ════════════════════════════════════════════════════════════════ */
+function _saveYearEndGrade(sheet, rowIndex, subject, examValue) {
+  var yc = _teacherYearEndCols(sheet, subject);
+
+  /* النهائي (يُدخله المعلم) */
+  var fxn = _safeNum(examValue);
+  if (fxn !== null && fxn >= 0 && fxn <= 30 && yc.finalEx !== undefined) {
+    sheet.getRange(rowIndex, yc.finalEx + 1).setValue(fxn);
+  }
+  /* محصلة الفصل الأول (محرم + صفر) */
+  var m1 = _teacherMonthlyFromMonths(sheet, rowIndex, subject, ['محرم', 'صفر']);
+  if (m1 !== null && yc.m1 !== undefined) sheet.getRange(rowIndex, yc.m1 + 1).setValue(m1);
+  /* محصلة الفصل الثاني (جماد اول + جماد ثاني) */
+  var m2 = _teacherMonthlyFromMonths(sheet, rowIndex, subject, ['جماد اول', 'جماد ثاني']);
+  if (m2 !== null && yc.m2 !== undefined) sheet.getRange(rowIndex, yc.m2 + 1).setValue(m2);
+  /* النصفي محمول من بلوك «نصف العام» */
+  var midV = null;
+  var nf = _findSubjectLocation('نصف العام', subject);
+  if (nf.success && nf.columns.exam_score >= 0) {
+    midV = _safeNum(sheet.getRange(rowIndex, nf.columns.exam_score + 1).getValue());
+    if (midV !== null && yc.midterm !== undefined) sheet.getRange(rowIndex, yc.midterm + 1).setValue(midV);
+  }
+  /* الاجمالي /100 = محصلة1 + نصفي + محصلة2 + نهائي */
+  var finalForTotal = fxn;
+  if (finalForTotal === null && yc.finalEx !== undefined) {
+    finalForTotal = _safeNum(sheet.getRange(rowIndex, yc.finalEx + 1).getValue());
+  }
+  var gt = (m1 || 0) + (midV || 0) + (m2 || 0) + (finalForTotal || 0);
+  if (gt > 100) gt = 100;
+  gt = Math.round(gt * 10) / 10;
+  if (yc.total !== undefined) sheet.getRange(rowIndex, yc.total + 1).setValue(gt);
+
+  return { m1: m1, midterm: midV, m2: m2, finalExam: finalForTotal, total: gt };
+}
+
+/* يحدّد أعمدة «نهاية العام» الخمسة لمادة بحسب أسماء صف 3 (typeRow) */
+function _teacherYearEndCols(sheet, subject) {
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 3, lastCol).getValues();
+  var monthRow = headers[0], subjectRow = headers[1], typeRow = headers[2];
+  var VALID = ['محرم', 'صفر', 'ربيع اول', 'ربيع ثاني', 'جماد اول', 'جماد ثاني',
+               'رجب', 'شعبان', 'نصف العام', 'نهاية العام'];
+  var filled = [], lastM = '';
+  for (var i = 0; i < monthRow.length; i++) {
+    var mc = _safeStr(monthRow[i]);
+    if (VALID.indexOf(mc) !== -1) { lastM = mc; filled.push(mc); }
+    else if (mc === '' && lastM) { filled.push(lastM); }
+    else { filled.push(''); lastM = ''; }
+  }
+  var map = {
+    m1:      ['المحصلة1', 'محصلة1'],
+    midterm: ['النصفي'],
+    m2:      ['المحصلة2', 'محصلة2'],
+    finalEx: ['النهائي', 'الاختبار النهائي'],
+    total:   ['الاجمالي', 'الإجمالي', 'المجموع']
+  };
+  var cols = {};
+  for (var c = 0; c < filled.length; c++) {
+    if (filled[c] !== 'نهاية العام') continue;
+    if (_safeStr(subjectRow[c]) !== subject) continue;
+    var lab = _safeStr(typeRow[c]);
+    for (var k in map) {
+      if (map.hasOwnProperty(k) && cols[k] === undefined && map[k].indexOf(lab) !== -1) cols[k] = c;
+    }
+  }
+  return cols;
+}
+
+/* مجموع «الأعمال المستمرة» عبر أشهر عادية: لكل شهر round(مجموع الأعمدة الأربعة/10) ثم clamp /20 */
+function _teacherMonthlyFromMonths(sheet, rowIndex, subject, monthsArr) {
+  var total = 0, foundAny = false;
+  for (var i = 0; i < monthsArr.length; i++) {
+    var loc = _findSubjectLocation(monthsArr[i], subject);
+    if (!loc.success || loc.isTermMonth) continue;
+    var c = loc.columns;
+    var b = _safeNum(sheet.getRange(rowIndex, c.behavior + 1).getValue());
+    var h = _safeNum(sheet.getRange(rowIndex, c.homework + 1).getValue());
+    var o = _safeNum(sheet.getRange(rowIndex, c.oral + 1).getValue());
+    var w = _safeNum(sheet.getRange(rowIndex, c.written + 1).getValue());
+    if (b !== null || h !== null || o !== null || w !== null) {
+      var mt = (b || 0) + (h || 0) + (o || 0) + (w || 0);
+      var sc = Math.round(mt / 10);
+      if (sc > 10) sc = 10;
+      total += sc;
+      foundAny = true;
+    }
+  }
+  if (total > 20) total = 20;
+  return foundAny ? total : null;
 }
 /**
  * عند تعديل درجة في شهر عادي، يُعاد حساب الأعمال المستمرة والمحصلة 
