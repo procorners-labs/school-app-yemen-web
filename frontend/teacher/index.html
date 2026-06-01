@@ -2513,7 +2513,7 @@ function goHome() {
   if (window.DeploymentClient && typeof window.DeploymentClient.go === 'function') {
     window.DeploymentClient.go('home');
   } else {
-    var fallback = 'https://script.google.com/macros/s/AKfycbzDfGEK6IpChVNl9k8xbt_iv5p6bLOktt-TvEzDp8yBpH3Ga3yNMen_0S2ZyuuvGtKFCA/exec';
+    var fallback = '/home/index.html';
     try {
       if (window.top && window.top.location) {
         window.top.location.href = fallback;
@@ -4196,6 +4196,7 @@ function renderHomeworkPage() {
   }
 
   var area = document.getElementById('homeworkListArea');
+  if (!area) return;   // الصفحة غير معروضة حالياً — تجنّب الانهيار عند وصول البيانات
   if (!_hwFilteredList.length) {
     area.innerHTML = '<div class="empty-state"><div class="es-icon">📝</div><div class="es-title">لا توجد واجبات مطابقة</div><div class="es-sub">جرّب تعديل الفلاتر</div></div>';
     document.getElementById('hwPaginationBar').innerHTML = '';
@@ -6391,8 +6392,7 @@ function _loadXlsx(callback) {
   // إنشاء عنصر script
   var script = document.createElement('script');
   script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  script.integrity = 'sha384-+5MokF4XhVJ6IeaF/pPwJ3N0wMPKqWqCkFZ5hSblzQhZ4vNnWvLkCJYi6jFc1jN3'; // اختياري للتحقق من السلامة
-  script.crossOrigin = 'anonymous';
+  // أُزيل integrity: كان الهاش خاطئاً فيحجب المتصفّح الملف (SRI mismatch).
   
   // مهلة زمنية (15 ثانية) لتجنب الانتظار الطويل
   var timeoutId = setTimeout(function() {

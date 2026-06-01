@@ -1,20 +1,16 @@
 /**
- * ApiEndpoint.js — نقطة دخول JSON/fetch للواجهة الثابتة (GitHub Pages).
- * تطبيق: CMS
- * مدارس الإبداع والتميز الدولية
+ * ApiEndpoint.js — نقطة دخول JSON/fetch للواجهة الثابتة (Cloudflare/GitHub Pages).
+ * تطبيق: CMS — مدارس الإبداع والتميز الدولية
  *
- * أُضيف ليُمكِّن قيادة تطبيق الويب عبر gas-bridge.js (fetch) بدل عميل
- * google.script.run الخاص بـ HtmlService، وبذلك تُستضاف الواجهة على
- * GitHub Pages دون رسالة تحذير Google.
+ * يستقبل { fn, args } عبر doPost وينفّذ الدالة العامّة المطلوبة ويُعيد JSON.
+ * الأمان (مطابق للأصل): يُسمح بأي دالة عامّة عدا دوال الإطار والدوال الداخلية
+ * (المسبوقة بـ _)؛ ودوال *Protected تتحقق من التوكن بنفسها.
  *
- * CORS: لا يضبط GAS ترويسة ACAO يدوياً، لكن رابط /exec يُرجِعها تلقائياً.
- * الواجهة ترسل Content-Type: text/plain (طلب بسيط) فلا preflight (OPTIONS).
- *
- * الأمان: يُسمح فقط باستدعاء الدوال المدرجة في API_ALLOWED_FUNCTIONS.
+ * CORS: رابط /exec يُرجِع ACAO تلقائياً؛ والواجهة ترسل text/plain (طلب بسيط).
  * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية).
  */
 
-var API_ALLOWED_FUNCTIONS = ['addImage', 'addNews', 'addSchedule', 'addVideo', 'getAuditLog', 'getPageUrl', 'getPostTypesForPlatform', 'getSystemStats', 'logClientError', 'uploadFileToDrive'];
+var API_BLOCKED_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];
 
 function _apiJsonOut(obj) {
   return ContentService
@@ -22,9 +18,11 @@ function _apiJsonOut(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function _apiIsAllowed(name) {
-  for (var i = 0; i < API_ALLOWED_FUNCTIONS.length; i++) {
-    if (API_ALLOWED_FUNCTIONS[i] === name) return true;
+function _apiIsBlocked(name) {
+  if (!name || typeof name !== 'string') return true;
+  if (name.charAt(0) === '_') return true;            // دوال داخلية
+  for (var i = 0; i < API_BLOCKED_FUNCTIONS.length; i++) {
+    if (API_BLOCKED_FUNCTIONS[i] === name) return true; // دوال الإطار
   }
   return false;
 }
@@ -51,7 +49,7 @@ function doPost(e) {
     if (!fn || typeof fn !== 'string') {
       return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });
     }
-    if (!_apiIsAllowed(fn)) {
+    if (_apiIsBlocked(fn)) {
       return _apiJsonOut({ ok: false, error: "دالة غير مسموح بها: " + fn });
     }
     var target = _apiResolve(fn);

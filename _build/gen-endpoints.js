@@ -1,52 +1,29 @@
-// يولّد ApiEndpoint.js (فيه doPost) داخل مجلد كل تطبيق، اعتماداً على قائمة
-// السماح المستخرجة. ويتحقق أن كل دالة معرّفة فعلاً في ملفات .js للتطبيق.
+// يولّد ApiEndpoint.js (فيه doPost) داخل مجلد كل تطبيق.
+// نموذج "قائمة المنع": يسمح باستدعاء أي دالة خادمية عامّة عدا دوال الإطار
+// والدوال الداخلية (المسبوقة بـ _). هذا يطابق سلوك google.script.run الأصلي
+// (الذي كان يسمح باستدعاء أي دالة عامّة من العميل)، والدوال *Protected
+// تتحقق من التوكن بنفسها. هكذا لا تنكسر أي ميزة بسبب قائمة سماح ناقصة.
 var fs = require('fs');
 var path = require('path');
 
 var ROOT = path.resolve(__dirname, '..');
+var APPS = ['home', 'student', 'teacher', 'cms', 'schedule'];
 
-var WHITELIST = {
-  home: ['checkSession', 'getHomeData', 'getImagesForSchool', 'getNewsForSchool', 'getSchoolStats', 'getVideosForSchool'],
-  student: ['changePassword', 'getGrades', 'getStudentNotificationBadge', 'getStudentReports', 'getTeachersForClass', 'loginStudent', 'recordStudentNewsView', 'submitNote', 'toggleStudentNewsLike'],
-  teacher: ['addListItemProtected', 'adminDeleteTeacherByName', 'adminGetAllTeachersGrouped', 'adminSaveTeacherGrouped', 'checkSession', 'deleteListItemProtected', 'getAttendanceListProtected', 'getEnhancedListsProtected', 'getListsDataProtected', 'getStudentsForView', 'getV3Config', 'handleTeacherLogin', 'handleTeacherLogout', 'saveAttendanceSingleProtected', 'updateListItemProtected'],
-  cms: ['addImage', 'addNews', 'addSchedule', 'addVideo', 'getAuditLog', 'getPageUrl', 'getPostTypesForPlatform', 'getSystemStats', 'logClientError', 'uploadFileToDrive'],
-  schedule: ['addTeacherRow', 'assignPeriod', 'autoDistributeProtected', 'autoDistributeTeacher', 'deleteAssignment', 'deleteTeacherRow', 'getAllConflicts', 'getClassSchedule', 'getScheduleSystemStats', 'getSubjectsAndClasses', 'getTeacherScheduleData', 'getTeachersData', 'getTeachersList', 'resetTeacherSchedule', 'undoLastAssignment', 'updateTeacherRow']
-};
-
-function jsSourcesFor(app) {
-  var dir = path.join(ROOT, app);
-  return fs.readdirSync(dir)
-    .filter(function (f) { return /\.js$/i.test(f) && f !== 'ApiEndpoint.js'; })
-    .map(function (f) { return fs.readFileSync(path.join(dir, f), 'utf8'); })
-    .join('\n');
-}
-
-function isDefined(src, name) {
-  // function NAME(  أو  NAME = function  أو  var NAME = function
-  var re = new RegExp('(function\\s+' + name + '\\s*\\()|((^|[^.\\w])' + name + '\\s*[:=]\\s*function)', 'm');
-  return re.test(src);
-}
-
-function endpointSource(app, names) {
-  var arr = names.map(function (n) { return "'" + n + "'"; }).join(', ');
+function endpointSource(app) {
   return [
     '/**',
-    ' * ApiEndpoint.js — نقطة دخول JSON/fetch للواجهة الثابتة (GitHub Pages).',
-    ' * تطبيق: ' + app.toUpperCase(),
-    ' * مدارس الإبداع والتميز الدولية',
+    ' * ApiEndpoint.js — نقطة دخول JSON/fetch للواجهة الثابتة (Cloudflare/GitHub Pages).',
+    ' * تطبيق: ' + app.toUpperCase() + ' — مدارس الإبداع والتميز الدولية',
     ' *',
-    ' * أُضيف ليُمكِّن قيادة تطبيق الويب عبر gas-bridge.js (fetch) بدل عميل',
-    ' * google.script.run الخاص بـ HtmlService، وبذلك تُستضاف الواجهة على',
-    ' * GitHub Pages دون رسالة تحذير Google.',
+    ' * يستقبل { fn, args } عبر doPost وينفّذ الدالة العامّة المطلوبة ويُعيد JSON.',
+    ' * الأمان (مطابق للأصل): يُسمح بأي دالة عامّة عدا دوال الإطار والدوال الداخلية',
+    ' * (المسبوقة بـ _)؛ ودوال *Protected تتحقق من التوكن بنفسها.',
     ' *',
-    ' * CORS: لا يضبط GAS ترويسة ACAO يدوياً، لكن رابط /exec يُرجِعها تلقائياً.',
-    ' * الواجهة ترسل Content-Type: text/plain (طلب بسيط) فلا preflight (OPTIONS).',
-    ' *',
-    ' * الأمان: يُسمح فقط باستدعاء الدوال المدرجة في API_ALLOWED_FUNCTIONS.',
+    ' * CORS: رابط /exec يُرجِع ACAO تلقائياً؛ والواجهة ترسل text/plain (طلب بسيط).',
     ' * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية).',
     ' */',
     '',
-    'var API_ALLOWED_FUNCTIONS = [' + arr + '];',
+    "var API_BLOCKED_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];",
     '',
     'function _apiJsonOut(obj) {',
     '  return ContentService',
@@ -54,9 +31,11 @@ function endpointSource(app, names) {
     '    .setMimeType(ContentService.MimeType.JSON);',
     '}',
     '',
-    'function _apiIsAllowed(name) {',
-    '  for (var i = 0; i < API_ALLOWED_FUNCTIONS.length; i++) {',
-    '    if (API_ALLOWED_FUNCTIONS[i] === name) return true;',
+    'function _apiIsBlocked(name) {',
+    "  if (!name || typeof name !== 'string') return true;",
+    "  if (name.charAt(0) === '_') return true;            // دوال داخلية",
+    '  for (var i = 0; i < API_BLOCKED_FUNCTIONS.length; i++) {',
+    '    if (API_BLOCKED_FUNCTIONS[i] === name) return true; // دوال الإطار',
     '  }',
     '  return false;',
     '}',
@@ -68,7 +47,7 @@ function endpointSource(app, names) {
     '    }',
     '  } catch (e) {}',
     '  try {',
-    '    var f = eval(name);', // الاسم مُدرَج في القائمة البيضاء مسبقاً
+    '    var f = eval(name);',
     "    if (typeof f === 'function') return f;",
     '  } catch (e2) {}',
     '  return null;',
@@ -83,7 +62,7 @@ function endpointSource(app, names) {
     "    if (!fn || typeof fn !== 'string') {",
     '      return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });',
     '    }',
-    '    if (!_apiIsAllowed(fn)) {',
+    '    if (_apiIsBlocked(fn)) {',
     '      return _apiJsonOut({ ok: false, error: "دالة غير مسموح بها: " + fn });',
     '    }',
     '    var target = _apiResolve(fn);',
@@ -100,11 +79,7 @@ function endpointSource(app, names) {
   ].join('\n');
 }
 
-Object.keys(WHITELIST).forEach(function (app) {
-  var src = jsSourcesFor(app);
-  var missing = WHITELIST[app].filter(function (n) { return !isDefined(src, n); });
-  fs.writeFileSync(path.join(ROOT, app, 'ApiEndpoint.js'), endpointSource(app, WHITELIST[app]));
-  var line = app + ': كُتب ApiEndpoint.js (' + WHITELIST[app].length + ' دالة)';
-  if (missing.length) line += '  ⚠ غير موجودة في .js: ' + missing.join(', ');
-  console.log(line);
+APPS.forEach(function (app) {
+  fs.writeFileSync(path.join(ROOT, app, 'ApiEndpoint.js'), endpointSource(app));
+  console.log(app + ': كُتب ApiEndpoint.js (نموذج قائمة المنع)');
 });

@@ -81,7 +81,25 @@ function transform(src, endpoint, report) {
     "(window.SCHOOL_ID || '')"
   );
 
-  // 3) رصد أي scriptlets متبقية للتنبيه
+  // 3) تحويل روابط التنقّل بين البوابات (روابط /exec القديمة المحجوبة) إلى
+  //    مسارات نسبية يخدمها الـ Worker، حتى تُفتح بدون VPN.
+  var S = 'https://script\\.google\\.com/macros/s/';
+  var IDS = {
+    home:     'AKfycbzDfGEK6IpChVNl9k8xbt_iv5p6bLOktt-TvEzDp8yBpH3Ga3yNMen_0S2ZyuuvGtKFCA',
+    cms:      'AKfycbz-iAj9L3ROOn4CAjmwkVBUqpWuxIx1LkgPLwKnHu7kHLWKCy3GVJNo1vZbnekop0VlMA',
+    teacher:  'AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND',
+    student:  'AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq',
+    schedule: 'AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag'
+  };
+  // الخصوصية أولاً (أكثر تحديداً) ثم الرابط العام لكل تطبيق
+  out = out.replace(new RegExp(S + IDS.home + '/exec\\?page=privacy', 'g'), '/home/privacy.html');
+  out = out.replace(new RegExp(S + IDS.home + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/home/index.html');
+  out = out.replace(new RegExp(S + IDS.teacher + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/teacher/index.html');
+  out = out.replace(new RegExp(S + IDS.student + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/student/index.html');
+  out = out.replace(new RegExp(S + IDS.cms + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/cms/index.html');
+  out = out.replace(new RegExp(S + IDS.schedule + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/schedule/index.html');
+
+  // 4) رصد أي scriptlets متبقية للتنبيه
   var leftover = out.match(/<\?[!=]?[\s\S]*?\?>/g);
   if (leftover) report.leftoverScriptlets = leftover.length;
 
