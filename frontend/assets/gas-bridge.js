@@ -1,5 +1,5 @@
 /*!
- * gas-bridge.js — متوافق مع CORS proxy (AllOrigins, cors.eu.org)
+ * gas-bridge.js — Drop-in replacement for google.script.run
  * مدارس الإبداع والتميز الدولية
  */
 (function () {
@@ -25,27 +25,21 @@
 
     fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-        'X-Requested-With': 'XMLHttpRequest'  // مفيدة لبعض البروكسيات
-      },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: payload,
       redirect: 'follow'
     }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.text();
     }).then(function (text) {
       var data = null;
-      try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        if (onFailure) onFailure(new Error('رد غير صالح من الخادم'), userObject);
+      try { data = JSON.parse(text); } catch (e) {
+        if (onFailure) onFailure(new Error('رد غير صالح'), userObject);
         return;
       }
       if (data && data.ok) {
         if (onSuccess) onSuccess(data.result, userObject);
       } else {
-        if (onFailure) onFailure(new Error((data && data.error) || 'خطأ في الخادم'), userObject);
+        if (onFailure) onFailure(new Error((data && data.error) || 'خطأ'), userObject);
       }
     })['catch'](function (err) {
       if (onFailure) onFailure(err, userObject);
@@ -79,20 +73,12 @@
     get: function () { return makeRunner(); }
   });
   google.script.host = google.script.host || {
-    close: function () {},
-    setHeight: function () {},
-    setWidth: function () {},
-    origin: '',
-    editor: { focus: function () {} }
+    close: function () {}, setHeight: function () {}, setWidth: function () {}, origin: '', editor: { focus: function () {} }
   };
   google.script.url = google.script.url || {
-    getLocation: function (cb) {
-      if (cb) cb({ parameter: {}, parameters: {}, hash: '' });
-    }
+    getLocation: function (cb) { if (cb) cb({ parameter: {}, parameters: {}, hash: '' }); }
   };
   google.script.history = google.script.history || {
-    push: function () {},
-    replace: function () {},
-    setChangeHandler: function () {}
+    push: function () {}, replace: function () {}, setChangeHandler: function () {}
   };
 })();
