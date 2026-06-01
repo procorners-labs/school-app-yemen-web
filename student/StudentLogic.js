@@ -771,8 +771,18 @@ function _processMonth(month, h2, h3, studentRow, requiredSubjects) {
       }
 
       if (hasLabels || implicitBlock) {
-        /* قراءة قيمة درجة الاختبار من العمود رقم 1 (position) */
-        var examCol = c + 1;
+        /* ✅ تحديد الأعمدة بالاسم (مطابق لمنطق المعلّم) بدل الموضع الثابت،
+           حتى تُقرأ درجة الاختبار من نفس العمود الذي يكتب فيه المعلّم */
+        var _EXAM_NAMES    = ['النصفي', 'النهائي', 'درجة الاختبار', 'الاختبار'];
+        var _MONTHLY_NAMES = ['المحصلة1', 'محصلة1', 'اعمال مستمرة', 'الأعمال المستمرة', 'الشهري', 'الدرجة الشهرية'];
+        var examCol = -1, _monthlyCol = -1;
+        for (var _sc = 0; _sc < blockSize && (c + _sc) <= month.endCol; _sc++) {
+          var _lab = _safe((h3 && h3[c + _sc]) ? h3[c + _sc] : '');
+          if (examCol === -1 && _EXAM_NAMES.indexOf(_lab) !== -1) examCol = c + _sc;
+          if (_monthlyCol === -1 && _MONTHLY_NAMES.indexOf(_lab) !== -1) _monthlyCol = c + _sc;
+        }
+        if (examCol === -1) examCol = c + 1;        /* تراجُع للموضع */
+        if (_monthlyCol === -1) _monthlyCol = c;    /* تراجُع للموضع */
         var v1 = (examCol <= month.endCol) ? studentRow[examCol] : null;
         var examVal = '';
         if (v1 !== null && v1 !== undefined && v1 !== '') {
@@ -780,8 +790,8 @@ function _processMonth(month, h2, h3, studentRow, requiredSubjects) {
           subjectMap[sName]['exam_score'] = examVal;
         }
 
-        /* قراءة قيمة الأعمال المستمرة من العمود رقم 0 — مخزنة فعلياً */
-        var monthlyCol = c;
+        /* قراءة قيمة الأعمال المستمرة من عمودها المُعنون (أو الموضع كتراجُع) */
+        var monthlyCol = _monthlyCol;
         var v0 = (monthlyCol <= month.endCol) ? studentRow[monthlyCol] : null;
         if (v0 !== null && v0 !== undefined && v0 !== '') {
           subjectMap[sName]['monthly_score'] = String(v0).trim();
