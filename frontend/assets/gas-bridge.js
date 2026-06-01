@@ -1,6 +1,7 @@
 /*!
- * gas-bridge.js — Drop-in replacement for google.script.run
- * مدارس الإبداع والتميز الدولية
+ * gas-bridge.js — Drop-in replacement for google.script.run (ES5)
+ * متوافق مع Cloudflare Workers / CORS proxies
+ * يستخدم XMLHttpRequest لتجنب تداخل إضافات المتصفح
  */
 (function () {
   'use strict';
@@ -17,33 +18,50 @@
       if (onFailure) onFailure(new Error('GAS_ENDPOINT غير مُعرّف'), userObject);
       return;
     }
+
     var payload = JSON.stringify({
       fn: fnName,
       args: args,
       schoolId: window.SCHOOL_ID || null
     });
 
-    fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: payload,
-      redirect: 'follow'
-    }).then(function (res) {
-      return res.text();
-    }).then(function (text) {
+    // استخدام XMLHttpRequest بدلاً من fetch لضمان التوافق وتجنب تداخل الإضافات
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', endpoint, true);
+    xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+    xhr.timeout = 25000; // 25 ثانية
+
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+
+      if (xhr.status === 0 || xhr.status >= 400) {
+        if (onFailure) onFailure(new Error('فشل الاتصال (status ' + xhr.status + ')'), userObject);
+        return;
+      }
+
+      var text = xhr.responseText;
       var data = null;
       try { data = JSON.parse(text); } catch (e) {
         if (onFailure) onFailure(new Error('رد غير صالح'), userObject);
         return;
       }
+
       if (data && data.ok) {
         if (onSuccess) onSuccess(data.result, userObject);
       } else {
-        if (onFailure) onFailure(new Error((data && data.error) || 'خطأ'), userObject);
+        if (onFailure) onFailure(new Error((data && data.error) || 'خطأ في الخادم'), userObject);
       }
-    })['catch'](function (err) {
-      if (onFailure) onFailure(err, userObject);
-    });
+    };
+
+    xhr.ontimeout = function () {
+      if (onFailure) onFailure(new Error('انتهت مهلة الاتصال'), userObject);
+    };
+
+    xhr.onerror = function () {
+      if (onFailure) onFailure(new Error('فشل الاتصال بالشبكة'), userObject);
+    };
+
+    xhr.send(payload);
   }
 
   function makeRunner() {
