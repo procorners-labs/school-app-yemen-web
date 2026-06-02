@@ -122,6 +122,19 @@ function _getSS() {
   return _ssInstance;
 }
 
+// ✅ مفقودة سابقاً في مشروع الطالب — تسبّبت في فشل تسجيل المشاهدات/الإعجابات
+function _getOrCreateSheet(name, headerRow) {
+  var ss = _getSS();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (headerRow && headerRow.length > 0) {
+      sheet.appendRow(headerRow);
+    }
+  }
+  return sheet;
+}
+
 function _getSheet(name) {
   try {
     var sheet = _getSS().getSheetByName(name);
