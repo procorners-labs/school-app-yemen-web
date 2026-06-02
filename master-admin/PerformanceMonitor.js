@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════
 // مراقب الأداء — تسجيل زمن تنفيذ كل دالة حساسة
-   PerformanceMonitor.gs
+//  PerformanceMonitor.gs
 // ══════════════════════════════════════════════════════
 
 function _perf_log(fnName, durationMs, success) {
