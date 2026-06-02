@@ -54,6 +54,23 @@ function _getSSById(id) {
 }
 
 // ══════════════════════════════════════════════════════
+// كاش الرؤوس الثلاثة (الشهر/المادة/النوع) لكل تنفيذ — يمنع إعادة قراءتها
+// عشرات المرات داخل الحلقات (تسريع كبير لقراءة/حفظ الدرجات).
+// ══════════════════════════════════════════════════════
+var __HDR_CACHE = {};
+function _getGradeHeaders(sheet) {
+  var key;
+  try { key = (typeof _activeFileId === 'function') ? _activeFileId() : 'default'; }
+  catch (e) { key = 'default'; }
+  if (__HDR_CACHE[key]) return __HDR_CACHE[key];
+  var lastCol = sheet.getLastColumn();
+  var h = sheet.getRange(1, 1, 3, lastCol).getValues();
+  var obj = { headers: h, monthRow: h[0], subjectRow: h[1], typeRow: h[2], lastCol: lastCol };
+  __HDR_CACHE[key] = obj;
+  return obj;
+}
+
+// ══════════════════════════════════════════════════════
 // TTL مخصص للكاش حسب نوع البيانات (P-OPT-05)
 // ══════════════════════════════════════════════════════
 var TC_CACHE_TTL = {
@@ -406,7 +423,7 @@ function _tcCacheDel(key) {
         return _buildDefaultGradesStructure(filter);
       }
 
-      var headerData = sheet.getRange(1, 1, 3, lastColumn).getValues();
+      var headerData = _getGradeHeaders(sheet).headers;
       var firstRow   = headerData[0];
       var secondRow  = headerData[1];
 
@@ -861,7 +878,7 @@ function _readGradesSheetEfficient(grade, section, subjectFilter, monthFilter) {
   if (lastRow < 4 || lastCol < 4) return null;
 
   // قراءة 3 صفوف الرأس كاملة (ضرورية لتحديد الأعمدة)
-  var headers = sheet.getRange(1, 1, 3, lastCol).getValues();
+  var headers = _getGradeHeaders(sheet).headers;
   // قراءة بيانات الطلاب (عمود A:D فقط أولاً للفلترة)
   var colData = sheet.getRange(4, 1, lastRow - 3, 4).getValues();
 
@@ -963,7 +980,7 @@ function _findSubjectLocation(month, subject) {
         throw new Error('لا توجد بيانات كافية في ورقة الدرجات');
       }
 
-      var headers    = sheet.getRange(1, 1, 3, lastColumn).getValues();
+      var headers    = _getGradeHeaders(sheet).headers;
       var monthRow   = headers[0];
       var subjectRow = headers[1];
       var typeRow    = headers[2];
@@ -1015,7 +1032,7 @@ function _findSubjectLocation(month, subject) {
         throw new Error('لا توجد بيانات كافية في ورقة الدرجات');
       }
 
-      var headers    = sheet.getRange(1, 1, 3, lastColumn).getValues();
+      var headers    = _getGradeHeaders(sheet).headers;
       var monthRow   = headers[0]; // صف 1: الشهور
       var subjectRow = headers[1]; // صف 2: المواد
       var typeRow    = headers[2]; // صف 3: أنواع الدرجات
@@ -6478,7 +6495,7 @@ function _saveYearEndGrade(sheet, rowIndex, subject, examValue) {
 /* يحدّد أعمدة «نهاية العام» الخمسة لمادة بحسب أسماء صف 3 (typeRow) */
 function _teacherYearEndCols(sheet, subject) {
   var lastCol = sheet.getLastColumn();
-  var headers = sheet.getRange(1, 1, 3, lastCol).getValues();
+  var headers = _getGradeHeaders(sheet).headers;
   var monthRow = headers[0], subjectRow = headers[1], typeRow = headers[2];
   var VALID = ['محرم', 'صفر', 'ربيع اول', 'ربيع ثاني', 'جماد اول', 'جماد ثاني',
                'رجب', 'شعبان', 'نصف العام', 'نهاية العام'];
