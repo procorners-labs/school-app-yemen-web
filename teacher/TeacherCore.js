@@ -2382,54 +2382,10 @@ function _getAllStudentsInternal() {
   /**
    * الحصول على رقم الحركة التالي للواجبات
    */
-  function _getNextHomeworkId() {
-    try {
-      var sheet = _getSheet('الواجبات');
-      if (!sheet) return 1;
-      var lastRow = sheet.getLastRow();
-      if (lastRow < 2) return 1;
-      var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().map(function(r) { return Number(r[0]); });
-      var max = Math.max.apply(null, ids.filter(function(n) { return !isNaN(n); }));
-      return isFinite(max) ? max + 1 : 1;
-    } catch (e) {
-      return 1;
-    }
-  }
-
   /**
    * إضافة واجب جديد
    * أعمدة الواجبات: رقم الحركة | اسم المدرس | المادة | الفصل | الشعبة | الواجب | التاريخ
    */
-  function _addHomeworkInternal(data) {
-    try {
-      if (!data)          throw new Error('بيانات الواجب غير موجودة');
-      if (!data.homework) throw new Error('نص الواجب مطلوب');
-      if (!data.grade)    throw new Error('الفصل مطلوب');
-      if (!data.section)  throw new Error('الشعبة مطلوبة');
-      if (!data.teacher)  throw new Error('اسم المدرس مطلوب');
-
-      var sheet = _getOrCreateSheet('الواجبات',
-        ['رقم الحركة', 'اسم المدرس', 'المادة', 'الفصل', 'الشعبة', 'الواجب', 'التاريخ']);
-
-      var newId   = _getNextHomeworkId();
-      var dateStr = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-
-      sheet.appendRow([
-        newId,
-        _safeStr(data.teacher),
-        _safeStr(data.subject),
-        _safeStr(data.grade),
-        _safeStr(data.section),
-        _safeStr(data.homework),
-        dateStr
-      ]);
-
-      return { success: true, message: 'تم إضافة الواجب بنجاح', id: newId };
-    } catch (e) {
-      Logger.log('_addHomeworkInternal error: ' + e.toString());
-      return { success: false, error: e.toString() };
-    }
-  }
  /**
  * ═══════════════════════════════════════════════════════════════
  *  إدارة الواجبات – نسخة مُعاد هيكلتها بالكامل
@@ -2474,41 +2430,6 @@ function getHomework(id) {
  * @param {object} params - { token, id }
  * @returns {object} { success: true, data: {...} } أو خطأ
  */
-function getHomeworkProtected(params) {
-  return withAuth(params, function(session) {
-    try {
-      var id = (params && params.id != null) ? String(params.id).trim() : '';
-      if (!id) return { success: false, error: 'معرّف الواجب مفقود' };
-
-      var hw = getHomework(id);
-      if (!hw || hw.success === false) {
-        return { success: false, error: (hw && hw.error) ? hw.error : 'لم يتم العثور على الواجب' };
-      }
-
-      // التحقق من صلاحية المعلم على هذا الواجب (إن لم يكن مديراً / وكيلاً / مشرفاً)
-      if (!session.isAdmin && session.role !== 'deputy' && session.role !== 'supervisor') {
-        var allowedClasses = session.classes || [];
-        var allowedSubjects = session.subjects || [];
-        var hasAllClasses = (allowedClasses.indexOf('جميع الفصول') !== -1);
-        var hasAllSubjects = (allowedSubjects.indexOf('جميع المواد') !== -1);
-
-        if (!hasAllClasses && allowedClasses.indexOf(hw.grade) === -1) {
-          return { success: false, error: 'غير مصرح لك بهذا الواجب (فصل خارج صلاحياتك)' };
-        }
-        if (!hasAllSubjects && allowedSubjects.indexOf(hw.subject) === -1) {
-          return { success: false, error: 'غير مصرح لك بهذا الواجب (مادة خارج صلاحياتك)' };
-        }
-      }
-
-      return { success: true, data: hw };
-    } catch (e) {
-      Logger.log('getHomeworkProtected error: ' + e.toString());
-      return { success: false, error: e.message };
-    }
-  });
-}
-
-
 // ═══════════════════════════════════════════════════════════════
 //  إضافة واجب جديد
 // ═══════════════════════════════════════════════════════════════
@@ -3487,68 +3408,6 @@ function getParentNotesProtected(params) {
  * جلب ملاحظات أولياء الأمور للمعلم الحالي (تُستخدم في لوحة التحكم)
  * بدلاً من إعادة مصفوفة فارغة، تقرأ الورقة بالكامل وتُطبق فلاتر الصلاحيات
  */
-function getTeacherNotesProtected(params) {
-  return withAuth(params, function(session) {
-    try {
-      var sheet = _getSheet('الملاحظات');
-      if (!sheet) {
-        // إذا لم توجد الورقة بعد، نُرجع مصفوفة فارغة بدون خطأ
-        return { success: true, notes: [] };
-      }
-
-      var data = sheet.getDataRange().getValues();
-      var notes = [];
-
-      // تحديد صلاحيات المعلم الحالي
-      var isAdmin = session.isAdmin ||
-                    session.role === 'admin' ||
-                    session.role === 'deputy' ||
-                    session.role === 'supervisor';
-      var myClasses = session.classes || [];
-      var hasAllClasses = (myClasses.indexOf('جميع الفصول') !== -1);
-
-      for (var i = 1; i < data.length; i++) {
-        var row         = data[i];
-        var studentName = _safeStr(row[0]);
-        var grade       = _safeStr(row[1]);
-        var section     = _safeStr(row[2]);
-        var teacher     = _safeStr(row[3]);
-        var message     = _safeStr(row[4]);
-        var date        = _safeStr(row[5]);
-        var reply       = _safeStr(row[6] || '');
-
-        if (!studentName) continue;
-
-        // المدير / الوكيل / المشرف يرون جميع الملاحظات
-        if (!isAdmin && !hasAllClasses) {
-          if (myClasses.indexOf(grade) === -1) continue;
-        }
-
-        notes.push({
-          id          : i + 1,
-          studentName : studentName,
-          grade       : grade,
-          section     : section,
-          teacher     : teacher,
-          message     : message,
-          date        : date,
-          reply       : reply
-        });
-      }
-
-      // ترتيب تنازلي حسب التاريخ (الأحدث أولاً)
-      notes.sort(function(a, b) {
-        return (b.date || '').localeCompare(a.date || '');
-      });
-
-      return { success: true, notes: notes };
-    } catch (e) {
-      Logger.log('getTeacherNotesProtected error: ' + e.toString());
-      return { success: false, error: e.toString() };
-    }
-  });
-}
-
 /**
  * إضافة رد من المعلم على ملاحظة (اختياري)
  * @param {Object} params - { token, noteId, reply }
@@ -4282,42 +4141,6 @@ function initBlockSettings() {
  * جلب سجل الغياب لطالب محدد (لمنصة الطالب)
  * @param {string} studentCode - كود الطالب
  */
-function getStudentAttendanceRecord(studentCode) {
-  try {
-    studentCode = _safeStr(studentCode);
-    if (!studentCode) return { success: false, error: 'كود الطالب مطلوب' };
-
-    var attSheet = _getSheet('الغياب');
-    if (!attSheet) return { success: true, records: [] };
-
-    var data = attSheet.getDataRange().getValues();
-    var out  = [];
-
-    for (var i = 1; i < data.length; i++) {
-      var code   = _safeStr(data[i][0]);
-      var status = _safeStr(data[i][5]);
-      if (code !== studentCode) continue;
-      if (status === 'حاضر') continue; // لا نعرض للطالب إلا الغياب والتأخر
-
-      out.push({
-        date    : _safeStr(data[i][4]),
-        status  : status,
-        recorder: _safeStr(data[i][7])
-      });
-    }
-
-    // ترتيب من الأحدث إلى الأقدم
-    out.sort(function(a, b) {
-      return (b.date || '').localeCompare(a.date || '');
-    });
-
-    return { success: true, records: out, total: out.length };
-  } catch (e) {
-    Logger.log('getStudentAttendanceRecord error: ' + e.toString());
-    return { success: false, error: e.message };
-  }
-}
-
 /**
  * بناء رابط واتساب Click-to-Chat
  * يُستدعى من الواجهة JavaScript مباشرة (لا يحتاج Apps Script)
@@ -5868,60 +5691,6 @@ function getNewsStatsProtected(params) {
 //  أُضيفت في إصلاح أبريل 2026 (Patch #1)
 // ══════════════════════════════════════════════════════════════════
 
-function getHomeworkProtected(params) {
-  return withAuth(params, function(teacher) {
-    try {
-      var id = params && params.id ? String(params.id) : '';
-      if (!id) return { success: false, error: 'معرّف الواجب مفقود' };
-      var hw = getHomework(id);
-      if (!hw || hw.success === false) {
-        return { success: false, error: (hw && hw.error) ? hw.error : 'لم يتم العثور على الواجب' };
-      }
-      // التحقق من صلاحية المعلم على هذا الواجب (إن لم يكن مديراً)
-      if (!teacher.isAdmin && teacher.role !== 'deputy' && teacher.role !== 'supervisor') {
-        var allowedClasses = teacher.classes || [];
-        var allowedSubjects = teacher.subjects || [];
-        var hasAllClasses = allowedClasses.indexOf('جميع الفصول') !== -1;
-        var hasAllSubjects = allowedSubjects.indexOf('جميع المواد') !== -1;
-        if (!hasAllClasses && allowedClasses.indexOf(hw.grade) === -1) {
-          return { success: false, error: 'غير مصرح لك بهذا الواجب' };
-        }
-        if (!hasAllSubjects && allowedSubjects.indexOf(hw.subject) === -1) {
-          return { success: false, error: 'غير مصرح لك بهذه المادة' };
-        }
-      }
-      return { success: true, data: hw };
-    } catch (e) {
-      return { success: false, error: 'getHomeworkProtected: ' + e.message };
-    }
-  });
-}
-
-function getNewsByIdProtected(params) {
-  return withAuth(params, function(teacher) {
-    try {
-      var id = params && params.id ? String(params.id) : '';
-      if (!id) return { success: false, error: 'معرّف الخبر مفقود' };
-      var n = getNews(id);
-      if (!n || n.success === false) {
-        return { success: false, error: (n && n.error) ? n.error : 'لم يتم العثور على الخبر' };
-      }
-      // المدير والوكيل يرون الكل، المعلم يرى أخباره فقط أو أخبار فصوله
-      if (!teacher.isAdmin && teacher.role !== 'deputy' && teacher.role !== 'supervisor') {
-        var isOwner = (n.teacher === teacher.teacherName);
-        var allowedClasses = teacher.classes || [];
-        var hasAllClasses = allowedClasses.indexOf('جميع الفصول') !== -1;
-        var inMyClasses = hasAllClasses || allowedClasses.indexOf(n.grade) !== -1;
-        if (!isOwner && !inMyClasses) {
-          return { success: false, error: 'غير مصرح لك بهذا الخبر' };
-        }
-      }
-      return { success: true, data: n };
-    } catch (e) {
-      return { success: false, error: 'getNewsByIdProtected: ' + e.message };
-    }
-  });
-}
 // ═══════════════════════════════════════════════════════════════════════════
 // ✦ Patch #1 — أبريل 2026
 // ✦ تأمين دوال جلب الواجب والخبر بـ token + التحقق من صلاحية المعلم
