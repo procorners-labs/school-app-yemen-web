@@ -99,7 +99,7 @@ function getGrades(studentId, schoolId, noCache) {
 
     for (var mi = 0; mi < monthsFound.length; mi++) {
       var mData = _gradesReadMonthUnified(
-        monthRow, subjectRow, typeRow, studentRow, monthsFound[mi]
+        monthRow, subjectRow, typeRow, studentRow, monthsFound[mi], requiredSubjects
       );
       if (mData && mData.subjects.length > 0) monthsData.push(mData);
     }
@@ -131,7 +131,7 @@ function getGrades(studentId, schoolId, noCache) {
  *  _gradesReadMonthUnified — قلب التوحيد
  *  يقرأ كل مواد شهر واحد لطالب واحد بنفس آلية المعلم بالضبط.
  * ══════════════════════════════════════════════════════════════ */
-function _gradesReadMonthUnified(monthRow, subjectRow, typeRow, studentRow, monthName) {
+function _gradesReadMonthUnified(monthRow, subjectRow, typeRow, studentRow, monthName, requiredSubjects) {
   var isTermMonth = GS_isTermMonth(monthName);
 
   var mData = {
@@ -144,6 +144,19 @@ function _gradesReadMonthUnified(monthRow, subjectRow, typeRow, studentRow, mont
   /* اكتشاف مواد هذا الشهر فعلياً من صف 2 ضمن نطاق الشهر */
   var subjectsList = _gradesDetectSubjects(monthRow, subjectRow, monthName);
   if (subjectsList.length === 0) return mData;
+
+  /* ✅ عرض مواد صف الطالب فقط (المواد المقررة) لا كل مواد الشيت */
+  if (requiredSubjects && requiredSubjects.length) {
+    var _allow = {};
+    for (var _ai = 0; _ai < requiredSubjects.length; _ai++) {
+      _allow[_safe(requiredSubjects[_ai])] = true;
+    }
+    var _filtered = [];
+    for (var _fi = 0; _fi < subjectsList.length; _fi++) {
+      if (_allow[_safe(subjectsList[_fi])]) _filtered.push(subjectsList[_fi]);
+    }
+    if (_filtered.length) subjectsList = _filtered;   /* إن لم يتطابق شيء، أبقِ الكل (أمان) */
+  }
 
   for (var si = 0; si < subjectsList.length; si++) {
     var subject = subjectsList[si];
