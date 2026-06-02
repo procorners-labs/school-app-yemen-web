@@ -3631,7 +3631,16 @@ function renderGradesTable() {
   var isFinalMonth = (GS.month === 'نهاية العام');
   var showVirtualCol = (v3Enabled && V3_CONFIG.features && V3_CONFIG.features.virtualColumn && isFinalMonth);
 
-  if (termMonth) {
+  if (isFinalMonth) {
+    // ✅ نهاية العام: 5 أعمدة (محصلة1🔒 + نصفي🔒 + محصلة2🔒 + النهائي + الإجمالي/100🔒)
+    thead.innerHTML = '<tr><th>#</th><th>كود الطالب</th><th>اسم الطالب</th>' +
+      '<th style="background:#fafafa;">محصلة الفصل الأول<br><small>/20 🔒</small></th>' +
+      '<th style="background:#fafafa;">اختبار نصف العام<br><small>/30 🔒</small></th>' +
+      '<th style="background:#fafafa;">محصلة الفصل الثاني<br><small>/20 🔒</small></th>' +
+      '<th>الاختبار النهائي<br><small>/30</small></th>' +
+      '<th style="background:#fef3c7;color:#92400e;">الإجمالي<br><small>/100 🔒</small></th></tr>';
+
+  } else if (termMonth) {
     // ⭐ v3.1: رأس الجدول مع التسميات الجديدة (قفل العمود الأول)
     var totalLabel = 'المجموع';  // الاسم الجديد الموحّد
     if (v3Enabled && V3_CONFIG.features && !V3_CONFIG.features.renameTotal) {
@@ -3668,7 +3677,7 @@ function renderGradesTable() {
 
   if (!s.length) {
     // ✅ إصلاح #3: تصحيح colspan حسب نوع الشهر + العمود الافتراضي
-    var emptyColspan = termMonth ? (showVirtualCol ? 7 : 6) : 8;
+    var emptyColspan = isFinalMonth ? 8 : (termMonth ? (showVirtualCol ? 7 : 6) : 8);
     tbody.innerHTML = '<tr><td colspan="' + emptyColspan + '"><div class="empty-state">' +
       '<div class="es-icon">👨‍🎓</div>' +
       '<div class="es-title">لا يوجد طلاب في هذا الفصل</div>' +
@@ -3686,7 +3695,25 @@ function renderGradesTable() {
     html += '<td><span class="badge badge-info">' + (st.code || '') + '</span></td>';
     html += '<td style="font-weight:500;text-align:right">' + (st.name || '') + '</td>';
 
-    if (termMonth) {
+    if (isFinalMonth) {
+      // ✅ نهاية العام: 4 أعمدة مقفلة + النهائي قابل للإدخال + الإجمالي/100 آلي
+      var m1V  = (st.ye_m1      !== undefined && st.ye_m1      !== '') ? st.ye_m1      : '';
+      var midV = (st.ye_midterm !== undefined && st.ye_midterm !== '') ? st.ye_midterm : '';
+      var m2V  = (st.ye_m2      !== undefined && st.ye_m2      !== '') ? st.ye_m2      : '';
+      var finV = (st.ye_final   !== undefined && st.ye_final   !== '') ? st.ye_final   : '';
+      var gtV  = (st.ye_total   !== undefined && st.ye_total   !== '') ? st.ye_total   : '';
+      var _lk  = 'background:#f9fafb;color:#374151;font-weight:600;text-align:center;';
+      html += '<td class="locked-cell" style="' + _lk + '" title="محسوبة تلقائياً">' + (m1V !== '' ? m1V : '—') + '</td>';
+      html += '<td class="locked-cell" style="' + _lk + '" title="محمولة من نصف العام">' + (midV !== '' ? midV : '—') + '</td>';
+      html += '<td class="locked-cell" style="' + _lk + '" title="محسوبة تلقائياً">' + (m2V !== '' ? m2V : '—') + '</td>';
+      html += '<td><input type="number" class="grade-input' + (finV !== '' ? ' has-grade' : '') + '" ' +
+              'min="0" max="30" step="0.5" data-code="' + st.code + '" data-type="exam_score" ' +
+              'value="' + finV + '" oninput="onGradeInput(this)"></td>';
+      html += '<td style="background:#fef3c7;"><span class="row-total-final" data-code="' + st.code + '" ' +
+              'style="display:inline-block;width:100%;text-align:center;font-weight:700;color:#92400e;font-size:1.1rem;padding:8px 0;">' +
+              (gtV !== '' ? gtV : '—') + '</span></td>';
+
+    } else if (termMonth) {
       var msV = (st.monthly_score !== undefined && st.monthly_score !== '') ? st.monthly_score : '';
       var esV = (st.exam_score    !== undefined && st.exam_score    !== '') ? st.exam_score    : '';
       var tsV = (st.total_score   !== undefined && st.total_score   !== '') ? st.total_score   : '';

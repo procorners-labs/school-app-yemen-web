@@ -627,6 +627,19 @@ function _getStudentsInternal(grade, section, month, subject) {
       locationResult = _findSubjectLocation(month, subject);
     }
 
+    // ✅ نهاية العام: تحضير أعمدة الخمسة + مواقع الأشهر المصدر مرة واحدة
+    var isYearEnd = (month === 'نهاية العام');
+    var yeCols = null, yeNisfExam = -1, yeSrc = null;
+    if (isYearEnd && subject) {
+      yeCols = _teacherYearEndCols(sheet, subject);
+      var _nf = _findSubjectLocation('نصف العام', subject);
+      yeNisfExam = (_nf.success && _nf.columns.exam_score >= 0) ? _nf.columns.exam_score : -1;
+      yeSrc = {
+        t1: [_findSubjectLocation('محرم', subject), _findSubjectLocation('صفر', subject)],
+        t2: [_findSubjectLocation('جماد اول', subject), _findSubjectLocation('جماد ثاني', subject)]
+      };
+    }
+
     var data     = sheet.getRange(4, 1, lastRow - 3, lastColumn).getValues();
     var students = [];
 
@@ -647,6 +660,26 @@ function _getStudentsInternal(grade, section, month, subject) {
         grade   : studentGrade,
         section : studentSec
       };
+
+      // ✅ نهاية العام: بناء الأعمدة الخمسة (محصلة1 + نصفي محمول + محصلة2 + نهائي + إجمالي/100)
+      if (isYearEnd && yeCols) {
+        var ye = _yeComputeFromRow(row, yeCols, yeNisfExam, yeSrc);
+        studentObj.isTermMonth = true;
+        studentObj.ye_m1      = (ye.m1    === null) ? '' : ye.m1;
+        studentObj.ye_midterm = (ye.mid   === null) ? '' : ye.mid;
+        studentObj.ye_m2      = (ye.m2    === null) ? '' : ye.m2;
+        studentObj.ye_final   = (ye.fin   === null) ? '' : ye.fin;
+        studentObj.ye_total   = (ye.total === null) ? '' : ye.total;
+        studentObj.grades = [
+          { key: 'monthly_score',   type: 'محصلة الفصل الأول',  value: String(studentObj.ye_m1),      max: 20,  locked: true },
+          { key: 'midterm_exam',    type: 'اختبار نصف العام',   value: String(studentObj.ye_midterm), max: 30,  locked: true },
+          { key: 'monthly_score_2', type: 'محصلة الفصل الثاني', value: String(studentObj.ye_m2),      max: 20,  locked: true },
+          { key: 'final_exam',      type: 'الاختبار النهائي',    value: String(studentObj.ye_final),   max: 30,  locked: false },
+          { key: 'grand_total',     type: 'الإجمالي',            value: String(studentObj.ye_total),   max: 100, locked: true, isTotal: true }
+        ];
+        students.push(studentObj);
+        continue;
+      }
 
       if (locationResult && locationResult.success) {
         var cols = locationResult.columns;
@@ -6497,8 +6530,57 @@ function _teacherMonthlyFromMonths(sheet, rowIndex, subject, monthsArr) {
   if (total > 20) total = 20;
   return foundAny ? total : null;
 }
+
+/* مجموع الأعمال المستمرة من صف في الذاكرة عبر مواقع أشهر مُحضّرة مسبقاً (بلا قراءة شيت متكررة) */
+function _yeSumLocs(row, locs) {
+  var total = 0, found = false;
+  for (var i = 0; i < locs.length; i++) {
+    var loc = locs[i];
+    if (!loc || !loc.success || loc.isTermMonth) continue;
+    var c = loc.columns;
+    var b = _safeNum(row[c.behavior]), h = _safeNum(row[c.homework]);
+    var o = _safeNum(row[c.oral]),     w = _safeNum(row[c.written]);
+    if (b !== null || h !== null || o !== null || w !== null) {
+      var mt = (b || 0) + (h || 0) + (o || 0) + (w || 0);
+      var sc = Math.round(mt / 10);
+      if (sc > 10) sc = 10;
+      total += sc; found = true;
+    }
+  }
+  if (total > 20) total = 20;
+  return found ? total : null;
+}
+
+/* يحسب قيم نهاية العام الخمسة من صف الطالب (في الذاكرة) — يقرأ الخلية إن وُجدت وإلا يحسب */
+function _yeComputeFromRow(row, yeCols, yeNisfExam, yeSrc) {
+  function rawAt(idx) {
+    if (idx === undefined || idx === null || idx < 0) return null;
+    var v = row[idx];
+    return (v === '' || v === null || v === undefined) ? null : v;
+  }
+  var m1 = rawAt(yeCols.m1), mid = rawAt(yeCols.midterm), m2 = rawAt(yeCols.m2);
+  var fin = rawAt(yeCols.finalEx), tot = rawAt(yeCols.total);
+
+  m1 = (m1 !== null) ? _safeNum(m1) : _yeSumLocs(row, yeSrc.t1);   /* محرم + صفر */
+  m2 = (m2 !== null) ? _safeNum(m2) : _yeSumLocs(row, yeSrc.t2);   /* جماد اول + جماد ثاني */
+  if (mid !== null) { mid = _safeNum(mid); }
+  else if (yeNisfExam >= 0) {                                       /* النصفي محمول من بلوك نصف العام */
+    var mv = row[yeNisfExam];
+    mid = (mv === '' || mv === null || mv === undefined) ? null : _safeNum(mv);
+  }
+  fin = (fin !== null) ? _safeNum(fin) : null;
+
+  var total;
+  if (tot !== null) { total = _safeNum(tot); }
+  else {
+    var any = (m1 !== null || mid !== null || m2 !== null || fin !== null);
+    var sum = (m1 || 0) + (mid || 0) + (m2 || 0) + (fin || 0);
+    total = any ? (sum > 100 ? 100 : Math.round(sum * 10) / 10) : null;
+  }
+  return { m1: m1, mid: mid, m2: m2, fin: fin, total: total };
+}
 /**
- * عند تعديل درجة في شهر عادي، يُعاد حساب الأعمال المستمرة والمحصلة 
+ * عند تعديل درجة في شهر عادي، يُعاد حساب الأعمال المستمرة والمحصلة
  * للشهر الفصلي المرتبط (نصف العام أو نهاية العام)
  *
  * محرم/صفر          → نصف العام
