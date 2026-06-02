@@ -90,6 +90,11 @@ export default {
     headers.delete('content-security-policy');
     headers.delete('x-frame-options');
     headers.set('Access-Control-Allow-Origin', '*');
+    // منع تخزين الواجهة في المتصفّح حتى تظهر التحديثات فوراً (لا نسخة قديمة)
+    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    headers.delete('etag');
+    headers.delete('last-modified');
+    headers.delete('expires');
 
     return new Response(ghResp.body, {
       status: ghResp.status,
