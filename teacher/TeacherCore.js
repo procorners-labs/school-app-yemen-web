@@ -6229,6 +6229,8 @@ function _calcTermMonthlyScore(sheet, studentCode, subject, termMonth) {
  * ════════════════════════════════════════════════════════════════ */
 function _saveYearEndGrade(sheet, rowIndex, subject, examValue) {
   var yc = _teacherYearEndCols(sheet, subject);
+  var lastCol = _getGradeHeaders(sheet).lastCol;
+  var row = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
 
   /* النهائي (يُدخله المعلم) */
   var fxn = _safeNum(examValue);
@@ -6236,23 +6238,22 @@ function _saveYearEndGrade(sheet, rowIndex, subject, examValue) {
     sheet.getRange(rowIndex, yc.finalEx + 1).setValue(fxn);
   }
   /* محصلة الفصل الأول (محرم + صفر) */
-  var m1 = _teacherMonthlyFromMonths(sheet, rowIndex, subject, ['محرم', 'صفر']);
+  var m1 = _yeSumLocs(row, [_findSubjectLocation('محرم', subject), _findSubjectLocation('صفر', subject)]);
   if (m1 !== null && yc.m1 !== undefined) sheet.getRange(rowIndex, yc.m1 + 1).setValue(m1);
   /* محصلة الفصل الثاني (جماد اول + جماد ثاني) */
-  var m2 = _teacherMonthlyFromMonths(sheet, rowIndex, subject, ['جماد اول', 'جماد ثاني']);
+  var m2 = _yeSumLocs(row, [_findSubjectLocation('جماد اول', subject), _findSubjectLocation('جماد ثاني', subject)]);
   if (m2 !== null && yc.m2 !== undefined) sheet.getRange(rowIndex, yc.m2 + 1).setValue(m2);
   /* النصفي محمول من بلوك «نصف العام» */
   var midV = null;
   var nf = _findSubjectLocation('نصف العام', subject);
   if (nf.success && nf.columns.exam_score >= 0) {
-    midV = _safeNum(sheet.getRange(rowIndex, nf.columns.exam_score + 1).getValue());
+    var mv = row[nf.columns.exam_score];
+    midV = (mv === '' || mv === null || mv === undefined) ? null : _safeNum(mv);
     if (midV !== null && yc.midterm !== undefined) sheet.getRange(rowIndex, yc.midterm + 1).setValue(midV);
   }
   /* الاجمالي /100 = محصلة1 + نصفي + محصلة2 + نهائي */
-  var finalForTotal = fxn;
-  if (finalForTotal === null && yc.finalEx !== undefined) {
-    finalForTotal = _safeNum(sheet.getRange(rowIndex, yc.finalEx + 1).getValue());
-  }
+  var finalForTotal = (fxn !== null) ? fxn
+                      : ((yc.finalEx !== undefined) ? _safeNum(row[yc.finalEx]) : null);
   var gt = (m1 || 0) + (midV || 0) + (m2 || 0) + (finalForTotal || 0);
   if (gt > 100) gt = 100;
   gt = Math.round(gt * 10) / 10;
