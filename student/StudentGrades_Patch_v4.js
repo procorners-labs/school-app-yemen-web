@@ -35,7 +35,7 @@
  *  getGrades — النسخة الموحّدة v4 (متطابقة مع منطق منصة المعلم)
  *  المصدر: ورقة "النصفي" في ملف المدرسة النشط.
  * ══════════════════════════════════════════════════════════════ */
-function getGrades(studentId, schoolId) {
+function getGrades(studentId, schoolId, noCache) {
   try {
     _resolveTenant(schoolId);                       /* عزل المدرسة + توحيد schoolId/school */
 
@@ -43,8 +43,10 @@ function getGrades(studentId, schoolId) {
     if (!sid) return { ok: false, error: 'كود الطالب مفقود' };
 
     var cKey   = _ck('grades', sid);                /* كاش معزول لكل مدرسة */
-    var cached = _cacheGet(cKey);
-    if (cached) return cached;
+    if (!noCache) {                                 /* زر التحديث يتجاوز الكاش */
+      var cached = _cacheGet(cKey);
+      if (cached) return cached;
+    }
 
     var activeId = _activeFileId();
     var ss       = _getSSById(activeId);
@@ -115,7 +117,7 @@ function getGrades(studentId, schoolId) {
       generatedAt      : _nowString()
     };
 
-    _cacheSet(cKey, result, 180);   /* كاش 3 دقائق */
+    _cacheSet(cKey, result, 30);    /* كاش قصير 30ث — تظهر الدرجات الجديدة بسرعة */
     return result;
 
   } catch (e) {
