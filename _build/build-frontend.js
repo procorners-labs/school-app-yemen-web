@@ -105,7 +105,8 @@ function transform(src, endpoint, report) {
     cms:      'AKfycbz-iAj9L3ROOn4CAjmwkVBUqpWuxIx1LkgPLwKnHu7kHLWKCy3GVJNo1vZbnekop0VlMA',
     teacher:  'AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND',
     student:  'AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq',
-    schedule: 'AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag'
+    schedule: 'AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag',
+    master:   'AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M'
   };
   // الخصوصية أولاً (أكثر تحديداً) ثم الرابط العام لكل تطبيق
   out = out.replace(new RegExp(S + IDS.home + '/exec\\?page=privacy', 'g'), '/home/privacy.html');
@@ -114,6 +115,7 @@ function transform(src, endpoint, report) {
   out = out.replace(new RegExp(S + IDS.student + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/student/index.html');
   out = out.replace(new RegExp(S + IDS.cms + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/cms/index.html');
   out = out.replace(new RegExp(S + IDS.schedule + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/schedule/index.html');
+  out = out.replace(new RegExp(S + IDS.master + '/exec(\\?[^"\'\\s<]*)?', 'g'), '/master-admin/index.html');
 
   // 4) رصد أي scriptlets متبقية للتنبيه
   var leftover = out.match(/<\?[!=]?[\s\S]*?\?>/g);

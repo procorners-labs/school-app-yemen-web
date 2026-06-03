@@ -7,7 +7,7 @@ var fs = require('fs');
 var path = require('path');
 
 var ROOT = path.resolve(__dirname, '..');
-var APPS = ['home', 'student', 'teacher', 'cms', 'schedule'];
+var APPS = ['home', 'student', 'teacher', 'cms', 'schedule', 'master-admin'];
 
 function endpointSource(app) {
   return [

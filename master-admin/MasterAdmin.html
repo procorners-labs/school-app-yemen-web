@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Master Admin — مدارس الإبداع والتميز</title>
+<title>منصة إدارة المدارس — لوحة المدراء</title>
 <style>
 /* ── Reset & Base ── */
 *{box-sizing:border-box;margin:0;padding:0}
@@ -153,8 +153,8 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
   <div class="login-box">
     <div class="login-logo">
       <div style="font-size:48px;">🏫</div>
-      <h1>مدارس الإبداع والتميز</h1>
-      <p>لوحة التحكم المركزية</p>
+      <h1>منصة إدارة المدارس</h1>
+      <p>لوحة التحكم المركزية للمدراء</p>
     </div>
     <div class="form-group">
       <label>البريد الإلكتروني</label>
@@ -182,7 +182,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       </a>
     </div>
     <p style="text-align:center;font-size:11px;color:#bbb;margin-top:16px;">
-      Master Admin v1.0 — مدارس الإبداع والتميز الدولية
+      منصة إدارة المدارس — لوحة تحكم المدراء v1.0
     </p>
   </div>
 </div>
@@ -1214,10 +1214,18 @@ function _renderPortals(res) {
     { key:'cms',      icon:'📰', label:'إدارة المحتوى',  color:'#d97706' },
     { key:'schedule', icon:'📅', label:'توزيع الحصص',    color:'#7c3aed' }
   ];
+  // معرّف المدرسة الحالية (للمدير = مدرسته، وللمالك = المدرسة المختارة)
+  var sid = res.schoolId || App.viewSchoolId || App.schoolId || '';
+  var portals = res.portals || {};
+  var useWorker = (typeof window.GAS_ENDPOINT !== 'undefined' && !!window.GAS_ENDPOINT);
   var html = '';
   for (var i = 0; i < defs.length; i++) {
     var d   = defs[i];
-    var url = __toWorker(res.portals[d.key] || '');
+    // عبر الـ Worker: رابط ديناميكي يفتح بيانات هذه المدرسة فقط (?schoolId)؛
+    // وإلا (تشغيل GAS مباشر): استخدم رابط الخادم المُهيّأ.
+    var url = (useWorker && sid)
+      ? ('/' + d.key + '/index.html?schoolId=' + encodeURIComponent(sid))
+      : __toWorker(portals[d.key] || '');
     var dis = url ? '' : 'opacity:.45;pointer-events:none;';
     html += '<a href="' + (url || 'javascript:void(0)') + '" target="_blank" ' +
             'style="' + dis + 'display:block;text-decoration:none;background:#fff;' +
