@@ -145,6 +145,34 @@ function ok(c, m) { if (c) { pass++; console.log('  ✅ ' + m); } else { fail++;
     ok(ob.length === 1 && ob[0].status === 'failed', 'op marked failed (kept for review, not lost)');
   }
 
+  // 6) إعادة التحقّق: تتبّع القراءة ثم اكتشاف تغيّر البيانات على الخادم
+  {
+    var win = makeSandbox(true); win.GAS_ENDPOINT = '/gas/teacher'; run(win);
+    var OS = win.OfflineSync;
+    // محاكاة قراءة معروضة: القيمة القديمة في الكاش + التتبّع
+    OS.trackRead('teacher', 'getListsDataProtected', [{ token: 't' }], null);
+    await OS.cacheRead('teacher', 'getListsDataProtected', [{ token: 't' }], null, { v: 1 });
+    // الخادم الآن يُرجع قيمة مختلفة
+    win.__gasRawCall = function (fn, args, onS) { onS({ v: 2 }); };
+    var changed = await OS.revalidate();
+    var fresh = await OS.getCachedRead('teacher', 'getListsDataProtected', [{ token: 't' }], null);
+    console.log('revalidate:');
+    ok(changed === true, 'detected server-side data change on reconnect');
+    ok(fresh && fresh.result && fresh.result.v === 2, 'cache updated to fresh server value');
+  }
+
+  // 7) إعادة التحقّق: لا تغيير ⇒ لا إعلان تغيير (لا تحديث مزعج)
+  {
+    var win = makeSandbox(true); win.GAS_ENDPOINT = '/gas/teacher'; run(win);
+    var OS = win.OfflineSync;
+    OS.trackRead('teacher', 'getGrades', [{ token: 't' }], null);
+    await OS.cacheRead('teacher', 'getGrades', [{ token: 't' }], null, { g: [1, 2] });
+    win.__gasRawCall = function (fn, args, onS) { onS({ g: [1, 2] }); };
+    var changed = await OS.revalidate();
+    console.log('revalidate (no change):');
+    ok(changed === false, 'no refresh requested when data is unchanged');
+  }
+
   console.log('\nRESULT: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
