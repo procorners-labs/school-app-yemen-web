@@ -16,7 +16,8 @@ var ENDPOINTS = {
   cms:      '/gas/cms',
   teacher:  '/gas/teacher',
   student:  '/gas/student',
-  schedule: '/gas/schedule'
+  schedule: '/gas/schedule',
+  'master-admin': '/gas/master-admin'
 };
 
 // خريطة: app -> [ [ملف المصدر, ملف الوجهة, مستوى العمق لمسار assets] ]
@@ -44,6 +45,10 @@ var FILES = {
   ],
   schedule: [
     ['TeacherScheduleManager.html', 'index.html']
+  ],
+  'master-admin': [
+    ['MasterAdmin.html', 'index.html'],
+    ['SchoolRegister.html', 'register.html']
   ]
 };
 
