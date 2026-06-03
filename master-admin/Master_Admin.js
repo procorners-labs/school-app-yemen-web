@@ -387,6 +387,7 @@ function masterLogin(params) {
       role     : user.role,
       isOwner  : (user.role === 'owner'),
       schoolId : user.schoolId,
+      schoolName: _getSchoolNameById(user.schoolId),
       expiresIn: MASTER_SESSION_TTL
     };
   } catch (e) {
@@ -423,6 +424,22 @@ function _checkSchoolActive(schoolId) {
   }
 }
 
+// يُرجع اسم المدرسة من سجل Schools حسب معرّفها (للعرض في لوحة الماستر)
+function _getSchoolNameById(schoolId) {
+  try {
+    if (!schoolId) return '';
+    var sheet = _getMasterSheet('Schools');
+    if (!sheet) return '';
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (_safeStr(data[i][0]) === _safeStr(schoolId)) {
+        return _safeStr(data[i][1]); // العمود school_name
+      }
+    }
+    return '';
+  } catch (e) { return ''; }
+}
+
 function masterLogout(params) {
   var token = _safeStr(params.token);
   if (token) _cacheDel(MASTER_SESSION_PREFIX + token);
@@ -455,7 +472,8 @@ function checkMasterSession(params) {
     name    : session.name,
     role    : session.role,
     isOwner : _isOwnerSession(session),
-    schoolId: session.schoolId
+    schoolId: session.schoolId,
+    schoolName: _getSchoolNameById(session.schoolId)
   };
 }
 
@@ -1790,6 +1808,8 @@ function provisionNewSchool(params) {
     // ── الخطوة 4: تهيئة بيانات كل ملف ──
     if (teacherFileId) {
       _setupTeacherFile(teacherFileId, schoolName, adminName, adminEmail, adminPass, logoUrl);
+      // ضمان اكتمال كل أوراق النظام (الرسوم/التسديد/الجدول/المشاهدات/الإعجابات/سجل العمليات…)
+      try { _repairSchoolFileStructure(teacherFileId); } catch (re) { Logger.log('repair بعد الإنشاء: ' + re.message); }
     }
     if (cmsFileId) {
       _setupCmsFile(cmsFileId, schoolName);
@@ -2162,6 +2182,41 @@ function _repairSchoolFileStructure(fileId) {
   _ensureTwoRowTitleSheet_(ss, 'النصفي', 'الشهر', 'المادة', [
     'الكود', 'الاسم', 'الفصل', 'الشعبة'
   ], 4);
+
+  // ── الرسوم ──
+  _ensureSheet_(ss, 'الرسوم', [
+    'الكود', 'اسم الطالب', 'اجمالي الرسوم', 'المسدد'
+  ], 4);
+
+  // ── التسديد ──
+  _ensureSheet_(ss, 'التسديد', [
+    'الكود', 'اسم الطالب', 'المبلغ', 'التاريخ', 'الوسيط', 'رقم الحوالة'
+  ], 6);
+
+  // ── الجدول ──
+  _ensureSheet_(ss, 'الجدول', [
+    'الفصل', 'الشعبة', 'اليوم', 'الحصة', 'المادة', 'المعلم', 'القاعة'
+  ], 7);
+
+  // ── سلبيات ومميزات الطالب ──
+  _ensureSheet_(ss, 'سلبيات ومميزات الطالب', [
+    'الكود', 'الاسم', 'الفصل', 'الشعبة', 'المخالفة', 'المدرس', 'التاريخ', 'الرد'
+  ], 8);
+
+  // ── مشاهدات الأخبار ──
+  _ensureSheet_(ss, 'اخبار_مشاهدات', [
+    'newsId', 'userId', 'userType', 'timestamp'
+  ], 4);
+
+  // ── إعجابات الأخبار ──
+  _ensureSheet_(ss, 'اخبار_اعجابات', [
+    'newsId', 'userId', 'userName', 'userType', 'timestamp'
+  ], 5);
+
+  // ── سجل العمليات ──
+  _ensureSheet_(ss, 'سجل_العمليات', [
+    'التاريخ', 'كود الطالب', 'العملية', 'التفاصيل', 'حالة النظام'
+  ], 5);
 
   SpreadsheetApp.flush();
   Logger.log('✅ تم إصلاح بنية المدرسة: ' + fileId);

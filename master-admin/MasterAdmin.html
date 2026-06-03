@@ -522,6 +522,7 @@ var _allSchools    = [];
           App.role     = res.role;
           App.isOwner  = !!res.isOwner;
           App.schoolId = res.schoolId;
+          App.schoolName = res.schoolName || '';
           _showApp();
           //dashboard_load(); // لا حاجة الآن، سننتقل لاحقًا إلى portals
         }
@@ -562,6 +563,7 @@ function login_submit() {
       App.role     = res.role;
       App.isOwner  = !!res.isOwner;
       App.schoolId = res.schoolId;
+      App.schoolName = res.schoolName || '';
       sessionStorage.setItem('master_token', res.token);
       statusEl.innerHTML = '';
       _showApp();
@@ -582,8 +584,14 @@ function login_submit() {
 function _showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  document.getElementById('user-name-display').textContent =
-    App.userName + ' (' + (App.isOwner ? 'مالك النظام' : 'مدير مدرسة') + ')';
+  var _ctx = App.isOwner
+    ? 'مالك النظام'
+    : (App.schoolName ? ('🏫 ' + App.schoolName) : 'مدير مدرسة');
+  document.getElementById('user-name-display').textContent = App.userName + ' — ' + _ctx;
+  // عنوان المتصفّح حسب اسم المدرسة (للمدير)
+  try {
+    if (!App.isOwner && App.schoolName) document.title = App.schoolName + ' — لوحة المدير';
+  } catch (e) {}
 
   // إخفاء عناصر المالك عن مديري المدارس
   var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings'];
