@@ -1536,6 +1536,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
          border:none;border-radius:8px;cursor:pointer;font-size:13px;">
   ◔ متأخر للمحددين
 </button>
+<button onclick="att_prepareMessages()"
+  style="padding:8px 16px;background:#25D366;color:#fff;
+         border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:bold;">
+  📨 تجهيز رسائل الغائبين
+</button>
         </div>
       </div>
       <div id="att-status" style="margin-bottom:12px;"></div>
@@ -1544,8 +1549,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div id="att-wa-section" style="display:none;margin-top:16px;background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);">
         <h3 style="margin:0 0 12px;">📱 رسائل واتساب الغائبين</h3>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:13px;display:block;margin-bottom:6px;">قالب جاهز:</label>
+          <select id="att-wa-tpl-select" onchange="att_applyWaTemplate()" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;">
+            <option value="غياب">📋 رسالة غياب</option>
+            <option value="تأخر">⏰ رسالة تأخّر</option>
+            <option value="عام">✉️ رسالة عامة</option>
+          </select>
+        </div>
         <div style="margin-bottom:12px;">
-          <label style="font-size:13px;display:block;margin-bottom:6px;">قالب الرسالة (يمكن تعديله):</label>
+          <label style="font-size:13px;display:block;margin-bottom:6px;">نص الرسالة (يمكن تعديله) — المتغيّرات: [اسم الطالب] [حالة] [التاريخ] [اسم المدرسة]:</label>
           <textarea id="att-wa-template" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;">السيد/ة ولي أمر الطالب [اسم الطالب]،
 نود إعلامكم بأن الطالب/ة [حالة] اليوم [التاريخ].
 للاستفسار يرجى التواصل مع إدارة المدرسة على الرقم: 775189922
@@ -6468,19 +6481,77 @@ function att_saveAll() {
     att_setStatus('❌ خطأ في الحفظ: ' + err.message, '#c62828');
   });
 }
-function att_buildWaButton(student,date){ if(!student.phone) return ''; var link=att_buildWaLink(student.phone,student.name,date,student.status); return '<a href="'+link+'" target="_blank" class="att-wa-btn">📱 واتس</a>'; }
+var _attWaSent = {}; // تتبّع الرسائل المُرسَلة في الجلسة الحالية (code -> true)
+
+// اسم المدرسة الديناميكي للرسالة (يُؤخذ من شارة الهوية إن وُجدت)
+function att_schoolName(){ var el=document.querySelector('.school-brand-name'); return (el && el.textContent && el.textContent.trim()) || 'إدارة المدرسة'; }
+
+// قوالب جاهزة احترافية
+function att_applyWaTemplate(){
+  var sel=document.getElementById('att-wa-tpl-select'); var ta=document.getElementById('att-wa-template'); if(!sel||!ta) return;
+  var T={
+    'غياب':'السيد/ة ولي أمر الطالب/ة [اسم الطالب] المحترم،\nنفيدكم بأن الطالب/ة قد تغيّب عن الدوام المدرسي اليوم [التاريخ]. نأمل إفادتنا بسبب الغياب والحرص على الانتظام.\nمع خالص التقدير،\nإدارة [اسم المدرسة].',
+    'تأخر':'السيد/ة ولي أمر الطالب/ة [اسم الطالب] المحترم،\nنفيدكم بأن الطالب/ة حضر متأخرًا اليوم [التاريخ]. نرجو الحرص على الحضور في الموعد المحدد.\nمع التقدير،\nإدارة [اسم المدرسة].',
+    'عام':'السيد/ة ولي أمر الطالب/ة [اسم الطالب]،\nحالة اليوم [التاريخ]: [حالة].\nللاستفسار تواصلوا مع إدارة [اسم المدرسة].'
+  };
+  if(T[sel.value]) ta.value=T[sel.value];
+}
+
+function att_buildWaButton(student,date){ if(!student.phone) return ''; return '<button class="att-wa-btn" onclick="att_waSend(\''+student.code+'\')">📱 واتس</button>'; }
+
 function att_buildWaLink(phone,name,date,status){
   phone=(phone||'').replace(/[^0-9]/g,'');
   if(phone.charAt(0)==='0') phone='967'+phone.substring(1); else if(phone.indexOf('967')!==0 && phone.length>=9) phone='967'+phone;
   var template=document.getElementById('att-wa-template');
-  var msg = template ? template.value.replace('[اسم الطالب]',name).replace('[حالة]',status).replace('[التاريخ]',date) : 'السيد/ة ولي أمر الطالب '+name+'،\nنود إعلامكم بأن الطالب/ة '+status+' اليوم '+date+'.\nللاستفسار يرجى التواصل مع إدارة المدرسة على الرقم: 775189922\nمدارس الإبداع والتميز الدولية';
+  var base = (template && template.value) ? template.value : 'السيد/ة ولي أمر الطالب/ة [اسم الطالب]،\nنفيدكم بأن الطالب/ة [حالة] اليوم [التاريخ].\nإدارة [اسم المدرسة].';
+  var msg = base.replace(/\[اسم الطالب\]/g,name).replace(/\[حالة\]/g,status).replace(/\[التاريخ\]/g,date).replace(/\[اسم المدرسة\]/g,att_schoolName());
   return 'https://wa.me/'+(phone||'')+'?text='+encodeURIComponent(msg);
 }
+
+// إرسال لطالب واحد: يفتح واتساب على رقم وليّ الأمر والرسالة جاهزة، ثم يحوّل الحالة إلى «تم الإرسال»
+function att_waSend(code){
+  var s=null; for(var i=0;i<_attStudents.length;i++){ if(_attStudents[i].code===code){ s=_attStudents[i]; break; } }
+  if(!s || !s.phone){ toast('لا يوجد رقم جوال لهذا الطالب في صفحة الطلاب','warning'); return; }
+  window.open(att_buildWaLink(s.phone,s.name,_attDate,s.status||'غائب'),'_blank');
+  _attWaSent[code]=true;
+  att_markWaSent(code);
+}
+function att_markWaSent(code){
+  var st=document.getElementById('att-wa-status-'+code); if(st) st.innerHTML='<span style="color:#2e7d32;font-weight:bold;">✅ تم الإرسال</span>';
+  var cell=document.getElementById('att-wa-cell-'+code); if(cell) cell.innerHTML='<span style="color:#2e7d32;font-size:12px;font-weight:bold;">✅ تم</span>';
+}
+
+// المرحلة الثانية: تجهيز رسائل كل الغائبين (بعد تحديدهم) دون انتظار الحفظ
+function att_prepareMessages(){
+  var absent=_attStudents.filter(function(s){ return s.status && s.status!=='حاضر'; });
+  if(absent.length===0){ toast('حدّد الطلاب الغائبين أولاً','warning'); return; }
+  att_showWaSection(absent);
+  var sec=document.getElementById('att-wa-section'); if(sec){ sec.style.display=''; try{ sec.scrollIntoView({behavior:'smooth'}); }catch(e){} }
+}
+
 function att_showWaSection(absentList){
   var section=document.getElementById('att-wa-section'); var list=document.getElementById('att-wa-list'); if(!section||!list) return;
-  section.style.display=''; var html='';
-  for(var i=0;i<absentList.length;i++){ var s=absentList[i]; html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid #eee;"><span>'+s.name+' — <b>'+s.status+'</b>'+(s.phone?'':' <small style="color:#f44336;">(لا يوجد رقم)</small>')+'</span>'; if(s.phone){ var link=att_buildWaLink(s.phone,s.name,_attDate,s.status); html+='<a href="'+link+'" target="_blank" class="att-wa-btn">📱 إرسال</a>'; } html+='</div>'; }
-  list.innerHTML=html||'<p style="color:#888;">لا يوجد غائبون</p>';
+  section.style.display='';
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">';
+  html+='<b>👥 '+absentList.length+' طالب غائب — الرسائل جاهزة</b>';
+  html+='<button onclick="att_waSendAll()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:bold;cursor:pointer;">📤 إرسال للجميع</button>';
+  html+='</div>';
+  for(var i=0;i<absentList.length;i++){ var s=absentList[i];
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid #eee;gap:8px;flex-wrap:wrap;">';
+    html+='<span style="flex:1;min-width:150px;">'+(i+1)+'. '+s.name+' — <b>'+s.status+'</b>'+(s.phone?' <small style="color:#888;">📞'+s.phone+'</small>':' <small style="color:#f44336;">(لا يوجد رقم)</small>')+'</span>';
+    var inner = _attWaSent[s.code] ? '<span style="color:#2e7d32;font-weight:bold;">✅ تم الإرسال</span>' : (s.phone ? '<button class="att-wa-btn" onclick="att_waSend(\''+s.code+'\')">📱 إرسال</button>' : '');
+    html+='<span id="att-wa-status-'+s.code+'">'+inner+'</span></div>';
+  }
+  list.innerHTML=html;
+}
+
+// إرسال للجميع تتابعيًا (أفضل جهد — قد يحجب بعض المتصفّحات النوافذ المتتابعة؛ الإرسال الفردي مضمون)
+function att_waSendAll(){
+  var pend=_attStudents.filter(function(s){ return s.status && s.status!=='حاضر' && s.phone && !_attWaSent[s.code]; });
+  if(pend.length===0){ toast('لا يوجد متبقّون للإرسال','info'); return; }
+  var idx=0;
+  function next(){ if(idx>=pend.length){ toast('تم فتح رسائل الغائبين','success'); return; } att_waSend(pend[idx].code); idx++; setTimeout(next,1800); }
+  next();
 }
 function att_updateSummary(){
   var summaryDiv=document.getElementById('att-summary'); if(!summaryDiv) return;
