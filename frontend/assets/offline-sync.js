@@ -231,11 +231,13 @@
         if (failed > 0) UI.toast('⚠️ تعذّرت مزامنة ' + failed + ' عملية — راجعها', 'warn');
         if (n > 0) { scheduleRetry(); } else { resetRetry(); }
         UI.refresh();
+        return { synced: synced, failed: failed };
       });
     })['catch'](function () {
       UI.setSyncing(false);
       _flushing = false;
       scheduleRetry();
+      return { synced: synced, failed: failed };
     });
   }
 
@@ -247,6 +249,78 @@
         })['catch'](function () {});
       }
     } catch (e) {}
+  }
+
+  // ── إعادة التحقّق الذكية للبيانات + التحديث الديناميكي ────────
+  // نتتبّع نداءات القراءة المعروضة في هذه الجلسة، فعند عودة الاتصال نعيد جلبها
+  // في الخلفية ونحدّث الكاش؛ وإن تغيّرت البيانات نحدّث الشاشة ذكياً.
+  var trackedReads = {}; // key → {app, fn, args, schoolId}
+
+  function trackRead(app, fn, args, schoolId) {
+    try { trackedReads[readKey(app, fn, args, schoolId)] = { app: app, fn: fn, args: args, schoolId: schoolId }; }
+    catch (e) {}
+  }
+
+  function stableStr(v) { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+
+  // يعيد جلب كل القراءات المتتبَّعة، يحدّث الكاش، ويُرجع true إن تغيّرت أي نتيجة.
+  function revalidate() {
+    if (!isOnline()) return Promise.resolve(false);
+    var keys = Object.keys(trackedReads);
+    if (keys.length === 0) return Promise.resolve(false);
+
+    return Promise.all(keys.map(function (k) {
+      var r = trackedReads[k];
+      return new Promise(function (resolve) {
+        if (!window.__gasRawCall) { resolve(false); return; }
+        // نضبط GAS_ENDPOINT المناسب للتطبيق الحالي (نفس الصفحة) — متوافق مع البنية.
+        window.__gasRawCall(r.fn, r.args, function (result) {
+          getCachedRead(r.app, r.fn, r.args, r.schoolId).then(function (prev) {
+            var changed = !prev || stableStr(prev.result) !== stableStr(result);
+            cacheRead(r.app, r.fn, r.args, r.schoolId, result).then(function () { resolve(changed); });
+          });
+        }, function () { resolve(false); }); // فشل/خطأ: لا نعدّه تغييراً
+      });
+    })).then(function (results) {
+      for (var i = 0; i < results.length; i++) if (results[i]) return true;
+      return false;
+    });
+  }
+
+  // تحديث ديناميكي للشاشة: إعادة تحميل آمنة (لا تقاطع إدخال المستخدم).
+  var _refreshPending = false;
+  function isSafeToReload() {
+    try {
+      if (typeof document !== 'undefined' && document.hidden) return false;
+      var a = document.activeElement;
+      if (a) {
+        var t = (a.tagName || '').toUpperCase();
+        if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || a.isContentEditable) return false;
+      }
+      return true;
+    } catch (e) { return true; }
+  }
+  function tryRefresh() {
+    if (!_refreshPending) return;
+    if (isSafeToReload()) {
+      try { window.location.reload(); } catch (e) {}
+    }
+  }
+  // يُطلب التحديث عند تغيّر البيانات أو بعد مزامنة كتابات؛ فوري إن أمكن وإلا يؤجَّل بأمان.
+  function requestRefresh() {
+    _refreshPending = true;
+    UI.showRefresh();   // زر «تحديث» غير مزعج كخيار يدوي فوري
+    tryRefresh();       // تحديث تلقائي إن كان آمناً الآن
+  }
+
+  // تُستدعى عند عودة الاتصال: مزامنة الكتابات ثم تحديث القراءات ذكياً.
+  function syncNow() {
+    resetRetry();
+    return flush().then(function (res) {
+      return revalidate().then(function (changed) {
+        if ((res && res.synced > 0) || changed) requestRefresh();
+      });
+    });
   }
 
   // ── الجلسة الدائمة ───────────────────────────────────────────
@@ -285,7 +359,10 @@
         'box-shadow:0 8px 24px rgba(0,0,0,.3);background:#333;opacity:0;transform:translateY(8px);' +
         'transition:opacity .25s,transform .25s}' +
         '#ofl-toasts .t.show{opacity:1;transform:none}' +
-        '#ofl-toasts .t.ok{background:#2e7d32}#ofl-toasts .t.warn{background:#e67e22}#ofl-toasts .t.err{background:#c0392b}';
+        '#ofl-toasts .t.ok{background:#2e7d32}#ofl-toasts .t.warn{background:#e67e22}#ofl-toasts .t.err{background:#c0392b}' +
+        '#ofl-refresh{display:none;border:0;cursor:pointer;padding:11px 16px;border-radius:12px;' +
+        'font:800 14px "Segoe UI",Tahoma,sans-serif;color:#fff;background:#1b6fd6;direction:rtl;' +
+        'box-shadow:0 8px 24px rgba(27,111,214,.4)}#ofl-refresh:active{transform:scale(.97)}';
       document.head.appendChild(style);
 
       pill = document.createElement('div');
@@ -348,7 +425,20 @@
       }, 4000);
     }
 
-    return { ensure: ensure, refresh: refresh, setSyncing: setSyncing, toast: toast };
+    // زر «تحديث البيانات» غير مزعج: يظهر حين توجد بيانات أحدث وتعذّر التحديث التلقائي الآمن.
+    var refreshBtn;
+    function showRefresh() {
+      ensure();
+      if (refreshBtn) { refreshBtn.style.display = ''; return; }
+      refreshBtn = document.createElement('button');
+      refreshBtn.id = 'ofl-refresh';
+      refreshBtn.type = 'button';
+      refreshBtn.textContent = '🔄 تحديث البيانات';
+      refreshBtn.onclick = function () { try { window.location.reload(); } catch (e) {} };
+      if (toastWrap) toastWrap.appendChild(refreshBtn); else document.body.appendChild(refreshBtn);
+    }
+
+    return { ensure: ensure, refresh: refresh, setSyncing: setSyncing, toast: toast, showRefresh: showRefresh };
   })();
 
   // ── الواجهة العامّة المستهلَكة من gas-bridge.js ───────────────
@@ -363,6 +453,9 @@
     persistSession: persistSession,
     getPersistedSession: getPersistedSession,
     pendingCount: pendingCount,
+    trackRead: trackRead,
+    revalidate: revalidate,
+    syncNow: syncNow,
     refreshUI: function () { UI.refresh(); },
     toast: function (m, k) { UI.toast(m, k); }
   };
@@ -374,9 +467,8 @@
 
     window.addEventListener('online', function () {
       UI.refresh();
-      UI.toast('🔄 عاد الاتصال — جارٍ المزامنة', 'ok');
-      resetRetry();
-      flush();
+      UI.toast('🔄 عاد الاتصال — جارٍ المزامنة وتحديث البيانات', 'ok');
+      syncNow();
     });
     window.addEventListener('offline', function () {
       UI.refresh();
@@ -390,10 +482,17 @@
       }
     }, 30000);
 
+    // تحديث تلقائي مؤجَّل: حين يصبح آمناً (عودة التركيز/الظهور أو نقرة) نُكمل التحديث.
+    window.addEventListener('focus', tryRefresh);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) tryRefresh(); });
+      document.addEventListener('click', function () { setTimeout(tryRefresh, 50); }, true);
+    }
+
     // رسالة من Service Worker (Background Sync).
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', function (ev) {
-        if (ev.data && ev.data.type === 'creativity-sync') flush();
+        if (ev.data && ev.data.type === 'creativity-sync') syncNow();
       });
     }
   }

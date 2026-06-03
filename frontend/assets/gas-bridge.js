@@ -90,6 +90,8 @@
     var kind = OS.classify(fnName);
 
     if (kind === 'read') {
+      // نتتبّع القراءة لإعادة التحقّق منها وتحديثها تلقائياً عند عودة الاتصال.
+      if (OS.trackRead) OS.trackRead(app, fnName, args, schoolId);
       if (OS.isOnline()) {
         rawCall(fnName, args, function (result, uo) {
           OS.cacheRead(app, fnName, args, schoolId, result);
