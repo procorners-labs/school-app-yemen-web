@@ -1388,7 +1388,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <div class="login-card">
     <div class="login-header">
       <div class="login-icon-wrap">🎓</div>
-      <div class="login-school-name">مدارس الإبداع والتميز الدولية</div>
+      <div class="login-school-name school-brand-name">مدارس الإبداع والتميز الدولية</div>
       <div class="login-subtitle">منصة المعلمين الإلكترونية</div>
     </div>
     <div class="login-body">
@@ -1430,7 +1430,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <button type="button" class="nav-brand" onclick="showSection('dashboard')">
         <div class="nav-brand-icon">🏫</div>
         <div>
-          <div class="nav-brand-text">مدارس الإبداع</div>
+          <div class="nav-brand-text school-brand-name">مدارس الإبداع</div>
           <div class="nav-brand-sub">منصة المعلمين</div>
         </div>
       </button>
@@ -7018,6 +7018,27 @@ function drawTerm1SummaryTable(students) {
 }
 // تنظيف الكاش عند تسجيل الخروج (اختياري)
 function _rpt_clearCache() { _RPT_CACHE = null; }
+
+/* ── عرض اسم مدرسة الحساب ديناميكيًا (حسب schoolId) بدل الاسم الثابت ── */
+(function () {
+  if (!window.SCHOOL_ID) return;
+  function applyName(name) {
+    if (!name) return;
+    var els = document.querySelectorAll('.school-brand-name');
+    for (var i = 0; i < els.length; i++) els[i].textContent = name;
+    try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, name); } catch (e) {}
+  }
+  function run() {
+    try {
+      google.script.run
+        .withSuccessHandler(function (res) { if (res && res.ok && res.name) applyName(res.name); })
+        .withFailureHandler(function () {})
+        .getSchoolName(window.SCHOOL_ID);
+    } catch (e) {}
+  }
+  if (document.readyState !== 'loading') run();
+  else document.addEventListener('DOMContentLoaded', run);
+})();
 
 </script>
 </body>

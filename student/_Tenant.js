@@ -76,3 +76,28 @@ function _resolveTenantFileId(schoolId, fileType) {
   }
   throw new Error('المدرسة غير موجودة في النظام');
 }
+
+// يُرجع اسم المدرسة حسب معرّفها — للعرض الديناميكي في لوحات الدخول/العناوين.
+// دالة عامّة غير محمية (الاسم معلومة عامّة) تُستدعى قبل الدخول.
+function getSchoolName(schoolId) {
+  try {
+    schoolId = (schoolId === null || schoolId === undefined) ? '' : schoolId.toString().trim();
+    if (!schoolId) return { ok: true, name: '' };
+    var ckey = 'school_name_' + schoolId;
+    try { var c = CacheService.getScriptCache().get(ckey); if (c) return { ok: true, name: c }; } catch (e) {}
+    var ss = SpreadsheetApp.openById(MASTER_SS_ID);
+    var sh = ss.getSheetByName('Schools');
+    if (!sh) return { ok: true, name: '' };
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][_SCHOOLS_COL.school_id].toString().trim() === schoolId) {
+        var nm = (data[i][1] || '').toString().trim(); // العمود 1 = اسم المدرسة
+        try { CacheService.getScriptCache().put(ckey, nm, 1800); } catch (e) {}
+        return { ok: true, name: nm };
+      }
+    }
+    return { ok: true, name: '' };
+  } catch (e) {
+    return { ok: false, name: '', error: String(e) };
+  }
+}

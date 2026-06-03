@@ -1345,7 +1345,7 @@ a { color: var(--pr); text-decoration: none; }
   <div class="login-card">
     <div class="login-logo">🎓</div>
     <h1>منصة الطالب</h1>
-    <div class="subtitle">مدارس الإبداع والتميز الدولية</div>
+    <div class="subtitle school-brand-name">مدارس الإبداع والتميز الدولية</div>
 
     <div class="login-err" id="loginErr"></div>
 
@@ -3322,6 +3322,27 @@ function initLazyImages() {
     }
   }
 }
+
+/* ── عرض اسم مدرسة الحساب ديناميكيًا (حسب schoolId) بدل الاسم الثابت ── */
+(function () {
+  if (!window.SCHOOL_ID) return;
+  function applyName(name) {
+    if (!name) return;
+    var els = document.querySelectorAll('.school-brand-name');
+    for (var i = 0; i < els.length; i++) els[i].textContent = name;
+    try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, name); } catch (e) {}
+  }
+  function run() {
+    try {
+      google.script.run
+        .withSuccessHandler(function (res) { if (res && res.ok && res.name) applyName(res.name); })
+        .withFailureHandler(function () {})
+        .getSchoolName(window.SCHOOL_ID);
+    } catch (e) {}
+  }
+  if (document.readyState !== 'loading') run();
+  else document.addEventListener('DOMContentLoaded', run);
+})();
 </script>
 
 </body>
