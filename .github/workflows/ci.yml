@@ -1,0 +1,37 @@
+name: CI — build & offline tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # إعادة بناء الواجهة من المصدر (لا تبعيات npm — سكربتات Node مدمجة فقط)
+      - name: Build frontend
+        run: node _build/build-frontend.js
+
+      # التأكّد أن frontend/ المُولّدة مطابقة للمصدر (أي تعديل HTML يجب إعادة بنائه قبل الدفع)
+      - name: Ensure frontend is in sync with source
+        run: |
+          if ! git diff --quiet -- frontend; then
+            echo "::error::frontend/ غير متطابقة مع المصدر — شغّل: node _build/build-frontend.js ثم التزم بالتغييرات"
+            git --no-pager diff --stat -- frontend
+            exit 1
+          fi
+
+      # اختبارات سلوك العمل دون اتصال + المزامنة
+      - name: Run offline sync tests
+        run: node _build/test-offline.js
