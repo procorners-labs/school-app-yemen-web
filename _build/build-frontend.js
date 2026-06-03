@@ -50,6 +50,7 @@ var FILES = {
 function injectionBlock(endpoint) {
   return [
     '<!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->',
+    '<link rel="manifest" href="/manifest.webmanifest">',
     '<script>',
     '  (function(){',
     '    var qs = new URLSearchParams(window.location.search);',
@@ -57,7 +58,17 @@ function injectionBlock(endpoint) {
     "    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';",
     '  })();',
     '</script>',
+    '<!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->',
+    '<script src="../assets/offline-db.js"></script>',
+    '<script src="../assets/offline-sync.js"></script>',
     '<script src="../assets/gas-bridge.js"></script>',
+    '<script>',
+    "  if ('serviceWorker' in navigator) {",
+    "    window.addEventListener('load', function () {",
+    "      navigator.serviceWorker.register('/sw.js').catch(function(){});",
+    '    });',
+    '  }',
+    '</script>',
     '<!-- ▲▲ نهاية الحقن ▲▲ -->'
   ].join('\n');
 }
