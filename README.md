@@ -75,8 +75,39 @@
 - `frontend/student/reports.html` و`teacher/reports.html` غير منشأة عمداً لأن ملفّي
   `*_Reports.html` المصدريين **مقتطفات** تُدمج داخل البوابة، لا صفحات مستقلة.
 
+## العمل دون اتصال + المزامنة التلقائية (Offline-First)
+
+المنصّة تعمل الآن **دون إنترنت** وتتزامن **تلقائياً** عند عودة الاتصال (مهمّ لاستقرار
+الشبكة في اليمن). التطبيق قابل للتثبيت على الجوال (PWA).
+
+**كيف يعمل (الطبقة في مكان واحد فوق `gas-bridge.js`):**
+- `frontend/sw.js` — Service Worker يخزّن قشرة التطبيق فتُفتح الصفحات دون اتصال
+  (التنقّل: شبكة أولاً ثم الكاش؛ نداءات `/gas/*` تمريراً فقط بلا تخزين).
+- `frontend/assets/offline-db.js` — تخزين دائم عبر IndexedDB (مع تراجع localStorage).
+- `frontend/assets/offline-sync.js` — محرك التصنيف + الطابور + المزامنة + شارة الحالة:
+  - **قراءة (كل التطبيقات):** تُخزَّن نتائج `get*`/`checkSession`… وتُخدَم آخر نسخة دون اتصال.
+  - **كتابة (لوحة المعلّم فقط):** `saveAttendanceSingleProtected`, `addListItemProtected`,
+    `updateListItemProtected`, `deleteListItemProtected`, `adminSaveTeacherGrouped`,
+    `adminDeleteTeacherByName` تُحفظ في طابور `outbox` وتُزامَن تلقائياً (FIFO + إعادة محاولة
+    بتراجع أُسّي + Background Sync). لا تُحذف عملية قبل تأكيد نجاحها.
+  - **online-only:** المصادقة/الرفع/الكتابات خارج النطاق تفشل بلطف دون اتصال.
+  - **جلسة دائمة:** جلسة المعلّم/الطالب تُحفظ بشكل دائم ليعمل التطبيق بعد إعادة الفتح دون نت.
+- شارة عائمة عربية تُظهر حالة الاتصال وعدد العمليات المعلّقة + إشعارات نجاح/فشل المزامنة.
+- `frontend/manifest.webmanifest` + أيقونات `frontend/assets/icon-*.png` (قابل للتثبيت).
+
+> **لا يتطلّب إعادة نشر GAS.** كل المنطق في الواجهة. الطابور يرسل عملية واحدة وينتظر تأكيد
+> `ok` قبل حذفها لتقليل التكرار.
+>
+> **(اختياري لاحقاً) حماية تكرار على الخادم:** عند الرغبة بضمان أقوى، يمكن إضافة فحص
+> مُعرّف عملية (`opId`) في `*/ApiEndpoint.js` (تخزين مُعرّفات آخر 24 ساعة في `CacheService`
+> وتجاهل المكرّر) — يتطلب إعادة نشر المشاريع الخمسة مرة واحدة.
+
+> ملاحظة Cloudflare Worker: لا حاجة لتعديله — `Cache-Control: no-store` يخصّ كاش HTTP،
+> بينما Service Worker يستخدم Cache API المستقلّ عنه. والمسارات `/sw.js`, `/manifest.webmanifest`,
+> `/assets/*` تُخدَم تلقائياً من GitHub عبر الوكيل.
+
 ## أدوات البناء
 سكربتات `_build/` (Node) تُعيد توليد الواجهة ونقاط الخادم:
-- `node _build/build-frontend.js` → يبني `frontend/`
+- `node _build/build-frontend.js` → يبني `frontend/` (يحقن أيضاً طبقة العمل دون اتصال + تسجيل SW)
 - `node _build/gen-endpoints.js` → يولّد `ApiEndpoint.js` في كل تطبيق
 - `node _build/extract.js` → يستخرج قوائم الدوال المسموح بها
