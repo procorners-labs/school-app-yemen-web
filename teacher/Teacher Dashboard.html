@@ -6950,9 +6950,40 @@ function _renderReportsBody(data) {
   } else {
     html = _rpt_renderTeacher(data);
   }
-  document.getElementById('rptBody').innerHTML = html;
+  document.getElementById('rptBody').innerHTML = html + '<div id="rpt-absence" style="margin-top:14px;"></div>';
+  rep_loadTeacherAbsence(data.scope);
 }
- 
+
+// ── تقرير غياب المعلمين (مدمج داخل لوحة التقارير) ──────────
+function rep_loadTeacherAbsence(scope){
+  var box=document.getElementById('rpt-absence'); if(!box) return;
+  var priv=(scope==='admin'||scope==='deputy'||scope==='supervisor');
+  box.innerHTML=_rpt_card('🧑‍🏫','غياب المعلمين','<p style="color:#94a3b8;">⏳ جارٍ التحميل...</p>');
+  var p=priv?{}:{ teacherName:(App.user&&App.user.teacherName)||'' };
+  callServer('getTeacherAbsenceSummaryProtected', p, function(res){
+    if(!res||!res.success){ box.innerHTML=''; return; }
+    window._repTabs=res.summary||[];
+    var inner=(!res.summary||!res.summary.length) ? '<p style="color:#94a3b8;">لا توجد سجلات غياب مسجّلة</p>' : rep_tabsTable(res.summary);
+    var actions='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'+
+      '<button class="btn btn-secondary" onclick="rep_printTeacherAbsence()">🖨️ طباعة</button>'+
+      (priv?'<button class="btn btn-primary" onclick="showSection(\'teacher-absence\')">🧑‍🏫 إدارة غياب المعلمين</button>':'')+'</div>';
+    box.innerHTML=_rpt_card('🧑‍🏫','غياب المعلمين', inner+actions);
+  }, function(){ box.innerHTML=''; });
+}
+function rep_tabsTable(list){
+  var h='<div style="overflow-x:auto;"><table class="att-table" style="min-width:660px;"><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>';
+  for(var i=0;i<list.length;i++){ var t=list[i]; h+='<tr><td style="font-weight:600;">'+t.teacher+'</td><td style="text-align:center;">'+t.totalPeriods+'</td><td style="text-align:center;color:#c62828;font-weight:bold;">'+t.absentDays+'</td><td style="text-align:center;color:#e65100;">'+t.absentPeriods+'</td><td style="text-align:center;color:#2e7d32;">'+t.excused+'</td><td style="text-align:center;color:#c62828;">'+t.unexcused+'</td><td style="text-align:center;color:#1565c0;">'+t.tasked+'</td></tr>'; }
+  h+='</tbody></table></div>'; return h;
+}
+function rep_printTeacherAbsence(){
+  var list=window._repTabs||[]; var rows='';
+  for(var i=0;i<list.length;i++){ var t=list[i]; rows+='<tr><td>'+t.teacher+'</td><td>'+t.totalPeriods+'</td><td>'+t.absentDays+'</td><td>'+t.absentPeriods+'</td><td>'+t.excused+'</td><td>'+t.unexcused+'</td><td>'+t.tasked+'</td></tr>'; }
+  var sn=((document.querySelector('.school-brand-name')||{}).textContent)||'';
+  var w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة للطباعة','warning'); return; }
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
+  w.document.close(); w.focus(); w.print();
+}
+
 // ── Admin/Deputy ────────────────────────────────────────
 function _rpt_renderAdmin(d) {
   var s = d.summary || {};
