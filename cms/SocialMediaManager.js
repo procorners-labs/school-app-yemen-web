@@ -19,7 +19,8 @@ var SMM_SHEETS = {
   TEMPLATES   : 'قوالب_المحتوى',
   ACTIVITIES  : 'الأنشطة_المدرسية',
   PUBLISH_LOG : 'سجل_النشر',
-  ANALYTICS   : 'إحصائيات_المنصات'
+  ANALYTICS   : 'إحصائيات_المنصات',
+  SOCIAL_SET  : 'اعدادات_السوشل'
 };
 
 // المنصات المدعومة
@@ -108,6 +109,7 @@ function smmSetupSystem() {
   smmCreateActivitiesSheet();
   smmCreatePublishLogSheet();
   smmCreateAnalyticsSheet();
+  smmCreateSocialSettingsSheet();
   smmSeedYearCalendar();
   smmSeedTemplates();
   smmAddMissingTemplates();
@@ -438,6 +440,124 @@ function _smmListRule(values) {
     .setAllowInvalid(true)
     .build();
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  بيانات حسابات السوشل لكل مدرسة (ورقة «اعدادات_السوشل»)
+//  الأعمدة: school_id|fb_page_id|fb_page_token|ig_business_id|wa_phone_id|
+//           wa_token|wa_recipients|yt_channel_url|updated_at
+//  أمان: لا تُعاد التوكنات الخام للعميل (تُقنَّع)؛ الحفظ يحدّث الحقول غير الفارغة فقط.
+// ═══════════════════════════════════════════════════════════════════
+var _SMM_SET_COLS = ['school_id', 'fb_page_id', 'fb_page_token', 'ig_business_id', 'wa_phone_id', 'wa_token', 'wa_recipients', 'yt_channel_url', 'updated_at'];
+
+function smmCreateSocialSettingsSheet() {
+  var sheet = _smmGetSheet(SMM_SHEETS.SOCIAL_SET);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(_SMM_SET_COLS);
+    sheet.getRange(1, 1, 1, _SMM_SET_COLS.length).setBackground('#0f3b5c').setFontColor('white').setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+}
+
+function _smmSetRowIndex(sheet, schoolId) {
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (_smmSafeStr(data[i][0]) === _smmSafeStr(schoolId)) return i + 1;
+  }
+  return -1;
+}
+
+// حفظ/تحديث بيانات مدرسة (الحقول غير الفارغة فقط) — عام (من واجهة CMS)
+function smmSaveSocialSettings(schoolId, obj) {
+  try {
+    obj = obj || {};
+    schoolId = _smmSafeStr(schoolId) || 'default';
+    smmCreateSocialSettingsSheet();
+    var sheet = _smmGetSheet(SMM_SHEETS.SOCIAL_SET);
+    var idx = _smmSetRowIndex(sheet, schoolId);
+    if (idx === -1) { sheet.appendRow([schoolId, '', '', '', '', '', '', '', '']); idx = sheet.getLastRow(); }
+    var map = { fb_page_id: 2, fb_page_token: 3, ig_business_id: 4, wa_phone_id: 5, wa_token: 6, wa_recipients: 7, yt_channel_url: 8 };
+    for (var key in map) {
+      if (map.hasOwnProperty(key)) {
+        var v = _smmSafeStr(obj[key]);
+        if (v) sheet.getRange(idx, map[key]).setValue(v);
+      }
+    }
+    sheet.getRange(idx, 9).setValue(new Date());
+    return { success: true, message: 'تم حفظ بيانات حسابات المدرسة: ' + schoolId };
+  } catch (e) {
+    return { success: false, error: String((e && e.message) || e) };
+  }
+}
+
+function _smmMask(v) {
+  v = _smmSafeStr(v);
+  if (!v) return '';
+  if (v.length <= 6) return '••••';
+  return '••••' + v.substring(v.length - 4);
+}
+
+// جلب البيانات للعرض (التوكنات مُقنَّعة) — عام
+function smmGetSocialSettings(schoolId) {
+  try {
+    schoolId = _smmSafeStr(schoolId) || 'default';
+    var sheet = _smmGetSheet(SMM_SHEETS.SOCIAL_SET);
+    if (!sheet || sheet.getLastRow() === 0) return { success: true, settings: { school_id: schoolId } };
+    var idx = _smmSetRowIndex(sheet, schoolId);
+    if (idx === -1) return { success: true, settings: { school_id: schoolId } };
+    var r = sheet.getRange(idx, 1, 1, _SMM_SET_COLS.length).getValues()[0];
+    return {
+      success: true,
+      settings: {
+        school_id: _smmSafeStr(r[0]),
+        fb_page_id: _smmSafeStr(r[1]),
+        fb_page_token_mask: _smmMask(r[2]), has_fb_token: !!_smmSafeStr(r[2]),
+        ig_business_id: _smmSafeStr(r[3]),
+        wa_phone_id: _smmSafeStr(r[4]),
+        wa_token_mask: _smmMask(r[5]), has_wa_token: !!_smmSafeStr(r[5]),
+        wa_recipients: _smmSafeStr(r[6]),
+        yt_channel_url: _smmSafeStr(r[7]),
+        updated_at: r[8] ? String(r[8]) : ''
+      }
+    };
+  } catch (e) {
+    return { success: false, error: String((e && e.message) || e) };
+  }
+}
+
+// محلّل التوكنات: بيانات المدرسة → الافتراضي 'default' → ScriptProperties (توافق رجعي)
+function _smmTokens(schoolId) {
+  var out = { fbPageId: '', fbPageToken: '', igBusinessId: '', waPhoneId: '', waToken: '', waRecipients: '', ytChannel: '' };
+  function fromRow(r) {
+    if (!r) return;
+    if (!out.fbPageId)     out.fbPageId     = _smmSafeStr(r[1]);
+    if (!out.fbPageToken)  out.fbPageToken  = _smmSafeStr(r[2]);
+    if (!out.igBusinessId) out.igBusinessId = _smmSafeStr(r[3]);
+    if (!out.waPhoneId)    out.waPhoneId    = _smmSafeStr(r[4]);
+    if (!out.waToken)      out.waToken      = _smmSafeStr(r[5]);
+    if (!out.waRecipients) out.waRecipients = _smmSafeStr(r[6]);
+    if (!out.ytChannel)    out.ytChannel    = _smmSafeStr(r[7]);
+  }
+  try {
+    var sheet = _smmGetSheet(SMM_SHEETS.SOCIAL_SET);
+    if (sheet && sheet.getLastRow() > 1) {
+      var data = sheet.getDataRange().getValues();
+      var want = _smmSafeStr(schoolId);
+      if (want) { for (var i = 1; i < data.length; i++) { if (_smmSafeStr(data[i][0]) === want) { fromRow(data[i]); break; } } }
+      for (var j = 1; j < data.length; j++) { if (_smmSafeStr(data[j][0]) === 'default') { fromRow(data[j]); break; } }
+    }
+  } catch (e) {}
+  try {
+    var p = PropertiesService.getScriptProperties();
+    if (!out.fbPageId)     out.fbPageId     = p.getProperty('FB_PAGE_ID') || '';
+    if (!out.fbPageToken)  out.fbPageToken  = p.getProperty('FB_PAGE_TOKEN') || '';
+    if (!out.igBusinessId) out.igBusinessId = p.getProperty('IG_BUSINESS_ID') || '';
+    if (!out.waPhoneId)    out.waPhoneId    = p.getProperty('WA_PHONE_ID') || '';
+    if (!out.waToken)      out.waToken      = p.getProperty('WA_TOKEN') || '';
+    if (!out.waRecipients) out.waRecipients = p.getProperty('WA_RECIPIENTS') || '';
+    if (!out.ytChannel)    out.ytChannel    = p.getProperty('YT_CHANNEL_URL') || '';
+  } catch (e) {}
+  return out;
+}
 // ═══════════════════════════════════════════════════════════════════
 //  إنشاء منشور جديد ضمن خطة المحتوى
 // ═══════════════════════════════════════════════════════════════════
@@ -689,22 +809,41 @@ function publishToWhatsApp(message, mediaUrl) {
 //  استراتيجية: حفظ المنشور كـ "جاهز" ويفتح رابط الرفع للمستخدم
 // ═══════════════════════════════════════════════════════════════════
 
+// استخراج معرّف ملف Drive من رابط/معرّف
+function _smmExtractDriveId(u) {
+  u = _smmSafeStr(u);
+  if (!u) return '';
+  var m = u.match(/[-\w]{25,}/);
+  return m ? m[0] : '';
+}
+
+// رفع تلقائي على يوتيوب — يتطلب تفعيل «YouTube Data API v3» المتقدمة + موافقة OAuth.
+// إن لم تُفعّل الخدمة، يسجّل تذكيراً بالرفع اليدوي (سلوك آمن لا يكسر الجدولة).
 function publishToYouTube(title, description, videoFileId) {
-  // YouTube API يتطلب OAuth منفصل + رفع فيديو
-  // الحل العملي: نسجل في سجل النشر ونعطي المستخدم رابط الرفع
-  var sheet = _smmGetSheet(SMM_SHEETS.PUBLISH_LOG);
-  sheet.appendRow([
-    new Date(), '', 'يوتيوب', '',
-    'https://studio.youtube.com/channel/UC.../videos/upload',
-    'يتطلب رفع يدوي', 'YouTube API يحتاج OAuth منفصل',
-    0, 0, 0
-  ]);
-  return {
-    success: true,
-    manual: true,
-    message: 'يرجى رفع الفيديو يدوياً على YouTube Studio',
-    uploadUrl: 'https://studio.youtube.com/'
-  };
+  try {
+    if (typeof YouTube === 'undefined' || !YouTube.Videos) {
+      _smmGetSheet(SMM_SHEETS.PUBLISH_LOG).appendRow([
+        new Date(), '', 'يوتيوب', '', 'https://studio.youtube.com/',
+        'يتطلب رفع يدوي', 'فعّل خدمة YouTube Data API المتقدمة للرفع التلقائي', 0, 0, 0
+      ]);
+      return { success: true, manual: true, message: 'فعّل خدمة YouTube المتقدمة للرفع التلقائي، أو ارفع يدوياً', uploadUrl: 'https://studio.youtube.com/' };
+    }
+    var fileId = _smmExtractDriveId(videoFileId);
+    if (!fileId) return { success: false, error: 'لا يوجد ملف فيديو في Drive للرفع على يوتيوب' };
+
+    var blob = DriveApp.getFileById(fileId).getBlob();
+    var resource = {
+      snippet: { title: _smmSafeStr(title) || 'فيديو مدرسي', description: _smmSafeStr(description) || '' },
+      status: { privacyStatus: 'public' }
+    };
+    var res = YouTube.Videos.insert(resource, 'snippet,status', blob);
+    if (res && res.id) {
+      return { success: true, postId: res.id, message: 'تم الرفع على يوتيوب', url: 'https://youtu.be/' + res.id };
+    }
+    return { success: false, error: 'فشل الرفع على يوتيوب' };
+  } catch (e) {
+    return { success: false, error: 'يوتيوب: ' + ((e && e.message) ? e.message : String(e)) };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -727,6 +866,7 @@ function smmProcessScheduled() {
     var mediaUrl = _smmSafeStr(row[4]);
     var scheduledDate = row[5];
     var status = _smmSafeStr(row[6]);
+    var schoolId = _smmSafeStr(row[10]); // اختياري: معرّف المدرسة (للتوكنات لكل مدرسة)
 
     if (status !== 'مجدول' && status !== 'scheduled') continue;
     if (!scheduledDate) continue;
@@ -737,9 +877,9 @@ function smmProcessScheduled() {
 
     var result;
     if (platform === 'فيسبوك' || platform.toLowerCase() === 'facebook') {
-      result = publishToFacebook(content, mediaUrl);
+      result = publishToFacebook(content, mediaUrl, schoolId);
     } else if (platform === 'إنستغرام' || platform.toLowerCase() === 'instagram') {
-      result = publishToInstagram(content, mediaUrl);
+      result = publishToInstagram(content, mediaUrl, schoolId);
     } else if (platform === 'واتساب' || platform.toLowerCase() === 'whatsapp') {
       result = publishToWhatsApp(content, mediaUrl);
     } else if (platform === 'يوتيوب' || platform.toLowerCase() === 'youtube') {

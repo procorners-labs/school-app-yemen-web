@@ -17,13 +17,18 @@ function setupAllTokens() {
 // ملاحظة: لا تُنفَّذ تهيئة/Trigger هنا في المستوى الأعلى (كانت تُعاد في كل تحميل
 //         وتُكرّر الـ Trigger). شغّل fullSystemStart() يدوياً مرة واحدة فقط.
 
-function publishToFacebook(content, mediaUrl) {
-  var props = PropertiesService.getScriptProperties();
-  var pageId = props.getProperty('FB_PAGE_ID');
-  var token = props.getProperty('FB_PAGE_TOKEN');
-
+function publishToFacebook(content, mediaUrl, schoolId) {
+  // بيانات حساب المدرسة (مع fallback للافتراضي/ScriptProperties)
+  var tk = (typeof _smmTokens === 'function') ? _smmTokens(schoolId) : null;
+  var pageId = tk ? tk.fbPageId : '';
+  var token  = tk ? tk.fbPageToken : '';
   if (!pageId || !token) {
-    return { success: false, error: 'لم يتم إعداد Facebook API' };
+    var p = PropertiesService.getScriptProperties();
+    pageId = pageId || p.getProperty('FB_PAGE_ID');
+    token  = token  || p.getProperty('FB_PAGE_TOKEN');
+  }
+  if (!pageId || !token) {
+    return { success: false, error: 'لم يتم إعداد Facebook API لهذه المدرسة' };
   }
 
   var endpoint = 'https://graph.facebook.com/v18.0/' + pageId + '/feed';
@@ -58,13 +63,17 @@ function publishToFacebook(content, mediaUrl) {
     return { success: false, error: e.toString() };
   }
 }
-function publishToInstagram(content, mediaUrl) {
-  var props = PropertiesService.getScriptProperties();
-  var igBusinessId = props.getProperty('IG_BUSINESS_ID');
-  var pageToken = props.getProperty('FB_PAGE_TOKEN');
-
+function publishToInstagram(content, mediaUrl, schoolId) {
+  var tk = (typeof _smmTokens === 'function') ? _smmTokens(schoolId) : null;
+  var igBusinessId = tk ? tk.igBusinessId : '';
+  var pageToken    = tk ? tk.fbPageToken : '';
   if (!igBusinessId || !pageToken) {
-    return { success: false, error: 'لم يتم إعداد Instagram API' };
+    var p = PropertiesService.getScriptProperties();
+    igBusinessId = igBusinessId || p.getProperty('IG_BUSINESS_ID');
+    pageToken    = pageToken    || p.getProperty('FB_PAGE_TOKEN');
+  }
+  if (!igBusinessId || !pageToken) {
+    return { success: false, error: 'لم يتم إعداد Instagram API لهذه المدرسة' };
   }
 
   // Instagram يحتاج لصورة أو فيديو — لا يدعم النص فقط

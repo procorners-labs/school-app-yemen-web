@@ -13,7 +13,8 @@ var FOLDERS = {
   IMAGE_LIBRARY: 'ملفات_التصميم',
   PUBLISHED: 'المحتوى_المنشور',
   DRAFTS: 'مسودات_المحتوى',
-  REPORTS: 'تقارير_الامتثال'
+  REPORTS: 'تقارير_الامتثال',
+  VIDEOS: 'مكتبة_الفيديوهات'
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -489,6 +490,44 @@ function addManualDraft(kind, title, body, mediaUrl, userName, fingerprint, scho
   } catch (e) {
     return '❌ ' + e.message;
   }
+}
+
+// رفع فيديو من صفحات الويب مباشرةً → Drive → ورقة Videos (+ مسودة تلقائية)
+// videoBase64: data URI (video/mp4 أو video/webm، حتى 25MB). ES5.
+function addVideoWithUpload(title, description, videoBase64, fileName, mimeType, userName, fingerprint, schoolId) {
+  _setActiveTenant(schoolId || '');
+  var rl = _checkRateLimit(fingerprint);
+  if (!rl.allowed) return '❌ ' + rl.error;
+  if (!title || title.toString().trim() === '') return '❌ عنوان الفيديو مطلوب';
+
+  var safeTitle = _sanitizeText(title);
+  var info = getUserInfo(fingerprint);
+  var videoURL = '';
+
+  if (videoBase64 && fileName && videoBase64.length > 100) {
+    try {
+      var up = uploadFileToDrive(videoBase64, fileName, 'VIDEOS');
+      if (up && up.success) { videoURL = up.url; }
+      else { return '❌ فشل رفع الفيديو: ' + ((up && up.error) || 'خطأ'); }
+    } catch (e) {
+      return '❌ تعذّر رفع الفيديو: ' + e.message;
+    }
+  }
+  if (!videoURL) return '❌ لم يتم استلام ملف الفيديو';
+
+  var urlCheck = _validateUrl(videoURL);
+  if (!urlCheck.valid) return '❌ ' + urlCheck.error;
+  videoURL = urlCheck.url;
+
+  var sheet = getSheet('Videos');
+  if (!sheet) return '❌ ورقة Videos غير موجودة';
+  sheet.appendRow([new Date(), safeTitle, description || '', videoURL, info.email, userName || info.email.split('@')[0], 'إضافة (رفع)']);
+  logAudit(info.email, userName, 'رفع_فيديو', 'رفع فيديو: ' + safeTitle, 'Videos', sheet.getLastRow());
+  _cmsCacheDelMultiple(['videosData', 'systemStats']);
+
+  try { _cmsAutoDraft('video', safeTitle, description, videoURL, userName); } catch (e2) {}
+
+  return '✅ تم رفع الفيديو وحفظه في Drive وإضافته للمكتبة';
 }
 
 function addNews(title, content, mediaType, mediaURL, userName, fingerprint, schoolId) {
