@@ -6588,6 +6588,27 @@ function getTeacherNamesProtected(params) {
   });
 }
 
+// أسماء كل الطلاب من ورقة «الطلاب» (لاقتراح أسماء البحث في الغياب) — العمود 1 = الاسم
+function getStudentNamesProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var sheet = _getSheet('الطلاب');
+      var names = [], seen = {};
+      if (sheet) {
+        var d = sheet.getDataRange().getValues();
+        for (var i = 1; i < d.length; i++) {
+          var n = _safeStr(d[i][1]);
+          if (n && !seen[n]) { seen[n] = 1; names.push(n); }
+        }
+      }
+      names.sort();
+      return { success: true, students: names };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
+
 // الصفوف/الشعب/المواد التي يدرّسها معلّم معيّن (من ورقة الجدول) — لتضييق قوائم غياب المعلمين
 function getTeacherScheduleInfoProtected(params) {
   return withAuth(params, function (session) {

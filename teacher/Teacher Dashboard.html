@@ -3403,6 +3403,7 @@ function showSection(name) {
       if (attendanceDiv) attendanceDiv.style.display = 'block';
       dynamicEl.style.display = 'none';
       att_init();
+      att_loadAllStudentNames();
       updateActiveSidebarItem(name);
       closeSidebar();
       return;
@@ -6669,7 +6670,14 @@ function att_filterStudents(q){
   q=(q||'').trim();
   for(var i=0;i<_attStudents.length;i++){ var r=document.getElementById('att-row-'+_attStudents[i].code); if(r){ r.style.display=(!q||(''+(_attStudents[i].name||'')).indexOf(q)>=0)?'':'none'; } }
 }
-function _attStudentNames(){ var a=[]; for(var i=0;i<_attStudents.length;i++){ if(_attStudents[i].name) a.push(_attStudents[i].name); } return a; }
+var _attAllStudents=[]; // كل أسماء الطلاب من ورقة «الطلاب» (للاقتراحات)
+function att_loadAllStudentNames(){
+  callServer('getStudentNamesProtected', {}, function(res){ if(res&&res.success&&res.students) _attAllStudents=res.students; }, function(){});
+}
+function _attStudentNames(){
+  if(_attAllStudents&&_attAllStudents.length) return _attAllStudents;          // كل الطلاب من الشيت
+  var a=[]; for(var i=0;i<_attStudents.length;i++){ if(_attStudents[i].name) a.push(_attStudents[i].name); } return a; // احتياطي: الصف المحمّل
+}
 function att_searchInput(v){ att_filterStudents(v); _acRender('att-search-ac', _attStudentNames(), v, 'att_pickStudent'); }
 function att_pickStudent(name){ var el=document.getElementById('att-search'); if(el) el.value=name; _acHideNow('att-search-ac'); att_filterStudents(name); }
 function att_updateSummary(){
