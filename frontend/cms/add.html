@@ -82,6 +82,7 @@
     <button class="tab" data-tab="video">🎬 فيديو</button>
     <button class="tab" data-tab="image">🖼️ صورة</button>
     <button class="tab" data-tab="schedule">📅 جدول نشر</button>
+    <button class="tab" data-tab="social">⚙️ حسابات السوشل</button>
   </div>
 
   <!-- تبويب الأخبار -->
@@ -99,7 +100,9 @@
     <div class="form-group"><label>عنوان الفيديو:</label><input type="text" id="videoTitle" placeholder="عنوان الفيديو"></div>
     <div class="form-group"><label>وصف الفيديو:</label><textarea id="videoDesc" rows="3" placeholder="وصف مختصر"></textarea></div>
     <div class="form-group"><label>رابط الفيديو (YouTube أو Google Drive):</label><input type="text" id="videoURL" placeholder="https://..."><small>يمكنك لصق رابط YouTube أو رابط مشاركة Drive</small></div>
-    <button class="btn" id="submitVideoBtn">🎬 إضافة الفيديو</button>
+    <button class="btn" id="submitVideoBtn">🎬 إضافة الفيديو بالرابط</button>
+    <div class="file-upload-area" style="margin-top:14px;"><p>⬆️ أو ارفع ملف فيديو من جهازك (mp4/webm حتى 25MB)</p><input type="file" id="videoFileInput" accept="video/*"><div class="upload-hint">يُرفع إلى Drive (مكتبة_الفيديوهات) ويُضاف للمكتبة + مسودة منشور تلقائياً</div></div>
+    <button class="btn" id="submitVideoUploadBtn" style="background:#0f3b5c;">⬆️ رفع الفيديو من الجهاز</button>
     <div id="videoStatus" class="status-message"></div>
   </div>
 
@@ -125,6 +128,23 @@
     <div class="form-group"><label>الحالة:</label><select id="statusSelect"><option value="مجدول">مجدول</option><option value="قيد المراجعة">قيد المراجعة</option><option value="جاهز للنشر">جاهز للنشر</option></select></div>
     <button class="btn" id="submitScheduleBtn">💾 حفظ الجدولة</button>
     <div id="scheduleStatus" class="status-message"></div>
+  </div>
+
+  <!-- إعدادات حسابات السوشل لكل مدرسة -->
+  <div id="social" class="tab-content">
+    <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px;margin-bottom:14px;font-size:13px;color:#7c5e00;">
+      🔒 تُحفظ المفاتيح في ورقة «اعدادات_السوشل» لهذه المدرسة وتُستخدم للنشر التلقائي. اترك الحقل فارغاً للإبقاء على القيمة الحالية.
+    </div>
+    <div class="form-group"><label>Facebook Page ID:</label><input type="text" id="set_fb_page_id" placeholder="مثال: 1234567890"></div>
+    <div class="form-group"><label>Facebook Page Token:</label><input type="password" id="set_fb_page_token" placeholder="(محفوظ: <span id='fb_tok_mask'>—</span>)"></div>
+    <div class="form-group"><label>Instagram Business ID:</label><input type="text" id="set_ig_business_id" placeholder=""></div>
+    <div class="form-group"><label>WhatsApp Phone ID:</label><input type="text" id="set_wa_phone_id" placeholder=""></div>
+    <div class="form-group"><label>WhatsApp Token:</label><input type="password" id="set_wa_token" placeholder=""></div>
+    <div class="form-group"><label>أرقام أولياء الأمور (واتساب، مفصولة بفواصل):</label><input type="text" id="set_wa_recipients" placeholder="967xxxxxxxxx,967xxxxxxxxx"></div>
+    <div class="form-group"><label>رابط قناة يوتيوب:</label><input type="text" id="set_yt_channel_url" placeholder="https://youtube.com/@..."></div>
+    <div id="set_masks" style="font-size:12px;color:#64748b;margin-bottom:10px;"></div>
+    <button class="btn" id="saveSocialBtn">💾 حفظ بيانات الحسابات</button>
+    <div id="socialStatus" class="status-message"></div>
   </div>
 
   <div class="back-link"><a onclick="goToPage(''); return false;">🏠 العودة للرئيسية</a></div>
@@ -261,6 +281,74 @@
       })
       .addVideo(title, desc, url, userName, fingerprint, window.SCHOOL_ID);
   }
+
+  // رفع ملف فيديو من الجهاز → Drive → المكتبة
+  function submitVideoUpload() {
+    var title = document.getElementById('videoTitle').value.trim();
+    var desc = document.getElementById('videoDesc').value.trim();
+    var fi = document.getElementById('videoFileInput');
+    var file = fi && fi.files[0];
+    var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
+    if (!title) { setStatus('videoStatus', '⚠️ أدخل عنوان الفيديو', 'error'); return; }
+    if (!file) { setStatus('videoStatus', '⚠️ اختر ملف فيديو من جهازك', 'error'); return; }
+    setStatus('videoStatus', '⏳ جاري رفع الفيديو… قد يستغرق وقتاً حسب الحجم', 'info');
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          var ok = (('' + msg).indexOf('✅') === 0);
+          setStatus('videoStatus', msg, ok ? 'success' : 'error');
+          if (ok) { document.getElementById('videoTitle').value=''; document.getElementById('videoDesc').value=''; fi.value=''; }
+        })
+        .withFailureHandler(function(err) { setStatus('videoStatus', '❌ خطأ: ' + err.message, 'error'); })
+        .addVideoWithUpload(title, desc, ev.target.result, file.name, file.type, userName, fingerprint, window.SCHOOL_ID);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // إعدادات حسابات السوشل لكل مدرسة
+  function loadSocialSettings() {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.success || !res.settings) return;
+        var s = res.settings;
+        var set = function(id, v){ var el=document.getElementById(id); if(el) el.value = v || ''; };
+        set('set_fb_page_id', s.fb_page_id);
+        set('set_ig_business_id', s.ig_business_id);
+        set('set_wa_phone_id', s.wa_phone_id);
+        set('set_wa_recipients', s.wa_recipients);
+        set('set_yt_channel_url', s.yt_channel_url);
+        var masks = document.getElementById('set_masks');
+        if (masks) masks.innerHTML = 'التوكنات المحفوظة — فيسبوك: ' + (s.fb_page_token_mask || 'غير محفوظ') +
+          ' • واتساب: ' + (s.wa_token_mask || 'غير محفوظ') + (s.updated_at ? (' • آخر تحديث: ' + s.updated_at) : '');
+      })
+      .withFailureHandler(function(){})
+      .smmGetSocialSettings(window.SCHOOL_ID);
+  }
+  function saveSocialSettings() {
+    var g = function(id){ var el=document.getElementById(id); return el ? el.value.trim() : ''; };
+    var obj = {
+      fb_page_id: g('set_fb_page_id'), fb_page_token: g('set_fb_page_token'),
+      ig_business_id: g('set_ig_business_id'), wa_phone_id: g('set_wa_phone_id'),
+      wa_token: g('set_wa_token'), wa_recipients: g('set_wa_recipients'),
+      yt_channel_url: g('set_yt_channel_url')
+    };
+    setStatus('socialStatus', '⏳ جاري الحفظ…', 'info');
+    google.script.run
+      .withSuccessHandler(function(res) {
+        var ok = (res && res.success);
+        setStatus('socialStatus', ok ? ('✅ ' + res.message) : ('❌ ' + ((res && res.error) || 'خطأ')), ok ? 'success' : 'error');
+        document.getElementById('set_fb_page_token').value = '';
+        document.getElementById('set_wa_token').value = '';
+        loadSocialSettings();
+      })
+      .withFailureHandler(function(err) { setStatus('socialStatus', '❌ خطأ: ' + err.message, 'error'); })
+      .smmSaveSocialSettings(window.SCHOOL_ID, obj);
+  }
+
+  document.getElementById('submitVideoUploadBtn').addEventListener('click', submitVideoUpload);
+  document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
+  loadSocialSettings();
 
   function submitImage() {
     var name = document.getElementById('imageName').value.trim();
