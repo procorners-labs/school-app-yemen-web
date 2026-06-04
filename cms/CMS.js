@@ -682,6 +682,22 @@ function addImage(name, description, imageURL, userName, fingerprint, schoolId) 
 
   return '✅ تمت الإضافة بواسطة: ' + (userName || info.email);
 }
+// جدولة على عدّة منصات دفعةً واحدة (تُنشئ صف جدولة لكل منصة مختارة)
+function addScheduleMulti(platforms, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, schoolId) {
+  if (!platforms || !platforms.length) return '❌ اختر منصة واحدة على الأقل';
+  var done = [], failed = [];
+  for (var i = 0; i < platforms.length; i++) {
+    try {
+      var r = '' + addSchedule(platforms[i], postType, content, mediaURL, scheduledDate, status, userName, fingerprint, schoolId);
+      if (r.indexOf('❌') === 0 || r.indexOf('⚠') === 0) failed.push(platforms[i]); else done.push(platforms[i]);
+    } catch (e) { failed.push(platforms[i]); }
+  }
+  var msg = '';
+  if (done.length) msg += '✅ تمت الجدولة على: ' + done.join('، ');
+  if (failed.length) msg += (msg ? ' | ' : '') + '❌ تعذّر: ' + failed.join('، ');
+  return msg || '⚠️ لم تتم الجدولة';
+}
+
 function addSchedule(platform, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, schoolId) {
   _setActiveTenant(schoolId || '');   // ✅ عزل المدرسة
 

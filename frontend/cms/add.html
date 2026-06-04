@@ -118,8 +118,16 @@
 
   <!-- تبويب جدول النشر -->
   <div id="schedule" class="tab-content">
-    <div class="form-group"><label>المنصة:</label><select id="platformSelect"><option value="">-- اختر المنصة --</option><option value="فيسبوك">فيسبوك</option><option value="تويتر">تويتر</option><option value="انستغرام">انستغرام</option><option value="لينكدإن">لينكدإن</option><option value="تيك توك">تيك توك</option></select></div>
-    <div class="form-group"><label>نوع المنشور:</label><select id="postTypeSelect" disabled><option value="">اختر المنصة أولاً</option></select></div>
+    <div class="form-group"><label>المنصات (اختر واحدة أو أكثر — تُنشر دفعةً واحدة):</label>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;padding:6px 0;">
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" class="plat-cb" value="فيسبوك"> 📘 فيسبوك</label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" class="plat-cb" value="إنستغرام"> 📷 إنستغرام</label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" class="plat-cb" value="واتساب"> 💬 واتساب</label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" class="plat-cb" value="يوتيوب"> ▶️ يوتيوب</label>
+      </div>
+    </div>
+    <div class="form-group" style="display:none;"><label>المنصة (قديم):</label><select id="platformSelect"><option value="">-- اختر المنصة --</option><option value="فيسبوك">فيسبوك</option><option value="تويتر">تويتر</option><option value="انستغرام">انستغرام</option><option value="لينكدإن">لينكدإن</option><option value="تيك توك">تيك توك</option></select></div>
+    <div class="form-group"><label>نوع المنشور:</label><select id="postTypeSelect"><option value="منشور">منشور / بوست</option><option value="صورة">صورة</option><option value="فيديو">فيديو</option><option value="ريلز">ريلز / Reel</option><option value="قصة">قصة / Story</option><option value="شورتس">شورتس / Short</option></select></div>
     <div class="form-group"><label>نص المنشور:</label><textarea id="postContent" rows="4" placeholder="اكتب نص المنشور هنا..."></textarea></div>
     <div class="form-group"><label>رابط الوسائط (اختياري):</label><input type="text" id="postMediaURL" placeholder="يمكنك لصق رابط أو رفع ملف أدناه"></div>
     <div class="file-upload-area"><p>🎞️ ارفع وسائط (صورة/فيديو) - اختياري</p><input type="file" id="scheduleMediaFile" accept="image/*,video/*"><div class="upload-hint">سيتم الرفع إلى "المحتوى_المنشور"</div></div>
@@ -392,29 +400,31 @@
   document.getElementById('platformSelect').addEventListener('change', updatePostTypes);
 
   function submitSchedule() {
-    var platform = document.getElementById('platformSelect').value;
-    var postType = document.getElementById('postTypeSelect').value;
+    var checks = document.querySelectorAll('.plat-cb');
+    var platforms = [];
+    for (var i = 0; i < checks.length; i++) { if (checks[i].checked) platforms.push(checks[i].value); }
+    var postType = document.getElementById('postTypeSelect').value || 'منشور';
     var content = document.getElementById('postContent').value.trim();
     var mediaURL = document.getElementById('scheduleMediaURLHidden').value || document.getElementById('postMediaURL').value.trim();
     var scheduledDate = document.getElementById('publishDate').value;
     var status = document.getElementById('statusSelect').value;
     var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
-    if (!platform || !postType || !content || !scheduledDate) { setStatus('scheduleStatus', '⚠️ الرجاء ملء جميع الحقول المطلوبة', 'error'); return; }
-    // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
+    if (!platforms.length || !content || !scheduledDate) {
+      setStatus('scheduleStatus', '⚠️ اختر منصة واحدة على الأقل، واملأ النص وتاريخ النشر', 'error'); return;
+    }
+    setStatus('scheduleStatus', '⏳ جاري الجدولة على ' + platforms.length + ' منصة...', 'info');
     google.script.run
       .withSuccessHandler(function(msg) {
-        setStatus('scheduleStatus', msg, 'success');
+        setStatus('scheduleStatus', msg, (('' + msg).indexOf('✅') === 0 ? 'success' : 'error'));
         document.getElementById('postContent').value = '';
         document.getElementById('postMediaURL').value = '';
         document.getElementById('scheduleMediaURLHidden').value = '';
         document.getElementById('scheduleMediaFile').value = '';
         document.getElementById('publishDate').value = '';
-        document.getElementById('platformSelect').value = '';
-        document.getElementById('postTypeSelect').innerHTML = '<option value="">اختر المنصة أولاً</option>';
-        document.getElementById('postTypeSelect').disabled = true;
+        for (var j = 0; j < checks.length; j++) checks[j].checked = false;
       })
       .withFailureHandler(function(err) { setStatus('scheduleStatus', '❌ خطأ: ' + err.message, 'error'); })
-      .addSchedule(platform, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, window.SCHOOL_ID);
+      .addScheduleMulti(platforms, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, window.SCHOOL_ID);
   }
 
   // ربط أزرار الإرسال
