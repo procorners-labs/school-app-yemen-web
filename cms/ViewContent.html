@@ -282,6 +282,11 @@
     <div class="tab" data-section="schedule">📅 جدول النشر</div>
   </div>
 
+  <!-- بحث في المكتبة -->
+  <div style="max-width:440px;margin:14px auto 0;">
+    <input id="libSearch" type="text" placeholder="🔍 ابحث في المكتبة (عنوان/نص)..." oninput="libFilter(this.value)" style="width:100%;padding:11px 16px;border:1px solid #d0d7e2;border-radius:12px;font-size:15px;font-family:inherit;box-sizing:border-box;">
+  </div>
+
   <!-- الأقسام -->
   <div id="news" class="section active">
     <div class="grid" id="newsGrid"><div class="loading-spinner">⏳ جاري تحميل الأخبار...</div></div>
@@ -333,6 +338,44 @@
   function formatDate(d) { if (!d) return ''; try { return new Date(d).toLocaleString('ar-SA'); } catch(e) { return String(d); } }
   function esc(t) { if (t == null) return ''; var div = document.createElement('div'); div.textContent = String(t); return div.innerHTML; }
 
+  // ── مكتبة المحتوى: بحث + تحويل عنصر إلى مسودة منشور ──
+  var _lib = { news: [], videos: [], images: [] };
+  function libFilter(q) {
+    q = (q || '').trim();
+    var active = document.querySelector('.section.active');
+    if (!active) return;
+    var cards = active.querySelectorAll('.card');
+    for (var i = 0; i < cards.length; i++) {
+      cards[i].style.display = (!q || cards[i].textContent.indexOf(q) >= 0) ? '' : 'none';
+    }
+  }
+  // البطاقات معروضة بترتيب عكسي (الأحدث أولاً) → فهرس العنصر = الطول-1-الموضع
+  function libAttachConvert(grid, kind, data) {
+    if (!grid || !data) return;
+    var cards = grid.querySelectorAll('.card');
+    for (var p = 0; p < cards.length; p++) {
+      var item = data[data.length - 1 - p];
+      if (!item) continue;
+      (function (it, card) {
+        var btn = document.createElement('button');
+        btn.textContent = '🔁 حوّل لمنشور';
+        btn.style.cssText = 'background:#0f3b5c;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;font-family:inherit;margin-top:8px;';
+        btn.onclick = function () { cmsConvertItem(kind, it); };
+        card.appendChild(btn);
+      })(item, cards[p]);
+    }
+  }
+  function cmsConvertItem(kind, r) {
+    var title = r.title || r.name || '';
+    var body  = r.content || r.description || '';
+    var media = r.mediaURL || r.videoURL || r.imageURL || '';
+    if (!confirm('إنشاء مسودة منشور من: ' + title + '؟')) return;
+    google.script.run
+      .withSuccessHandler(function (m) { alert(m); })
+      .withFailureHandler(function (e) { alert('فشل: ' + e.message); })
+      .addManualDraft(kind, title, body, media, 'CMS', '', window.SCHOOL_ID);
+  }
+
   // عرض الأخبار
   function displayNews(data) {
     var grid = document.getElementById('newsGrid');
@@ -345,6 +388,7 @@
       html += '<div class="meta"><span>📅 ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
     }
     grid.innerHTML = html;
+    _lib.news = data; libAttachConvert(grid, 'news', data);
   }
 
   // عرض الفيديوهات (مع دعم فيسبوك/إنستغرام)
@@ -385,6 +429,7 @@
       html += '<div class="meta"><span>📅 ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
     }
     grid.innerHTML = html;
+    _lib.videos = data; libAttachConvert(grid, 'video', data);
   }
 
   // عرض الصور
@@ -399,6 +444,7 @@
       html += '<div class="meta"><span>📅 ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
     }
     grid.innerHTML = html;
+    _lib.images = data; libAttachConvert(grid, 'image', data);
   }
 
   // عرض جدول النشر

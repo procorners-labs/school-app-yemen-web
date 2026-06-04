@@ -479,6 +479,18 @@ function _cmsAutoDraft(kind, title, body, mediaUrl, userName) {
   });
 }
 
+// غلاف عام يُستدعى من ViewContent (زر «حوّل لمنشور») — لأن الجسر يحجب الدوال المسبوقة بـ _
+function addManualDraft(kind, title, body, mediaUrl, userName, fingerprint, schoolId) {
+  _setActiveTenant(schoolId || '');
+  try {
+    var r = _cmsAutoDraft(kind || 'news', title, body, mediaUrl, userName);
+    if (r && r.success) return '✅ تم إنشاء مسودة منشور في «خطة المحتوى»';
+    return '⚠️ تعذّر إنشاء المسودة: ' + ((r && r.error) || 'خطأ');
+  } catch (e) {
+    return '❌ ' + e.message;
+  }
+}
+
 function addNews(title, content, mediaType, mediaURL, userName, fingerprint, schoolId) {
   _setActiveTenant(schoolId || '');   // ✅ عزل المدرسة
 
