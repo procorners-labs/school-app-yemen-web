@@ -6635,3 +6635,57 @@ function getTeacherScheduleInfoProtected(params) {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  قوائم منسدلة (Data Validation) في أوراق الإدخال — من ورقة «القوائم»
+//  القوائم: الفصول(0) | (1) | المواد(2) | الشعب(3) | ...
+//  idempotent: آمنة لإعادة التشغيل؛ لا تعدّل أي بيانات؛ setAllowInvalid(true).
+//  تُشغَّل يدوياً من محرّر Apps Script أو ضمن صيانة المدرسة.
+// ═══════════════════════════════════════════════════════════════════
+function applyTeacherListValidations() {
+  try {
+    var ss = _getSS();
+    var listSheet = ss.getSheetByName('القوائم');
+    if (!listSheet) return { success: false, error: 'ورقة القوائم غير موجودة' };
+
+    var data = listSheet.getDataRange().getValues();
+    function colVals(idx) {
+      var a = [], seen = {};
+      for (var i = 1; i < data.length; i++) {
+        var v = _safeStr(data[i][idx]);
+        if (v && !seen[v]) { seen[v] = 1; a.push(v); }
+      }
+      return a;
+    }
+    var grades = colVals(0), subjects = colVals(2), sections = colVals(3);
+
+    function rule(vals) {
+      if (!vals.length) return null;
+      return SpreadsheetApp.newDataValidation()
+        .requireValueInList(vals, true).setAllowInvalid(true).build();
+    }
+    var gRule = rule(grades), sRule = rule(sections), subRule = rule(subjects);
+
+    function applyCol(sheetName, col, r) {
+      if (!r) return;
+      var sh = ss.getSheetByName(sheetName);
+      if (!sh) return;
+      var rows = sh.getMaxRows() - 1;
+      if (rows < 1) rows = 1;
+      sh.getRange(2, col, rows, 1).setDataValidation(r);
+    }
+
+    // الطلاب: الفصل(3) | الشعبة(4)
+    applyCol('الطلاب', 3, gRule); applyCol('الطلاب', 4, sRule);
+    // الواجبات: المادة(3) | الفصل(4) | الشعبة(5)
+    applyCol('الواجبات', 3, subRule); applyCol('الواجبات', 4, gRule); applyCol('الواجبات', 5, sRule);
+    // المخالفات: الفصل(3) | الشعبة(4)
+    applyCol('المخالفات', 3, gRule); applyCol('المخالفات', 4, sRule);
+    // الغياب: الفصل(3) | الشعبة(4)
+    applyCol('الغياب', 3, gRule); applyCol('الغياب', 4, sRule);
+
+    return { success: true, grades: grades.length, sections: sections.length, subjects: subjects.length };
+  } catch (e) {
+    return { success: false, error: String((e && e.message) || e) };
+  }
+}

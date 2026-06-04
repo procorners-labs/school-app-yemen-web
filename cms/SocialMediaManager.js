@@ -111,6 +111,7 @@ function smmSetupSystem() {
   smmSeedYearCalendar();
   smmSeedTemplates();
   smmAddMissingTemplates();
+  smmApplyListValidations();
   Logger.log('✅ تم إنشاء جميع الأوراق وتهيئة النظام');
   return { success: true, message: 'تم الإعداد الكامل' };
 }
@@ -405,6 +406,37 @@ function smmAddMissingTemplates() {
   }
   Logger.log('✅ أُضيف ' + added + ' قالب جديد (TPL-011..022)');
   return { success: true, added: added };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  قوائم التحقق المنسدلة على ورقة «خطة_المحتوى»
+//  الأعمدة: المنصة(5) ← SMM_PLATFORMS، الفئة(7) ← SMM_CATEGORIES، الحالة(15) ← SMM_STATUS
+//  idempotent: آمنة لإعادة التشغيل؛ setAllowInvalid(true) كي لا تُرفض القيم القائمة.
+// ═══════════════════════════════════════════════════════════════════
+function smmApplyListValidations() {
+  var sheet = _smmGetSheet(SMM_SHEETS.PLAN);
+  if (sheet.getLastRow() === 0) { smmCreatePlanSheet(); }
+  var rows = sheet.getMaxRows() - 1;
+  if (rows < 1) rows = 1;
+
+  var statusVals = [
+    SMM_STATUS.DRAFT, SMM_STATUS.REVIEW, SMM_STATUS.APPROVED, SMM_STATUS.SCHEDULED,
+    SMM_STATUS.PUBLISHED, SMM_STATUS.FAILED, SMM_STATUS.ARCHIVED
+  ];
+
+  sheet.getRange(2, 5, rows, 1).setDataValidation(_smmListRule(SMM_PLATFORMS));
+  sheet.getRange(2, 7, rows, 1).setDataValidation(_smmListRule(SMM_CATEGORIES));
+  sheet.getRange(2, 15, rows, 1).setDataValidation(_smmListRule(statusVals));
+
+  Logger.log('✅ طُبّقت قوائم التحقق على خطة المحتوى');
+  return { success: true };
+}
+
+function _smmListRule(values) {
+  return SpreadsheetApp.newDataValidation()
+    .requireValueInList(values, true)
+    .setAllowInvalid(true)
+    .build();
 }
 // ═══════════════════════════════════════════════════════════════════
 //  إنشاء منشور جديد ضمن خطة المحتوى

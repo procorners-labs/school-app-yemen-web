@@ -453,6 +453,32 @@ function updateUserStats(email, displayName) {
 // ══════════════════════════════════════════════════════════════════
 // دوال الإضافة — مع Validation + Rate Limiting + مسح الكاش
 // ══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  أتمتة: تحويل كل خبر/صورة/فيديو يُضاف إلى مسودة منشور في «خطة_المحتوى»
+//  يعتمد على smmAddPlanItem (نفس المشروع/الشيت). آمن: يُستدعى داخل try/catch
+//  من الدوال فلا يكسر الإضافة أبداً. النص من المحتوى الفعلي + الهاشتاق الموحّد.
+// ═══════════════════════════════════════════════════════════════════
+function _cmsAutoDraft(kind, title, body, mediaUrl, userName) {
+  if (typeof smmAddPlanItem !== 'function') return { success: false, error: 'SMM غير متاح' };
+  var category = 'خبر', postType = 'بوست';
+  if (kind === 'video') { category = 'نشاط'; postType = 'ريلز'; }
+  else if (kind === 'image') { category = 'نشاط'; postType = 'صورة'; }
+  var t = (title == null) ? '' : String(title);
+  var b = (body == null) ? '' : String(body);
+  var content = t + (b ? ('\n' + b) : '');
+  return smmAddPlanItem({
+    platform: 'فيسبوك',
+    post_type: postType,
+    category: category,
+    title: t,
+    content: content,
+    hashtags: '#مدارس_الإبداع_والتميز',
+    media_url: (mediaUrl == null) ? '' : String(mediaUrl),
+    responsible: (userName == null) ? '' : String(userName),
+    notes: 'مسودة تلقائية من CMS (' + kind + ')'
+  });
+}
+
 function addNews(title, content, mediaType, mediaURL, userName, fingerprint, schoolId) {
   _setActiveTenant(schoolId || '');   // ✅ عزل المدرسة
 
@@ -484,6 +510,13 @@ function addNews(title, content, mediaType, mediaURL, userName, fingerprint, sch
     Logger.log('تحذير: تعذرت مزامنة الخبر: ' + e.message);
   }
 
+  // أتمتة: مسودة منشور سوشل ميديا تلقائية
+  try {
+    _cmsAutoDraft('news', safeTitle, safeContent, safeMediaURL, userName);
+  } catch (e2) {
+    Logger.log('تحذير: تعذّر إنشاء مسودة المنشور: ' + e2.message);
+  }
+
   return '✅ تمت الإضافة بواسطة: ' + (userName || info.email);
 }
 function addVideo(title, description, videoURL, userName, fingerprint, schoolId) {
@@ -508,6 +541,12 @@ function addVideo(title, description, videoURL, userName, fingerprint, schoolId)
 
   _cmsCacheDelMultiple(['videosData', 'systemStats']);
 
+  try {
+    _cmsAutoDraft('video', safeTitle, description, safeUrl, userName);
+  } catch (e2) {
+    Logger.log('تحذير: تعذّر إنشاء مسودة الفيديو: ' + e2.message);
+  }
+
   return '✅ تمت الإضافة بواسطة: ' + (userName || info.email);
 }
 function addImage(name, description, imageURL, userName, fingerprint, schoolId) {
@@ -531,6 +570,12 @@ function addImage(name, description, imageURL, userName, fingerprint, schoolId) 
   logAudit(info.email, userName, 'إضافة_صورة', 'تم إضافة صورة: ' + safeName, 'Images', sheet.getLastRow());
 
   _cmsCacheDelMultiple(['imagesData', 'systemStats']);
+
+  try {
+    _cmsAutoDraft('image', safeName, description, safeUrl, userName);
+  } catch (e2) {
+    Logger.log('تحذير: تعذّر إنشاء مسودة الصورة: ' + e2.message);
+  }
 
   return '✅ تمت الإضافة بواسطة: ' + (userName || info.email);
 }
