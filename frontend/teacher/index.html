@@ -428,6 +428,15 @@
     }
     .nav-bell-badge.hidden { display:none; }
 
+    /* قائمة اقتراح الأسماء المخصّصة (بديل datalist غير الموثوق في WebView) */
+    .ac-box {
+      position:absolute; left:0; right:0; top:100%;
+      background:#fff; border:1px solid var(--border,#ddd); border-radius:10px;
+      box-shadow:0 6px 18px rgba(0,0,0,.14); max-height:240px; overflow:auto;
+      z-index:6000; display:none; margin-top:4px;
+    }
+    .ac-box > div:active, .ac-box > div:hover { background:var(--primary-glow,#eef2ff); }
+
     /* SIDEBAR + CONTENT */
     .app-body { display:flex; min-height:calc(100vh - 62px); }
 
@@ -1567,7 +1576,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
       </div>
       <div id="att-status" style="margin-bottom:12px;"></div>
-      <div style="margin-bottom:10px;"><input type="text" id="att-search" list="att-students-list" placeholder="🔍 ابحث باسم الطالب..." oninput="att_filterStudents(this.value)" style="padding:9px 14px;border:1px solid #ddd;border-radius:10px;width:100%;max-width:340px;font-size:14px;"><datalist id="att-students-list"></datalist></div>
+      <div style="margin-bottom:10px;position:relative;max-width:340px;"><input type="text" id="att-search" autocomplete="off" placeholder="🔍 ابحث باسم الطالب..." oninput="att_searchInput(this.value)" onblur="_acHide('att-search-ac')" style="padding:9px 14px;border:1px solid #ddd;border-radius:10px;width:100%;font-size:14px;"><div id="att-search-ac" class="ac-box"></div></div>
       <div id="att-container" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow-x:auto;">
         <p style="text-align:center;color:#9e9e9e;padding:40px;">اختر الفصل والشعبة والتاريخ ثم اضغط "تحميل"</p>
       </div>
@@ -1603,9 +1612,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div id="tabs-form-card" style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin:16px 0;display:none;">
         <h3 style="margin:0 0 12px;font-size:15px;">➕ تسجيل غياب معلم</h3>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">اسم المعلم</label>
-            <input id="tabs-teacher" list="tabs-teacher-list" onchange="tabs_onTeacherChange()" placeholder="اكتب أول حرف للاقتراح" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:160px;font-size:14px;">
-            <datalist id="tabs-teacher-list"></datalist></div>
+          <div style="display:flex;flex-direction:column;gap:4px;position:relative;"><label style="font-size:12px;color:#666;">اسم المعلم</label>
+            <input id="tabs-teacher" autocomplete="off" oninput="tabs_teacherInput(this.value)" onchange="tabs_onTeacherChange()" onblur="_acHide('tabs-teacher-ac')" placeholder="اكتب أول حرف للاقتراح" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:160px;font-size:14px;">
+            <div id="tabs-teacher-ac" class="ac-box"></div></div>
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">نوع الغياب</label>
             <select id="tabs-kind" onchange="tabs_onKindChange()" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
               <option value="يوم">يوم كامل</option><option value="حصة">حصة واحدة</option></select></div>
@@ -6682,6 +6691,9 @@ function att_filterStudents(q){
   q=(q||'').trim();
   for(var i=0;i<_attStudents.length;i++){ var r=document.getElementById('att-row-'+_attStudents[i].code); if(r){ r.style.display=(!q||(''+(_attStudents[i].name||'')).indexOf(q)>=0)?'':'none'; } }
 }
+function _attStudentNames(){ var a=[]; for(var i=0;i<_attStudents.length;i++){ if(_attStudents[i].name) a.push(_attStudents[i].name); } return a; }
+function att_searchInput(v){ att_filterStudents(v); _acRender('att-search-ac', _attStudentNames(), v, 'att_pickStudent'); }
+function att_pickStudent(name){ var el=document.getElementById('att-search'); if(el) el.value=name; _acHideNow('att-search-ac'); att_filterStudents(name); }
 function att_updateSummary(){
   var summaryDiv=document.getElementById('att-summary'); if(!summaryDiv) return;
   var total=_attStudents.length, present=0, absent=0, late=0;
@@ -6708,13 +6720,30 @@ function tabs_init(){
   tabs_fillLists();      // ملء الصفوف/الشعب/المواد فورًا من بيانات الشيت (App.lists)
   tabs_loadSummary();
 }
+var _tabsTeachers=[];
 function tabs_loadTeachers(){
   callServer('getTeacherNamesProtected', {}, function(res){
-    if(!res||!res.success||!res.teachers) return;
-    var dl=document.getElementById('tabs-teacher-list');
-    if(dl){ var o=''; for(var i=0;i<res.teachers.length;i++) o+='<option value="'+res.teachers[i]+'">'; dl.innerHTML=o; }
+    if(res&&res.success&&res.teachers) _tabsTeachers=res.teachers;
   }, function(){});
 }
+function tabs_teacherInput(v){ _acRender('tabs-teacher-ac', _tabsTeachers, v, 'tabs_pickTeacher'); }
+function tabs_pickTeacher(name){ var el=document.getElementById('tabs-teacher'); if(el) el.value=name; _acHideNow('tabs-teacher-ac'); tabs_onTeacherChange(); }
+
+// ── قائمة اقتراح أسماء عامة (تعمل في WebView بخلاف datalist) ──
+function _acRender(boxId, names, q, pickFn){
+  var box=document.getElementById(boxId); if(!box) return;
+  q=(''+(q||'')).trim();
+  if(!q || !names || !names.length){ _acHideNow(boxId); return; }
+  var seen={}, h='', n=0;
+  for(var i=0;i<names.length && n<12;i++){ var nm=''+names[i];
+    if(!nm || nm.indexOf(q)<0 || seen[nm]) continue; seen[nm]=1; n++;
+    h+='<div data-v="'+nm.replace(/"/g,'&quot;')+'" onmousedown="'+pickFn+'(this.getAttribute(\'data-v\'))" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;">'+nm+'</div>';
+  }
+  if(!n){ _acHideNow(boxId); return; }
+  box.innerHTML=h; box.style.display='block';
+}
+function _acHideNow(id){ var b=document.getElementById(id); if(b){ b.style.display='none'; b.innerHTML=''; } }
+function _acHide(id){ setTimeout(function(){ _acHideNow(id); }, 200); }
 function _tabs_opts(arr, ph){ var o='<option value="">'+(ph||'— اختر —')+'</option>'; arr=arr||[]; for(var i=0;i<arr.length;i++) o+='<option value="'+arr[i]+'">'+arr[i]+'</option>'; return o; }
 // تملأ القوائم من جدول الأستاذ (إن مُرّر) وإلا من قوائم النظام App.lists
 function tabs_fillLists(grades, sections, subjects){
