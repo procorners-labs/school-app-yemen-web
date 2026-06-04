@@ -529,6 +529,8 @@ function smmUpdateStatus(planId, newStatus, approverEmail) {
       sheet.getRange(i + 1, 15).setValue(newStatus); // عمود الحالة
       if (newStatus === SMM_STATUS.APPROVED) {
         sheet.getRange(i + 1, 16).setValue(approverEmail || ''); // الموافق
+        // ربط تلقائي: ترحيل المعتمد إلى الجدولة فوراً ليُنشره الـ Trigger
+        try { smmPromoteToSchedule(planId); } catch (e) { Logger.log('auto-promote: ' + e.message); }
       }
       return { success: true, message: 'تم تحديث الحالة إلى: ' + newStatus };
     }
@@ -568,7 +570,7 @@ function smmPromoteToSchedule(planId) {
       item['نوع_المحتوى'],
       fullContent,
       item['الوسائط_URL'],
-      item['تاريخ_النشر_المخطط'],
+      (item['تاريخ_النشر_المخطط'] || new Date()), // بلا موعد محدد → الآن (يُنشر بالتشغيل التالي)
       'مجدول',
       Session.getActiveUser().getEmail() || '',
       item['المسؤول'],
