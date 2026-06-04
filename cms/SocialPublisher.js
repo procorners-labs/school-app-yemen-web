@@ -1,22 +1,22 @@
-// 1. تثبيت الـ tokens
+// ⚠️ أمان: لا تكتب التوكنات داخل الكود (الريبو عام). املأ القيم في محرّر Apps Script
+//    ثم شغّل setupAllTokens() مرة واحدة. القيم الحقيقية تُحفظ في ScriptProperties فقط.
+//    (التوكن القديم كان مكشوفاً وأُزيل — يجب إبطاله/تدويره من Meta فوراً.)
 function setupAllTokens() {
   var props = PropertiesService.getScriptProperties();
   props.setProperties({
-    'FB_PAGE_ID'      : '637586763089915',
-    'FB_PAGE_TOKEN'   : 'EAAWbSvShTZAMBRqCp4246UZClnuIzxYUe9UX1aeOyN2AhNf7poZC5CUaI6yZCxVDBwuHrNZBagN1Fh62jS7T0QdmJR4knN4kbn0ZAgLJDM0YJrlNrslnZCb63kr0JR9tHkARH1sFZCfT254ehslHZBzUp7Pu5s9ZCE1SdnIXAoLdGI3ZBOk5GUzZBHrHjTnylXRMLf6z7BRmIZCxLo1FFe1P77bir8Njc4H6AvsGp1TiLaHwZD',
-    'IG_BUSINESS_ID'  : '17841404223596691',
+    'FB_PAGE_ID'      : 'YOUR_FB_PAGE_ID',
+    'FB_PAGE_TOKEN'   : 'YOUR_FB_PAGE_TOKEN',
+    'IG_BUSINESS_ID'  : 'YOUR_IG_BUSINESS_ID',
     'WA_PHONE_ID'     : 'YOUR_WHATSAPP_PHONE_ID',
     'WA_TOKEN'        : 'YOUR_WHATSAPP_TOKEN',
-    'WA_RECIPIENTS'   : '967775189922,967xxxxxxxxx', // قائمة بأرقام أولياء الأمور
+    'WA_RECIPIENTS'   : '967775189922', // قائمة بأرقام أولياء الأمور (مفصولة بفواصل)
     'YT_CHANNEL_URL'  : 'https://youtube.com/@ebda3tamayz_school'
   });
 }
 
-// 2. إنشاء الأوراق وتهيئة التقويم
-smmSetupSystem();
+// ملاحظة: لا تُنفَّذ تهيئة/Trigger هنا في المستوى الأعلى (كانت تُعاد في كل تحميل
+//         وتُكرّر الـ Trigger). شغّل fullSystemStart() يدوياً مرة واحدة فقط.
 
-// 3. تثبيت Trigger التلقائي
-smmInstallTrigger();
 function publishToFacebook(content, mediaUrl) {
   var props = PropertiesService.getScriptProperties();
   var pageId = props.getProperty('FB_PAGE_ID');
