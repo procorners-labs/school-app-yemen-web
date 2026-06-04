@@ -1545,6 +1545,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
       </div>
       <div id="att-status" style="margin-bottom:12px;"></div>
+      <div style="margin-bottom:10px;"><input type="text" id="att-search" placeholder="🔍 ابحث باسم الطالب..." oninput="att_filterStudents(this.value)" style="padding:9px 14px;border:1px solid #ddd;border-radius:10px;width:100%;max-width:340px;font-size:14px;"></div>
       <div id="att-container" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow-x:auto;">
         <p style="text-align:center;color:#9e9e9e;padding:40px;">اختر الفصل والشعبة والتاريخ ثم اضغط "تحميل"</p>
       </div>
@@ -2708,6 +2709,13 @@ function bootApp() {
 
   // تحميل عدّاد إشعارات الأخبار (الجرس)
   loadNewsNotifications();
+
+  // إظهار «غياب المعلمين» للمشرف/الوكيل/المدير فقط
+  var _siTabs = document.getElementById('si-teacher-absence');
+  if (_siTabs) {
+    var _priv = App.user.isAdmin || App.user.role === 'admin' || App.user.role === 'deputy' || App.user.role === 'supervisor';
+    _siTabs.style.display = _priv ? '' : 'none';
+  }
 
   // بدء مؤقت الجلسة
   initSessionTimer(App.user.expiresIn || 28800);
@@ -6361,7 +6369,7 @@ function att_renderTable(students, date, total) {
 
     // أزرار الحالة
     html += '<td style="text-align:center;"><div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">';
-    var statuses = [{key:'حاضر',label:'✓',cls:'present'},{key:'غائب',label:'✗',cls:'absent'},{key:'متأخر',label:'◔',cls:'late'}];
+    var statuses = [{key:'حاضر',label:'✅',cls:'present'},{key:'غائب',label:'❌',cls:'absent'},{key:'متأخر',label:'⏰',cls:'late'}];
     for (var si = 0; si < statuses.length; si++) {
       var st = statuses[si];
       var isActive = (s.status === st.key) ? ' active' : '';
@@ -6572,9 +6580,9 @@ function att_waSend(code){
   window.open(att_buildWaLink(s.phone,s.name,_attDate,s.status||'غائب'),'_blank');
   _attWaSent[code]=true;
   att_markWaSent(code);
+  att_renderWaList(); // المُرسَل يختفي والمتبقّي يبقى
 }
 function att_markWaSent(code){
-  var st=document.getElementById('att-wa-status-'+code); if(st) st.innerHTML='<span style="color:#2e7d32;font-weight:bold;">✅ تم الإرسال</span>';
   var cell=document.getElementById('att-wa-cell-'+code); if(cell) cell.innerHTML='<span style="color:#2e7d32;font-size:12px;font-weight:bold;">✅ تم</span>';
 }
 
@@ -6586,18 +6594,26 @@ function att_prepareMessages(){
   var sec=document.getElementById('att-wa-section'); if(sec){ sec.style.display=''; try{ sec.scrollIntoView({behavior:'smooth'}); }catch(e){} }
 }
 
+var _attWaList = []; // قائمة الغائبين الجاهزين للإرسال
 function att_showWaSection(absentList){
-  var section=document.getElementById('att-wa-section'); var list=document.getElementById('att-wa-list'); if(!section||!list) return;
-  section.style.display='';
+  _attWaList = absentList || [];
+  var section=document.getElementById('att-wa-section'); if(section) section.style.display='';
+  att_renderWaList();
+}
+// يعرض المتبقّين فقط؛ المُرسَل يختفي تلقائيًا
+function att_renderWaList(){
+  var list=document.getElementById('att-wa-list'); if(!list) return;
+  var pending=[], sent=0;
+  for(var i=0;i<_attWaList.length;i++){ if(_attWaSent[_attWaList[i].code]) sent++; else pending.push(_attWaList[i]); }
   var html='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">';
-  html+='<b>👥 '+absentList.length+' طالب غائب — الرسائل جاهزة</b>';
-  html+='<button onclick="att_waSendAll()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:bold;cursor:pointer;">📤 إرسال للجميع</button>';
+  html+='<b>📨 متبقّون للإرسال: '+pending.length+(sent?(' • تم الإرسال: '+sent):'')+'</b>';
+  if(pending.length) html+='<button onclick="att_waSendAll()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:bold;cursor:pointer;">📤 إرسال للجميع</button>';
   html+='</div>';
-  for(var i=0;i<absentList.length;i++){ var s=absentList[i];
+  if(pending.length===0){ list.innerHTML=html+'<p style="color:#2e7d32;text-align:center;padding:14px;font-weight:bold;">✅ تم إرسال رسائل جميع الغائبين</p>'; return; }
+  for(var j=0;j<pending.length;j++){ var s=pending[j];
     html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid #eee;gap:8px;flex-wrap:wrap;">';
-    html+='<span style="flex:1;min-width:150px;">'+(i+1)+'. '+s.name+' — <b>'+s.status+'</b>'+(s.phone?' <small style="color:#888;">📞'+s.phone+'</small>':' <small style="color:#f44336;">(لا يوجد رقم)</small>')+'</span>';
-    var inner = _attWaSent[s.code] ? '<span style="color:#2e7d32;font-weight:bold;">✅ تم الإرسال</span>' : (s.phone ? '<button class="att-wa-btn" onclick="att_waSend(\''+s.code+'\')">📱 إرسال</button>' : '');
-    html+='<span id="att-wa-status-'+s.code+'">'+inner+'</span></div>';
+    html+='<span style="flex:1;min-width:150px;">'+(j+1)+'. '+s.name+' — <b>'+s.status+'</b>'+(s.phone?' <small style="color:#888;">📞'+s.phone+'</small>':' <small style="color:#f44336;">(لا يوجد رقم)</small>')+'</span>';
+    html+='<span>'+(s.phone?'<button class="att-wa-btn" onclick="att_waSend(\''+s.code+'\')">📱 إرسال</button>':'')+'</span></div>';
   }
   list.innerHTML=html;
 }
@@ -6609,6 +6625,10 @@ function att_waSendAll(){
   var idx=0;
   function next(){ if(idx>=pend.length){ toast('تم فتح رسائل الغائبين','success'); return; } att_waSend(pend[idx].code); idx++; setTimeout(next,1800); }
   next();
+}
+function att_filterStudents(q){
+  q=(q||'').trim();
+  for(var i=0;i<_attStudents.length;i++){ var r=document.getElementById('att-row-'+_attStudents[i].code); if(r){ r.style.display=(!q||(''+(_attStudents[i].name||'')).indexOf(q)>=0)?'':'none'; } }
 }
 function att_updateSummary(){
   var summaryDiv=document.getElementById('att-summary'); if(!summaryDiv) return;
@@ -6629,9 +6649,23 @@ function att_exportAbsent(){
 // ═══════════ غياب المعلمين (واجهة) ═══════════
 function tabs_canRecord(){ return !!(App && App.user && (App.user.isAdmin || App.user.role==='supervisor' || App.user.role==='deputy' || App.user.role==='admin')); }
 function tabs_init(){
-  var card=document.getElementById('tabs-form-card'); if(card) card.style.display = tabs_canRecord() ? 'block' : 'none';
+  if(!tabs_canRecord()){ toast('هذه الصفحة مخصّصة للمشرفين والوكيل والمدير','warning'); showSection('dashboard'); return; }
+  var card=document.getElementById('tabs-form-card'); if(card) card.style.display='block';
   var d=document.getElementById('tabs-date'); if(d && !d.value){ var t=new Date(); var m=t.getMonth()+1, dd=t.getDate(); d.value=t.getFullYear()+'-'+(m<10?'0'+m:m)+'-'+(dd<10?'0'+dd:dd); }
+  tabs_loadTeachers();
   tabs_loadSummary();
+}
+function tabs_loadTeachers(){
+  callServer('getTeacherNamesProtected', {}, function(res){
+    if(!res||!res.success||!res.teachers) return;
+    var dl=document.getElementById('tabs-teacher-list');
+    if(dl){ var o=''; for(var i=0;i<res.teachers.length;i++) o+='<option value="'+res.teachers[i]+'">'; dl.innerHTML=o; }
+  }, function(){});
+}
+function tabs_filter(q){
+  q=(q||'').trim();
+  var rows=document.querySelectorAll('#tabs-summary tr[data-teacher]');
+  for(var i=0;i<rows.length;i++){ var nm=rows[i].getAttribute('data-teacher')||''; rows[i].style.display=(!q||nm.indexOf(q)>=0)?'':'none'; var det=document.getElementById(rows[i].getAttribute('data-det')); if(det) det.style.display='none'; }
 }
 function tabs_onKindChange(){ var k=document.getElementById('tabs-kind').value; var pf=document.getElementById('tabs-period-fields'); if(pf) pf.style.display=(k==='حصة')?'flex':'none'; }
 function tabs_save(){
@@ -6662,10 +6696,11 @@ function tabs_renderSummary(list){
   var box=document.getElementById('tabs-summary'); if(!box) return;
   var dl=document.getElementById('tabs-teacher-list'); if(dl){ var o=''; for(var k=0;k<list.length;k++) o+='<option value="'+list[k].teacher+'">'; dl.innerHTML=o; }
   if(list.length===0){ box.innerHTML='<p style="text-align:center;color:#9e9e9e;padding:30px;">لا توجد سجلات غياب للمعلمين</p>'; return; }
-  var h='<div style="overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);"><table class="att-table" style="min-width:720px;"><thead><tr>'+
+  var h='<div style="margin-bottom:10px;"><input type="text" placeholder="🔍 ابحث باسم المعلم..." oninput="tabs_filter(this.value)" style="padding:9px 14px;border:1px solid #ddd;border-radius:10px;width:100%;max-width:340px;font-size:14px;"></div>';
+  h+='<div style="overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);"><table class="att-table" style="min-width:720px;"><thead><tr>'+
     '<th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلف</th><th>تفاصيل</th></tr></thead><tbody>';
   for(var i=0;i<list.length;i++){ var t=list[i];
-    h+='<tr><td style="font-weight:600;">'+t.teacher+'</td>'+
+    h+='<tr data-teacher="'+t.teacher+'" data-det="tabs-det-'+i+'"><td style="font-weight:600;">'+t.teacher+'</td>'+
        '<td style="text-align:center;">'+t.totalPeriods+'</td>'+
        '<td style="text-align:center;color:#c62828;font-weight:bold;">'+t.absentDays+'</td>'+
        '<td style="text-align:center;color:#e65100;font-weight:bold;">'+t.absentPeriods+'</td>'+

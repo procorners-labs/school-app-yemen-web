@@ -6563,3 +6563,27 @@ function getTeacherAbsenceSummaryProtected(params) {
     }
   });
 }
+
+// أسماء المعلمين (لقائمة اختيار غياب المعلمين) — للمشرف/الوكيل/المدير فقط
+function getTeacherNamesProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var role = _safeStr(session.role || 'teacher');
+      var isPriv = session.isAdmin || role === 'admin' || role === 'deputy' || role === 'supervisor';
+      if (!isPriv) return { success: false, error: 'غير مصرّح' };
+      var sheet = _getSheet('المدرسين');
+      var names = [], seen = {};
+      if (sheet) {
+        var data = sheet.getDataRange().getValues();
+        for (var i = 1; i < data.length; i++) {
+          var n = _safeStr(data[i][0]);
+          if (n && !seen[n]) { seen[n] = 1; names.push(n); }
+        }
+      }
+      names.sort();
+      return { success: true, teachers: names };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
