@@ -6458,3 +6458,108 @@ function getSchemaConfig() {
     version: '2.0'
   };
 }
+
+// ═══════════════════════════════════════════════════════════
+//  غياب المعلمين — تسجيل المشرف/المدير/الوكيل + ملخّص بالأدوار
+//  المعلم العادي يرى ملخّصه فقط؛ المدير/الوكيل/المشرف يرون الجميع.
+// ═══════════════════════════════════════════════════════════
+function _teacherAbsenceSheet() {
+  return _getOrCreateSheet('غياب_المعلمين', [
+    'اسم المدرس', 'الفصل', 'الشعبة', 'المادة', 'اليوم', 'الحصة',
+    'النوع', 'نوع الغياب', 'المسجّل', 'التاريخ', 'ملاحظات'
+  ]);
+}
+
+function recordTeacherAbsenceProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var role = _safeStr(session.role || 'teacher');
+      var canRecord = session.isAdmin || role === 'admin' || role === 'deputy' || role === 'supervisor';
+      if (!canRecord) return { success: false, error: 'غير مصرّح لك بتسجيل غياب المعلمين' };
+
+      var teacher = _safeStr(params.teacherName || '');
+      if (!teacher) return { success: false, error: 'اسم المعلم مطلوب' };
+
+      var kind    = _safeStr(params.kind || 'يوم');         // يوم | حصة
+      var absType = _safeStr(params.absType || 'بدون عذر');  // بعذر | بدون عذر | مكلف بمهمة
+      var date    = _safeStr(params.date || '') || _nowString();
+      var day     = _safeStr(params.day || '');
+      var grade   = _safeStr(params.grade || '');
+      var section = _safeStr(params.section || '');
+      var subject = _safeStr(params.subject || '');
+      var period  = _safeStr(params.period || '');
+      var notes   = _safeStr(params.notes || '');
+      var recorder = _safeStr(session.teacherName || session.name || '');
+
+      _teacherAbsenceSheet().appendRow([
+        teacher,
+        (kind === 'يوم') ? 'كل الفصول' : grade,
+        (kind === 'يوم') ? '' : section,
+        (kind === 'يوم') ? '' : subject,
+        day,
+        (kind === 'يوم') ? '' : period,
+        kind, absType, recorder, date, notes
+      ]);
+      return { success: true, message: 'تم تسجيل غياب المعلم: ' + teacher };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
+
+function getTeacherAbsenceSummaryProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var role   = _safeStr(session.role || 'teacher');
+      var isPriv = session.isAdmin || role === 'admin' || role === 'deputy' || role === 'supervisor';
+      var myName = _safeStr(session.teacherName || session.name || '');
+      var filterTeacher = _safeStr(params.teacherName || '');
+      if (!isPriv) filterTeacher = myName; // المعلم العادي: نفسه فقط
+
+      // إجمالي الحصص الأسبوعية لكل معلم من ورقة الجدول (عمود المعلم = 5)
+      var periodsByT = {};
+      var jsh = _getSheet('الجدول');
+      if (jsh) {
+        var jd = jsh.getDataRange().getValues();
+        for (var j = 1; j < jd.length; j++) {
+          var tn = _safeStr(jd[j][5]); if (!tn) continue;
+          periodsByT[tn] = (periodsByT[tn] || 0) + 1;
+        }
+      }
+
+      function _blank(t) {
+        return { teacher: t, totalPeriods: periodsByT[t] || 0, absentDays: 0,
+                 absentPeriods: 0, excused: 0, unexcused: 0, tasked: 0, records: [] };
+      }
+
+      var byT = {};
+      var ash = _getSheet('غياب_المعلمين');
+      if (ash) {
+        var ad = ash.getDataRange().getValues();
+        for (var i = 1; i < ad.length; i++) {
+          var t = _safeStr(ad[i][0]); if (!t) continue;
+          if (filterTeacher && t !== filterTeacher) continue;
+          if (!byT[t]) byT[t] = _blank(t);
+          var kind = _safeStr(ad[i][6]); var at = _safeStr(ad[i][7]);
+          if (kind === 'يوم') byT[t].absentDays++; else byT[t].absentPeriods++;
+          if (at.indexOf('بعذر') >= 0) byT[t].excused++;
+          else if (at.indexOf('مكلف') >= 0) byT[t].tasked++;
+          else byT[t].unexcused++;
+          byT[t].records.push({
+            grade: _safeStr(ad[i][1]), section: _safeStr(ad[i][2]), subject: _safeStr(ad[i][3]),
+            day: _safeStr(ad[i][4]), period: _safeStr(ad[i][5]), kind: kind, type: at,
+            recorder: _safeStr(ad[i][8]), date: _safeStr(ad[i][9]), notes: _safeStr(ad[i][10])
+          });
+        }
+      }
+      if (filterTeacher && !byT[filterTeacher]) byT[filterTeacher] = _blank(filterTeacher);
+
+      var list = [];
+      for (var k in byT) { if (byT.hasOwnProperty(k)) list.push(byT[k]); }
+      list.sort(function (a, b) { return (b.absentDays + b.absentPeriods) - (a.absentDays + a.absentPeriods); });
+      return { success: true, summary: list, isPrivileged: isPriv };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}

@@ -1491,6 +1491,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <span class="si-badge-notes" id="notesBadge" style="display:none;">0</span>
   </button>
   <button class="sidebar-item" id="si-attendance" onclick="showSection('attendance')"><span class="si-icon">📋</span> الغياب اليومي</button>
+  <button class="sidebar-item" id="si-teacher-absence" onclick="showSection('teacher-absence')"><span class="si-icon">🧑‍🏫</span> غياب المعلمين</button>
 </div>
 <div class="sidebar-section" id="adminSection" style="display:none;">
   <span class="sidebar-label">إدارة النظام</span>
@@ -1588,6 +1589,52 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
         <div id="att-wa-list"></div>
       </div>
+    </div>
+
+    <!-- قسم غياب المعلمين -->
+    <div id="teacher-absence-section" style="display:none;" class="section">
+      <div class="section-header">
+        <h2 style="margin:0;">🧑‍🏫 غياب المعلمين</h2>
+        <button onclick="tabs_loadSummary()" style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔄 تحديث</button>
+      </div>
+
+      <!-- نموذج التسجيل (للمشرف/المدير/الوكيل) -->
+      <div id="tabs-form-card" style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin:16px 0;display:none;">
+        <h3 style="margin:0 0 12px;font-size:15px;">➕ تسجيل غياب معلم</h3>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">اسم المعلم</label>
+            <input id="tabs-teacher" list="tabs-teacher-list" placeholder="اكتب اسم المعلم" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:160px;font-size:14px;">
+            <datalist id="tabs-teacher-list"></datalist></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">نوع الغياب</label>
+            <select id="tabs-kind" onchange="tabs_onKindChange()" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+              <option value="يوم">يوم كامل</option><option value="حصة">حصة واحدة</option></select></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">التاريخ</label>
+            <input type="date" id="tabs-date" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">اليوم</label>
+            <input id="tabs-day" placeholder="مثال: الأحد" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:90px;font-size:14px;"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">نوع العذر</label>
+            <select id="tabs-type" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+              <option value="بدون عذر">بدون عذر</option><option value="بعذر">بعذر (بإذن)</option><option value="مكلف بمهمة">مكلف بمهمة</option></select></div>
+        </div>
+        <div id="tabs-period-fields" style="display:none;gap:12px;flex-wrap:wrap;margin-top:10px;">
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">الفصل</label>
+            <input id="tabs-grade" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:90px;font-size:14px;"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">الشعبة</label>
+            <input id="tabs-section" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:70px;font-size:14px;"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">المادة</label>
+            <input id="tabs-subject" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:110px;font-size:14px;"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">الحصة</label>
+            <input id="tabs-num" placeholder="مثال: 3" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:70px;font-size:14px;"></div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;"><label style="font-size:12px;color:#666;">ملاحظات</label>
+            <input id="tabs-notes" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;"></div>
+          <button onclick="tabs_save()" style="padding:9px 22px;background:#2e7d32;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;">💾 تسجيل الغياب</button>
+        </div>
+        <div id="tabs-form-status" style="margin-top:10px;"></div>
+      </div>
+
+      <div id="tabs-summary"><p style="text-align:center;color:#9e9e9e;padding:30px;">اضغط «تحديث» لعرض ملخّص غياب المعلمين</p></div>
     </div>
 
     <!-- قسم إدارة المعلمين (المجمّع) – للمدير فقط -->
@@ -3352,6 +3399,8 @@ function showSection(name) {
     if (attendanceDiv) attendanceDiv.style.display = 'none';
     if (teachersDiv) teachersDiv.style.display = 'none';
     if (listsDiv) listsDiv.style.display = 'none';
+    var tabsDiv = document.getElementById('teacher-absence-section');
+    if (tabsDiv) tabsDiv.style.display = 'none';
     dynamicEl.style.display = 'block';
 
     // معالجة الأقسام الثابتة الخاصة
@@ -3359,6 +3408,14 @@ function showSection(name) {
       if (attendanceDiv) attendanceDiv.style.display = 'block';
       dynamicEl.style.display = 'none';
       att_init();
+      updateActiveSidebarItem(name);
+      closeSidebar();
+      return;
+    }
+    if (name === 'teacher-absence') {
+      if (tabsDiv) tabsDiv.style.display = 'block';
+      dynamicEl.style.display = 'none';
+      tabs_init();
       updateActiveSidebarItem(name);
       closeSidebar();
       return;
@@ -6590,6 +6647,68 @@ function att_exportAbsent(){
   lines.push(''); lines.push('إجمالي: '+absent.length+' طالب');
   var blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='غياب_'+_attDate+'_'+_attGrade+'.txt'; a.click(); URL.revokeObjectURL(url);
 }
+
+// ═══════════ غياب المعلمين (واجهة) ═══════════
+function tabs_canRecord(){ return !!(App && App.user && (App.user.isAdmin || App.user.role==='supervisor' || App.user.role==='deputy' || App.user.role==='admin')); }
+function tabs_init(){
+  var card=document.getElementById('tabs-form-card'); if(card) card.style.display = tabs_canRecord() ? 'block' : 'none';
+  var d=document.getElementById('tabs-date'); if(d && !d.value){ var t=new Date(); var m=t.getMonth()+1, dd=t.getDate(); d.value=t.getFullYear()+'-'+(m<10?'0'+m:m)+'-'+(dd<10?'0'+dd:dd); }
+  tabs_loadSummary();
+}
+function tabs_onKindChange(){ var k=document.getElementById('tabs-kind').value; var pf=document.getElementById('tabs-period-fields'); if(pf) pf.style.display=(k==='حصة')?'flex':'none'; }
+function tabs_save(){
+  var st=document.getElementById('tabs-form-status');
+  var teacher=(document.getElementById('tabs-teacher').value||'').trim();
+  if(!teacher){ st.innerHTML='<span style="color:#c62828;">أدخل اسم المعلم</span>'; return; }
+  var kind=document.getElementById('tabs-kind').value;
+  var p={ teacherName:teacher, kind:kind, absType:document.getElementById('tabs-type').value,
+    date:document.getElementById('tabs-date').value, day:(document.getElementById('tabs-day').value||'').trim(),
+    notes:(document.getElementById('tabs-notes').value||'').trim() };
+  if(kind==='حصة'){ p.grade=(document.getElementById('tabs-grade').value||'').trim(); p.section=(document.getElementById('tabs-section').value||'').trim(); p.subject=(document.getElementById('tabs-subject').value||'').trim(); p.period=(document.getElementById('tabs-num').value||'').trim(); }
+  st.innerHTML='<span style="color:#1a237e;">⏳ جارٍ التسجيل...</span>';
+  callServer('recordTeacherAbsenceProtected', p, function(res){
+    if(!res||!res.success){ st.innerHTML='<span style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</span>'; return; }
+    st.innerHTML='<span style="color:#2e7d32;">✅ '+res.message+'</span>';
+    document.getElementById('tabs-teacher').value=''; document.getElementById('tabs-notes').value='';
+    tabs_loadSummary();
+  }, function(err){ st.innerHTML='<span style="color:#c62828;">❌ '+err.message+'</span>'; });
+}
+function tabs_loadSummary(){
+  var box=document.getElementById('tabs-summary'); if(box) box.innerHTML='<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  callServer('getTeacherAbsenceSummaryProtected', {}, function(res){
+    if(!res||!res.success){ if(box) box.innerHTML='<p style="color:#c62828;text-align:center;padding:20px;">❌ '+(res?res.error:'خطأ')+'</p>'; return; }
+    tabs_renderSummary(res.summary||[]);
+  }, function(err){ if(box) box.innerHTML='<p style="color:#c62828;text-align:center;padding:20px;">❌ '+err.message+'</p>'; });
+}
+function tabs_renderSummary(list){
+  var box=document.getElementById('tabs-summary'); if(!box) return;
+  var dl=document.getElementById('tabs-teacher-list'); if(dl){ var o=''; for(var k=0;k<list.length;k++) o+='<option value="'+list[k].teacher+'">'; dl.innerHTML=o; }
+  if(list.length===0){ box.innerHTML='<p style="text-align:center;color:#9e9e9e;padding:30px;">لا توجد سجلات غياب للمعلمين</p>'; return; }
+  var h='<div style="overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);"><table class="att-table" style="min-width:720px;"><thead><tr>'+
+    '<th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلف</th><th>تفاصيل</th></tr></thead><tbody>';
+  for(var i=0;i<list.length;i++){ var t=list[i];
+    h+='<tr><td style="font-weight:600;">'+t.teacher+'</td>'+
+       '<td style="text-align:center;">'+t.totalPeriods+'</td>'+
+       '<td style="text-align:center;color:#c62828;font-weight:bold;">'+t.absentDays+'</td>'+
+       '<td style="text-align:center;color:#e65100;font-weight:bold;">'+t.absentPeriods+'</td>'+
+       '<td style="text-align:center;color:#2e7d32;">'+t.excused+'</td>'+
+       '<td style="text-align:center;color:#c62828;">'+t.unexcused+'</td>'+
+       '<td style="text-align:center;color:#1565c0;">'+t.tasked+'</td>'+
+       '<td style="text-align:center;"><button onclick="tabs_details('+i+')" style="background:none;border:1px solid #ddd;border-radius:6px;padding:4px 8px;cursor:pointer;">👁️</button></td></tr>';
+    h+='<tr id="tabs-det-'+i+'" style="display:none;background:#f8fafc;"><td colspan="8" style="font-size:13px;padding:10px;line-height:1.8;">'+tabs_detailsHtml(t.records)+'</td></tr>';
+  }
+  h+='</tbody></table></div>';
+  box.innerHTML=h;
+}
+function tabs_detailsHtml(recs){
+  if(!recs||!recs.length) return 'لا تفاصيل';
+  var s='';
+  for(var i=0;i<recs.length;i++){ var r=recs[i];
+    s+='• '+r.date+' — '+(r.kind==='يوم'?'يوم كامل':('حصة '+r.period+' / '+r.grade+(r.section?'/'+r.section:'')+(r.subject?' — '+r.subject:'')))+' — <b>'+r.type+'</b>'+(r.day?' ('+r.day+')':'')+(r.notes?' — '+r.notes:'')+(r.recorder?' — سجّله: '+r.recorder:'')+'<br>';
+  }
+  return s;
+}
+function tabs_details(i){ var el=document.getElementById('tabs-det-'+i); if(el) el.style.display=(el.style.display==='none'?'':'none'); }
 
 // ==================== LOAD XLSX (للاستيراد/التصدير) – نسخة محسنة ومتوافقة مع التطبيق ====================
 var _xlsxLoading = false;      // منع التحميل المتكرر
