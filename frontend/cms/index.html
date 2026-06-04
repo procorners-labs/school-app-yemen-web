@@ -75,6 +75,11 @@
     <!-- تعبأ ديناميكيًا -->
   </div>
 
+  <div style="margin:26px 0 6px;font-size:1.25rem;font-weight:800;color:#0f172a;">📋 خطة المحتوى الاجتماعي</div>
+  <div class="stats-grid" id="planStatsContainer">
+    <!-- تُعبأ من smmGetPlan -->
+  </div>
+
   <div class="actions">
     <a onclick="goToPage('add'); return false;" class="btn btn-primary"><span>➕</span> إضافة محتوى جديد</a>
     <a onclick="goToPage('view'); return false;" class="btn btn-secondary"><span>👀</span> عرض لوحة المحتوى</a>
@@ -142,6 +147,7 @@
 
   window.refreshStats = function() {
     loadStats();
+    loadPlanStats();
   };
 
   function displayStats(stats) {
@@ -193,7 +199,48 @@
       .getSystemStats(window.SCHOOL_ID);
   }
 
+  // ── لوحة خطة المحتوى الاجتماعي (تفاعلية، من smmGetPlan) ──
+  function displayPlanStats(plan) {
+    var c = document.getElementById('planStatsContainer'); if (!c) return;
+    plan = plan || [];
+    var by = {};
+    for (var i = 0; i < plan.length; i++) {
+      var s = (plan[i]['الحالة'] || '').toString();
+      by[s] = (by[s] || 0) + 1;
+    }
+    var items = [
+      { label: '📋 إجمالي الخطة', value: plan.length, color: '#0f172a' },
+      { label: '✏️ مسودات', value: by['مسودة'] || 0, color: '#64748b' },
+      { label: '🔍 قيد المراجعة', value: by['قيد المراجعة'] || 0, color: '#ea580c' },
+      { label: '✅ معتمد', value: by['معتمد'] || 0, color: '#16a34a' },
+      { label: '📅 مجدول', value: by['مجدول'] || 0, color: '#2563eb' },
+      { label: '📢 منشور', value: by['منشور'] || 0, color: '#7c3aed' }
+    ];
+    var html = '';
+    for (var k = 0; k < items.length; k++) {
+      var it = items[k];
+      var icon = it.label.split(' ')[0];
+      var lbl = it.label.substring(it.label.indexOf(' ') + 1);
+      html += '<div class="stat-card" style="cursor:pointer;" onclick="goToPage(\'view\')">' +
+                '<div class="stat-icon">' + icon + '</div>' +
+                '<div class="stat-value" style="color:' + it.color + '">' + it.value + '</div>' +
+                '<div class="stat-label">' + lbl + '</div>' +
+              '</div>';
+    }
+    c.innerHTML = html;
+  }
+  function loadPlanStats() {
+    google.script.run
+      .withSuccessHandler(displayPlanStats)
+      .withFailureHandler(function () {
+        var c = document.getElementById('planStatsContainer');
+        if (c) c.innerHTML = '<div class="stat-card"><div class="stat-value">—</div><div class="stat-label">خطة المحتوى غير مُهيّأة بعد</div></div>';
+      })
+      .smmGetPlan({});
+  }
+
   loadStats();
+  loadPlanStats();
 
   window.addEventListener('error', function(event) {
     var msg = event.message || 'Unknown error';

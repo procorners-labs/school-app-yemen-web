@@ -1224,6 +1224,9 @@ img,video,iframe{max-width:100%;display:block}
       <div class="sh-bar"></div>
       <p class="sh-sub">ابق على اطلاع دائم بأحدث فعاليات ومستجدات مدارس الإبداع والتميز الدولية</p>
     </div>
+    <div class="reveal" style="max-width:480px;margin:0 auto 22px;">
+      <input id="homeNewsSearch" type="text" placeholder="🔍 ابحث في الأخبار..." oninput="homeNewsFilter(this.value)" style="width:100%;padding:13px 18px;border:1px solid #d8dee9;border-radius:40px;font-size:16px;font-family:inherit;box-sizing:border-box;outline:none;">
+    </div>
     <div class="cg" id="dynamicNewsGrid">
       <div class="st-loading"><div class="ld-ring"></div><div class="ld-txt">جاري تحميل الأخبار…</div></div>
     </div>
@@ -1259,6 +1262,15 @@ img,video,iframe{max-width:100%;display:block}
     </div>
   </div>
 </section>
+
+<!-- Lightbox تفاعلي للصور -->
+<div id="homeLb" onclick="if(event.target===this)homeLbClose()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;">
+  <button onclick="homeLbClose()" aria-label="إغلاق" style="position:absolute;top:16px;left:16px;background:rgba(255,255,255,.16);color:#fff;border:none;width:46px;height:46px;border-radius:50%;font-size:22px;cursor:pointer;">✕</button>
+  <button onclick="homeLbNav(-1)" aria-label="السابق" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.16);color:#fff;border:none;width:50px;height:50px;border-radius:50%;font-size:26px;cursor:pointer;">‹</button>
+  <img id="homeLbImg" src="" alt="" style="max-width:90vw;max-height:80vh;border-radius:12px;box-shadow:0 14px 50px rgba(0,0,0,.55);">
+  <div id="homeLbCap" style="color:#fff;margin-top:14px;font-size:16px;text-align:center;max-width:90vw;"></div>
+  <button onclick="homeLbNav(1)" aria-label="التالي" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.16);color:#fff;border:none;width:50px;height:50px;border-radius:50%;font-size:26px;cursor:pointer;">›</button>
+</div>
 
 <!-- PROMO -->
 <div class="promo reveal">
@@ -1616,6 +1628,7 @@ function renderNews(items) {
 function renderImages(items) {
   var g = $('dynamicImagesGrid');
   if (!g) return;
+  window._homeImg = items || [];   // للمعرض التفاعلي (Lightbox)
   if (!items || !items.length) {
     g.innerHTML = '<div class="st-error"><p class="empty-msg">لا توجد صور حالياً</p></div>';
     return;
@@ -1630,7 +1643,7 @@ function renderImages(items) {
     h += '<article class="cc" tabindex="0">'
        + '<div class="cc-thumb">'
        + '<span class="cc-badge bg-img"><i class="fas fa-image"></i> صورة</span>'
-       + '<img src="' + esc(imgSrc) + '" loading="lazy" alt="' + esc(n.title || 'صورة') + '" onerror="this.parentNode.innerHTML=\'<div class=\\\'cc-no-img\\\'><i class=\\\"fas fa-image\\\"></i></div>\'">'
+       + '<img src="' + esc(imgSrc) + '" loading="lazy" alt="' + esc(n.title || 'صورة') + '" style="cursor:zoom-in" onclick="homeLightbox(' + i + ')" onerror="this.parentNode.innerHTML=\'<div class=\\\'cc-no-img\\\'><i class=\\\"fas fa-image\\\"></i></div>\'">'
        + '</div>'
        + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title || '') + '</h3></div>'
        + '</article>';
@@ -1685,6 +1698,38 @@ function extractYouTubeIdClient(url) {
   if (!url) return '';
   var m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/);
   return m ? m[1] : '';
+}
+
+/* بحث الأخبار — تصفية البطاقات المعروضة فورياً */
+function homeNewsFilter(q) {
+  q = (q || '').trim();
+  var g = $('dynamicNewsGrid'); if (!g) return;
+  var cards = g.querySelectorAll('.cc');
+  for (var i = 0; i < cards.length; i++) {
+    cards[i].style.display = (!q || cards[i].textContent.indexOf(q) >= 0) ? '' : 'none';
+  }
+}
+
+/* معرض صور Lightbox تفاعلي (تكبير + تنقّل) */
+var _homeLbIdx = 0;
+function homeLightbox(i) {
+  var arr = window._homeImg || []; if (!arr.length) return;
+  _homeLbIdx = i; _homeLbShow();
+  var lb = $('homeLb'); if (lb) lb.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function _homeLbShow() {
+  var arr = window._homeImg || []; var n = arr[_homeLbIdx]; if (!n) return;
+  var img = $('homeLbImg'); if (img) img.src = n.url || n.image || '';
+  var cap = $('homeLbCap'); if (cap) cap.textContent = n.title || '';
+}
+function homeLbNav(d) {
+  var arr = window._homeImg || []; if (!arr.length) return;
+  _homeLbIdx = (_homeLbIdx + d + arr.length) % arr.length; _homeLbShow();
+}
+function homeLbClose() {
+  var lb = $('homeLb'); if (lb) lb.style.display = 'none';
+  document.body.style.overflow = '';
 }
 
 /* ══════════════════════════════════════════
