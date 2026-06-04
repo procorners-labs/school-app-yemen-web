@@ -1582,7 +1582,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <h3 style="margin:0 0 12px;font-size:15px;">➕ تسجيل غياب معلم</h3>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">اسم المعلم</label>
-            <input id="tabs-teacher" list="tabs-teacher-list" placeholder="اكتب اسم المعلم" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:160px;font-size:14px;">
+            <input id="tabs-teacher" list="tabs-teacher-list" onchange="tabs_onTeacherChange()" placeholder="اكتب أول حرف للاقتراح" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:160px;font-size:14px;">
             <datalist id="tabs-teacher-list"></datalist></div>
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">نوع الغياب</label>
             <select id="tabs-kind" onchange="tabs_onKindChange()" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -1597,11 +1597,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
         <div id="tabs-period-fields" style="display:none;gap:12px;flex-wrap:wrap;margin-top:10px;">
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">الفصل</label>
-            <input id="tabs-grade" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:90px;font-size:14px;"></div>
+            <select id="tabs-grade" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:110px;font-size:14px;"></select></div>
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">الشعبة</label>
-            <input id="tabs-section" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:70px;font-size:14px;"></div>
+            <select id="tabs-section" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:90px;font-size:14px;"></select></div>
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">المادة</label>
-            <input id="tabs-subject" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:110px;font-size:14px;"></div>
+            <select id="tabs-subject" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:130px;font-size:14px;"></select></div>
           <div style="display:flex;flex-direction:column;gap:4px;"><label style="font-size:12px;color:#666;">الحصة</label>
             <input id="tabs-num" placeholder="مثال: 3" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;min-width:70px;font-size:14px;"></div>
         </div>
@@ -6653,6 +6653,7 @@ function tabs_init(){
   var card=document.getElementById('tabs-form-card'); if(card) card.style.display='block';
   var d=document.getElementById('tabs-date'); if(d && !d.value){ var t=new Date(); var m=t.getMonth()+1, dd=t.getDate(); d.value=t.getFullYear()+'-'+(m<10?'0'+m:m)+'-'+(dd<10?'0'+dd:dd); }
   tabs_loadTeachers();
+  tabs_fillLists();      // ملء الصفوف/الشعب/المواد فورًا من بيانات الشيت (App.lists)
   tabs_loadSummary();
 }
 function tabs_loadTeachers(){
@@ -6661,6 +6662,26 @@ function tabs_loadTeachers(){
     var dl=document.getElementById('tabs-teacher-list');
     if(dl){ var o=''; for(var i=0;i<res.teachers.length;i++) o+='<option value="'+res.teachers[i]+'">'; dl.innerHTML=o; }
   }, function(){});
+}
+function _tabs_opts(arr, ph){ var o='<option value="">'+(ph||'— اختر —')+'</option>'; arr=arr||[]; for(var i=0;i<arr.length;i++) o+='<option value="'+arr[i]+'">'+arr[i]+'</option>'; return o; }
+// تملأ القوائم من جدول الأستاذ (إن مُرّر) وإلا من قوائم النظام App.lists
+function tabs_fillLists(grades, sections, subjects){
+  var L=(typeof App!=='undefined'&&App.lists)?App.lists:{};
+  var g=(grades&&grades.length)?grades:(L.grades||[]);
+  var s=(sections&&sections.length)?sections:(L.sections||[]);
+  var u=(subjects&&subjects.length)?subjects:(L.subjects||[]);
+  var eg=document.getElementById('tabs-grade'); if(eg) eg.innerHTML=_tabs_opts(g,'— الفصل —');
+  var es=document.getElementById('tabs-section'); if(es) es.innerHTML=_tabs_opts(s,'— الشعبة —');
+  var eu=document.getElementById('tabs-subject'); if(eu) eu.innerHTML=_tabs_opts(u,'— المادة —');
+}
+// عند اختيار معلّم: ضيّق القوائم لما يدرّسه فعليًا (من الجدول)، وإلا أبقِ قوائم النظام
+function tabs_onTeacherChange(){
+  var t=(document.getElementById('tabs-teacher').value||'').trim();
+  if(!t){ tabs_fillLists(); return; }
+  callServer('getTeacherScheduleInfoProtected', {teacherName:t}, function(res){
+    if(res&&res.success&&((res.grades&&res.grades.length)||(res.subjects&&res.subjects.length))) tabs_fillLists(res.grades,res.sections,res.subjects);
+    else tabs_fillLists();
+  }, function(){ tabs_fillLists(); });
 }
 function tabs_filter(q){
   q=(q||'').trim();

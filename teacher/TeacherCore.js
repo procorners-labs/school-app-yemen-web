@@ -6587,3 +6587,30 @@ function getTeacherNamesProtected(params) {
     }
   });
 }
+
+// الصفوف/الشعب/المواد التي يدرّسها معلّم معيّن (من ورقة الجدول) — لتضييق قوائم غياب المعلمين
+function getTeacherScheduleInfoProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var role = _safeStr(session.role || 'teacher');
+      var isPriv = session.isAdmin || role === 'admin' || role === 'deputy' || role === 'supervisor';
+      if (!isPriv) return { success: false, error: 'غير مصرّح' };
+      var t = _safeStr(params.teacherName || '');
+      if (!t) return { success: true, grades: [], sections: [], subjects: [] };
+      var sh = _getSheet('الجدول');
+      var g = {}, s = {}, su = {}, gl = [], sl = [], sul = [];
+      if (sh) {
+        var d = sh.getDataRange().getValues();
+        for (var i = 1; i < d.length; i++) {
+          if (_safeStr(d[i][5]) !== t) continue;     // عمود المعلم
+          var gg = _safeStr(d[i][0]); if (gg && !g[gg])  { g[gg] = 1;  gl.push(gg); }
+          var ss = _safeStr(d[i][1]); if (ss && !s[ss])  { s[ss] = 1;  sl.push(ss); }
+          var uu = _safeStr(d[i][4]); if (uu && !su[uu]) { su[uu] = 1; sul.push(uu); }
+        }
+      }
+      return { success: true, grades: gl, sections: sl, subjects: sul };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
