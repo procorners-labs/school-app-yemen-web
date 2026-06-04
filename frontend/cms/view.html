@@ -302,6 +302,7 @@
     <div class="tab" data-section="videos">🎬 الفيديوهات</div>
     <div class="tab" data-section="images">🖼️ الصور</div>
     <div class="tab" data-section="schedule">📅 جدول النشر</div>
+    <div class="tab" data-section="sheets">📑 جداول الشيت</div>
   </div>
 
   <!-- بحث في المكتبة -->
@@ -321,6 +322,16 @@
   </div>
   <div id="schedule" class="section">
     <div class="grid" id="scheduleGrid"><div class="loading-spinner">⏳ جاري تحميل جدول النشر...</div></div>
+  </div>
+  <div id="sheets" class="section">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+      <label style="font-weight:bold;">اختر الورقة:</label>
+      <select id="sheetSelect" onchange="showSheet(this.value)" style="padding:9px 14px;border:1px solid #d0d7e2;border-radius:10px;font-size:15px;font-family:inherit;min-width:200px;">
+        <option value="">— جارٍ التحميل... —</option>
+      </select>
+      <input id="sheetSearch" type="text" placeholder="🔍 بحث داخل الورقة..." oninput="sheetFilter(this.value)" style="padding:9px 14px;border:1px solid #d0d7e2;border-radius:10px;font-size:15px;font-family:inherit;flex:1;min-width:160px;">
+    </div>
+    <div id="sheetTableWrap" style="overflow:auto;background:#fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.05);"><div class="empty-state" style="padding:30px;color:#94a3b8;">اختر ورقة لعرض بياناتها</div></div>
   </div>
 
   <!-- العودة -->
@@ -519,8 +530,68 @@
     google.script.run.withSuccessHandler(updateMiniStats).getSystemStats(window.SCHOOL_ID);
   }
 
+  // ── عارض جداول الشيت الديناميكي ──
+  var _sheetRows = [];
+  function loadSheetsList() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        var sel = document.getElementById('sheetSelect'); if (!sel) return;
+        if (!res || !res.success) { sel.innerHTML = '<option value="">تعذّر التحميل</option>'; return; }
+        var o = '<option value="">— اختر ورقة —</option>';
+        for (var i = 0; i < res.sheets.length; i++) {
+          var s = res.sheets[i];
+          o += '<option value="' + esc(s.name) + '">' + esc(s.name) + ' (' + s.rows + ' صف)</option>';
+        }
+        sel.innerHTML = o;
+      })
+      .withFailureHandler(function () { var sel = document.getElementById('sheetSelect'); if (sel) sel.innerHTML = '<option value="">تعذّر الاتصال</option>'; })
+      .cmsListSheets();
+  }
+  function showSheet(name) {
+    var wrap = document.getElementById('sheetTableWrap'); if (!wrap) return;
+    if (!name) { wrap.innerHTML = '<div class="empty-state" style="padding:30px;color:#94a3b8;">اختر ورقة لعرض بياناتها</div>'; return; }
+    wrap.innerHTML = '<div class="loading-spinner">⏳ جاري تحميل الورقة...</div>';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.success) { wrap.innerHTML = '<div class="empty-state" style="padding:24px;color:#dc2626;">❌ ' + (res ? esc(res.error) : 'خطأ') + '</div>'; return; }
+        _sheetRows = res.rows || [];
+        renderSheetTable(res);
+      })
+      .withFailureHandler(function () { wrap.innerHTML = '<div class="empty-state" style="padding:24px;color:#dc2626;">❌ فشل الاتصال</div>'; })
+      .cmsGetSheetData(name, 300);
+  }
+  function renderSheetTable(res) {
+    var wrap = document.getElementById('sheetTableWrap'); if (!wrap) return;
+    if (!res.headers || !res.headers.length) { wrap.innerHTML = '<div class="empty-state" style="padding:24px;color:#94a3b8;">ورقة فارغة</div>'; return; }
+    var h = '<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr>';
+    for (var c = 0; c < res.headers.length; c++) {
+      h += '<th style="position:sticky;top:0;background:#0f3b5c;color:#fff;padding:9px 12px;text-align:right;white-space:nowrap;">' + esc(res.headers[c]) + '</th>';
+    }
+    h += '</tr></thead><tbody id="sheetTbody">' + _sheetRowsHtml(res.rows) + '</tbody></table>';
+    h += '<div style="padding:10px 14px;color:#64748b;font-size:13px;">عرض ' + res.shown + ' من ' + res.total + ' صف' + (res.total > res.shown ? ' (الحد 300)' : '') + '</div>';
+    wrap.innerHTML = h;
+  }
+  function _sheetRowsHtml(rows) {
+    var b = '';
+    for (var r = 0; r < rows.length; r++) {
+      b += '<tr style="border-bottom:1px solid #eef2f7;">';
+      for (var c = 0; c < rows[r].length; c++) {
+        b += '<td style="padding:8px 12px;border-left:1px solid #f1f5f9;max-width:340px;overflow:hidden;text-overflow:ellipsis;">' + esc(rows[r][c]) + '</td>';
+      }
+      b += '</tr>';
+    }
+    return b;
+  }
+  function sheetFilter(q) {
+    q = (q || '').trim();
+    var tb = document.getElementById('sheetTbody'); if (!tb) return;
+    var trs = tb.getElementsByTagName('tr');
+    for (var i = 0; i < trs.length; i++) { trs[i].style.display = (!q || trs[i].textContent.indexOf(q) >= 0) ? '' : 'none'; }
+  }
+
   function loadAllContent() {
     loadStats();
+    loadSheetsList();
     fetchContent('getNewsData', 'newsGrid', displayNews);
     fetchContent('getVideosData', 'videosGrid', displayVideos);
     fetchContent('getImagesData', 'imagesGrid', displayImages);

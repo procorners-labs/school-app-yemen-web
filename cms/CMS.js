@@ -480,6 +480,58 @@ function _cmsAutoDraft(kind, title, body, mediaUrl, userName) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  عارض الأوراق الديناميكي — يسرد أوراق ملف الشيت ويعرض بياناتها للويب
+//  أمان: يُستثنى «اعدادات_السوشل» (يحوي توكنات) من السرد والعرض.
+// ═══════════════════════════════════════════════════════════════════
+var _CMS_BLOCKED_SHEETS = ['اعدادات_السوشل'];
+
+function _cmsSheetBlocked(name) {
+  for (var i = 0; i < _CMS_BLOCKED_SHEETS.length; i++) {
+    if (_CMS_BLOCKED_SHEETS[i] === name) return true;
+  }
+  return false;
+}
+
+function cmsListSheets() {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheets = ss.getSheets();
+    var out = [];
+    for (var i = 0; i < sheets.length; i++) {
+      var sh = sheets[i];
+      var nm = sh.getName();
+      if (_cmsSheetBlocked(nm)) continue;
+      out.push({ name: nm, rows: Math.max(sh.getLastRow() - 1, 0), cols: sh.getLastColumn() });
+    }
+    return { success: true, sheets: out };
+  } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+}
+
+function cmsGetSheetData(sheetName, maxRows) {
+  try {
+    sheetName = (sheetName == null) ? '' : String(sheetName);
+    if (_cmsSheetBlocked(sheetName)) return { success: false, error: 'هذه الورقة محميّة ولا تُعرض' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(sheetName);
+    if (!sh) return { success: false, error: 'الورقة غير موجودة: ' + sheetName };
+    var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+    if (lastRow < 1 || lastCol < 1) return { success: true, sheetName: sheetName, headers: [], rows: [], total: 0, shown: 0 };
+    maxRows = parseInt(maxRows, 10); if (isNaN(maxRows) || maxRows < 1) maxRows = 200;
+    var n = Math.min(lastRow, maxRows + 1);
+    var data = sh.getRange(1, 1, n, lastCol).getValues();
+    var headers = [];
+    for (var c = 0; c < lastCol; c++) headers.push(String(data[0][c]));
+    var rows = [];
+    for (var r = 1; r < data.length; r++) {
+      var row = [];
+      for (var k = 0; k < lastCol; k++) { var v = data[r][k]; row.push(v == null ? '' : String(v)); }
+      rows.push(row);
+    }
+    return { success: true, sheetName: sheetName, headers: headers, rows: rows, total: lastRow - 1, shown: rows.length };
+  } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+}
+
 // غلاف عام يُستدعى من ViewContent (زر «حوّل لمنشور») — لأن الجسر يحجب الدوال المسبوقة بـ _
 function addManualDraft(kind, title, body, mediaUrl, userName, fingerprint, schoolId) {
   _setActiveTenant(schoolId || '');
