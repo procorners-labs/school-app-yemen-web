@@ -78,6 +78,24 @@ export default {
       }
     }
 
+    // ── 1ب) عودة OAuth من فيسبوك/إنستغرام: /oauth ───────────────
+    //   Meta يعيد التوجيه إلى /oauth?code=...&state=schoolId
+    //   نمرّرها إلى doGet في مشروع CMS (action=fb_oauth) مع الحفاظ على HTML.
+    if (path === '/oauth' || path === '/oauth/') {
+      var qs = url.search ? url.search.replace(/^\?/, '') : '';
+      var oauthTarget = GAS.cms + '?action=fb_oauth' + (qs ? '&' + qs : '');
+      try {
+        var oResp = await fetch(oauthTarget, { method: 'GET', redirect: 'follow' });
+        var oBody = await oResp.text();
+        var oCt = oResp.headers.get('Content-Type') || 'text/html; charset=utf-8';
+        return withCors(new Response(oBody, { status: oResp.status, headers: { 'Content-Type': oCt } }));
+      } catch (oErr) {
+        return withCors(new Response('<h3>تعذّر إتمام الاتصال: ' + String(oErr) + '</h3>', {
+          status: 502, headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        }));
+      }
+    }
+
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
     if (path === '/' || path === '') path = '/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;

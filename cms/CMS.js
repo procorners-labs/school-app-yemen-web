@@ -168,6 +168,14 @@ function getPageUrl(page) {
 
 // ==================== doGet ====================
 function doGet(e) {
+  e = e || {};
+  e.parameter = e.parameter || {};
+
+  // ★ عودة OAuth من فيسبوك/إنستغرام (يصلها عبر مسار /oauth في الـ Worker)
+  if (e.parameter.action === 'fb_oauth' && typeof fbOAuthCallback === 'function') {
+    return fbOAuthCallback(e);
+  }
+
   // ★ تفعيل وضع المستأجر المتعدد (Multi-Tenant) إذا تم تمرير school في الرابط
   var schoolId = (e.parameter.school || '').trim();
   if (schoolId) _setActiveTenant(schoolId);

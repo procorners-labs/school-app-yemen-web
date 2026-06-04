@@ -121,6 +121,16 @@
     <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px;margin-bottom:14px;font-size:13px;color:#7c5e00;">
       🔒 تُحفظ المفاتيح في ورقة «اعدادات_السوشل» لهذه المدرسة وتُستخدم للنشر التلقائي. اترك الحقل فارغاً للإبقاء على القيمة الحالية.
     </div>
+
+    <!-- اتصال سريع عبر فيسبوك (OAuth) — يحفظ توكن الصفحة + إنستغرام تلقائياً -->
+    <div style="background:#e7f0fb;border:1px solid #b6d3f3;border-radius:10px;padding:14px;margin-bottom:16px;">
+      <div style="font-weight:bold;color:#0f3b5c;margin-bottom:8px;">🔗 الاتصال السريع</div>
+      <div style="font-size:12.5px;color:#334155;margin-bottom:10px;line-height:1.7;">
+        اضغط للاتصال بحساب فيسبوك/إنستغرام الخاص بالمدرسة — سيُحفظ الاتصال تلقائياً دون لصق توكن.
+      </div>
+      <button class="btn" id="fbConnectBtn" style="background:#1877f2;">🔗 اتصل بفيسبوك</button>
+      <div id="fbConnectStatus" class="status-message"></div>
+    </div>
     <div class="form-group"><label>Facebook Page ID:</label><input type="text" id="set_fb_page_id" placeholder="مثال: 1234567890"></div>
     <div class="form-group"><label>Facebook Page Token:</label><input type="password" id="set_fb_page_token" placeholder="(محفوظ: <span id='fb_tok_mask'>—</span>)"></div>
     <div class="form-group"><label>Instagram Business ID:</label><input type="text" id="set_ig_business_id" placeholder=""></div>
@@ -332,8 +342,26 @@
       .smmSaveSocialSettings(window.SCHOOL_ID, obj);
   }
 
+  // الاتصال السريع بفيسبوك (OAuth) — يفتح حوار التفويض ثم يحفظ التوكن تلقائياً للمدرسة
+  function fbConnect() {
+    setStatus('fbConnectStatus', '⏳ جاري تجهيز رابط الاتصال…', 'info');
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success && res.url) {
+          setStatus('fbConnectStatus', '🔗 افتُحت نافذة فيسبوك — أكمل الموافقة ثم عُد وحدّث الصفحة.', 'success');
+          window.open(res.url, '_blank');
+        } else {
+          setStatus('fbConnectStatus', '❌ ' + ((res && res.error) || 'تعذّر بناء رابط الاتصال'), 'error');
+        }
+      })
+      .withFailureHandler(function(err) { setStatus('fbConnectStatus', '❌ خطأ: ' + err.message, 'error'); })
+      .getFbConnectUrl(window.SCHOOL_ID);
+  }
+
   document.getElementById('submitVideoUploadBtn').addEventListener('click', submitVideoUpload);
   document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
+  var _fbBtn = document.getElementById('fbConnectBtn');
+  if (_fbBtn) _fbBtn.addEventListener('click', fbConnect);
   loadSocialSettings();
 
   function submitImage() {
