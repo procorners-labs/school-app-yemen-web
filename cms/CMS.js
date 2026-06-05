@@ -184,6 +184,7 @@ function doGet(e) {
   if (page === 'add') return HtmlService.createHtmlOutputFromFile('AddForm').setTitle('إضافة محتوى').addMetaTag('viewport', 'width=device-width, initial-scale=1');
   if (page === 'view') return HtmlService.createHtmlOutputFromFile('ViewContent').setTitle('عرض المحتوى والتقارير').addMetaTag('viewport', 'width=device-width, initial-scale=1');
   if (page === 'audit') return HtmlService.createHtmlOutputFromFile('AuditLog').setTitle('سجل التدقيق').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  if (page === 'qr') return HtmlService.createHtmlOutputFromFile('QR_Dashboard').setTitle('مدير QR Codes — مدارس الإبداع').addMetaTag('viewport', 'width=device-width, initial-scale=1').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   if (page === 'reports') return HtmlService.createHtmlOutputFromFile('Reports').setTitle('التقارير').addMetaTag('viewport', 'width=device-width, initial-scale=1');
   if (page === 'debug') return generateDebugPage();
   return HtmlService.createHtmlOutputFromFile('Dashboard').setTitle('الرئيسية').addMetaTag('viewport', 'width=device-width, initial-scale=1');

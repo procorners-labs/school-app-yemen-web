@@ -41,7 +41,8 @@ var FILES = {
     ['AddForm.html', 'add.html'],
     ['ViewContent.html', 'view.html'],
     ['AuditLog.html', 'audit.html'],
-    ['README.html', 'readme.html']
+    ['README.html', 'readme.html'],
+    ['QR_Dashboard.html', 'qr.html']
   ],
   schedule: [
     ['TeacherScheduleManager.html', 'index.html']
