@@ -7626,11 +7626,22 @@ var SMM = {
   _loaded   : false
 };
 
-// ── اتصال CMS مستقل — يُرسل schoolId تلقائياً ──
-// ApiEndpoint.js في CMS يستقبل schoolId ويستدعي _setActiveTenant(schoolId)
-// → يضبط _ACTIVE_TENANT_FILE → تقرأ كل دوال SMM وQR ملف المدرسة الصحيح
+// ── اتصال CMS مستقل — يعمل في وضعَي Worker وGAS ──────────────
+// Worker mode: /gas/cms (نسبي → Worker يمرّره للـ CMS GAS)
+// GAS direct mode: الرابط المطلق للـ Worker (نفس النتيجة)
+var _CMS_WORKER_URL = 'https://school-teacher-proxy.procorners-shop.workers.dev/gas/cms';
+
+function _cmsEndpoint() {
+  // في وضع Worker: GAS_ENDPOINT = '/gas/teacher' (نسبي) → استخدم /gas/cms
+  if (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') {
+    return '/gas/cms';
+  }
+  // في وضع GAS المباشر أو أي وضع آخر → الرابط المطلق للـ Worker
+  return _CMS_WORKER_URL;
+}
+
 function callCMS(fnName, args, callback) {
-  var endpoint = '/gas/cms';
+  var endpoint = _cmsEndpoint();
   var schoolId = window.SCHOOL_ID || (App && App.user && App.user.schoolId) || '';
   if (!Array.isArray(args)) args = args !== undefined ? [args] : [];
   var payload = JSON.stringify({ fn: fnName, args: args, schoolId: schoolId });
@@ -7648,7 +7659,7 @@ function callCMS(fnName, args, callback) {
         callback(null, (d && d.error) || 'خطأ غير معروف');
       }
     } catch (e) {
-      callback(null, 'خطأ في تحليل الاستجابة');
+      callback(null, 'خطأ في تحليل الاستجابة: ' + xhr.responseText.substring(0, 100));
     }
   };
   xhr.onerror   = function() { callback(null, 'تعذّر الاتصال بخادم CMS'); };
@@ -7725,30 +7736,73 @@ function smm_renderDashboard(data) {
   var grid = document.getElementById('smm-dash-cards');
   if (!grid) return;
   var counts = data.statusCounts || {};
-  var total  = data.total || 0;
-  var pub    = counts['منشور'] || 0;
-  var sched  = counts['مجدول'] || 0;
-  var draft  = counts['مسودة'] || 0;
-  var fail   = counts['فشل']   || 0;
+  var total  = data.total || data.total_planned || 0;
+  var pub    = counts['منشور'] || data.published || 0;
+  var sched  = counts['مجدول'] || data.scheduled || 0;
+  var draft  = counts['مسودة'] || data.draft     || 0;
+  var review = counts['قيد المراجعة'] || data.review || 0;
+  var fail   = counts['فشل']   || data.failed   || 0;
+  var rate   = data.success_rate || 0;
+
   grid.innerHTML =
-    '<div class="smm-card"><div class="smm-card-title">إجمالي المنشورات</div><div class="smm-card-val">' + total + '</div></div>' +
+    '<div class="smm-card"><div class="smm-card-title">📊 إجمالي المنشورات</div><div class="smm-card-val">' + total + '</div></div>' +
     '<div class="smm-card smm-card-green"><div class="smm-card-title">✅ منشور</div><div class="smm-card-val">' + pub + '</div></div>' +
     '<div class="smm-card smm-card-gold"><div class="smm-card-title">📅 مجدول</div><div class="smm-card-val">' + sched + '</div></div>' +
     '<div class="smm-card"><div class="smm-card-title">📝 مسودة</div><div class="smm-card-val">' + draft + '</div></div>' +
-    (fail ? '<div class="smm-card smm-card-red"><div class="smm-card-title">❌ فشل</div><div class="smm-card-val">' + fail + '</div></div>' : '');
+    (review ? '<div class="smm-card"><div class="smm-card-title">🔍 مراجعة</div><div class="smm-card-val">' + review + '</div></div>' : '') +
+    (fail   ? '<div class="smm-card smm-card-red"><div class="smm-card-title">❌ فشل</div><div class="smm-card-val">' + fail + '</div></div>' : '') +
+    '<div class="smm-card"><div class="smm-card-title">🎯 معدل النجاح</div><div class="smm-card-val">' + rate + '%</div></div>';
+
+  // حالة: لم يُعدّ النظام بعد
+  var recent = document.getElementById('smm-recent-posts');
+  if (!recent) return;
+  if (total === 0) {
+    recent.innerHTML =
+      '<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:20px;text-align:center;">' +
+      '<div style="font-size:32px;margin-bottom:8px;">🔧</div>' +
+      '<div style="font-weight:700;color:#7c5e00;margin-bottom:6px;font-size:15px;">لم يتم إعداد نظام المحتوى بعد</div>' +
+      '<div style="color:#64748b;font-size:13px;margin-bottom:14px;">اضغط "إعداد النظام" لإنشاء الأوراق وتهيئة البيانات لهذه المدرسة</div>' +
+      '<button onclick="smm_setupSystem()" style="background:#0F2C5C;color:#fff;border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit;">🔧 إعداد النظام الاجتماعي</button>' +
+      '<div id="smm-setup-status" style="margin-top:10px;"></div>' +
+      '</div>';
+    return;
+  }
 
   // آخر المنشورات
-  var recent = document.getElementById('smm-recent-posts');
-  if (recent && data.recentPosts && data.recentPosts.length) {
+  if (data.recentPosts && data.recentPosts.length) {
     var rows = '';
     var rp = data.recentPosts.slice(0, 5);
     for (var i = 0; i < rp.length; i++) {
       var p = rp[i];
-      rows += '<tr><td>' + smm_escHtml(p.title || p.content || '—') + '</td><td>' + smm_statusBadge(p.status) + '</td><td style="direction:ltr;text-align:left;">' + smm_shortDate(p.scheduledAt || p.createdAt) + '</td></tr>';
+      rows += '<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+        smm_escHtml(p.title || p.content || '—') + '</td>' +
+        '<td>' + smm_platIcon(p.platform || '') + ' ' + smm_escHtml(p.platform || '') + '</td>' +
+        '<td>' + smm_statusBadge(p.status) + '</td>' +
+        '<td>' + smm_shortDate(p.scheduledAt || p.createdAt) + '</td></tr>';
     }
-    recent.innerHTML = '<h4 style="margin:0 0 10px;color:#0F2C5C;font-size:14px;">📋 آخر المنشورات</h4>' +
-      '<table class="smm-plan-table"><thead><tr><th>العنوان/المحتوى</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    recent.innerHTML =
+      '<h4 style="margin:0 0 10px;color:#0F2C5C;font-size:14px;">📋 آخر المنشورات</h4>' +
+      '<table class="smm-plan-table"><thead><tr><th>العنوان</th><th>المنصة</th><th>الحالة</th><th>التاريخ</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>';
+  } else {
+    recent.innerHTML = '<div style="color:#64748b;font-size:13px;text-align:center;padding:20px;">لا توجد منشورات حتى الآن — استخدم تبويب "✏️ إنشاء منشور" للبدء</div>';
   }
+}
+
+// ── تهيئة النظام الاجتماعي للمدرسة (يُنشئ الأوراق إن لم تكن موجودة) ──
+function smm_setupSystem() {
+  var statusEl = document.getElementById('smm-setup-status');
+  if (statusEl) statusEl.innerHTML = '<span style="color:#0F2C5C;">⏳ جاري الإعداد…</span>';
+  callCMS('smmSetupSystem', [], function(res, err) {
+    if (statusEl) {
+      if (res) {
+        statusEl.innerHTML = '<span style="color:#1e8e3e;">✅ تم إعداد النظام بنجاح! جاري تحميل البيانات…</span>';
+        setTimeout(function() { smm_reload(); }, 1500);
+      } else {
+        statusEl.innerHTML = '<span style="color:#c5221f;">❌ ' + (err || 'خطأ في الإعداد') + '</span>';
+      }
+    }
+  });
 }
 
 // ── خطة المحتوى ──
@@ -7937,10 +7991,20 @@ function smm_renderQR() {
   grid.innerHTML = html;
 }
 
-function smm_dlQR(url, title) {
+function smm_dlQR(qrUrl, title) {
+  if (!qrUrl) return;
+  var dlUrl    = qrUrl.replace(/size=\d+x\d+/, 'size=800x800');
+  var safeName = (title || 'QR-Code').replace(/[\\/:*?"<>|]/g, '-').trim();
+  var fileName = safeName + '.png';
+  // Worker Proxy: نفس النطاق → تحميل مباشر بلا CORS
+  var proxyUrl = '/qr-download?url=' + encodeURIComponent(dlUrl) +
+                 '&name=' + encodeURIComponent(safeName);
   var a = document.createElement('a');
-  a.href = url; a.download = (title || 'QR') + '.png'; a.rel = 'noopener';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  a.href = proxyUrl; a.download = fileName; a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(function() { document.body.removeChild(a); }, 200);
+  toast('⬇️ جاري تنزيل ' + fileName, 'success');
 }
 
 function smm_openQRPage() {

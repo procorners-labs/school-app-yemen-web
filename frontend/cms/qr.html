@@ -1184,14 +1184,23 @@ function shareFromLightbox() {
 // ════════════════════════════════════════════════════════════════════
 function downloadQR(qrUrl, title) {
   if (!qrUrl) return;
-  // رابط بدقة عالية (800×800) للتحميل
   var dlUrl    = qrUrl.replace(/size=\d+x\d+/, 'size=800x800');
   var safeName = (title || 'QR-Code').replace(/[\\/:*?"<>|]/g, '-').trim();
   var fileName = safeName + '.png';
 
-  showToast('⏳ جاري تجهيز الملف…', 'info');
+  showToast('⏳ جاري التحميل…', 'info');
 
-  // ── طبقة 1: Canvas → DataURL (الأكثر توافقاً مع iframe + mobile) ──
+  // ── طبقة 1 (الأفضل): Worker Proxy /qr-download — نفس النطاق، لا CORS ──
+  // متاح فقط في وضع Worker (GAS_ENDPOINT نسبي يبدأ بـ /)
+  if (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') {
+    var proxyUrl = '/qr-download?url=' + encodeURIComponent(dlUrl) +
+                   '&name=' + encodeURIComponent(safeName);
+    _triggerDownload(proxyUrl, fileName);
+    showToast('✅ جاري تنزيل ' + fileName, 'success');
+    return;
+  }
+
+  // ── طبقة 2: Canvas → DataURL (بيئات أخرى) ──
   var img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = function() {
@@ -1205,15 +1214,10 @@ function downloadQR(qrUrl, title) {
       _triggerDownload(dataUrl, fileName);
       showToast('✅ تم التحميل: ' + fileName, 'success');
     } catch (canvasErr) {
-      // ── طبقة 2: fetch → Blob ──
-      _fetchDownload(dlUrl, fileName);
+      _fetchDownload(dlUrl, fileName); // ── طبقة 3
     }
   };
-  img.onerror = function() {
-    // ── طبقة 2: fetch → Blob ──
-    _fetchDownload(dlUrl, fileName);
-  };
-  // cache-bust لمنع مشكلة الكاش
+  img.onerror = function() { _fetchDownload(dlUrl, fileName); };
   img.src = dlUrl + '&_t=' + Date.now();
 }
 

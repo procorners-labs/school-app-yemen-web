@@ -78,6 +78,30 @@ export default {
       }
     }
 
+    // ── 1ب) تحميل QR عبر Proxy: /qr-download?url=...&name=... ────
+    //   يجلب الصورة من api.qrserver.com ويُضيف Content-Disposition:attachment
+    //   حل مثالي: نفس النطاق → لا مشكلة CORS عند التحميل
+    if (path === '/qr-download') {
+      var qrUrl = url.searchParams.get('url') || '';
+      var qrName = url.searchParams.get('name') || 'QR-Code';
+      // أمان: نسمح فقط بروابط api.qrserver.com
+      if (!qrUrl || !qrUrl.startsWith('https://api.qrserver.com/')) {
+        return jsonResponse({ error: 'رابط QR غير مقبول' }, 400);
+      }
+      try {
+        var qrFetch = await fetch(qrUrl, { method: 'GET' });
+        var qrBuf = await qrFetch.arrayBuffer();
+        var dlHeaders = new Headers();
+        dlHeaders.set('Content-Type', 'image/png');
+        dlHeaders.set('Content-Disposition', 'attachment; filename="' + qrName.replace(/"/g,'') + '.png"');
+        dlHeaders.set('Access-Control-Allow-Origin', '*');
+        dlHeaders.set('Cache-Control', 'no-cache');
+        return new Response(qrBuf, { status: 200, headers: dlHeaders });
+      } catch (qrErr) {
+        return jsonResponse({ error: 'تعذّر جلب صورة QR: ' + String(qrErr) }, 502);
+      }
+    }
+
     // ── 1ب) عودة OAuth من فيسبوك/إنستغرام: /oauth ───────────────
     //   Meta يعيد التوجيه إلى /oauth?code=...&state=schoolId
     //   نمرّرها إلى doGet في مشروع CMS (action=fb_oauth) مع الحفاظ على HTML.
