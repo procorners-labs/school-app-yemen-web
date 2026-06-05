@@ -387,6 +387,49 @@ input,select,textarea{font-family:inherit;direction:rtl}
 .lb-close-x:hover{background:rgba(255,255,255,.28)}
 /* cursor pointer on QR images */
 .qr-code-img{cursor:zoom-in}
+
+/* ══════════════════════════════════════════
+   Share Panel (bottom sheet on mobile / dropdown on desktop)
+══════════════════════════════════════════ */
+.share-overlay{
+  position:fixed;inset:0;z-index:3000;
+  background:rgba(0,0,0,.55);
+  display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease;
+}
+.share-overlay.open{opacity:1;visibility:visible}
+.share-panel{
+  background:#fff;width:100%;max-width:500px;
+  border-radius:22px 22px 0 0;padding:10px 20px 32px;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.34,1.08,.64,1);
+}
+.share-overlay.open .share-panel{transform:translateY(0)}
+.share-drag{width:48px;height:5px;background:#e2e8f0;border-radius:99px;margin:10px auto 18px}
+.share-title{font-size:15px;font-weight:700;color:var(--navy);text-align:center;margin-bottom:16px}
+.share-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.share-item{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  cursor:pointer;padding:10px 4px;border-radius:14px;
+  transition:background .18s ease;border:none;background:none;font-family:inherit;
+}
+.share-item:hover{background:#f0f6ff}
+.share-item .si-icon{
+  width:52px;height:52px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+}
+.share-item .si-label{font-size:11.5px;color:#334155;font-weight:500;text-align:center;line-height:1.3}
+.si-wa   .si-icon{background:#dcfce7;color:#16a34a}
+.si-tg   .si-icon{background:#dbeafe;color:#2563eb}
+.si-mail .si-icon{background:#fef9c3;color:#a16207}
+.si-copy .si-icon{background:#f1f5f9;color:#475569}
+.si-dl   .si-icon{background:#ede9fe;color:#7c3aed}
+.si-open .si-icon{background:#fff7ed;color:#ea580c}
+.share-cancel{
+  width:100%;padding:13px;border:1.5px solid #e2e8f0;border-radius:12px;
+  font-size:14px;font-weight:600;color:#64748b;cursor:pointer;
+  background:none;font-family:inherit;transition:background .18s;
+}
+.share-cancel:hover{background:#f1f5f9}
 </style>
 </head>
 <body>
@@ -431,12 +474,54 @@ input,select,textarea{font-family:inherit;direction:rtl}
 <div class="lb-overlay" id="lbOverlay" onclick="closeLightbox(event)">
   <div class="lb-box" id="lbBox">
     <button class="lb-close-x" onclick="closeLightbox(null)" title="إغلاق">✕</button>
-    <img class="lb-img" id="lbImg" src="" alt="">
+    <!-- loading state -->
+    <div id="lbSpinner" style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;display:none">
+      <div style="width:40px;height:40px;border:4px solid rgba(212,165,55,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite"></div>
+    </div>
+    <img class="lb-img" id="lbImg" src="" alt=""
+         onload="this.style.display='block';document.getElementById('lbSpinner').style.display='none'"
+         onerror="this.style.display='none';document.getElementById('lbSpinner').style.display='none'"
+         style="display:none">
     <div class="lb-title" id="lbTitle"></div>
     <div class="lb-actions">
-      <button class="lb-btn lb-btn-dl" id="lbDownloadBtn" onclick="downloadFromLightbox()">⬇️ تحميل QR</button>
+      <button class="lb-btn lb-btn-dl"    onclick="downloadFromLightbox()">⬇️ تحميل</button>
+      <button class="lb-btn" onclick="shareFromLightbox()"
+        style="background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.3)">📤 مشاركة</button>
       <button class="lb-btn lb-btn-close" onclick="closeLightbox(null)">✕ إغلاق</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ Share Panel ══════════════════════ -->
+<div class="share-overlay" id="shareOverlay" onclick="closeSharePanel(event)">
+  <div class="share-panel" id="sharePanel">
+    <div class="share-drag"></div>
+    <div class="share-title">📤 مشاركة QR Code</div>
+    <div class="share-grid">
+      <button class="share-item si-wa"   onclick="shareVia('whatsapp')">
+        <div class="si-icon">📱</div><div class="si-label">واتساب</div>
+      </button>
+      <button class="share-item si-tg"   onclick="shareVia('telegram')">
+        <div class="si-icon">✈️</div><div class="si-label">تيليغرام</div>
+      </button>
+      <button class="share-item si-mail" onclick="shareVia('email')">
+        <div class="si-icon">📧</div><div class="si-label">بريد إلكتروني</div>
+      </button>
+      <button class="share-item si-copy" onclick="shareVia('copy')">
+        <div class="si-icon">📋</div><div class="si-label">نسخ الرابط</div>
+      </button>
+      <button class="share-item si-dl"   onclick="shareVia('download')">
+        <div class="si-icon">⬇️</div><div class="si-label">تحميل QR</div>
+      </button>
+      <button class="share-item si-open" onclick="shareVia('open')">
+        <div class="si-icon">🔗</div><div class="si-label">فتح الرابط</div>
+      </button>
+      <button class="share-item" onclick="shareVia('native')" id="nativeShareBtn" style="display:none">
+        <div class="si-icon" style="background:#e8eef7;color:var(--navy)">⬆️</div>
+        <div class="si-label">مشاركة...</div>
+      </button>
+    </div>
+    <button class="share-cancel" onclick="closeSharePanel(null)">إلغاء</button>
   </div>
 </div>
 
@@ -778,8 +863,8 @@ function buildCardHtml(r) {
            'src="' + escHtml(qrSrc) + '" ' +
            'alt="QR Code لـ: ' + escHtml(r.title) + '" ' +
            'loading="lazy" ' +
-           'title="انقر للتكبير" ' +
-           'onclick="openLightbox(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ')" ' +
+           'title="انقر للعرض الكامل" ' +
+           'onclick="openLightbox(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ',' + JSON.stringify(r.url) + ')" ' +
            'onerror="this.outerHTML=\'<div class=qr-code-loading>⚠️ تعذّر التحميل</div>\'">' +
       thumbHtml +
     '</div>' +
@@ -792,8 +877,9 @@ function buildCardHtml(r) {
     '</div>' +
     // ── أزرار الإجراءات ──
     '<div class="qr-card-actions">' +
-      '<button class="btn btn-sm btn-secondary" title="تحميل QR" onclick="downloadQR(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ')">⬇️ تحميل</button>' +
-      '<button class="btn btn-sm btn-secondary" title="نسخ الرابط" onclick="copyUrl(' + JSON.stringify(r.url) + ')">📋 نسخ</button>' +
+      '<button class="btn btn-sm btn-secondary" title="تحميل QR" onclick="downloadQR(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ')">⬇️</button>' +
+      '<button class="btn btn-sm btn-secondary" title="مشاركة" onclick="openSharePanel(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ',' + JSON.stringify(r.url) + ')">📤</button>' +
+      '<button class="btn btn-sm btn-secondary" title="نسخ الرابط" onclick="copyUrl(' + JSON.stringify(r.url) + ')">📋</button>' +
       '<button class="btn btn-sm btn-secondary" title="فتح الرابط" onclick="window.open(' + JSON.stringify(r.url) + ',\'_blank\')">🌐</button>' +
       '<button class="btn btn-sm btn-gold" title="تعديل" onclick="startEdit(' + JSON.stringify(r.id) + ')">✏️</button>' +
       '<button class="btn btn-sm btn-danger" title="حذف" onclick="startDelete(' + JSON.stringify(r.id) + ',' + JSON.stringify(r.title) + ')">🗑️</button>' +
@@ -1024,99 +1110,178 @@ function confirmDelete() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Lightbox
+//  Lightbox — عرض QR بالحجم الكامل
 // ════════════════════════════════════════════════════════════════════
-var _lbCurrentUrl = '';
+var _lbCurrentUrl   = '';
+var _lbCurrentTitle = '';
+var _lbTargetUrl    = '';
 
-function openLightbox(src, title) {
-  _lbCurrentUrl = src;
-  var overlay = document.getElementById('lbOverlay');
-  var img     = document.getElementById('lbImg');
-  var ttl     = document.getElementById('lbTitle');
-  img.src   = src;
+function openLightbox(src, title, targetUrl) {
+  _lbCurrentUrl   = src;
+  _lbCurrentTitle = title || '';
+  _lbTargetUrl    = targetUrl || '';
+
+  var overlay  = document.getElementById('lbOverlay');
+  var img      = document.getElementById('lbImg');
+  var spinner  = document.getElementById('lbSpinner');
+  var ttl      = document.getElementById('lbTitle');
+
+  // إعادة ضبط
+  img.style.display    = 'none';
+  spinner.style.display = 'flex';
+  img.src = '';
+
   ttl.textContent = title || '';
   overlay.classList.add('open');
-  document.body.style.overflow = 'hidden'; // منع التمرير خلف الـ lightbox
+  document.body.style.overflow = 'hidden';
+
+  // تحميل الصورة بدقة أعلى (800×800) للعرض الكامل
+  var hqSrc = src.replace(/size=\d+x\d+/, 'size=800x800');
+  img.src = hqSrc;
 }
 
 function closeLightbox(e) {
-  // إغلاق عند الضغط على الخلفية فقط (وليس على المحتوى)
   if (e && e.target !== document.getElementById('lbOverlay')) return;
   document.getElementById('lbOverlay').classList.remove('open');
+  document.getElementById('lbImg').src = '';
   document.body.style.overflow = '';
   _lbCurrentUrl = '';
 }
 
 function downloadFromLightbox() {
-  if (_lbCurrentUrl) downloadQR(_lbCurrentUrl, document.getElementById('lbTitle').textContent);
+  downloadQR(_lbCurrentUrl.replace(/size=\d+x\d+/, 'size=800x800'), _lbCurrentTitle);
+}
+
+function shareFromLightbox() {
+  closeLightbox(null);
+  openSharePanel(_lbCurrentUrl, _lbCurrentTitle, _lbTargetUrl);
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Actions: Download (حقيقي عبر Blob)
+//  Download — ثلاث طبقات للتوافق الكامل
 // ════════════════════════════════════════════════════════════════════
 function downloadQR(qrUrl, title) {
   if (!qrUrl) return;
-  var fileName = (title || 'QR-Code').replace(/[^a-zA-Z0-9؀-ۿ\s_-]/g, '').trim() + '.png';
+  // رابط بدقة عالية (800×800) للتحميل
+  var dlUrl    = qrUrl.replace(/size=\d+x\d+/, 'size=800x800');
+  var safeName = (title || 'QR-Code').replace(/[\\/:*?"<>|]/g, '-').trim();
+  var fileName = safeName + '.png';
 
-  // محاولة التحميل الحقيقي عبر fetch → Blob → <a download>
-  if (typeof fetch !== 'undefined') {
-    showToast('⏳ جاري تجهيز الملف للتحميل…', 'info');
-    fetch(qrUrl, { mode: 'cors' })
-      .then(function(resp) {
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return resp.blob();
-      })
-      .then(function(blob) {
-        var objUrl = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href     = objUrl;
-        a.download = fileName;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(function() { URL.revokeObjectURL(objUrl); }, 2000);
-        showToast('✅ تم تحميل QR: ' + fileName, 'success');
-      })
-      .catch(function() {
-        // fallback: فتح في نافذة جديدة مع توجيه المستخدم
-        _fallbackDownload(qrUrl);
-      });
-  } else {
-    _fallbackDownload(qrUrl);
-  }
-}
+  showToast('⏳ جاري تجهيز الملف…', 'info');
 
-function _fallbackDownload(qrUrl) {
-  // Fallback: canvas trick لاستخلاص الصورة محلياً
+  // ── طبقة 1: Canvas → DataURL (الأكثر توافقاً مع iframe + mobile) ──
   var img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = function() {
     try {
+      var w = img.naturalWidth  || 800;
+      var h = img.naturalHeight || 800;
       var canvas = document.createElement('canvas');
-      canvas.width  = img.naturalWidth  || 400;
-      canvas.height = img.naturalHeight || 400;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       var dataUrl = canvas.toDataURL('image/png');
-      var a = document.createElement('a');
-      a.href     = dataUrl;
-      a.download = 'QR-Code.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast('✅ تم التحميل', 'success');
-    } catch (e) {
-      // آخر خيار: فتح الصورة مباشرة
-      window.open(qrUrl, '_blank');
-      showToast('📥 افتحت الصورة في نافذة جديدة — انقر بزر الماوس الأيمن → "حفظ الصورة"', 'info');
+      _triggerDownload(dataUrl, fileName);
+      showToast('✅ تم التحميل: ' + fileName, 'success');
+    } catch (canvasErr) {
+      // ── طبقة 2: fetch → Blob ──
+      _fetchDownload(dlUrl, fileName);
     }
   };
   img.onerror = function() {
-    window.open(qrUrl, '_blank');
-    showToast('📥 انقر بزر الماوس الأيمن → "حفظ الصورة"', 'info');
+    // ── طبقة 2: fetch → Blob ──
+    _fetchDownload(dlUrl, fileName);
   };
-  img.src = qrUrl;
+  // cache-bust لمنع مشكلة الكاش
+  img.src = dlUrl + '&_t=' + Date.now();
+}
+
+function _triggerDownload(dataUrl, fileName) {
+  var a = document.createElement('a');
+  a.href     = dataUrl;
+  a.download = fileName;
+  a.rel      = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { document.body.removeChild(a); }, 200);
+}
+
+function _fetchDownload(url, fileName) {
+  if (typeof fetch === 'undefined') { _openFallback(url); return; }
+  fetch(url, { mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.ok ? r.blob() : Promise.reject('HTTP ' + r.status); })
+    .then(function(blob) {
+      var objUrl = URL.createObjectURL(blob);
+      _triggerDownload(objUrl, fileName);
+      setTimeout(function() { URL.revokeObjectURL(objUrl); }, 2000);
+      showToast('✅ تم التحميل: ' + fileName, 'success');
+    })
+    .catch(function() { _openFallback(url); });
+}
+
+function _openFallback(url) {
+  // ── طبقة 3: نافذة جديدة + تعليمات ──
+  window.open(url, '_blank');
+  showToast('📥 الصورة فُتحت في نافذة جديدة — اضغط مطولاً أو انقر يميناً → "حفظ الصورة"', 'info');
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Share Panel — مشاركة عبر التطبيقات
+// ════════════════════════════════════════════════════════════════════
+var _shareData = { qrUrl: '', title: '', targetUrl: '' };
+
+function openSharePanel(qrUrl, title, targetUrl) {
+  _shareData.qrUrl     = qrUrl     || '';
+  _shareData.title     = title     || '';
+  _shareData.targetUrl = targetUrl || qrUrl || '';
+
+  // إظهار زر المشاركة الأصلية إن كانت مدعومة (موبايل غالباً)
+  var nativeBtn = document.getElementById('nativeShareBtn');
+  if (nativeBtn) nativeBtn.style.display = navigator.share ? 'flex' : 'none';
+
+  document.getElementById('shareOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSharePanel(e) {
+  if (e && e.target !== document.getElementById('shareOverlay')) return;
+  document.getElementById('shareOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function shareVia(method) {
+  var qrUrl     = _shareData.qrUrl;
+  var title     = _shareData.title;
+  var targetUrl = _shareData.targetUrl;
+  var text      = (title ? title + '\n' : '') + targetUrl;
+
+  closeSharePanel(null);
+
+  if (method === 'native' && navigator.share) {
+    navigator.share({ title: title || 'QR Code', text: text, url: targetUrl })
+      .then(function() { showToast('✅ تمت المشاركة', 'success'); })
+      .catch(function(e) { if (e.name !== 'AbortError') showToast('تعذّرت المشاركة', 'warn'); });
+
+  } else if (method === 'whatsapp') {
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+
+  } else if (method === 'telegram') {
+    window.open('https://t.me/share/url?url=' + encodeURIComponent(targetUrl) +
+      '&text=' + encodeURIComponent(title || 'QR Code'), '_blank');
+
+  } else if (method === 'email') {
+    window.open('mailto:?subject=' + encodeURIComponent(title || 'QR Code') +
+      '&body=' + encodeURIComponent(text + '\n\nQR Image:\n' + qrUrl), '_blank');
+
+  } else if (method === 'copy') {
+    copyUrl(targetUrl);
+
+  } else if (method === 'download') {
+    downloadQR(qrUrl, title);
+
+  } else if (method === 'open') {
+    window.open(targetUrl, '_blank');
+  }
 }
 
 function copyUrl(url) {
@@ -1176,10 +1341,18 @@ document.addEventListener('click', function(e) {
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    // أغلق lightbox إن كان مفتوحاً
+    // أغلق share panel أولاً
+    var sp = document.getElementById('shareOverlay');
+    if (sp && sp.classList.contains('open')) {
+      sp.classList.remove('open');
+      document.body.style.overflow = '';
+      return;
+    }
+    // أغلق lightbox
     var lb = document.getElementById('lbOverlay');
     if (lb && lb.classList.contains('open')) {
       lb.classList.remove('open');
+      document.getElementById('lbImg').src = '';
       document.body.style.overflow = '';
       _lbCurrentUrl = '';
       return;
