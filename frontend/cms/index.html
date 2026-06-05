@@ -129,19 +129,27 @@
 
   document.getElementById('currentYear').textContent = new Date().getFullYear();
 
+  // ──────────────────────────────────────────────────────────────
+  // goToPage: Worker-aware navigation
+  // عبر الـ Worker: يبني مسار الصفحة مباشرةً (لا يمرّ بـ GAS exec).
+  // في وضع GAS المباشر: يستدعي getPageUrl() كالسابق.
+  // ──────────────────────────────────────────────────────────────
+  var _CMS_PAGE_MAP = { '': '/cms/index.html', 'add': '/cms/add.html', 'view': '/cms/view.html', 'audit': '/cms/audit.html', 'reports': '/cms/audit.html' };
   window.goToPage = function(page) {
+    var sid = window.SCHOOL_ID || '';
+    if (window.GAS_ENDPOINT) {
+      // Worker mode — navigate to static HTML files
+      var dest = _CMS_PAGE_MAP[page] || '/cms/index.html';
+      window.top.location.href = dest + (sid ? '?school=' + encodeURIComponent(sid) : '');
+      return;
+    }
+    // GAS direct mode fallback
     google.script.run
       .withSuccessHandler(function(url) {
-        // ✅ إلحاق schoolId بالرابط للانتقال بين الصفحات مع الحفاظ على عزل المدرسة
-        if (window.SCHOOL_ID) {
-          url += (url.indexOf('?') > -1 ? '&' : '?') + 'school=' + encodeURIComponent(window.SCHOOL_ID);
-        }
+        if (sid) url += (url.indexOf('?') > -1 ? '&' : '?') + 'school=' + encodeURIComponent(sid);
         window.top.location.href = url;
       })
-      .withFailureHandler(function(error) {
-        console.error('فشل الحصول على رابط الصفحة:', error);
-        alert('حدث خطأ أثناء محاولة الانتقال إلى الصفحة.');
-      })
+      .withFailureHandler(function(e) { console.error('goToPage:', e); })
       .getPageUrl(page);
   };
 

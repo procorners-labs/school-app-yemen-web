@@ -707,7 +707,9 @@ function addScheduleMulti(platforms, postType, content, mediaURL, scheduledDate,
 }
 
 function addSchedule(platform, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, schoolId) {
-  _setActiveTenant(schoolId || '');   // ✅ عزل المدرسة
+  // عزل المدرسة (للكاش والتدقيق)
+  var safeSchoolId = (schoolId || '').trim();
+  _setActiveTenant(safeSchoolId);
 
   var rl = _checkRateLimit(fingerprint);
   if (!rl.allowed) return '❌ ' + rl.error;
@@ -717,12 +719,45 @@ function addSchedule(platform, postType, content, mediaURL, scheduledDate, statu
   var safeUrl = urlCheck.url;
 
   var info = getUserInfo(fingerprint);
-  var sheet = getSheet('Schedule');
-  if (!sheet) return '❌ ورقة Schedule غير موجودة';
 
-  sheet.appendRow([new Date(), platform || '', postType || '', content || '', safeUrl, scheduledDate || '', status || 'مسودة', info.email, userName || info.email.split('@')[0], 'إضافة']);
+  // ✅ الكتابة دائماً في ورقة Schedule داخل ملف CMS المثبّت (1J7DY-...)
+  // حتى يقرأها Trigger smmProcessScheduled (الذي يستخدم SMM_SPREADSHEET_ID)
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  } catch (e) {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  }
+  var sheet = ss ? ss.getSheetByName('Schedule') : null;
+  if (!sheet) {
+    // أنشئ الورقة إن غابت وأضف رأس الأعمدة
+    sheet = ss.insertSheet('Schedule');
+    sheet.appendRow(['تاريخ_الإنشاء', 'المنصة', 'نوع_المنشور', 'المحتوى', 'رابط_الوسائط',
+                     'تاريخ_النشر', 'الحالة', 'البريد', 'اسم_المستخدم', 'ملاحظات', 'school_id']);
+    sheet.setFrozenRows(1);
+  }
+
+  // تأكّد من وجود العمود 11 (schoolId) — أضِف رأس العمود إن كان غائباً
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (headers.length < 11) {
+    sheet.getRange(1, 11).setValue('school_id');
+  }
+
+  sheet.appendRow([
+    new Date(),
+    platform || '',
+    postType || '',
+    content || '',
+    safeUrl,
+    scheduledDate || '',
+    status || 'مجدول',          // ✅ افتراضي: مجدول (يُعالجه الـ Trigger فوراً)
+    info.email,
+    userName || info.email.split('@')[0],
+    'إضافة',
+    safeSchoolId                  // [10] school_id للتوكنات المخصوصة
+  ]);
+
   logAudit(info.email, userName, 'جدولة_منشور', 'تمت جدولة ' + postType + ' على ' + platform, 'Schedule', sheet.getLastRow());
-
   _cmsCacheDelMultiple(['scheduleData', 'systemStats']);
 
   return '✅ تمت الجدولة بواسطة: ' + (userName || info.email);

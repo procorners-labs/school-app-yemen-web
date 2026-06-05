@@ -684,6 +684,7 @@ function smmPromoteToSchedule(planId) {
     var fullContent = item['العنوان'] + '\n\n' + item['النص'];
     if (item['الهاشتاقات']) fullContent += '\n\n' + item['الهاشتاقات'];
 
+    var promoteSchoolId = _smmSafeStr(item['school_id'] || item['معرف_المدرسة'] || '');
     scheduleSheet.appendRow([
       new Date(),
       item['المنصة'],
@@ -694,7 +695,8 @@ function smmPromoteToSchedule(planId) {
       'مجدول',
       Session.getActiveUser().getEmail() || '',
       item['المسؤول'],
-      'مرحَّل من الخطة: ' + planId
+      'مرحَّل من الخطة: ' + planId,
+      promoteSchoolId             // [10] school_id للتوكنات لكل مدرسة
     ]);
 
     // تحديث حالة المنشور
@@ -861,46 +863,95 @@ function smmProcessScheduled() {
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
-    var platform = _smmSafeStr(row[1]);
-    var content = _smmSafeStr(row[3]);
-    var mediaUrl = _smmSafeStr(row[4]);
+    var platform   = _smmSafeStr(row[1]);
+    var content    = _smmSafeStr(row[3]);
+    var mediaUrl   = _smmSafeStr(row[4]);
     var scheduledDate = row[5];
-    var status = _smmSafeStr(row[6]);
-    var schoolId = _smmSafeStr(row[10]); // اختياري: معرّف المدرسة (للتوكنات لكل مدرسة)
+    var status     = _smmSafeStr(row[6]);
+    var schoolId   = _smmSafeStr(row[10]); // [10] school_id (يُحفظ من addSchedule/smmPromoteToSchedule)
 
-    if (status !== 'مجدول' && status !== 'scheduled') continue;
+    // تجاوز الصفوف غير المجدولة أو سبق نشرها
+    if (status !== 'مجدول' && status !== 'scheduled' && status !== SMM_STATUS.SCHEDULED) continue;
+    if (!content && !mediaUrl) continue;
+
+    // التحقق من الوقت
     if (!scheduledDate) continue;
-
     var scheduleTime = (Object.prototype.toString.call(scheduledDate) === '[object Date]')
       ? scheduledDate.getTime() : new Date(scheduledDate).getTime();
     if (isNaN(scheduleTime) || scheduleTime > now) continue;
 
-    var result;
-    if (platform === 'فيسبوك' || platform.toLowerCase() === 'facebook') {
-      result = publishToFacebook(content, mediaUrl, schoolId);
-    } else if (platform === 'إنستغرام' || platform.toLowerCase() === 'instagram') {
-      result = publishToInstagram(content, mediaUrl, schoolId);
-    } else if (platform === 'واتساب' || platform.toLowerCase() === 'whatsapp') {
-      result = publishToWhatsApp(content, mediaUrl);
-    } else if (platform === 'يوتيوب' || platform.toLowerCase() === 'youtube') {
-      result = publishToYouTube('منشور من المنظومة', content, mediaUrl);
-    } else {
-      continue;
+    // ✅ تفعيل بيانات المدرسة الصحيحة (Tenant) للحصول على التوكنات
+    if (typeof _setActiveTenant === 'function' && schoolId) {
+      try { _setActiveTenant(schoolId); } catch (e) {}
     }
 
-    if (result.success) {
-      sheet.getRange(i + 1, 7).setValue('✅ تم النشر — ' + (result.postId || result.message || ''));
+    var result;
+    var platformLc = platform.toLowerCase();
+    try {
+      if (platform === 'فيسبوك' || platformLc === 'facebook') {
+        result = publishToFacebook(content, mediaUrl, schoolId);
+      } else if (platform === 'إنستغرام' || platformLc === 'instagram') {
+        result = publishToInstagram(content, mediaUrl, schoolId);
+      } else if (platform === 'واتساب' || platformLc === 'whatsapp') {
+        result = publishToWhatsApp(content, mediaUrl);
+      } else if (platform === 'يوتيوب' || platformLc === 'youtube') {
+        result = publishToYouTube('منشور من المنظومة', content, mediaUrl);
+      } else {
+        Logger.log('smmProcessScheduled: منصة غير معروفة «' + platform + '» (صف ' + (i + 1) + ')');
+        continue;
+      }
+    } catch (pubErr) {
+      result = { success: false, error: String((pubErr && pubErr.message) || pubErr) };
+    }
+
+    if (result && result.success) {
+      sheet.getRange(i + 1, 7).setValue(SMM_STATUS.PUBLISHED + ' — ' + (result.postId || result.message || ''));
       logSheet.appendRow([
-        new Date(), '', platform, _smmSafeStr(result.postId),
-        '', 'نجح', '', 0, 0, 0
+        new Date(), schoolId, platform, _smmSafeStr(result.postId),
+        mediaUrl, 'نجح', '', 0, 0, 0
       ]);
     } else {
-      sheet.getRange(i + 1, 7).setValue('❌ فشل: ' + result.error);
+      var errMsg = result ? _smmSafeStr(result.error) : 'خطأ غير معروف';
+      sheet.getRange(i + 1, 7).setValue('❌ فشل: ' + errMsg);
       logSheet.appendRow([
-        new Date(), '', platform, '',
-        '', 'فشل', result.error, 0, 0, 0
+        new Date(), schoolId, platform, '',
+        mediaUrl, 'فشل', errMsg, 0, 0, 0
       ]);
+      Logger.log('smmProcessScheduled: فشل النشر على «' + platform + '»: ' + errMsg);
     }
+  }
+  Logger.log('smmProcessScheduled: اكتمل المسح — ' + (data.length - 1) + ' صف');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  نشر فوري (بدون انتظار Trigger) — يُستدعى من الواجهة أو يدوياً
+//  @param {string} schoolId
+//  @return {{success:boolean, published:number, failed:number, details:Array}}
+// ═══════════════════════════════════════════════════════════════════
+function smmPublishNow(schoolId) {
+  schoolId = _smmSafeStr(schoolId);
+  smmProcessScheduled(); // يعالج كل الصفوف المجدولة فوراً
+  return { success: true, message: 'تم تشغيل معالج النشر — راجع ورقة Schedule وسجل_النشر للنتائج' };
+}
+
+// اختبار توكن الاتصال بفيسبوك لمدرسة — يُستدعى من الواجهة
+function smmTestFbConnection(schoolId) {
+  var tk = _smmTokens(_smmSafeStr(schoolId));
+  if (!tk || !tk.fbPageToken) {
+    return { success: false, error: 'لا يوجد توكن فيسبوك. أضِفه عبر تبويب «⚙️ حسابات السوشل» أو زر «اتصل بفيسبوك».' };
+  }
+  try {
+    var resp = UrlFetchApp.fetch(
+      'https://graph.facebook.com/v18.0/me?access_token=' + encodeURIComponent(tk.fbPageToken),
+      { method: 'get', muteHttpExceptions: true }
+    );
+    var json = JSON.parse(resp.getContentText());
+    if (json.id) {
+      return { success: true, message: 'الاتصال صحيح ✅ — صفحة: ' + (json.name || json.id) };
+    }
+    return { success: false, error: 'التوكن غير صالح: ' + (json.error ? json.error.message : JSON.stringify(json)) };
+  } catch (e) {
+    return { success: false, error: String((e && e.message) || e) };
   }
 }
 
