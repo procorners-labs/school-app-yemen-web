@@ -354,6 +354,61 @@ input,select,textarea{font-family:inherit;direction:rtl}
   .btn{width:100%;justify-content:center}
   .qr-card-actions{justify-content:center}
 }
+
+/* ══════════════════════════════════════════
+   زر الرجوع
+══════════════════════════════════════════ */
+.btn-back{
+  background:rgba(255,255,255,.13);color:#fff;border:1.5px solid rgba(255,255,255,.25);
+  padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;
+  display:flex;align-items:center;gap:7px;transition:var(--transition);
+  white-space:nowrap;cursor:pointer;font-family:inherit;
+}
+.btn-back:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+
+/* ══════════════════════════════════════════
+   Lightbox
+══════════════════════════════════════════ */
+.lb-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:2000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;gap:16px;
+  opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease;
+}
+.lb-overlay.open{opacity:1;visibility:visible}
+.lb-box{
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;
+  max-width:480px;width:100%;
+}
+.lb-img{
+  max-width:100%;border-radius:16px;border:4px solid var(--gold);
+  box-shadow:0 8px 40px rgba(0,0,0,.6);background:#fff;
+  animation:lbZoom .25s ease;
+}
+@keyframes lbZoom{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.lb-title{
+  color:#fff;font-size:16px;font-weight:700;text-align:center;
+  max-width:400px;line-height:1.4;
+}
+.lb-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.lb-btn{
+  padding:10px 22px;border-radius:10px;border:none;
+  font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;gap:8px;transition:var(--transition);
+}
+.lb-btn-dl{background:var(--gold);color:var(--navy)}
+.lb-btn-dl:hover{background:#c49230}
+.lb-btn-close{background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.3)}
+.lb-btn-close:hover{background:rgba(255,255,255,.28)}
+.lb-close-x{
+  position:absolute;top:-48px;left:0;
+  background:rgba(255,255,255,.12);color:#fff;border:none;
+  width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:var(--transition);
+}
+.lb-close-x:hover{background:rgba(255,255,255,.28)}
+/* cursor pointer on QR images */
+.qr-code-img{cursor:zoom-in}
 </style>
 </head>
 <body>
@@ -370,6 +425,11 @@ input,select,textarea{font-family:inherit;direction:rtl}
 <!-- ══════════════════════ Header ══════════════════════ -->
 <header class="header">
   <div class="header-inner">
+    <!-- زر الرجوع -->
+    <button class="btn-back" onclick="goBack()" title="الرجوع للصفحة السابقة">
+      ◀ رجوع
+    </button>
+
     <div class="header-brand">
       <div class="header-logo">QR</div>
       <div>
@@ -388,6 +448,19 @@ input,select,textarea{font-family:inherit;direction:rtl}
     </button>
   </div>
 </header>
+
+<!-- ══════════════════════ Lightbox ══════════════════════ -->
+<div class="lb-overlay" id="lbOverlay" onclick="closeLightbox(event)">
+  <div class="lb-box" id="lbBox">
+    <button class="lb-close-x" onclick="closeLightbox(null)" title="إغلاق">✕</button>
+    <img class="lb-img" id="lbImg" src="" alt="">
+    <div class="lb-title" id="lbTitle"></div>
+    <div class="lb-actions">
+      <button class="lb-btn lb-btn-dl" id="lbDownloadBtn" onclick="downloadFromLightbox()">⬇️ تحميل QR</button>
+      <button class="lb-btn lb-btn-close" onclick="closeLightbox(null)">✕ إغلاق</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════ Main ══════════════════════ -->
 <main class="main">
@@ -727,6 +800,8 @@ function buildCardHtml(r) {
            'src="' + escHtml(qrSrc) + '" ' +
            'alt="QR Code لـ: ' + escHtml(r.title) + '" ' +
            'loading="lazy" ' +
+           'title="انقر للتكبير" ' +
+           'onclick="openLightbox(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ')" ' +
            'onerror="this.outerHTML=\'<div class=qr-code-loading>⚠️ تعذّر التحميل</div>\'">' +
       thumbHtml +
     '</div>' +
@@ -971,12 +1046,99 @@ function confirmDelete() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Actions: Download / Copy
+//  Lightbox
+// ════════════════════════════════════════════════════════════════════
+var _lbCurrentUrl = '';
+
+function openLightbox(src, title) {
+  _lbCurrentUrl = src;
+  var overlay = document.getElementById('lbOverlay');
+  var img     = document.getElementById('lbImg');
+  var ttl     = document.getElementById('lbTitle');
+  img.src   = src;
+  ttl.textContent = title || '';
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden'; // منع التمرير خلف الـ lightbox
+}
+
+function closeLightbox(e) {
+  // إغلاق عند الضغط على الخلفية فقط (وليس على المحتوى)
+  if (e && e.target !== document.getElementById('lbOverlay')) return;
+  document.getElementById('lbOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  _lbCurrentUrl = '';
+}
+
+function downloadFromLightbox() {
+  if (_lbCurrentUrl) downloadQR(_lbCurrentUrl, document.getElementById('lbTitle').textContent);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Actions: Download (حقيقي عبر Blob)
 // ════════════════════════════════════════════════════════════════════
 function downloadQR(qrUrl, title) {
-  // Apps Script لا يدعم download attribute مباشرة — نفتح الصورة في نافذة جديدة
-  showToast('📥 ستُفتح صورة QR — استخدم "حفظ الصورة" لتنزيلها', 'info');
-  window.open(qrUrl, '_blank');
+  if (!qrUrl) return;
+  var fileName = (title || 'QR-Code').replace(/[^a-zA-Z0-9؀-ۿ\s_-]/g, '').trim() + '.png';
+
+  // محاولة التحميل الحقيقي عبر fetch → Blob → <a download>
+  if (typeof fetch !== 'undefined') {
+    showToast('⏳ جاري تجهيز الملف للتحميل…', 'info');
+    fetch(qrUrl, { mode: 'cors' })
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.blob();
+      })
+      .then(function(blob) {
+        var objUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href     = objUrl;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(objUrl); }, 2000);
+        showToast('✅ تم تحميل QR: ' + fileName, 'success');
+      })
+      .catch(function() {
+        // fallback: فتح في نافذة جديدة مع توجيه المستخدم
+        _fallbackDownload(qrUrl);
+      });
+  } else {
+    _fallbackDownload(qrUrl);
+  }
+}
+
+function _fallbackDownload(qrUrl) {
+  // Fallback: canvas trick لاستخلاص الصورة محلياً
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function() {
+    try {
+      var canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth  || 400;
+      canvas.height = img.naturalHeight || 400;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      var dataUrl = canvas.toDataURL('image/png');
+      var a = document.createElement('a');
+      a.href     = dataUrl;
+      a.download = 'QR-Code.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('✅ تم التحميل', 'success');
+    } catch (e) {
+      // آخر خيار: فتح الصورة مباشرة
+      window.open(qrUrl, '_blank');
+      showToast('📥 افتحت الصورة في نافذة جديدة — انقر بزر الماوس الأيمن → "حفظ الصورة"', 'info');
+    }
+  };
+  img.onerror = function() {
+    window.open(qrUrl, '_blank');
+    showToast('📥 انقر بزر الماوس الأيمن → "حفظ الصورة"', 'info');
+  };
+  img.src = qrUrl;
 }
 
 function copyUrl(url) {
@@ -1003,11 +1165,50 @@ function copyUrl(url) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Close modal on overlay click
+//  زر الرجوع
+// ════════════════════════════════════════════════════════════════════
+function goBack() {
+  // Worker mode: رجوع إلى لوحة CMS
+  if (window.GAS_ENDPOINT) {
+    var sid  = window.SCHOOL_ID || '';
+    var dest = '/cms/index.html' + (sid ? '?school=' + encodeURIComponent(sid) : '');
+    window.top.location.href = dest;
+    return;
+  }
+  // GAS direct mode: رجوع للصفحة السابقة في التاريخ
+  if (window.history && window.history.length > 1) {
+    window.history.back();
+  } else if (typeof google !== 'undefined' && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(function(url) {
+      window.top.location.href = url || './';
+    }).getPageUrl('');
+  } else {
+    window.location.href = './';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Close modal / lightbox on overlay click + Escape key
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('click', function(e) {
   if (e.target.classList.contains('modal-overlay')) {
     e.target.classList.remove('open');
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    // أغلق lightbox إن كان مفتوحاً
+    var lb = document.getElementById('lbOverlay');
+    if (lb && lb.classList.contains('open')) {
+      lb.classList.remove('open');
+      document.body.style.overflow = '';
+      _lbCurrentUrl = '';
+      return;
+    }
+    // أغلق أي modal آخر
+    var modals = document.querySelectorAll('.modal-overlay.open');
+    for (var i = 0; i < modals.length; i++) modals[i].classList.remove('open');
   }
 });
 
