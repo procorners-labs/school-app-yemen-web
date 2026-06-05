@@ -7626,24 +7626,33 @@ var SMM = {
   _loaded   : false
 };
 
-// ── اتصال CMS مستقل ──
+// ── اتصال CMS مستقل — يُرسل schoolId تلقائياً ──
+// ApiEndpoint.js في CMS يستقبل schoolId ويستدعي _setActiveTenant(schoolId)
+// → يضبط _ACTIVE_TENANT_FILE → تقرأ كل دوال SMM وQR ملف المدرسة الصحيح
 function callCMS(fnName, args, callback) {
   var endpoint = '/gas/cms';
-  var schoolId = window.SCHOOL_ID || '';
-  var payload  = JSON.stringify({ fn: fnName, args: Array.isArray(args) ? args : [args], schoolId: schoolId });
+  var schoolId = window.SCHOOL_ID || (App && App.user && App.user.schoolId) || '';
+  if (!Array.isArray(args)) args = args !== undefined ? [args] : [];
+  var payload = JSON.stringify({ fn: fnName, args: args, schoolId: schoolId });
   var xhr = new XMLHttpRequest();
   xhr.open('POST', endpoint, true);
   xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
-  xhr.timeout = 28000;
+  xhr.timeout = 30000;
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
     try {
       var d = JSON.parse(xhr.responseText);
-      callback(d && d.ok ? d.result : null, (!d || !d.ok) ? (d && d.error) || 'خطأ' : null);
-    } catch (e) { callback(null, 'خطأ في الاستجابة'); }
+      if (d && d.ok) {
+        callback(d.result, null);
+      } else {
+        callback(null, (d && d.error) || 'خطأ غير معروف');
+      }
+    } catch (e) {
+      callback(null, 'خطأ في تحليل الاستجابة');
+    }
   };
-  xhr.onerror   = function() { callback(null, 'خطأ في الاتصال'); };
-  xhr.ontimeout = function() { callback(null, 'انتهت المهلة'); };
+  xhr.onerror   = function() { callback(null, 'تعذّر الاتصال بخادم CMS'); };
+  xhr.ontimeout = function() { callback(null, 'انتهت مهلة الاتصال (30 ث)'); };
   xhr.send(payload);
 }
 
@@ -7657,9 +7666,12 @@ function smm_statusMsg(elId, msg, type) {
 }
 function smm_statusClear(elId) { var el = document.getElementById(elId); if (el) el.textContent = ''; }
 
-// ── التهيئة عند فتح القسم ──
+// ── التهيئة عند فتح القسم (تعيد التحميل دائماً لضمان بيانات المدرسة الحالية) ──
 function smm_init() {
-  if (SMM._loaded) return; // تحميل مرة واحدة
+  SMM._loaded = false; // إعادة ضبط دائماً للضمان صحة بيانات المدرسة
+  // عرض اسم المدرسة في رأس اللوحة
+  var lbl = document.getElementById('smm-school-label');
+  if (lbl && App.user && App.user.schoolName) lbl.textContent = App.user.schoolName;
   smm_reload();
 }
 
@@ -7686,16 +7698,23 @@ function smm_setTab(tab) {
 
 // ── إحصائيات الإحصاءات ──
 function smm_loadStats() {
+  var grid = document.getElementById('smm-dash-cards');
+  if (grid) grid.innerHTML = '<div class="smm-card smm-card-loading">⏳ جاري تحميل بيانات المدرسة…</div>';
   callCMS('smmGetDashboard', [], function(res, err) {
-    if (!res) return;
+    if (!res) {
+      if (grid) grid.innerHTML = '<div class="smm-card smm-card-loading">⚠️ ' + (err || 'لم تُحمَّل البيانات — تأكد من إعداد CMS للمدرسة') + '</div>';
+      return;
+    }
     SMM.statsData = res;
+    // يدعم كلا التنسيقَين: statusCounts{...} أو الحقول المباشرة draft/review...
     var counts = res.statusCounts || {};
+    function pickN(key, direct) { return counts[key] || res[direct] || 0; }
     function setN(id, val) { var el = document.getElementById(id); if (el) el.textContent = isNaN(val) ? '0' : String(val); }
-    setN('smm-n-draft',  counts['مسودة']  || counts['DRAFT']  || 0);
-    setN('smm-n-review', counts['قيد المراجعة'] || 0);
-    setN('smm-n-sched',  counts['مجدول']  || counts['SCHEDULED'] || 0);
-    setN('smm-n-pub',    counts['منشور']  || counts['PUBLISHED'] || 0);
-    setN('smm-n-fail',   counts['فشل']    || counts['FAILED']    || 0);
+    setN('smm-n-draft',  pickN('مسودة',          'draft'));
+    setN('smm-n-review', pickN('قيد المراجعة',   'review'));
+    setN('smm-n-sched',  pickN('مجدول',          'scheduled'));
+    setN('smm-n-pub',    pickN('منشور',           'published'));
+    setN('smm-n-fail',   pickN('فشل',             'failed'));
     smm_renderDashboard(res);
     SMM._loaded = true;
   });
@@ -7734,9 +7753,16 @@ function smm_renderDashboard(data) {
 
 // ── خطة المحتوى ──
 function smm_loadPlan() {
-  callCMS('smmGetPlan', [1, 100], function(res, err) {
-    if (!res) return;
-    SMM.planData = res.items || res || [];
+  var tbl = document.getElementById('smm-plan-table');
+  if (tbl) tbl.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">⏳ جاري التحميل…</div>';
+  // smmGetPlan يقبل كائن filters (أو بلا معامل)
+  callCMS('smmGetPlan', [{}], function(res, err) {
+    if (!res) {
+      if (tbl) tbl.innerHTML = '<div style="color:#c5221f;padding:20px;text-align:center;">⚠️ ' + (err || 'لا يوجد ملف CMS لهذه المدرسة') + '</div>';
+      return;
+    }
+    // smmGetPlan يُعيد مصفوفة مباشرةً (أو قد يأتي ملفوفاً)
+    SMM.planData = Array.isArray(res) ? res : (res.items || res.data || []);
     smm_renderPlan();
   });
 }
@@ -7754,8 +7780,10 @@ function smm_renderPlan() {
   var filterStatus   = (document.getElementById('smm-plan-filter') || {}).value || '';
   var filterPlatform = (document.getElementById('smm-plan-platform') || {}).value || '';
   var data = SMM.planData.filter(function(r) {
-    if (filterStatus   && (r.status  || r['الحالة'])   !== filterStatus)   return false;
-    if (filterPlatform && (r.platform || r['المنصة'])   !== filterPlatform) return false;
+    var st = r.status   || r['الحالة'] || '';
+    var pl = r.platform || r['المنصة'] || '';
+    if (filterStatus   && st !== filterStatus)   return false;
+    if (filterPlatform && pl !== filterPlatform) return false;
     return true;
   });
   if (cntEl) cntEl.textContent = data.length + ' منشور';
@@ -7763,12 +7791,13 @@ function smm_renderPlan() {
   var rows = '';
   for (var i = 0; i < data.length; i++) {
     var r = data[i];
-    var id       = smm_escHtml(r.id       || r['معرف_المنشور'] || '');
-    var title    = smm_escHtml(r.title    || r['العنوان']      || '—');
-    var platform = smm_escHtml(r.platform || r['المنصة']       || '—');
-    var status   = r.status    || r['الحالة']          || '—';
-    var postType = smm_escHtml(r.postType || r['نوع_المحتوى']  || '');
-    var date     = smm_shortDate(r.scheduledAt || r['تاريخ_النشر_المخطط'] || r.createdAt || '');
+    // دعم كلا التنسيقَين: مفاتيح إنجليزية أو عربية (smmGetPlan يُعيد أسماء الأعمدة كما في الشيت)
+    var id       = smm_escHtml(r.id       || r['معرف_المنشور']      || String(r.row_index || i));
+    var title    = smm_escHtml(r.title    || r['العنوان']            || r['النص'] || '—');
+    var platform = smm_escHtml(r.platform || r['المنصة']            || '—');
+    var status   = r.status    || r['الحالة']                       || '—';
+    var postType = smm_escHtml(r.postType || r['نوع_المحتوى']       || r['نوع المحتوى'] || '');
+    var date     = smm_shortDate(r.scheduledAt || r['تاريخ_النشر_المخطط'] || r['تاريخ النشر المخطط'] || r.createdAt || r['تاريخ_الإنشاء'] || '');
     rows += '<tr>' +
       '<td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + title + '">' + title + '</td>' +
       '<td>' + smm_platIcon(platform) + ' ' + platform + '</td>' +

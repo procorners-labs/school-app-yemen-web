@@ -43,9 +43,23 @@ function _apiResolve(name) {
 function doPost(e) {
   try {
     var raw = (e && e.postData && e.postData.contents) ? e.postData.contents : "{}";
-    var req = JSON.parse(raw);
-    var fn = req && req.fn;
+    var req  = JSON.parse(raw);
+    var fn   = req && req.fn;
     var args = (req && req.args) ? req.args : [];
+
+    // ✅ تفعيل المدرسة الصحيحة حسب schoolId الوارد في الطلب
+    // هذا يضبط _ACTIVE_TENANT_FILE → تستخدمه كل وحدات CMS + SMM + QR
+    var reqSchoolId = (req && req.schoolId) ? String(req.schoolId).trim() : '';
+    if (reqSchoolId && typeof _setActiveTenant === 'function') {
+      try {
+        _setActiveTenant(reqSchoolId);
+      } catch (tenantErr) {
+        Logger.log('[ApiEndpoint] tenant error for "' + reqSchoolId + '": ' + tenantErr.message);
+        // إن لم يُعثر على ملف المدرسة، يُكمل بالملف الافتراضي (SPREADSHEET_ID) بدل رفض الطلب
+        // (يُفيد في بيئة التطوير قبل إعداد الـ cms_file_id لكل مدرسة)
+      }
+    }
+
     if (!fn || typeof fn !== 'string') {
       return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });
     }

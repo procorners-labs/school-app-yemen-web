@@ -52,17 +52,31 @@ var SMM_STATUS = {
   ARCHIVED : 'مؤرشف'
 };
 
-// ─── Singleton للملف ─────────────────────────────
-var _smm_ss_cache = null;
+// ─── Singleton للملف — يدعم تعدد المدارس (Multi-Tenant) ──────────
+// يستخدم _activeFileId() التي تُضبط عبر _setActiveTenant() في ApiEndpoint.doPost
+// لكل طلب GAS جديد context مستقل → لا تسرّب بين المدارس
+
+var _smm_ss_cache    = null;  // كاش الـ Spreadsheet للطلب الحالي
+var _smm_ss_cache_id = '';    // معرّف الملف المخزَّن في الكاش (لإعادة الفتح عند التغيّر)
+
 function _smmGetSS() {
-  if (!_smm_ss_cache) {
-    _smm_ss_cache = SpreadsheetApp.openById(SMM_SPREADSHEET_ID);
+  // الأولوية: ملف المدرسة النشط (_activeFileId) → ثم الثابت (SMM_SPREADSHEET_ID)
+  var fid = '';
+  try {
+    if (typeof _activeFileId === 'function') fid = _activeFileId();
+  } catch (e) {}
+  if (!fid) fid = SMM_SPREADSHEET_ID;
+
+  // أعِد فتح الملف إن تغيّر (ضمان التوافق عند تغيير المدرسة النشطة)
+  if (!_smm_ss_cache || _smm_ss_cache_id !== fid) {
+    _smm_ss_cache    = SpreadsheetApp.openById(fid);
+    _smm_ss_cache_id = fid;
   }
   return _smm_ss_cache;
 }
 
 function _smmGetSheet(name) {
-  var ss = _smmGetSS();
+  var ss    = _smmGetSS();
   var sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
@@ -1034,6 +1048,36 @@ function smmGetDashboard() {
   }
   stats.success_rate = totalAttempts > 0
     ? Math.round((totalSuccess / totalAttempts) * 100) : 0;
+
+  // ✅ حقول إضافية للتوافق مع لوحة التحكم في منصة المعلم
+  stats.total       = stats.total_planned;
+  stats.statusCounts = {};
+  stats.statusCounts[SMM_STATUS.DRAFT]     = stats.draft;
+  stats.statusCounts[SMM_STATUS.REVIEW]    = stats.review;
+  stats.statusCounts[SMM_STATUS.APPROVED]  = stats.approved;
+  stats.statusCounts[SMM_STATUS.SCHEDULED] = stats.scheduled;
+  stats.statusCounts[SMM_STATUS.PUBLISHED] = stats.published;
+  stats.statusCounts[SMM_STATUS.FAILED]    = stats.failed;
+
+  // آخر 5 منشورات (من خطة المحتوى — الأحدث أولاً)
+  var recent = [];
+  for (var r = planData.length - 1; r >= 1 && recent.length < 5; r--) {
+    var pHeaders = planData[0];
+    var rItem = {};
+    for (var rc = 0; rc < pHeaders.length; rc++) {
+      rItem[pHeaders[rc]] = planData[r][rc];
+    }
+    recent.push({
+      id:          _smmSafeStr(rItem['معرف_المنشور'] || ''),
+      title:       _smmSafeStr(rItem['العنوان'] || rItem['النص'] || ''),
+      content:     _smmSafeStr(rItem['النص'] || ''),
+      status:      _smmSafeStr(rItem['الحالة'] || ''),
+      platform:    _smmSafeStr(rItem['المنصة'] || ''),
+      scheduledAt: _smmSafeStr(rItem['تاريخ_النشر_المخطط'] || ''),
+      createdAt:   _smmSafeStr(rItem['تاريخ_الإنشاء'] || '')
+    });
+  }
+  stats.recentPosts = recent;
 
   return stats;
 }
