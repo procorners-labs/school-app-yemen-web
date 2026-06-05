@@ -1348,6 +1348,59 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   color: #6b7280 !important;
   cursor: not-allowed;
 }
+
+/* ══════════════════════════════════════════
+   Social Media Control Panel
+══════════════════════════════════════════ */
+.smm-tab {
+  padding:12px 18px;border:none;background:none;cursor:pointer;
+  font-size:13px;font-weight:600;color:#64748b;white-space:nowrap;
+  border-bottom:3px solid transparent;font-family:inherit;transition:.2s ease;
+}
+.smm-tab:hover { background:rgba(15,44,92,.05);color:#0F2C5C; }
+.smm-tab.active { color:#0F2C5C;border-bottom-color:#D4A537;background:#fff; }
+.smm-pane { background:#f8fafc;border-radius:0 0 12px 12px; }
+.smm-stat-chip {
+  display:flex;flex-direction:column;align-items:center;
+  background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;
+  padding:8px 16px;cursor:pointer;transition:.2s ease;min-width:70px;
+}
+.smm-stat-chip:hover { border-color:#0F2C5C;box-shadow:0 2px 8px rgba(15,44,92,.1); }
+.smm-chip-gold  { border-color:#D4A537;background:#fffbeb; }
+.smm-chip-green { border-color:#22c55e;background:#f0fdf4; }
+.smm-chip-red   { border-color:#ef4444;background:#fef2f2; }
+.smm-stat-n { font-size:20px;font-weight:800;color:#0F2C5C;line-height:1.1; }
+.smm-chip-gold  .smm-stat-n { color:#a16207; }
+.smm-chip-green .smm-stat-n { color:#16a34a; }
+.smm-chip-red   .smm-stat-n { color:#dc2626; }
+.smm-stat-l { font-size:11px;color:#64748b; }
+.smm-cards-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px; }
+.smm-card {
+  background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);
+  border-right:4px solid #0F2C5C;
+}
+.smm-card-gold  { border-right-color:#D4A537; }
+.smm-card-green { border-right-color:#22c55e; }
+.smm-card-red   { border-right-color:#ef4444; }
+.smm-card-loading { border-right-color:#94a3b8;color:#64748b; }
+.smm-card-title { font-size:12px;color:#64748b;margin-bottom:4px; }
+.smm-card-val { font-size:28px;font-weight:800;color:#0F2C5C;line-height:1; }
+.smm-plan-table { width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.smm-plan-table th { background:#0F2C5C;color:#D4A537;padding:10px 12px;font-weight:700;text-align:right;white-space:nowrap; }
+.smm-plan-table td { padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle; }
+.smm-plan-table tr:hover td { background:#f8fafc; }
+.smm-status-badge {
+  display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;
+}
+.smm-sb-draft    { background:#f1f5f9;color:#475569; }
+.smm-sb-review   { background:#fef9c3;color:#a16207; }
+.smm-sb-approved { background:#dcfce7;color:#16a34a; }
+.smm-sb-scheduled{ background:#dbeafe;color:#1d4ed8; }
+.smm-sb-published{ background:#d1fae5;color:#065f46; }
+.smm-sb-failed   { background:#fee2e2;color:#dc2626; }
+.smm-qr-mini { background:#fff;border-radius:10px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,.07);text-align:center; }
+.smm-qr-mini img { width:120px;height:120px;border-radius:8px;margin:0 auto 8px; }
+.smm-qr-mini .qmtitle { font-size:12px;font-weight:600;color:#0F2C5C;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
   </style>
 </head>
 <body>
@@ -1480,6 +1533,14 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-attendance" onclick="showSection('attendance')"><span class="si-icon">📋</span> الغياب اليومي</button>
   <button class="sidebar-item" id="si-teacher-absence" onclick="showSection('teacher-absence')"><span class="si-icon">🧑‍🏫</span> غياب المعلمين</button>
 </div>
+<!-- قسم التحكم الاجتماعي (مدير/وكيل/الأنشطة) -->
+<div class="sidebar-section" id="socialSection" style="display:none;">
+  <span class="sidebar-label">📱 التسويق الاجتماعي</span>
+  <button class="sidebar-item" id="si-social" onclick="showSection('social')">
+    <span class="si-icon">📲</span> لوحة التحكم الاجتماعية
+  </button>
+</div>
+
 <div class="sidebar-section" id="adminSection" style="display:none;">
   <span class="sidebar-label">إدارة النظام</span>
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
@@ -1653,6 +1714,162 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div id="lm-status" style="margin-bottom:12px;"></div>
       <div class="lists-grid" id="lm-grid">⏳ جارٍ التحميل...</div>
     </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         لوحة التحكم الاجتماعية — مدير/وكيل/الأنشطة فقط
+    ═══════════════════════════════════════════════════════════════ -->
+    <div id="social-section" style="display:none;" class="section">
+
+      <!-- Header -->
+      <div class="section-header" style="background:linear-gradient(135deg,#0F2C5C,#1a3d6e);color:#fff;border-radius:12px 12px 0 0;padding:16px 20px;margin-bottom:0;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:40px;height:40px;background:#D4A537;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📱</div>
+          <div>
+            <h2 style="margin:0;font-size:17px;color:#fff;">لوحة التحكم الاجتماعية</h2>
+            <div style="font-size:12px;color:rgba(255,255,255,.7);" id="smm-school-label">مدارس الإبداع والتميز الدولية</div>
+          </div>
+        </div>
+        <button onclick="smm_reload()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-family:inherit;">🔄 تحديث</button>
+      </div>
+
+      <!-- Stats bar -->
+      <div id="smm-stats-bar" style="display:flex;gap:10px;flex-wrap:wrap;background:#fff;padding:14px 18px;border-bottom:1px solid #e8eef7;box-shadow:0 2px 8px rgba(15,44,92,.06);">
+        <div class="smm-stat-chip" id="ssc-draft"     onclick="smm_setTab('plan');smm_setPlanFilter('مسودة')">   <span class="smm-stat-n" id="smm-n-draft">—</span><span class="smm-stat-l">مسودة</span></div>
+        <div class="smm-stat-chip" id="ssc-review"    onclick="smm_setTab('plan');smm_setPlanFilter('قيد المراجعة')"><span class="smm-stat-n" id="smm-n-review">—</span><span class="smm-stat-l">مراجعة</span></div>
+        <div class="smm-stat-chip smm-chip-gold"      onclick="smm_setTab('plan');smm_setPlanFilter('مجدول')"><span class="smm-stat-n" id="smm-n-sched">—</span><span class="smm-stat-l">مجدول</span></div>
+        <div class="smm-stat-chip smm-chip-green"     onclick="smm_setTab('plan');smm_setPlanFilter('منشور')"><span class="smm-stat-n" id="smm-n-pub">—</span><span class="smm-stat-l">منشور</span></div>
+        <div class="smm-stat-chip smm-chip-red"       onclick="smm_setTab('plan');smm_setPlanFilter('فشل')">  <span class="smm-stat-n" id="smm-n-fail">—</span><span class="smm-stat-l">فشل</span></div>
+      </div>
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;background:#f0f4f8;border-bottom:2px solid #e2e8f0;overflow-x:auto;">
+        <button class="smm-tab active" id="smm-tab-dashboard" onclick="smm_setTab('dashboard')">📊 القيادة</button>
+        <button class="smm-tab" id="smm-tab-plan"      onclick="smm_setTab('plan')">📅 خطة المحتوى</button>
+        <button class="smm-tab" id="smm-tab-compose"   onclick="smm_setTab('compose')">✏️ إنشاء منشور</button>
+        <button class="smm-tab" id="smm-tab-qr"        onclick="smm_setTab('qr')">📲 QR Codes</button>
+        <button class="smm-tab" id="smm-tab-accounts"  onclick="smm_setTab('accounts')">⚙️ الحسابات</button>
+      </div>
+
+      <!-- ── Tab: Dashboard ── -->
+      <div id="smm-pane-dashboard" class="smm-pane" style="padding:18px;">
+        <div class="smm-cards-grid" id="smm-dash-cards">
+          <div class="smm-card smm-card-loading">⏳ جاري التحميل…</div>
+        </div>
+        <div id="smm-recent-posts" style="margin-top:18px;"></div>
+      </div>
+
+      <!-- ── Tab: خطة المحتوى ── -->
+      <div id="smm-pane-plan" class="smm-pane" style="display:none;padding:18px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+          <select id="smm-plan-filter" onchange="smm_renderPlan()" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">
+            <option value="">كل الحالات</option>
+            <option value="مسودة">مسودة</option>
+            <option value="قيد المراجعة">قيد المراجعة</option>
+            <option value="مجدول">مجدول</option>
+            <option value="منشور">منشور</option>
+            <option value="فشل">فشل</option>
+          </select>
+          <select id="smm-plan-platform" onchange="smm_renderPlan()" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">
+            <option value="">كل المنصات</option>
+            <option value="فيسبوك">📘 فيسبوك</option>
+            <option value="إنستغرام">📸 إنستغرام</option>
+            <option value="واتساب">📱 واتساب</option>
+            <option value="يوتيوب">▶️ يوتيوب</option>
+          </select>
+          <button onclick="smm_publishNow()" style="background:#1e8e3e;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-family:inherit;">⚡ نشر الآن</button>
+          <span style="color:#64748b;font-size:12px;margin-right:auto;" id="smm-plan-count"></span>
+        </div>
+        <div id="smm-plan-table" style="overflow-x:auto;"></div>
+      </div>
+
+      <!-- ── Tab: إنشاء منشور ── -->
+      <div id="smm-pane-compose" class="smm-pane" style="display:none;padding:18px;">
+        <div style="background:#fff;border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+          <h3 style="margin:0 0 16px;font-size:15px;color:#0F2C5C;">✏️ إنشاء منشور جديد</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div>
+              <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:5px;">المنصات <span style="color:red;">*</span></label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;"><input type="checkbox" class="smm-plat" value="فيسبوك"> 📘 فيسبوك</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;"><input type="checkbox" class="smm-plat" value="إنستغرام"> 📸 إنستغرام</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;"><input type="checkbox" class="smm-plat" value="واتساب"> 📱 واتساب</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;"><input type="checkbox" class="smm-plat" value="يوتيوب"> ▶️ يوتيوب</label>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:5px;">نوع المنشور</label>
+              <select id="smm-c-type" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <option value="بوست">بوست</option><option value="صورة">صورة</option>
+                <option value="فيديو">فيديو</option><option value="ريلز">ريلز</option>
+                <option value="قصة">قصة</option><option value="شورتس">شورتس</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:5px;">التصنيف</label>
+              <select id="smm-c-cat" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <option>تهنئة</option><option>إعلان</option><option>خبر</option>
+                <option>نشاط</option><option>إنجاز</option><option>تحفيزي</option>
+                <option>تثقيفي</option><option>ترفيهي</option><option>ديني</option><option>وطني</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:5px;">تاريخ النشر</label>
+              <input type="datetime-local" id="smm-c-date" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:5px;">محتوى المنشور <span style="color:red;">*</span></label>
+            <textarea id="smm-c-text" rows="5" placeholder="اكتب محتوى المنشور هنا…" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:5px;">رابط الصورة/الفيديو (اختياري)</label>
+            <input type="url" id="smm-c-media" placeholder="https://…" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button onclick="smm_saveDraft()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:13px;font-family:inherit;">💾 حفظ كمسودة</button>
+            <button onclick="smm_schedulePost()" style="background:#0F2C5C;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:13px;font-family:inherit;">📅 جدولة</button>
+            <button onclick="smm_publishDirect()" style="background:#1e8e3e;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:13px;font-family:inherit;">⚡ نشر فوري</button>
+          </div>
+          <div id="smm-compose-status" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- ── Tab: QR Codes ── -->
+      <div id="smm-pane-qr" class="smm-pane" style="display:none;padding:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+          <h3 style="margin:0;font-size:15px;color:#0F2C5C;">📲 QR Codes المنشأة</h3>
+          <button onclick="smm_openQRPage()" style="background:#D4A537;color:#0F2C5C;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;">➕ إدارة QR Codes (صفحة كاملة)</button>
+        </div>
+        <div id="smm-qr-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;"></div>
+      </div>
+
+      <!-- ── Tab: الحسابات ── -->
+      <div id="smm-pane-accounts" class="smm-pane" style="display:none;padding:18px;">
+        <div style="background:#fff;border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+          <h3 style="margin:0 0 4px;font-size:15px;color:#0F2C5C;">⚙️ بيانات حسابات المدرسة</h3>
+          <p style="margin:0 0 16px;font-size:12px;color:#64748b;">التوكنات مُقنَّعة ولا تُعرض كاملة. اترك الحقل فارغاً للإبقاء على القيمة الحالية.</p>
+          <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px;margin-bottom:16px;font-size:12px;color:#7c5e00;">
+            💡 لمزيد من الإعدادات واتصال OAuth الكامل، افتح <strong>لوحة إدارة المحتوى CMS</strong>.
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;" id="smm-acc-fields">
+            <div><label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Facebook Page ID</label><input type="text" id="smm-acc-fbid" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Facebook Page Token</label><input type="password" id="smm-acc-fbtoken" placeholder="(اترك فارغاً للإبقاء)" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Instagram Business ID</label><input type="text" id="smm-acc-igid" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">WhatsApp Phone ID</label><input type="text" id="smm-acc-waid" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">رابط يوتيوب</label><input type="url" id="smm-acc-yt" placeholder="https://youtube.com/@…" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;"></div>
+            <div style="display:flex;align-items:flex-end;">
+              <div id="smm-acc-masks" style="font-size:11px;color:#64748b;line-height:1.8;"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+            <button onclick="smm_saveAccounts()" style="background:#0F2C5C;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:13px;font-family:inherit;">💾 حفظ البيانات</button>
+            <button onclick="smm_testFb()" style="background:#1877f2;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:13px;font-family:inherit;">🔍 اختبار الاتصال</button>
+          </div>
+          <div id="smm-acc-status" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+    </div><!-- / social-section -->
 
   </div> <!-- نهاية .app-body -->
 </div> <!-- نهاية #mainApp -->
@@ -3433,6 +3650,24 @@ function showSection(name) {
       return;
     }
 
+    // ── القسم الاجتماعي ──
+    if (name === 'social') {
+      var socialDiv = document.getElementById('social-section');
+      if (!socialDiv) return;
+      // إخفاء باقي الأقسام الثابتة
+      if (attendanceDiv) attendanceDiv.style.display = 'none';
+      if (teachersDiv)   teachersDiv.style.display   = 'none';
+      if (listsDiv)      listsDiv.style.display      = 'none';
+      var tabsDiv2 = document.getElementById('teacher-absence-section');
+      if (tabsDiv2) tabsDiv2.style.display = 'none';
+      dynamicEl.style.display = 'none';
+      socialDiv.style.display = 'block';
+      updateActiveSidebarItem(name);
+      closeSidebar();
+      smm_init();
+      return;
+    }
+
     // قائمة دوال العرض الديناميكية (جميعها معرفة الآن)
     var renders = {
       dashboard: renderDashboard,
@@ -3512,12 +3747,27 @@ function initSidebarByRole() {
   if (!u) return;
 
   var adminSection    = document.getElementById('adminSection');
+  var socialSection   = document.getElementById('socialSection');
   var siAdminStudents = document.getElementById('si-adminStudents');
+
+  // ── هل يملك صلاحية التحكم الاجتماعي؟ ──
+  // مدير / وكيل / أي معلم دوره "activities" أو مادته تحتوي كلمة "نشاط"
+  var isSocialAllowed = (u.role === 'admin' || u.role === 'deputy') ||
+    (u.role === 'activities') ||
+    (u.subjects && (function() {
+      for (var si = 0; si < u.subjects.length; si++) {
+        var s = String(u.subjects[si] || '').trim();
+        if (s === 'الأنشطة' || s === 'نشاط' || s.indexOf('نشاط') > -1 || s.indexOf('الأنشطة') > -1) return true;
+      }
+      return false;
+    })());
+
+  if (socialSection) socialSection.style.display = isSocialAllowed ? 'block' : 'none';
 
   // المدير الكامل: يرى كل شيء
   if (u.role === 'admin') {
     if (adminSection) adminSection.style.display = 'block';
-    if (siAdminStudents) siAdminStudents.style.display = '';  // يظهر قائمة الطلاب
+    if (siAdminStudents) siAdminStudents.style.display = '';
     _refreshNotesBadge();
     return;
   }
@@ -3534,7 +3784,7 @@ function initSidebarByRole() {
     return;
   }
 
-  // المعلم العادي: لا يرى أي قسم إداري
+  // المعلم العادي: لا يرى القسم الإداري
   if (adminSection) adminSection.style.display = 'none';
   _refreshNotesBadge();
 }
@@ -7340,6 +7590,379 @@ function drawTerm1SummaryTable(students) {
 }
 // تنظيف الكاش عند تسجيل الخروج (اختياري)
 function _rpt_clearCache() { _RPT_CACHE = null; }
+
+// ════════════════════════════════════════════════════════════════════
+//  لوحة التحكم الاجتماعية — Social Media Control Panel
+//  يتصل بـ CMS عبر /gas/cms بشكل مستقل عن callServer (teacher)
+// ════════════════════════════════════════════════════════════════════
+
+var SMM = {
+  planData  : [],
+  qrData    : [],
+  statsData : null,
+  currentTab: 'dashboard',
+  _loaded   : false
+};
+
+// ── اتصال CMS مستقل ──
+function callCMS(fnName, args, callback) {
+  var endpoint = '/gas/cms';
+  var schoolId = window.SCHOOL_ID || '';
+  var payload  = JSON.stringify({ fn: fnName, args: Array.isArray(args) ? args : [args], schoolId: schoolId });
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', endpoint, true);
+  xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+  xhr.timeout = 28000;
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    try {
+      var d = JSON.parse(xhr.responseText);
+      callback(d && d.ok ? d.result : null, (!d || !d.ok) ? (d && d.error) || 'خطأ' : null);
+    } catch (e) { callback(null, 'خطأ في الاستجابة'); }
+  };
+  xhr.onerror   = function() { callback(null, 'خطأ في الاتصال'); };
+  xhr.ontimeout = function() { callback(null, 'انتهت المهلة'); };
+  xhr.send(payload);
+}
+
+function smm_statusMsg(elId, msg, type) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var colors = { success: '#dcfce7|#166534', error: '#fee2e2|#991b1b', info: '#dbeafe|#1e40af' };
+  var c = (colors[type] || colors.info).split('|');
+  el.style.cssText = 'padding:10px 14px;border-radius:8px;font-size:13px;background:' + c[0] + ';color:' + c[1];
+  el.textContent = msg;
+}
+function smm_statusClear(elId) { var el = document.getElementById(elId); if (el) el.textContent = ''; }
+
+// ── التهيئة عند فتح القسم ──
+function smm_init() {
+  if (SMM._loaded) return; // تحميل مرة واحدة
+  smm_reload();
+}
+
+function smm_reload() {
+  SMM._loaded = false;
+  smm_loadStats();
+  smm_loadPlan();
+  smm_loadQR();
+  smm_loadAccounts();
+}
+
+// ── تبديل التبويبات ──
+function smm_setTab(tab) {
+  var tabs = document.querySelectorAll('.smm-tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  var panes = document.querySelectorAll('.smm-pane');
+  for (var j = 0; j < panes.length; j++) panes[j].style.display = 'none';
+  var activeTab  = document.getElementById('smm-tab-' + tab);
+  var activePane = document.getElementById('smm-pane-' + tab);
+  if (activeTab)  activeTab.classList.add('active');
+  if (activePane) activePane.style.display = 'block';
+  SMM.currentTab = tab;
+}
+
+// ── إحصائيات الإحصاءات ──
+function smm_loadStats() {
+  callCMS('smmGetDashboard', [], function(res, err) {
+    if (!res) return;
+    SMM.statsData = res;
+    var counts = res.statusCounts || {};
+    function setN(id, val) { var el = document.getElementById(id); if (el) el.textContent = isNaN(val) ? '0' : String(val); }
+    setN('smm-n-draft',  counts['مسودة']  || counts['DRAFT']  || 0);
+    setN('smm-n-review', counts['قيد المراجعة'] || 0);
+    setN('smm-n-sched',  counts['مجدول']  || counts['SCHEDULED'] || 0);
+    setN('smm-n-pub',    counts['منشور']  || counts['PUBLISHED'] || 0);
+    setN('smm-n-fail',   counts['فشل']    || counts['FAILED']    || 0);
+    smm_renderDashboard(res);
+    SMM._loaded = true;
+  });
+}
+
+// ── لوحة القيادة ──
+function smm_renderDashboard(data) {
+  var grid = document.getElementById('smm-dash-cards');
+  if (!grid) return;
+  var counts = data.statusCounts || {};
+  var total  = data.total || 0;
+  var pub    = counts['منشور'] || 0;
+  var sched  = counts['مجدول'] || 0;
+  var draft  = counts['مسودة'] || 0;
+  var fail   = counts['فشل']   || 0;
+  grid.innerHTML =
+    '<div class="smm-card"><div class="smm-card-title">إجمالي المنشورات</div><div class="smm-card-val">' + total + '</div></div>' +
+    '<div class="smm-card smm-card-green"><div class="smm-card-title">✅ منشور</div><div class="smm-card-val">' + pub + '</div></div>' +
+    '<div class="smm-card smm-card-gold"><div class="smm-card-title">📅 مجدول</div><div class="smm-card-val">' + sched + '</div></div>' +
+    '<div class="smm-card"><div class="smm-card-title">📝 مسودة</div><div class="smm-card-val">' + draft + '</div></div>' +
+    (fail ? '<div class="smm-card smm-card-red"><div class="smm-card-title">❌ فشل</div><div class="smm-card-val">' + fail + '</div></div>' : '');
+
+  // آخر المنشورات
+  var recent = document.getElementById('smm-recent-posts');
+  if (recent && data.recentPosts && data.recentPosts.length) {
+    var rows = '';
+    var rp = data.recentPosts.slice(0, 5);
+    for (var i = 0; i < rp.length; i++) {
+      var p = rp[i];
+      rows += '<tr><td>' + smm_escHtml(p.title || p.content || '—') + '</td><td>' + smm_statusBadge(p.status) + '</td><td style="direction:ltr;text-align:left;">' + smm_shortDate(p.scheduledAt || p.createdAt) + '</td></tr>';
+    }
+    recent.innerHTML = '<h4 style="margin:0 0 10px;color:#0F2C5C;font-size:14px;">📋 آخر المنشورات</h4>' +
+      '<table class="smm-plan-table"><thead><tr><th>العنوان/المحتوى</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+}
+
+// ── خطة المحتوى ──
+function smm_loadPlan() {
+  callCMS('smmGetPlan', [1, 100], function(res, err) {
+    if (!res) return;
+    SMM.planData = res.items || res || [];
+    smm_renderPlan();
+  });
+}
+
+function smm_setPlanFilter(val) {
+  var el = document.getElementById('smm-plan-filter');
+  if (el) el.value = val;
+  smm_renderPlan();
+}
+
+function smm_renderPlan() {
+  var tbl = document.getElementById('smm-plan-table');
+  var cntEl = document.getElementById('smm-plan-count');
+  if (!tbl) return;
+  var filterStatus   = (document.getElementById('smm-plan-filter') || {}).value || '';
+  var filterPlatform = (document.getElementById('smm-plan-platform') || {}).value || '';
+  var data = SMM.planData.filter(function(r) {
+    if (filterStatus   && (r.status  || r['الحالة'])   !== filterStatus)   return false;
+    if (filterPlatform && (r.platform || r['المنصة'])   !== filterPlatform) return false;
+    return true;
+  });
+  if (cntEl) cntEl.textContent = data.length + ' منشور';
+  if (!data.length) { tbl.innerHTML = '<div style="text-align:center;padding:40px;color:#64748b;">لا توجد منشورات بهذا الفلتر</div>'; return; }
+  var rows = '';
+  for (var i = 0; i < data.length; i++) {
+    var r = data[i];
+    var id       = smm_escHtml(r.id       || r['معرف_المنشور'] || '');
+    var title    = smm_escHtml(r.title    || r['العنوان']      || '—');
+    var platform = smm_escHtml(r.platform || r['المنصة']       || '—');
+    var status   = r.status    || r['الحالة']          || '—';
+    var postType = smm_escHtml(r.postType || r['نوع_المحتوى']  || '');
+    var date     = smm_shortDate(r.scheduledAt || r['تاريخ_النشر_المخطط'] || r.createdAt || '');
+    rows += '<tr>' +
+      '<td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + title + '">' + title + '</td>' +
+      '<td>' + smm_platIcon(platform) + ' ' + platform + '</td>' +
+      '<td>' + smm_escHtml(postType) + '</td>' +
+      '<td>' + smm_statusBadge(status) + '</td>' +
+      '<td style="direction:ltr;text-align:left;">' + date + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        (status === 'مسودة' || status === 'قيد المراجعة'
+          ? '<button onclick="smm_approve(' + JSON.stringify(id) + ')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:inherit;">✅ اعتماد</button> '
+          : '') +
+        (status === 'معتمد' || status === 'مسودة'
+          ? '<button onclick="smm_scheduleItem(' + JSON.stringify(id) + ')" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:inherit;">📅 جدول</button>'
+          : '') +
+      '</td>' +
+    '</tr>';
+  }
+  tbl.innerHTML = '<table class="smm-plan-table"><thead><tr><th>العنوان</th><th>المنصة</th><th>النوع</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function smm_approve(id) {
+  if (!id) return;
+  callCMS('smmUpdateStatus', [id, 'معتمد', ''], function(res, err) {
+    if (res && res.success) { toast('✅ تم الاعتماد', 'success'); smm_loadPlan(); smm_loadStats(); }
+    else toast((res && res.error) || err || 'خطأ في الاعتماد', 'error');
+  });
+}
+
+function smm_scheduleItem(id) {
+  if (!id) return;
+  callCMS('smmPromoteToSchedule', [id], function(res, err) {
+    if (res && res.success) { toast('📅 تم الجدول', 'success'); smm_loadPlan(); smm_loadStats(); }
+    else toast((res && res.error) || err || 'خطأ في الجدولة', 'error');
+  });
+}
+
+// ── إنشاء منشور ──
+function smm_getPlatforms() {
+  var cbs = document.querySelectorAll('.smm-plat');
+  var p = [];
+  for (var i = 0; i < cbs.length; i++) if (cbs[i].checked) p.push(cbs[i].value);
+  return p;
+}
+
+function smm_saveDraft() {
+  var platforms = smm_getPlatforms();
+  var content   = (document.getElementById('smm-c-text') || {}).value || '';
+  if (!platforms.length) { smm_statusMsg('smm-compose-status', '⚠️ اختر منصة واحدة على الأقل', 'error'); return; }
+  if (!content.trim())   { smm_statusMsg('smm-compose-status', '⚠️ اكتب محتوى المنشور', 'error'); return; }
+  smm_statusMsg('smm-compose-status', '⏳ جاري الحفظ…', 'info');
+  var args = {
+    platforms: platforms,
+    postType:  (document.getElementById('smm-c-type') || {}).value || 'بوست',
+    category:  (document.getElementById('smm-c-cat')  || {}).value || 'عام',
+    content:   content,
+    mediaURL:  (document.getElementById('smm-c-media') || {}).value || '',
+    scheduledDate: '',
+    status:    'مسودة',
+    userName:  (App.user && App.user.teacherName) || '',
+    fingerprint: '',
+    schoolId:  window.SCHOOL_ID || ''
+  };
+  callCMS('smmAddPlanItem', [{ platform: platforms[0], post_type: args.postType, category: args.category,
+    title: content.substring(0, 40), content: content, media_url: args.mediaURL }], function(res, err) {
+    if (res && res.success) {
+      smm_statusMsg('smm-compose-status', '✅ تم الحفظ كمسودة', 'success');
+      smm_loadPlan(); smm_loadStats();
+    } else smm_statusMsg('smm-compose-status', '❌ ' + (err || 'خطأ'), 'error');
+  });
+}
+
+function smm_schedulePost() {
+  var platforms = smm_getPlatforms();
+  var content   = (document.getElementById('smm-c-text') || {}).value || '';
+  var date      = (document.getElementById('smm-c-date') || {}).value || '';
+  if (!platforms.length || !content.trim() || !date) {
+    smm_statusMsg('smm-compose-status', '⚠️ اختر منصة + اكتب المحتوى + حدد التاريخ', 'error'); return;
+  }
+  smm_statusMsg('smm-compose-status', '⏳ جاري الجدولة…', 'info');
+  callCMS('addScheduleMulti', [
+    platforms, (document.getElementById('smm-c-type') || {}).value || 'بوست',
+    content, (document.getElementById('smm-c-media') || {}).value || '',
+    date, 'مجدول',
+    (App.user && App.user.teacherName) || '', '', window.SCHOOL_ID || ''
+  ], function(res, err) {
+    if (res) { smm_statusMsg('smm-compose-status', '✅ ' + (typeof res === 'string' ? res : 'تمت الجدولة'), 'success'); smm_loadPlan(); }
+    else smm_statusMsg('smm-compose-status', '❌ ' + (err || 'خطأ'), 'error');
+  });
+}
+
+function smm_publishDirect() {
+  smm_schedulePost(); // جدولة بتاريخ الآن → يُنشر في أول تشغيل Trigger
+  setTimeout(function() { smm_publishNow(); }, 1500);
+}
+
+function smm_publishNow() {
+  showLoading('جاري تشغيل معالج النشر…');
+  callCMS('smmPublishNow', [window.SCHOOL_ID || ''], function(res, err) {
+    hideLoading();
+    if (res && res.success) toast('✅ ' + res.message, 'success');
+    else toast('❌ ' + (err || 'خطأ'), 'error');
+    smm_loadPlan(); smm_loadStats();
+  });
+}
+
+// ── QR Codes ──
+function smm_loadQR() {
+  var grid = document.getElementById('smm-qr-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="color:#64748b;font-size:13px;">⏳ جاري التحميل…</div>';
+  callCMS('getAllQRCodes', [window.SCHOOL_ID || ''], function(res, err) {
+    SMM.qrData = (res && Array.isArray(res)) ? res : (res && res.data ? res.data : []);
+    smm_renderQR();
+  });
+}
+
+function smm_renderQR() {
+  var grid = document.getElementById('smm-qr-grid');
+  if (!grid) return;
+  var data = SMM.qrData || [];
+  if (!data.length) { grid.innerHTML = '<div style="color:#64748b;font-size:13px;grid-column:1/-1;text-align:center;padding:30px;">لا توجد QR Codes بعد</div>'; return; }
+  var html = '';
+  for (var i = 0; i < Math.min(data.length, 12); i++) {
+    var r = data[i];
+    var qrSrc = r.qrImageUrl && r.qrImageUrl.indexOf('chart.googleapis') === -1
+      ? r.qrImageUrl
+      : 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&format=png&qzone=2&data=' + encodeURIComponent(r.url || '');
+    html += '<div class="smm-qr-mini">' +
+      '<img src="' + smm_escHtml(qrSrc) + '" onerror="this.style.display=\'none\'">' +
+      '<div class="qmtitle">' + smm_escHtml(r.title || '—') + '</div>' +
+      '<div style="display:flex;gap:4px;justify-content:center;">' +
+        '<button onclick="window.open(' + JSON.stringify(r.url || '') + ',\'_blank\')" style="background:#0F2C5C;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">🔗 فتح</button>' +
+        '<button onclick="smm_dlQR(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title || 'QR') + ')" style="background:#D4A537;color:#0F2C5C;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">⬇️</button>' +
+      '</div>' +
+    '</div>';
+  }
+  if (data.length > 12) html += '<div style="grid-column:1/-1;text-align:center;padding:10px;color:#64748b;font-size:12px;">+ ' + (data.length - 12) + ' QR إضافي — افتح صفحة إدارة QR لرؤية الكل</div>';
+  grid.innerHTML = html;
+}
+
+function smm_dlQR(url, title) {
+  var a = document.createElement('a');
+  a.href = url; a.download = (title || 'QR') + '.png'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function smm_openQRPage() {
+  var sid = window.SCHOOL_ID || '';
+  var dest = '/cms/qr.html' + (sid ? '?school=' + encodeURIComponent(sid) : '');
+  window.open(dest, '_blank');
+}
+
+// ── حسابات السوشل ──
+function smm_loadAccounts() {
+  callCMS('smmGetSocialSettings', [window.SCHOOL_ID || ''], function(res, err) {
+    if (!res || !res.success || !res.settings) return;
+    var s = res.settings;
+    function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
+    setVal('smm-acc-fbid',    s.fb_page_id);
+    setVal('smm-acc-igid',    s.ig_business_id);
+    setVal('smm-acc-waid',    s.wa_phone_id);
+    setVal('smm-acc-yt',      s.yt_channel_url);
+    var masks = document.getElementById('smm-acc-masks');
+    if (masks) masks.innerHTML =
+      'FB Token: ' + (s.fb_page_token_mask || '—') + '<br>' +
+      'WA Token: ' + (s.wa_token_mask      || '—') + (s.updated_at ? '<br>آخر تحديث: ' + smm_shortDate(s.updated_at) : '');
+  });
+}
+
+function smm_saveAccounts() {
+  var obj = {
+    fb_page_id:    (document.getElementById('smm-acc-fbid')    || {}).value || '',
+    fb_page_token: (document.getElementById('smm-acc-fbtoken') || {}).value || '',
+    ig_business_id:(document.getElementById('smm-acc-igid')    || {}).value || '',
+    wa_phone_id:   (document.getElementById('smm-acc-waid')    || {}).value || '',
+    yt_channel_url:(document.getElementById('smm-acc-yt')      || {}).value || ''
+  };
+  smm_statusMsg('smm-acc-status', '⏳ جاري الحفظ…', 'info');
+  callCMS('smmSaveSocialSettings', [window.SCHOOL_ID || '', obj], function(res, err) {
+    if (res && res.success) { smm_statusMsg('smm-acc-status', '✅ ' + res.message, 'success'); smm_loadAccounts(); }
+    else smm_statusMsg('smm-acc-status', '❌ ' + (err || 'خطأ'), 'error');
+  });
+}
+
+function smm_testFb() {
+  smm_statusMsg('smm-acc-status', '⏳ جاري اختبار الاتصال…', 'info');
+  callCMS('smmTestFbConnection', [window.SCHOOL_ID || ''], function(res, err) {
+    if (res && res.success) smm_statusMsg('smm-acc-status', '✅ ' + res.message, 'success');
+    else smm_statusMsg('smm-acc-status', '❌ ' + (err || (res && res.error) || 'لا يوجد توكن'), 'error');
+  });
+}
+
+// ── مساعدات ──
+function smm_escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function smm_shortDate(iso) {
+  if (!iso) return '—';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d)) return String(iso).substring(0, 16).replace('T', ' ');
+    return d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+  } catch (e) { return '—'; }
+}
+function smm_platIcon(p) {
+  var icons = { 'فيسبوك': '📘', 'إنستغرام': '📸', 'واتساب': '📱', 'يوتيوب': '▶️' };
+  return icons[p] || '📢';
+}
+function smm_statusBadge(s) {
+  var map = {
+    'مسودة': 'smm-sb-draft', 'قيد المراجعة': 'smm-sb-review',
+    'معتمد': 'smm-sb-approved', 'مجدول': 'smm-sb-scheduled',
+    'منشور': 'smm-sb-published', 'فشل': 'smm-sb-failed'
+  };
+  var cls = map[s] || 'smm-sb-draft';
+  return '<span class="smm-status-badge ' + cls + '">' + smm_escHtml(s || '—') + '</span>';
+}
 
 /* ── عرض اسم مدرسة الحساب ديناميكيًا (حسب schoolId) بدل الاسم الثابت ── */
 (function () {
