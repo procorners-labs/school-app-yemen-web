@@ -244,28 +244,36 @@ input,select,textarea{font-family:inherit;direction:rtl}
   backdrop-filter:blur(4px);
 }
 
-/* صورة المحتوى (اختيارية) */
-.qr-card-img{
-  width:100%;height:130px;object-fit:cover;display:block;background:#f0f4f8;
-}
-.qr-card-img-placeholder{
-  width:100%;height:130px;background:linear-gradient(135deg,var(--navy-light),#dbeafe);
-  display:flex;align-items:center;justify-content:center;font-size:40px;
-}
-
-/* قسم الـ QR */
-.qr-card-qr{
-  display:flex;justify-content:center;padding:18px 18px 12px;
-  background:#f8fafc;border-bottom:1px solid #f1f5f9;
+/* ─── منطقة QR الرئيسية (أعلى البطاقة) ─── */
+.qr-card-qr-main{
+  display:flex;flex-direction:column;align-items:center;
+  padding:20px 16px 14px;
+  background:linear-gradient(160deg,#f0f6ff 0%,#fff 100%);
+  border-bottom:1px solid #e8eef7;
+  position:relative;
 }
 .qr-code-img{
-  width:140px;height:140px;border-radius:10px;border:2px solid #e2e8f0;
-  background:#fff;
+  width:170px;height:170px;border-radius:12px;
+  border:3px solid var(--navy);background:#fff;
+  box-shadow:0 4px 16px rgba(15,44,92,.15);
+  display:block;
 }
-.qr-code-img-placeholder{
-  width:140px;height:140px;background:#f0f4f8;border-radius:10px;
-  display:flex;align-items:center;justify-content:center;font-size:64px;
+.qr-code-loading{
+  width:170px;height:170px;background:#f0f4f8;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  border:2px dashed #cbd5e1;color:#94a3b8;font-size:13px;
 }
+/* صورة المحتوى — شريط صغير أسفل QR */
+.qr-card-thumb{
+  display:flex;align-items:center;gap:8px;
+  margin-top:10px;padding:6px 10px;
+  background:rgba(15,44,92,.05);border-radius:8px;
+  max-width:200px;
+}
+.qr-card-thumb img{
+  width:32px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0;
+}
+.qr-card-thumb span{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* بيانات البطاقة */
 .qr-card-body{padding:14px 16px;flex:1;display:flex;flex-direction:column;gap:6px}
@@ -573,11 +581,19 @@ function isValidUrl(url) {
   return url.indexOf('http://') === 0 || url.indexOf('https://') === 0;
 }
 
-/* ──────────────── QR URL builder ──────────────── */
+/* ──────────────── QR URL builder (api.qrserver.com) ──────────────── */
 function buildQRUrl(url, size) {
-  size = size || 400;
-  return 'https://chart.googleapis.com/chart?cht=qr&chs=' + size + 'x' + size +
-         '&chl=' + encodeURIComponent(url) + '&choe=UTF-8';
+  size = size || 300;
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size +
+         '&format=png&qzone=2&data=' + encodeURIComponent(url);
+}
+
+/* إذا كان الـ URL القديم من Google Charts (متوقف) — أعِد بناؤه */
+function resolveQRUrl(stored, originalUrl, size) {
+  if (!stored || stored.indexOf('chart.googleapis.com') > -1) {
+    return originalUrl ? buildQRUrl(originalUrl, size) : '';
+  }
+  return stored;
 }
 
 /* ──────────────── Escape HTML ──────────────── */
@@ -682,35 +698,52 @@ function renderEmptyState(msg) {
 }
 
 function buildCardHtml(r) {
-  var qrSrc = r.qrImageUrl || buildQRUrl(r.url, 300);
-  var imgSection = r.imageUrl
-    ? '<img class="qr-card-img" src="' + escHtml(r.imageUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-    : '<div class="qr-card-img-placeholder">🏫</div>';
+  // ✅ دائماً أعِد بناء رابط QR من api.qrserver.com
+  // (تجاهل أي رابط قديم من chart.googleapis.com المتوقفة)
+  var qrSrc = resolveQRUrl(r.qrImageUrl, r.url, 300);
 
-  var shortUrl = (r.url || '').length > 40 ? (r.url || '').substring(0, 40) + '…' : (r.url || '');
+  var shortUrl = (r.url || '').length > 44
+    ? (r.url || '').substring(0, 44) + '…'
+    : (r.url || '');
+
   var desc = r.description
     ? '<div class="qr-card-desc">' + escHtml(r.description) + '</div>'
     : '';
 
+  // صورة المحتوى كشريط صغير (اختياري)
+  var thumbHtml = '';
+  if (r.imageUrl) {
+    thumbHtml = '<div class="qr-card-thumb">' +
+      '<img src="' + escHtml(r.imageUrl) + '" alt="" onerror="this.parentNode.style.display=\'none\'">' +
+      '<span>📷 صورة مرفقة</span>' +
+    '</div>';
+  }
+
   return '<div class="qr-card" id="card_' + escHtml(r.id) + '">' +
-    '<div class="qr-card-cat">' + catIcon(r.category) + ' ' + escHtml(r.category || 'عام') + '</div>' +
-    imgSection +
-    '<div class="qr-card-qr">' +
-      '<img class="qr-code-img" src="' + escHtml(qrSrc) + '" alt="QR Code" loading="lazy" ' +
-           'onerror="this.style.display=\'none\';">' +
+    // ── QR كعنصر رئيسي ──
+    '<div class="qr-card-qr-main">' +
+      '<div class="qr-card-cat">' + catIcon(r.category) + ' ' + escHtml(r.category || 'عام') + '</div>' +
+      '<img class="qr-code-img" ' +
+           'src="' + escHtml(qrSrc) + '" ' +
+           'alt="QR Code لـ: ' + escHtml(r.title) + '" ' +
+           'loading="lazy" ' +
+           'onerror="this.outerHTML=\'<div class=qr-code-loading>⚠️ تعذّر التحميل</div>\'">' +
+      thumbHtml +
     '</div>' +
+    // ── بيانات البطاقة ──
     '<div class="qr-card-body">' +
       '<div class="qr-card-title">' + escHtml(r.title) + '</div>' +
       '<div class="qr-card-url" title="' + escHtml(r.url) + '">🔗 ' + escHtml(shortUrl) + '</div>' +
       '<div class="qr-card-date">📅 ' + formatDate(r.createdAt) + '</div>' +
       desc +
     '</div>' +
+    // ── أزرار الإجراءات ──
     '<div class="qr-card-actions">' +
-      '<button class="btn btn-sm btn-secondary" title="تحميل QR" onclick="downloadQR(' + JSON.stringify(qrSrc) + ', ' + JSON.stringify(r.title) + ')">⬇️</button>' +
-      '<button class="btn btn-sm btn-secondary" title="نسخ الرابط" onclick="copyUrl(' + JSON.stringify(r.url) + ')">📋</button>' +
-      '<button class="btn btn-sm btn-secondary" title="فتح الرابط" onclick="window.open(' + JSON.stringify(r.url) + ', \'_blank\')">🌐</button>' +
+      '<button class="btn btn-sm btn-secondary" title="تحميل QR" onclick="downloadQR(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ')">⬇️ تحميل</button>' +
+      '<button class="btn btn-sm btn-secondary" title="نسخ الرابط" onclick="copyUrl(' + JSON.stringify(r.url) + ')">📋 نسخ</button>' +
+      '<button class="btn btn-sm btn-secondary" title="فتح الرابط" onclick="window.open(' + JSON.stringify(r.url) + ',\'_blank\')">🌐</button>' +
       '<button class="btn btn-sm btn-gold" title="تعديل" onclick="startEdit(' + JSON.stringify(r.id) + ')">✏️</button>' +
-      '<button class="btn btn-sm btn-danger" title="حذف" onclick="startDelete(' + JSON.stringify(r.id) + ', ' + JSON.stringify(r.title) + ')">🗑️</button>' +
+      '<button class="btn btn-sm btn-danger" title="حذف" onclick="startDelete(' + JSON.stringify(r.id) + ',' + JSON.stringify(r.title) + ')">🗑️</button>' +
     '</div>' +
   '</div>';
 }
@@ -765,9 +798,11 @@ function previewQR() {
 }
 
 function showQRPreview(url) {
-  var qrSrc = buildQRUrl(url, 200);
+  var qrSrc = buildQRUrl(url, 200); // api.qrserver.com — يعمل بشكل صحيح
   var wrap  = document.getElementById('qrPreviewWrap');
-  document.getElementById('qrPreviewImg').src   = qrSrc;
+  var img   = document.getElementById('qrPreviewImg');
+  img.src   = '';          // أعِد ضبط أولاً لإظهار التحميل
+  img.src   = qrSrc;
   document.getElementById('qrPreviewUrl').textContent = url;
   document.getElementById('qrPreviewLink').href = qrSrc;
   wrap.style.display = 'flex';

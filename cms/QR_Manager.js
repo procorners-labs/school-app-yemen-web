@@ -64,10 +64,13 @@ function _getQRSheet() {
   return sheet;
 }
 
-/** يبني رابط QR من Google Charts API */
+/**
+ * يبني رابط QR من api.qrserver.com (مجاني وموثوق — Google Charts متوقفة).
+ * المعاملات: size (بيكسل مربع) ، format (png/svg) ، qzone (هامش أبيض 1-4)
+ */
 function _generateQRUrl(url) {
-  return 'https://chart.googleapis.com/chart?cht=qr&chs=400x400&chl=' +
-    encodeURIComponent(url) + '&choe=UTF-8';
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&format=png&qzone=2&data=' +
+    encodeURIComponent(url);
 }
 
 /** يمسح كاش QR الكلي وكاش المفرد */
