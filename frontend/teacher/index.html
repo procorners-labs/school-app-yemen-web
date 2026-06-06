@@ -602,6 +602,36 @@
     }
     .assign-chip b { color:var(--text); font-weight:700; }
 
+    /* ── ويدجت جدول اليوم اللحظي ── */
+    .today-sched { margin-bottom:22px; }
+    .ts-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+    .ts-head .ts-title { font-size:1rem; font-weight:800; display:flex; align-items:center; gap:8px; }
+    .ts-now { font-size:.78rem; font-weight:700; color:var(--primary-dark); background:var(--primary-glow); padding:4px 12px; border-radius:50px; margin-right:auto; }
+    .ts-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
+    .ts-card {
+      position:relative; border-radius:var(--radius-md); padding:14px 14px 13px;
+      border:1.5px solid var(--border); background:var(--surface);
+      box-shadow:var(--shadow-sm); transition:var(--transition); overflow:hidden;
+    }
+    .ts-card::before { content:''; position:absolute; top:0; right:0; bottom:0; width:5px; background:var(--cc,var(--primary)); }
+    .ts-card .ts-p { font-size:.72rem; font-weight:700; color:var(--text-light); }
+    .ts-card .ts-subj { font-size:1rem; font-weight:800; color:var(--text); margin:3px 0 6px; }
+    .ts-card .ts-meta { font-size:.78rem; color:var(--text-muted); display:flex; flex-wrap:wrap; gap:4px 10px; }
+    .ts-card .ts-time { font-size:.8rem; font-weight:700; color:var(--cc,var(--primary)); margin-top:8px; display:flex; align-items:center; gap:5px; }
+    .ts-card.past { opacity:.55; }
+    .ts-card.current { border-color:var(--success); box-shadow:0 0 0 3px rgba(16,185,129,.18); animation:tsPulse 2s ease-in-out infinite; }
+    .ts-card.upcoming-next { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-glow); }
+    @keyframes tsPulse { 0%,100%{box-shadow:0 0 0 3px rgba(16,185,129,.18)} 50%{box-shadow:0 0 0 6px rgba(16,185,129,.10)} }
+    .ts-badge { position:absolute; top:10px; left:10px; font-size:.66rem; font-weight:800; padding:3px 9px; border-radius:50px; color:#fff; }
+    .ts-badge.now  { background:var(--success); }
+    .ts-badge.next { background:var(--primary); }
+    .ts-assembly {
+      background:linear-gradient(135deg,#fff7ed,#ffedd5); border:1.5px solid #fed7aa;
+      border-radius:var(--radius-md); padding:10px 14px; margin-bottom:12px;
+      font-size:.84rem; font-weight:700; color:#9a3412; display:flex; align-items:center; gap:8px;
+    }
+    .ts-empty { padding:26px; text-align:center; color:var(--text-muted); background:var(--surface2); border-radius:var(--radius-md); border:1px dashed var(--border); }
+
     /* SECTION CARDS */
     .section-card {
       background:var(--surface); border-radius:var(--radius-lg);
@@ -1662,6 +1692,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <span class="sidebar-label">إدارة النظام</span>
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
+  <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
   <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
@@ -3845,6 +3876,7 @@ function showSection(name) {
       adminStudents: renderAdminStudents,
       studentDirectory: renderStudentDirectory,
       studentStatus: renderStudentStatus,
+      schedSettings: renderScheduleSettings,
       profile: renderProfile
     };
 
@@ -3940,6 +3972,7 @@ function initSidebarByRole() {
   if (u.role === 'supervisor' || u.role === 'deputy') {
     if (adminSection) adminSection.style.display = 'block';
     var hideItems = ['si-teachers-mgmt', 'si-lists-mgmt', 'si-adminTeachers', 'si-adminStudents'];
+    if (u.role === 'supervisor') hideItems.push('si-schedSettings'); // المشرف لا يضبط التواقيت
     for (var i = 0; i < hideItems.length; i++) {
       var item = document.getElementById(hideItems[i]);
       if (item) item.style.display = 'none';
@@ -4054,6 +4087,10 @@ function renderDashboard() {
                 '</div>' +
                '</div>' +
                assignHtml +
+               '<div class="today-sched" id="todaySchedule">' +
+                 '<div class="ts-head"><span class="ts-title">📅 جدول اليوم</span></div>' +
+                 '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>' +
+               '</div>' +
                '<div class="stats-grid mb-4" id="dashStats">' +
                  '<div class="stat-card"><div class="stat-icon" style="background:var(--primary-glow)">📝</div><div><div class="stat-value skeleton" style="width:48px;height:28px;border-radius:6px;"></div><div class="stat-label skeleton sk-line w75 mt-2"></div></div></div>' +
                  '<div class="stat-card"><div class="stat-icon" style="background:rgba(239,68,68,.1)">⚠️</div><div><div class="stat-value skeleton" style="width:48px;height:28px;border-radius:6px;"></div><div class="stat-label skeleton sk-line w75 mt-2"></div></div></div>' +
@@ -4068,7 +4105,9 @@ function renderDashboard() {
                  '<div class="section-body" id="recentActivityContent"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div></div>' +
                '</div>';
     document.getElementById('dynamicContent').innerHTML = html;
-    
+
+    loadTodaySchedule();
+
     callServer('getMyActivitiesProtected', {}, 'my_activities', 90,
       function(r) {
         if (r && r.success) loadDashboardStats(r.data);
@@ -4152,6 +4191,173 @@ function loadDashboardStats(data) {
     if (ac) ac.innerHTML = '<div class="alert alert-warning">حدث خطأ في عرض الأنشطة</div>';
   }
 }
+// ════════════════════════════════════════════════════════════════════
+//  📅 جدول اليوم اللحظي + ⚙️ إعدادات الجدول
+// ════════════════════════════════════════════════════════════════════
+var TS = { data: null, timer: null, clockOffset: 0 };
+
+// لون ثابت مشتق من اسم المادة (HSL)
+function _subjColor(name) {
+  name = '' + (name || '');
+  var hash = 0;
+  for (var i = 0; i < name.length; i++) { hash = name.charCodeAt(i) + ((hash << 5) - hash); hash |= 0; }
+  var hue = Math.abs(hash) % 360;
+  return 'hsl(' + hue + ',62%,45%)';
+}
+
+function loadTodaySchedule() {
+  if (TS.timer) { clearInterval(TS.timer); TS.timer = null; }
+  callServer('getMyDayScheduleProtected', {}, function (r) {
+    var box = document.getElementById('todaySchedule');
+    if (!box) return;
+    if (!r || !r.success) {
+      box.innerHTML = '<div class="ts-head"><span class="ts-title">📅 جدول اليوم</span></div>' +
+        '<div class="ts-empty">' + ((r && r.error) || 'تعذّر تحميل الجدول — تأكد من رفع الجدول من أداة الحصص') + '</div>';
+      return;
+    }
+    TS.data = r;
+    // إزاحة ساعة الجهاز عن الخادم (لمزامنة الإبراز الحي)
+    var localMin = new Date().getHours() * 60 + new Date().getMinutes();
+    TS.clockOffset = (r.serverMinutes || 0) - localMin;
+    renderTodaySchedule();
+    // تحديث حيّ كل 30 ثانية
+    TS.timer = setInterval(function () {
+      if (!document.getElementById('todaySchedule')) { clearInterval(TS.timer); TS.timer = null; return; }
+      renderTodaySchedule();
+    }, 30000);
+  }, function (e) {
+    var box = document.getElementById('todaySchedule');
+    if (box) box.innerHTML = '<div class="ts-head"><span class="ts-title">📅 جدول اليوم</span></div><div class="ts-empty">خطأ: ' + (e.message || e) + '</div>';
+  });
+}
+
+function _tsNowMin() {
+  return (new Date().getHours() * 60 + new Date().getMinutes()) + (TS.clockOffset || 0);
+}
+function _tsFmt(min) {
+  min = ((Math.round(min) % 1440) + 1440) % 1440;
+  var h = Math.floor(min / 60), mn = min % 60;
+  var ampm = h < 12 ? 'ص' : 'م'; var h12 = ((h + 11) % 12) + 1;
+  return h12 + ':' + (mn < 10 ? '0' + mn : mn) + ' ' + ampm;
+}
+
+function renderTodaySchedule() {
+  var box = document.getElementById('todaySchedule');
+  if (!box || !TS.data) return;
+  var d = TS.data;
+  var nowMin = _tsNowMin();
+
+  var head = '<div class="ts-head"><span class="ts-title">📅 جدول اليوم — ' + escapeHtml(d.today || '') + '</span>' +
+    '<span class="ts-now">🕐 الآن ' + _tsFmt(nowMin) + '</span></div>';
+
+  if (d.isWeekend) {
+    box.innerHTML = head + '<div class="ts-empty">🌴 اليوم عطلة أسبوعية — استمتع بيومك!</div>';
+    return;
+  }
+  if (!d.periods || !d.periods.length) {
+    var asm0 = d.assembly ? '<div class="ts-assembly">🚩 طابور الصباح: ' + _tsFmt(d.assembly.startMin) + ' — ' + _tsFmt(d.assembly.endMin) + '</div>' : '';
+    box.innerHTML = head + asm0 + '<div class="ts-empty">📭 لا توجد حصص مسندة إليك اليوم</div>';
+    return;
+  }
+
+  // حدّد الحصة التالية (أول upcoming بعد الآن)
+  var nextIdx = -1;
+  for (var i = 0; i < d.periods.length; i++) {
+    var st = _tsStatus(d.periods[i], nowMin);
+    if (st === 'current') { nextIdx = -2; break; }       // هناك حصة حالية → لا "التالية"
+    if (st === 'upcoming' && nextIdx === -1) nextIdx = i;
+  }
+
+  var asm = d.assembly ? '<div class="ts-assembly">🚩 طابور الصباح: ' + _tsFmt(d.assembly.startMin) + ' — ' + _tsFmt(d.assembly.endMin) + '</div>' : '';
+  var cards = '';
+  for (var j = 0; j < d.periods.length; j++) {
+    var p = d.periods[j];
+    var status = _tsStatus(p, nowMin);
+    var cls = 'ts-card ' + status + (j === nextIdx ? ' upcoming-next' : '');
+    var color = _subjColor(p.subject);
+    var badge = '';
+    if (status === 'current') badge = '<span class="ts-badge now">● الآن</span>';
+    else if (j === nextIdx) badge = '<span class="ts-badge next">التالية</span>';
+    var remain = '';
+    if (status === 'current') {
+      var left = p.endMin - nowMin; if (left < 0) left = 0;
+      remain = ' · يتبقّى ' + left + ' د';
+    } else if (j === nextIdx) {
+      var toGo = p.startMin - nowMin; if (toGo < 0) toGo = 0;
+      remain = ' · بعد ' + toGo + ' د';
+    }
+    cards += '<div class="' + cls + '" style="--cc:' + color + '">' + badge +
+      '<div class="ts-p">الحصة ' + p.period + '</div>' +
+      '<div class="ts-subj">' + escapeHtml(p.subject || '') + '</div>' +
+      '<div class="ts-meta"><span>🏫 ' + escapeHtml(p.grade || '') + '</span><span>🔠 ' + escapeHtml(p.section || '') + '</span>' +
+        (p.room ? '<span>📍 ' + escapeHtml(p.room) + '</span>' : '') + '</div>' +
+      '<div class="ts-time">🕐 ' + _tsFmt(p.startMin) + ' — ' + _tsFmt(p.endMin) + remain + '</div>' +
+      '</div>';
+  }
+  box.innerHTML = head + asm + '<div class="ts-grid">' + cards + '</div>';
+}
+function _tsStatus(p, nowMin) {
+  if (!p.endMin) return 'upcoming';
+  if (nowMin >= p.endMin) return 'past';
+  if (nowMin >= p.startMin && nowMin < p.endMin) return 'current';
+  return 'upcoming';
+}
+
+// ── إعدادات الجدول (مدير/وكيل) ──
+function renderScheduleSettings() {
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">⚙️</div>' +
+    '<div class="section-header-title">إعدادات الجدول والتواقيت</div></div>' +
+    '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div>';
+  callServer('getScheduleSettingsProtected', {}, function (r) {
+    if (!r || !r.success) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-warning">تعذّر التحميل</div>'; return; }
+    _renderSchedSetForm(r.settings, r.breaksByGrade || {});
+  }, function (e) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function _renderSchedSetForm(s, breaks) {
+  var body = document.getElementById('schedSetBody');
+  var grades = myGrades();
+  var h = '<div class="filter-bar"><div class="filter-bar-title">⏰ التواقيت العامة</div>' +
+    '<div class="form-row">' +
+    '<div class="form-group"><label class="form-label">بداية الدوام</label><input type="time" class="form-control" id="ss-start" value="' + escapeHtml(s.dayStart || '07:00') + '"></div>' +
+    '<div class="form-group"><label class="form-label">مدة طابور الصباح (دقيقة)</label><input type="number" class="form-control" id="ss-assembly" value="' + (s.assemblyMinutes || 15) + '"></div>' +
+    '<div class="form-group"><label class="form-label">مدة الحصة (دقيقة)</label><input type="number" class="form-control" id="ss-period" value="' + (s.periodMinutes || 45) + '"></div>' +
+    '<div class="form-group"><label class="form-label">مدة الاستراحة (دقيقة)</label><input type="number" class="form-control" id="ss-break" value="' + (s.breakMinutes || 25) + '"></div>' +
+    '<div class="form-group"><label class="form-label">عدد الحصص</label><input type="number" class="form-control" id="ss-count" value="' + (s.periodsCount || 7) + '"></div>' +
+    '</div></div>';
+  h += '<div class="filter-bar"><div class="filter-bar-title">☕ استراحة كل صف (بعد الحصة رقم)</div><div class="form-row" id="ss-breaks">';
+  if (!grades.length) h += '<div style="color:var(--text-muted);font-size:.85rem">لا توجد صفوف — تأكد من رفع البيانات</div>';
+  for (var i = 0; i < grades.length; i++) {
+    var g = grades[i]; var after = breaks[g] || 2;
+    var opts = '';
+    for (var p = 1; p <= (s.periodsCount || 7); p++) opts += '<option value="' + p + '"' + (p === after ? ' selected' : '') + '>بعد الحصة ' + p + '</option>';
+    h += '<div class="form-group"><label class="form-label">' + escapeHtml(g) + '</label><select class="form-select ss-grade-break" data-grade="' + escapeHtml(g) + '">' + opts + '</select></div>';
+  }
+  h += '</div></div>';
+  h += '<button class="btn btn-primary" onclick="saveScheduleSettings()">💾 حفظ الإعدادات</button>' +
+       '<div id="ss-status" style="margin-top:10px"></div>';
+  body.innerHTML = h;
+}
+function saveScheduleSettings() {
+  var settings = {
+    dayStart: document.getElementById('ss-start').value || '07:00',
+    assemblyMinutes: parseInt(document.getElementById('ss-assembly').value, 10) || 0,
+    periodMinutes: parseInt(document.getElementById('ss-period').value, 10) || 45,
+    breakMinutes: parseInt(document.getElementById('ss-break').value, 10) || 0,
+    periodsCount: parseInt(document.getElementById('ss-count').value, 10) || 7
+  };
+  var breaksByGrade = {};
+  var sel = document.querySelectorAll('.ss-grade-break');
+  for (var i = 0; i < sel.length; i++) breaksByGrade[sel[i].getAttribute('data-grade')] = parseInt(sel[i].value, 10) || 2;
+  var st = document.getElementById('ss-status');
+  st.innerHTML = '<span style="color:#1a237e">⏳ جاري الحفظ…</span>';
+  callServer('saveScheduleSettingsProtected', { settings: settings, breaksByGrade: breaksByGrade }, function (r) {
+    if (r && r.success) { st.innerHTML = '<span style="color:#2e7d32">✅ ' + r.message + '</span>'; toast('✅ تم حفظ إعدادات الجدول', 'success'); }
+    else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+}
+
 // ==================== GRADES ====================
 function renderGrades() { var grades = myGrades(); var sections = mySections(); var subjects = mySubjects(); var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(79,70,229,.12)">📊</div><div class="section-header-title">إدارة الدرجات</div><div id="gradesHeaderBtns" class="btn-group" style="display:none"><button class="btn btn-sm btn-success" onclick="saveAllGrades()">💾 حفظ الكل</button><button class="btn btn-sm btn-secondary" onclick="exportGrades()">📤 تصدير</button><button class="btn btn-sm btn-warning" onclick="importGradesPrompt()">📥 استيراد</button><button class="btn btn-sm btn-secondary" onclick="clearAllGrades()">🗑️ مسح</button></div></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الشهر</label><select class="form-select" id="gradeMonth" onchange="onGradeFilterChange()"><option value="">اختر الشهر</option>' + ALL_MONTHS.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('') + '</select></div><div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="gradeSubject" onchange="onGradeFilterChange()">' + buildSelectOptions(subjects, 'اختر المادة', mySubject()) + '</select></div><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="gradeGrade" onchange="onGradeFilterChange(); updateGradeSectionSelect();">' + buildSelectOptions(grades, 'اختر الفصل', isAdmin() ? '' : myGrade()) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="gradeSection" onchange="onGradeFilterChange()">' + buildSelectOptions(getMySectionsForGrade(myGrade()), 'اختر الشعبة', isAdmin() ? '' : mySection()) + '</select></div><div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="loadStudentsGrades()">🔍 عرض</button></div></div><div id="termMonthNotice" class="alert alert-info mb-3 hidden">📌 شهر نهائي — <b>الأعمال المستمرة</b> (تحسب تلقائياً من الشهور السابقة /20) + <b>درجة الاختبار</b> (يدخلها المعلم /30) = <b>المحصلة</b> (تظهر تلقائياً /50)</div><div id="importArea" class="hidden mb-3"><div class="file-drop-zone" onclick="document.getElementById(\'gradesImportFile\').click()">📥 انقر أو اسحب ملف Excel للاستيراد</div><input type="file" id="gradesImportFile" accept=".xlsx,.xls" style="display:none" onchange="doImportGrades(this)"></div><div id="gradesStudentsArea" style="display:none"><div class="d-flex align-center gap-2 mb-3"><span id="gradesInfoBadge" class="badge badge-info"></span><div class="flex-1"></div><input type="text" class="form-control" style="max-width:200px" placeholder="🔍 بحث باسم الطالب..." oninput="filterGradesTable(this.value)"></div><div class="table-wrap"><table id="gradesTable"><thead id="gradesTableHead"></thead><tbody id="gradesTableBody"></tbody></table></div><div class="mt-3 text-center"><span id="gradesSaveStatus" class="badge badge-success hidden">كل شيء محفوظ ✅</span></div></div><div id="gradesEmpty" class="empty-state"><div class="es-icon">📊</div><div class="es-title">اختر الفلاتر واضغط "عرض"</div><div class="es-sub">اختر الشهر والمادة والفصل والشعبة لعرض الطلاب</div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; }
 function onGradeFilterChange() { var m = document.getElementById('gradeMonth'); var mVal = m ? m.value : ''; var notice = document.getElementById('termMonthNotice'); if (notice) { if (TERM_MONTHS.indexOf(mVal) !== -1) notice.classList.remove('hidden'); else notice.classList.add('hidden'); } }

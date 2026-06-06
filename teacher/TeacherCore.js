@@ -4097,6 +4097,229 @@ function getMyScheduleProtected(params) {
     }
   });
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  ⏰ المرحلة 1: إعدادات تواقيت الجدول + الجدول اليومي اللحظي  (ES5, append)
+// ════════════════════════════════════════════════════════════════════
+
+var SCHED_SETTINGS_SHEET = 'اعدادات_الجدول';
+var SCHED_BREAKS_SHEET   = 'استراحات_الصفوف';
+var SCHED_DEFAULTS = {
+  day_start: '07:00', assembly_minutes: 15, period_minutes: 45,
+  break_minutes: 25, periods_count: 7
+};
+var SCHED_DAY_BY_ISO = { 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة', 6: 'السبت', 7: 'الأحد' };
+
+// "HH:MM" → دقائق منذ منتصف الليل
+function _tcParseHHMM(s) {
+  s = _safeStr(s);
+  var m = s.match(/(\d{1,2})\s*:\s*(\d{1,2})/);
+  if (!m) return 0;
+  var h = parseInt(m[1], 10) || 0, mn = parseInt(m[2], 10) || 0;
+  return (h * 60 + mn);
+}
+// دقائق → "HH:MM" (24h)
+function _tcFmtMin(min) {
+  min = Math.max(0, Math.round(min));
+  var h = Math.floor(min / 60) % 24, mn = min % 60;
+  return (h < 10 ? '0' + h : '' + h) + ':' + (mn < 10 ? '0' + mn : '' + mn);
+}
+// دقائق → عرض عربي 12 ساعة (مثال: 1:05 م)
+function _tcMinToDisplay(min) {
+  min = Math.max(0, Math.round(min));
+  var h = Math.floor(min / 60) % 24, mn = min % 60;
+  var ampm = (h < 12) ? 'ص' : 'م';
+  var h12 = ((h + 11) % 12) + 1;
+  return h12 + ':' + (mn < 10 ? '0' + mn : '' + mn) + ' ' + ampm;
+}
+
+// وقت الخادم الحالي: اسم اليوم + الدقائق + HH:MM
+function _tcNowInfo() {
+  var tz = Session.getScriptTimeZone();
+  var now = new Date();
+  var iso = parseInt(Utilities.formatDate(now, tz, 'u'), 10); // 1=الاثنين..7=الأحد
+  var hhmm = Utilities.formatDate(now, tz, 'HH:mm');
+  return { dayName: SCHED_DAY_BY_ISO[iso] || '', minutes: _tcParseHHMM(hhmm), hhmm: hhmm };
+}
+
+// قراءة الإعدادات (تنشئ الأوراق بقيم افتراضية إن غابت)
+function getScheduleSettingsProtected(params) {
+  return withAuth(params, function (session) {
+    return _tcGetScheduleSettings();
+  });
+}
+function _tcGetScheduleSettings() {
+  var cached = _tcCacheGet('tc_sched_settings');
+  if (cached) return cached;
+  try {
+    var ss = _getSS();
+    // الإعدادات العامة (مفتاح/قيمة)
+    var setSheet = ss.getSheetByName(SCHED_SETTINGS_SHEET);
+    if (!setSheet) {
+      setSheet = ss.insertSheet(SCHED_SETTINGS_SHEET);
+      setSheet.appendRow(['المفتاح', 'القيمة']);
+      var keys = ['day_start', 'assembly_minutes', 'period_minutes', 'break_minutes', 'periods_count'];
+      for (var k = 0; k < keys.length; k++) setSheet.appendRow([keys[k], SCHED_DEFAULTS[keys[k]]]);
+      setSheet.setFrozenRows(1);
+    }
+    var sv = {};
+    var sd = setSheet.getDataRange().getValues();
+    for (var i = 1; i < sd.length; i++) {
+      var key = _safeStr(sd[i][0]); if (key) sv[key] = _safeStr(sd[i][1]);
+    }
+    var settings = {
+      dayStart:       sv.day_start || SCHED_DEFAULTS.day_start,
+      assemblyMinutes: _safeFloat(sv.assembly_minutes) || SCHED_DEFAULTS.assembly_minutes,
+      periodMinutes:  _safeFloat(sv.period_minutes) || SCHED_DEFAULTS.period_minutes,
+      breakMinutes:   _safeFloat(sv.break_minutes) || SCHED_DEFAULTS.break_minutes,
+      periodsCount:   _safeFloat(sv.periods_count) || SCHED_DEFAULTS.periods_count
+    };
+    // استراحات الصفوف
+    var brSheet = ss.getSheetByName(SCHED_BREAKS_SHEET);
+    if (!brSheet) {
+      brSheet = ss.insertSheet(SCHED_BREAKS_SHEET);
+      brSheet.appendRow(['الصف', 'بعد_الحصة']);
+      brSheet.setFrozenRows(1);
+    }
+    var breaksByGrade = {};
+    var bd = brSheet.getDataRange().getValues();
+    for (var j = 1; j < bd.length; j++) {
+      var g = _safeStr(bd[j][0]); if (g) breaksByGrade[g] = _safeFloat(bd[j][1]) || 2;
+    }
+    var result = { success: true, settings: settings, breaksByGrade: breaksByGrade };
+    _tcCacheSet('tc_sched_settings', result, 300);
+    return result;
+  } catch (e) {
+    return { success: true, settings: {
+      dayStart: SCHED_DEFAULTS.day_start, assemblyMinutes: SCHED_DEFAULTS.assembly_minutes,
+      periodMinutes: SCHED_DEFAULTS.period_minutes, breakMinutes: SCHED_DEFAULTS.break_minutes,
+      periodsCount: SCHED_DEFAULTS.periods_count
+    }, breaksByGrade: {} };
+  }
+}
+
+// حفظ الإعدادات — للمدير/الوكيل فقط
+function saveScheduleSettingsProtected(params) {
+  return withAuth(params, function (session) {
+    var role = _safeStr(session.role);
+    // المدير/الوكيل/المحاسب فقط (المشرف لديه isAdmin=true لكنه لا يضبط الإعدادات)
+    if (!(role === 'admin' || role === 'deputy' || role === 'accountant')) {
+      return { success: false, error: 'غير مصرح — للمدير أو الوكيل فقط' };
+    }
+    try {
+      var ss = _getSS();
+      var st = params.settings || {};
+      var setSheet = ss.getSheetByName(SCHED_SETTINGS_SHEET) || ss.insertSheet(SCHED_SETTINGS_SHEET);
+      setSheet.clear();
+      setSheet.appendRow(['المفتاح', 'القيمة']);
+      setSheet.appendRow(['day_start', _safeStr(st.dayStart) || SCHED_DEFAULTS.day_start]);
+      setSheet.appendRow(['assembly_minutes', _safeFloat(st.assemblyMinutes) || SCHED_DEFAULTS.assembly_minutes]);
+      setSheet.appendRow(['period_minutes', _safeFloat(st.periodMinutes) || SCHED_DEFAULTS.period_minutes]);
+      setSheet.appendRow(['break_minutes', (st.breakMinutes === 0 || st.breakMinutes) ? _safeFloat(st.breakMinutes) : SCHED_DEFAULTS.break_minutes]);
+      setSheet.appendRow(['periods_count', _safeFloat(st.periodsCount) || SCHED_DEFAULTS.periods_count]);
+      setSheet.setFrozenRows(1);
+
+      var breaks = params.breaksByGrade || {};
+      var brSheet = ss.getSheetByName(SCHED_BREAKS_SHEET) || ss.insertSheet(SCHED_BREAKS_SHEET);
+      brSheet.clear();
+      brSheet.appendRow(['الصف', 'بعد_الحصة']);
+      for (var g in breaks) {
+        if (breaks.hasOwnProperty(g) && g) brSheet.appendRow([g, _safeFloat(breaks[g]) || 2]);
+      }
+      brSheet.setFrozenRows(1);
+
+      SpreadsheetApp.flush();
+      _tcCacheDel('tc_sched_settings');
+      return { success: true, message: 'تم حفظ إعدادات الجدول بنجاح' };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
+
+// يبني مواقيت الحصص لصف معيّن: {assembly:{start,end}, slots:[{period,start,end,startMin,endMin,isBreak}]}
+function _tcComputePeriodTimes(settings, grade, breaksByGrade) {
+  var startMin = _tcParseHHMM(settings.dayStart);
+  var cursor = startMin;
+  var assembly = null;
+  if (settings.assemblyMinutes > 0) {
+    assembly = { startMin: cursor, endMin: cursor + settings.assemblyMinutes };
+    cursor += settings.assemblyMinutes;
+  }
+  var breakAfter = (breaksByGrade && breaksByGrade[grade]) ? breaksByGrade[grade] : 0;
+  var slots = [];
+  for (var p = 1; p <= settings.periodsCount; p++) {
+    var s = cursor, e = cursor + settings.periodMinutes;
+    slots.push({ period: p, startMin: s, endMin: e, isBreak: false });
+    cursor = e;
+    if (breakAfter && p === breakAfter && settings.breakMinutes > 0) {
+      slots.push({ period: 0, startMin: cursor, endMin: cursor + settings.breakMinutes, isBreak: true });
+      cursor += settings.breakMinutes;
+    }
+  }
+  return { assembly: assembly, slots: slots };
+}
+
+// الجدول اليومي اللحظي للمعلم الحالي
+function getMyDayScheduleProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var info = _tcNowInfo();
+      var isWeekend = (info.dayName === 'الخميس' || info.dayName === 'الجمعة');
+
+      var setRes = _tcGetScheduleSettings();
+      var settings = setRes.settings;
+      var breaksByGrade = setRes.breaksByGrade || {};
+
+      var assemblyOut = null;
+      // الطابور يُحسب من إعدادات صف عام (نفس لكل الصفوف)
+      if (settings.assemblyMinutes > 0) {
+        var aStart = _tcParseHHMM(settings.dayStart);
+        assemblyOut = { startMin: aStart, endMin: aStart + settings.assemblyMinutes,
+                        start: _tcMinToDisplay(aStart), end: _tcMinToDisplay(aStart + settings.assemblyMinutes) };
+      }
+
+      if (isWeekend) {
+        return { success: true, today: info.dayName, isWeekend: true, serverTime: info.hhmm,
+                 serverMinutes: info.minutes, assembly: assemblyOut, periods: [] };
+      }
+
+      // إعادة استخدام منطق الفلترة الكامل
+      var sch = getMyScheduleProtected(params);
+      var rows = (sch && sch.success && sch.schedule) ? sch.schedule : [];
+
+      var out = [];
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (_safeStr(r.day) !== info.dayName) continue;
+        var pNum = parseInt(r.period, 10) || 0;
+        var times = _tcComputePeriodTimes(settings, r.grade, breaksByGrade);
+        var slot = null;
+        for (var sI = 0; sI < times.slots.length; sI++) {
+          if (!times.slots[sI].isBreak && times.slots[sI].period === pNum) { slot = times.slots[sI]; break; }
+        }
+        var startMin = slot ? slot.startMin : 0;
+        var endMin = slot ? slot.endMin : 0;
+        var status = 'upcoming';
+        if (slot) {
+          if (info.minutes >= endMin) status = 'past';
+          else if (info.minutes >= startMin && info.minutes < endMin) status = 'current';
+        }
+        out.push({
+          period: pNum, subject: r.subject, grade: r.grade, section: r.section, room: r.room,
+          startMin: startMin, endMin: endMin,
+          start: _tcMinToDisplay(startMin), end: _tcMinToDisplay(endMin), status: status
+        });
+      }
+      out.sort(function (a, b) { return a.startMin - b.startMin; });
+
+      return { success: true, today: info.dayName, isWeekend: false, serverTime: info.hhmm,
+               serverMinutes: info.minutes, assembly: assemblyOut, periods: out };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
 // ============================================================
 // initBlockSettings — تهيئة الحجب المالي بقيمة مناسبة
 // شغّله من TeacherCore.gs مرة واحدة (أو من لوحة المعلم)
