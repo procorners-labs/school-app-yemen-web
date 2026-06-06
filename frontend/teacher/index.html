@@ -2619,6 +2619,37 @@ function esc(str) {
   return escapeHtml(str);
 }
 
+// ── مُطبِّع بحث عربي مشترك: تجاهل التشكيل + توحيد الألف/الياء/التاء المربوطة + المسافات ──
+// يجعل البحث أكثر تسامحاً ودقة عبر كل الصفحات (أداء عالٍ: عملية واحدة على النص).
+function _tcNorm(s) {
+  if (s === undefined || s === null) return '';
+  return String(s)
+    .replace(/[ً-ْـ]/g, '')   // تشكيل + تطويل
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// مقارنة تاريخ تنازلية (الأحدث أولاً) — موحّدة لكل القوائم الزمنية
+function _tcDateVal(o) {
+  var d = (o && (o.date || o.createdAt || o.timestamp)) || '';
+  if (!d) return 0;
+  var t = new Date(d).getTime();
+  return isNaN(t) ? 0 : t;
+}
+function _tcByNewest(a, b) {
+  var diff = _tcDateVal(b) - _tcDateVal(a);
+  if (diff !== 0) return diff;
+  // عند تساوي/غياب التاريخ: حافظ على ترتيب مستقر بمقارنة نصية للتاريخ الخام
+  return String((b && (b.date || '')) || '').localeCompare(String((a && (a.date || '')) || ''));
+}
+function _tcByOldest(a, b) { return -_tcByNewest(a, b); }
+
 function toggleNewsLike(newsId) {
   if (!newsId) return;
   callServer('toggleNewsLikeProtected', { newsId: newsId }, function(r) {
@@ -4643,7 +4674,7 @@ function applyHomeworkFilters() {
   var subj     = (document.getElementById('hwFilterSubject') || {}).value || '';
   var dateFrom = (document.getElementById('hwDateFrom')      || {}).value || '';
   var dateTo   = (document.getElementById('hwDateTo')        || {}).value || '';
-  var q        = ((document.getElementById('hwSearchInput')  || {}).value || '').trim().toLowerCase();
+  var q        = _tcNorm((document.getElementById('hwSearchInput')  || {}).value || '');
   var sortOrd  = (document.getElementById('hwSortOrder')     || {}).value || 'newest';
   _hwSortOrder = sortOrd;
 
@@ -4671,9 +4702,9 @@ function applyHomeworkFilters() {
     if (dateFrom && (h.date || '') < dateFrom) continue;
     if (dateTo   && (h.date || '') > dateTo)   continue;
 
-    // فلتر البحث النصي
+    // فلتر البحث النصي (مُطبَّع عربياً)
     if (q) {
-      var haystack = ((h.homework || '') + ' ' + (h.teacher || '') + ' ' + (h.subject || '')).toLowerCase();
+      var haystack = _tcNorm((h.homework || '') + ' ' + (h.teacher || '') + ' ' + (h.subject || ''));
       if (haystack.indexOf(q) === -1) continue;
     }
 
@@ -4823,13 +4854,21 @@ function renderViolations() {
           '</div>' +
           '<div class="form-group">' +
             '<label class="form-label">الشعبة</label>' +
-            '<select class="form-select" id="vioFilterSection" onchange="filterViolations()">' + 
-              buildSelectOptions(mySections(), 'الكل', '', true) + 
+            '<select class="form-select" id="vioFilterSection" onchange="filterViolations()">' +
+              buildSelectOptions(mySections(), 'الكل', '', true) +
+            '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">الترتيب</label>' +
+            '<select class="form-select" id="vioSort" onchange="filterViolations()">' +
+              '<option value="newest">🆕 الأحدث أولاً</option>' +
+              '<option value="oldest">🔼 الأقدم أولاً</option>' +
+              '<option value="name">🔤 حسب الاسم</option>' +
             '</select>' +
           '</div>' +
           '<div class="form-group flex-1">' +
             '<label class="form-label">بحث</label>' +
-            '<input type="text" class="form-control" id="vioFilterSearch" placeholder="🔍 اسم الطالب أو الكود..." oninput="_debounceFilterViolations()">' +
+            '<input type="text" class="form-control" id="vioFilterSearch" placeholder="🔍 اسم الطالب أو الكود أو المخالفة..." oninput="_debounceFilterViolations()">' +
           '</div>' +
         '</div>' +
         '<div id="vioListArea">' +
@@ -4860,26 +4899,29 @@ function loadViolations() {
 function filterViolations() {
   var gradeF   = (document.getElementById('vioFilterGrade') || {}).value || '';
   var sectionF = (document.getElementById('vioFilterSection') || {}).value || '';
-  var searchF  = (document.getElementById('vioFilterSearch') || {}).value || '';
-  searchF = searchF.trim().toLowerCase();
-  
+  var sortF    = (document.getElementById('vioSort') || {}).value || 'newest';
+  var searchQ  = _tcNorm((document.getElementById('vioFilterSearch') || {}).value || '');
+
   var list = [];
   for (var i = 0; i < _allViolations.length; i++) {
     var v = _allViolations[i];
     if (!isAllFilter(gradeF) && v.grade !== gradeF) continue;
     if (!isAllFilter(sectionF) && v.section !== sectionF) continue;
-    if (searchF) {
-      var nm = (v.name || '').toLowerCase().indexOf(searchF) !== -1;
-      var cm = (v.code || '').toLowerCase().indexOf(searchF) !== -1;
-      if (!nm && !cm) continue;
+    if (searchQ) {
+      var hay = _tcNorm((v.name || '') + ' ' + (v.code || '') + ' ' + (v.violation || ''));
+      if (hay.indexOf(searchQ) === -1) continue;
     }
     list.push(v);
   }
-  
-  // ترتيب أبجدي (عربي)
-  list.sort(function(a, b) {
-    return (a.name || '').localeCompare(b.name || '', 'ar');
-  });
+
+  // الترتيب: الأحدث أولاً افتراضياً
+  if (sortF === 'name') {
+    list.sort(function(a, b) { return (a.name || '').localeCompare(b.name || '', 'ar'); });
+  } else if (sortF === 'oldest') {
+    list.sort(_tcByOldest);
+  } else {
+    list.sort(_tcByNewest);
+  }
   
   _vioFilteredList = list;
   _vioTotalPages = Math.ceil(_vioFilteredList.length / _vioPageSize) || 1;
@@ -5866,8 +5908,8 @@ function deleteNewsItem(id) { confirmAction('حذف الخبر', 'هل تريد 
 // ==================== NOTES ====================
 function renderNotes() { var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(139,92,246,.1)">💬</div><div class="section-header-title">ملاحظات أولياء الأمور</div><span class="badge badge-info" style="margin-right: 12px;">المرسلة من منصة الطلاب</span></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="notesFilterGrade" onchange="loadParentNotesForUI()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="notesFilterSection" onchange="loadParentNotesForUI()">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div><div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="notesSearch" placeholder="🔍 اسم الطالب..." oninput="filterParentNotes()"></div></div><div id="notesListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; loadParentNotesForUI(); }
 function loadParentNotesForUI() { showLoading('جاري تحميل الملاحظات...'); callServer('getParentNotesProtected', {}, 'parent_notes', 120, function(r) { hideLoading(); if (r.success) { _allParentNotes = r.notes || []; applyParentNotesFilters(); } else showError(r.error); }); }
-function applyParentNotesFilters() { var gEl = document.getElementById('notesFilterGrade'); var sEl = document.getElementById('notesFilterSection'); var qEl = document.getElementById('notesSearch'); var g = gEl ? gEl.value : ''; var sec = sEl ? sEl.value : ''; var q = (qEl ? qEl.value : '').toLowerCase(); var filtered = []; for (var i = 0; i < _allParentNotes.length; i++) { var n = _allParentNotes[i]; if (!isAllFilter(g) && n.grade !== g) continue;
-if (!isAllFilter(sec) && n.section !== sec) continue; if (q && (n.studentName || '').toLowerCase().indexOf(q) === -1) continue; filtered.push(n); } renderParentNotesList(filtered); }
+function applyParentNotesFilters() { var gEl = document.getElementById('notesFilterGrade'); var sEl = document.getElementById('notesFilterSection'); var qEl = document.getElementById('notesSearch'); var g = gEl ? gEl.value : ''; var sec = sEl ? sEl.value : ''; var q = _tcNorm(qEl ? qEl.value : ''); var filtered = []; for (var i = 0; i < _allParentNotes.length; i++) { var n = _allParentNotes[i]; if (!isAllFilter(g) && n.grade !== g) continue;
+if (!isAllFilter(sec) && n.section !== sec) continue; if (q) { var hay = _tcNorm((n.studentName || '') + ' ' + (n.teacher || '') + ' ' + (n.message || '')); if (hay.indexOf(q) === -1) continue; } filtered.push(n); } filtered.sort(_tcByNewest); renderParentNotesList(filtered); }
 function filterParentNotes() { applyParentNotesFilters(); }
 function renderParentNotesList(notes) { var container = document.getElementById('notesListArea'); if (!notes.length) { container.innerHTML = '<div class="empty-state"><div class="es-icon">💬</div><div class="es-title">لا توجد ملاحظات</div><div class="es-sub">ستظهر هنا ملاحظات أولياء الأمور عند وصولها</div></div>'; return; } var html = '<div style="display:flex; flex-direction:column; gap:14px;">'; for (var i = 0; i < notes.length; i++) { var n = notes[i]; var hasReply = n.reply && n.reply.trim() !== ''; var canReply = isAdmin() || (App.user.teacherName === n.teacher); html += '<div class="note-card" style="border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; background:var(--surface);"><div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;"><span class="badge badge-info">' + (n.grade || '') + '</span><span class="badge badge-purple">' + (n.section || '') + '</span><span style="font-weight:600;">' + (n.studentName || '') + '</span><span style="color:var(--text-muted); font-size:0.85rem;">إلى: ' + (n.teacher || '') + '</span><span style="margin-right:auto; font-size:0.78rem; color:var(--text-light);">' + formatDate(n.date) + '</span>' + (hasReply ? '<span class="badge badge-success">تم الرد</span>' : '<span class="badge badge-warning">بانتظار الرد</span>') + '</div><p style="margin:0 0 12px 0; line-height:1.6; background:var(--surface2); padding:12px; border-radius:var(--radius-sm);">' + (n.message || '') + '</p>'; if (hasReply) { html += '<div style="background:#f0fdf4; border-right:3px solid var(--success); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:12px;"><div style="font-weight:600; font-size:0.8rem; color:var(--success); margin-bottom:4px;">💬 الرد:</div><div style="font-size:0.9rem;">' + n.reply + '</div></div>'; } if (!hasReply && canReply) { html += '<div style="display:flex; gap:8px; margin-top:8px;"><input type="text" class="form-control" id="replyInput_' + n.id + '" placeholder="اكتب رداً..." style="flex:1;"><button class="btn btn-sm btn-primary" onclick="submitNoteReply(' + n.id + ')">إرسال الرد</button></div>'; } html += '</div>'; } html += '</div>'; container.innerHTML = html; }
 function submitNoteReply(noteId) { var input = document.getElementById('replyInput_' + noteId); var reply = input.value.trim(); if (!reply) { toast('الرجاء كتابة رد', 'warning'); return; } showLoading('جاري حفظ الرد...'); callServer('addNoteReplyProtected', { noteId: noteId, reply: reply }, function(r) { hideLoading(); if (r.success) { toast('تم حفظ الرد بنجاح', 'success'); loadParentNotesForUI(); } else showError(r.error); }); }
@@ -6167,11 +6209,13 @@ function switchActivitiesTab(tab, btn) {
 function renderAdminActivitiesTab(tab) {
   var c = document.getElementById('adminActivitiesContent');
   if (!_adminActivitiesCache) { c.innerHTML = ''; return; }
-  var data = _adminActivitiesCache[tab] || [];
+  var data = (_adminActivitiesCache[tab] || []).slice();
   if (!data.length) {
     c.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا يوجد بيانات</div></div>';
     return;
   }
+  // الأحدث أولاً افتراضياً في كل التبويبات
+  data.sort(_tcByNewest);
   var html = '';
   if (tab === 'homework') {
     html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>الواجب</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
@@ -7007,11 +7051,12 @@ function tabs_pickTeacher(name){ var el=document.getElementById('tabs-teacher');
 // ── قائمة اقتراح أسماء عامة (تعمل في WebView بخلاف datalist) ──
 function _acRender(boxId, names, q, pickFn){
   var box=document.getElementById(boxId); if(!box) return;
-  q=(''+(q||'')).trim();
-  if(!q || !names || !names.length){ _acHideNow(boxId); return; }
+  var qn=(typeof _tcNorm==='function')?_tcNorm(q):(''+(q||'')).trim().toLowerCase();
+  if(!qn || !names || !names.length){ _acHideNow(boxId); return; }
   var seen={}, h='', n=0;
   for(var i=0;i<names.length && n<12;i++){ var nm=''+names[i];
-    if(!nm || nm.indexOf(q)<0 || seen[nm]) continue; seen[nm]=1; n++;
+    var nmn=(typeof _tcNorm==='function')?_tcNorm(nm):nm.toLowerCase();
+    if(!nm || nmn.indexOf(qn)<0 || seen[nm]) continue; seen[nm]=1; n++;
     h+='<div data-v="'+nm.replace(/"/g,'&quot;')+'" onmousedown="'+pickFn+'(this.getAttribute(\'data-v\'))" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;">'+nm+'</div>';
   }
   if(!n){ _acHideNow(boxId); return; }
@@ -8188,13 +8233,16 @@ function sdir_renderManager() {
 function sdir_visibleList() {
   var fg = (document.getElementById('sdir-fg') || {}).value || '';
   var fs = (document.getElementById('sdir-fs') || {}).value || '';
-  var q = ((document.getElementById('sdir-q') || {}).value || '').trim();
+  var q = _tcNorm((document.getElementById('sdir-q') || {}).value || '');
   var arr = [];
   for (var i = 0; i < SDIR.students.length; i++) {
     var st = SDIR.students[i];
     if (fg && st.grade !== fg) continue;
     if (fs && st.section !== fs) continue;
-    if (q && (st.name || '').indexOf(q) < 0 && (st.code || '').indexOf(q) < 0 && (st.phone || '').indexOf(q) < 0) continue;
+    if (q) {
+      var hay = _tcNorm((st.name || '') + ' ' + (st.code || '') + ' ' + (st.phone || ''));
+      if (hay.indexOf(q) < 0) continue;
+    }
     arr.push(i);
   }
   return arr;
@@ -8230,7 +8278,7 @@ function sdir_renderRows() {
 function sdir_sel(i, on) { if (on) SDIR.selected[i] = 1; else delete SDIR.selected[i]; sdir_updateSelCount(); }
 function sdir_toggleAll(on) { var idxs = sdir_visibleList(); for (var k = 0; k < idxs.length; k++) { if (on) SDIR.selected[idxs[k]] = 1; else delete SDIR.selected[idxs[k]]; } sdir_renderRows(); }
 function sdir_updateSelCount() { var n = 0; for (var k in SDIR.selected) { if (SDIR.selected.hasOwnProperty(k)) n++; } var el = document.getElementById('sdir-selcount'); if (el) el.textContent = n ? ('محدد: ' + n) : ''; }
-function sdir_filter(q) { q = (q || '').trim(); var rows = document.querySelectorAll('#sdir-table tbody tr[data-name]'); for (var i = 0; i < rows.length; i++) { var nm = rows[i].getAttribute('data-name') || ''; rows[i].style.display = (!q || nm.indexOf(q) >= 0) ? '' : 'none'; } }
+function sdir_filter(q) { q = _tcNorm(q); var rows = document.querySelectorAll('#sdir-table tbody tr[data-name]'); for (var i = 0; i < rows.length; i++) { var nm = _tcNorm(rows[i].getAttribute('data-name') || ''); rows[i].style.display = (!q || nm.indexOf(q) >= 0) ? '' : 'none'; } }
 
 function sdir_saveField(i, field, value) {
   var st = SDIR.students[i]; if (!st) return;
