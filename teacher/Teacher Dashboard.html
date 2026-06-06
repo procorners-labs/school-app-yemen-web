@@ -1551,6 +1551,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
+  <span class="sidebar-label">شؤون الطلاب</span>
+  <button class="sidebar-item" id="si-studentDirectory" onclick="showSection('studentDirectory')">
+    <span class="si-icon">🎒</span> أسماء الطلاب
+  </button>
+  <button class="sidebar-item" id="si-studentStatus" onclick="showSection('studentStatus')">
+    <span class="si-icon">🔎</span> بيان حالة طالب
+  </button>
+</div>
+<div class="sidebar-divider"></div>
+<div class="sidebar-section">
   <button class="sidebar-item" id="si-profile" onclick="showSection('profile')">
     <span class="si-icon">👤</span> الملف الشخصي
   </button>
@@ -2475,6 +2485,10 @@ function isDeputy() {
 
 function isSupervisor() {
   return !!(App.user && App.user.role === 'supervisor');
+}
+
+function isAccountant() {
+  return !!(App.user && App.user.role === 'accountant');
 }
 
 function myGrade() {
@@ -3681,6 +3695,8 @@ function showSection(name) {
       adminTeachers: renderAdminTeachers,
       adminActivities: renderAdminActivities,
       adminStudents: renderAdminStudents,
+      studentDirectory: renderStudentDirectory,
+      studentStatus: renderStudentStatus,
       profile: renderProfile
     };
 
@@ -3752,7 +3768,7 @@ function initSidebarByRole() {
 
   // ── هل يملك صلاحية التحكم الاجتماعي؟ ──
   // مدير / وكيل / أي معلم دوره "activities" أو مادته تحتوي كلمة "نشاط"
-  var isSocialAllowed = (u.role === 'admin' || u.role === 'deputy') ||
+  var isSocialAllowed = (u.role === 'admin' || u.role === 'deputy' || u.role === 'accountant') ||
     (u.role === 'activities') ||
     (u.subjects && (function() {
       for (var si = 0; si < u.subjects.length; si++) {
@@ -3764,8 +3780,8 @@ function initSidebarByRole() {
 
   if (socialSection) socialSection.style.display = isSocialAllowed ? 'block' : 'none';
 
-  // المدير الكامل: يرى كل شيء
-  if (u.role === 'admin') {
+  // المدير الكامل والمحاسب: يرى كل شيء
+  if (u.role === 'admin' || u.role === 'accountant') {
     if (adminSection) adminSection.style.display = 'block';
     if (siAdminStudents) siAdminStudents.style.display = '';
     _refreshNotesBadge();
@@ -3838,6 +3854,7 @@ function renderDashboard() {
     
     var roleDesc = '';
     if (u.role === 'admin') roleDesc = 'مدير النظام — صلاحيات كاملة';
+    else if (u.role === 'accountant') roleDesc = 'محاسب — صلاحيات كاملة';
     else if (u.role === 'deputy') roleDesc = 'وكيل المدير — صلاحيات موسّعة';
     else if (u.role === 'supervisor') roleDesc = 'مشرف — ' + (g || '') + ' ' + (s || '');
     else roleDesc = (sub || '') + ' • ' + (g || '') + ' ' + (s || '');
@@ -8077,6 +8094,297 @@ function smm_statusBadge(s) {
   if (document.readyState !== 'loading') run();
   else document.addEventListener('DOMContentLoaded', run);
 })();
+
+// ═══════════════════════════════════════════════════════════════════
+//  🎒 أسماء الطلاب + 🔎 بيان حالة طالب  (واجهة)
+// ═══════════════════════════════════════════════════════════════════
+var SDIR = { mode: 'teacher', students: [], schoolId: '', hasWa: false, selected: {} };
+
+function renderStudentDirectory() {
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(16,185,129,.12)">🎒</div>' +
+    '<div class="section-header-title">أسماء الطلاب</div></div>' +
+    '<div class="section-body" id="sdir-body"><div class="empty-state"><div class="spinner"></div>' +
+    '<div style="margin-top:10px">جاري التحميل…</div></div></div></div>';
+  sdir_load();
+}
+
+function sdir_load() {
+  callServer('getStudentsDirectoryProtected', {}, function (r) {
+    var body = document.getElementById('sdir-body');
+    if (!body) return;
+    if (!r || !r.success) { body.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
+    SDIR.mode = r.mode; SDIR.students = r.students || []; SDIR.schoolId = r.schoolId || '';
+    SDIR.hasWa = !!r.hasWa; SDIR.selected = {};
+    if (SDIR.mode === 'manager') sdir_renderManager(); else sdir_renderTeacher();
+  }, function (e) {
+    var body = document.getElementById('sdir-body');
+    if (body) body.innerHTML = '<div class="alert alert-danger">خطأ: ' + (e.message || e) + '</div>';
+  });
+}
+
+// ── وضع المعلم: اسم + كلمة المرور + إرسال (بلا تعديل) ──
+function sdir_renderTeacher() {
+  var s = SDIR.students;
+  var body = document.getElementById('sdir-body');
+  if (!s.length) { body.innerHTML = '<div class="empty-state"><div class="es-icon">🎒</div><div class="es-title">لا يوجد طلاب في فصولك</div></div>'; return; }
+  var h = '<div class="d-flex align-center gap-2 mb-3"><span class="badge badge-info">' + s.length + ' طالب</span>' +
+    '<input type="text" class="form-control" style="max-width:240px" placeholder="🔍 بحث بالاسم" oninput="sdir_filter(this.value)"></div>';
+  h += '<div class="table-wrap"><table id="sdir-table"><thead><tr><th>اسم الطالب</th><th>كلمة المرور</th><th>إرسال واتساب</th></tr></thead><tbody>';
+  for (var i = 0; i < s.length; i++) {
+    var st = s[i];
+    var pw = st.hasHash ? '<span style="color:#999">•••• (مشفّرة)</span>'
+      : (st.password ? escapeHtml(st.password) : '<span style="color:#bbb">—</span>');
+    h += '<tr data-name="' + escapeHtml(st.name) + '"><td>' + escapeHtml(st.name) + '</td><td>' + pw +
+         '</td><td><button class="btn btn-sm btn-success" onclick="sdir_sendOne(' + i + ')">📤 واتساب</button></td></tr>';
+  }
+  h += '</tbody></table></div>';
+  body.innerHTML = h;
+}
+
+// ── وضع المدير/المحاسب/الوكيل/المشرف ──
+function sdir_renderManager() {
+  var grades = myGrades(), sections = mySections();
+  var h = '<div class="form-row mb-3">' +
+    '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sdir-fg" onchange="sdir_renderRows()">' + buildSelectOptions(grades, 'كل الفصول', '', true) + '</select></div>' +
+    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sdir-fs" onchange="sdir_renderRows()">' + buildSelectOptions(sections, 'كل الشعب', '', true) + '</select></div>' +
+    '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="sdir-q" placeholder="🔍 اسم / كود / جوال" oninput="sdir_renderRows()"></div>' +
+    '<div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="sdir_openAdd()">➕ إضافة طالب</button></div>' +
+    '</div>';
+  h += '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap">' +
+    '<label style="font-size:13px"><input type="checkbox" id="sdir-all" onchange="sdir_toggleAll(this.checked)"> تحديد الكل</label>' +
+    '<button class="btn btn-sm btn-success" onclick="sdir_sendSelected()">📤 إرسال كلمة المرور للمحددين</button>' +
+    '<span id="sdir-selcount" class="badge badge-info"></span>' +
+    (SDIR.hasWa ? '<span class="badge badge-success" style="font-size:11px">واتساب تلقائي مُفعّل</span>' : '<span class="badge" style="background:#fff3cd;color:#7c5e00;font-size:11px">إرسال عبر روابط wa.me</span>') +
+    '</div>';
+  h += '<div class="table-wrap"><table id="sdir-table"><thead><tr><th></th><th>الاسم</th><th>الفصل</th><th>الشعبة</th><th>الجوال</th><th>كلمة المرور</th><th>الرسوم</th><th>المسدد</th><th>إرسال</th></tr></thead><tbody id="sdir-tbody"></tbody></table></div>';
+  document.getElementById('sdir-body').innerHTML = h;
+  sdir_renderRows();
+}
+
+function sdir_visibleList() {
+  var fg = (document.getElementById('sdir-fg') || {}).value || '';
+  var fs = (document.getElementById('sdir-fs') || {}).value || '';
+  var q = ((document.getElementById('sdir-q') || {}).value || '').trim();
+  var arr = [];
+  for (var i = 0; i < SDIR.students.length; i++) {
+    var st = SDIR.students[i];
+    if (fg && st.grade !== fg) continue;
+    if (fs && st.section !== fs) continue;
+    if (q && (st.name || '').indexOf(q) < 0 && (st.code || '').indexOf(q) < 0 && (st.phone || '').indexOf(q) < 0) continue;
+    arr.push(i);
+  }
+  return arr;
+}
+
+function sdir_renderRows() {
+  var idxs = sdir_visibleList();
+  var tb = document.getElementById('sdir-tbody');
+  if (!tb) return;
+  var h = '';
+  for (var k = 0; k < idxs.length; k++) {
+    var i = idxs[k]; var st = SDIR.students[i];
+    var checked = SDIR.selected[i] ? 'checked' : '';
+    var pwVal = st.hasHash ? '' : (st.password || '');
+    var ph = st.hasHash ? 'مشفّرة — أعد التعيين 🔁' : 'كلمة المرور';
+    h += '<tr>' +
+      '<td><input type="checkbox" ' + checked + ' onchange="sdir_sel(' + i + ',this.checked)"></td>' +
+      '<td>' + escapeHtml(st.name) + '</td>' +
+      '<td>' + escapeHtml(st.grade || '') + '</td>' +
+      '<td>' + escapeHtml(st.section || '') + '</td>' +
+      '<td><input class="form-control" style="min-width:115px" value="' + escapeHtml(st.phone || '') + '" onchange="sdir_saveField(' + i + ',\'phone\',this.value)"></td>' +
+      '<td><div style="display:flex;gap:4px"><input class="form-control" style="min-width:100px" value="' + escapeHtml(pwVal) + '" placeholder="' + ph + '" onchange="sdir_saveField(' + i + ',\'password\',this.value)"><button class="btn btn-sm btn-secondary" title="توليد وإرسال كلمة مرور" onclick="sdir_resetPw(' + i + ')">🔁</button></div></td>' +
+      '<td>' + (st.fees || 0) + '</td>' +
+      '<td>' + (st.paid || 0) + '</td>' +
+      '<td><button class="btn btn-sm btn-success" title="إرسال لولي الأمر" onclick="sdir_sendOne(' + i + ')">📤</button></td>' +
+    '</tr>';
+  }
+  if (!idxs.length) h = '<tr><td colspan="9" style="text-align:center;color:#999;padding:30px">لا نتائج مطابقة</td></tr>';
+  tb.innerHTML = h;
+  sdir_updateSelCount();
+}
+
+function sdir_sel(i, on) { if (on) SDIR.selected[i] = 1; else delete SDIR.selected[i]; sdir_updateSelCount(); }
+function sdir_toggleAll(on) { var idxs = sdir_visibleList(); for (var k = 0; k < idxs.length; k++) { if (on) SDIR.selected[idxs[k]] = 1; else delete SDIR.selected[idxs[k]]; } sdir_renderRows(); }
+function sdir_updateSelCount() { var n = 0; for (var k in SDIR.selected) { if (SDIR.selected.hasOwnProperty(k)) n++; } var el = document.getElementById('sdir-selcount'); if (el) el.textContent = n ? ('محدد: ' + n) : ''; }
+function sdir_filter(q) { q = (q || '').trim(); var rows = document.querySelectorAll('#sdir-table tbody tr[data-name]'); for (var i = 0; i < rows.length; i++) { var nm = rows[i].getAttribute('data-name') || ''; rows[i].style.display = (!q || nm.indexOf(q) >= 0) ? '' : 'none'; } }
+
+function sdir_saveField(i, field, value) {
+  var st = SDIR.students[i]; if (!st) return;
+  callServer('updateStudentFieldProtected', { rowIndex: st.rowIndex, code: st.code, field: field, value: value }, function (r) {
+    if (r && r.success) {
+      if (field === 'phone') st.phone = value; else { st.password = value; st.hasHash = false; }
+      toast('✅ تم الحفظ', 'success');
+    } else toast('❌ ' + ((r && r.error) || 'فشل الحفظ'), 'error');
+  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+}
+
+function sdir_resetPw(i) {
+  var st = SDIR.students[i]; if (!st) return;
+  callServer('resetStudentPasswordProtected', { code: st.code, rowIndex: st.rowIndex }, function (r) {
+    if (r && r.success) {
+      st.password = r.password; st.hasHash = false;
+      if (SDIR.mode === 'manager') sdir_renderRows();
+      toast('✅ كلمة المرور الجديدة: ' + r.password, 'success', 5000);
+      if (confirm('تم توليد كلمة المرور: ' + r.password + '\nهل تريد إرسالها لولي الأمر عبر واتساب؟')) sdir_sendOne(i);
+    } else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+}
+
+function sdir_sendOne(i) { var st = SDIR.students[i]; if (st) sdir_send([st]); }
+function sdir_sendSelected() {
+  var arr = [];
+  for (var k in SDIR.selected) { if (SDIR.selected.hasOwnProperty(k)) { var st = SDIR.students[k]; if (st) arr.push(st); } }
+  if (!arr.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
+  sdir_send(arr);
+}
+function sdir_send(students) {
+  var payload = [];
+  for (var i = 0; i < students.length; i++) {
+    var st = students[i];
+    if (st.hasHash || !st.password) { toast('الطالب «' + st.name + '» كلمة مروره مشفّرة/فارغة — استخدم 🔁 لإعادة تعيينها أولاً', 'warning', 5000); continue; }
+    payload.push({ code: st.code, name: st.name, phone: st.phone, password: st.password });
+  }
+  if (!payload.length) return;
+  toast('⏳ جاري الإرسال…', 'info');
+  callServer('sendStudentCredentialsProtected', { students: payload }, function (r) {
+    if (!r || !r.success) { toast('❌ ' + ((r && r.error) || 'فشل'), 'error'); return; }
+    if (r.viaApi && r.sent > 0) toast('✅ أُرسلت ' + r.sent + ' من ' + r.total + ' عبر واتساب', 'success');
+    if (r.links && r.links.length) {
+      for (var j = 0; j < r.links.length; j++) {
+        (function (url, delay) { setTimeout(function () { window.open(url, '_blank'); }, delay); })(r.links[j].waUrl, j * 900);
+      }
+      if (!r.viaApi) toast('📤 افتُحت ' + r.links.length + ' محادثة واتساب — أرسل كل رسالة', 'info', 5000);
+    }
+  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+}
+
+// ── modal إضافة طالب ──
+function sdir_openAdd() {
+  var grades = myGrades(), sections = mySections();
+  var html = '<div id="sdir-modal-wrap" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)sdir_closeAdd()">' +
+    '<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:22px;max-height:92vh;overflow:auto">' +
+    '<h3 style="margin:0 0 16px;color:#0F2C5C">➕ إضافة طالب جديد</h3>' +
+    '<div class="form-group mb-2"><label class="form-label">اسم الطالب *</label><input class="form-control" id="sadd-name"></div>' +
+    '<div class="form-row mb-2"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sadd-grade">' + buildSelectOptions(grades, 'اختر الفصل', '', false) + '</select></div>' +
+    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sadd-section">' + buildSelectOptions(sections, 'اختر الشعبة', '', false) + '</select></div></div>' +
+    '<div class="form-group mb-2"><label class="form-label">رقم الجوال</label><input class="form-control" id="sadd-phone" placeholder="7xxxxxxxx"></div>' +
+    '<div class="form-group mb-2"><label class="form-label">كلمة المرور (اختياري — تُولّد تلقائياً)</label><input class="form-control" id="sadd-pass"></div>' +
+    '<div class="form-group mb-3"><label class="form-label">إجمالي الرسوم</label><input class="form-control" id="sadd-fees" type="number"></div>' +
+    '<div id="sadd-status"></div>' +
+    '<div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-primary" onclick="sdir_submitAdd()">💾 حفظ</button><button class="btn btn-secondary" onclick="sdir_closeAdd()">إلغاء</button></div>' +
+    '</div></div>';
+  var d = document.createElement('div'); d.id = 'sdir-modal-host'; d.innerHTML = html; document.body.appendChild(d);
+}
+function sdir_closeAdd() { var w = document.getElementById('sdir-modal-host'); if (w && w.parentNode) w.parentNode.removeChild(w); }
+function sdir_submitAdd() {
+  var name = (document.getElementById('sadd-name').value || '').trim();
+  var statusEl = document.getElementById('sadd-status');
+  if (!name) { statusEl.innerHTML = '<div class="alert alert-warning">اسم الطالب مطلوب</div>'; return; }
+  var params = {
+    name: name,
+    grade: document.getElementById('sadd-grade').value,
+    section: document.getElementById('sadd-section').value,
+    phone: (document.getElementById('sadd-phone').value || '').trim(),
+    password: (document.getElementById('sadd-pass').value || '').trim(),
+    fees: (document.getElementById('sadd-fees').value || '')
+  };
+  statusEl.innerHTML = '<div style="color:#1a237e">⏳ جاري الحفظ…</div>';
+  callServer('addStudentProtected', params, function (r) {
+    if (!r || !r.success) { statusEl.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>'; return; }
+    toast('✅ تمت الإضافة — كلمة المرور: ' + r.password, 'success', 5000);
+    sdir_closeAdd(); sdir_load();
+  }, function (e) { statusEl.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  🔎 بيان حالة طالب
+// ═══════════════════════════════════════════════════════════════════
+var SSTAT = { names: [] };
+
+function renderStudentStatus() {
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">🔎</div>' +
+    '<div class="section-header-title">بيان حالة طالب</div></div><div class="section-body">' +
+    '<div class="form-row mb-3"><div class="form-group flex-1" style="position:relative">' +
+    '<label class="form-label">اسم الطالب</label>' +
+    '<input class="form-control" id="sstat-name" autocomplete="off" placeholder="ابحث باسم الطالب" oninput="sstat_ac(this.value)" onblur="_acHide(\'sstat-ac\')">' +
+    '<div id="sstat-ac" class="ac-box" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:8px;z-index:50;max-height:240px;overflow:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>' +
+    '</div></div>' +
+    '<div class="mb-3"><label class="form-label">أقسام التقرير (تأشيرات)</label><div style="display:flex;gap:16px;flex-wrap:wrap">' +
+      sstat_flag('basic', 'المعلومات الأساسية') + sstat_flag('fees', 'الرسوم') + sstat_flag('grades', 'الدرجات') +
+      sstat_flag('attendance', 'الحضور والغياب') + sstat_flag('violations', 'المخالفات') + sstat_flag('homework', 'الواجبات') +
+    '</div></div>' +
+    '<button class="btn btn-primary" onclick="sstat_generate()">🔍 إنشاء التقرير</button>' +
+    '<div id="sstat-report" class="mt-3"></div></div></div>';
+  callServer('getStudentNamesProtected', {}, function (r) { if (r && r.success) SSTAT.names = r.students || []; });
+}
+function sstat_flag(key, label) { return '<label style="font-size:13px"><input type="checkbox" class="sstat-cb" value="' + key + '" checked> ' + label + '</label>'; }
+function sstat_ac(q) { _acRender('sstat-ac', SSTAT.names, q, 'sstat_pick'); }
+function sstat_pick(v) { document.getElementById('sstat-name').value = v; _acHideNow('sstat-ac'); }
+
+function sstat_generate() {
+  var name = (document.getElementById('sstat-name').value || '').trim();
+  if (!name) { toast('اكتب اسم الطالب', 'warning'); return; }
+  var cbs = document.querySelectorAll('.sstat-cb');
+  var sections = {};
+  for (var i = 0; i < cbs.length; i++) sections[cbs[i].value] = cbs[i].checked;
+  var rep = document.getElementById('sstat-report');
+  rep.innerHTML = '<div class="empty-state"><div class="spinner"></div><div style="margin-top:10px">جاري إنشاء التقرير…</div></div>';
+  callServer('getStudentStatusReportProtected', { name: name, sections: sections }, function (r) {
+    if (!r || !r.success) { rep.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر إنشاء التقرير') + '</div>'; return; }
+    rep.innerHTML = sstat_renderReport(r);
+  }, function (e) { rep.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+
+function sstat_renderReport(r) {
+  var st = r.student || {};
+  var h = '<div id="sstat-print" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
+  h += '<div style="text-align:center;border-bottom:2px solid #0F2C5C;padding-bottom:12px;margin-bottom:16px">' +
+       '<div style="font-size:20px;font-weight:800;color:#0F2C5C">بيان حالة الطالب</div>' +
+       '<div style="color:#64748b;font-size:13px">مدارس الإبداع والتميز الدولية</div></div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">' +
+       sstat_kv('الاسم', st.name) + sstat_kv('الكود', st.code) + sstat_kv('الفصل', st.grade) +
+       sstat_kv('الشعبة', st.section) + sstat_kv('الجوال', st.phone) + '</div>';
+  if (r.fees) h += sstat_card('💰 الرسوم', '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
+       sstat_kv('الإجمالي', r.fees.total) + sstat_kv('المسدد', r.fees.paid) +
+       sstat_kv('المتبقي', r.fees.remaining) + sstat_kv('النسبة', r.fees.percent + '%') + '</div>');
+  if (r.grades) h += sstat_card('📊 الدرجات', sstat_grades(r.grades));
+  if (r.attendance) h += sstat_card('🗓️ الحضور والغياب', sstat_list(r.attendance, ['date', 'status'], ['التاريخ', 'الحالة']));
+  if (r.violations) h += sstat_card('⚠️ المخالفات', sstat_list(r.violations, ['type', 'teacher', 'date', 'reply'], ['المخالفة', 'المدرس', 'التاريخ', 'الرد']));
+  if (r.homework) h += sstat_card('📝 الواجبات', sstat_list(r.homework, ['subject', 'homework', 'teacher', 'date'], ['المادة', 'الواجب', 'المدرس', 'التاريخ']));
+  h += '</div>';
+  h += '<div style="margin-top:12px;text-align:left"><button class="btn btn-secondary" onclick="sstat_print()">🖨️ طباعة</button></div>';
+  return h;
+}
+function sstat_kv(k, v) { return '<div style="background:#f8fafc;border-radius:8px;padding:8px 12px"><div style="font-size:11px;color:#94a3b8">' + k + '</div><div style="font-weight:700;color:#0F2C5C">' + escapeHtml('' + ((v == null || v === '') ? '—' : v)) + '</div></div>'; }
+function sstat_card(title, inner) { return '<div style="border:1px solid #eef2f7;border-radius:10px;margin-bottom:12px;overflow:hidden"><div style="background:#0F2C5C;color:#fff;padding:8px 14px;font-weight:700;font-size:14px">' + title + '</div><div style="padding:12px">' + inner + '</div></div>'; }
+function sstat_list(arr, keys, labels) {
+  if (!arr || !arr.length) return '<div style="color:#94a3b8;font-size:13px">لا توجد بيانات</div>';
+  var h = '<div class="table-wrap"><table><thead><tr>';
+  for (var i = 0; i < labels.length; i++) h += '<th>' + labels[i] + '</th>';
+  h += '</tr></thead><tbody>';
+  for (var r = 0; r < arr.length; r++) { h += '<tr>'; for (var k = 0; k < keys.length; k++) h += '<td>' + escapeHtml('' + (arr[r][keys[k]] || '—')) + '</td>'; h += '</tr>'; }
+  h += '</tbody></table></div>';
+  return h;
+}
+function sstat_grades(arr) {
+  if (!arr || !arr.length) return '<div style="color:#94a3b8;font-size:13px">لا توجد درجات</div>';
+  var h = '<div class="table-wrap"><table><thead><tr><th>الشهر</th><th>المادة</th><th>الإجمالي</th></tr></thead><tbody>';
+  for (var i = 0; i < arr.length; i++) h += '<tr><td>' + escapeHtml(arr[i].month || '—') + '</td><td>' + escapeHtml(arr[i].subject || '—') + '</td><td>' + escapeHtml('' + (arr[i].total || '—')) + '</td></tr>';
+  h += '</tbody></table></div>';
+  return h;
+}
+function sstat_print() {
+  var c = document.getElementById('sstat-print'); if (!c) return;
+  var w = window.open('', '_blank');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>بيان حالة الطالب</title>' +
+    '<style>body{font-family:Tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #ccc;padding:6px;font-size:13px;text-align:right}th{background:#0F2C5C;color:#fff}</style>' +
+    '</head><body>' + c.innerHTML + '</body></html>');
+  w.document.close(); w.focus(); w.print();
+}
 
 </script>
 </body>

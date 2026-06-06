@@ -4208,7 +4208,8 @@ function _getStudentSheetColumnMap() {
       section: -1, // الشعبة
       fees   : -1, // اجمالي الرسوم
       paid   : -1, // المبالغ المسددة
-      phone  : -1  // رقم الجوال
+      phone  : -1, // رقم الجوال
+      pass   : -1  // كلمة المرور
     };
     for (var i = 0; i < headers.length; i++) {
       var h = _safeStr(headers[i]).trim();
@@ -4219,6 +4220,7 @@ function _getStudentSheetColumnMap() {
       else if (h === 'اجمالي الرسوم' || h === 'الرسوم')            map.fees    = i;
       else if (h === 'المبالغ المسدده' || h === 'المسدد')          map.paid    = i;
       else if (h === 'رقم الجوال' || h === 'الجوال' || h === 'رقم الهاتف') map.phone   = i;
+      else if (h === 'كلمة المرور' || h === 'كلمة السر')           map.pass    = i;
     }
     // Fallback: إذا لم يوجد رأس، نستخدم الفهارس الافتراضية
     if (map.code === -1)    map.code    = 0;
@@ -4228,10 +4230,11 @@ function _getStudentSheetColumnMap() {
     if (map.fees === -1)    map.fees    = 4;
     if (map.paid === -1)    map.paid    = 5;
     if (map.phone === -1)   map.phone   = 6; // العمود الجديد المضاف
+    // ملاحظة: pass قد يبقى -1 إن لم يوجد عمود كلمة مرور؛ المستدعي يتعامل مع ذلك
     return map;
   } catch (e) {
     Logger.log('_getStudentSheetColumnMap error: ' + e.toString());
-    return { code:0, name:1, grade:2, section:3, fees:4, paid:5, phone:6 };
+    return { code:0, name:1, grade:2, section:3, fees:4, paid:5, phone:6, pass:-1 };
   }
 }
 
@@ -4634,6 +4637,7 @@ function _getAllTeachersGroupedInternal() {
       var role = 'teacher';
       if (t.subjects.indexOf('المدير') !== -1)  role = 'admin';
       else if (t.subjects.indexOf('الوكيل') !== -1) role = 'deputy';
+      else if (t.subjects.indexOf('محاسب') !== -1)  role = 'accountant';
       else if (t.subjects.indexOf('مشرف') !== -1)  role = 'supervisor';
 
       teachers.push({
@@ -6688,4 +6692,459 @@ function applyTeacherListValidations() {
   } catch (e) {
     return { success: false, error: String((e && e.message) || e) };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  📒 صفحة أسماء الطلاب + بيان حالة الطالب (append — ES5)
+//  - أسماء الطلاب: عرض حسب الصلاحية (معلم: طلابه فقط/قراءة؛ مدير-وكيل-مشرف-محاسب:
+//    تعديل الجوال/كلمة المرور + تحديد متعدد + إرسال واتساب + إضافة طالب).
+//  - بيان الحالة: تقرير كامل لطالب بحسب صفه/شعبته ومعلميه فقط.
+//  كل الدوال محمية بـ withAuth وترث ملف المدرسة النشط تلقائياً.
+// ═══════════════════════════════════════════════════════════════════
+
+var TC_WORKER_BASE = 'https://school-teacher-proxy.procorners-shop.workers.dev';
+
+// رابط منصة الطالب عبر الـ Worker (مع schoolId للعزل)
+function _tcStudentPortalUrl(schoolId) {
+  var u = TC_WORKER_BASE + '/student/index.html';
+  if (schoolId) u += '?school=' + encodeURIComponent(schoolId);
+  return u;
+}
+
+// تطبيع رقم الجوال اليمني إلى صيغة دولية (نفس منطق buildWhatsAppLink)
+function _tcNormalizePhone(phone) {
+  phone = _safeStr(phone).replace(/[^0-9]/g, '');
+  if (phone.charAt(0) === '0') {
+    phone = '967' + phone.substring(1);
+  } else if (phone.indexOf('967') !== 0 && phone.length >= 9) {
+    phone = '967' + phone;
+  }
+  return phone;
+}
+
+// توكنات واتساب الأعمال (اختياري) من ScriptProperties لمشروع المعلم
+function _tcWhatsAppTokens() {
+  try {
+    var p = PropertiesService.getScriptProperties();
+    var id = p.getProperty('WA_PHONE_ID') || '';
+    var tok = p.getProperty('WA_TOKEN') || '';
+    return { ok: !!(id && tok), phoneId: id, token: tok };
+  } catch (e) {
+    return { ok: false, phoneId: '', token: '' };
+  }
+}
+
+// توليد كلمة مرور بسيطة (حروف + أرقام) بلا Math.random
+function _tcGenPassword() {
+  var d = Utilities.getUuid().replace(/[^0-9]/g, '').substring(0, 4);
+  if (d.length < 4) d = (d + '1234').substring(0, 4);
+  return 'st' + d;
+}
+
+// رسالة بيانات الدخول الجاهزة لولي الأمر
+function _buildStudentCredMsg(name, password, schoolId) {
+  return 'بسم الله الرحمن الرحيم\n' +
+    'عزيزي ولي أمر الطالب: ' + name + '\n' +
+    'بيانات الدخول إلى منصة الطالب:\n' +
+    '• اسم المستخدم: ' + name + '\n' +
+    '• كلمة المرور: ' + password + '\n' +
+    '• رابط المنصة: ' + _tcStudentPortalUrl(schoolId) + '\n' +
+    'مدارس الإبداع والتميز الدولية';
+}
+
+// هل الطالب (فصله/شعبته) ضمن صلاحيات المستخدم؟ (المدير/المحاسب يرى الكل)
+function _tcStudentVisibleToTeacher(session, grade, section) {
+  if (session.isAdmin) return true;
+  var classes = session.classes || [];
+  var sections = session.sections || [];
+  var gradeOk = (classes.indexOf('جميع الفصول') !== -1) || (classes.indexOf(grade) !== -1);
+  if (!gradeOk) return false;
+  var secOk = (!sections.length) || (sections.indexOf('جميع الشعب') !== -1) ||
+              (sections.indexOf(section) !== -1);
+  return secOk;
+}
+
+// هل كلمة المرور مخزّنة مشفّرة؟
+function _tcIsHashedPw(pw) {
+  return _safeStr(pw).indexOf('h1$') === 0;
+}
+
+// ── جلب دليل الطلاب حسب الصلاحية ──
+function getStudentsDirectoryProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var sheet = _getSheet('الطلاب');
+      if (!sheet) return { success: false, error: 'ورقة الطلاب غير موجودة' };
+      var isMgr = !!session.isAdmin;
+      var colMap = _getStudentSheetColumnMap();
+      var lastRow = sheet.getLastRow();
+      if (lastRow < 2) {
+        return { success: true, mode: isMgr ? 'manager' : 'teacher', students: [],
+                 schoolId: session.schoolId || '', hasWa: _tcWhatsAppTokens().ok };
+      }
+      var lastCol = sheet.getLastColumn();
+      var data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+
+      // الرسوم المسددة من ورقة الرسوم (للمدراء فقط)
+      var feesData = {};
+      if (isMgr) {
+        try {
+          var studentFile = _getSSById(_activeFileId());
+          var feesSheet = studentFile.getSheetByName('الرسوم');
+          if (feesSheet) {
+            var lfr = feesSheet.getLastRow();
+            if (lfr > 1) {
+              var fr = feesSheet.getRange(2, 1, lfr - 1, 4).getValues();
+              for (var j = 0; j < fr.length; j++) {
+                var fc = _safeStr(fr[j][0]);
+                if (fc) feesData[fc] = _safeFloat(fr[j][3]);
+              }
+            }
+          }
+        } catch (e0) {}
+      }
+
+      var out = [];
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        var code = _safeStr(row[colMap.code]);
+        var name = _safeStr(row[colMap.name]);
+        if (!code && !name) continue;
+        var grade = _safeStr(row[colMap.grade]);
+        var section = _safeStr(row[colMap.section]);
+        if (!_tcStudentVisibleToTeacher(session, grade, section)) continue;
+
+        var phone = (colMap.phone >= 0 && colMap.phone < row.length) ? _safeStr(row[colMap.phone]) : '';
+        var pass = (colMap.pass >= 0 && colMap.pass < row.length) ? _safeStr(row[colMap.pass]) : '';
+        var hashed = _tcIsHashedPw(pass);
+
+        var item = {
+          rowIndex: i + 1,
+          code: code,
+          name: name,
+          phone: phone,
+          password: hashed ? '' : pass,
+          hasHash: hashed,
+          hasPassword: !!pass
+        };
+        if (isMgr) {
+          item.grade = grade;
+          item.section = section;
+          item.fees = _safeFloat(row[colMap.fees]);
+          item.paid = (feesData[code] != null) ? feesData[code] : _safeFloat(row[colMap.paid]);
+        }
+        out.push(item);
+      }
+      out.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'ar'); });
+
+      return { success: true, mode: isMgr ? 'manager' : 'teacher', students: out,
+               schoolId: session.schoolId || '', hasWa: _tcWhatsAppTokens().ok };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
+
+// ── تحديث حقل طالب (الجوال/كلمة المرور) — للمدراء فقط ──
+function updateStudentFieldProtected(params) {
+  return withAuth(params, function (session) {
+    if (!session.isAdmin) return { success: false, error: 'غير مصرح — لإدارة المدرسة فقط' };
+    var field = _safeStr(params.field);
+    if (field !== 'phone' && field !== 'password') return { success: false, error: 'حقل غير مدعوم' };
+
+    var sheet = _getSheet('الطلاب');
+    if (!sheet) return { success: false, error: 'ورقة الطلاب غير موجودة' };
+    var colMap = _getStudentSheetColumnMap();
+
+    var rowIndex = parseInt(params.rowIndex, 10);
+    if (!rowIndex || rowIndex < 2) {
+      var code = _safeStr(params.code);
+      if (!code) return { success: false, error: 'المعرف مطلوب' };
+      var lr = sheet.getLastRow();
+      var codes = sheet.getRange(1, colMap.code + 1, lr, 1).getValues();
+      rowIndex = -1;
+      for (var i = 1; i < codes.length; i++) {
+        if (_safeStr(codes[i][0]) === code) { rowIndex = i + 1; break; }
+      }
+      if (rowIndex === -1) return { success: false, error: 'الطالب غير موجود' };
+    }
+
+    var val = _safeStr(params.value);
+    var col;
+    if (field === 'phone') {
+      col = colMap.phone + 1;
+    } else {
+      var pc = colMap.pass;
+      if (pc < 0) {
+        pc = sheet.getLastColumn();          // عمود جديد بعد الأخير
+        sheet.getRange(1, pc + 1).setValue('كلمة المرور');
+      }
+      col = pc + 1;
+    }
+    sheet.getRange(rowIndex, col).setValue(val);
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_all_students_v1');
+    return { success: true, message: 'تم التحديث بنجاح' };
+  });
+}
+
+// ── إعادة تعيين كلمة مرور طالب (نصية) ثم إرجاعها — للمدراء فقط ──
+function resetStudentPasswordProtected(params) {
+  return withAuth(params, function (session) {
+    if (!session.isAdmin) return { success: false, error: 'غير مصرح' };
+    var newPw = _safeStr(params.newPassword) || _tcGenPassword();
+    var r = updateStudentFieldProtected({
+      token: params.token, code: params.code, rowIndex: params.rowIndex,
+      field: 'password', value: newPw
+    });
+    if (r && r.success) return { success: true, password: newPw, message: 'تم إعادة تعيين كلمة المرور' };
+    return r;
+  });
+}
+
+// ── إضافة طالب جديد — للمدراء فقط ──
+function addStudentProtected(params) {
+  return withAuth(params, function (session) {
+    if (!session.isAdmin) return { success: false, error: 'غير مصرح' };
+    var name = _safeStr(params.name);
+    if (!name) return { success: false, error: 'اسم الطالب مطلوب' };
+    var grade = _safeStr(params.grade);
+    var section = _safeStr(params.section);
+    var phone = _safeStr(params.phone);
+    var pw = _safeStr(params.password) || _tcGenPassword();
+    var fees = _safeFloat(params.fees);
+
+    var sheet = _getSheet('الطلاب');
+    if (!sheet) {
+      sheet = _getOrCreateSheet('الطلاب',
+        ['الكود', 'الاسم', 'الفصل', 'الشعبة', 'اجمالي الرسوم', 'المبالغ المسدده', 'رقم الجوال', 'كلمة المرور']);
+    }
+    var colMap = _getStudentSheetColumnMap();
+    var code = _safeStr(params.code) || ('S' + (new Date().getTime()));
+
+    var lastCol = sheet.getLastColumn();
+    var rowArr = [];
+    for (var k = 0; k < lastCol; k++) rowArr.push('');
+    function setIf(idx, value) { if (idx >= 0 && idx < rowArr.length) rowArr[idx] = value; }
+    setIf(colMap.code, code);
+    setIf(colMap.name, name);
+    setIf(colMap.grade, grade);
+    setIf(colMap.section, section);
+    setIf(colMap.fees, fees);
+    setIf(colMap.phone, phone);
+    if (colMap.pass >= 0) setIf(colMap.pass, pw);
+    sheet.appendRow(rowArr);
+
+    // إنشاء عمود كلمة المرور إن لم يكن موجوداً وكتابة القيمة
+    if (colMap.pass < 0) {
+      var nc = sheet.getLastColumn() + 1;
+      sheet.getRange(1, nc).setValue('كلمة المرور');
+      sheet.getRange(sheet.getLastRow(), nc).setValue(pw);
+    }
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_all_students_v1');
+    return { success: true, code: code, password: pw, message: 'تمت إضافة الطالب بنجاح' };
+  });
+}
+
+// ── إرسال بيانات الدخول لأولياء الأمور (API إن توفّر، وإلا روابط wa.me) ──
+function sendStudentCredentialsProtected(params) {
+  return withAuth(params, function (session) {
+    var list = params.students || [];
+    if (!list.length) return { success: false, error: 'لا يوجد طلاب محددون' };
+    var wa = _tcWhatsAppTokens();
+    var schoolId = session.schoolId || '';
+    var results = [], links = [], sentCount = 0;
+
+    for (var i = 0; i < list.length; i++) {
+      var st = list[i];
+      var name = _safeStr(st.name);
+      var pw = _safeStr(st.password);
+      var phone = _tcNormalizePhone(st.phone);
+      if (!phone) { results.push({ name: name, ok: false, error: 'لا يوجد رقم جوال' }); continue; }
+      var msg = _buildStudentCredMsg(name, pw, schoolId);
+      var waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
+
+      if (wa.ok) {
+        try {
+          var resp = UrlFetchApp.fetch('https://graph.facebook.com/v18.0/' + wa.phoneId + '/messages', {
+            method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+            headers: { Authorization: 'Bearer ' + wa.token },
+            payload: JSON.stringify({ messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: msg } })
+          });
+          var jr = JSON.parse(resp.getContentText());
+          if (jr && jr.messages) { sentCount++; results.push({ name: name, ok: true }); }
+          else { results.push({ name: name, ok: false, error: (jr.error ? jr.error.message : 'فشل') }); links.push({ name: name, phone: phone, waUrl: waUrl }); }
+        } catch (e) {
+          results.push({ name: name, ok: false, error: String(e) });
+          links.push({ name: name, phone: phone, waUrl: waUrl });
+        }
+      } else {
+        links.push({ name: name, phone: phone, waUrl: waUrl });
+      }
+    }
+    return { success: true, sent: sentCount, total: list.length, results: results, links: links, viaApi: wa.ok };
+  });
+}
+
+// ── قراءة درجات طالب (best-effort، carry-forward للشهر/المادة) ──
+function _tcReadStudentGrades(code, session) {
+  var sheet = _getSheet('الدرجات');
+  if (!sheet) return [];
+  var lr = sheet.getLastRow();
+  var lc = sheet.getLastColumn();
+  if (lr < 4 || lc < 2) return [];
+  var head = sheet.getRange(1, 1, 3, lc).getValues();
+  var monthRow = head[0], subjRow = head[1], typeRow = head[2];
+  var codes = sheet.getRange(1, 1, lr, 1).getValues();
+  var srow = -1;
+  for (var i = 3; i < codes.length; i++) {
+    if (_safeStr(codes[i][0]) === code) { srow = i + 1; break; }
+  }
+  if (srow === -1) return [];
+  var vals = sheet.getRange(srow, 1, 1, lc).getValues()[0];
+  var mySubs = session.isAdmin ? null : (session.subjects || []);
+  var curMonth = '', curSubj = '', out = [];
+  for (var c = 0; c < lc; c++) {
+    if (_safeStr(monthRow[c])) curMonth = _safeStr(monthRow[c]);
+    if (_safeStr(subjRow[c])) curSubj = _safeStr(subjRow[c]);
+    var typ = _safeStr(typeRow[c]);
+    if (typ === 'الاجمالي' || typ === 'المجموع' || typ === 'الكلي' || typ === 'المحصلة') {
+      if (mySubs && mySubs.indexOf('جميع المواد') === -1 && mySubs.indexOf(curSubj) === -1) continue;
+      var val = _safeStr(vals[c]);
+      if (val !== '') out.push({ month: curMonth, subject: curSubj, total: val });
+    }
+  }
+  return out;
+}
+
+// ── بيان حالة الطالب: تقرير كامل بحسب الصلاحية وصف/شعبة الطالب ──
+function getStudentStatusReportProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var sheet = _getSheet('الطلاب');
+      if (!sheet) return { success: false, error: 'ورقة الطلاب غير موجودة' };
+      var colMap = _getStudentSheetColumnMap();
+      var lr = sheet.getLastRow();
+      var lc = sheet.getLastColumn();
+      var data = sheet.getRange(1, 1, lr, lc).getValues();
+      var wantCode = _safeStr(params.code);
+      var wantName = _safeStr(params.name);
+      var found = null;
+      for (var i = 1; i < data.length; i++) {
+        var c = _safeStr(data[i][colMap.code]);
+        var n = _safeStr(data[i][colMap.name]);
+        if ((wantCode && c === wantCode) || (wantName && n === wantName)) {
+          found = { row: data[i], idx: i + 1, code: c, name: n };
+          break;
+        }
+      }
+      if (!found) return { success: false, error: 'الطالب غير موجود' };
+
+      var grade = _safeStr(found.row[colMap.grade]);
+      var section = _safeStr(found.row[colMap.section]);
+      if (!_tcStudentVisibleToTeacher(session, grade, section)) {
+        return { success: false, error: 'غير مصرح لك بعرض هذا الطالب (خارج فصولك)' };
+      }
+
+      var flags = params.sections || { basic: true, grades: true, attendance: true, violations: true, homework: true, fees: true };
+      var report = {
+        success: true,
+        schoolId: session.schoolId || '',
+        student: {
+          code: found.code, name: found.name, grade: grade, section: section,
+          phone: (colMap.phone >= 0) ? _safeStr(found.row[colMap.phone]) : ''
+        }
+      };
+
+      // المعلومات المالية
+      if (flags.basic || flags.fees) {
+        var total = _safeFloat(found.row[colMap.fees]);
+        var paid = _safeFloat(found.row[colMap.paid]);
+        try {
+          var sf = _getSSById(_activeFileId()).getSheetByName('الرسوم');
+          if (sf) {
+            var lfr = sf.getLastRow();
+            if (lfr > 1) {
+              var frr = sf.getRange(2, 1, lfr - 1, 4).getValues();
+              for (var f = 0; f < frr.length; f++) {
+                if (_safeStr(frr[f][0]) === found.code) { paid = _safeFloat(frr[f][3]); break; }
+              }
+            }
+          }
+        } catch (e1) {}
+        report.fees = { total: total, paid: paid, remaining: total - paid,
+                        percent: total > 0 ? Math.round(paid / total * 100) : 100 };
+      }
+
+      // الحضور والغياب
+      if (flags.attendance) {
+        report.attendance = [];
+        try {
+          var at = _getSheet('الغياب');
+          if (at) {
+            var ad = at.getDataRange().getValues();
+            for (var a = 1; a < ad.length; a++) {
+              if (_safeStr(ad[a][0]) === found.code || _safeStr(ad[a][1]) === found.name) {
+                report.attendance.push({ date: _safeStr(ad[a][4]), status: _safeStr(ad[a][5]) });
+              }
+            }
+          }
+        } catch (e2) {}
+      }
+
+      // المخالفات
+      if (flags.violations) {
+        report.violations = [];
+        try {
+          var vt = _getSheet('المخالفات');
+          if (vt) {
+            var vd = vt.getDataRange().getValues();
+            for (var v = 1; v < vd.length; v++) {
+              if (_safeStr(vd[v][0]) === found.code || _safeStr(vd[v][1]) === found.name) {
+                report.violations.push({
+                  type: _safeStr(vd[v][4]), teacher: _safeStr(vd[v][5]),
+                  date: _safeStr(vd[v][6]), reply: _safeStr(vd[v][7])
+                });
+              }
+            }
+          }
+        } catch (e3) {}
+      }
+
+      // الواجبات (لفصل/شعبة الطالب؛ للمعلم: مواده فقط)
+      if (flags.homework) {
+        report.homework = [];
+        try {
+          var ht = _getSheet('الواجبات');
+          if (ht) {
+            var hd = ht.getDataRange().getValues();
+            var mySubs = session.isAdmin ? null : (session.subjects || []);
+            for (var h = 1; h < hd.length; h++) {
+              var hsub = _safeStr(hd[h][2]);
+              var hg = _safeStr(hd[h][3]);
+              var hsec = _safeStr(hd[h][4]);
+              if (hg !== grade) continue;
+              if (section && hsec && hsec !== section) continue;
+              if (mySubs && mySubs.indexOf('جميع المواد') === -1 && mySubs.indexOf(hsub) === -1) continue;
+              report.homework.push({
+                subject: hsub, teacher: _safeStr(hd[h][1]),
+                homework: _safeStr(hd[h][5]), date: _safeStr(hd[h][6])
+              });
+            }
+          }
+        } catch (e4) {}
+      }
+
+      // الدرجات
+      if (flags.grades) {
+        report.grades = [];
+        try { report.grades = _tcReadStudentGrades(found.code, session); } catch (e5) {}
+      }
+
+      return report;
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
 }

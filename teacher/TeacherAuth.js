@@ -416,6 +416,13 @@ function _auth_buildTeacherFromName(teacherName, data) {
     sections.indexOf('مشرف') !== -1
   );
 
+  // المحاسب: صلاحيات كاملة مثل المدير (كلمة «محاسب» في الأعمدة الثلاثة)
+  var isAccountant = (
+    subjects.indexOf('محاسب') !== -1 &&
+    classes.indexOf('محاسب') !== -1 &&
+    sections.indexOf('محاسب') !== -1
+  );
+
   var role;
   var isAdmin;
 
@@ -427,6 +434,12 @@ function _auth_buildTeacherFromName(teacherName, data) {
     sections = ['جميع الشعب'];
   } else if (isDeputy) {
     role    = 'deputy';
+    isAdmin = true;
+    subjects = ['جميع المواد'];
+    classes  = ['جميع الفصول'];
+    sections = ['جميع الشعب'];
+  } else if (isAccountant) {
+    role    = 'accountant';
     isAdmin = true;
     subjects = ['جميع المواد'];
     classes  = ['جميع الفصول'];
