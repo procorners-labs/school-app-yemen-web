@@ -4320,6 +4320,227 @@ function getMyDayScheduleProtected(params) {
     }
   });
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  📌 المرحلة 2: المهام والإشراف + المتابعة والتأكيد + الخصومات (ES5, append)
+//  ورقة «المهام»: id|المعلم|النوع|الصف|الشعبة|التاريخ|الوقت|الوصف|الحالة|
+//                 الرسم|الخصم|المكلّف_بواسطة|المؤكّد_بواسطة|تاريخ_الإنشاء|ملاحظات
+//  تعيين: مدير/وكيل/مشرف/أنشطة — قيمة الرسوم: محاسب (والمدير) — التأكيد/الخصم: مدير/وكيل/مشرف
+// ════════════════════════════════════════════════════════════════════
+
+var TASKS_SHEET = 'المهام';
+var TASK_HEADERS = ['id', 'المعلم', 'النوع', 'الصف', 'الشعبة', 'التاريخ', 'الوقت', 'الوصف',
+                    'الحالة', 'الرسم', 'الخصم', 'المكلّف_بواسطة', 'المؤكّد_بواسطة', 'تاريخ_الإنشاء', 'ملاحظات'];
+var TASK_TYPES = ['إشراف طابور', 'إشراف ساحة', 'الطلوع مع الطلاب للصف', 'دوري كرة قدم',
+                  'حصة ريادة', 'حصة تقوية', 'تغطية حصة غياب', 'مهمة أخرى'];
+var TASK_STATUS = { ASSIGNED: 'مكلّف', DONE: 'منفّذ', CONFIRMED: 'مؤكّد', LATE: 'متأخر', MISSED: 'لم يُنفّذ' };
+
+function _tcTasksSheet() {
+  return _getOrCreateSheet(TASKS_SHEET, TASK_HEADERS);
+}
+function _tcIsActivities(session) {
+  var subs = session.subjects || [];
+  for (var i = 0; i < subs.length; i++) {
+    var s = _safeStr(subs[i]);
+    if (s === 'الأنشطة' || s === 'نشاط' || s.indexOf('نشاط') > -1 || s.indexOf('الأنشطة') > -1) return true;
+  }
+  return false;
+}
+function _tcCanManageTasks(session) {
+  var r = _safeStr(session.role);
+  return (r === 'admin' || r === 'deputy' || r === 'supervisor' || r === 'accountant' || _tcIsActivities(session));
+}
+function _tcCanSetFee(session) {
+  var r = _safeStr(session.role);
+  return (r === 'admin' || r === 'accountant');
+}
+function _tcTaskRowToObj(row) {
+  return {
+    id: _safeStr(row[0]), teacher: _safeStr(row[1]), type: _safeStr(row[2]),
+    grade: _safeStr(row[3]), section: _safeStr(row[4]), date: _safeStr(row[5]),
+    time: _safeStr(row[6]), description: _safeStr(row[7]), status: _safeStr(row[8]) || TASK_STATUS.ASSIGNED,
+    fee: _safeFloat(row[9]), deduction: _safeFloat(row[10]), createdBy: _safeStr(row[11]),
+    confirmedBy: _safeStr(row[12]), createdAt: _safeStr(row[13]), notes: _safeStr(row[14])
+  };
+}
+function _tcFindTaskRow(sheet, id) {
+  var lr = sheet.getLastRow();
+  if (lr < 2) return -1;
+  var ids = sheet.getRange(2, 1, lr - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) { if (_safeStr(ids[i][0]) === _safeStr(id)) return i + 2; }
+  return -1;
+}
+
+function getTaskTypesProtected(params) {
+  return withAuth(params, function () { return { success: true, types: TASK_TYPES }; });
+}
+
+// إضافة مهمة (تعيين) — مدير/وكيل/مشرف/أنشطة
+function addTaskProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح بتعيين المهام' };
+    var teacher = _safeStr(params.teacher);
+    var type = _safeStr(params.type);
+    if (!teacher) return { success: false, error: 'اسم المعلم مطلوب' };
+    if (!type) return { success: false, error: 'نوع المهمة مطلوب' };
+    var sheet = _tcTasksSheet();
+    var id = 'T' + (new Date().getTime());
+    var now = new Date().toISOString();
+    sheet.appendRow([
+      id, teacher, type, _safeStr(params.grade), _safeStr(params.section),
+      _safeStr(params.date), _safeStr(params.time), _safeStr(params.description),
+      TASK_STATUS.ASSIGNED, _safeFloat(params.fee), 0, _safeStr(session.teacherName), '',
+      now, _safeStr(params.notes)
+    ]);
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, id: id, message: 'تم تعيين المهمة بنجاح' };
+  });
+}
+
+// مهام المعلم الحالي
+function getMyTasksProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var sheet = _tcTasksSheet();
+      var lr = sheet.getLastRow();
+      if (lr < 2) return { success: true, tasks: [] };
+      var data = sheet.getRange(2, 1, lr - 1, TASK_HEADERS.length).getValues();
+      var me = _safeStr(session.teacherName);
+      var out = [];
+      for (var i = 0; i < data.length; i++) {
+        var o = _tcTaskRowToObj(data[i]);
+        if (o.id && o.teacher === me) out.push(o);
+      }
+      out.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      return { success: true, tasks: out };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+  });
+}
+
+// كل المهام (للإدارة) مع فلاتر اختيارية
+function getTasksProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    try {
+      var sheet = _tcTasksSheet();
+      var lr = sheet.getLastRow();
+      if (lr < 2) return { success: true, tasks: [], canSetFee: _tcCanSetFee(session) };
+      var data = sheet.getRange(2, 1, lr - 1, TASK_HEADERS.length).getValues();
+      var fT = _safeStr(params.teacher), fS = _safeStr(params.status), fG = _safeStr(params.grade);
+      var out = [];
+      for (var i = 0; i < data.length; i++) {
+        var o = _tcTaskRowToObj(data[i]);
+        if (!o.id) continue;
+        if (fT && o.teacher !== fT) continue;
+        if (fS && o.status !== fS) continue;
+        if (fG && o.grade !== fG) continue;
+        out.push(o);
+      }
+      out.sort(function (a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); });
+      return { success: true, tasks: out, canSetFee: _tcCanSetFee(session) };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+  });
+}
+
+// تحديث حالة المهمة (تنفيذ/تأكيد/تأخر/عدم تنفيذ) + خصم اختياري
+function updateTaskStatusProtected(params) {
+  return withAuth(params, function (session) {
+    var id = _safeStr(params.id);
+    var status = _safeStr(params.status);
+    if (!id || !status) return { success: false, error: 'بيانات ناقصة' };
+    var sheet = _tcTasksSheet();
+    var row = _tcFindTaskRow(sheet, id);
+    if (row === -1) return { success: false, error: 'المهمة غير موجودة' };
+
+    var cur = _tcTaskRowToObj(sheet.getRange(row, 1, 1, TASK_HEADERS.length).getValues()[0]);
+    var isManager = _tcCanManageTasks(session);
+    var isOwner = (cur.teacher === _safeStr(session.teacherName));
+
+    // المعلم: يضع «منفّذ» على مهمته فقط
+    if (status === TASK_STATUS.DONE) {
+      if (!isOwner && !isManager) return { success: false, error: 'غير مصرح' };
+    } else {
+      // باقي الحالات (تأكيد/تأخر/عدم تنفيذ): للإدارة فقط
+      if (!isManager) return { success: false, error: 'غير مصرح — للإدارة فقط' };
+    }
+
+    sheet.getRange(row, 9).setValue(status); // الحالة
+    // الخصم (اختياري، للإدارة فقط)
+    if (isManager && (params.deduction === 0 || params.deduction)) {
+      sheet.getRange(row, 11).setValue(_safeFloat(params.deduction));
+    }
+    if (isManager && status !== TASK_STATUS.DONE) {
+      sheet.getRange(row, 13).setValue(_safeStr(session.teacherName)); // المؤكّد بواسطة
+    }
+    if (params.notes !== undefined) sheet.getRange(row, 15).setValue(_safeStr(params.notes));
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, message: 'تم تحديث حالة المهمة' };
+  });
+}
+
+// تحديد قيمة الرسم — المدير/المحاسب فقط
+function setTaskFeeProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanSetFee(session)) return { success: false, error: 'غير مصرح — للمحاسب أو المدير فقط' };
+    var id = _safeStr(params.id);
+    var sheet = _tcTasksSheet();
+    var row = _tcFindTaskRow(sheet, id);
+    if (row === -1) return { success: false, error: 'المهمة غير موجودة' };
+    sheet.getRange(row, 10).setValue(_safeFloat(params.fee));        // الرسم
+    if (params.deduction === 0 || params.deduction) sheet.getRange(row, 11).setValue(_safeFloat(params.deduction));
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, message: 'تم تحديث القيمة المالية' };
+  });
+}
+
+// حذف مهمة — للإدارة
+function deleteTaskProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    var sheet = _tcTasksSheet();
+    var row = _tcFindTaskRow(sheet, _safeStr(params.id));
+    if (row === -1) return { success: false, error: 'المهمة غير موجودة' };
+    sheet.deleteRow(row);
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, message: 'تم حذف المهمة' };
+  });
+}
+
+// ملخّص أداء معلم في المهام (للتقارير / بيان حالة المعلم)
+function getTeacherTaskSummaryProtected(params) {
+  return withAuth(params, function (session) {
+    var teacher = _safeStr(params.teacherName) || _safeStr(session.teacherName);
+    if (teacher !== _safeStr(session.teacherName) && !_tcCanManageTasks(session)) {
+      return { success: false, error: 'غير مصرح' };
+    }
+    try {
+      var sheet = _tcTasksSheet();
+      var lr = sheet.getLastRow();
+      var sum = { teacher: teacher, total: 0, assigned: 0, done: 0, confirmed: 0, late: 0, missed: 0, totalFee: 0, totalDeduction: 0, net: 0, tasks: [] };
+      if (lr < 2) return { success: true, summary: sum };
+      var data = sheet.getRange(2, 1, lr - 1, TASK_HEADERS.length).getValues();
+      for (var i = 0; i < data.length; i++) {
+        var o = _tcTaskRowToObj(data[i]);
+        if (!o.id || o.teacher !== teacher) continue;
+        sum.total++;
+        if (o.status === TASK_STATUS.ASSIGNED) sum.assigned++;
+        else if (o.status === TASK_STATUS.DONE) sum.done++;
+        else if (o.status === TASK_STATUS.CONFIRMED) sum.confirmed++;
+        else if (o.status === TASK_STATUS.LATE) sum.late++;
+        else if (o.status === TASK_STATUS.MISSED) sum.missed++;
+        sum.totalFee += o.fee; sum.totalDeduction += o.deduction;
+        sum.tasks.push(o);
+      }
+      sum.net = sum.totalFee - sum.totalDeduction;
+      sum.tasks.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      return { success: true, summary: sum };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+  });
+}
 // ============================================================
 // initBlockSettings — تهيئة الحجب المالي بقيمة مناسبة
 // شغّله من TeacherCore.gs مرة واحدة (أو من لوحة المعلم)
