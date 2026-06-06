@@ -4541,6 +4541,173 @@ function getTeacherTaskSummaryProtected(params) {
     } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
   });
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  🗓️ المرحلة 3: التقويم المدرسي 1447-1448هـ (بذر تلقائي + عرض ديناميكي)
+//  ورقة «التقويم_المدرسي»: id|النوع|العنوان|اليوم|التاريخ_الهجري|البداية|النهاية|ملاحظات
+//  الأنواع: فصل | اختبار | إجازة | مناسبة
+// ════════════════════════════════════════════════════════════════════
+
+var CALENDAR_SHEET = 'التقويم_المدرسي';
+var CAL_HEADERS = ['id', 'النوع', 'العنوان', 'اليوم', 'التاريخ_الهجري', 'البداية', 'النهاية', 'ملاحظات'];
+
+// بيانات البذر (التاريخ الميلادي بصيغة ISO؛ المفرد: النهاية=البداية)
+var CALENDAR_SEED = [
+  ['مناسبة', 'انتظام الإدارات المدرسية وبدء القيد والتسجيل', 'السبت', '20 ذو الحجة 1447هـ', '2026-06-06', '2026-06-06'],
+  ['مناسبة', 'انتظام هيئة التدريس', 'السبت', '27 ذو الحجة 1447هـ', '2026-06-13', '2026-06-13'],
+  ['فصل', 'بداية الدراسة الفعلية (الفصل الأول)', 'السبت', '5 محرم 1448هـ', '2026-06-20', '2026-06-20'],
+  ['فصل', 'انتهاء الدراسة للفصل الأول', 'الاثنين', '17 ربيع الأول 1448هـ', '2026-09-28', '2026-09-28'],
+  ['اختبار', 'بداية الاختبارات النهائية للفصل الأول', 'الثلاثاء', '18 ربيع الأول 1448هـ', '2026-09-29', '2026-10-09'],
+  ['إجازة', 'إجازة منتصف العام', 'السبت', '29 ربيع الأول 1448هـ', '2026-10-10', '2026-10-16'],
+  ['فصل', 'بداية الدراسة للفصل الثاني', 'السبت', '6 جمادى الأولى 1448هـ', '2026-10-17', '2026-10-17'],
+  ['فصل', 'انتهاء الدراسة للفصل الثاني', 'الاثنين', '17 شعبان 1448هـ', '2027-01-25', '2027-01-25'],
+  ['اختبار', 'بداية الاختبارات النهائية للفصل الثاني', 'الثلاثاء', '18 شعبان 1448هـ', '2027-01-26', '2027-02-05'],
+  ['اختبار', 'اختبارات الشهادة الثانوية العامة', 'السبت', '11 رمضان 1448هـ', '2027-03-20', '2027-03-20'],
+  ['اختبار', 'اختبارات الشهادة الأساسية العامة (التاسع)', 'الأحد', '12 شوال 1448هـ', '2027-04-21', '2027-04-21'],
+  ['إجازة', 'عيد الوحدة اليمنية', 'الخميس', '5 ذو الحجة 1447هـ', '2026-05-22', '2026-05-22'],
+  ['إجازة', 'رأس السنة الهجرية', 'الثلاثاء', '1 محرم 1448هـ', '2026-06-16', '2026-06-16'],
+  ['إجازة', 'المولد النبوي الشريف', 'الخميس', '12 ربيع الأول 1448هـ', '2026-09-25', '2026-09-25'],
+  ['إجازة', 'ثورة 21 سبتمبر', 'الاثنين', '10 ربيع الآخر 1448هـ', '2026-09-21', '2026-09-21'],
+  ['إجازة', 'ثورة 26 سبتمبر', 'السبت', '15 ربيع الآخر 1448هـ', '2026-09-26', '2026-09-26'],
+  ['إجازة', 'ثورة 14 أكتوبر', 'الأربعاء', '3 جمادى الأولى 1448هـ', '2026-10-14', '2026-10-14'],
+  ['إجازة', 'عيد الجلاء', 'الاثنين', '20 جمادى الآخرة 1448هـ', '2026-11-30', '2026-11-30']
+];
+// حدود الفصول لحساب الحالة
+var CAL_TERM1 = { start: '2026-06-20', end: '2026-09-28' };
+var CAL_MIDBREAK = { start: '2026-10-10', end: '2026-10-16' };
+var CAL_TERM2 = { start: '2026-10-17', end: '2027-01-25' };
+
+function _tcCalendarSheet(autoSeed) {
+  var sheet = _getOrCreateSheet(CALENDAR_SHEET, CAL_HEADERS);
+  if (autoSeed && sheet.getLastRow() < 2) {
+    for (var i = 0; i < CALENDAR_SEED.length; i++) {
+      var s = CALENDAR_SEED[i];
+      sheet.appendRow(['C' + (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], '']);
+    }
+    SpreadsheetApp.flush();
+  }
+  return sheet;
+}
+
+// بذر يدوي (مدير/وكيل) — يُعيد البذر حتى لو وُجدت بيانات عند force
+function seedSchoolCalendarProtected(params) {
+  return withAuth(params, function (session) {
+    var role = _safeStr(session.role);
+    if (!(role === 'admin' || role === 'deputy' || role === 'accountant')) {
+      return { success: false, error: 'غير مصرح — للمدير أو الوكيل فقط' };
+    }
+    var sheet = _getOrCreateSheet(CALENDAR_SHEET, CAL_HEADERS);
+    if (params.force) { sheet.clear(); sheet.appendRow(CAL_HEADERS); }
+    if (sheet.getLastRow() < 2) {
+      for (var i = 0; i < CALENDAR_SEED.length; i++) {
+        var s = CALENDAR_SEED[i];
+        sheet.appendRow(['C' + (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], '']);
+      }
+    }
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_calendar');
+    return { success: true, message: 'تم تهيئة التقويم المدرسي', count: CALENDAR_SEED.length };
+  });
+}
+
+function _tcCalRowToObj(row) {
+  return {
+    id: _safeStr(row[0]), type: _safeStr(row[1]), title: _safeStr(row[2]),
+    day: _safeStr(row[3]), hijri: _safeStr(row[4]),
+    start: _safeStr(row[5]), end: _safeStr(row[6]) || _safeStr(row[5]), notes: _safeStr(row[7])
+  };
+}
+
+// قراءة التقويم + حساب حالة اليوم (لأي مستخدم)
+function getSchoolCalendarProtected(params) {
+  return withAuth(params, function (session) {
+    try {
+      var tz = Session.getScriptTimeZone();
+      var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+      var info = _tcNowInfo();
+
+      var sheet = _tcCalendarSheet(true);
+      var events = [];
+      var lr = sheet.getLastRow();
+      if (lr >= 2) {
+        var data = sheet.getRange(2, 1, lr - 1, CAL_HEADERS.length).getValues();
+        for (var i = 0; i < data.length; i++) {
+          var o = _tcCalRowToObj(data[i]);
+          if (o.id || o.title) events.push(o);
+        }
+      }
+      events.sort(function (a, b) { return (a.start || '').localeCompare(b.start || ''); });
+
+      // حالة اليوم
+      var holidayToday = null, examToday = null;
+      for (var j = 0; j < events.length; j++) {
+        var e = events[j];
+        if (e.start <= todayStr && todayStr <= e.end) {
+          if (e.type === 'إجازة' && !holidayToday) holidayToday = e;
+          if (e.type === 'اختبار' && !examToday) examToday = e;
+        }
+      }
+      var status = { kind: 'inSession', label: 'يوم دراسي' };
+      var isWeekend = (info.dayName === 'الخميس' || info.dayName === 'الجمعة');
+      if (holidayToday) status = { kind: 'holiday', label: 'إجازة: ' + holidayToday.title };
+      else if (examToday) status = { kind: 'exam', label: 'فترة اختبارات: ' + examToday.title };
+      else if (isWeekend) status = { kind: 'weekend', label: 'عطلة نهاية الأسبوع' };
+      else if (todayStr < CAL_TERM1.start) status = { kind: 'beforeStart', label: 'قبل بدء العام الدراسي' };
+      else if (todayStr >= CAL_TERM1.start && todayStr <= CAL_TERM1.end) status = { kind: 'inSession', label: 'الفصل الدراسي الأول' };
+      else if (todayStr >= CAL_MIDBREAK.start && todayStr <= CAL_MIDBREAK.end) status = { kind: 'break', label: 'إجازة منتصف العام' };
+      else if (todayStr >= CAL_TERM2.start && todayStr <= CAL_TERM2.end) status = { kind: 'inSession', label: 'الفصل الدراسي الثاني' };
+      else if (todayStr > CAL_TERM2.end) status = { kind: 'afterEnd', label: 'فترة الاختبارات/نهاية العام' };
+
+      // الحدث القادم
+      var next = null;
+      for (var k = 0; k < events.length; k++) { if (events[k].start >= todayStr) { next = events[k]; break; } }
+
+      return { success: true, serverDate: todayStr, today: info.dayName, isWeekend: isWeekend,
+               status: status, events: events, nextEvent: next };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+  });
+}
+
+// إضافة حدث — مدير/وكيل
+function addCalendarEventProtected(params) {
+  return withAuth(params, function (session) {
+    var role = _safeStr(session.role);
+    if (!(role === 'admin' || role === 'deputy' || role === 'accountant')) {
+      return { success: false, error: 'غير مصرح — للمدير أو الوكيل فقط' };
+    }
+    if (!_safeStr(params.title)) return { success: false, error: 'العنوان مطلوب' };
+    if (!_safeStr(params.start)) return { success: false, error: 'تاريخ البداية مطلوب' };
+    var sheet = _tcCalendarSheet(false);
+    var id = 'C' + (new Date().getTime());
+    sheet.appendRow([id, _safeStr(params.type) || 'مناسبة', _safeStr(params.title),
+      _safeStr(params.day), _safeStr(params.hijri), _safeStr(params.start),
+      _safeStr(params.end) || _safeStr(params.start), _safeStr(params.notes)]);
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_calendar');
+    return { success: true, id: id, message: 'تمت إضافة الحدث' };
+  });
+}
+
+// حذف حدث — مدير/وكيل
+function deleteCalendarEventProtected(params) {
+  return withAuth(params, function (session) {
+    var role = _safeStr(session.role);
+    if (!(role === 'admin' || role === 'deputy' || role === 'accountant')) {
+      return { success: false, error: 'غير مصرح' };
+    }
+    var sheet = _tcCalendarSheet(false);
+    var lr = sheet.getLastRow();
+    if (lr < 2) return { success: false, error: 'لا توجد بيانات' };
+    var ids = sheet.getRange(2, 1, lr - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (_safeStr(ids[i][0]) === _safeStr(params.id)) {
+        sheet.deleteRow(i + 2); SpreadsheetApp.flush(); _tcCacheDel('tc_calendar');
+        return { success: true, message: 'تم الحذف' };
+      }
+    }
+    return { success: false, error: 'الحدث غير موجود' };
+  });
+}
 // ============================================================
 // initBlockSettings — تهيئة الحجب المالي بقيمة مناسبة
 // شغّله من TeacherCore.gs مرة واحدة (أو من لوحة المعلم)

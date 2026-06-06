@@ -1671,6 +1671,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-homework"   onclick="showSection('homework')">  <span class="si-icon">📝</span> الواجبات</button>
   <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">⚠️</span> المخالفات</button>
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
+  <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')">      <span class="si-icon">📢</span> الأخبار والإشعارات</button>
   <button class="sidebar-item" id="si-reports"    onclick="showSection('reports')">   <span class="si-icon">📊</span> التقارير</button>
   <button class="sidebar-item" id="si-notes"      onclick="showSection('notes')">
@@ -3890,6 +3891,7 @@ function showSection(name) {
       schedSettings: renderScheduleSettings,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
+      calendar: renderCalendar,
       profile: renderProfile
     };
 
@@ -4105,6 +4107,7 @@ function renderDashboard() {
                 '</div>' +
                '</div>' +
                assignHtml +
+               '<div id="dashCalendar" style="display:none;margin-bottom:18px"></div>' +
                '<div class="today-sched" id="todaySchedule">' +
                  '<div class="ts-head"><span class="ts-title">📅 جدول اليوم</span></div>' +
                  '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>' +
@@ -4125,6 +4128,7 @@ function renderDashboard() {
                '</div>';
     document.getElementById('dynamicContent').innerHTML = html;
 
+    loadCalendarWidget();
     loadTodaySchedule();
     loadMyTasksWidget();
 
@@ -4597,6 +4601,131 @@ function loadMyTasksWidget() {
       '<div class="section-header-title">مهامي المعلّقة (' + pending.length + ')</div>' +
       '<button class="btn btn-sm btn-secondary" onclick="showSection(\'myTasks\')">عرض الكل</button></div>' +
       '<div class="section-body">' + rows + '</div></div>';
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  🗓️ التقويم المدرسي (واجهة المرحلة 3)
+// ════════════════════════════════════════════════════════════════════
+var CAL = { data: null };
+var CAL_TYPE_STYLE = {
+  'فصل':   { c: '#4f46e5', bg: 'rgba(79,70,229,.1)',  icon: '📚' },
+  'اختبار':{ c: '#ef4444', bg: 'rgba(239,68,68,.1)',  icon: '📝' },
+  'إجازة': { c: '#10b981', bg: 'rgba(16,185,129,.1)', icon: '🌴' },
+  'مناسبة':{ c: '#f59e0b', bg: 'rgba(245,158,11,.1)', icon: '🎉' }
+};
+var CAL_STATUS_STYLE = {
+  holiday:    { bg: 'linear-gradient(135deg,#10b981,#059669)', icon: '🌴' },
+  exam:       { bg: 'linear-gradient(135deg,#ef4444,#dc2626)', icon: '📝' },
+  weekend:    { bg: 'linear-gradient(135deg,#f59e0b,#d97706)', icon: '🌅' },
+  inSession:  { bg: 'linear-gradient(135deg,#4f46e5,#06b6d4)', icon: '📖' },
+  break:      { bg: 'linear-gradient(135deg,#8b5cf6,#6d28d9)', icon: '☕' },
+  beforeStart:{ bg: 'linear-gradient(135deg,#64748b,#475569)', icon: '⏳' },
+  afterEnd:   { bg: 'linear-gradient(135deg,#64748b,#475569)', icon: '🏁' }
+};
+function _calIsManager() { var u = App.user || {}; return (u.role === 'admin' || u.role === 'deputy' || u.role === 'accountant'); }
+
+function renderCalendar() {
+  var el = document.getElementById('dynamicContent');
+  var addBtn = _calIsManager() ? '<button class="btn btn-primary btn-sm" onclick="cal_toggleAdd()">➕ إضافة حدث</button>' : '';
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">🗓️</div>' +
+    '<div class="section-header-title">التقويم المدرسي 1447-1448هـ</div>' + addBtn + '</div>' +
+    '<div class="section-body" id="calBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div>';
+  callServer('getSchoolCalendarProtected', {}, function (r) {
+    var b = document.getElementById('calBody');
+    if (!r || !r.success) { b.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
+    CAL.data = r;
+    cal_renderBody();
+  }, function (e) { document.getElementById('calBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function cal_renderBody() {
+  var b = document.getElementById('calBody'); if (!b || !CAL.data) return;
+  var r = CAL.data;
+  var ss = CAL_STATUS_STYLE[r.status.kind] || CAL_STATUS_STYLE.inSession;
+  var h = '<div style="background:' + ss.bg + ';color:#fff;border-radius:var(--radius-md);padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-md)">' +
+    '<span style="font-size:2rem">' + ss.icon + '</span>' +
+    '<div><div style="font-size:.78rem;opacity:.85">حالة اليوم — ' + escapeHtml(r.today || '') + ' · ' + escapeHtml(r.serverDate || '') + '</div>' +
+    '<div style="font-size:1.15rem;font-weight:800">' + escapeHtml(r.status.label) + '</div></div></div>';
+  if (r.nextEvent) {
+    var ns = CAL_TYPE_STYLE[r.nextEvent.type] || CAL_TYPE_STYLE['مناسبة'];
+    h += '<div class="assign-row"><span class="assign-chip">⏭️ القادم: <b>' + escapeHtml(r.nextEvent.title) + '</b> · ' + escapeHtml(r.nextEvent.start) + '</span></div>';
+  }
+  h += '<div id="calAddBox" style="display:none"></div>';
+
+  // المجموعات
+  var events = r.events || [];
+  if (!events.length) { b.innerHTML = h + '<div class="empty-state"><div class="es-icon">🗓️</div><div class="es-title">لا توجد أحداث</div></div>'; return; }
+  var rows = '';
+  for (var i = 0; i < events.length; i++) {
+    var e = events[i];
+    var ts = CAL_TYPE_STYLE[e.type] || CAL_TYPE_STYLE['مناسبة'];
+    var isPast = (r.serverDate && e.end < r.serverDate);
+    var isNow = (e.start <= r.serverDate && r.serverDate <= e.end);
+    var range = e.start + (e.end !== e.start ? (' ← ' + e.end) : '');
+    var del = _calIsManager() ? '<button class="btn btn-sm btn-secondary" onclick="cal_delete(\'' + e.id + '\')" title="حذف">🗑️</button>' : '';
+    rows += '<tr style="' + (isPast ? 'opacity:.5' : '') + (isNow ? 'background:' + ts.bg : '') + '">' +
+      '<td><span class="badge" style="background:' + ts.bg + ';color:' + ts.c + '">' + ts.icon + ' ' + escapeHtml(e.type) + '</span></td>' +
+      '<td style="text-align:right;font-weight:600">' + escapeHtml(e.title) + (isNow ? ' <span class="badge badge-success">الآن</span>' : '') + '</td>' +
+      '<td>' + escapeHtml(e.day || '') + '</td><td style="font-size:.8rem">' + escapeHtml(e.hijri || '') + '</td>' +
+      '<td style="font-size:.8rem;direction:ltr">' + escapeHtml(range) + '</td>' + (del ? '<td>' + del + '</td>' : '') +
+    '</tr>';
+  }
+  var delHead = _calIsManager() ? '<th></th>' : '';
+  h += '<div class="table-wrap"><table><thead><tr><th>النوع</th><th>الحدث</th><th>اليوم</th><th>هجري</th><th>التاريخ</th>' + delHead + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  b.innerHTML = h;
+}
+function cal_toggleAdd() {
+  var box = document.getElementById('calAddBox');
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.innerHTML = '<div class="filter-bar"><div class="filter-bar-title">➕ إضافة حدث</div><div class="form-row">' +
+    '<div class="form-group"><label class="form-label">النوع</label><select class="form-select" id="ce-type"><option value="مناسبة">🎉 مناسبة</option><option value="فصل">📚 فصل</option><option value="اختبار">📝 اختبار</option><option value="إجازة">🌴 إجازة</option></select></div>' +
+    '<div class="form-group flex-1"><label class="form-label">العنوان *</label><input type="text" class="form-control" id="ce-title"></div>' +
+    '</div><div class="form-row">' +
+    '<div class="form-group"><label class="form-label">من تاريخ *</label><input type="date" class="form-control" id="ce-start"></div>' +
+    '<div class="form-group"><label class="form-label">إلى تاريخ</label><input type="date" class="form-control" id="ce-end"></div>' +
+    '<div class="form-group"><label class="form-label">التاريخ الهجري</label><input type="text" class="form-control" id="ce-hijri" placeholder="مثال: 5 محرم 1448هـ"></div>' +
+    '</div><button class="btn btn-primary" onclick="cal_add()">💾 حفظ</button><div id="ce-status" style="margin-top:8px"></div></div>';
+  box.style.display = 'block';
+}
+function cal_add() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+  var st = document.getElementById('ce-status');
+  if (!g('ce-title')) { st.innerHTML = '<div class="alert alert-warning">العنوان مطلوب</div>'; return; }
+  if (!g('ce-start')) { st.innerHTML = '<div class="alert alert-warning">تاريخ البداية مطلوب</div>'; return; }
+  st.innerHTML = '<div style="color:#1a237e">⏳ جاري الحفظ…</div>';
+  callServer('addCalendarEventProtected', { type: g('ce-type'), title: g('ce-title'), start: g('ce-start'), end: g('ce-end'), hijri: g('ce-hijri') }, function (r) {
+    if (r && r.success) { toast('✅ تمت الإضافة', 'success'); renderCalendar(); }
+    else st.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>';
+  }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function cal_delete(id) {
+  if (!confirm('حذف هذا الحدث؟')) return;
+  callServer('deleteCalendarEventProtected', { id: id }, function (r) {
+    if (r && r.success) { toast('تم الحذف', 'success'); renderCalendar(); }
+    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  });
+}
+
+// ── ويدجت حالة اليوم + القادم في لوحة التحكم ──
+function loadCalendarWidget() {
+  var box = document.getElementById('dashCalendar');
+  if (!box) return;
+  callServer('getSchoolCalendarProtected', {}, function (r) {
+    if (!r || !r.success) { box.style.display = 'none'; return; }
+    var ss = CAL_STATUS_STYLE[r.status.kind] || CAL_STATUS_STYLE.inSession;
+    var nextHtml = '';
+    if (r.nextEvent) {
+      var ns = CAL_TYPE_STYLE[r.nextEvent.type] || CAL_TYPE_STYLE['مناسبة'];
+      nextHtml = '<div style="margin-top:8px;font-size:.82rem;opacity:.92">⏭️ القادم: ' + escapeHtml(r.nextEvent.title) + ' · ' + escapeHtml(r.nextEvent.start) + '</div>';
+    }
+    box.style.display = 'block';
+    box.innerHTML = '<div onclick="showSection(\'calendar\')" style="cursor:pointer;background:' + ss.bg + ';color:#fff;border-radius:var(--radius-md);padding:14px 18px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:14px">' +
+      '<span style="font-size:1.8rem">' + ss.icon + '</span>' +
+      '<div style="flex:1"><div style="font-size:.74rem;opacity:.85">التقويم المدرسي — ' + escapeHtml(r.today || '') + '</div>' +
+      '<div style="font-size:1.05rem;font-weight:800">' + escapeHtml(r.status.label) + '</div>' + nextHtml + '</div>' +
+      '<span style="font-size:1.4rem;opacity:.6">‹</span></div>';
   });
 }
 
