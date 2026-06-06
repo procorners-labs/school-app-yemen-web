@@ -2877,17 +2877,6 @@ function initSessionTimer(ttlSeconds) {
     if (el) el.classList.toggle('warning', left < 900000);
   }, 30000);
 }
-function saveSession(userData) {
-  try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
-}
-function loadSession() {
-  try { return JSON.parse(sessionStorage.getItem('teacherSession') || 'null'); } catch(e) { return null; }
-}
-function clearSession() {
-  try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
-  try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
-}
-
 // ==================== LOGIN / LOGOUT ====================
 var _loginAttempts = 0;
 var _loginLocked   = false;
@@ -3106,19 +3095,33 @@ function showLoginScreen() {
 }
 
 function saveSession(userData) {
-  try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
+  try {
+    var obj = { data: userData, savedAt: Date.now(), ttl: 28800000 };
+    localStorage.setItem('teacherSession_v2', JSON.stringify(obj));
+    sessionStorage.setItem('teacherSession', JSON.stringify(userData));
+  } catch(e) {}
 }
 
 function loadSession() {
   try {
     var raw = sessionStorage.getItem('teacherSession');
-    return raw ? JSON.parse(raw) : null;
+    if (raw) return JSON.parse(raw);
+    var lsRaw = localStorage.getItem('teacherSession_v2');
+    if (!lsRaw) return null;
+    var obj = JSON.parse(lsRaw);
+    if (Date.now() - obj.savedAt > obj.ttl) {
+      localStorage.removeItem('teacherSession_v2');
+      return null;
+    }
+    sessionStorage.setItem('teacherSession', JSON.stringify(obj.data));
+    return obj.data;
   } catch(e) { return null; }
 }
 
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
   try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
+  try { localStorage.removeItem('teacherSession_v2'); } catch(e) {}
 }
 
 // ════════════════════════════════════════════════════════
@@ -3790,12 +3793,6 @@ function saveViolation() {
 // ==================== SECTION ROUTER (مُحسَّن بالكامل وآمن) ====================
 
 /**
- * دالة احتياطية لصفحة التقارير - في حال عدم اكتمالها
- */
-function renderReports() {
-  toast('نظام التقارير قيد التطوير حالياً', 'info');
-}
-
 /**
  * عرض القسم المطلوب (الصفحة) والقفز إلى المحتوى
  * @param {string} name - اسم القسم (dashboard, grades, homework, ...)

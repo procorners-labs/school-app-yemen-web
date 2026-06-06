@@ -1877,6 +1877,40 @@ function ssClearAll() {
   } catch (e) {}
 }
 
+// ── استمرارية الجلسة عبر localStorage (منع الخروج عند تحديث الصفحة) ──
+var LS_SESSION_KEY  = 'studentSession_v2';
+var SS_SESSION_KEY  = 'studentSession';
+var SESSION_TTL_MS  = 28800000; // 8 ساعات
+
+function saveSession(userData) {
+  try {
+    var obj = { data: userData, savedAt: Date.now(), ttl: SESSION_TTL_MS };
+    localStorage.setItem(LS_SESSION_KEY, JSON.stringify(obj));
+    sessionStorage.setItem(SS_SESSION_KEY, JSON.stringify(userData));
+  } catch(e) {}
+}
+
+function loadSession() {
+  try {
+    var raw = sessionStorage.getItem(SS_SESSION_KEY);
+    if (raw) return JSON.parse(raw);
+    var lsRaw = localStorage.getItem(LS_SESSION_KEY);
+    if (!lsRaw) return null;
+    var obj = JSON.parse(lsRaw);
+    if (Date.now() - obj.savedAt > obj.ttl) {
+      localStorage.removeItem(LS_SESSION_KEY);
+      return null;
+    }
+    sessionStorage.setItem(SS_SESSION_KEY, JSON.stringify(obj.data));
+    return obj.data;
+  } catch(e) { return null; }
+}
+
+function clearSession() {
+  try { sessionStorage.removeItem(SS_SESSION_KEY); } catch(e) {}
+  try { localStorage.removeItem(LS_SESSION_KEY); } catch(e) {}
+}
+
 // ═══════════════════════════════════════════════════════════
 // 3. تسجيل الدخول والخروج
 // ═══════════════════════════════════════════════════════════
@@ -1934,6 +1968,7 @@ function doLogin() {
         role: r.role,
         schoolId: schoolId   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
       };
+      saveSession(APP.user);
 
       $('loginScreen').style.display = 'none';
       $('app').classList.add('show');
@@ -1950,6 +1985,7 @@ function doLogin() {
 function doLogout() {
   if (!confirm('هل تريد تسجيل الخروج؟')) return;
   ssClearAll();
+  clearSession();
   if (APP.badgeInterval) {
     clearInterval(APP.badgeInterval);
     APP.badgeInterval = null;
@@ -3297,6 +3333,15 @@ function setBadge(id, count) {
 // 18. تثبيت الأحداث (Login بـ Enter)
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function () {
+  // استعادة الجلسة المحفوظة (منع الخروج عند تحديث الصفحة)
+  var restoredUser = loadSession();
+  if (restoredUser && restoredUser.id) {
+    APP.user = restoredUser;
+    $('loginScreen').style.display = 'none';
+    $('app').classList.add('show');
+    initApp();
+  }
+
   // Enter في حقول تسجيل الدخول
   var u = $('username'), p = $('password');
   if (u) u.addEventListener('keydown', function (e) { if (e.key === 'Enter') p.focus(); });
