@@ -4286,35 +4286,120 @@ function getMyDayScheduleProtected(params) {
 
       // إعادة استخدام منطق الفلترة الكامل
       var sch = getMyScheduleProtected(params);
-      var rows = (sch && sch.success && sch.schedule) ? sch.schedule : [];
+      var rows = [];
+      var allRows = (sch && sch.success && sch.schedule) ? sch.schedule : [];
+      for (var ri = 0; ri < allRows.length; ri++) {
+        if (_safeStr(allRows[ri].day) === info.dayName) rows.push(allRows[ri]);
+      }
+
+      function _statusOf(startMin, endMin) {
+        if (startMin < 0) return 'upcoming';
+        if (info.minutes >= endMin) return 'past';
+        if (info.minutes >= startMin && info.minutes < endMin) return 'current';
+        return 'upcoming';
+      }
+
+      // أقصى رقم حصة لكل صف/شعبة اليوم (لتحديد الحصة الأخيرة)
+      var lastPeriodByClass = {};
+      var hasFirstByClass = {};
+      for (var li = 0; li < rows.length; li++) {
+        var key = _safeStr(rows[li].grade) + '|' + _safeStr(rows[li].section);
+        var pn = parseInt(rows[li].period, 10) || 0;
+        if (!lastPeriodByClass[key] || pn > lastPeriodByClass[key]) lastPeriodByClass[key] = pn;
+        if (pn === 1) hasFirstByClass[key] = true;
+      }
 
       var out = [];
       for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
-        if (_safeStr(r.day) !== info.dayName) continue;
         var pNum = parseInt(r.period, 10) || 0;
         var times = _tcComputePeriodTimes(settings, r.grade, breaksByGrade);
         var slot = null;
         for (var sI = 0; sI < times.slots.length; sI++) {
           if (!times.slots[sI].isBreak && times.slots[sI].period === pNum) { slot = times.slots[sI]; break; }
         }
-        var startMin = slot ? slot.startMin : 0;
-        var endMin = slot ? slot.endMin : 0;
-        var status = 'upcoming';
-        if (slot) {
-          if (info.minutes >= endMin) status = 'past';
-          else if (info.minutes >= startMin && info.minutes < endMin) status = 'current';
-        }
+        var startMin = slot ? slot.startMin : -1;
+        var endMin = slot ? slot.endMin : -1;
         out.push({
-          period: pNum, subject: r.subject, grade: r.grade, section: r.section, room: r.room,
+          kind: 'period', period: pNum, title: _safeStr(r.subject), subject: r.subject,
+          grade: r.grade, section: r.section, room: r.room,
           startMin: startMin, endMin: endMin,
-          start: _tcMinToDisplay(startMin), end: _tcMinToDisplay(endMin), status: status
+          start: (startMin >= 0 ? _tcMinToDisplay(startMin) : ''),
+          end: (endMin >= 0 ? _tcMinToDisplay(endMin) : ''),
+          status: _statusOf(startMin, endMin)
         });
       }
-      out.sort(function (a, b) { return a.startMin - b.startMin; });
+
+      // ── المهام الروتينية التلقائية (مشتقة من الجدول، بلا حفظ) ──
+      var duties = [];
+      var assemblyStart = assemblyOut ? assemblyOut.startMin : _tcParseHHMM(settings.dayStart);
+      var assemblyEnd = assemblyOut ? assemblyOut.endMin : assemblyStart;
+      var firstClasses = [];
+      for (var fk in hasFirstByClass) { if (hasFirstByClass.hasOwnProperty(fk)) firstClasses.push(fk.replace('|', ' ')); }
+      if (firstClasses.length) {
+        duties.push({
+          kind: 'duty', dutyType: 'assembly', title: 'إشراف طابور الصباح',
+          grade: firstClasses.join('، '), section: '',
+          startMin: assemblyStart, endMin: assemblyEnd,
+          start: _tcMinToDisplay(assemblyStart), end: _tcMinToDisplay(assemblyEnd),
+          status: _statusOf(assemblyStart, assemblyEnd), auto: true
+        });
+      }
+      // إشراف نزول الطلاب لكل صف يدرّس فيه المعلم الحصة الأخيرة
+      for (var di = 0; di < rows.length; di++) {
+        var rr = rows[di];
+        var ckey = _safeStr(rr.grade) + '|' + _safeStr(rr.section);
+        var pnn = parseInt(rr.period, 10) || 0;
+        if (pnn && lastPeriodByClass[ckey] === pnn) {
+          var t2 = _tcComputePeriodTimes(settings, rr.grade, breaksByGrade);
+          var sl2 = null;
+          for (var s2 = 0; s2 < t2.slots.length; s2++) { if (!t2.slots[s2].isBreak && t2.slots[s2].period === pnn) { sl2 = t2.slots[s2]; break; } }
+          if (sl2) {
+            duties.push({
+              kind: 'duty', dutyType: 'dismissal', title: 'إشراف نزول الطلاب',
+              grade: rr.grade, section: rr.section,
+              startMin: sl2.endMin, endMin: sl2.endMin + 10,
+              start: _tcMinToDisplay(sl2.endMin), end: _tcMinToDisplay(sl2.endMin + 10),
+              status: _statusOf(sl2.endMin, sl2.endMin + 10), auto: true
+            });
+          }
+        }
+      }
+
+      // ── مهام اليوم الفعلية المسندة (من ورقة المهام) ──
+      var todayTasks = [];
+      try {
+        var tSheet = _tcTasksSheet();
+        var tlr = tSheet.getLastRow();
+        if (tlr >= 2) {
+          var tdata = tSheet.getRange(2, 1, tlr - 1, TASK_HEADERS.length).getValues();
+          var meName = _safeStr(session.teacherName);
+          var todayISO = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          for (var ti = 0; ti < tdata.length; ti++) {
+            var to = _tcTaskRowToObj(tdata[ti]);
+            if (!to.id || to.teacher !== meName) continue;
+            if (to.date && to.date !== todayISO) continue;
+            var tmin = to.time ? _tcParseHHMM(to.time) : -1;
+            todayTasks.push({
+              kind: 'task', id: to.id, title: to.type, description: to.description,
+              grade: to.grade, section: to.section, status: to.status,
+              startMin: tmin, endMin: (tmin >= 0 ? tmin + 30 : -1),
+              start: (tmin >= 0 ? _tcMinToDisplay(tmin) : ''), end: ''
+            });
+          }
+        }
+      } catch (eT) {}
+
+      // الخط الزمني الموحّد مرتّب بالوقت
+      var timeline = out.concat(duties).concat(todayTasks);
+      timeline.sort(function (a, b) {
+        var av = (a.startMin < 0) ? 99999 : a.startMin, bv = (b.startMin < 0) ? 99999 : b.startMin;
+        return av - bv;
+      });
 
       return { success: true, today: info.dayName, isWeekend: false, serverTime: info.hhmm,
-               serverMinutes: info.minutes, assembly: assemblyOut, periods: out };
+               serverMinutes: info.minutes, assembly: assemblyOut, periods: out,
+               duties: duties, tasks: todayTasks, timeline: timeline };
     } catch (e) {
       return { success: false, error: String((e && e.message) || e) };
     }
@@ -4407,10 +4492,27 @@ function getMyTasksProtected(params) {
       if (lr < 2) return { success: true, tasks: [] };
       var data = sheet.getRange(2, 1, lr - 1, TASK_HEADERS.length).getValues();
       var me = _safeStr(session.teacherName);
+      var tz = Session.getScriptTimeZone();
+      var nowD = new Date();
+      var todayISO = Utilities.formatDate(nowD, tz, 'yyyy-MM-dd');
+      var nowMin = _tcParseHHMM(Utilities.formatDate(nowD, tz, 'HH:mm'));
       var out = [];
       for (var i = 0; i < data.length; i++) {
         var o = _tcTaskRowToObj(data[i]);
-        if (o.id && o.teacher === me) out.push(o);
+        if (!o.id || o.teacher !== me) continue;
+        // ── إنجاز تلقائي: مهمة «مكلّف» انتهى وقتها بلا تدخّل من المشرف → «منفّذ» تلقائياً ──
+        if (o.status === TASK_STATUS.ASSIGNED && o.date) {
+          var passed = (o.date < todayISO) || (o.date === todayISO && o.time && _tcParseHHMM(o.time) + 40 < nowMin);
+          if (passed) {
+            try {
+              sheet.getRange(i + 2, 9).setValue(TASK_STATUS.DONE);
+              var prevNote = o.notes ? (o.notes + ' • ') : '';
+              sheet.getRange(i + 2, 15).setValue(prevNote + 'إنجاز تلقائي (انتهى الوقت بلا ملاحظة)');
+              o.status = TASK_STATUS.DONE; o.notes = prevNote + 'إنجاز تلقائي (انتهى الوقت بلا ملاحظة)'; o.auto = true;
+            } catch (eA) {}
+          }
+        }
+        out.push(o);
       }
       out.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
       return { success: true, tasks: out };
@@ -4706,8 +4808,18 @@ function getSchoolCalendarProtected(params) {
       var next = null;
       for (var k = 0; k < events.length; k++) { if (events[k].start >= todayStr) { next = events[k]; break; } }
 
+      // العدّ التنازلي لبدء الدراسة (إن كنا قبل الفصل الأول أو في إجازة منتصف العام)
+      var daysToStart = 0, studyStart = '';
+      if (todayStr < CAL_TERM1.start) { studyStart = CAL_TERM1.start; }
+      else if (todayStr >= CAL_MIDBREAK.start && todayStr < CAL_TERM2.start) { studyStart = CAL_TERM2.start; }
+      if (studyStart) {
+        var d1 = new Date(todayStr + 'T00:00:00'), d2 = new Date(studyStart + 'T00:00:00');
+        daysToStart = Math.max(0, Math.round((d2.getTime() - d1.getTime()) / 86400000));
+      }
+
       return { success: true, serverDate: todayStr, today: info.dayName, isWeekend: isWeekend,
-               status: status, events: events, nextEvent: next };
+               status: status, events: events, nextEvent: next,
+               daysToStart: daysToStart, studyStart: studyStart };
     } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
   });
 }

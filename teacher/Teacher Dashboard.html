@@ -4049,6 +4049,10 @@ function renderDashboard() {
     try {
       todayStr = new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     } catch (eD) { todayStr = new Date().toLocaleDateString(); }
+    var hijriStr = '';
+    try {
+      hijriStr = new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura', { year: 'numeric', month: 'long', day: 'numeric' });
+    } catch (eH) { hijriStr = ''; }
 
     // ── تعيينات المعلم (صفوف/شُعب/مواد) ──
     var assignHtml = '';
@@ -4082,14 +4086,15 @@ function renderDashboard() {
                 '<div class="dg-meta">' +
                   '<span class="dg-chip">' + roleChip + '</span>' +
                   '<span class="dg-chip">📆 ' + escapeHtml(todayStr) + '</span>' +
+                  (hijriStr ? '<span class="dg-chip">🌙 ' + escapeHtml(hijriStr) + 'هـ</span>' : '') +
                 '</div>' +
                '</div>' +
                assignHtml +
-               '<div id="dashCalendar" style="display:none;margin-bottom:18px"></div>' +
                '<div class="today-sched" id="todaySchedule">' +
                  '<div class="ts-head"><span class="ts-title">📅 جدول اليوم</span></div>' +
                  '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>' +
                '</div>' +
+               '<div id="dashCalendar" style="display:none;margin-bottom:18px"></div>' +
                '<div id="dashMyTasks" style="display:none;margin-bottom:22px"></div>' +
                '<div class="stats-grid mb-4" id="dashStats">' +
                  '<div class="stat-card"><div class="stat-icon" style="background:var(--primary-glow)">📝</div><div><div class="stat-value skeleton" style="width:48px;height:28px;border-radius:6px;"></div><div class="stat-label skeleton sk-line w75 mt-2"></div></div></div>' +
@@ -4196,7 +4201,8 @@ function loadDashboardStats(data) {
 // ════════════════════════════════════════════════════════════════════
 //  📅 جدول اليوم اللحظي + ⚙️ إعدادات الجدول
 // ════════════════════════════════════════════════════════════════════
-var TS = { data: null, timer: null, clockOffset: 0 };
+var TS = { data: null, timer: null, clockOffset: 0, collapsed: false };
+try { TS.collapsed = (localStorage.getItem('ts_collapsed') === '1'); } catch (e) {}
 
 // لون ثابت مشتق من اسم المادة (HSL)
 function _subjColor(name) {
@@ -4243,63 +4249,93 @@ function _tsFmt(min) {
   return h12 + ':' + (mn < 10 ? '0' + mn : mn) + ' ' + ampm;
 }
 
+function ts_toggle() {
+  TS.collapsed = !TS.collapsed;
+  try { localStorage.setItem('ts_collapsed', TS.collapsed ? '1' : '0'); } catch (e) {}
+  renderTodaySchedule();
+}
+function _tsHead(d, nowMin) {
+  var arrow = TS.collapsed ? '▸' : '▾';
+  return '<div class="ts-head"><span class="ts-title">📅 جدول اليوم — ' + escapeHtml(d.today || '') + '</span>' +
+    '<span class="ts-now">🕐 الآن ' + _tsFmt(nowMin) + '</span>' +
+    '<button class="btn btn-sm btn-secondary" style="margin-right:8px" onclick="ts_toggle()">' + arrow + ' ' + (TS.collapsed ? 'إظهار' : 'إخفاء') + '</button></div>';
+}
 function renderTodaySchedule() {
   var box = document.getElementById('todaySchedule');
   if (!box || !TS.data) return;
   var d = TS.data;
   var nowMin = _tsNowMin();
+  var head = _tsHead(d, nowMin);
 
-  var head = '<div class="ts-head"><span class="ts-title">📅 جدول اليوم — ' + escapeHtml(d.today || '') + '</span>' +
-    '<span class="ts-now">🕐 الآن ' + _tsFmt(nowMin) + '</span></div>';
+  if (TS.collapsed) { box.innerHTML = head; return; }
 
   if (d.isWeekend) {
-    box.innerHTML = head + '<div class="ts-empty">🌴 اليوم عطلة أسبوعية — استمتع بيومك!</div>';
-    return;
-  }
-  if (!d.periods || !d.periods.length) {
-    var asm0 = d.assembly ? '<div class="ts-assembly">🚩 طابور الصباح: ' + _tsFmt(d.assembly.startMin) + ' — ' + _tsFmt(d.assembly.endMin) + '</div>' : '';
-    box.innerHTML = head + asm0 + '<div class="ts-empty">📭 لا توجد حصص مسندة إليك اليوم</div>';
+    box.innerHTML = head + '<div class="ts-empty">🌴 اليوم عطلة نهاية الأسبوع — استمتع بوقتك واستعد ليوم دراسي مشرق! 🌟</div>';
     return;
   }
 
-  // حدّد الحصة التالية (أول upcoming بعد الآن)
-  var nextIdx = -1;
-  for (var i = 0; i < d.periods.length; i++) {
-    var st = _tsStatus(d.periods[i], nowMin);
-    if (st === 'current') { nextIdx = -2; break; }       // هناك حصة حالية → لا "التالية"
-    if (st === 'upcoming' && nextIdx === -1) nextIdx = i;
+  var items = (d.timeline && d.timeline.length) ? d.timeline : (d.periods || []);
+  if (!items.length) {
+    box.innerHTML = head + '<div class="ts-empty">📭 لا توجد حصص أو مهام مسندة إليك اليوم — يوم هادئ، استثمره في التحضير! 💡</div>';
+    return;
+  }
+
+  // إعادة حساب الحالة لحظياً + تحديد العنصر التالي
+  for (var s = 0; s < items.length; s++) items[s]._st = _tsStatus(items[s], nowMin);
+  var nextIdx = -1, hasCurrent = false;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i]._st === 'current') { hasCurrent = true; }
+  }
+  if (!hasCurrent) { for (var n = 0; n < items.length; n++) { if (items[n]._st === 'upcoming') { nextIdx = n; break; } } }
+
+  // رسالة ذكية حسب الوقت
+  var allPast = true; for (var z = 0; z < items.length; z++) { if (items[z]._st !== 'past') { allPast = false; break; } }
+  var smart = '';
+  if (allPast) smart = '<div class="ts-assembly" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-color:#86efac;color:#166534">🎉 انتهى يومك الدراسي — عمل رائع، نراك غدًا!</div>';
+  else if (!hasCurrent && nextIdx >= 0) {
+    var toGo0 = (items[nextIdx].startMin || 0) - nowMin; if (toGo0 < 0) toGo0 = 0;
+    smart = '<div class="ts-assembly">⏳ لا يوجد التزام الآن — التالي: <b>' + escapeHtml(items[nextIdx].title || '') + '</b> بعد ' + toGo0 + ' دقيقة</div>';
   }
 
   var asm = d.assembly ? '<div class="ts-assembly">🚩 طابور الصباح: ' + _tsFmt(d.assembly.startMin) + ' — ' + _tsFmt(d.assembly.endMin) + '</div>' : '';
+
   var cards = '';
-  for (var j = 0; j < d.periods.length; j++) {
-    var p = d.periods[j];
-    var status = _tsStatus(p, nowMin);
-    var cls = 'ts-card ' + status + (j === nextIdx ? ' upcoming-next' : '');
-    var color = _subjColor(p.subject);
+  for (var j = 0; j < items.length; j++) {
+    var p = items[j];
+    var status = p._st;
+    var isNext = (j === nextIdx);
+    var cls = 'ts-card ' + status + (isNext ? ' upcoming-next' : '');
+    // اللون والعنوان حسب النوع
+    var color, label, icon;
+    if (p.kind === 'duty') { color = '#0ea5e9'; icon = (p.dutyType === 'assembly' ? '🚩' : '🚸'); label = 'مهمة تلقائية'; }
+    else if (p.kind === 'task') { color = '#f59e0b'; icon = '📌'; label = 'مهمة مكلّف بها'; }
+    else { color = _subjColor(p.subject || p.title); icon = '📖'; label = 'الحصة ' + (p.period || ''); }
+
     var badge = '';
     if (status === 'current') badge = '<span class="ts-badge now">● الآن</span>';
-    else if (j === nextIdx) badge = '<span class="ts-badge next">التالية</span>';
+    else if (isNext) badge = '<span class="ts-badge next">التالية</span>';
+
     var remain = '';
-    if (status === 'current') {
-      var left = p.endMin - nowMin; if (left < 0) left = 0;
-      remain = ' · يتبقّى ' + left + ' د';
-    } else if (j === nextIdx) {
-      var toGo = p.startMin - nowMin; if (toGo < 0) toGo = 0;
-      remain = ' · بعد ' + toGo + ' د';
-    }
+    if (status === 'current' && p.endMin >= 0) { var left = p.endMin - nowMin; if (left < 0) left = 0; remain = ' · يتبقّى ' + left + ' د'; }
+    else if (isNext && p.startMin >= 0) { var toGo = p.startMin - nowMin; if (toGo < 0) toGo = 0; remain = ' · بعد ' + toGo + ' د'; }
+
+    var timeStr = (p.startMin >= 0) ? ('🕐 ' + _tsFmt(p.startMin) + (p.endMin >= 0 && p.endMin !== p.startMin ? ' — ' + _tsFmt(p.endMin) : '') + remain) : '🕐 —';
+    var autoTag = (p.kind === 'duty') ? '<span style="font-size:.66rem;background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:50px;margin-right:6px">تلقائي</span>' : '';
+    var statusTag = (p.kind === 'task' && p.status) ? '<span style="font-size:.66rem;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:50px;margin-right:6px">' + escapeHtml(p.status) + '</span>' : '';
+
     cards += '<div class="' + cls + '" style="--cc:' + color + '">' + badge +
-      '<div class="ts-p">الحصة ' + p.period + '</div>' +
-      '<div class="ts-subj">' + escapeHtml(p.subject || '') + '</div>' +
-      '<div class="ts-meta"><span>🏫 ' + escapeHtml(p.grade || '') + '</span><span>🔠 ' + escapeHtml(p.section || '') + '</span>' +
+      '<div class="ts-p">' + icon + ' ' + escapeHtml(label) + autoTag + statusTag + '</div>' +
+      '<div class="ts-subj">' + escapeHtml(p.title || p.subject || '') + '</div>' +
+      '<div class="ts-meta">' + (p.grade ? '<span>🏫 ' + escapeHtml(p.grade) + '</span>' : '') +
+        (p.section ? '<span>🔠 ' + escapeHtml(p.section) + '</span>' : '') +
         (p.room ? '<span>📍 ' + escapeHtml(p.room) + '</span>' : '') + '</div>' +
-      '<div class="ts-time">🕐 ' + _tsFmt(p.startMin) + ' — ' + _tsFmt(p.endMin) + remain + '</div>' +
+      '<div class="ts-time">' + timeStr + '</div>' +
       '</div>';
   }
-  box.innerHTML = head + asm + '<div class="ts-grid">' + cards + '</div>';
+  box.innerHTML = head + smart + asm + '<div class="ts-grid">' + cards + '</div>';
 }
 function _tsStatus(p, nowMin) {
-  if (!p.endMin) return 'upcoming';
+  if (p.startMin == null || p.startMin < 0 || p.endMin == null || p.endMin < 0) return 'upcoming';
   if (nowMin >= p.endMin) return 'past';
   if (nowMin >= p.startMin && nowMin < p.endMin) return 'current';
   return 'upcoming';
@@ -4687,24 +4723,49 @@ function cal_delete(id) {
 }
 
 // ── ويدجت حالة اليوم + القادم في لوحة التحكم ──
+var CALW = { collapsed: false };
+try { CALW.collapsed = (localStorage.getItem('cal_collapsed') === '1'); } catch (e) {}
+function calw_toggle() {
+  CALW.collapsed = !CALW.collapsed;
+  try { localStorage.setItem('cal_collapsed', CALW.collapsed ? '1' : '0'); } catch (e) {}
+  if (window._calData) _renderCalWidget(window._calData);
+}
 function loadCalendarWidget() {
   var box = document.getElementById('dashCalendar');
   if (!box) return;
   callServer('getSchoolCalendarProtected', {}, function (r) {
     if (!r || !r.success) { box.style.display = 'none'; return; }
-    var ss = CAL_STATUS_STYLE[r.status.kind] || CAL_STATUS_STYLE.inSession;
-    var nextHtml = '';
-    if (r.nextEvent) {
-      var ns = CAL_TYPE_STYLE[r.nextEvent.type] || CAL_TYPE_STYLE['مناسبة'];
-      nextHtml = '<div style="margin-top:8px;font-size:.82rem;opacity:.92">⏭️ القادم: ' + escapeHtml(r.nextEvent.title) + ' · ' + escapeHtml(r.nextEvent.start) + '</div>';
-    }
-    box.style.display = 'block';
-    box.innerHTML = '<div onclick="showSection(\'calendar\')" style="cursor:pointer;background:' + ss.bg + ';color:#fff;border-radius:var(--radius-md);padding:14px 18px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:14px">' +
-      '<span style="font-size:1.8rem">' + ss.icon + '</span>' +
-      '<div style="flex:1"><div style="font-size:.74rem;opacity:.85">التقويم المدرسي — ' + escapeHtml(r.today || '') + '</div>' +
-      '<div style="font-size:1.05rem;font-weight:800">' + escapeHtml(r.status.label) + '</div>' + nextHtml + '</div>' +
-      '<span style="font-size:1.4rem;opacity:.6">‹</span></div>';
+    window._calData = r;
+    _renderCalWidget(r);
   });
+}
+function _renderCalWidget(r) {
+  var box = document.getElementById('dashCalendar');
+  if (!box) return;
+  box.style.display = 'block';
+  var ss = CAL_STATUS_STYLE[r.status.kind] || CAL_STATUS_STYLE.inSession;
+  var arrow = CALW.collapsed ? '▸' : '▾';
+  var head = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:' + (CALW.collapsed ? '0' : '10px') + '">' +
+    '<span style="font-weight:800;font-size:.95rem">🗓️ التقويم المدرسي</span>' +
+    '<button class="btn btn-sm btn-secondary" style="margin-right:auto" onclick="calw_toggle()">' + arrow + ' ' + (CALW.collapsed ? 'إظهار' : 'إخفاء') + '</button></div>';
+  if (CALW.collapsed) { box.innerHTML = head; return; }
+
+  // عدّاد بدء الدراسة (إن كنا قبل الدراسة أو في إجازة)
+  var countdown = '';
+  if (r.daysToStart && r.daysToStart > 0) {
+    countdown = '<div style="margin-top:8px;background:rgba(255,255,255,.18);border-radius:10px;padding:8px 12px;font-weight:700">' +
+      '⏳ يتبقّى <span style="font-size:1.25rem">' + r.daysToStart + '</span> يوم لانطلاق الدراسة 📚</div>';
+  }
+  var nextHtml = '';
+  if (r.nextEvent) nextHtml = '<div style="margin-top:8px;font-size:.82rem;opacity:.92">⏭️ القادم: ' + escapeHtml(r.nextEvent.title) + ' · ' + escapeHtml(r.nextEvent.start) + '</div>';
+
+  box.innerHTML = head +
+    '<div onclick="showSection(\'calendar\')" style="cursor:pointer;background:' + ss.bg + ';color:#fff;border-radius:var(--radius-md);padding:14px 18px;box-shadow:var(--shadow-md)">' +
+      '<div style="display:flex;align-items:center;gap:14px"><span style="font-size:1.8rem">' + ss.icon + '</span>' +
+      '<div style="flex:1"><div style="font-size:.74rem;opacity:.85">حالة اليوم — ' + escapeHtml(r.today || '') + '</div>' +
+      '<div style="font-size:1.05rem;font-weight:800">' + escapeHtml(r.status.label) + '</div>' + nextHtml + '</div>' +
+      '<span style="font-size:1.4rem;opacity:.6">‹</span></div>' + countdown +
+    '</div>';
 }
 
 // ==================== GRADES ====================
