@@ -4542,6 +4542,50 @@ function getTeacherTaskSummaryProtected(params) {
   });
 }
 
+// ملخّص أداء المهام لكل المعلمين (للإدارة) — لتقارير الأداء
+function getAllTaskSummariesProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    try {
+      var sheet = _tcTasksSheet();
+      var lr = sheet.getLastRow();
+      var byT = {}, order = [];
+      var grand = { total: 0, done: 0, confirmed: 0, late: 0, missed: 0, assigned: 0, totalFee: 0, totalDeduction: 0 };
+      if (lr >= 2) {
+        var data = sheet.getRange(2, 1, lr - 1, TASK_HEADERS.length).getValues();
+        for (var i = 0; i < data.length; i++) {
+          var o = _tcTaskRowToObj(data[i]);
+          if (!o.id || !o.teacher) continue;
+          if (!byT[o.teacher]) {
+            byT[o.teacher] = { teacher: o.teacher, total: 0, assigned: 0, done: 0, confirmed: 0, late: 0, missed: 0, totalFee: 0, totalDeduction: 0, net: 0, commitment: 0 };
+            order.push(o.teacher);
+          }
+          var t = byT[o.teacher];
+          t.total++; grand.total++;
+          if (o.status === TASK_STATUS.ASSIGNED) { t.assigned++; grand.assigned++; }
+          else if (o.status === TASK_STATUS.DONE) { t.done++; grand.done++; }
+          else if (o.status === TASK_STATUS.CONFIRMED) { t.confirmed++; grand.confirmed++; }
+          else if (o.status === TASK_STATUS.LATE) { t.late++; grand.late++; }
+          else if (o.status === TASK_STATUS.MISSED) { t.missed++; grand.missed++; }
+          t.totalFee += o.fee; t.totalDeduction += o.deduction;
+          grand.totalFee += o.fee; grand.totalDeduction += o.deduction;
+        }
+      }
+      var list = [];
+      for (var k = 0; k < order.length; k++) {
+        var s = byT[order[k]];
+        s.net = s.totalFee - s.totalDeduction;
+        // نسبة الالتزام: (منفّذ+مؤكّد) ÷ الإجمالي
+        s.commitment = s.total > 0 ? Math.round(((s.done + s.confirmed) / s.total) * 100) : 0;
+        list.push(s);
+      }
+      list.sort(function (a, b) { return b.commitment - a.commitment; });
+      grand.net = grand.totalFee - grand.totalDeduction;
+      return { success: true, teachers: list, grand: grand };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+  });
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  🗓️ المرحلة 3: التقويم المدرسي 1447-1448هـ (بذر تلقائي + عرض ديناميكي)
 //  ورقة «التقويم_المدرسي»: id|النوع|العنوان|اليوم|التاريخ_الهجري|البداية|النهاية|ملاحظات
