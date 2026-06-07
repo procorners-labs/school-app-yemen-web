@@ -2765,6 +2765,7 @@ function _fmtDateAr(iso) {
   var months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   return parseInt(m[3], 10) + ' ' + (months[parseInt(m[2], 10) - 1] || m[2]) + ' ' + m[1];
 }
+}
 
 // ── مُطبِّع بحث عربي مشترك: تجاهل التشكيل + توحيد الألف/الياء/التاء المربوطة + المسافات ──
 // يجعل البحث أكثر تسامحاً ودقة عبر كل الصفحات (أداء عالٍ: عملية واحدة على النص).
@@ -2886,6 +2887,17 @@ function initSessionTimer(ttlSeconds) {
     if (el) el.classList.toggle('warning', left < 900000);
   }, 30000);
 }
+function saveSession(userData) {
+  try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
+}
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem('teacherSession') || 'null'); } catch(e) { return null; }
+}
+function clearSession() {
+  try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
+}
+
 // ==================== LOGIN / LOGOUT ====================
 var _loginAttempts = 0;
 var _loginLocked   = false;
@@ -3104,33 +3116,19 @@ function showLoginScreen() {
 }
 
 function saveSession(userData) {
-  try {
-    var obj = { data: userData, savedAt: Date.now(), ttl: 28800000 };
-    localStorage.setItem('teacherSession_v2', JSON.stringify(obj));
-    sessionStorage.setItem('teacherSession', JSON.stringify(userData));
-  } catch(e) {}
+  try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
 }
 
 function loadSession() {
   try {
     var raw = sessionStorage.getItem('teacherSession');
-    if (raw) return JSON.parse(raw);
-    var lsRaw = localStorage.getItem('teacherSession_v2');
-    if (!lsRaw) return null;
-    var obj = JSON.parse(lsRaw);
-    if (Date.now() - obj.savedAt > obj.ttl) {
-      localStorage.removeItem('teacherSession_v2');
-      return null;
-    }
-    sessionStorage.setItem('teacherSession', JSON.stringify(obj.data));
-    return obj.data;
+    return raw ? JSON.parse(raw) : null;
   } catch(e) { return null; }
 }
 
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
   try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
-  try { localStorage.removeItem('teacherSession_v2'); } catch(e) {}
 }
 
 // ════════════════════════════════════════════════════════
@@ -3802,6 +3800,12 @@ function saveViolation() {
 // ==================== SECTION ROUTER (مُحسَّن بالكامل وآمن) ====================
 
 /**
+ * دالة احتياطية لصفحة التقارير - في حال عدم اكتمالها
+ */
+function renderReports() {
+  toast('نظام التقارير قيد التطوير حالياً', 'info');
+}
+
 /**
  * عرض القسم المطلوب (الصفحة) والقفز إلى المحتوى
  * @param {string} name - اسم القسم (dashboard, grades, homework, ...)
