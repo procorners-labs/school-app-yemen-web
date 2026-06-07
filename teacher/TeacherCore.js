@@ -4299,14 +4299,14 @@ function getMyDayScheduleProtected(params) {
         return 'upcoming';
       }
 
-      // أقصى رقم حصة لكل صف/شعبة اليوم (لتحديد الحصة الأخيرة)
-      var lastPeriodByClass = {};
+      // تحديد الصفوف التي يدرّس فيها المعلم الحصة الأولى (للطابور) أو السابعة (للنزول)
       var hasFirstByClass = {};
       for (var li = 0; li < rows.length; li++) {
-        var key = _safeStr(rows[li].grade) + '|' + _safeStr(rows[li].section);
         var pn = parseInt(rows[li].period, 10) || 0;
-        if (!lastPeriodByClass[key] || pn > lastPeriodByClass[key]) lastPeriodByClass[key] = pn;
-        if (pn === 1) hasFirstByClass[key] = true;
+        if (pn === 1) {
+          var key = _safeStr(rows[li].grade) + '|' + _safeStr(rows[li].section);
+          hasFirstByClass[key] = true;
+        }
       }
 
       var out = [];
@@ -4345,15 +4345,14 @@ function getMyDayScheduleProtected(params) {
           status: _statusOf(assemblyStart, assemblyEnd), auto: true
         });
       }
-      // إشراف نزول الطلاب لكل صف يدرّس فيه المعلم الحصة الأخيرة
+      // إشراف نزول الطلاب: للمعلم الذي يدرّس الحصة السابعة فقط
       for (var di = 0; di < rows.length; di++) {
         var rr = rows[di];
-        var ckey = _safeStr(rr.grade) + '|' + _safeStr(rr.section);
         var pnn = parseInt(rr.period, 10) || 0;
-        if (pnn && lastPeriodByClass[ckey] === pnn) {
+        if (pnn === 7) {
           var t2 = _tcComputePeriodTimes(settings, rr.grade, breaksByGrade);
           var sl2 = null;
-          for (var s2 = 0; s2 < t2.slots.length; s2++) { if (!t2.slots[s2].isBreak && t2.slots[s2].period === pnn) { sl2 = t2.slots[s2]; break; } }
+          for (var s2 = 0; s2 < t2.slots.length; s2++) { if (!t2.slots[s2].isBreak && t2.slots[s2].period === 7) { sl2 = t2.slots[s2]; break; } }
           if (sl2) {
             duties.push({
               kind: 'duty', dutyType: 'dismissal', title: 'إشراف نزول الطلاب',
