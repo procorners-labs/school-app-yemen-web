@@ -2757,6 +2757,16 @@ function esc(str) {
   return escapeHtml(str);
 }
 
+// تنسيق التاريخ بالعربية: "2026-06-07" → "7 يونيو 2026"
+function _fmtDateAr(iso) {
+  if (!iso) return '—';
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  var months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  return parseInt(m[3], 10) + ' ' + (months[parseInt(m[2], 10) - 1] || m[2]) + ' ' + m[1];
+}
+}
+
 // ── مُطبِّع بحث عربي مشترك: تجاهل التشكيل + توحيد الألف/الياء/التاء المربوطة + المسافات ──
 // يجعل البحث أكثر تسامحاً ودقة عبر كل الصفحات (أداء عالٍ: عملية واحدة على النص).
 function _tcNorm(s) {
@@ -2877,6 +2887,17 @@ function initSessionTimer(ttlSeconds) {
     if (el) el.classList.toggle('warning', left < 900000);
   }, 30000);
 }
+function saveSession(userData) {
+  try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
+}
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem('teacherSession') || 'null'); } catch(e) { return null; }
+}
+function clearSession() {
+  try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
+}
+
 // ==================== LOGIN / LOGOUT ====================
 var _loginAttempts = 0;
 var _loginLocked   = false;
@@ -3095,33 +3116,19 @@ function showLoginScreen() {
 }
 
 function saveSession(userData) {
-  try {
-    var obj = { data: userData, savedAt: Date.now(), ttl: 28800000 };
-    localStorage.setItem('teacherSession_v2', JSON.stringify(obj));
-    sessionStorage.setItem('teacherSession', JSON.stringify(userData));
-  } catch(e) {}
+  try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
 }
 
 function loadSession() {
   try {
     var raw = sessionStorage.getItem('teacherSession');
-    if (raw) return JSON.parse(raw);
-    var lsRaw = localStorage.getItem('teacherSession_v2');
-    if (!lsRaw) return null;
-    var obj = JSON.parse(lsRaw);
-    if (Date.now() - obj.savedAt > obj.ttl) {
-      localStorage.removeItem('teacherSession_v2');
-      return null;
-    }
-    sessionStorage.setItem('teacherSession', JSON.stringify(obj.data));
-    return obj.data;
+    return raw ? JSON.parse(raw) : null;
   } catch(e) { return null; }
 }
 
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
   try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
-  try { localStorage.removeItem('teacherSession_v2'); } catch(e) {}
 }
 
 // ════════════════════════════════════════════════════════
@@ -3793,6 +3800,12 @@ function saveViolation() {
 // ==================== SECTION ROUTER (مُحسَّن بالكامل وآمن) ====================
 
 /**
+ * دالة احتياطية لصفحة التقارير - في حال عدم اكتمالها
+ */
+function renderReports() {
+  toast('نظام التقارير قيد التطوير حالياً', 'info');
+}
+
 /**
  * عرض القسم المطلوب (الصفحة) والقفز إلى المحتوى
  * @param {string} name - اسم القسم (dashboard, grades, homework, ...)
@@ -4454,7 +4467,7 @@ function renderMyTasks() {
       var t = TASKS.my[i]; totFee += t.fee || 0; totDed += t.deduction || 0;
       var act = (t.status === 'مكلّف') ? '<button class="btn btn-sm btn-success" onclick="myTask_done(' + i + ')">✅ تم التنفيذ</button>' : '—';
       rows += '<tr><td>' + escapeHtml(t.type) + '</td><td>' + escapeHtml((t.grade || '') + ' ' + (t.section || '')) + '</td>' +
-        '<td>' + escapeHtml(t.date || '—') + '</td><td>' + escapeHtml(t.time || '—') + '</td>' +
+        '<td>' + _fmtDateAr(t.date) + '</td><td>' + escapeHtml(t.time || '—') + '</td>' +
         '<td>' + _taskBadge(t.status) + '</td><td>' + (t.fee || 0) + '</td><td style="color:#c62828">' + (t.deduction || 0) + '</td>' +
         '<td>' + act + '</td></tr>';
     }
@@ -4678,11 +4691,11 @@ function cal_renderBody() {
   var ss = CAL_STATUS_STYLE[r.status.kind] || CAL_STATUS_STYLE.inSession;
   var h = '<div style="background:' + ss.bg + ';color:#fff;border-radius:var(--radius-md);padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-md)">' +
     '<span style="font-size:2rem">' + ss.icon + '</span>' +
-    '<div><div style="font-size:.78rem;opacity:.85">حالة اليوم — ' + escapeHtml(r.today || '') + ' · ' + escapeHtml(r.serverDate || '') + '</div>' +
+    '<div><div style="font-size:.78rem;opacity:.85">حالة اليوم — ' + escapeHtml(r.today || '') + ' · ' + _fmtDateAr(r.serverDate) + '</div>' +
     '<div style="font-size:1.15rem;font-weight:800">' + escapeHtml(r.status.label) + '</div></div></div>';
   if (r.nextEvent) {
     var ns = CAL_TYPE_STYLE[r.nextEvent.type] || CAL_TYPE_STYLE['مناسبة'];
-    h += '<div class="assign-row"><span class="assign-chip">⏭️ القادم: <b>' + escapeHtml(r.nextEvent.title) + '</b> · ' + escapeHtml(r.nextEvent.start) + '</span></div>';
+    h += '<div class="assign-row"><span class="assign-chip">⏭️ القادم: <b>' + escapeHtml(r.nextEvent.title) + '</b> · ' + _fmtDateAr(r.nextEvent.start) + '</span></div>';
   }
   h += '<div id="calAddBox" style="display:none"></div>';
 
@@ -4695,13 +4708,13 @@ function cal_renderBody() {
     var ts = CAL_TYPE_STYLE[e.type] || CAL_TYPE_STYLE['مناسبة'];
     var isPast = (r.serverDate && e.end < r.serverDate);
     var isNow = (e.start <= r.serverDate && r.serverDate <= e.end);
-    var range = e.start + (e.end !== e.start ? (' ← ' + e.end) : '');
+    var range = _fmtDateAr(e.start) + (e.end !== e.start ? (' ← ' + _fmtDateAr(e.end)) : '');
     var del = _calIsManager() ? '<button class="btn btn-sm btn-secondary" onclick="cal_delete(\'' + e.id + '\')" title="حذف">🗑️</button>' : '';
     rows += '<tr style="' + (isPast ? 'opacity:.5' : '') + (isNow ? 'background:' + ts.bg : '') + '">' +
       '<td><span class="badge" style="background:' + ts.bg + ';color:' + ts.c + '">' + ts.icon + ' ' + escapeHtml(e.type) + '</span></td>' +
       '<td style="text-align:right;font-weight:600">' + escapeHtml(e.title) + (isNow ? ' <span class="badge badge-success">الآن</span>' : '') + '</td>' +
       '<td>' + escapeHtml(e.day || '') + '</td><td style="font-size:.8rem">' + escapeHtml(e.hijri || '') + '</td>' +
-      '<td style="font-size:.8rem;direction:ltr">' + escapeHtml(range) + '</td>' + (del ? '<td>' + del + '</td>' : '') +
+      '<td style="font-size:.8rem">' + range + '</td>' + (del ? '<td>' + del + '</td>' : '') +
     '</tr>';
   }
   var delHead = _calIsManager() ? '<th></th>' : '';
@@ -4776,7 +4789,7 @@ function _renderCalWidget(r) {
       '⏳ يتبقّى <span style="font-size:1.25rem">' + r.daysToStart + '</span> يوم لانطلاق الدراسة 📚</div>';
   }
   var nextHtml = '';
-  if (r.nextEvent) nextHtml = '<div style="margin-top:8px;font-size:.82rem;opacity:.92">⏭️ القادم: ' + escapeHtml(r.nextEvent.title) + ' · ' + escapeHtml(r.nextEvent.start) + '</div>';
+  if (r.nextEvent) nextHtml = '<div style="margin-top:8px;font-size:.82rem;opacity:.92">⏭️ القادم: ' + escapeHtml(r.nextEvent.title) + ' · ' + _fmtDateAr(r.nextEvent.start) + '</div>';
 
   box.innerHTML = head +
     '<div onclick="showSection(\'calendar\')" style="cursor:pointer;background:' + ss.bg + ';color:#fff;border-radius:var(--radius-md);padding:14px 18px;box-shadow:var(--shadow-md)">' +
