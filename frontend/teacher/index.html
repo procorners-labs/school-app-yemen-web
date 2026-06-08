@@ -466,6 +466,9 @@
     .app-body {
       display:flex;
       min-height:calc(var(--vh-100, 100vh) - var(--nav-height));
+      /* توسيط احترافي: كتلة (القائمة + المحتوى) تُحاذي شريط التنقل */
+      max-width: 1340px;
+      margin-inline: auto;
     }
 
     .sidebar {
@@ -522,6 +525,12 @@
       background: rgba(79,70,229,.15);
       transform: scale(.98);
     }
+    .sidebar-item:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
+      background: var(--primary-glow);
+      color: var(--primary);
+    }
     .sidebar-item.active {
       background: var(--primary-glow);
       color: var(--primary);
@@ -570,10 +579,22 @@
     .btn-menu-toggle:hover { background: var(--surface2); }
     .btn-menu-toggle:active { transform: scale(.94); }
 
-    /* MAIN CONTENT */
-    .main-content {
-      flex:1; min-width:0; padding:24px;
-      max-width:100%;
+    /* ═══════════════════════════════════════════════════
+       منطقة المحتوى — موحّدة لكل الصفحات (احترافية ومتجاوبة)
+       ─────────────────────────────────────────────────
+       الصفحات الديناميكية (#dynamicContent) والصفحات الثابتة
+       (الغياب/إدارة المعلمين/القوائم/الاجتماعي/غياب المعلمين)
+       كلها أبناء flex للـ .app-body. لذا يجب أن تملأ المساحة
+       المتبقية بجانب القائمة الجانبية بنفس الطريقة تماماً.
+    ═══════════════════════════════════════════════════ */
+    .main-content,
+    .app-body > .section {
+      flex: 1 1 0%;            /* تملأ المساحة المتبقية بثبات */
+      min-width: 0;            /* يمنع الجداول العريضة من كسر التخطيط */
+      width: 100%;
+      max-width: 100%;
+      /* padding متجاوب: يتقلّص تلقائياً على الشاشات الصغيرة */
+      padding: clamp(14px, 2.4vw, 26px);
     }
 
     /* DASHBOARD WIDGETS */
@@ -3526,6 +3547,44 @@ function closeSidebar() {
     console.warn('closeSidebar error:', e);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   ضبط ارتفاع الشاشة الحقيقي (--vh-100) لكل أنواع الهواتف
+   ─────────────────────────────────────────────────────────
+   100vh غير موثوق في Android WebView القديم (يتجاهل شريط
+   النظام). نضبط القيمة الفعلية بالبكسل من window.innerHeight
+   ونحدّثها عند تدوير الشاشة أو تغيير الحجم → تخطيط احترافي
+   متوافق مع كل الأجهزة.
+═══════════════════════════════════════════════════════════ */
+function syncViewportHeight() {
+  try {
+    var h = window.innerHeight;
+    if (h && h > 0) {
+      document.documentElement.style.setProperty('--vh-100', h + 'px');
+    }
+  } catch (e) {}
+}
+
+/* إغلاق الـ Drawer تلقائياً عند العودة لوضع سطح المكتب (>900px)
+   لتفادي بقاء القائمة/التعتيم عالقاً بعد تدوير الجهاز */
+function handleViewportResize() {
+  syncViewportHeight();
+  try {
+    if (window.innerWidth > 900) {
+      var sb = document.getElementById('sidebar');
+      if (sb && sb.classList.contains('open')) closeSidebar();
+    }
+  } catch (e) {}
+}
+
+(function initViewportHandlers() {
+  syncViewportHeight();
+  window.addEventListener('resize', handleViewportResize, { passive: true });
+  window.addEventListener('orientationchange', function () {
+    // تأخير بسيط حتى يستقر innerHeight بعد التدوير
+    setTimeout(syncViewportHeight, 250);
+  }, { passive: true });
+})();
 
 /* ── إشعارات الأخبار داخل التطبيق (جرس 🔔) ──────────────────────────────
    تعتمد على getAllNewsProtected (يُعيد total المُفلتر حسب دور المعلم).
