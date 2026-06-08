@@ -326,10 +326,6 @@ function _auth_findTeacherByUsernameAndPasswordFuzzy(username, password) {
       var rowPassword = _safeStr(data[i][4]);
       if (rowName === username && _verifyPassword(password, rowPassword)) {
         exactMatch = rowName;
-        // ترقية كلمة المرور تلقائياً إن كانت قديمة
-        if (String(rowPassword).indexOf(PASSWORD_HASH_PREFIX) !== 0) {
-          _migratePasswordIfNeeded(sheet, i + 1, 5, password);
-        }
         break;
       }
     }
@@ -355,10 +351,6 @@ function _auth_findTeacherByUsernameAndPasswordFuzzy(username, password) {
 
     if (potentialMatches.length === 1) {
       var match = potentialMatches[0];
-      var storedRowPassword = _safeStr(data[match.row - 1][4]);
-      if (String(storedRowPassword).indexOf(PASSWORD_HASH_PREFIX) !== 0) {
-        _migratePasswordIfNeeded(sheet, match.row, 5, match.password);
-      }
       Logger.log('Fuzzy match: username="' + username + '" matched "' + match.name + '"');
       return _auth_buildTeacherFromName(match.name, data);
     }
