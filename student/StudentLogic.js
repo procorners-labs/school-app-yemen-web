@@ -347,7 +347,6 @@ function loginStudent(username, password, clientId, schoolId) {
         if (_safe(tdata[ti][0]) === 'المدير') {
           if (_verifyPassword(password, _safe(tdata[ti][tCols.pass]))) {
             _stu_clearFailedAttempts(clientId);
-            _migratePasswordIfNeeded(ts, ti + 1, tCols.pass + 1, password);
                         return {
               ok: true, role: 'admin',
               name: 'مدير النظام', firstName: 'المدير',
@@ -387,8 +386,6 @@ function loginStudent(username, password, clientId, schoolId) {
       var byName = firstWord === uNorm;
 
       if ((byCode || byName) && _verifyPassword(password, storedPass)) {
-        _migratePasswordIfNeeded(sheet, i + 1, cols.pass + 1, password);
-
         var blk = getStudentBlockStatus(sid);
         if (blk.isBlocked) {
           _stu_clearFailedAttempts(clientId);
