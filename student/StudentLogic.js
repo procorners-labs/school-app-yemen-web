@@ -96,18 +96,6 @@ function _verifyPassword(plainPassword, storedPassword) {
   return String(storedPassword).trim() === String(plainPassword).trim();
 }
 
-function _migratePasswordIfNeeded(sheet, rowIndex, colIndex, plainPassword) {
-  try {
-    var cellValue = sheet.getRange(rowIndex, colIndex).getValue();
-    if (String(cellValue).indexOf(PASSWORD_HASH_PREFIX) === 0) return;
-    var salt = _generateSalt();
-    var hashed = _hashPassword(plainPassword, salt);
-    sheet.getRange(rowIndex, colIndex).setValue(hashed);
-    Logger.log('تمت ترقية كلمة مرور الصف: ' + rowIndex);
-  } catch (e) {
-    Logger.log('_migratePasswordIfNeeded error: ' + e.message);
-  }
-}
 
 // فتح SS مرة واحدة وتخزينه في متغير محلي خلال نطاق الطلب
 var _ssInstance = null;
@@ -544,9 +532,7 @@ function changePassword(studentId, currentPassword, newPassword) {
         if (!_verifyPassword(currentPassword, stored)) {
           return { ok: false, error: 'كلمة المرور الحالية غير صحيحة' };
         }
-        var salt = _generateSalt();
-        var hashed = _hashPassword(newPassword, salt);
-        sheet.getRange(i + 1, passCol + 1).setValue(hashed);
+        sheet.getRange(i + 1, passCol + 1).setValue(newPassword);
 
         // ✅ كاش معزول
         _cacheDel(_ck('grades', sidStr));

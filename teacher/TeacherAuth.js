@@ -15,8 +15,8 @@
  *  - جلسات آمنة باستخدام CacheService مع صلاحية 8 ساعات.
  *  - دوال withAuth لحماية الـ endpoints.
  *  - معالجة ديناميكية لـ "جميع الشعب" من ورقة الطلاب.
- *  - 🆕 هاش كلمات المرور SHA-256 مع ترقية تلقائية (إصدار 2026)
- *  - 🆕 تتبع الجلسات النشطة عبر ScriptProperties
+ *  - هاش كلمات المرور SHA-256 (إصدار 2026)
+ *  - تتبع الجلسات النشطة عبر ScriptProperties
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -94,18 +94,6 @@ function _verifyPassword(plainPassword, storedPassword) {
   return String(storedPassword).trim() === String(plainPassword).trim();
 }
 
-function _migratePasswordIfNeeded(sheet, rowIndex, colIndex, plainPassword) {
-  try {
-    var cellValue = sheet.getRange(rowIndex, colIndex).getValue();
-    if (String(cellValue).indexOf(PASSWORD_HASH_PREFIX) === 0) return;
-    var salt = _generateSalt();
-    var hashed = _hashPassword(plainPassword, salt);
-    sheet.getRange(rowIndex, colIndex).setValue(hashed);
-    Logger.log('تمت ترقية كلمة مرور المعلم صف: ' + rowIndex);
-  } catch (e) {
-    Logger.log('_migratePasswordIfNeeded error: ' + e.message);
-  }
-}
 // ══════════════════════════════════════════════════════
 //  تسجيل الدخول (النسخة المحسنة: اسم المستخدم + كلمة المرور)
 // ══════════════════════════════════════════════════════
@@ -553,6 +541,17 @@ function _auth_getSession(token) {
 
 function _auth_deleteSession(token) {
   try { CacheService.getScriptCache().remove(_auth_sessionKey(token)); } catch (e) {}
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var active = props.getProperty('active_sessions');
+    if (active) {
+      var map = JSON.parse(active);
+      if (map[token]) {
+        delete map[token];
+        props.setProperty('active_sessions', JSON.stringify(map));
+      }
+    }
+  } catch (e) {}
 }
 
 function _auth_refreshSession(token) {
