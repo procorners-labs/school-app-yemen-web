@@ -1834,6 +1834,35 @@ document.addEventListener('DOMContentLoaded',function(){
     if(!el._obs){io.observe(el);el._obs=true;}
   });
 });
+
+/* ══════════════════════════════════════════
+   ANDROID WEBVIEW — إلغاء target="_blank" للروابط الداخلية
+   يكشف عن UA "SchoolAppYemen" ويحوّل روابط المنصات إلى target="_self"
+   حتى يشتغل shouldOverrideUrlLoading بشكل صحيح ويفتح النشاط المناسب.
+══════════════════════════════════════════ */
+(function(){
+  if (!(/SchoolAppYemen/.test(navigator.userAgent) || /wv/.test(navigator.userAgent))) return;
+  var internalPaths = ['/teacher/', '/student/', '/cms/', '/master-admin/', '/schedule/'];
+  function fixLinks() {
+    var links = document.querySelectorAll('a[target="_blank"], a[target="_BLANK"]');
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var href = a.getAttribute('href') || '';
+      /* روابط خارجية (http كاملة) → يتركها كما هي */
+      if (/^https?:\/\//.test(href)) continue;
+      var isInternal = internalPaths.some(function(p){ return href.indexOf(p) !== -1; });
+      if (isInternal) {
+        a.removeAttribute('target');
+        a.removeAttribute('rel');
+      }
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fixLinks);
+  } else {
+    fixLinks();
+  }
+})();
 </script>
 </body>
 </html>
