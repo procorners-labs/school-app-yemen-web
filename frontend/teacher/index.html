@@ -93,6 +93,8 @@
       --radius-xl:      28px;
       --transition:     all .22s cubic-bezier(.4,0,.2,1);
       --font:           'Segoe UI', Tahoma, 'Helvetica Neue', Arial, sans-serif;
+      /* ارتفاع شريط التنقل العلوي — يُستخدم بـ sidebar top وapp-body */
+      --nav-height:     62px;
     }
 
     /* RESET & BASE */
@@ -461,14 +463,19 @@
     .ac-box > div:active, .ac-box > div:hover { background:var(--primary-glow,#eef2ff); }
 
     /* SIDEBAR + CONTENT */
-    .app-body { display:flex; min-height:calc(100vh - 62px); }
+    .app-body {
+      display:flex;
+      min-height:calc(var(--vh-100, 100vh) - var(--nav-height));
+    }
 
     .sidebar {
       width:240px; flex-shrink:0;
       background:var(--surface);
       border-left:1px solid var(--border);
       padding:16px 12px;
-      position:sticky; top:62px; height:calc(100vh - 62px);
+      position:sticky;
+      top:var(--nav-height);
+      height:calc(var(--vh-100, 100vh) - var(--nav-height));
       overflow-y:auto; overflow-x:hidden;
       transition:var(--transition);
     }
@@ -500,10 +507,14 @@
     }
     .sidebar-divider { height:1px; background:var(--border); margin:8px 10px; }
 
-    /* MOBILE SIDEBAR OVERLAY */
+    /* MOBILE SIDEBAR OVERLAY
+       z-index: 450 = فوق top-nav (400) ودون الـ sidebar (460)
+       → يمنع النقر العشوائي على nav-buttons أثناء فتح القائمة الجانبية */
     .sidebar-overlay {
       display:none; position:fixed; inset:0;
-      background:rgba(0,0,0,.5); z-index:350;
+      background:rgba(0,0,0,.5); z-index:450;
+      backdrop-filter:blur(2px);
+      -webkit-tap-highlight-color:transparent;
     }
     .btn-menu-toggle {
       display:none; background:none; border:1px solid var(--border);
@@ -1089,20 +1100,33 @@ input, select, textarea, .form-control, .form-select, .grade-input {
    ③ التابلت الصغير وأكبر هاتف — 900px وأقل
    ────────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  /* السايدبار يصبح Drawer */
+  /* تحديث --nav-height لحجم الشريط الأصغر */
+  :root { --nav-height: 56px; }
+
+  /* السايدبار يصبح Drawer منزلق من اليمين */
   .sidebar {
-    position: fixed; top: 56px; right: -290px; bottom: 0;
-    width: 270px; height: auto;          /* top+bottom بدل calc(vh) — مضمون في WebView */
-    z-index: 460;                        /* فوق الشريط العلوي (400) لمنع الحجب */
-    transition: right .3s ease;
+    position: fixed;
+    top: var(--nav-height);        /* يبدأ من أسفل شريط التنقل */
+    right: -290px;
+    bottom: 0;
+    width: 270px;
+    height: auto;                  /* top+bottom بدل calc(vh) — أكثر موثوقية في WebView */
+    z-index: 460;                  /* فوق الـ overlay (450) وفوق top-nav (400) */
+    transition: right .3s cubic-bezier(.4,0,.2,1);
     box-shadow: var(--shadow-lg);
-    overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding-bottom: calc(20px + var(--safe-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + var(--safe-bottom));
+    border-radius: 0 0 0 var(--radius-lg);
   }
-  .sidebar.open       { right: 0; }
+  .sidebar.open        { right: 0; }
   .sidebar-overlay.show{ display: block; }
-  .btn-menu-toggle    { display: flex; }
-  .main-content       { padding: 14px; }
+  .btn-menu-toggle     { display: flex; }
+
+  /* محتوى رئيسي: padding كافٍ لتجنّب تقاطع الـ nav */
+  .main-content {
+    padding: 14px 14px calc(20px + var(--safe-bottom));
+  }
 
   .nav-inner          { height: 56px; padding: 0 12px; gap: 8px; }
   .nav-brand-text     { font-size: .82rem; }
@@ -1176,7 +1200,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
    ⑥ Landscape Mode للهاتف — تقليل ارتفاع العناصر
    ────────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
-  .sidebar          { top: 52px; bottom: 0; height: auto; }
+  :root             { --nav-height: 52px; }
+  .sidebar          { top: var(--nav-height); bottom: 0; height: auto; }
   .nav-inner        { height: 52px; }
   .dashboard-greeting{ padding: 14px 18px; margin-bottom: 14px; }
   .dg-title         { font-size: 1rem; }
@@ -3381,7 +3406,6 @@ function confirmAction(title, msg, icon, cb) {
  * متوافق مع: Android WebView، iframe Apps Script، المتصفح العادي
  */
 function toggleSidebar(ev) {
-  // منع أي سلوك افتراضي (روابط، نماذج، …) قد يسبب انتقال غير مقصود
   if (ev) {
     if (typeof ev.preventDefault === 'function') ev.preventDefault();
     if (typeof ev.stopPropagation === 'function') ev.stopPropagation();
@@ -3396,19 +3420,19 @@ function toggleSidebar(ev) {
     } else {
       sb.classList.add('open');
       if (ov) ov.classList.add('show');
+      // منع تمرير الصفحة خلف الـ Drawer
+      document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
-      // إغلاق عند اللمس خارج القائمة (للموبايل)
-      document.addEventListener('touchstart', function _onTouch(e) {
-        if (sb && !sb.contains(e.target)) {
-          closeSidebar();
-          document.removeEventListener('touchstart', _onTouch);
-        }
-      }, { once: true });
+      // إغلاق بمفتاح Escape (desktop)
+      var _onKey = function(e) {
+        if (e.key === 'Escape') { closeSidebar(); document.removeEventListener('keydown', _onKey); }
+      };
+      document.addEventListener('keydown', _onKey);
     }
   } catch (err) {
     console.warn('toggleSidebar error:', err);
   }
-  return false; // مهم: يمنع أي انتقال محتمل من النموذج/الرابط الأب
+  return false;
 }
 
 function closeSidebar() {
@@ -3417,7 +3441,9 @@ function closeSidebar() {
     var ov = document.getElementById('sidebarOverlay');
     if (sb) sb.classList.remove('open');
     if (ov) ov.classList.remove('show');
+    // استعادة التمرير بعد إغلاق الـ Drawer
     if (document.body) document.body.style.overflow = '';
+    if (document.documentElement) document.documentElement.style.overflow = '';
   } catch (e) {
     console.warn('closeSidebar error:', e);
   }
