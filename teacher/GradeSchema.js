@@ -499,7 +499,7 @@ var GS_V4_UNIFIED_READ = false;  /* ابدأ بـ false، فعّل بعد الا
  * اسم ورقة الدرجات الرسمية (Single Source of Truth)
  * ملاحظة: ورقة "النصفي" مكررة وستُحذف في المرحلة 7.
  */
-var GS_OFFICIAL_GRADES_SHEET = 'الدرجات';
+var GS_OFFICIAL_GRADES_SHEET = 'النصفي';
 
 /**
  * قراءة موحّدة لبيانات درجات طالب واحد في شهر معين ومادة معينة.
