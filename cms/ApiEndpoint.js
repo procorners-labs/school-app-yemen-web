@@ -3,14 +3,27 @@
  * تطبيق: CMS — مدارس الإبداع والتميز الدولية
  *
  * يستقبل { fn, args } عبر doPost وينفّذ الدالة العامّة المطلوبة ويُعيد JSON.
- * الأمان (مطابق للأصل): يُسمح بأي دالة عامّة عدا دوال الإطار والدوال الداخلية
- * (المسبوقة بـ _)؛ ودوال *Protected تتحقق من التوكن بنفسها.
+ * الأمان (denylist مُحسّنة — المرحلة 1): يُسمح بأي دالة عامّة عدا: دوال الإطار،
+ * الدوال الداخلية (المسبوقة بـ _)، والدوال الخطرة (إدارية/صيانة/هجرة) في
+ * API_DANGEROUS_FUNCTIONS. دوال *Protected تتحقق من التوكن بنفسها (طبقة ثانية).
+ * مصدر قائمة الخطرة: _build/denylist.generated.json (دوال موجودة وغير مستدعاة من الواجهة).
  *
  * CORS: رابط /exec يُرجِع ACAO تلقائياً؛ والواجهة ترسل text/plain (طلب بسيط).
  * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية).
  */
 
-var API_BLOCKED_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];
+var API_FRAMEWORK_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];
+
+// 🚫 دوال خطرة تُمنع صراحةً من الاستدعاء عبر الويب — مصدرها _build/denylist.generated.json
+var API_DANGEROUS_FUNCTIONS = [
+  'clearCmsCache', 'fullSystemStart', 'initializeSheets',
+  'migrateExistingDriveUrls',
+  'setupAllTokens', 'setupEverything', 'setupFbOAuth',
+  'smmSeedTemplates', 'smmSeedYearCalendar', 'smmSetupSystem', 'testDriveAccess',
+  'resetDeploymentUrls', 'showDeploymentUrls', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
+];
+
+var API_BLOCKED_FUNCTIONS = API_FRAMEWORK_FUNCTIONS.concat(API_DANGEROUS_FUNCTIONS);
 
 function _apiJsonOut(obj) {
   return ContentService
