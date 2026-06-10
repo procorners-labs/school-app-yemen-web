@@ -23,6 +23,7 @@ param(
   [string]$Project,
   [string[]]$Files = @('ApiEndpoint.js'),
   [string]$Description = 'deploy from repo',
+  [int]$BaseVersion = 0,  # في الوضع المعزول: اسحب هذه النسخة كأساس بدل HEAD (يصلح HEAD المكسور)
   [switch]$FullSync,   # مزامنة كاملة: الحيّ = المستودع (يحذف الزائد)
   [switch]$WhatIf
 )
@@ -89,8 +90,13 @@ function Deploy-One([string]$proj) {
   Copy-Item $claspCfg (Join-Path $tmp '.clasp.json')
   Push-Location $tmp
   try {
-    Write-Host "→ سحب نسخة الإنتاج الحيّة (clasp pull)..." -ForegroundColor Yellow
-    Invoke-Clasp @('pull') | Out-Null
+    if ($BaseVersion -gt 0) {
+      Write-Host "→ سحب النسخة العاملة @$BaseVersion كأساس (إصلاح HEAD المكسور)..." -ForegroundColor Yellow
+      Invoke-Clasp @('pull','--versionNumber',"$BaseVersion") | Out-Null
+    } else {
+      Write-Host "→ سحب نسخة الإنتاج الحيّة (clasp pull من HEAD)..." -ForegroundColor Yellow
+      Invoke-Clasp @('pull') | Out-Null
+    }
     foreach ($file in $Files) {
       Copy-Item (Join-Path $projDir $file) (Join-Path $tmp $file) -Force
       Write-Host "→ استُبدل: $file"
