@@ -3,14 +3,29 @@
  * تطبيق: HOME — مدارس الإبداع والتميز الدولية
  *
  * يستقبل { fn, args } عبر doPost وينفّذ الدالة العامّة المطلوبة ويُعيد JSON.
- * الأمان (مطابق للأصل): يُسمح بأي دالة عامّة عدا دوال الإطار والدوال الداخلية
- * (المسبوقة بـ _)؛ ودوال *Protected تتحقق من التوكن بنفسها.
+ *
+ * الأمان (المرحلة 1 — قائمة سماح Whitelist):
+ *   لا يُسمح بتنفيذ أي دالة إلا إذا كان اسمها مُدرجاً صراحةً في API_ALLOWED_FUNCTIONS.
+ *   المصدر الموثوق للقائمة: _build/whitelist.json › "home" (تُولَّد آلياً في المرحلة 3).
+ *   هذا يُلغي الخطر السابق (blocklist) الذي كان يسمح باستدعاء أي دالة عامة.
+ *   طبقة ثانية: دوال *Protected تتحقق من التوكن بنفسها.
+ *
+ * ملاحظة: يبقى eval في _apiResolve محلِّلاً احتياطياً فقط، وأصبح آمناً لأن الاسم
+ *   مقيَّد مسبقاً بقائمة السماح (يُستبدَل بخريطة دوال مولَّدة عبر _build/ في المرحلة 3).
  *
  * CORS: رابط /exec يُرجِع ACAO تلقائياً؛ والواجهة ترسل text/plain (طلب بسيط).
  * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية).
  */
 
-var API_BLOCKED_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];
+// قائمة السماح — مطابقة لـ _build/whitelist.json › "home"
+var API_ALLOWED_FUNCTIONS = [
+  'checkSession',
+  'getHomeData',
+  'getImagesForSchool',
+  'getNewsForSchool',
+  'getSchoolStats',
+  'getVideosForSchool'
+];
 
 function _apiJsonOut(obj) {
   return ContentService
@@ -18,11 +33,10 @@ function _apiJsonOut(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function _apiIsBlocked(name) {
-  if (!name || typeof name !== 'string') return true;
-  if (name.charAt(0) === '_') return true;            // دوال داخلية
-  for (var i = 0; i < API_BLOCKED_FUNCTIONS.length; i++) {
-    if (API_BLOCKED_FUNCTIONS[i] === name) return true; // دوال الإطار
+function _apiIsAllowed(name) {
+  if (!name || typeof name !== 'string') return false;
+  for (var i = 0; i < API_ALLOWED_FUNCTIONS.length; i++) {
+    if (API_ALLOWED_FUNCTIONS[i] === name) return true;
   }
   return false;
 }
@@ -34,7 +48,7 @@ function _apiResolve(name) {
     }
   } catch (e) {}
   try {
-    var f = eval(name);
+    var f = eval(name); // آمن: name مقيَّد مسبقاً بقائمة السماح في doPost
     if (typeof f === 'function') return f;
   } catch (e2) {}
   return null;
@@ -49,7 +63,7 @@ function doPost(e) {
     if (!fn || typeof fn !== 'string') {
       return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });
     }
-    if (_apiIsBlocked(fn)) {
+    if (!_apiIsAllowed(fn)) {
       return _apiJsonOut({ ok: false, error: "دالة غير مسموح بها: " + fn });
     }
     var target = _apiResolve(fn);
