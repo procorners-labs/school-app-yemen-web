@@ -3079,3 +3079,32 @@ function buildSchoolPortalLinks(schoolId) {
     schedule : scheduleBase ? scheduleBase + sep : ''
   };
 }
+
+/**
+ * setupMasterTriggers — إنشاء/تجديد التريغرات المجدولة لمشروع المالك.
+ * يُستدعى من لوحة النظام (الزر system_setupTriggers في MasterAdmin.html).
+ * يحذف التريغرات القديمة لهذه الدوال (منع التكرار) ثم يُنشئ تريغرات يومية:
+ *   - checkSubscriptions (~2 ص): تعطيل المدارس منتهية الاشتراك
+ *   - masterSyncAll      (~3 ص): مزامنة البيانات بين المالك والطلاب
+ *   - collectAllStats    (~4 ص): تجميع إحصاءات كل المدارس
+ * يُعيد { ok, message } كما تتوقّع الواجهة.
+ */
+function setupMasterTriggers() {
+  try {
+    var WANTED = ['checkSubscriptions', 'masterSyncAll', 'collectAllStats'];
+    var existing = ScriptApp.getProjectTriggers();
+    var removed = 0;
+    for (var i = 0; i < existing.length; i++) {
+      var fn = existing[i].getHandlerFunction();
+      for (var j = 0; j < WANTED.length; j++) {
+        if (fn === WANTED[j]) { ScriptApp.deleteTrigger(existing[i]); removed++; break; }
+      }
+    }
+    ScriptApp.newTrigger('checkSubscriptions').timeBased().everyDays(1).atHour(2).create();
+    ScriptApp.newTrigger('masterSyncAll').timeBased().everyDays(1).atHour(3).create();
+    ScriptApp.newTrigger('collectAllStats').timeBased().everyDays(1).atHour(4).create();
+    return { ok: true, message: 'تم إنشاء 3 تريغرات يومية (الاشتراكات + المزامنة + الإحصاءات). حُذف ' + removed + ' تريغر قديم.' };
+  } catch (err) {
+    return { ok: false, message: 'فشل إنشاء التريغرات: ' + ((err && err.message) || err) };
+  }
+}
