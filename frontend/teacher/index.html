@@ -58,7 +58,7 @@
 })();
 </script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#4f46e5">
   <title>منصة المعلمين — مدارس الإبداع والتميز الدولية</title>
   <style>
@@ -465,10 +465,12 @@
     /* SIDEBAR + CONTENT */
     .app-body {
       display:flex;
+      width: 100%;
       min-height:calc(var(--vh-100, 100vh) - var(--nav-height));
-      /* توسيط احترافي: كتلة (القائمة + المحتوى) تُحاذي شريط التنقل */
+      /* توسيط احترافي: كتلة (القائمة + المحتوى) تُحاذي شريط التنقل
+         margin فيزيائي (وليس margin-inline) — يعمل على كل إصدارات WebView */
       max-width: 1340px;
-      margin-inline: auto;
+      margin: 0 auto;
     }
 
     .sidebar {
@@ -481,8 +483,6 @@
       height: calc(var(--vh-100, 100vh) - var(--nav-height));
       overflow-y: auto; overflow-x: hidden;
       transition: var(--transition);
-      /* GPU compositing لانسيابية أفضل على الموبايل */
-      will-change: transform;
       -webkit-overflow-scrolling: touch;
     }
     .sidebar::-webkit-scrollbar { width: 3px; }
@@ -593,6 +593,8 @@
       min-width: 0;            /* يمنع الجداول العريضة من كسر التخطيط */
       width: 100%;
       max-width: 100%;
+      /* fallback ثابت للأجهزة القديمة التي لا تدعم clamp() */
+      padding: 16px;
       /* padding متجاوب: يتقلّص تلقائياً على الشاشات الصغيرة */
       padding: clamp(14px, 2.4vw, 26px);
     }
@@ -1165,9 +1167,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   ③ التابلت الصغير وأكبر هاتف — 900px وأقل
+   ③ الهواتف (عمودي وأفقي) والتابلت الصغير — 1024px وأقل
+   الهاتف الأفقي عرضه يصل 932px → كان يحصل على تخطيط سطح المكتب
+   فتظهر القائمة دائمة وتأكل يمين الصفحات. الآن Drawer للجميع.
    ────────────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   /* تحديث --nav-height لحجم الشريط الأصغر */
   :root { --nav-height: 56px; }
 
@@ -1182,8 +1186,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     z-index: 460;
     /* transform بدل right — GPU-composited → حركة أنسيابية */
     transform: translateX(100%);
-    transition: transform .28s cubic-bezier(.4,0,.2,1);
-    -webkit-transition: -webkit-transform .28s cubic-bezier(.4,0,.2,1);
+    -webkit-transform: translateX(100%);
+    /* ضمانة مزدوجة: القائمة المغلقة مخفية تماماً —
+       لا يمكن أن تغطي يمين الصفحات حتى لو فشل transform */
+    visibility: hidden;
+    transition: transform .28s cubic-bezier(.4,0,.2,1),
+                visibility 0s linear .3s;
+    -webkit-transition: -webkit-transform .28s cubic-bezier(.4,0,.2,1),
+                visibility 0s linear .3s;
+    will-change: transform;
     box-shadow: var(--shadow-lg);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -1195,11 +1206,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   .sidebar.open {
     transform: translateX(0);
     -webkit-transform: translateX(0);
+    visibility: visible;
+    transition: transform .28s cubic-bezier(.4,0,.2,1), visibility 0s;
+    -webkit-transition: -webkit-transform .28s cubic-bezier(.4,0,.2,1), visibility 0s;
   }
   .btn-menu-toggle { display: flex; }
 
-  /* محتوى رئيسي: padding كافٍ لتجنّب تقاطع الـ nav */
-  .main-content {
+  /* محتوى رئيسي + الصفحات الثابتة: padding موحّد يتجنّب تقاطع الـ nav */
+  .main-content,
+  .app-body > .section {
     padding: 14px 14px calc(20px + var(--safe-bottom));
   }
 
@@ -1274,7 +1289,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 /* ──────────────────────────────────────────────────────────────────
    ⑥ Landscape Mode للهاتف — تقليل ارتفاع العناصر
    ────────────────────────────────────────────────────────────────── */
-@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 500px) {
   :root             { --nav-height: 52px; }
   .sidebar          { top: var(--nav-height); bottom: 0; height: auto; }
   .nav-inner        { height: 52px; }
@@ -3565,12 +3580,12 @@ function syncViewportHeight() {
   } catch (e) {}
 }
 
-/* إغلاق الـ Drawer تلقائياً عند العودة لوضع سطح المكتب (>900px)
+/* إغلاق الـ Drawer تلقائياً عند العودة لوضع سطح المكتب (>1024px)
    لتفادي بقاء القائمة/التعتيم عالقاً بعد تدوير الجهاز */
 function handleViewportResize() {
   syncViewportHeight();
   try {
-    if (window.innerWidth > 900) {
+    if (window.innerWidth > 1024) {
       var sb = document.getElementById('sidebar');
       if (sb && sb.classList.contains('open')) closeSidebar();
     }
