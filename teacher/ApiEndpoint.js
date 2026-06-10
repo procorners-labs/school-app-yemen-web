@@ -3,40 +3,28 @@
  * تطبيق: TEACHER — مدارس الإبداع والتميز الدولية
  *
  * يستقبل { fn, args } عبر doPost وينفّذ الدالة العامّة المطلوبة ويُعيد JSON.
- *
- * الأمان (المرحلة 1 — قائمة سماح Whitelist):
- *   لا يُسمح بتنفيذ أي دالة إلا إذا كان اسمها مُدرجاً صراحةً في API_ALLOWED_FUNCTIONS.
- *   المصدر الموثوق للقائمة: _build/whitelist.json › "teacher" (تُولَّد آلياً في المرحلة 3).
- *   هذا يُلغي الخطر السابق (blocklist) الذي كان يسمح باستدعاء أي دالة إدارية.
- *   طبقة ثانية: دوال *Protected تتحقق من التوكن بنفسها.
- *
- * ملاحظة حول _apiResolve: يبقى eval كمُحلِّل احتياطي فقط — وهو آمن الآن لأن الاسم
- *   مقيَّد مسبقاً بقائمة السماح (لا يصل إليه إلا اسم معروف). السبب: بيئة GAS (Rhino/ES5)
- *   لا تتيح globalThis لحلّ دالة عامة بالاسم من داخل دالة. (يُستبدَل بخريطة دوال مولَّدة
- *   عبر _build/ في المرحلة 3 بعد ضمان وجود كل الدوال.)
+ * الأمان (denylist مُحسّنة — المرحلة 1): يُسمح بأي دالة عامّة عدا: دوال الإطار،
+ * الدوال الداخلية (المسبوقة بـ _)، والدوال الخطرة (إدارية/صيانة/هجرة) في
+ * API_DANGEROUS_FUNCTIONS. دوال *Protected تتحقق من التوكن بنفسها (طبقة ثانية).
+ * مصدر قائمة الخطرة: _build/denylist.generated.json (دوال موجودة وغير مستدعاة من الواجهة).
  *
  * CORS: رابط /exec يُرجِع ACAO تلقائياً؛ والواجهة ترسل text/plain (طلب بسيط).
  * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية).
  */
 
-// قائمة السماح — مطابقة لـ _build/whitelist.json › "teacher"
-var API_ALLOWED_FUNCTIONS = [
-  'addListItemProtected',
-  'adminDeleteTeacherByName',
-  'adminGetAllTeachersGrouped',
-  'adminSaveTeacherGrouped',
-  'checkSession',
-  'deleteListItemProtected',
-  'getAttendanceListProtected',
-  'getEnhancedListsProtected',
-  'getListsDataProtected',
-  'getStudentsForView',
-  'getV3Config',
-  'handleTeacherLogin',
-  'handleTeacherLogout',
-  'saveAttendanceSingleProtected',
-  'updateListItemProtected'
+var API_FRAMEWORK_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];
+
+// 🚫 دوال خطرة تُمنع صراحةً من الاستدعاء عبر الويب — مصدرها _build/denylist.generated.json
+var API_DANGEROUS_FUNCTIONS = [
+  'clearNewsCache', 'clearTeacherCoreCache',
+  'deepAudit', 'diagnoseGradesSchema', 'diagnoseGradesSchemaV2',
+  'fullDiagnosticsForTeacher', 'inspectAllSheetsWithFormulas',
+  'migrateExistingDriveUrls', 'migrateNewsImagesToThumbnail',
+  'runFullSystemTest', 'testAuthSystem', 'testDriveAccess', 'testDriveUpload', 'testV3End2End',
+  'resetDeploymentUrls', 'showDeploymentUrls', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
 ];
+
+var API_BLOCKED_FUNCTIONS = API_FRAMEWORK_FUNCTIONS.concat(API_DANGEROUS_FUNCTIONS);
 
 function _apiJsonOut(obj) {
   return ContentService
@@ -44,10 +32,11 @@ function _apiJsonOut(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function _apiIsAllowed(name) {
-  if (!name || typeof name !== 'string') return false;
-  for (var i = 0; i < API_ALLOWED_FUNCTIONS.length; i++) {
-    if (API_ALLOWED_FUNCTIONS[i] === name) return true;
+function _apiIsBlocked(name) {
+  if (!name || typeof name !== 'string') return true;
+  if (name.charAt(0) === '_') return true;            // دوال داخلية
+  for (var i = 0; i < API_BLOCKED_FUNCTIONS.length; i++) {
+    if (API_BLOCKED_FUNCTIONS[i] === name) return true; // دوال الإطار
   }
   return false;
 }
@@ -59,7 +48,7 @@ function _apiResolve(name) {
     }
   } catch (e) {}
   try {
-    var f = eval(name); // آمن: name مقيَّد مسبقاً بقائمة السماح في doPost
+    var f = eval(name);
     if (typeof f === 'function') return f;
   } catch (e2) {}
   return null;
@@ -74,7 +63,7 @@ function doPost(e) {
     if (!fn || typeof fn !== 'string') {
       return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });
     }
-    if (!_apiIsAllowed(fn)) {
+    if (_apiIsBlocked(fn)) {
       return _apiJsonOut({ ok: false, error: "دالة غير مسموح بها: " + fn });
     }
     var target = _apiResolve(fn);
