@@ -130,7 +130,7 @@ function _srpt_getStudentRow(studentId) {
 function _srpt_analyzeGrades(student) {
   var result = { overall: 0, subjects: [] };
   try {
-    var sheet = _getSheet('الدرجات');
+    var sheet = _getSheet('النصفي');
     if (!sheet) return result;
     var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
@@ -192,7 +192,7 @@ function _srpt_analyzeGrades(student) {
 function _srpt_lastGrades(student, n) {
   var out = [];
   try {
-    var sheet = _getSheet('الدرجات');
+    var sheet = _getSheet('النصفي');
     if (!sheet) return out;
     var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
@@ -243,7 +243,7 @@ function _srpt_lastGrades(student, n) {
 function _srpt_classAverage(student) {
   var out = [];
   try {
-    var sheet = _getSheet('الدرجات');
+    var sheet = _getSheet('النصفي');
     if (!sheet) return out;
     var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
