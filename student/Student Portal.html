@@ -730,15 +730,32 @@ a { color: var(--pr); text-decoration: none; }
 /* ═══════════════════════════════════════════════
    الواجبات
 ═══════════════════════════════════════════════ */
-.hw-item {
-  background: var(--bg);
-  border-radius: var(--rad-s);
-  padding: 14px;
-  margin-bottom: 10px;
-  border-right: 3px solid var(--info);
-  transition: transform var(--tr-s);
+/* ───── رأس الواجبات ───── */
+.hw-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 2px 12px;
 }
-.hw-item:hover { transform: translateX(-4px); }
+.hw-count {
+  font-size: 13px; font-weight: 700; color: var(--muted);
+  background: var(--bg-2); padding: 4px 14px; border-radius: 20px;
+}
+
+/* ───── بطاقة الواجب ───── */
+.hw-item {
+  background: var(--card);
+  border-radius: var(--rad);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-right: 4px solid var(--info);
+  box-shadow: var(--sh-1);
+  transition: transform var(--tr-s), box-shadow var(--tr-s);
+}
+.hw-item:hover { transform: translateX(-3px); box-shadow: var(--sh-2); }
+.hw-item.overdue  { border-right-color: var(--err); }
+.hw-item.due-today{ border-right-color: var(--warn); }
+.hw-item.due-soon { border-right-color: var(--warn); }
+.hw-item.future   { border-right-color: var(--ok); }
+
 .hw-item .head {
   display: flex; flex-wrap: wrap; gap: 8px;
   align-items: center;
@@ -747,27 +764,45 @@ a { color: var(--pr); text-decoration: none; }
 .hw-item .subj-chip {
   background: var(--info-bg);
   color: var(--info);
-  padding: 3px 10px;
-  border-radius: 12px;
+  padding: 4px 12px;
+  border-radius: 14px;
   font-size: 12px;
   font-weight: 700;
 }
-.hw-item .teacher {
-  font-size: 12px;
-  color: var(--muted);
-  display: flex; align-items: center; gap: 4px;
+.hw-status {
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 12px;
 }
+.hw-status.overdue   { background: var(--err-bg);  color: var(--err); }
+.hw-status.due-today { background: var(--warn-bg); color: var(--warn); }
+.hw-status.due-soon  { background: var(--warn-bg); color: var(--warn); }
+.hw-status.future    { background: var(--ok-bg);   color: var(--ok); }
+.hw-status.no-date   { background: var(--bg-2);    color: var(--muted); }
+
 .hw-item .date {
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 11px; color: var(--muted);
   margin-right: auto;
 }
+
+/* ───── صف معلومات الواجب ───── */
+.hw-meta {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  align-items: center; margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bdr);
+}
+.hw-item .teacher {
+  font-size: 12px; color: var(--muted);
+  display: flex; align-items: center; gap: 4px;
+}
+.hw-item .due-date {
+  font-size: 12px; font-weight: 600; color: var(--warn);
+  display: flex; align-items: center; gap: 4px;
+}
 .hw-item .body {
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 14px; line-height: 1.75;
   color: var(--txt);
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre-wrap; word-break: break-word;
 }
 
 /* ═══════════════════════════════════════════════
@@ -1743,7 +1778,41 @@ var APP = {
 };
 
 var SS_KEY = 'studentPortal_v2';     // مفتاح sessionStorage
+var LS_SESSION_KEY = 'studentSession_v1'; // مفتاح localStorage للجلسة الدائمة
+var SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 ساعات بالملي ثانية
 var BADGE_INTERVAL_MS = 90 * 1000;   // تحديث Badges كل 1.5 دقيقة
+
+// ─── حفظ جلسة الطالب في localStorage ───
+function lsSaveSession() {
+  try {
+    var obj = {
+      user: APP.user,
+      tab: APP.currentTab || 'home',
+      savedAt: Date.now()
+    };
+    localStorage.setItem(LS_SESSION_KEY, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+// ─── تحميل الجلسة من localStorage ───
+function lsLoadSession() {
+  try {
+    var raw = localStorage.getItem(LS_SESSION_KEY);
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (!obj || !obj.user || !obj.savedAt) return null;
+    if (Date.now() - obj.savedAt > SESSION_TTL_MS) {
+      localStorage.removeItem(LS_SESSION_KEY);
+      return null;
+    }
+    return obj;
+  } catch(e) { return null; }
+}
+
+// ─── مسح الجلسة من localStorage ───
+function lsClearSession() {
+  try { localStorage.removeItem(LS_SESSION_KEY); } catch(e) {}
+}
 
 // ═══════════════════════════════════════════════════════════
 // 1. أدوات مساعدة عامة
@@ -1916,6 +1985,7 @@ function doLogin() {
       $('loginScreen').style.display = 'none';
       $('app').classList.add('show');
       initApp();
+      lsSaveSession(); // حفظ الجلسة في localStorage ليبقى مسجلاً بعد تحديث الصفحة
     })
     .withFailureHandler(function (e) {
       btn.disabled = false;
@@ -1928,6 +1998,7 @@ function doLogin() {
 function doLogout() {
   if (!confirm('هل تريد تسجيل الخروج؟')) return;
   ssClearAll();
+  lsClearSession(); // مسح الجلسة المحفوظة في localStorage
   if (APP.badgeInterval) {
     clearInterval(APP.badgeInterval);
     APP.badgeInterval = null;
@@ -2034,6 +2105,7 @@ function goTab(tab, btn) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   APP.currentTab = tab;
+  lsSaveSession(); // تحديث التبويب المحفوظ في localStorage
 
   // تحميل كسول — كل قسم يُحمَّل أول مرة فقط
   if (!APP.loaded[tab]) {
@@ -2480,14 +2552,48 @@ function renderHomework(data) {
     w.innerHTML = emptyHTML('📝', 'لا توجد واجبات حالياً', 'سيتم عرضها هنا فور إضافتها');
     return;
   }
-  var h = '';
-  for (var i = 0; i < data.length; i++) {
-    var hw = data[i];
-    h += '<div class="hw-item">' +
+
+  // ترتيب: الواجبات المتأخرة أولاً ثم القريبة ثم المستقبلية
+  var sorted = data.slice().sort(function(a, b) {
+    var da = a.dueDate || a.date || '';
+    var db = b.dueDate || b.date || '';
+    return da < db ? -1 : da > db ? 1 : 0;
+  });
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // رأس عدد الواجبات
+  var h = '<div class="hw-header"><span class="hw-count">📚 ' + sorted.length + ' واجب</span></div>';
+
+  for (var i = 0; i < sorted.length; i++) {
+    var hw = sorted[i];
+
+    // تحديد الحالة (استناداً للتاريخ)
+    var dueSrc = hw.dueDate || hw.date || '';
+    var statusCls = 'no-date';
+    var statusLbl = '';
+    if (dueSrc) {
+      try {
+        var dDate = new Date(String(dueSrc).replace(' ', 'T'));
+        dDate.setHours(0, 0, 0, 0);
+        var diff = Math.round((dDate - today) / 86400000);
+        if (diff < 0)       { statusCls = 'overdue';   statusLbl = '⚠️ منتهي'; }
+        else if (diff === 0){ statusCls = 'due-today'; statusLbl = '⏰ اليوم'; }
+        else if (diff <= 2) { statusCls = 'due-soon';  statusLbl = '🔔 قريباً'; }
+        else                { statusCls = 'future';    statusLbl = '🆕 جديد'; }
+      } catch(e) {}
+    }
+
+    h += '<div class="hw-item ' + statusCls + '">' +
          '<div class="head">' +
-         '<span class="subj-chip">📚 ' + esc(hw.subject) + '</span>' +
-         '<span class="teacher">👤 ' + esc(hw.teacher) + '</span>' +
-         '<span class="date">📅 ' + esc(fmtDate(hw.date)) + '</span>' +
+           '<span class="subj-chip">📚 ' + esc(hw.subject) + '</span>' +
+           (statusLbl ? '<span class="hw-status ' + statusCls + '">' + statusLbl + '</span>' : '') +
+           '<span class="date">📅 ' + esc(fmtDate(hw.date)) + '</span>' +
+         '</div>' +
+         '<div class="hw-meta">' +
+           (hw.teacher ? '<span class="teacher">👤 ' + esc(hw.teacher) + '</span>' : '') +
+           (hw.dueDate ? '<span class="due-date">📆 موعد التسليم: ' + esc(fmtDate(hw.dueDate)) + '</span>' : '') +
          '</div>' +
          '<div class="body">' + nl2br(hw.details) + '</div>' +
          '</div>';
@@ -3275,6 +3381,33 @@ function setBadge(id, count) {
 // 18. تثبيت الأحداث (Login بـ Enter)
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function () {
+  // ═══ استعادة جلسة سابقة من localStorage (تبقى بعد تحديث الصفحة) ═══
+  var savedSession = lsLoadSession();
+  if (savedSession && savedSession.user) {
+    APP.user = savedSession.user;
+    $('loginScreen').style.display = 'none';
+    $('app').classList.add('show');
+    initApp();
+    // استعادة التبويب الأخير
+    var lastTab = savedSession.tab || 'home';
+    if (lastTab !== 'home') {
+      var tabBtn = document.querySelector('.tab-btn[data-tab="' + lastTab + '"]');
+      if (tabBtn) {
+        // goTab بدون حفظ جلسة جديد (لتجنّب تحديث savedAt غير ضروري)
+        APP.currentTab = lastTab;
+        var secs = document.querySelectorAll('section[data-section]');
+        for (var si = 0; si < secs.length; si++) secs[si].style.display = 'none';
+        var target = document.querySelector('section[data-section="' + lastTab + '"]');
+        if (target) { target.style.display = ''; target.classList.add('fade-in'); }
+        var tabs = document.querySelectorAll('.tab-btn');
+        for (var ti = 0; ti < tabs.length; ti++) tabs[ti].classList.remove('active');
+        tabBtn.classList.add('active');
+        // تحميل بيانات التبويب المحفوظ
+        goTab(lastTab, tabBtn);
+      }
+    }
+  }
+
   // Enter في حقول تسجيل الدخول
   var u = $('username'), p = $('password');
   if (u) u.addEventListener('keydown', function (e) { if (e.key === 'Enter') p.focus(); });
