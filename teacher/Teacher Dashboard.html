@@ -36,7 +36,7 @@
 })();
 </script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#4f46e5">
   <title>منصة المعلمين — مدارس الإبداع والتميز الدولية</title>
   <style>
@@ -71,6 +71,8 @@
       --radius-xl:      28px;
       --transition:     all .22s cubic-bezier(.4,0,.2,1);
       --font:           'Segoe UI', Tahoma, 'Helvetica Neue', Arial, sans-serif;
+      /* ارتفاع شريط التنقل العلوي — يُستخدم بـ sidebar top وapp-body */
+      --nav-height:     62px;
     }
 
     /* RESET & BASE */
@@ -439,61 +441,140 @@
     .ac-box > div:active, .ac-box > div:hover { background:var(--primary-glow,#eef2ff); }
 
     /* SIDEBAR + CONTENT */
-    .app-body { display:flex; min-height:calc(100vh - 62px); }
+    .app-body {
+      display:flex;
+      width: 100%;
+      min-height:calc(var(--vh-100, 100vh) - var(--nav-height));
+      /* توسيط احترافي: كتلة (القائمة + المحتوى) تُحاذي شريط التنقل
+         margin فيزيائي (وليس margin-inline) — يعمل على كل إصدارات WebView */
+      max-width: 1340px;
+      margin: 0 auto;
+    }
 
     .sidebar {
-      width:240px; flex-shrink:0;
-      background:var(--surface);
-      border-left:1px solid var(--border);
-      padding:16px 12px;
-      position:sticky; top:62px; height:calc(100vh - 62px);
-      overflow-y:auto; overflow-x:hidden;
-      transition:var(--transition);
+      width: 240px; flex-shrink: 0;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      padding: 16px 10px 24px;
+      position: sticky;
+      top: var(--nav-height);
+      height: calc(var(--vh-100, 100vh) - var(--nav-height));
+      overflow-y: auto; overflow-x: hidden;
+      transition: var(--transition);
+      -webkit-overflow-scrolling: touch;
     }
-    .sidebar::-webkit-scrollbar { width:4px; }
-    .sidebar::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
 
-    .sidebar-section { margin-bottom:8px; }
+    /* ─── قسم القائمة الجانبية ─── */
+    .sidebar-section { margin-bottom: 4px; }
     .sidebar-label {
-      font-size:.68rem; font-weight:700; text-transform:uppercase;
-      letter-spacing:.08em; color:var(--text-light);
-      padding:10px 10px 6px; display:block;
+      font-size: .66rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--text-light);
+      padding: 12px 10px 5px; display: block;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+
+    /* ─── عنصر القائمة الجانبية ─── */
     .sidebar-item {
-      display:flex; align-items:center; gap:10px;
-      padding:10px 12px; border-radius:var(--radius-sm);
-      color:var(--text-muted); font-size:.88rem; font-weight:500;
-      cursor:pointer; transition:var(--transition);
-      user-select:none; border:none; background:none;
-      width:100%; text-align:right; font-family:var(--font);
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      color: var(--text-muted); font-size: .875rem; font-weight: 500;
+      cursor: pointer;
+      transition: background .15s ease, color .15s ease, border-color .15s ease;
+      user-select: none; border: none;
+      /* حد شفاف دائماً لمنع الاهتزاز عند ظهوره */
+      border-right: 3px solid transparent;
+      background: none;
+      width: 100%; text-align: right; font-family: var(--font);
+      line-height: 1.4;
+      /* حجم لمس مناسب */
+      min-height: 40px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      position: relative;
     }
-    .sidebar-item:hover { background:var(--primary-glow); color:var(--primary); }
+    .sidebar-item:hover {
+      background: var(--primary-glow);
+      color: var(--primary);
+      border-right-color: var(--primary-light);
+    }
+    .sidebar-item:active {
+      background: rgba(79,70,229,.15);
+      transform: scale(.98);
+    }
+    .sidebar-item:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
+      background: var(--primary-glow);
+      color: var(--primary);
+    }
     .sidebar-item.active {
-      background:var(--primary-glow); color:var(--primary); font-weight:700;
+      background: var(--primary-glow);
+      color: var(--primary);
+      font-weight: 700;
+      border-right-color: var(--primary); /* مؤشر بصري للقسم النشط */
     }
-    .sidebar-item .si-icon { font-size:1.1rem; flex-shrink:0; width:22px; text-align:center; }
+    .sidebar-item .si-icon {
+      font-size: 1.05rem; flex-shrink: 0; width: 22px; text-align: center;
+    }
     .sidebar-item .si-badge {
-      margin-right:auto; background:var(--danger); color:#fff;
-      font-size:.65rem; font-weight:700; padding:2px 7px; border-radius:50px;
+      margin-right: auto; background: var(--danger); color: #fff;
+      font-size: .64rem; font-weight: 700; padding: 2px 7px; border-radius: 50px;
+      flex-shrink: 0;
     }
-    .sidebar-divider { height:1px; background:var(--border); margin:8px 10px; }
+    /* badge متوافق مع RTL */
+    .sidebar-item .si-badge-notes {
+      margin-right: auto; background: var(--warning); color: #fff;
+      font-size: .64rem; font-weight: 700; padding: 2px 7px; border-radius: 50px;
+      flex-shrink: 0;
+    }
+
+    .sidebar-divider {
+      height: 1px; background: var(--border); margin: 10px 8px;
+      opacity: .6;
+    }
 
     /* MOBILE SIDEBAR OVERLAY */
     .sidebar-overlay {
-      display:none; position:fixed; inset:0;
-      background:rgba(0,0,0,.5); z-index:350;
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.48); z-index: 450;
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity .25s ease;
     }
-    .btn-menu-toggle {
-      display:none; background:none; border:1px solid var(--border);
-      border-radius:var(--radius-sm); padding:7px 10px;
-      cursor:pointer; font-size:1rem; transition:var(--transition);
-    }
-    .btn-menu-toggle:hover { background:var(--surface2); }
+    .sidebar-overlay.show { display: block; }
 
-    /* MAIN CONTENT */
-    .main-content {
-      flex:1; min-width:0; padding:24px;
-      max-width:100%;
+    .btn-menu-toggle {
+      display: none; background: none; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 7px 10px;
+      cursor: pointer; font-size: 1.1rem;
+      transition: var(--transition);
+      min-width: 40px; min-height: 40px;
+      align-items: center; justify-content: center;
+    }
+    .btn-menu-toggle:hover { background: var(--surface2); }
+    .btn-menu-toggle:active { transform: scale(.94); }
+
+    /* ═══════════════════════════════════════════════════
+       منطقة المحتوى — موحّدة لكل الصفحات (احترافية ومتجاوبة)
+       ─────────────────────────────────────────────────
+       الصفحات الديناميكية (#dynamicContent) والصفحات الثابتة
+       (الغياب/إدارة المعلمين/القوائم/الاجتماعي/غياب المعلمين)
+       كلها أبناء flex للـ .app-body. لذا يجب أن تملأ المساحة
+       المتبقية بجانب القائمة الجانبية بنفس الطريقة تماماً.
+    ═══════════════════════════════════════════════════ */
+    .main-content,
+    .app-body > .section {
+      flex: 1 1 0%;            /* تملأ المساحة المتبقية بثبات */
+      min-width: 0;            /* يمنع الجداول العريضة من كسر التخطيط */
+      width: 100%;
+      max-width: 100%;
+      /* fallback ثابت للأجهزة القديمة التي لا تدعم clamp() */
+      padding: 16px;
+      /* padding متجاوب: يتقلّص تلقائياً على الشاشات الصغيرة */
+      padding: clamp(14px, 2.4vw, 26px);
     }
 
     /* DASHBOARD WIDGETS */
@@ -1064,23 +1145,56 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   ③ التابلت الصغير وأكبر هاتف — 900px وأقل
+   ③ الهواتف (عمودي وأفقي) والتابلت الصغير — 1024px وأقل
+   الهاتف الأفقي عرضه يصل 932px → كان يحصل على تخطيط سطح المكتب
+   فتظهر القائمة دائمة وتأكل يمين الصفحات. الآن Drawer للجميع.
    ────────────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
-  /* السايدبار يصبح Drawer */
+@media (max-width: 1024px) {
+  /* تحديث --nav-height لحجم الشريط الأصغر */
+  :root { --nav-height: 56px; }
+
+  /* السايدبار يصبح Drawer منزلق من اليمين */
   .sidebar {
-    position: fixed; top: 56px; right: -290px; bottom: 0;
-    width: 270px; height: auto;          /* top+bottom بدل calc(vh) — مضمون في WebView */
-    z-index: 460;                        /* فوق الشريط العلوي (400) لمنع الحجب */
-    transition: right .3s ease;
+    position: fixed;
+    top: var(--nav-height);
+    right: 0;                      /* دائماً flush مع يمين الشاشة */
+    bottom: 0;
+    width: 270px;
+    height: auto;
+    z-index: 460;
+    /* transform بدل right — GPU-composited → حركة أنسيابية */
+    transform: translateX(100%);
+    -webkit-transform: translateX(100%);
+    /* ضمانة مزدوجة: القائمة المغلقة مخفية تماماً —
+       لا يمكن أن تغطي يمين الصفحات حتى لو فشل transform */
+    visibility: hidden;
+    transition: transform .28s cubic-bezier(.4,0,.2,1),
+                visibility 0s linear .3s;
+    -webkit-transition: -webkit-transform .28s cubic-bezier(.4,0,.2,1),
+                visibility 0s linear .3s;
+    will-change: transform;
     box-shadow: var(--shadow-lg);
-    overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding-bottom: calc(20px + var(--safe-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + var(--safe-bottom));
+    border-radius: 0 0 0 var(--radius-lg);
+    border-right: none;            /* لا حد على الجانب المغلق */
+    border-left: 1px solid var(--border);
   }
-  .sidebar.open       { right: 0; }
-  .sidebar-overlay.show{ display: block; }
-  .btn-menu-toggle    { display: flex; }
-  .main-content       { padding: 14px; }
+  .sidebar.open {
+    transform: translateX(0);
+    -webkit-transform: translateX(0);
+    visibility: visible;
+    transition: transform .28s cubic-bezier(.4,0,.2,1), visibility 0s;
+    -webkit-transition: -webkit-transform .28s cubic-bezier(.4,0,.2,1), visibility 0s;
+  }
+  .btn-menu-toggle { display: flex; }
+
+  /* محتوى رئيسي + الصفحات الثابتة: padding موحّد يتجنّب تقاطع الـ nav */
+  .main-content,
+  .app-body > .section {
+    padding: 14px 14px calc(20px + var(--safe-bottom));
+  }
 
   .nav-inner          { height: 56px; padding: 0 12px; gap: 8px; }
   .nav-brand-text     { font-size: .82rem; }
@@ -1153,8 +1267,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 /* ──────────────────────────────────────────────────────────────────
    ⑥ Landscape Mode للهاتف — تقليل ارتفاع العناصر
    ────────────────────────────────────────────────────────────────── */
-@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
-  .sidebar          { top: 52px; bottom: 0; height: auto; }
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 500px) {
+  :root             { --nav-height: 52px; }
+  .sidebar          { top: var(--nav-height); bottom: 0; height: auto; }
   .nav-inner        { height: 52px; }
   .dashboard-greeting{ padding: 14px 18px; margin-bottom: 14px; }
   .dg-title         { font-size: 1rem; }
@@ -2743,7 +2858,7 @@ function _fmtDateAr(iso) {
   var months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   return parseInt(m[3], 10) + ' ' + (months[parseInt(m[2], 10) - 1] || m[2]) + ' ' + m[1];
 }
-}
+
 
 // ── مُطبِّع بحث عربي مشترك: تجاهل التشكيل + توحيد الألف/الياء/التاء المربوطة + المسافات ──
 // يجعل البحث أكثر تسامحاً ودقة عبر كل الصفحات (أداء عالٍ: عملية واحدة على النص).
@@ -2865,15 +2980,39 @@ function initSessionTimer(ttlSeconds) {
     if (el) el.classList.toggle('warning', left < 900000);
   }, 30000);
 }
+var _TEACHER_LS_KEY = 'teacherSession_v1'; // مفتاح localStorage للجلسة الدائمة
+var _TEACHER_TTL_MS = 9 * 60 * 60 * 1000;  // 9 ساعات (أطول قليلاً من expiresIn=8h)
+
 function saveSession(userData) {
+  var obj = { data: userData, savedAt: Date.now() };
   try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
+  try { localStorage.setItem(_TEACHER_LS_KEY, JSON.stringify(obj)); } catch(e) {}
 }
 function loadSession() {
-  try { return JSON.parse(sessionStorage.getItem('teacherSession') || 'null'); } catch(e) { return null; }
+  // أولاً: حاول من sessionStorage (أسرع — نفس الجلسة)
+  try {
+    var ss = sessionStorage.getItem('teacherSession');
+    if (ss) { var parsed = JSON.parse(ss); if (parsed && parsed.token) return parsed; }
+  } catch(e) {}
+  // ثانياً: حاول من localStorage (يبقى بعد إعادة التحميل في Android WebView)
+  try {
+    var raw = localStorage.getItem(_TEACHER_LS_KEY);
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (!obj || !obj.data || !obj.savedAt) return null;
+    if (Date.now() - obj.savedAt > _TEACHER_TTL_MS) {
+      localStorage.removeItem(_TEACHER_LS_KEY);
+      return null;
+    }
+    // نسخ إلى sessionStorage لتسريع الزيارات التالية
+    try { sessionStorage.setItem('teacherSession', JSON.stringify(obj.data)); } catch(ex) {}
+    return obj.data;
+  } catch(e) { return null; }
 }
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
   try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
+  try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
 }
 
 // ==================== LOGIN / LOGOUT ====================
@@ -3359,7 +3498,6 @@ function confirmAction(title, msg, icon, cb) {
  * متوافق مع: Android WebView، iframe Apps Script، المتصفح العادي
  */
 function toggleSidebar(ev) {
-  // منع أي سلوك افتراضي (روابط، نماذج، …) قد يسبب انتقال غير مقصود
   if (ev) {
     if (typeof ev.preventDefault === 'function') ev.preventDefault();
     if (typeof ev.stopPropagation === 'function') ev.stopPropagation();
@@ -3374,19 +3512,19 @@ function toggleSidebar(ev) {
     } else {
       sb.classList.add('open');
       if (ov) ov.classList.add('show');
+      // منع تمرير الصفحة خلف الـ Drawer
+      document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
-      // إغلاق عند اللمس خارج القائمة (للموبايل)
-      document.addEventListener('touchstart', function _onTouch(e) {
-        if (sb && !sb.contains(e.target)) {
-          closeSidebar();
-          document.removeEventListener('touchstart', _onTouch);
-        }
-      }, { once: true });
+      // إغلاق بمفتاح Escape (desktop)
+      var _onKey = function(e) {
+        if (e.key === 'Escape') { closeSidebar(); document.removeEventListener('keydown', _onKey); }
+      };
+      document.addEventListener('keydown', _onKey);
     }
   } catch (err) {
     console.warn('toggleSidebar error:', err);
   }
-  return false; // مهم: يمنع أي انتقال محتمل من النموذج/الرابط الأب
+  return false;
 }
 
 function closeSidebar() {
@@ -3395,11 +3533,51 @@ function closeSidebar() {
     var ov = document.getElementById('sidebarOverlay');
     if (sb) sb.classList.remove('open');
     if (ov) ov.classList.remove('show');
+    // استعادة التمرير بعد إغلاق الـ Drawer
     if (document.body) document.body.style.overflow = '';
+    if (document.documentElement) document.documentElement.style.overflow = '';
   } catch (e) {
     console.warn('closeSidebar error:', e);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   ضبط ارتفاع الشاشة الحقيقي (--vh-100) لكل أنواع الهواتف
+   ─────────────────────────────────────────────────────────
+   100vh غير موثوق في Android WebView القديم (يتجاهل شريط
+   النظام). نضبط القيمة الفعلية بالبكسل من window.innerHeight
+   ونحدّثها عند تدوير الشاشة أو تغيير الحجم → تخطيط احترافي
+   متوافق مع كل الأجهزة.
+═══════════════════════════════════════════════════════════ */
+function syncViewportHeight() {
+  try {
+    var h = window.innerHeight;
+    if (h && h > 0) {
+      document.documentElement.style.setProperty('--vh-100', h + 'px');
+    }
+  } catch (e) {}
+}
+
+/* إغلاق الـ Drawer تلقائياً عند العودة لوضع سطح المكتب (>1024px)
+   لتفادي بقاء القائمة/التعتيم عالقاً بعد تدوير الجهاز */
+function handleViewportResize() {
+  syncViewportHeight();
+  try {
+    if (window.innerWidth > 1024) {
+      var sb = document.getElementById('sidebar');
+      if (sb && sb.classList.contains('open')) closeSidebar();
+    }
+  } catch (e) {}
+}
+
+(function initViewportHandlers() {
+  syncViewportHeight();
+  window.addEventListener('resize', handleViewportResize, { passive: true });
+  window.addEventListener('orientationchange', function () {
+    // تأخير بسيط حتى يستقر innerHeight بعد التدوير
+    setTimeout(syncViewportHeight, 250);
+  }, { passive: true });
+})();
 
 /* ── إشعارات الأخبار داخل التطبيق (جرس 🔔) ──────────────────────────────
    تعتمد على getAllNewsProtected (يُعيد total المُفلتر حسب دور المعلم).
@@ -3781,15 +3959,16 @@ function showSection(name) {
       return;
     }
 
-    // إخفاء الأقسام الثابتة (الغياب، إدارة المعلمين، القوائم)
+    // ✅ إخفاء جميع الأقسام الثابتة دفعة واحدة (يمنع تداخل الصفحات نهائياً)
+    //    كان social-section لا يُخفى هنا → يبقى ظاهراً فوق الصفحات الأخرى
+    var _staticSections = document.querySelectorAll('.app-body > .section');
+    for (var _ss = 0; _ss < _staticSections.length; _ss++) {
+      _staticSections[_ss].style.display = 'none';
+    }
     var attendanceDiv = document.getElementById('attendance-section');
-    var teachersDiv = document.getElementById('teachers-mgmt-section');
-    var listsDiv = document.getElementById('lists-mgmt-section');
-    if (attendanceDiv) attendanceDiv.style.display = 'none';
-    if (teachersDiv) teachersDiv.style.display = 'none';
-    if (listsDiv) listsDiv.style.display = 'none';
-    var tabsDiv = document.getElementById('teacher-absence-section');
-    if (tabsDiv) tabsDiv.style.display = 'none';
+    var teachersDiv   = document.getElementById('teachers-mgmt-section');
+    var listsDiv      = document.getElementById('lists-mgmt-section');
+    var tabsDiv       = document.getElementById('teacher-absence-section');
     dynamicEl.style.display = 'block';
 
     // معالجة الأقسام الثابتة الخاصة
@@ -8000,11 +8179,51 @@ function lm_setStatus(msg,color){ var el=document.getElementById('lm-status'); i
 // ==================== STARTUP ====================
 window.onload = function() {
   showLoading('جاري التحقق من الجلسة...');
-  var saved = loadSession();
+  var saved = loadSession(); // يقرأ من localStorage إذا غابت sessionStorage
   if (saved && saved.token) {
-    window._loginTimeout = setTimeout(function() { if (!App.user) { hideLoading(); showLoginScreen(); toast('تعذر الاتصال بالخادم. تأكد من الشبكة وحاول مجدداً.', 'error', 8000); } }, 12000);
-    google.script.run.withSuccessHandler(function(r) { clearTimeout(window._loginTimeout); if (r && r.valid) { App.user = { token: r.token || saved.token, teacherName: r.teacherName || saved.teacherName || '', subjects: r.subjects || saved.subjects || [], classes: r.classes || saved.classes || [], sections: r.sections || saved.sections || [], isAdmin: (r.isAdmin === true), role: r.role || saved.role || 'teacher', subject: r.subject || (r.subjects && r.subjects[0]) || '', grade: r.grade || (r.classes && r.classes[0]) || '', section: r.section || (r.sections && r.sections[0]) || '', expiresIn: r.expiresIn || 28800 }; hideLoading(); bootApp(); } else { clearSession(); hideLoading(); showLoginScreen(); } }).withFailureHandler(function(err) { clearTimeout(window._loginTimeout); console.error(err); clearSession(); hideLoading(); showLoginScreen(); }).checkSession(saved.token);
-  } else { hideLoading(); showLoginScreen(); }
+    window._loginTimeout = setTimeout(function() {
+      if (!App.user) { hideLoading(); showLoginScreen(); toast('تعذر الاتصال بالخادم. تأكد من الشبكة وحاول مجدداً.', 'error', 8000); }
+    }, 12000);
+    google.script.run
+      .withSuccessHandler(function(r) {
+        clearTimeout(window._loginTimeout);
+        if (r && r.valid) {
+          App.user = {
+            token       : r.token       || saved.token,
+            teacherName : r.teacherName || saved.teacherName || '',
+            schoolId    : saved.schoolId || '',   // ← مهم: استعادة schoolId
+            subjects    : r.subjects    || saved.subjects  || [],
+            classes     : r.classes     || saved.classes   || [],
+            sections    : r.sections    || saved.sections  || [],
+            isAdmin     : (r.isAdmin === true),
+            role        : r.role        || saved.role || 'teacher',
+            subject     : r.subject     || (r.subjects  && r.subjects[0])  || '',
+            grade       : r.grade       || (r.classes   && r.classes[0])   || '',
+            section     : r.section     || (r.sections  && r.sections[0])  || '',
+            expiresIn   : r.expiresIn   || 28800
+          };
+          // تحديث الجلسة المحفوظة بالبيانات الجديدة من الخادم
+          saveSession(App.user);
+          hideLoading();
+          bootApp();
+        } else {
+          clearSession();
+          hideLoading();
+          showLoginScreen();
+        }
+      })
+      .withFailureHandler(function(err) {
+        clearTimeout(window._loginTimeout);
+        console.error(err);
+        clearSession();
+        hideLoading();
+        showLoginScreen();
+      })
+      .checkSession(saved.token);
+  } else {
+    hideLoading();
+    showLoginScreen();
+  }
 };
 
 // ربط الدوال العامة
