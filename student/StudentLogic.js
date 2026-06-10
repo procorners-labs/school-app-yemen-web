@@ -1212,6 +1212,16 @@ function getAssignmentsForStudent(klassOrParams, section) {
   }
 }
 
+/**
+ * _sampleAssignments — بديل آمن عند غياب/فراغ ورقة الواجبات أو عند خطأ.
+ * كان مُستدعى في getAssignmentsForStudent بلا تعريف → "_sampleAssignments is
+ * not defined" يكسر تحميل الواجبات للفصول التي لا واجبات لها. يُعيد قائمة فارغة
+ * (حالة "لا واجبات" نظيفة) بدل بيانات وهمية أو خطأ.
+ */
+function _sampleAssignments(klass, sectionName) {
+  return [];
+}
+
 // ============================================================
 // ملاحظات ولي الأمر
 // ============================================================
