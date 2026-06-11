@@ -8,6 +8,28 @@ var path = require('path');
 var ROOT = path.resolve(__dirname, '..');
 var OUT = path.join(ROOT, 'frontend');
 
+// ── إعدادات Google (تحليلات + إثبات ملكية Search Console) ───────────────
+//   معرّف القياس GA4 ورمز إثبات ملكية وسم HTML من Google Search Console.
+//   تُحقَن في <head> لكل صفحة آلياً عبر analyticsBlock().
+var GA_MEASUREMENT_ID = 'G-06QS5PMS6F';
+var GSC_META_TOKEN = 'fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc';
+
+// كتلة وسم Google: تُوضع فور <head> مباشرةً (قبل أي شيء آخر) في كل صفحة.
+function analyticsBlock() {
+  return [
+    '<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->',
+    '<meta name="google-site-verification" content="' + GSC_META_TOKEN + '" />',
+    '<script async src="https://www.googletagmanager.com/gtag/js?id=' + GA_MEASUREMENT_ID + '"></script>',
+    '<script>',
+    '  window.dataLayer = window.dataLayer || [];',
+    '  function gtag(){dataLayer.push(arguments);}',
+    "  gtag('js', new Date());",
+    "  gtag('config', '" + GA_MEASUREMENT_ID + "');",
+    '</script>',
+    '<!-- ▲▲ نهاية وسم Google ▲▲ -->'
+  ].join('\n');
+}
+
 // المسارات نسبية تُخدَم عبر Cloudflare Worker (/gas/<app>) بدل روابط Google
 // المباشرة، حتى يعمل الموقع بدون VPN في المناطق التي يُحجب فيها github.io.
 // الـ Worker يمرّر هذه المسارات إلى روابط Google الحقيقية (انظر worker/school-app-proxy.js).
@@ -82,12 +104,14 @@ function injectionBlock(endpoint) {
 function transform(src, endpoint, report) {
   var out = src;
 
-  // 1) حقن الإعداد + الجسر بعد أول <head ...>
+  // 1) حقن وسم Google (أولاً، فور <head>) ثم الإعداد + الجسر بعد أول <head ...>
   var headRe = /<head[^>]*>/i;
   if (headRe.test(out)) {
-    out = out.replace(headRe, function (m) { return m + '\n' + injectionBlock(endpoint) + '\n'; });
+    out = out.replace(headRe, function (m) {
+      return m + '\n' + analyticsBlock() + '\n' + injectionBlock(endpoint) + '\n';
+    });
   } else {
-    out = injectionBlock(endpoint) + '\n' + out;
+    out = analyticsBlock() + '\n' + injectionBlock(endpoint) + '\n' + out;
     report.noHead = true;
   }
 
