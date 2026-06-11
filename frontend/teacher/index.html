@@ -766,12 +766,20 @@
       background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
       background-repeat:no-repeat; background-position:left 13px center; background-size:15px;
     }
-    .form-control:hover, .form-select:hover { border-color:var(--primary-light); background:var(--surface); }
+    .form-control:hover, .form-select:hover { border-color:var(--primary-light); background:var(--surface); box-shadow:0 2px 8px rgba(15,23,42,.05); }
     .form-control:focus, .form-select:focus {
       border-color:var(--primary);
       box-shadow:0 0 0 4px var(--primary-glow);
       background:var(--surface);
     }
+    /* السهم يتلوّن بلون النظام عند التركيز */
+    .form-select:focus {
+      background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    }
+    /* خيارات القائمة المنسدلة: تباعد وألوان أوضح */
+    .form-select option { padding:10px; font-weight:600; color:var(--text); background:var(--surface); }
+    .form-select option:checked { background:var(--primary-glow); color:var(--primary); font-weight:800; }
+    .form-select option:disabled { color:var(--text-light); }
     textarea.form-control { resize:vertical; min-height:90px; }
     .form-control::placeholder { color:var(--text-light); }
 
@@ -6686,130 +6694,68 @@ function showNewsViewers(newsId, newsTeacherName) {
     var totalViews    = r.viewsCount    || 0;
     var totalLikes    = r.likesCount    || 0;
  
+    // ── مولّدات عناصر احترافية (أفتار + شارة نوع + اسم + وقت) ──
+    function _statCard(num, label, c1, c2, icon) {
+      return '<div style="flex:1;min-width:88px;text-align:center;padding:14px 10px;border-radius:14px;' +
+        'background:linear-gradient(135deg,' + c1 + ',' + c2 + ');color:#fff;box-shadow:0 4px 14px ' + c2 + '44;">' +
+        '<div style="font-size:1.05rem">' + icon + '</div>' +
+        '<div style="font-size:1.7rem;font-weight:800;line-height:1.1;margin-top:2px;">' + num + '</div>' +
+        '<div style="font-size:.72rem;opacity:.92;">' + label + '</div></div>';
+    }
+    function _avatar(name, isStudent) {
+      var ini = escapeHtml((String(name || '?').trim().charAt(0)) || '?');
+      var bg = isStudent ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#4f46e5,#7c3aed)';
+      return '<span style="width:30px;height:30px;flex:0 0 30px;border-radius:50%;background:' + bg + ';color:#fff;' +
+        'display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;">' + ini + '</span>';
+    }
+    function _personRow(name, isStudent, ts) {
+      var chip = isStudent
+        ? '<span style="background:rgba(245,158,11,.12);color:#b45309;border-radius:6px;padding:2px 8px;font-size:.66rem;font-weight:700;">🎒 طالب</span>'
+        : '<span style="background:rgba(79,70,229,.12);color:#4338ca;border-radius:6px;padding:2px 8px;font-size:.66rem;font-weight:700;">👨‍🏫 معلم</span>';
+      var time = ts ? '<span style="margin-right:auto;font-size:.7rem;color:var(--text-muted);white-space:nowrap;">🕐 ' + escapeHtml(ts) + '</span>' : '<span style="margin-right:auto;"></span>';
+      return '<div style="padding:9px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;">' +
+        _avatar(name, isStudent) +
+        '<span style="font-weight:700;font-size:.84rem;color:var(--text);">' + escapeHtml(name || '—') + '</span>' +
+        chip + time + '</div>';
+    }
+    function _listBox(items, emptyMsg) {
+      if (!items.length) return '<p style="font-size:.82rem;color:var(--text-muted);padding:12px;text-align:center;">' + emptyMsg + '</p>';
+      return '<div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);">' + items.join('') + '</div>';
+    }
+
     // ── بناء النافذة ──────────────────────────────────────────
     var html = '<div style="padding:4px 0;">';
- 
-    // بطاقات الإحصاء الكلي
-    html +=
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">' +
- 
-        '<div style="flex:1;min-width:100px;text-align:center;padding:12px;' +
-             'background:rgba(79,70,229,.08);border-radius:var(--radius-md);">' +
-          '<div style="font-size:1.8rem;font-weight:800;color:var(--primary);">' + totalViews + '</div>' +
-          '<div style="font-size:.76rem;color:var(--text-muted);">إجمالي المشاهدات</div>' +
-        '</div>' +
- 
-        '<div style="flex:1;min-width:100px;text-align:center;padding:12px;' +
-             'background:rgba(239,68,68,.08);border-radius:var(--radius-md);">' +
-          '<div style="font-size:1.8rem;font-weight:800;color:var(--danger);">' + totalLikes + '</div>' +
-          '<div style="font-size:.76rem;color:var(--text-muted);">إجمالي الإعجابات</div>' +
-        '</div>' +
- 
-        '<div style="flex:1;min-width:100px;text-align:center;padding:12px;' +
-             'background:rgba(16,185,129,.08);border-radius:var(--radius-md);">' +
-          '<div style="font-size:1.8rem;font-weight:800;color:var(--success);">' + teacherViews.length + '</div>' +
-          '<div style="font-size:.76rem;color:var(--text-muted);">👨‍🏫 معلمون شاهدوا</div>' +
-        '</div>' +
- 
-        '<div style="flex:1;min-width:100px;text-align:center;padding:12px;' +
-             'background:rgba(245,158,11,.08);border-radius:var(--radius-md);">' +
-          '<div style="font-size:1.8rem;font-weight:800;color:var(--warning);">' + studentViews.length + '</div>' +
-          '<div style="font-size:.76rem;color:var(--text-muted);">🎒 طلاب شاهدوا</div>' +
-        '</div>' +
- 
-      '</div>';
- 
+
+    // بطاقات الإحصاء الكلي (متدرّجة الألوان)
+    html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">' +
+      _statCard(totalViews, 'إجمالي المشاهدات', '#6366f1', '#4f46e5', '👁️') +
+      _statCard(totalLikes, 'إجمالي الإعجابات', '#f43f5e', '#e11d48', '❤️') +
+      _statCard(teacherViews.length, 'معلمون شاهدوا', '#10b981', '#059669', '👨‍🏫') +
+      _statCard(studentViews.length, 'طلاب شاهدوا', '#f59e0b', '#d97706', '🎒') +
+    '</div>';
+
     // ── قائمة المشاهدين ──────────────────────────────────────
-    html += '<div style="margin-bottom:14px;">';
-    html +=
-      '<div style="font-weight:700;font-size:.85rem;margin-bottom:6px;' +
-           'display:flex;align-items:center;gap:6px;">' +
+    html += '<div style="margin-bottom:16px;">' +
+      '<div style="font-weight:800;font-size:.9rem;margin-bottom:8px;display:flex;align-items:center;gap:7px;">' +
         '👁️ المشاهدون' +
-        '<span style="background:var(--primary);color:#fff;font-size:.68rem;' +
-             'padding:2px 7px;border-radius:50px;">' + totalViews + '</span>' +
+        '<span style="background:var(--primary);color:#fff;font-size:.68rem;padding:2px 9px;border-radius:50px;">' + totalViews + '</span>' +
       '</div>';
- 
-    if (totalViews === 0) {
-      html += '<p style="font-size:.82rem;color:var(--text-muted);padding:8px;">لا توجد مشاهدات بعد</p>';
-    } else {
-      html +=
-        '<div style="max-height:180px;overflow-y:auto;' +
-             'border:1px solid var(--border);border-radius:var(--radius-sm);">';
- 
-      for (var vi = 0; vi < teacherViews.length; vi++) {
-        var v = teacherViews[vi];
-        html +=
-          '<div style="padding:8px 12px;border-bottom:1px solid var(--border);' +
-               'font-size:.82rem;display:flex;align-items:center;gap:8px;">' +
-            '<span style="background:rgba(79,70,229,.1);color:var(--primary);' +
-                 'border-radius:4px;padding:2px 6px;font-size:.7rem;">👨‍🏫 معلم</span>' +
-            '<span style="font-weight:600;">' + escapeHtml(v.userId || '—') + '</span>' +
-            '<span style="margin-right:auto;font-size:.72rem;color:var(--text-muted);">' +
-              escapeHtml(v.ts || '') +
-            '</span>' +
-          '</div>';
-      }
- 
-      for (var si = 0; si < studentViews.length; si++) {
-        var sv = studentViews[si];
-        html +=
-          '<div style="padding:8px 12px;border-bottom:1px solid var(--border);' +
-               'font-size:.82rem;display:flex;align-items:center;gap:8px;">' +
-            '<span style="background:rgba(245,158,11,.1);color:var(--warning);' +
-                 'border-radius:4px;padding:2px 6px;font-size:.7rem;">🎒 طالب</span>' +
-            '<span style="font-weight:600;">' + escapeHtml(sv.userId || '—') + '</span>' +
-            '<span style="margin-right:auto;font-size:.72rem;color:var(--text-muted);">' +
-              escapeHtml(sv.ts || '') +
-            '</span>' +
-          '</div>';
-      }
- 
-      html += '</div>';
-    }
-    html += '</div>';
- 
+    var viewRows = [];
+    for (var vi = 0; vi < teacherViews.length; vi++) viewRows.push(_personRow(teacherViews[vi].userName || teacherViews[vi].userId, false, teacherViews[vi].ts));
+    for (var si = 0; si < studentViews.length; si++) viewRows.push(_personRow(studentViews[si].userName || studentViews[si].userId, true, studentViews[si].ts));
+    html += _listBox(viewRows, 'لا توجد مشاهدات بعد') + '</div>';
+
     // ── قائمة المعجبين ────────────────────────────────────────
-    html += '<div>';
-    html +=
-      '<div style="font-weight:700;font-size:.85rem;margin-bottom:6px;' +
-           'display:flex;align-items:center;gap:6px;">' +
+    html += '<div>' +
+      '<div style="font-weight:800;font-size:.9rem;margin-bottom:8px;display:flex;align-items:center;gap:7px;">' +
         '❤️ المعجبون' +
-        '<span style="background:var(--danger);color:#fff;font-size:.68rem;' +
-             'padding:2px 7px;border-radius:50px;">' + totalLikes + '</span>' +
+        '<span style="background:var(--danger);color:#fff;font-size:.68rem;padding:2px 9px;border-radius:50px;">' + totalLikes + '</span>' +
       '</div>';
- 
-    if (totalLikes === 0) {
-      html += '<p style="font-size:.82rem;color:var(--text-muted);padding:8px;">لا توجد إعجابات بعد</p>';
-    } else {
-      html +=
-        '<div style="max-height:150px;overflow-y:auto;' +
-             'border:1px solid var(--border);border-radius:var(--radius-sm);">';
- 
-      for (var tli = 0; tli < teacherLikers.length; tli++) {
-        var tl = teacherLikers[tli];
-        html +=
-          '<div style="padding:7px 12px;border-bottom:1px solid var(--border);' +
-               'font-size:.82rem;display:flex;align-items:center;gap:8px;">' +
-            '<span style="background:rgba(79,70,229,.1);color:var(--primary);' +
-                 'border-radius:4px;padding:2px 6px;font-size:.7rem;">👨‍🏫 معلم</span>' +
-            '<span style="font-weight:600;">' + escapeHtml(tl.userName || tl.userId || '—') + '</span>' +
-          '</div>';
-      }
- 
-      for (var sli = 0; sli < studentLikers.length; sli++) {
-        var sl = studentLikers[sli];
-        html +=
-          '<div style="padding:7px 12px;border-bottom:1px solid var(--border);' +
-               'font-size:.82rem;display:flex;align-items:center;gap:8px;">' +
-            '<span style="background:rgba(245,158,11,.1);color:var(--warning);' +
-                 'border-radius:4px;padding:2px 6px;font-size:.7rem;">🎒 طالب</span>' +
-            '<span style="font-weight:600;">' + escapeHtml(sl.userName || sl.userId || '—') + '</span>' +
-          '</div>';
-      }
- 
-      html += '</div>';
-    }
-    html += '</div>';
+    var likeRows = [];
+    for (var tli = 0; tli < teacherLikers.length; tli++) likeRows.push(_personRow(teacherLikers[tli].userName || teacherLikers[tli].userId, false, teacherLikers[tli].timestamp));
+    for (var sli = 0; sli < studentLikers.length; sli++) likeRows.push(_personRow(studentLikers[sli].userName || studentLikers[sli].userId, true, studentLikers[sli].timestamp));
+    html += _listBox(likeRows, 'لا توجد إعجابات بعد') + '</div>';
+
     html += '</div>'; // نهاية wrapper
  
     // ── عرض في الـ Modal ─────────────────────────────────────

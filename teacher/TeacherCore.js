@@ -4833,6 +4833,19 @@ function _tcDateCell(v) {
   return s;
 }
 
+// يحوّل قيمة خلية تاريخ+وقت إلى "yyyy-MM-dd HH:mm" — يعالج كائنات Date (يمنع "GMT")
+function _tcDateTimeCell(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  }
+  var s = _safeStr(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2})?/.test(s)) return s.replace('T', ' ').substring(0, 16);
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  return s;
+}
+
 function _tcCalRowToObj(row) {
   return {
     id: _safeStr(row[0]), type: _safeStr(row[1]), title: _safeStr(row[2]),
@@ -6494,26 +6507,45 @@ function getNewsStatsProtected(params) {
         Logger.log('getNewsStatsProtected: تعذر جلب بيانات الطلاب: ' + stErr.message);
       }
 
-      // ── الإحصاء والتصنيف ─────────────────────────────────────
+      // ── خريطة كود الطالب → الاسم (لعرض أسماء الشاهدين بدل الأكواد) ──
+      var stuNameById = {};
+      try {
+        var stuSheet = _getSheet('الطلاب');
+        if (stuSheet && stuSheet.getLastRow() > 1) {
+          var stuVals = stuSheet.getRange(2, 1, stuSheet.getLastRow() - 1, 2).getValues();
+          for (var sm = 0; sm < stuVals.length; sm++) {
+            var code = _safeStr(stuVals[sm][0]); var nm = _safeStr(stuVals[sm][1]);
+            if (code && nm) stuNameById[code] = nm;
+          }
+        }
+      } catch (eMap) {}
+
+      function _viewerName(userId, userType) {
+        var uid = _safeStr(userId);
+        if (userType === 'student' && stuNameById[uid]) return stuNameById[uid];
+        return uid || '—';
+      }
+
+      // ── الإحصاء والتصنيف (مع تطبيع الوقت + الاسم) ─────────────
       var teacherViews  = [];
       var studentViews  = [];
       var teacherLikers = [];
       var studentLikers = [];
 
       for (var tvi = 0; tvi < views.length; tvi++) {
-        if (views[tvi].userType === 'student') {
-          studentViews.push(views[tvi]);
-        } else {
-          teacherViews.push(views[tvi]);
-        }
+        var vv = views[tvi];
+        vv.ts = _tcDateTimeCell(vv.ts);
+        vv.userName = _viewerName(vv.userId, vv.userType);
+        if (vv.userType === 'student') studentViews.push(vv);
+        else teacherViews.push(vv);
       }
 
       for (var tli = 0; tli < allLikes.length; tli++) {
-        if (allLikes[tli].userType === 'student') {
-          studentLikers.push(allLikes[tli]);
-        } else {
-          teacherLikers.push(allLikes[tli]);
-        }
+        var ll = allLikes[tli];
+        if (ll.timestamp) ll.timestamp = _tcDateTimeCell(ll.timestamp);
+        if (!ll.userName && ll.userType === 'student') ll.userName = _viewerName(ll.userId, 'student');
+        if (ll.userType === 'student') studentLikers.push(ll);
+        else teacherLikers.push(ll);
       }
 
       return {
