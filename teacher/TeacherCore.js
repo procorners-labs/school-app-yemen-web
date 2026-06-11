@@ -4438,13 +4438,27 @@ function _tcCanSetFee(session) {
   var r = _safeStr(session.role);
   return (r === 'admin' || r === 'accountant');
 }
+// يحوّل قيمة خلية وقت إلى "HH:mm" — يعالج كائنات Date (يمنع "00:00:00 GMT")
+function _tcTimeCell(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+  }
+  var s = _safeStr(v).trim();
+  var hm = s.match(/(\d{1,2})\s*:\s*(\d{2})/);
+  if (hm) { var h = ('0' + hm[1]).slice(-2); return h + ':' + hm[2]; }
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm');
+  return s;
+}
+
 function _tcTaskRowToObj(row) {
   return {
     id: _safeStr(row[0]), teacher: _safeStr(row[1]), type: _safeStr(row[2]),
-    grade: _safeStr(row[3]), section: _safeStr(row[4]), date: _safeStr(row[5]),
-    time: _safeStr(row[6]), description: _safeStr(row[7]), status: _safeStr(row[8]) || TASK_STATUS.ASSIGNED,
+    grade: _safeStr(row[3]), section: _safeStr(row[4]), date: _tcDateCell(row[5]),
+    time: _tcTimeCell(row[6]), description: _safeStr(row[7]), status: _safeStr(row[8]) || TASK_STATUS.ASSIGNED,
     fee: _safeFloat(row[9]), deduction: _safeFloat(row[10]), createdBy: _safeStr(row[11]),
-    confirmedBy: _safeStr(row[12]), createdAt: _safeStr(row[13]), notes: _safeStr(row[14])
+    confirmedBy: _safeStr(row[12]), createdAt: _tcDateCell(row[13]), notes: _safeStr(row[14])
   };
 }
 function _tcFindTaskRow(sheet, id) {
@@ -4755,11 +4769,27 @@ function seedSchoolCalendarProtected(params) {
   });
 }
 
+// يحوّل قيمة خلية تاريخ إلى "yyyy-MM-dd" — يعالج كائنات Date (يمنع "00:00:00 GMT")
+function _tcDateCell(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  var s = _safeStr(v).trim();
+  // نص ISO جاهز
+  var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+  // نص بصيغة Date.toString() (مثل: Sat Jun 06 2026 00:00:00 GMT+0300)
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return s;
+}
+
 function _tcCalRowToObj(row) {
   return {
     id: _safeStr(row[0]), type: _safeStr(row[1]), title: _safeStr(row[2]),
     day: _safeStr(row[3]), hijri: _safeStr(row[4]),
-    start: _safeStr(row[5]), end: _safeStr(row[6]) || _safeStr(row[5]), notes: _safeStr(row[7])
+    start: _tcDateCell(row[5]), end: _tcDateCell(row[6]) || _tcDateCell(row[5]), notes: _safeStr(row[7])
   };
 }
 

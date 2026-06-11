@@ -24,14 +24,25 @@ var _SCHOOLS_COL = {
   is_active        : 10
 };
 
+// معرّف الملف الافتراضي — مقاوم لغياب SPREADSHEET_ID (لا يرمي ReferenceError)
+// إن لم يُعرَّف SPREADSHEET_ID في المشروع، نستخدم الجدول المرتبط بالنص البرمجي.
+function _defaultFileId() {
+  if (typeof SPREADSHEET_ID !== 'undefined' && SPREADSHEET_ID) return SPREADSHEET_ID;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss) return ss.getId();
+  } catch (e) {}
+  return '';
+}
+
 // يُرجع معرّف ملف المدرسة النشطة، أو الملف الافتراضي (للتوافق الرجعي)
 function _activeFileId() {
-  return _ACTIVE_TENANT_FILE || SPREADSHEET_ID;
+  return _ACTIVE_TENANT_FILE || _defaultFileId();
 }
 
 // يُضبط مرة واحدة عند الدخول
 function _setActiveTenant(schoolId) {
-  if (!schoolId) { _ACTIVE_TENANT_FILE = ''; return SPREADSHEET_ID; }
+  if (!schoolId) { _ACTIVE_TENANT_FILE = ''; return _defaultFileId(); }
   _ACTIVE_TENANT_FILE = _resolveTenantFileId(schoolId, TENANT_FILE_TYPE);
   return _ACTIVE_TENANT_FILE;
 }
@@ -39,7 +50,7 @@ function _setActiveTenant(schoolId) {
 // يقرأ معرّف ملف المدرسة من ورقة Schools في Master
 function _resolveTenantFileId(schoolId, fileType) {
   schoolId = (schoolId === null || schoolId === undefined) ? '' : schoolId.toString().trim();
-  if (!schoolId) return SPREADSHEET_ID;
+  if (!schoolId) return _defaultFileId();
   fileType = fileType || TENANT_FILE_TYPE;
 
   var ckey = 'tenant_' + schoolId + '_' + fileType;

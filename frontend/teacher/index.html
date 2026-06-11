@@ -2995,22 +2995,36 @@ function showAutoSave(msg) {
 }
 
 // ==================== SESSION MANAGEMENT ====================
+// ساعة عربية حيّة (12 ساعة): "3:07:45 م"
+function _liveClockStr() {
+  var n = new Date();
+  var h = n.getHours(), m = n.getMinutes(), s = n.getSeconds();
+  var ap = h < 12 ? 'ص' : 'م';
+  var h12 = ((h + 11) % 12) + 1;
+  var pad = function (x) { return x < 10 ? '0' + x : '' + x; };
+  return h12 + ':' + pad(m) + ':' + pad(s) + ' ' + ap;
+}
+function _renderSessionBar() {
+  var el = document.getElementById('sessionTimer');
+  var el2 = document.getElementById('sessionTimerText');
+  if (!el || !el2) return;
+  var left = App.sessionExpiry - Date.now();
+  if (left <= 0) { clearInterval(App.sessionInterval); forceLogout('انتهت صلاحية الجلسة'); return; }
+  var h = Math.floor(left / 3600000);
+  var m = Math.floor((left % 3600000) / 60000);
+  var mStr = m < 10 ? ('0' + m) : String(m);
+  // الساعة الحيّة (الوقت الفعلي) + مدة الجلسة المتبقّية
+  el2.textContent = '🕐 ' + _liveClockStr() + ' · الجلسة ' + h + ':' + mStr;
+  el.classList.toggle('warning', left < 900000);
+}
 function initSessionTimer(ttlSeconds) {
   ttlSeconds = ttlSeconds || 28800;
   App.sessionExpiry = Date.now() + ttlSeconds * 1000;
   var el = document.getElementById('sessionTimer');
   if (el) el.style.display = 'flex';
   clearInterval(App.sessionInterval);
-  App.sessionInterval = setInterval(function() {
-    var left = App.sessionExpiry - Date.now();
-    if (left <= 0) { clearInterval(App.sessionInterval); forceLogout('انتهت صلاحية الجلسة'); return; }
-    var h = Math.floor(left / 3600000);
-    var m = Math.floor((left % 3600000) / 60000);
-    var mStr = m < 10 ? ('0' + m) : String(m);
-    var el2 = document.getElementById('sessionTimerText');
-    if (el2) el2.textContent = h + ':' + mStr + ' ساعة';
-    if (el) el.classList.toggle('warning', left < 900000);
-  }, 30000);
+  _renderSessionBar();                                  // عرض فوري بلا انتظار
+  App.sessionInterval = setInterval(_renderSessionBar, 1000); // دقّة كل ثانية
 }
 var _TEACHER_LS_KEY = 'teacherSession_v1'; // مفتاح localStorage للجلسة الدائمة
 var _TEACHER_TTL_MS = 9 * 60 * 60 * 1000;  // 9 ساعات (أطول قليلاً من expiresIn=8h)
@@ -4716,7 +4730,7 @@ function tasks_renderMgmtList() {
     if (TASKS.canSetFee) acts += '<button class="btn btn-sm btn-secondary" title="تحديد الرسم" onclick="tasks_setFee(' + i + ')">💰</button> ';
     acts += '<button class="btn btn-sm btn-secondary" title="حذف" onclick="tasks_delete(' + i + ')">🗑️</button>';
     rows += '<tr><td style="font-weight:600">' + escapeHtml(t.teacher) + '</td><td>' + escapeHtml(t.type) + '</td>' +
-      '<td>' + escapeHtml((t.grade || '') + ' ' + (t.section || '')) + '</td><td>' + escapeHtml(t.date || '—') + '</td>' +
+      '<td>' + escapeHtml((t.grade || '') + ' ' + (t.section || '')) + '</td><td>' + escapeHtml(t.date ? _fmtDateAr(t.date) : '—') + '</td>' +
       '<td>' + escapeHtml(t.time || '—') + '</td><td>' + _taskBadge(t.status) + '</td>' +
       '<td>' + (t.fee || 0) + '</td><td style="color:#c62828">' + (t.deduction || 0) + '</td><td><div class="btn-group">' + acts + '</div></td></tr>';
   }

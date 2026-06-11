@@ -55,6 +55,15 @@ function doPost(e) {
     var req = JSON.parse(raw);
     var fn = req && req.fn;
     var args = (req && req.args) ? req.args : [];
+
+    // ضبط المدرسة النشطة قبل تنفيذ أي دالة
+    var schoolId = (req && req.schoolId) ? req.schoolId.toString().trim() : '';
+    if (schoolId) {
+      try { _setActiveTenant(schoolId); } catch (te) {
+        return _apiJsonOut({ ok: false, error: 'خطأ في التحقق من هوية المدرسة: ' + te.message });
+      }
+    }
+
     if (!fn || typeof fn !== 'string') {
       return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });
     }
