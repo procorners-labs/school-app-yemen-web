@@ -1436,7 +1436,7 @@ function getScheduleSettings(params) {
   var DEF = { dayStart: '07:00', assemblyMinutes: 15, periodMinutes: 45, breakMinutes: 25, periodsCount: 7 };
   try {
     _resolveTenant(params);
-    var cKey = _ck('schedset', 'v1');
+    var cKey = _ck('schedset', 'v2');
     var cached = _cacheGet(cKey);
     if (cached) return cached;
 
@@ -1446,12 +1446,24 @@ function getScheduleSettings(params) {
     };
     var breaksByGrade = {};
 
+    // يحوّل قيمة خلية وقت (قد تكون كائن Date) إلى "HH:mm"
+    function _toHHmm(v) {
+      if (v === null || v === undefined || v === '') return '';
+      if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+        return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+      }
+      var s = String(v).trim();
+      var hm = s.match(/(\d{1,2})\s*:\s*(\d{2})/);
+      if (hm) { return ('0' + hm[1]).slice(-2) + ':' + hm[2]; }
+      return s;
+    }
+
     var setSheet = _getSheet('اعدادات_الجدول');
     if (setSheet && setSheet.getLastRow() >= 2) {
       var sv = {};
       var sd = setSheet.getDataRange().getValues();
       for (var i = 1; i < sd.length; i++) { var k = _safe(sd[i][0]); if (k) sv[k] = _safe(sd[i][1]); }
-      if (sv.day_start) settings.dayStart = sv.day_start;
+      if (sv.day_start) settings.dayStart = _toHHmm(sv.day_start) || sv.day_start;
       if (sv.assembly_minutes !== '' && sv.assembly_minutes != null) settings.assemblyMinutes = parseFloat(sv.assembly_minutes);
       if (sv.period_minutes) settings.periodMinutes = parseFloat(sv.period_minutes) || DEF.periodMinutes;
       if (sv.break_minutes !== '' && sv.break_minutes != null) settings.breakMinutes = parseFloat(sv.break_minutes);
