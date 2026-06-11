@@ -149,29 +149,57 @@ function _extractScheduleRows() {
 }
 
 // ────────────────────────────────────────────────────────────
+//  تحديد ملفات المنصتين (يدعم الوضعين: مع schoolId أو بدونه)
+// ────────────────────────────────────────────────────────────
+// عند تمرير schoolId: متعدد المدارس عبر Master.
+// بدون schoolId (وضع المدرسة الواحدة/الشريط الجانبي): يطابق ملف الجدول
+//   النشط (المرتبط) مع صف المدرسة في Master لاستخراج ملفَي الطالب/المعلم.
+function _resolvePortalTargets(schoolId) {
+  if (schoolId) {
+    _setActiveTenant(schoolId);
+    return {
+      studentFileId: _resolveTenantFileId(schoolId, 'student_file_id'),
+      teacherFileId: _resolveTenantFileId(schoolId, 'teacher_file_id')
+    };
+  }
+
+  // لا schoolId: طابق الملف النشط مع صف المدرسة في Master
+  var activeId = _activeFileId();
+  var ss = SpreadsheetApp.openById(MASTER_SS_ID);
+  var sh = ss.getSheetByName('Schools');
+  if (!sh) throw new Error('ورقة Schools غير موجودة في Master');
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    var scheduleId = (data[i][_SCHOOLS_COL.schedule_file_id] || '').toString().trim();
+    if (scheduleId && scheduleId === activeId) {
+      return {
+        studentFileId: (data[i][_SCHOOLS_COL.student_file_id] || '').toString().trim(),
+        teacherFileId: (data[i][_SCHOOLS_COL.teacher_file_id] || '').toString().trim()
+      };
+    }
+  }
+  throw new Error('تعذّر تحديد ملفات المنصتين تلقائياً. مرّر schoolId أو سجّل المدرسة في Master بنفس ملف الجدول.');
+}
+
+function _writeRowsToScheduleSheet(fileId, rows) {
+  var file = SpreadsheetApp.openById(fileId);
+  var sheet = file.getSheetByName('الجدول');
+  if (!sheet) sheet = file.insertSheet('الجدول');
+  else sheet.clearContents();
+  sheet.getRange(1, 1, 1, 7).setValues([['الفصل','الشعبة','اليوم','الحصة','المادة','المعلم','القاعة']]);
+  if (rows.length > 0) sheet.getRange(2, 1, rows.length, 7).setValues(rows);
+  SpreadsheetApp.flush();
+}
+
+// ────────────────────────────────────────────────────────────
 //  مزامنة إلى ملف الطالب
 // ────────────────────────────────────────────────────────────
 function syncScheduleToStudentFile(schoolId) {
-  if (!schoolId) throw new Error('schoolId مطلوب');
-  _setActiveTenant(schoolId);
-
+  var targets = _resolvePortalTargets(schoolId);
+  if (!targets.studentFileId) throw new Error('ملف الطالب غير مُهيّأ في Master');
   var rows = _extractScheduleRows();
-  if (rows.length === 0) {
-    Logger.log('⚠️ لا توجد بيانات جدول للمزامنة إلى منصة الطالب');
-    return { ok: true, count: 0 };
-  }
-
-  var studentFileId = _resolveTenantFileId(schoolId, 'student_file_id');
-  var studentFile   = SpreadsheetApp.openById(studentFileId);
-  var targetSheet   = studentFile.getSheetByName('الجدول');
-  if (!targetSheet) targetSheet = studentFile.insertSheet('الجدول');
-  else targetSheet.clearContents();
-
-  targetSheet.getRange(1, 1, 1, 7).setValues([['الفصل','الشعبة','اليوم','الحصة','المادة','المعلم','القاعة']]);
-  targetSheet.getRange(2, 1, rows.length, 7).setValues(rows);
-  SpreadsheetApp.flush();
-
-  Logger.log('✅ منصة الطالب: مزامنة ' + rows.length + ' حصة → ' + studentFileId);
+  _writeRowsToScheduleSheet(targets.studentFileId, rows);
+  Logger.log('✅ منصة الطالب: مزامنة ' + rows.length + ' حصة → ' + targets.studentFileId);
   return { ok: true, count: rows.length };
 }
 
@@ -179,26 +207,11 @@ function syncScheduleToStudentFile(schoolId) {
 //  مزامنة إلى ملف المعلم
 // ────────────────────────────────────────────────────────────
 function syncScheduleToTeacherFile(schoolId) {
-  if (!schoolId) throw new Error('schoolId مطلوب');
-  _setActiveTenant(schoolId);
-
+  var targets = _resolvePortalTargets(schoolId);
+  if (!targets.teacherFileId) throw new Error('ملف المعلم غير مُهيّأ في Master');
   var rows = _extractScheduleRows();
-  if (rows.length === 0) {
-    Logger.log('⚠️ لا توجد بيانات جدول للمزامنة إلى منصة المعلم');
-    return { ok: true, count: 0 };
-  }
-
-  var teacherFileId = _resolveTenantFileId(schoolId, 'teacher_file_id');
-  var teacherFile   = SpreadsheetApp.openById(teacherFileId);
-  var targetSheet   = teacherFile.getSheetByName('الجدول');
-  if (!targetSheet) targetSheet = teacherFile.insertSheet('الجدول');
-  else targetSheet.clearContents();
-
-  targetSheet.getRange(1, 1, 1, 7).setValues([['الفصل','الشعبة','اليوم','الحصة','المادة','المعلم','القاعة']]);
-  targetSheet.getRange(2, 1, rows.length, 7).setValues(rows);
-  SpreadsheetApp.flush();
-
-  Logger.log('✅ منصة المعلم: مزامنة ' + rows.length + ' حصة → ' + teacherFileId);
+  _writeRowsToScheduleSheet(targets.teacherFileId, rows);
+  Logger.log('✅ منصة المعلم: مزامنة ' + rows.length + ' حصة → ' + targets.teacherFileId);
   return { ok: true, count: rows.length };
 }
 
@@ -206,27 +219,26 @@ function syncScheduleToTeacherFile(schoolId) {
 //  نشر الجدول للمنصتين (يُستدعى من الواجهة + من autoDistributeAll)
 // ────────────────────────────────────────────────────────────
 function publishScheduleToPortals(schoolId) {
-  if (!schoolId) throw new Error('schoolId مطلوب لنشر الجدول للمنصتين');
+  var targets = _resolvePortalTargets(schoolId);  // يُحدِّد الملفات + يضبط التينانت إن لزم
+  var rows = _extractScheduleRows();
 
   var errors = [], studentCount = 0, teacherCount = 0;
 
-  try {
-    var sr = syncScheduleToStudentFile(schoolId);
-    studentCount = sr ? sr.count : 0;
-  } catch (e) {
-    errors.push('منصة الطالب: ' + e.message);
+  if (targets.studentFileId) {
+    try { _writeRowsToScheduleSheet(targets.studentFileId, rows); studentCount = rows.length; }
+    catch (e) { errors.push('منصة الطالب: ' + e.message); }
+  } else {
+    errors.push('منصة الطالب: الملف غير مُهيّأ في Master');
   }
 
-  try {
-    var tr = syncScheduleToTeacherFile(schoolId);
-    teacherCount = tr ? tr.count : 0;
-  } catch (e) {
-    errors.push('منصة المعلم: ' + e.message);
+  if (targets.teacherFileId) {
+    try { _writeRowsToScheduleSheet(targets.teacherFileId, rows); teacherCount = rows.length; }
+    catch (e) { errors.push('منصة المعلم: ' + e.message); }
+  } else {
+    errors.push('منصة المعلم: الملف غير مُهيّأ في Master');
   }
 
-  if (errors.length > 0) {
-    throw new Error(errors.join('\n'));
-  }
+  if (errors.length > 0) throw new Error(errors.join('\n'));
 
   return {
     ok: true,

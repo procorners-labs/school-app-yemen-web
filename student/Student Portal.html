@@ -1104,6 +1104,21 @@ a { color: var(--pr); text-decoration: none; }
 }
 .sched-table td.empty { background: var(--bg); color: var(--soft); }
 
+/* أوقات الحصص + التمييز اللحظي */
+.period-time { font-size: 9.5px; font-weight: 600; opacity: .85; margin-top: 2px; }
+.sched-now {
+  background: linear-gradient(135deg,#0ea5e9,#2563eb); color:#fff;
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 10px;
+  font-weight: 700; font-size: 13px; box-shadow: 0 3px 12px rgba(37,99,235,.3);
+}
+.sched-now-live { background: linear-gradient(135deg,#10b981,#059669); box-shadow: 0 3px 12px rgba(16,185,129,.35); }
+.sched-today-row td.day-header { box-shadow: inset 3px 0 0 #f59e0b; }
+.today-tag { background:#f59e0b; color:#fff; border-radius:5px; padding:1px 6px; font-size:9.5px; font-weight:700; }
+.sched-table td.sched-cell-now {
+  background: #d1fae5 !important; box-shadow: inset 0 0 0 2px #10b981;
+  position: relative;
+}
+
 /* ألوان الأيام */
 .day-c0 { background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%) !important; }
 .day-c1 { background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%) !important; }
@@ -2975,8 +2990,21 @@ function renderSchedule(r) {
     return;
   }
 
-  var days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+  // أيام الدراسة: السبت → الأربعاء (نظام اليمن)
+  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
   var periods = 7;
+
+  // تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد)
+  function normDay(d) {
+    var x = String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا');
+    var map = {
+      'السبت': 'السبت', 'الاحد': 'الأحد', 'الأحد': 'الأحد',
+      'الاثنين': 'الاثنين', 'الإثنين': 'الاثنين',
+      'الثلاثاء': 'الثلاثاء', 'الاربعاء': 'الأربعاء', 'الأربعاء': 'الأربعاء',
+      'الخميس': 'الخميس'
+    };
+    return map[x] || d;
+  }
 
   // بناء شبكة [day][period]
   var grid = {};
@@ -2987,28 +3015,86 @@ function renderSchedule(r) {
   for (var i = 0; i < r.schedule.length; i++) {
     var s = r.schedule[i];
     var ps = parseInt(s.period, 10);
-    if (grid[s.day] && ps >= 1 && ps <= periods) {
-      grid[s.day][ps] = s;
+    var dn = normDay(s.day);
+    if (grid[dn] && ps >= 1 && ps <= periods) {
+      grid[dn][ps] = s;
     }
   }
 
-  var h = '<div class="sched-wrap"><table class="sched-table"><thead><tr>' +
+  // ── مواقيت الحصص (إعدادات افتراضية: بداية 07:00 + طابور 15د + حصة 45د + استراحة 25د بعد الحصة 2) ──
+  var SCFG = (window.SCHED_TIMES_CFG) || { startMin: 7 * 60, assembly: 15, periodMin: 45, breakMin: 25, breakAfter: 2 };
+  function _fmtT(min) {
+    min = ((min % 1440) + 1440) % 1440;
+    var hh = Math.floor(min / 60), mm = min % 60;
+    var ap = hh < 12 ? 'ص' : 'م'; var h12 = ((hh + 11) % 12) + 1;
+    return h12 + ':' + (mm < 10 ? '0' + mm : mm) + ' ' + ap;
+  }
+  // احسب نطاق [start,end] لكل حصة بالدقائق
+  var pTimes = {}; var cursor = SCFG.startMin + (SCFG.assembly || 0);
+  for (var pc = 1; pc <= periods; pc++) {
+    pTimes[pc] = { s: cursor, e: cursor + SCFG.periodMin };
+    cursor += SCFG.periodMin;
+    if (SCFG.breakAfter && pc === SCFG.breakAfter && SCFG.breakMin) cursor += SCFG.breakMin;
+  }
+
+  // ── الوقت اللحظي للجهاز ──
+  var now = new Date();
+  var jsDay = now.getDay(); // 0=الأحد..6=السبت
+  var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
+  var todayName = dayByJs[jsDay] || '';
+  var nowMin = now.getHours() * 60 + now.getMinutes();
+  var isWeekend = (todayName === 'الخميس' || todayName === 'الجمعة');
+
+  // الحصة الحالية (للتمييز)
+  var curPeriod = 0, status = '';
+  if (!isWeekend && days.indexOf(todayName) !== -1) {
+    var assemblyEnd = SCFG.startMin + (SCFG.assembly || 0);
+    if (nowMin < SCFG.startMin) status = 'قبل بدء الدوام';
+    else if (nowMin < assemblyEnd) status = '🎌 طابور الصباح الآن';
+    else {
+      for (var cp = 1; cp <= periods; cp++) {
+        if (nowMin >= pTimes[cp].s && nowMin < pTimes[cp].e) { curPeriod = cp; break; }
+        if (cp < periods && nowMin >= pTimes[cp].e && nowMin < pTimes[cp + 1].s) { status = '☕ استراحة الآن'; break; }
+      }
+      if (!curPeriod && !status) status = (nowMin >= pTimes[periods].e) ? 'انتهى الدوام لهذا اليوم' : '';
+    }
+  } else if (isWeekend) {
+    status = '🌴 عطلة نهاية الأسبوع';
+  }
+
+  // ── شريط الحالة اللحظي ──
+  var banner = '';
+  if (curPeriod) {
+    var cc = grid[todayName] ? grid[todayName][curPeriod] : null;
+    banner = '<div class="sched-now sched-now-live">🟢 الآن: الحصة ' + curPeriod +
+             (cc ? ' — ' + esc(cc.subject || '') + (cc.teacher ? ' · 👤 ' + esc(cc.teacher) : '') : ' (لا حصة)') +
+             ' <span style="opacity:.8">(' + _fmtT(pTimes[curPeriod].s) + ' – ' + _fmtT(pTimes[curPeriod].e) + ')</span></div>';
+  } else if (status) {
+    banner = '<div class="sched-now">' + esc(status) + ' — ' + esc(todayName) + '</div>';
+  }
+
+  var h = banner + '<div class="sched-wrap"><table class="sched-table"><thead><tr>' +
           '<th>اليوم</th>';
-  for (var ph = 1; ph <= periods; ph++) h += '<th>الحصة ' + ph + '</th>';
+  for (var ph = 1; ph <= periods; ph++) {
+    h += '<th>الحصة ' + ph + '<div class="period-time">' + _fmtT(pTimes[ph].s) + ' – ' + _fmtT(pTimes[ph].e) + '</div></th>';
+  }
   h += '</tr></thead><tbody>';
 
   for (var dr = 0; dr < days.length; dr++) {
-    h += '<tr><td class="day-header day-c' + dr + '">' + days[dr] + '</td>';
+    var isToday = (days[dr] === todayName);
+    h += '<tr' + (isToday ? ' class="sched-today-row"' : '') + '>' +
+         '<td class="day-header day-c' + dr + '">' + days[dr] + (isToday ? ' <span class="today-tag">اليوم</span>' : '') + '</td>';
     for (var pp = 1; pp <= periods; pp++) {
       var cell = grid[days[dr]][pp];
+      var liveCls = (isToday && pp === curPeriod) ? ' class="sched-cell-now"' : '';
       if (cell) {
-        h += '<td>' +
+        h += '<td' + liveCls + '>' +
              '<div class="subject">' + esc(cell.subject || '—') + '</div>' +
              (cell.teacher ? '<div class="teacher">👤 ' + esc(cell.teacher) + '</div>' : '') +
              (cell.room ? '<div class="room">🚪 ' + esc(cell.room) + '</div>' : '') +
              '</td>';
       } else {
-        h += '<td class="empty">—</td>';
+        h += '<td class="empty' + (liveCls ? ' sched-cell-now' : '') + '">—</td>';
       }
     }
     h += '</tr>';
