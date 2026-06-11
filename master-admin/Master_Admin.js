@@ -1746,11 +1746,16 @@ function provisionNewSchool(params) {
       return { success:false, error:'كلمة المرور يجب أن تكون 4 أحرف على الأقل' };
     }
 
-    // ── التحقق من مفتاح الدعوة ──
-    if (inviteKey) {
-      var validKey = getMasterSetting('invite_key') || '';
-      if (validKey && inviteKey !== validKey) {
-        return { success:false, error:'مفتاح الدعوة غير صحيح' };
+    // ── بوابة الإنشاء (المرحلة 1 — أمان) ──
+    // الإصلاح: يُفرَض مفتاح الدعوة إجبارياً متى كان مُعَدّاً (سدّ تجاوز حذف المفتاح من الطلب).
+    // استثناء: جلسة مالك مُصادقة بتوكن صالح تتجاوز اشتراط المفتاح (إنشاء من لوحة المالك).
+    var _provSession = validateMasterToken(_safeStr(d.token || (params && params.token) || ''));
+    var validKey = getMasterSetting('invite_key') || '';
+    if (!_isOwnerSession(_provSession)) {
+      if (validKey) {
+        if (!inviteKey || inviteKey !== validKey) {
+          return { success:false, error:'مفتاح الدعوة مطلوب أو غير صحيح' };
+        }
       }
     }
 
