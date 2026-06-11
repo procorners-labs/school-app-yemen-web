@@ -18,7 +18,15 @@ var API_FRAMEWORK_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit
 var API_DANGEROUS_FUNCTIONS = [
   'deleteSchoolProtected', 'registerSchoolProtected', 'repairAllSchools',
   'setInviteKeyProtected', 'upgradeDefaultAdminToOwner',
-  'resetDeploymentUrls', 'showDeploymentUrls', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
+  'resetDeploymentUrls', 'showDeploymentUrls', 'updateAllDeploymentUrls', 'updateDeploymentUrl',
+  // ── المرحلة 2 (أمان): دوال غير مستدعاة من الواجهة تُحجب عن مسار الويب ──
+  // (الحجب يمنع doPost فقط؛ الاستدعاءات الداخلية ومشغّلات المزامنة تبقى تعمل)
+  'getMasterSetting',          // حرج: كان يسمح بقراءة invite_key وتجاوز بوابة الإنشاء
+  'validateMasterToken',       // مساعد داخلي — لا يُستدعى من الواجهة
+  'buildSchoolPortalLinks',    // كشف روابط بوابات مدرسة بمعرّفها
+  'syncGradesToStudent', 'syncFeesToStudent',
+  'syncViolationsToStudent', 'syncNotesFromStudent',
+  'collectAllStats', 'checkSubscriptions', 'getSchoolProvisioningStatus'
 ];
 
 var API_BLOCKED_FUNCTIONS = API_FRAMEWORK_FUNCTIONS.concat(API_DANGEROUS_FUNCTIONS);
