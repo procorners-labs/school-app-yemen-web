@@ -1151,6 +1151,33 @@ a { color: var(--pr); text-decoration: none; }
   position: relative;
 }
 
+/* ساعة الرئيسية + جدول اليوم */
+.home-clock {
+  font-weight: 800; font-size: 14px; color: #fff;
+  background: linear-gradient(135deg,#0ea5e9,#2563eb);
+  padding: 5px 12px; border-radius: 50px; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(37,99,235,.3);
+}
+.ht-banner { border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; font-weight: 700; font-size: 13px; color: #fff; }
+.ht-banner.live { background: linear-gradient(135deg,#10b981,#059669); }
+.ht-banner.info { background: linear-gradient(135deg,#0ea5e9,#2563eb); }
+.ht-banner.rest { background: linear-gradient(135deg,#f59e0b,#d97706); }
+.ht-banner.off  { background: linear-gradient(135deg,#64748b,#475569); }
+.ht-list { display: flex; flex-direction: column; gap: 8px; }
+.ht-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--bdr); border-radius: 10px; background: var(--card);
+}
+.ht-item.now { border-color: #10b981; background: #ecfdf5; box-shadow: inset 0 0 0 1px #10b981; }
+.ht-item.past { opacity: .55; }
+.ht-pn { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; background: var(--pr-bg); color: var(--pr); font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+.ht-item.now .ht-pn { background: #10b981; color: #fff; }
+.ht-mid { flex: 1; min-width: 0; }
+.ht-subj { font-weight: 700; font-size: 13px; color: var(--txt); }
+.ht-teacher { font-size: 11px; color: var(--muted); }
+.ht-time { font-size: 11px; font-weight: 700; color: var(--pr); white-space: nowrap; }
+.ht-now-tag { background: #10b981; color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 10px; font-weight: 700; }
+
 /* ألوان الأيام */
 .day-c0 { background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%) !important; }
 .day-c1 { background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%) !important; }
@@ -1506,6 +1533,17 @@ a { color: var(--pr); text-decoration: none; }
         <div class="greet" id="welcomeGreet">مرحباً بعودتك</div>
         <h2 id="welcomeName">—</h2>
         <div class="meta" id="welcomeMeta"></div>
+      </div>
+
+      <!-- 🕐 جدول اليوم + الساعة اللحظية -->
+      <div class="card" id="homeTodayCard">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📅</span> جدول اليوم</div>
+          <span class="home-clock" id="homeClock">🕐 --:--</span>
+        </div>
+        <div id="homeTodayBody">
+          <div class="loader"><div class="ring"></div><div class="txt">جارٍ التحميل...</div></div>
+        </div>
       </div>
 
       <div class="q-grid" id="quickStats"></div>
@@ -2100,6 +2138,7 @@ function initApp() {
   // تحميل أولي للرئيسية
   loadHomeNews();
   loadQuickStats();
+  loadHomeToday();   // جدول اليوم + الساعة اللحظية
 
   // تحميل قائمة المعلمين (للملاحظات) في الخلفية
   loadTeachersList();
@@ -2981,14 +3020,117 @@ function _applySchedSettings(cfg) {
   var t = String(s.dayStart || '07:00').match(/(\d{1,2}):(\d{2})/);
   var startMin = t ? (parseInt(t[1], 10) * 60 + parseInt(t[2], 10)) : 420;
   var grade = APP.user.class;
+  // استراحة الصف: يطابق منطق المعلم (0 إن لم تُضبط للصف — لا استراحة افتراضية)
+  var brAfter = 0;
+  if (breaksByGrade[grade] != null) brAfter = Number(breaksByGrade[grade]) || 0;
+  else {
+    // مطابقة مرنة لمفتاح الصف (تجاهل المسافات/الهمزات)
+    var gk = String(grade || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا');
+    for (var key in breaksByGrade) {
+      if (String(key).replace(/\s+/g, '').replace(/[إأآ]/g, 'ا') === gk) { brAfter = Number(breaksByGrade[key]) || 0; break; }
+    }
+  }
   window.SCHED_TIMES_CFG = {
     startMin: startMin,
     assembly: (s.assemblyMinutes != null ? Number(s.assemblyMinutes) : 15),
     periodMin: (Number(s.periodMinutes) || 45),
     breakMin: (s.breakMinutes != null ? Number(s.breakMinutes) : 25),
-    breakAfter: (breaksByGrade[grade] || 2),
+    breakAfter: brAfter,
     periodsCount: (Number(s.periodsCount) || 7)
   };
+}
+
+// يبني مواقيت الحصص (يطابق منطق المعلم _tcComputePeriodTimes تماماً)
+function _schedPeriodTimes() {
+  var c = window.SCHED_TIMES_CFG || { startMin: 420, assembly: 15, periodMin: 45, breakMin: 25, breakAfter: 0, periodsCount: 7 };
+  var pc = c.periodsCount || 7;
+  var assemblyEnd = c.startMin + (c.assembly || 0);
+  var cursor = assemblyEnd, pt = {};
+  for (var p = 1; p <= pc; p++) {
+    pt[p] = { s: cursor, e: cursor + c.periodMin };
+    cursor += c.periodMin;
+    if (c.breakAfter && p === c.breakAfter && c.breakMin) cursor += c.breakMin;
+  }
+  return { assemblyStart: c.startMin, assemblyEnd: assemblyEnd, pt: pt, periodsCount: pc, cfg: c };
+}
+function _schedFmtT(min) {
+  min = ((Math.round(min) % 1440) + 1440) % 1440;
+  var hh = Math.floor(min / 60), mm = min % 60;
+  var ap = hh < 12 ? 'ص' : 'م'; var h12 = ((hh + 11) % 12) + 1;
+  return h12 + ':' + (mm < 10 ? '0' + mm : mm) + ' ' + ap;
+}
+
+// ═══════════════════════════════════════════════════════════
+// جدول اليوم + الساعة اللحظية (الصفحة الرئيسية)
+// ═══════════════════════════════════════════════════════════
+var _homeClockTimer = null, _homeClockLastMin = -1;
+function _startHomeClock() {
+  if (_homeClockTimer) clearInterval(_homeClockTimer);
+  function tick() {
+    var el = $('homeClock');
+    if (!el) { clearInterval(_homeClockTimer); _homeClockTimer = null; return; }
+    var n = new Date(), h = n.getHours(), m = n.getMinutes(), s = n.getSeconds();
+    var ap = h < 12 ? 'ص' : 'م', h12 = ((h + 11) % 12) + 1, pad = function (x) { return x < 10 ? '0' + x : '' + x; };
+    el.textContent = '🕐 ' + h12 + ':' + pad(m) + ':' + pad(s) + ' ' + ap;
+    // إعادة بناء حالة جدول اليوم عند تغيّر الدقيقة
+    if (m !== _homeClockLastMin) { _homeClockLastMin = m; if (APP._todaySched !== undefined) renderHomeToday(APP._todaySched); }
+  }
+  tick(); _homeClockTimer = setInterval(tick, 1000);
+}
+function loadHomeToday() {
+  _startHomeClock();
+  if (!$('homeTodayBody')) return;
+  callServerSmart('getScheduleSettings', { schoolId: APP.user.schoolId }, 'sched_settings', 600,
+    function (cfg) { _applySchedSettings(cfg); _fetchTodaySchedule(); },
+    function () { _fetchTodaySchedule(); });
+}
+function _fetchTodaySchedule() {
+  callServerSmart('getSchedule',
+    { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+    'schedule_' + APP.user.class + '_' + APP.user.section, 600,
+    function (r) { renderHomeToday(r); },
+    function () { var b = $('homeTodayBody'); if (b) b.innerHTML = '<div class="ht-banner info">📅 تعذّر تحميل الجدول.</div>'; });
+}
+function renderHomeToday(r) {
+  var body = $('homeTodayBody'); if (!body) return;
+  APP._todaySched = r;
+  var now = new Date();
+  var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
+  var todayName = dayByJs[now.getDay()] || '';
+  var firstName = APP.user.firstName || APP.user.name || '';
+  if (todayName === 'الخميس' || todayName === 'الجمعة') {
+    body.innerHTML = '<div class="ht-banner off">🌴 ' + esc(firstName) + '، اليوم ' + esc(todayName) + ' عطلة — استرخِ واستعد ليوم دراسي مشرق!</div>';
+    return;
+  }
+  if (!r || !r.ok || !r.schedule) { body.innerHTML = '<div class="ht-banner info">📅 لم يُرفع جدولك بعد.</div>'; return; }
+
+  function normDay(d) { var x = String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا'); var map = { 'السبت':'السبت','الاحد':'الأحد','الأحد':'الأحد','الاثنين':'الاثنين','الإثنين':'الاثنين','الثلاثاء':'الثلاثاء','الاربعاء':'الأربعاء','الأربعاء':'الأربعاء','الخميس':'الخميس' }; return map[x] || d; }
+  var st = _schedPeriodTimes();
+  var byPeriod = {};
+  for (var i = 0; i < r.schedule.length; i++) { var s = r.schedule[i]; if (normDay(s.day) === todayName) byPeriod[parseInt(s.period, 10)] = s; }
+  var nowMin = now.getHours() * 60 + now.getMinutes();
+  var curP = 0, nextP = 0;
+  for (var p = 1; p <= st.periodsCount; p++) { if (st.pt[p] && nowMin >= st.pt[p].s && nowMin < st.pt[p].e) { curP = p; break; } }
+  if (!curP) { for (var q = 1; q <= st.periodsCount; q++) { if (st.pt[q] && nowMin < st.pt[q].s) { nextP = q; break; } } }
+
+  var banner = '';
+  if (nowMin >= st.assemblyStart && nowMin < st.assemblyEnd) banner = '<div class="ht-banner info">🎌 ' + esc(firstName) + '، طابور الصباح الآن — استعد ليومك!</div>';
+  else if (curP) { var cc = byPeriod[curP]; banner = '<div class="ht-banner live">🟢 الآن: الحصة ' + curP + (cc ? ' — ' + esc(cc.subject || '') : ' (فراغ)') + ' <span style="opacity:.85">(' + _schedFmtT(st.pt[curP].s) + ' – ' + _schedFmtT(st.pt[curP].e) + ')</span></div>'; }
+  else if (nextP) { var nc = byPeriod[nextP]; var toGo = st.pt[nextP].s - nowMin; banner = '<div class="ht-banner info">⏭️ ' + esc(firstName) + '، القادمة: الحصة ' + nextP + (nc ? ' — ' + esc(nc.subject || '') : '') + ' بعد ' + toGo + ' دقيقة</div>'; }
+  else if (nowMin < st.assemblyStart) banner = '<div class="ht-banner info">⏰ ' + esc(firstName) + '، لم يبدأ الدوام بعد — صباح الخير!</div>';
+  else banner = '<div class="ht-banner off">🎉 ' + esc(firstName) + '، انتهى يومك الدراسي — أحسنت، نراك غداً!</div>';
+
+  var list = '', hasAny = false;
+  for (var pp = 1; pp <= st.periodsCount; pp++) {
+    var cell = byPeriod[pp]; if (!cell) continue; hasAny = true;
+    var cls = 'ht-item' + (pp === curP ? ' now' : (st.pt[pp] && nowMin >= st.pt[pp].e ? ' past' : ''));
+    list += '<div class="' + cls + '"><div class="ht-pn">' + pp + '</div><div class="ht-mid">' +
+      '<div class="ht-subj">' + esc(cell.subject || '—') + (pp === curP ? ' <span class="ht-now-tag">الآن</span>' : '') + '</div>' +
+      (cell.teacher ? '<div class="ht-teacher">👤 ' + esc(cell.teacher) + '</div>' : '') + '</div>' +
+      '<div class="ht-time">' + (st.pt[pp] ? _schedFmtT(st.pt[pp].s) + ' – ' + _schedFmtT(st.pt[pp].e) : '') + '</div></div>';
+  }
+  if (!hasAny) list = '<div class="ht-banner off">📭 لا توجد حصص لك اليوم.</div>';
+  body.innerHTML = banner + '<div class="ht-list">' + list + '</div>';
 }
 
 function loadSchedule(force) {
@@ -3083,21 +3225,11 @@ function renderSchedule(r) {
     }
   }
 
-  // ── مواقيت الحصص (إعدادات افتراضية: بداية 07:00 + طابور 15د + حصة 45د + استراحة 25د بعد الحصة 2) ──
-  var SCFG = (window.SCHED_TIMES_CFG) || { startMin: 7 * 60, assembly: 15, periodMin: 45, breakMin: 25, breakAfter: 2 };
-  function _fmtT(min) {
-    min = ((min % 1440) + 1440) % 1440;
-    var hh = Math.floor(min / 60), mm = min % 60;
-    var ap = hh < 12 ? 'ص' : 'م'; var h12 = ((hh + 11) % 12) + 1;
-    return h12 + ':' + (mm < 10 ? '0' + mm : mm) + ' ' + ap;
-  }
-  // احسب نطاق [start,end] لكل حصة بالدقائق
-  var pTimes = {}; var cursor = SCFG.startMin + (SCFG.assembly || 0);
-  for (var pc = 1; pc <= periods; pc++) {
-    pTimes[pc] = { s: cursor, e: cursor + SCFG.periodMin };
-    cursor += SCFG.periodMin;
-    if (SCFG.breakAfter && pc === SCFG.breakAfter && SCFG.breakMin) cursor += SCFG.breakMin;
-  }
+  // ── مواقيت الحصص (تطابق منطق المعلم تماماً، من إعدادات منصة المعلم) ──
+  var _st = _schedPeriodTimes();
+  var SCFG = _st.cfg;
+  var _fmtT = _schedFmtT;
+  var pTimes = _st.pt;
 
   // ── الوقت اللحظي للجهاز ──
   var now = new Date();
