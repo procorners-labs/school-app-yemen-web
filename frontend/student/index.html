@@ -2974,10 +2974,40 @@ function renderViolations(data) {
 // ═══════════════════════════════════════════════════════════
 // 12. الجدول الدراسي
 // ═══════════════════════════════════════════════════════════
+// يبني إعدادات التواقيت من رد getScheduleSettings (مع شعبة/صف الطالب للاستراحة)
+function _applySchedSettings(cfg) {
+  var s = (cfg && cfg.settings) || {};
+  var breaksByGrade = (cfg && cfg.breaksByGrade) || {};
+  var t = String(s.dayStart || '07:00').match(/(\d{1,2}):(\d{2})/);
+  var startMin = t ? (parseInt(t[1], 10) * 60 + parseInt(t[2], 10)) : 420;
+  var grade = APP.user.class;
+  window.SCHED_TIMES_CFG = {
+    startMin: startMin,
+    assembly: (s.assemblyMinutes != null ? Number(s.assemblyMinutes) : 15),
+    periodMin: (Number(s.periodMinutes) || 45),
+    breakMin: (s.breakMinutes != null ? Number(s.breakMinutes) : 25),
+    breakAfter: (breaksByGrade[grade] || 2),
+    periodsCount: (Number(s.periodsCount) || 7)
+  };
+}
+
 function loadSchedule(force) {
   var w = $('schedWrap');
   w.innerHTML = loaderHTML('جارٍ تحميل الجدول...');
 
+  // اجلب إعدادات التواقيت أولاً (مخزّنة 10د) ثم بيانات الجدول
+  callServerSmart(
+    'getScheduleSettings',
+    { schoolId: APP.user.schoolId },
+    'sched_settings',
+    600,
+    function (cfg) { _applySchedSettings(cfg); _loadScheduleData(force); },
+    function ()    { _loadScheduleData(force); }   // عند الفشل: نُكمل بالافتراضات
+  );
+}
+
+function _loadScheduleData(force) {
+  var w = $('schedWrap');
   if (!force) {
     var c = ssGet('schedule');
     if (c) { APP.loaded.schedule = true; renderSchedule(c); return; }
@@ -3024,7 +3054,7 @@ function renderSchedule(r) {
 
   // أيام الدراسة: السبت → الأربعاء (نظام اليمن)
   var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
-  var periods = 7;
+  var periods = (window.SCHED_TIMES_CFG && window.SCHED_TIMES_CFG.periodsCount) || 7;
 
   // تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد)
   function normDay(d) {

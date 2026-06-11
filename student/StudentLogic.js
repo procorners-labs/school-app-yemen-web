@@ -1429,6 +1429,49 @@ function getSchedule(klassOrParams, section) {
   }
 }
 // ============================================================
+// إعدادات الجدول والتواقيت (تُنشَر من منصة المعلم إلى ملف الطالب)
+// تُستخدم لعرض أوقات الحصص الصحيحة في جدول الطالب
+// ============================================================
+function getScheduleSettings(params) {
+  var DEF = { dayStart: '07:00', assemblyMinutes: 15, periodMinutes: 45, breakMinutes: 25, periodsCount: 7 };
+  try {
+    _resolveTenant(params);
+    var cKey = _ck('schedset', 'v1');
+    var cached = _cacheGet(cKey);
+    if (cached) return cached;
+
+    var settings = {
+      dayStart: DEF.dayStart, assemblyMinutes: DEF.assemblyMinutes,
+      periodMinutes: DEF.periodMinutes, breakMinutes: DEF.breakMinutes, periodsCount: DEF.periodsCount
+    };
+    var breaksByGrade = {};
+
+    var setSheet = _getSheet('اعدادات_الجدول');
+    if (setSheet && setSheet.getLastRow() >= 2) {
+      var sv = {};
+      var sd = setSheet.getDataRange().getValues();
+      for (var i = 1; i < sd.length; i++) { var k = _safe(sd[i][0]); if (k) sv[k] = _safe(sd[i][1]); }
+      if (sv.day_start) settings.dayStart = sv.day_start;
+      if (sv.assembly_minutes !== '' && sv.assembly_minutes != null) settings.assemblyMinutes = parseFloat(sv.assembly_minutes);
+      if (sv.period_minutes) settings.periodMinutes = parseFloat(sv.period_minutes) || DEF.periodMinutes;
+      if (sv.break_minutes !== '' && sv.break_minutes != null) settings.breakMinutes = parseFloat(sv.break_minutes);
+      if (sv.periods_count) settings.periodsCount = parseFloat(sv.periods_count) || DEF.periodsCount;
+    }
+    var brSheet = _getSheet('استراحات_الصفوف');
+    if (brSheet && brSheet.getLastRow() >= 2) {
+      var bd = brSheet.getDataRange().getValues();
+      for (var j = 1; j < bd.length; j++) { var g = _safe(bd[j][0]); if (g) breaksByGrade[g] = parseFloat(bd[j][1]) || 2; }
+    }
+
+    var res = { ok: true, settings: settings, breaksByGrade: breaksByGrade };
+    _cacheSet(cKey, res, 300);
+    return res;
+  } catch (e) {
+    return { ok: true, settings: DEF, breaksByGrade: {} };
+  }
+}
+
+// ============================================================
 // تنسيق الأرقام
 // ============================================================
 function _fmtNum(n) {

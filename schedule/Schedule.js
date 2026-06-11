@@ -191,6 +191,32 @@ function _writeRowsToScheduleSheet(fileId, rows) {
   SpreadsheetApp.flush();
 }
 
+// ينسخ ورقة (بالاسم) من ملف لآخر (قيَم فقط) — لمزامنة إعدادات التواقيت لمنصة الطالب
+function _copySheetByName(srcFile, dstFile, sheetName) {
+  try {
+    var src = srcFile.getSheetByName(sheetName);
+    if (!src || src.getLastRow() < 1) return false;
+    var values = src.getDataRange().getValues();
+    var dst = dstFile.getSheetByName(sheetName);
+    if (!dst) dst = dstFile.insertSheet(sheetName);
+    else dst.clearContents();
+    dst.getRange(1, 1, values.length, values[0].length).setValues(values);
+    return true;
+  } catch (e) { Logger.log('_copySheetByName(' + sheetName + '): ' + e.message); return false; }
+}
+
+// ينسخ إعدادات الجدول والتواقيت من ملف المعلم إلى ملف الطالب (لعرض الأوقات الصحيحة للطالب)
+function _syncSettingsToStudent(teacherFileId, studentFileId) {
+  if (!teacherFileId || !studentFileId) return;
+  try {
+    var tf = SpreadsheetApp.openById(teacherFileId);
+    var sf = SpreadsheetApp.openById(studentFileId);
+    _copySheetByName(tf, sf, 'اعدادات_الجدول');
+    _copySheetByName(tf, sf, 'استراحات_الصفوف');
+    SpreadsheetApp.flush();
+  } catch (e) { Logger.log('_syncSettingsToStudent: ' + e.message); }
+}
+
 // ────────────────────────────────────────────────────────────
 //  مزامنة إلى ملف الطالب
 // ────────────────────────────────────────────────────────────
@@ -236,6 +262,11 @@ function publishScheduleToPortals(schoolId) {
     catch (e) { errors.push('منصة المعلم: ' + e.message); }
   } else {
     errors.push('منصة المعلم: الملف غير مُهيّأ في Master');
+  }
+
+  // نسخ إعدادات التواقيت من ملف المعلم إلى ملف الطالب (لعرض أوقات الحصص الصحيحة للطالب)
+  if (targets.teacherFileId && targets.studentFileId) {
+    _syncSettingsToStudent(targets.teacherFileId, targets.studentFileId);
   }
 
   if (errors.length > 0) throw new Error(errors.join('\n'));

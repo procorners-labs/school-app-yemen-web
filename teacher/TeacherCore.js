@@ -3974,19 +3974,66 @@ function _tcInvalidateActivitiesCache(teacherName) {
 // الإصلاح: المعلم العادي يرى حصصه فقط (حسب اسمه في عمود المعلم)
 //           الوكيل/المدير/المشرف يرى الكل
 // ══════════════════════════════════════════════════════
+// مفتاح تطبيع اسم: إزالة النقاط/التشكيل + توحيد الألف/الهمزة/الياء/التاء + ضغط المسافات
+function _tcNameKey(s) {
+  return _safeStr(s)
+    .replace(/[ً-ْـ]/g, '')   // تشكيل + تطويل
+    .replace(/[إأآا]/g, 'ا')                  // توحيد الألف والهمزات
+    .replace(/ى/g, 'ي')                       // ألف مقصورة → ياء
+    .replace(/ة/g, 'ه')                       // تاء مربوطة → هاء
+    .replace(/\./g, '')                       // نقاط
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+// مطابقة أسماء ذكية: تتسامح مع الاختصار/الترتيب/النقاط/الهمزات
+function _tcSmartNameMatch(a, b) {
+  var ka = _tcNameKey(a), kb = _tcNameKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  var na = ka.replace(/\s+/g, ''), nb = kb.replace(/\s+/g, '');
+  if (na === nb) return true;
+  // احتواء كامل (اسم مختصر داخل اسم كامل)
+  if (na.length >= 4 && nb.length >= 4 && (na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1)) return true;
+  // مطابقة الرموز (الكلمات): يتجاهل الترتيب
+  var ta = ka.split(' '), tb = kb.split(' ');
+  var shared = 0;
+  for (var i = 0; i < ta.length; i++) {
+    if (ta[i].length < 2) continue;
+    for (var j = 0; j < tb.length; j++) {
+      if (ta[i] === tb[j]) { shared++; break; }
+    }
+  }
+  var firstMatch = (ta[0] === tb[0]);
+  if (firstMatch && shared >= 2) return true;                          // الاسم الأول + اسم آخر مشترك
+  if (shared >= 2 && (ta.length <= 2 || tb.length <= 2)) return true;  // اسم من كلمتين متطابق بالكامل
+  if (firstMatch && (ta.length === 1 || tb.length === 1)) return true; // أحدهما اسم أول فقط
+  return false;
+}
+
 function getMyScheduleProtected(params) {
   return withAuth(params, function(session) {
     try {
-      var studentFile = _getSSById(
-        '1BPtHUMB8kdi2exbfPVaKoSOcjGGZrnbJANXPHnWTD_A'
-      );
-      var sheet = studentFile.getSheetByName('الجدول');
+      // يقرأ ورقة «الجدول» من ملف المعلم النشط (حيث ينشر النظام عبر teacher_file_id)
+      // مع تجربة مُرشَّحين بالترتيب + احتياطي للملف القديم — لا يمكن أن يتراجع عن السلوك الحالي.
+      var _schedCandidates = [];
+      try { _schedCandidates.push(_activeFileId()); } catch (e0) {}
+      _schedCandidates.push('1BPtHUMB8kdi2exbfPVaKoSOcjGGZrnbJANXPHnWTD_A'); // احتياطي قديم
+      var studentFile = null, sheet = null;
+      for (var _ci = 0; _ci < _schedCandidates.length; _ci++) {
+        if (!_schedCandidates[_ci]) continue;
+        try {
+          var _f = _getSSById(_schedCandidates[_ci]);
+          var _sh = _f ? _f.getSheetByName('الجدول') : null;
+          if (_sh && _sh.getLastRow() >= 2) { studentFile = _f; sheet = _sh; break; }
+        } catch (eC) {}
+      }
 
       if (!sheet || sheet.getLastRow() < 2) {
         return {
           success: false,
           error  : 'لم يتم رفع الجدول الدراسي بعد. ' +
-                  'يرجى تشغيل مزامنة الجدول من أداة الحصص أولاً.'
+                  'يرجى الضغط على «📢 نشر للمنصتين» من أداة الحصص أولاً.'
         };
       }
 
@@ -4040,8 +4087,9 @@ function getMyScheduleProtected(params) {
 
         } else {
           // ── المعلم العادي والمشرف: الشرط الأساسي هو تطابق الاسم ──
-          // المبدأ: إذا كان اسمك في عمود المعلم → هذه حصتك
-          var nameMatch = (teacherClean !== '' && teacherClean === teacherNameClean);
+          // المبدأ: إذا كان اسمك في عمود المعلم → هذه حصتك (مطابقة ذكية تتسامح مع
+          // الاختصار/الترتيب/النقاط/الهمزات لأن الأسماء قد تختلف بين المشروعين)
+          var nameMatch = (teacherClean !== '' && _tcSmartNameMatch(teacher, teacherName));
 
           if (nameMatch) {
             showRow = true;
