@@ -1,85 +1,68 @@
-// يولّد ApiEndpoint.js (فيه doPost) داخل مجلد كل تطبيق.
-// نموذج "قائمة المنع": يسمح باستدعاء أي دالة خادمية عامّة عدا دوال الإطار
-// والدوال الداخلية (المسبوقة بـ _). هذا يطابق سلوك google.script.run الأصلي
-// (الذي كان يسمح باستدعاء أي دالة عامّة من العميل)، والدوال *Protected
-// تتحقق من التوكن بنفسها. هكذا لا تنكسر أي ميزة بسبب قائمة سماح ناقصة.
+// يزامن قائمة API_DANGEROUS_FUNCTIONS في ApiEndpoint.js لكل تطبيق
+// من المصدر الموحّد _build/denylist.generated.json — **دون المساس ببقية الملف**.
+//
+// ⚠️ مهم: هذا السكربت لا يولّد الملفات من قالب (كما كان سابقاً) لأن ملفات
+// ApiEndpoint.js أصبحت متباينة عمداً بعد تحصينات المرحلة 1:
+//   - cms/schedule: فيهما كتلة _setActiveTenant بسلوكين مختلفين (متساهل/صارم)
+//   - الجميع: طبقة API_DANGEROUS_FUNCTIONS (denylist) فوق دوال الإطار
+// إعادة التوليد من قالب موحّد كانت ستدهس هذه الحماية — لذلك نُحدّث القائمة فقط.
+//
+// الاستخدام:
+//   node _build/gen-endpoints.js          → يزامن القوائم ويبلغ عن أي انحراف
+//   node _build/gen-endpoints.js --check  → فحص فقط (يفشل إن وُجد انحراف، للـ CI)
 var fs = require('fs');
 var path = require('path');
 
 var ROOT = path.resolve(__dirname, '..');
 var APPS = ['home', 'student', 'teacher', 'cms', 'schedule', 'master-admin'];
+var DENYLIST = require('./denylist.generated.json');
+var CHECK_ONLY = process.argv.indexOf('--check') !== -1;
 
-function endpointSource(app) {
-  return [
-    '/**',
-    ' * ApiEndpoint.js — نقطة دخول JSON/fetch للواجهة الثابتة (Cloudflare/GitHub Pages).',
-    ' * تطبيق: ' + app.toUpperCase() + ' — مدارس الإبداع والتميز الدولية',
-    ' *',
-    ' * يستقبل { fn, args } عبر doPost وينفّذ الدالة العامّة المطلوبة ويُعيد JSON.',
-    ' * الأمان (مطابق للأصل): يُسمح بأي دالة عامّة عدا دوال الإطار والدوال الداخلية',
-    ' * (المسبوقة بـ _)؛ ودوال *Protected تتحقق من التوكن بنفسها.',
-    ' *',
-    ' * CORS: رابط /exec يُرجِع ACAO تلقائياً؛ والواجهة ترسل text/plain (طلب بسيط).',
-    ' * صياغة ES5 فقط (var، دوال عادية، بلا قوالب نصية).',
-    ' */',
-    '',
-    "var API_BLOCKED_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit', 'onInstall', 'onFormSubmit', 'onSelectionChange'];",
-    '',
-    'function _apiJsonOut(obj) {',
-    '  return ContentService',
-    '    .createTextOutput(JSON.stringify(obj))',
-    '    .setMimeType(ContentService.MimeType.JSON);',
-    '}',
-    '',
-    'function _apiIsBlocked(name) {',
-    "  if (!name || typeof name !== 'string') return true;",
-    "  if (name.charAt(0) === '_') return true;            // دوال داخلية",
-    '  for (var i = 0; i < API_BLOCKED_FUNCTIONS.length; i++) {',
-    '    if (API_BLOCKED_FUNCTIONS[i] === name) return true; // دوال الإطار',
-    '  }',
-    '  return false;',
-    '}',
-    '',
-    'function _apiResolve(name) {',
-    '  try {',
-    "    if (typeof globalThis !== 'undefined' && typeof globalThis[name] === 'function') {",
-    '      return globalThis[name];',
-    '    }',
-    '  } catch (e) {}',
-    '  try {',
-    '    var f = eval(name);',
-    "    if (typeof f === 'function') return f;",
-    '  } catch (e2) {}',
-    '  return null;',
-    '}',
-    '',
-    'function doPost(e) {',
-    '  try {',
-    '    var raw = (e && e.postData && e.postData.contents) ? e.postData.contents : "{}";',
-    '    var req = JSON.parse(raw);',
-    '    var fn = req && req.fn;',
-    '    var args = (req && req.args) ? req.args : [];',
-    "    if (!fn || typeof fn !== 'string') {",
-    '      return _apiJsonOut({ ok: false, error: "اسم الدالة مفقود" });',
-    '    }',
-    '    if (_apiIsBlocked(fn)) {',
-    '      return _apiJsonOut({ ok: false, error: "دالة غير مسموح بها: " + fn });',
-    '    }',
-    '    var target = _apiResolve(fn);',
-    '    if (!target) {',
-    '      return _apiJsonOut({ ok: false, error: "الدالة غير موجودة: " + fn });',
-    '    }',
-    '    var result = target.apply(null, args);',
-    '    return _apiJsonOut({ ok: true, result: result });',
-    '  } catch (err) {',
-    '    return _apiJsonOut({ ok: false, error: String((err && err.message) || err) });',
-    '  }',
-    '}',
-    ''
-  ].join('\n');
+// يبني نص مصفوفة الدوال الخطرة بصيغة مرتّبة وقابلة للقراءة (4 أسماء لكل سطر).
+function denyArraySource(names) {
+  var sorted = names.slice().sort();
+  var lines = [];
+  for (var i = 0; i < sorted.length; i += 4) {
+    lines.push('  ' + sorted.slice(i, i + 4).map(function (n) { return "'" + n + "'"; }).join(', '));
+  }
+  return 'API_DANGEROUS_FUNCTIONS = [\n' + lines.join(',\n') + '\n]';
 }
 
+var failures = 0;
 APPS.forEach(function (app) {
-  fs.writeFileSync(path.join(ROOT, app, 'ApiEndpoint.js'), endpointSource(app));
-  console.log(app + ': كُتب ApiEndpoint.js (نموذج قائمة المنع)');
+  var file = path.join(ROOT, app, 'ApiEndpoint.js');
+  if (!fs.existsSync(file)) {
+    console.error('❌ ' + app + ': ApiEndpoint.js مفقود — أنشئه يدوياً من نسخة تطبيق مشابه ثم أعد التشغيل');
+    failures++;
+    return;
+  }
+  var src = fs.readFileSync(file, 'utf8');
+  var re = /API_DANGEROUS_FUNCTIONS = \[[\s\S]*?\]/;
+  if (!re.test(src)) {
+    console.error('❌ ' + app + ': لا توجد API_DANGEROUS_FUNCTIONS — الملف غير محصّن! أضف الطبقة يدوياً (انظر teacher/ApiEndpoint.js)');
+    failures++;
+    return;
+  }
+  var wanted = denyArraySource(DENYLIST[app] || []);
+  var current = src.match(re)[0];
+
+  // مقارنة بالأسماء (لا بالتنسيق) حتى لا نعيد كتابة ملف سليم
+  function namesOf(block) {
+    var m = block.match(/'([^']+)'/g) || [];
+    return m.map(function (s) { return s.slice(1, -1); }).sort().join(',');
+  }
+  if (namesOf(current) === namesOf(wanted)) {
+    console.log('✓ ' + app + ': القائمة متزامنة (' + (DENYLIST[app] || []).length + ' دالة)');
+    return;
+  }
+  if (CHECK_ONLY) {
+    console.error('❌ ' + app + ': القائمة منحرفة عن denylist.generated.json');
+    failures++;
+    return;
+  }
+  fs.writeFileSync(file, src.replace(re, wanted));
+  console.log('✏️  ' + app + ': حُدّثت القائمة (' + (DENYLIST[app] || []).length + ' دالة)');
 });
+
+if (failures) process.exit(1);
+console.log('\nكل ملفات ApiEndpoint.js محصّنة ومتزامنة.');
