@@ -54,11 +54,20 @@
 - **لوحة المدارس الحيّة** موجودة داخل مشروع **master-admin** (Dashboard من سجل Master).
 - **8 مدارس** مُفعَّلة (الافتراضية + العلاء + ابناء الامة + الجيل + البني + جديد + البناء/الجيل الاهلي + ابن خلدون). محرّك مزامنة تلقائي يعمل كل 24 ساعة (grades/fees/violations، ~760 سجلاً).
 
-## 💲 منصّة التسعيرة (التطبيق السابع — قيد الدمج)
+## 📘 دليل التشغيل والإصلاح (مرجع Claude Code)
+> **مصدر الحقيقة للإصلاحات والنشر:** `docs/دليل-التشغيل-والإصلاح-Claude.html`
+> قبل أي تعديل: اقرأ هذا الملف ثم الدليل. Claude Code مسؤول عن تنفيذ الإصلاحات بصياغة المشروع؛ Claude يوجّه ويدقّق؛ المالك يوافق وينشر. سجّل أي تغيير جديد في القسم ٣ من الدليل.
+
+## ✅ الإصلاحات المنفّذة في الكود (بانتظار النشر)
+- **المرحلة 1:** سدّ ثغرة `provisionNewSchool` (مفتاح دعوة إجباري + استثناء المالك) — `master-admin/Master_Admin.js` + `frontend/master-admin/index.html`.
+- **المرحلة 2:** حجب 10 دوال مكشوفة في `master-admin/ApiEndpoint.js` (أهمها `getMasterSetting` التي كانت تسرّب `invite_key`) + مزامنة `_build/denylist.generated.json`.
+- **المرحلة 3:** دمج التسعيرة — `DEPLOY_PRICING` في `home/Code.js` + مسار `/pricing` في الـWorker.
+
+## 💲 منصّة التسعيرة (التطبيق السابع — مدموجة في الكود)
 - **Script ID:** `10e-pf9KN0OaBhdWa1BjiDSfh0_RJwezwHSRowaB5Nj6gbV-KMXrfMXeg`
 - **رابط النشر /exec:** `https://script.google.com/macros/s/AKfycbz11yUbrix4F1lE_GbiAFqE3EClGpoRvAb19LoLoABQX_Xo3i2U25jlQpOFcN9S_yLC/exec`
+- **الوصول:** عبر الوكيل `https://<worker>/pricing` (HTML نظيف)، أو ديناميكياً عبر `getDeploymentUrls().pricing` و`?action=deployments` (أندرويد).
 - **مكان التشغيل المناسب:** صفحة عامة (تسويق اشتراكات المدارس) تُربط من **الموقع الرئيسي (home)** ومن **master-admin** قرب تجديد الاشتراك `renewSubscriptionProtected`.
-- **نقاط الدمج الديناميكي (بانتظار الموافقة):** (1) `DEPLOY_PRICING` في سجل النشر بـ `home/Code.js`؛ (2) `pricing` في خريطة `GAS` بالـWorker؛ (3) صفحة/رابط في `frontend/`. التطبيق على أندرويد يلتقطها تلقائياً عبر `?action=deployments`.
 
 ---
 
