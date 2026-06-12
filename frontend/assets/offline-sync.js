@@ -325,10 +325,22 @@
 
   // ── الجلسة الدائمة ───────────────────────────────────────────
   // تُستدعى من الجسر بعد نجاح دالة مصادقة، لحفظ الجلسة بشكل دائم.
+  var SESSION_LS_KEYS = { teacher: 'teacherSession_v2', student: 'studentSession_v2' };
+  var SESSION_TTL_MS  = 28800000; // 8 ساعات
+
   function persistSession(fn, result) {
     var which = SESSION_FNS[fn];
     if (!which || !result) return;
+    // كتابة في IndexedDB (للعمل دون اتصال الكامل)
     OfflineDB.set(KV, 'session:' + which, { result: result, savedAt: nowISO() });
+    // كتابة في localStorage أيضاً (بديل سريع لاستعادة الجلسة عند التحديث)
+    try {
+      var lsKey = SESSION_LS_KEYS[which];
+      if (lsKey) {
+        var obj = { data: result, savedAt: Date.now(), ttl: SESSION_TTL_MS };
+        localStorage.setItem(lsKey, JSON.stringify(obj));
+      }
+    } catch (e) {}
   }
 
   // تُستعاد الجلسة المخزّنة (إن وُجدت) — يستدعيها كود التطبيق عند الإقلاع إن لزم.

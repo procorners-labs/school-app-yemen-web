@@ -1746,11 +1746,16 @@ function provisionNewSchool(params) {
       return { success:false, error:'كلمة المرور يجب أن تكون 4 أحرف على الأقل' };
     }
 
-    // ── التحقق من مفتاح الدعوة ──
-    if (inviteKey) {
-      var validKey = getMasterSetting('invite_key') || '';
-      if (validKey && inviteKey !== validKey) {
-        return { success:false, error:'مفتاح الدعوة غير صحيح' };
+    // ── بوابة الإنشاء (المرحلة 1 — أمان) ──
+    // الإصلاح: يُفرَض مفتاح الدعوة إجبارياً متى كان مُعَدّاً (سدّ تجاوز حذف المفتاح من الطلب).
+    // استثناء: جلسة مالك مُصادقة بتوكن صالح تتجاوز اشتراط المفتاح (إنشاء من لوحة المالك).
+    var _provSession = validateMasterToken(_safeStr(d.token || (params && params.token) || ''));
+    var validKey = getMasterSetting('invite_key') || '';
+    if (!_isOwnerSession(_provSession)) {
+      if (validKey) {
+        if (!inviteKey || inviteKey !== validKey) {
+          return { success:false, error:'مفتاح الدعوة مطلوب أو غير صحيح' };
+        }
       }
     }
 
@@ -3078,4 +3083,33 @@ function buildSchoolPortalLinks(schoolId) {
     cms      : cmsBase      ? cmsBase      + sep : '',
     schedule : scheduleBase ? scheduleBase + sep : ''
   };
+}
+
+/**
+ * setupMasterTriggers — إنشاء/تجديد التريغرات المجدولة لمشروع المالك.
+ * يُستدعى من لوحة النظام (الزر system_setupTriggers في MasterAdmin.html).
+ * يحذف التريغرات القديمة لهذه الدوال (منع التكرار) ثم يُنشئ تريغرات يومية:
+ *   - checkSubscriptions (~2 ص): تعطيل المدارس منتهية الاشتراك
+ *   - masterSyncAll      (~3 ص): مزامنة البيانات بين المالك والطلاب
+ *   - collectAllStats    (~4 ص): تجميع إحصاءات كل المدارس
+ * يُعيد { ok, message } كما تتوقّع الواجهة.
+ */
+function setupMasterTriggers() {
+  try {
+    var WANTED = ['checkSubscriptions', 'masterSyncAll', 'collectAllStats'];
+    var existing = ScriptApp.getProjectTriggers();
+    var removed = 0;
+    for (var i = 0; i < existing.length; i++) {
+      var fn = existing[i].getHandlerFunction();
+      for (var j = 0; j < WANTED.length; j++) {
+        if (fn === WANTED[j]) { ScriptApp.deleteTrigger(existing[i]); removed++; break; }
+      }
+    }
+    ScriptApp.newTrigger('checkSubscriptions').timeBased().everyDays(1).atHour(2).create();
+    ScriptApp.newTrigger('masterSyncAll').timeBased().everyDays(1).atHour(3).create();
+    ScriptApp.newTrigger('collectAllStats').timeBased().everyDays(1).atHour(4).create();
+    return { ok: true, message: 'تم إنشاء 3 تريغرات يومية (الاشتراكات + المزامنة + الإحصاءات). حُذف ' + removed + ' تريغر قديم.' };
+  } catch (err) {
+    return { ok: false, message: 'فشل إنشاء التريغرات: ' + ((err && err.message) || err) };
+  }
 }

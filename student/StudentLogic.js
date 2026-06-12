@@ -96,18 +96,6 @@ function _verifyPassword(plainPassword, storedPassword) {
   return String(storedPassword).trim() === String(plainPassword).trim();
 }
 
-function _migratePasswordIfNeeded(sheet, rowIndex, colIndex, plainPassword) {
-  try {
-    var cellValue = sheet.getRange(rowIndex, colIndex).getValue();
-    if (String(cellValue).indexOf(PASSWORD_HASH_PREFIX) === 0) return;
-    var salt = _generateSalt();
-    var hashed = _hashPassword(plainPassword, salt);
-    sheet.getRange(rowIndex, colIndex).setValue(hashed);
-    Logger.log('تمت ترقية كلمة مرور الصف: ' + rowIndex);
-  } catch (e) {
-    Logger.log('_migratePasswordIfNeeded error: ' + e.message);
-  }
-}
 
 // فتح SS مرة واحدة وتخزينه في متغير محلي خلال نطاق الطلب
 var _ssInstance = null;
@@ -347,7 +335,6 @@ function loginStudent(username, password, clientId, schoolId) {
         if (_safe(tdata[ti][0]) === 'المدير') {
           if (_verifyPassword(password, _safe(tdata[ti][tCols.pass]))) {
             _stu_clearFailedAttempts(clientId);
-            _migratePasswordIfNeeded(ts, ti + 1, tCols.pass + 1, password);
                         return {
               ok: true, role: 'admin',
               name: 'مدير النظام', firstName: 'المدير',
@@ -387,8 +374,6 @@ function loginStudent(username, password, clientId, schoolId) {
       var byName = firstWord === uNorm;
 
       if ((byCode || byName) && _verifyPassword(password, storedPass)) {
-        _migratePasswordIfNeeded(sheet, i + 1, cols.pass + 1, password);
-
         var blk = getStudentBlockStatus(sid);
         if (blk.isBlocked) {
           _stu_clearFailedAttempts(clientId);
@@ -547,9 +532,7 @@ function changePassword(studentId, currentPassword, newPassword) {
         if (!_verifyPassword(currentPassword, stored)) {
           return { ok: false, error: 'كلمة المرور الحالية غير صحيحة' };
         }
-        var salt = _generateSalt();
-        var hashed = _hashPassword(newPassword, salt);
-        sheet.getRange(i + 1, passCol + 1).setValue(hashed);
+        sheet.getRange(i + 1, passCol + 1).setValue(newPassword);
 
         // ✅ كاش معزول
         _cacheDel(_ck('grades', sidStr));
@@ -1229,6 +1212,16 @@ function getAssignmentsForStudent(klassOrParams, section) {
   }
 }
 
+/**
+ * _sampleAssignments — بديل آمن عند غياب/فراغ ورقة الواجبات أو عند خطأ.
+ * كان مُستدعى في getAssignmentsForStudent بلا تعريف → "_sampleAssignments is
+ * not defined" يكسر تحميل الواجبات للفصول التي لا واجبات لها. يُعيد قائمة فارغة
+ * (حالة "لا واجبات" نظيفة) بدل بيانات وهمية أو خطأ.
+ */
+function _sampleAssignments(klass, sectionName) {
+  return [];
+}
+
 // ============================================================
 // ملاحظات ولي الأمر
 // ============================================================
@@ -1435,6 +1428,61 @@ function getSchedule(klassOrParams, section) {
     return { ok: false, error: 'خطأ أثناء جلب الجدول: ' + e.message };
   }
 }
+// ============================================================
+// إعدادات الجدول والتواقيت (تُنشَر من منصة المعلم إلى ملف الطالب)
+// تُستخدم لعرض أوقات الحصص الصحيحة في جدول الطالب
+// ============================================================
+function getScheduleSettings(params) {
+  var DEF = { dayStart: '07:00', assemblyMinutes: 15, periodMinutes: 45, breakMinutes: 25, periodsCount: 7 };
+  try {
+    _resolveTenant(params);
+    var cKey = _ck('schedset', 'v2');
+    var cached = _cacheGet(cKey);
+    if (cached) return cached;
+
+    var settings = {
+      dayStart: DEF.dayStart, assemblyMinutes: DEF.assemblyMinutes,
+      periodMinutes: DEF.periodMinutes, breakMinutes: DEF.breakMinutes, periodsCount: DEF.periodsCount
+    };
+    var breaksByGrade = {};
+
+    // يحوّل قيمة خلية وقت (قد تكون كائن Date) إلى "HH:mm"
+    function _toHHmm(v) {
+      if (v === null || v === undefined || v === '') return '';
+      if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+        return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+      }
+      var s = String(v).trim();
+      var hm = s.match(/(\d{1,2})\s*:\s*(\d{2})/);
+      if (hm) { return ('0' + hm[1]).slice(-2) + ':' + hm[2]; }
+      return s;
+    }
+
+    var setSheet = _getSheet('اعدادات_الجدول');
+    if (setSheet && setSheet.getLastRow() >= 2) {
+      var sv = {};
+      var sd = setSheet.getDataRange().getValues();
+      for (var i = 1; i < sd.length; i++) { var k = _safe(sd[i][0]); if (k) sv[k] = _safe(sd[i][1]); }
+      if (sv.day_start) settings.dayStart = _toHHmm(sv.day_start) || sv.day_start;
+      if (sv.assembly_minutes !== '' && sv.assembly_minutes != null) settings.assemblyMinutes = parseFloat(sv.assembly_minutes);
+      if (sv.period_minutes) settings.periodMinutes = parseFloat(sv.period_minutes) || DEF.periodMinutes;
+      if (sv.break_minutes !== '' && sv.break_minutes != null) settings.breakMinutes = parseFloat(sv.break_minutes);
+      if (sv.periods_count) settings.periodsCount = parseFloat(sv.periods_count) || DEF.periodsCount;
+    }
+    var brSheet = _getSheet('استراحات_الصفوف');
+    if (brSheet && brSheet.getLastRow() >= 2) {
+      var bd = brSheet.getDataRange().getValues();
+      for (var j = 1; j < bd.length; j++) { var g = _safe(bd[j][0]); if (g) breaksByGrade[g] = parseFloat(bd[j][1]) || 2; }
+    }
+
+    var res = { ok: true, settings: settings, breaksByGrade: breaksByGrade };
+    _cacheSet(cKey, res, 300);
+    return res;
+  } catch (e) {
+    return { ok: true, settings: DEF, breaksByGrade: {} };
+  }
+}
+
 // ============================================================
 // تنسيق الأرقام
 // ============================================================

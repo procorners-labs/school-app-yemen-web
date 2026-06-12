@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->
+<meta name="google-site-verification" content="fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc" />
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-06QS5PMS6F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-06QS5PMS6F');
+</script>
+<!-- ▲▲ نهاية وسم Google ▲▲ -->
 <!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
 <link rel="manifest" href="/manifest.webmanifest">
 <script>
@@ -27,6 +37,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#060f1e"/>
 <meta name="description" content="مدارس الإبداع والتميز الدولية – منصة تعليمية ذكية متكاملة"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="مدارس الإبداع والتميز الدولية"/>
+<meta property="og:title" content="مدارس الإبداع والتميز الدولية"/>
+<meta property="og:description" content="منصة تعليمية ذكية متكاملة: الأخبار والصور والفيديوهات والإحصاءات والتواصل."/>
+<meta property="og:locale" content="ar_AR"/>
+<meta property="og:url" content="https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html"/>
+<meta property="og:image" content="https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400"/>
+<!-- الموقع الجغرافي (يساعد البحث المحلي) -->
+<meta name="geo.region" content="YE-SA"/>
+<meta name="geo.placename" content="صنعاء"/>
+<meta name="keywords" content="مدارس الإبداع والتميز الدولية, مدرسة صنعاء, مدرسة أهلية اليمن, بوابة الطالب, لوحة المعلم, نتائج الطلاب, منصة تعليمية"/>
+<link rel="canonical" href="https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html"/>
 <title>مدارس الإبداع والتميز الدولية</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1784,6 +1808,13 @@ function loadHomeBundle(){
           renderNews(data.news);
           renderImages(data.images);
           renderVideos(data.videos);
+          // SEO ديناميكي حسب المدرسة: لو أرجع الخادم اسم/بيانات مدرسة
+          if(data.school && window.applySchoolSeo){
+            var merged = {}, k;
+            for(k in window.SCHOOL_PROFILE) merged[k] = window.SCHOOL_PROFILE[k];
+            for(k in data.school){ if(data.school[k]) merged[k] = data.school[k]; }
+            window.applySchoolSeo(merged);
+          }
         } else {
           loadSplitData();
         }
@@ -1834,6 +1865,118 @@ document.addEventListener('DOMContentLoaded',function(){
     if(!el._obs){io.observe(el);el._obs=true;}
   });
 });
+
+/* ══════════════════════════════════════════
+   ANDROID WEBVIEW — إلغاء target="_blank" للروابط الداخلية
+   يكشف عن UA "SchoolAppYemen" ويحوّل روابط المنصات إلى target="_self"
+   حتى يشتغل shouldOverrideUrlLoading بشكل صحيح ويفتح النشاط المناسب.
+══════════════════════════════════════════ */
+(function(){
+  if (!(/SchoolAppYemen/.test(navigator.userAgent) || /wv/.test(navigator.userAgent))) return;
+  var internalPaths = ['/teacher/', '/student/', '/cms/', '/master-admin/', '/schedule/'];
+  function fixLinks() {
+    var links = document.querySelectorAll('a[target="_blank"], a[target="_BLANK"]');
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var href = a.getAttribute('href') || '';
+      /* روابط خارجية (http كاملة) → يتركها كما هي */
+      if (/^https?:\/\//.test(href)) continue;
+      var isInternal = internalPaths.some(function(p){ return href.indexOf(p) !== -1; });
+      if (isInternal) {
+        a.removeAttribute('target');
+        a.removeAttribute('rel');
+      }
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fixLinks);
+  } else {
+    fixLinks();
+  }
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SEO ديناميكي — هوية المدرسة (مصدر حقيقة واحد)
+     غيّر SCHOOL_PROFILE فقط، فينعكس آلياً على: العنوان + الوصف +
+     Open Graph + بيانات Schema.org المنظّمة. ويُستبدَل تلقائياً إن
+     أرجع الخادم اسم مدرسة (دعم تعدّد المدارس).
+═══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  var SCHOOL_PROFILE = {
+    name: 'مدارس الإبداع والتميز الدولية',
+    tagline: 'منصة تعليمية ذكية متكاملة',
+    description: 'صرح تعليمي رائد يهتم ببناء جيل مبدع ومتميز أخلاقياً وعلمياً، يحمل قيم الأصالة ويواكب متطلبات العصر الحديث.',
+    url: 'https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html',
+    logo: 'https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400',
+    telephone: '+967775189922',
+    email: 'info@ebdaa-tamayuz.edu',
+    streetAddress: 'السنينة - حي الطيران',
+    addressLocality: 'صنعاء',
+    addressCountry: 'YE',
+    sameAs: [
+      'https://www.facebook.com/abdaawatmuaz.school',
+      'https://www.instagram.com/ebdaa.2026',
+      'https://youtube.com/@ebda3tamayz_school'
+    ]
+  };
+
+  function setMeta(selector, value){
+    if(value == null) return;
+    var el = document.head.querySelector(selector);
+    if(!el){
+      var m = selector.match(/\[(name|property)="([^"]+)"\]/);
+      if(!m) return;
+      el = document.createElement('meta');
+      el.setAttribute(m[1], m[2]);
+      document.head.appendChild(el);
+    }
+    el.setAttribute('content', value);
+  }
+
+  function applySeo(p){
+    if(!p || !p.name) return;
+    document.title = p.name + (p.tagline ? ' — ' + p.tagline : '');
+    setMeta('meta[name="description"]', p.description);
+    setMeta('meta[property="og:title"]', p.name);
+    setMeta('meta[property="og:description"]', p.description);
+    setMeta('meta[property="og:site_name"]', p.name);
+    if(p.logo){ setMeta('meta[property="og:image"]', p.logo); setMeta('meta[name="twitter:image"]', p.logo); }
+
+    // Schema.org — يساعد ظهور المدرسة في نتائج Google الغنية ورسم المعرفة
+    var ld = {
+      '@context':'https://schema.org',
+      '@type':'School',
+      name: p.name,
+      description: p.description,
+      url: p.url,
+      logo: p.logo,
+      image: p.logo,
+      telephone: p.telephone,
+      email: p.email,
+      address: {
+        '@type':'PostalAddress',
+        streetAddress: p.streetAddress,
+        addressLocality: p.addressLocality,
+        addressCountry: p.addressCountry
+      },
+      sameAs: p.sameAs
+    };
+    var old = document.getElementById('ld-school');
+    if(old) old.parentNode.removeChild(old);
+    var s = document.createElement('script');
+    s.type = 'application/ld+json';
+    s.id = 'ld-school';
+    s.textContent = JSON.stringify(ld);
+    document.head.appendChild(s);
+  }
+
+  // متاحة عالمياً ليدمجها الخادم إن أرجع اسم/بيانات مدرسة (تعدّد المدارس)
+  window.SCHOOL_PROFILE = SCHOOL_PROFILE;
+  window.applySchoolSeo = applySeo;
+  applySeo(SCHOOL_PROFILE);
+})();
 </script>
 </body>
 </html>

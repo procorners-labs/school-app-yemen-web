@@ -193,6 +193,7 @@ select{cursor:pointer}
   <div class="auto-btns">
     <button class="btn btn-auto" onclick="doAutoAll()">⚡ توزيع الكل تلقائياً</button>
     <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="doCheckConflicts()">⚠️ فحص التعارضات</button>
+    <button class="btn" id="publishBtn" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 3px 12px rgba(16,185,129,.4)" onclick="doPublishSchedule()">📢 نشر للمنصتين</button>
   </div>
 </div>
 
@@ -393,6 +394,26 @@ function doAutoTeacher() {
       loadStats();
     } else {
       toast('❌ ' + r.error, 'err');
+    }
+  });
+}
+
+// ══════════════════════════════════════════
+//  نشر الجدول للمنصتين
+// ══════════════════════════════════════════
+function doPublishSchedule() {
+  // ملاحظة: لا نحجب عند غياب schoolId — الخادم يحلّ المدرسة تلقائياً بمطابقة
+  // ملف الجدول النشط مع سجلّ المدرسة في Master (وضع المدرسة الواحدة).
+  if (!confirm('سيتم نشر الجدول الحالي إلى:\n• منصة الطالب\n• منصة المعلم\n\nهل تريد المتابعة؟')) return;
+  var btn = document.getElementById('publishBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري النشر...'; }
+  toast('📢 جاري نشر الجدول للمنصتين... قد يستغرق دقيقة', 'info', 15000);
+  gsr('publishScheduleToPortals', [], function(r) {
+    if (btn) { btn.disabled = false; btn.textContent = '📢 نشر للمنصتين'; }
+    if (r.ok || r.success) {
+      toast('✅ ' + (r.message || 'تم النشر بنجاح'), 'ok', 8000);
+    } else {
+      toast('❌ فشل النشر: ' + (r.error || r.message || 'خطأ غير معروف'), 'err', 8000);
     }
   });
 }

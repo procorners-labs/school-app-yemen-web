@@ -15,8 +15,8 @@
  *  - جلسات آمنة باستخدام CacheService مع صلاحية 8 ساعات.
  *  - دوال withAuth لحماية الـ endpoints.
  *  - معالجة ديناميكية لـ "جميع الشعب" من ورقة الطلاب.
- *  - 🆕 هاش كلمات المرور SHA-256 مع ترقية تلقائية (إصدار 2026)
- *  - 🆕 تتبع الجلسات النشطة عبر ScriptProperties
+ *  - هاش كلمات المرور SHA-256 (إصدار 2026)
+ *  - تتبع الجلسات النشطة عبر ScriptProperties
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -94,18 +94,6 @@ function _verifyPassword(plainPassword, storedPassword) {
   return String(storedPassword).trim() === String(plainPassword).trim();
 }
 
-function _migratePasswordIfNeeded(sheet, rowIndex, colIndex, plainPassword) {
-  try {
-    var cellValue = sheet.getRange(rowIndex, colIndex).getValue();
-    if (String(cellValue).indexOf(PASSWORD_HASH_PREFIX) === 0) return;
-    var salt = _generateSalt();
-    var hashed = _hashPassword(plainPassword, salt);
-    sheet.getRange(rowIndex, colIndex).setValue(hashed);
-    Logger.log('تمت ترقية كلمة مرور المعلم صف: ' + rowIndex);
-  } catch (e) {
-    Logger.log('_migratePasswordIfNeeded error: ' + e.message);
-  }
-}
 // ══════════════════════════════════════════════════════
 //  تسجيل الدخول (النسخة المحسنة: اسم المستخدم + كلمة المرور)
 // ══════════════════════════════════════════════════════
@@ -326,10 +314,6 @@ function _auth_findTeacherByUsernameAndPasswordFuzzy(username, password) {
       var rowPassword = _safeStr(data[i][4]);
       if (rowName === username && _verifyPassword(password, rowPassword)) {
         exactMatch = rowName;
-        // ترقية كلمة المرور تلقائياً إن كانت قديمة
-        if (String(rowPassword).indexOf(PASSWORD_HASH_PREFIX) !== 0) {
-          _migratePasswordIfNeeded(sheet, i + 1, 5, password);
-        }
         break;
       }
     }
@@ -355,10 +339,6 @@ function _auth_findTeacherByUsernameAndPasswordFuzzy(username, password) {
 
     if (potentialMatches.length === 1) {
       var match = potentialMatches[0];
-      var storedRowPassword = _safeStr(data[match.row - 1][4]);
-      if (String(storedRowPassword).indexOf(PASSWORD_HASH_PREFIX) !== 0) {
-        _migratePasswordIfNeeded(sheet, match.row, 5, match.password);
-      }
       Logger.log('Fuzzy match: username="' + username + '" matched "' + match.name + '"');
       return _auth_buildTeacherFromName(match.name, data);
     }
@@ -416,6 +396,13 @@ function _auth_buildTeacherFromName(teacherName, data) {
     sections.indexOf('مشرف') !== -1
   );
 
+  // المحاسب: صلاحيات كاملة مثل المدير (كلمة «محاسب» في الأعمدة الثلاثة)
+  var isAccountant = (
+    subjects.indexOf('محاسب') !== -1 &&
+    classes.indexOf('محاسب') !== -1 &&
+    sections.indexOf('محاسب') !== -1
+  );
+
   var role;
   var isAdmin;
 
@@ -427,6 +414,12 @@ function _auth_buildTeacherFromName(teacherName, data) {
     sections = ['جميع الشعب'];
   } else if (isDeputy) {
     role    = 'deputy';
+    isAdmin = true;
+    subjects = ['جميع المواد'];
+    classes  = ['جميع الفصول'];
+    sections = ['جميع الشعب'];
+  } else if (isAccountant) {
+    role    = 'accountant';
     isAdmin = true;
     subjects = ['جميع المواد'];
     classes  = ['جميع الفصول'];
@@ -548,6 +541,17 @@ function _auth_getSession(token) {
 
 function _auth_deleteSession(token) {
   try { CacheService.getScriptCache().remove(_auth_sessionKey(token)); } catch (e) {}
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var active = props.getProperty('active_sessions');
+    if (active) {
+      var map = JSON.parse(active);
+      if (map[token]) {
+        delete map[token];
+        props.setProperty('active_sessions', JSON.stringify(map));
+      }
+    }
+  } catch (e) {}
 }
 
 function _auth_refreshSession(token) {

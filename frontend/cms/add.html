@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
+<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->
+<meta name="google-site-verification" content="fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc" />
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-06QS5PMS6F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-06QS5PMS6F');
+</script>
+<!-- ▲▲ نهاية وسم Google ▲▲ -->
 <!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
 <link rel="manifest" href="/manifest.webmanifest">
 <script>
@@ -134,7 +144,10 @@
     <input type="hidden" id="scheduleMediaURLHidden">
     <div class="form-group"><label>تاريخ ووقت النشر:</label><input type="datetime-local" id="publishDate"></div>
     <div class="form-group"><label>الحالة:</label><select id="statusSelect"><option value="مجدول">مجدول</option><option value="قيد المراجعة">قيد المراجعة</option><option value="جاهز للنشر">جاهز للنشر</option></select></div>
-    <button class="btn" id="submitScheduleBtn">💾 حفظ الجدولة</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn" id="submitScheduleBtn">💾 حفظ الجدولة</button>
+      <button class="btn" id="publishNowBtn" style="background:#1e8e3e;">⚡ نشر الآن</button>
+    </div>
     <div id="scheduleStatus" class="status-message"></div>
   </div>
 
@@ -150,7 +163,10 @@
       <div style="font-size:12.5px;color:#334155;margin-bottom:10px;line-height:1.7;">
         اضغط للاتصال بحساب فيسبوك/إنستغرام الخاص بالمدرسة — سيُحفظ الاتصال تلقائياً دون لصق توكن.
       </div>
-      <button class="btn" id="fbConnectBtn" style="background:#1877f2;">🔗 اتصل بفيسبوك</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn" id="fbConnectBtn" style="background:#1877f2;">🔗 اتصل بفيسبوك</button>
+        <button class="btn" id="testFbBtn" style="background:#0ea5e9;">🔍 اختبار الاتصال</button>
+      </div>
       <div id="fbConnectStatus" class="status-message"></div>
     </div>
     <div class="form-group"><label>Facebook Page ID:</label><input type="text" id="set_fb_page_id" placeholder="مثال: 1234567890"></div>
@@ -174,15 +190,20 @@
     window.SCHOOL_ID = urlParams.get('school') || '';
   })();
 
+  // Worker-aware navigation — يبني رابط الصفحة مباشرةً عبر Worker
+  var _CMS_PAGE_MAP = { '': '/cms/index.html', 'add': '/cms/add.html', 'view': '/cms/view.html', 'audit': '/cms/audit.html', 'reports': '/cms/audit.html', 'qr': '/cms/qr.html' };
   window.goToPage = function(p) {
+    var sid = window.SCHOOL_ID || '';
+    if (window.GAS_ENDPOINT) {
+      var dest = _CMS_PAGE_MAP[p] || '/cms/index.html';
+      window.top.location.href = dest + (sid ? '?school=' + encodeURIComponent(sid) : '');
+      return;
+    }
     google.script.run.withSuccessHandler(function(url) {
       var finalUrl = url || (p ? '?page=' + encodeURIComponent(p) : './');
-      // ✅ إلحاق schoolId بالرابط للانتقال بين الصفحات مع الحفاظ على عزل المدرسة
-      if (window.SCHOOL_ID) {
-        finalUrl += (finalUrl.indexOf('?') > -1 ? '&' : '?') + 'school=' + encodeURIComponent(window.SCHOOL_ID);
-      }
+      if (sid) finalUrl += (finalUrl.indexOf('?') > -1 ? '&' : '?') + 'school=' + encodeURIComponent(sid);
       window.top.location.href = finalUrl;
-    }).getPageUrl(p);
+    }).withFailureHandler(function(e) { console.error('goToPage:', e); }).getPageUrl(p);
   };
 
   // تبويبات محسنة (لا تعتمد على event)
@@ -380,10 +401,36 @@
       .getFbConnectUrl(window.SCHOOL_ID);
   }
 
+  // نشر فوري — يشغّل Trigger يدوياً من الواجهة
+  function publishNow() {
+    setStatus('scheduleStatus', '⏳ جاري تشغيل معالج النشر…', 'info');
+    google.script.run
+      .withSuccessHandler(function(res) {
+        setStatus('scheduleStatus', res && res.success ? '✅ ' + res.message : '❌ ' + ((res && res.error) || 'خطأ'), (res && res.success) ? 'success' : 'error');
+      })
+      .withFailureHandler(function(e) { setStatus('scheduleStatus', '❌ ' + e.message, 'error'); })
+      .smmPublishNow(window.SCHOOL_ID);
+  }
+
+  // اختبار توكن فيسبوك
+  function testFbConnection() {
+    setStatus('fbConnectStatus', '⏳ جاري اختبار الاتصال…', 'info');
+    google.script.run
+      .withSuccessHandler(function(res) {
+        setStatus('fbConnectStatus', res && res.success ? '✅ ' + res.message : '❌ ' + ((res && res.error) || 'لا يوجد توكن'), (res && res.success) ? 'success' : 'error');
+      })
+      .withFailureHandler(function(e) { setStatus('fbConnectStatus', '❌ ' + e.message, 'error'); })
+      .smmTestFbConnection(window.SCHOOL_ID);
+  }
+
   document.getElementById('submitVideoUploadBtn').addEventListener('click', submitVideoUpload);
   document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
   var _fbBtn = document.getElementById('fbConnectBtn');
   if (_fbBtn) _fbBtn.addEventListener('click', fbConnect);
+  var _testBtn = document.getElementById('testFbBtn');
+  if (_testBtn) _testBtn.addEventListener('click', testFbConnection);
+  var _nowBtn = document.getElementById('publishNowBtn');
+  if (_nowBtn) _nowBtn.addEventListener('click', publishNow);
   loadSocialSettings();
 
   function submitImage() {

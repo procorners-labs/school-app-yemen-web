@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مدير QR Codes — مدارس الإبداع والتميز</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════
+   Reset & Base
+══════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:'Tajawal',Tahoma,Arial,sans-serif;background:#F0F4F8;color:#1a2840;direction:rtl;min-height:100vh}
+img{max-width:100%;display:block}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit;direction:rtl}
+
+/* ══════════════════════════════════════════
+   CSS Variables
+══════════════════════════════════════════ */
+:root{
+  --navy:#0F2C5C;
+  --navy-mid:#1a3d6e;
+  --navy-light:#e8eef7;
+  --gold:#D4A537;
+  --gold-light:#fdf6e3;
+  --success:#1e8e3e;
+  --error:#c5221f;
+  --warn:#e37400;
+  --radius:14px;
+  --shadow:0 4px 20px rgba(15,44,92,.10);
+  --shadow-hover:0 8px 30px rgba(15,44,92,.18);
+  --transition:.22s ease;
+}
+
+/* ══════════════════════════════════════════
+   Header
+══════════════════════════════════════════ */
+.header{
+  background:linear-gradient(135deg,var(--navy) 0%,var(--navy-mid) 100%);
+  color:#fff;padding:0 24px;
+  box-shadow:0 4px 20px rgba(0,0,0,.25);
+  position:sticky;top:0;z-index:100;
+}
+.header-inner{
+  max-width:1400px;margin:0 auto;display:flex;
+  align-items:center;justify-content:space-between;
+  height:64px;gap:16px;
+}
+.header-brand{display:flex;align-items:center;gap:12px}
+.header-logo{
+  width:44px;height:44px;background:var(--gold);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:800;color:var(--navy);flex-shrink:0;
+}
+.header-title{font-size:18px;font-weight:700;line-height:1.2}
+.header-sub{font-size:12px;color:rgba(255,255,255,.65);font-weight:400}
+.header-stats{display:flex;align-items:center;gap:20px}
+.stat-badge{
+  background:rgba(255,255,255,.12);border:1px solid rgba(212,165,55,.35);
+  border-radius:10px;padding:6px 14px;text-align:center;
+}
+.stat-badge .num{font-size:20px;font-weight:800;color:var(--gold);display:block;line-height:1}
+.stat-badge .lbl{font-size:11px;color:rgba(255,255,255,.7);display:block}
+.btn-add-header{
+  background:var(--gold);color:var(--navy);border:none;
+  padding:9px 20px;border-radius:10px;font-size:14px;font-weight:700;
+  display:flex;align-items:center;gap:7px;transition:var(--transition);
+  white-space:nowrap;
+}
+.btn-add-header:hover{background:#c49230;box-shadow:0 4px 14px rgba(212,165,55,.45)}
+
+/* ══════════════════════════════════════════
+   Layout
+══════════════════════════════════════════ */
+.main{max-width:1400px;margin:0 auto;padding:24px 20px 60px}
+
+/* ══════════════════════════════════════════
+   Toast Notifications
+══════════════════════════════════════════ */
+.toast-wrap{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:10px;min-width:320px;max-width:500px;pointer-events:none}
+.toast{
+  padding:14px 20px;border-radius:12px;font-size:14px;font-weight:500;
+  box-shadow:0 6px 24px rgba(0,0,0,.18);opacity:0;transform:translateY(-16px);
+  transition:all .3s ease;pointer-events:auto;display:flex;align-items:center;gap:10px;
+  animation:toastIn .3s ease forwards;
+}
+.toast.success{background:#e8f5e9;color:var(--success);border-right:5px solid var(--success)}
+.toast.error  {background:#fde8e8;color:var(--error);border-right:5px solid var(--error)}
+.toast.info   {background:var(--navy-light);color:var(--navy);border-right:5px solid var(--navy)}
+.toast.warn   {background:#fff8e1;color:var(--warn);border-right:5px solid var(--warn)}
+@keyframes toastIn{0%{opacity:0;transform:translateY(-16px)}100%{opacity:1;transform:translateY(0)}}
+.toast-icon{font-size:18px;flex-shrink:0}
+
+/* ══════════════════════════════════════════
+   Search & Filter Bar
+══════════════════════════════════════════ */
+.filter-bar{
+  background:#fff;border-radius:var(--radius);padding:16px 20px;
+  box-shadow:var(--shadow);margin-bottom:22px;
+  display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+}
+.search-wrap{position:relative;flex:1;min-width:200px}
+.search-wrap .ic{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:16px;pointer-events:none}
+.filter-input{
+  width:100%;padding:10px 40px 10px 14px;border:1.5px solid #e2e8f0;
+  border-radius:10px;font-size:14px;outline:none;background:#f8fafc;transition:var(--transition);
+}
+.filter-input:focus{border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(15,44,92,.08)}
+.filter-select{
+  padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:14px;outline:none;background:#f8fafc;cursor:pointer;transition:var(--transition);
+  min-width:140px;
+}
+.filter-select:focus{border-color:var(--navy);background:#fff}
+.filter-count{font-size:13px;color:#64748b;white-space:nowrap;margin-right:auto}
+
+/* ══════════════════════════════════════════
+   Form Panel (Collapsible)
+══════════════════════════════════════════ */
+.form-panel{
+  background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
+  margin-bottom:24px;overflow:hidden;
+  border-top:4px solid var(--gold);
+}
+.form-panel-toggle{
+  width:100%;background:none;border:none;padding:18px 22px;
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:16px;font-weight:700;color:var(--navy);cursor:pointer;
+  transition:var(--transition);
+}
+.form-panel-toggle:hover{background:var(--navy-light)}
+.form-panel-toggle .arrow{font-size:12px;transition:transform .25s ease;color:#64748b}
+.form-panel-toggle.open .arrow{transform:rotate(180deg)}
+.form-body{display:none;padding:0 22px 22px}
+.form-body.open{display:block}
+
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+.form-group{display:flex;flex-direction:column;gap:6px}
+.form-group label{font-size:13px;font-weight:600;color:#334155}
+.form-group label .req{color:var(--error);margin-right:3px}
+.form-input,.form-select,.form-textarea{
+  padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:14px;outline:none;background:#f8fafc;transition:var(--transition);
+  font-family:inherit;color:#1a2840;
+}
+.form-input:focus,.form-select:focus,.form-textarea:focus{
+  border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(15,44,92,.08)
+}
+.form-input.error,.form-select.error{border-color:var(--error)}
+.form-textarea{resize:vertical;min-height:80px}
+
+/* QR Preview داخل النموذج */
+.qr-preview-wrap{
+  display:flex;align-items:center;gap:18px;
+  background:var(--navy-light);border-radius:12px;padding:16px;margin-top:8px;
+}
+.qr-preview-img{
+  width:120px;height:120px;border-radius:10px;background:#fff;
+  border:2px solid #e2e8f0;overflow:hidden;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;
+}
+.qr-preview-img img{width:100%;height:100%;object-fit:cover}
+.qr-preview-info{flex:1}
+.qr-preview-info .p-title{font-size:14px;font-weight:600;color:var(--navy);margin-bottom:4px}
+.qr-preview-info .p-url{font-size:12px;color:#64748b;word-break:break-all;margin-bottom:8px}
+.qr-preview-info a{font-size:12px;color:var(--navy);text-decoration:none;font-weight:500}
+.qr-preview-info a:hover{text-decoration:underline}
+
+.form-actions{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap}
+.btn{padding:11px 24px;border-radius:10px;border:none;font-size:14px;font-weight:600;transition:var(--transition);display:flex;align-items:center;gap:8px;font-family:inherit}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--navy-mid);box-shadow:var(--shadow-hover)}
+.btn-secondary{background:#f1f5f9;color:#334155;border:1.5px solid #e2e8f0}
+.btn-secondary:hover:not(:disabled){background:#e2e8f0}
+.btn-gold{background:var(--gold);color:var(--navy)}
+.btn-gold:hover:not(:disabled){background:#c49230;box-shadow:0 4px 14px rgba(212,165,55,.35)}
+.btn-danger{background:#fee2e2;color:var(--error);border:1.5px solid #fca5a5}
+.btn-danger:hover:not(:disabled){background:#fca5a5}
+.btn-sm{padding:7px 14px;font-size:12px;border-radius:8px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+/* Spinner */
+.spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.spinner.dark{border-color:rgba(15,44,92,.2);border-top-color:var(--navy)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ══════════════════════════════════════════
+   Cards Grid
+══════════════════════════════════════════ */
+.cards-section-title{
+  font-size:18px;font-weight:700;color:var(--navy);
+  margin-bottom:16px;display:flex;align-items:center;gap:10px;
+}
+.cards-section-title .badge{
+  background:var(--gold);color:var(--navy);font-size:13px;
+  padding:3px 12px;border-radius:20px;font-weight:700;
+}
+.cards-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:20px;
+}
+@media(max-width:1100px){.cards-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.cards-grid{grid-template-columns:1fr}}
+
+/* ── بطاقة QR واحدة ── */
+.qr-card{
+  background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden;transition:var(--transition);display:flex;flex-direction:column;
+  position:relative;
+}
+.qr-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-3px)}
+.qr-card-cat{
+  position:absolute;top:12px;right:12px;z-index:2;
+  background:rgba(15,44,92,.85);color:var(--gold);
+  font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;
+  backdrop-filter:blur(4px);
+}
+
+/* ─── منطقة QR الرئيسية (أعلى البطاقة) ─── */
+.qr-card-qr-main{
+  display:flex;flex-direction:column;align-items:center;
+  padding:20px 16px 14px;
+  background:linear-gradient(160deg,#f0f6ff 0%,#fff 100%);
+  border-bottom:1px solid #e8eef7;
+  position:relative;
+}
+.qr-code-img{
+  width:170px;height:170px;border-radius:12px;
+  border:3px solid var(--navy);background:#fff;
+  box-shadow:0 4px 16px rgba(15,44,92,.15);
+  display:block;
+}
+.qr-code-loading{
+  width:170px;height:170px;background:#f0f4f8;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  border:2px dashed #cbd5e1;color:#94a3b8;font-size:13px;
+}
+/* صورة المحتوى — شريط صغير أسفل QR */
+.qr-card-thumb{
+  display:flex;align-items:center;gap:8px;
+  margin-top:10px;padding:6px 10px;
+  background:rgba(15,44,92,.05);border-radius:8px;
+  max-width:200px;
+}
+.qr-card-thumb img{
+  width:32px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0;
+}
+.qr-card-thumb span{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* بيانات البطاقة */
+.qr-card-body{padding:14px 16px;flex:1;display:flex;flex-direction:column;gap:6px}
+.qr-card-title{font-size:15px;font-weight:700;color:var(--navy);line-height:1.3}
+.qr-card-url{
+  font-size:12px;color:#3b82f6;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;
+}
+.qr-card-date{font-size:11.5px;color:#94a3b8;display:flex;align-items:center;gap:5px}
+.qr-card-desc{font-size:12.5px;color:#64748b;line-height:1.5;flex:1}
+
+/* شريط الأزرار */
+.qr-card-actions{
+  display:flex;gap:6px;padding:12px 16px 14px;
+  background:#f8fafc;border-top:1px solid #f1f5f9;flex-wrap:wrap;
+}
+
+/* ══════════════════════════════════════════
+   Empty State
+══════════════════════════════════════════ */
+.empty-state{
+  text-align:center;padding:80px 20px;background:#fff;
+  border-radius:var(--radius);box-shadow:var(--shadow);
+}
+.empty-icon{font-size:72px;margin-bottom:16px;opacity:.5}
+.empty-title{font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px}
+.empty-sub{font-size:14px;color:#64748b;line-height:1.7;margin-bottom:24px}
+
+/* ══════════════════════════════════════════
+   Modal (Edit / Confirm)
+══════════════════════════════════════════ */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;
+  z-index:500;padding:20px;
+  opacity:0;visibility:hidden;transition:var(--transition);
+}
+.modal-overlay.open{opacity:1;visibility:visible}
+.modal{
+  background:#fff;border-radius:var(--radius);
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+  width:100%;max-width:520px;max-height:90vh;overflow-y:auto;
+  transform:scale(.95);transition:var(--transition);
+}
+.modal-overlay.open .modal{transform:scale(1)}
+.modal-header{
+  padding:18px 22px;background:var(--navy);color:#fff;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;
+}
+.modal-header h3{font-size:16px;font-weight:700}
+.modal-close{background:none;border:none;color:rgba(255,255,255,.75);font-size:22px;line-height:1;padding:4px;border-radius:6px;transition:var(--transition)}
+.modal-close:hover{background:rgba(255,255,255,.15);color:#fff}
+.modal-body{padding:22px}
+.modal-footer{padding:14px 22px;background:#f8fafc;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f1f5f9}
+
+/* ══════════════════════════════════════════
+   Loading Overlay
+══════════════════════════════════════════ */
+.loading-overlay{
+  position:fixed;inset:0;background:rgba(255,255,255,.8);backdrop-filter:blur(4px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:200;gap:16px;
+  opacity:0;visibility:hidden;transition:var(--transition);
+}
+.loading-overlay.open{opacity:1;visibility:visible}
+.loading-spinner-lg{width:52px;height:52px;border:5px solid rgba(15,44,92,.15);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite}
+.loading-text{font-size:15px;color:var(--navy);font-weight:600}
+
+/* ══════════════════════════════════════════
+   Responsive
+══════════════════════════════════════════ */
+@media(max-width:480px){
+  .header-inner{height:auto;padding:12px 0;flex-wrap:wrap}
+  .header-stats{display:none}
+  .btn-add-header span{display:none}
+  .form-actions{flex-direction:column}
+  .btn{width:100%;justify-content:center}
+  .qr-card-actions{justify-content:center}
+}
+
+/* ══════════════════════════════════════════
+   زر الرجوع
+══════════════════════════════════════════ */
+.btn-back{
+  background:rgba(255,255,255,.13);color:#fff;border:1.5px solid rgba(255,255,255,.25);
+  padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;
+  display:flex;align-items:center;gap:7px;transition:var(--transition);
+  white-space:nowrap;cursor:pointer;font-family:inherit;
+}
+.btn-back:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+
+/* ══════════════════════════════════════════
+   Lightbox
+══════════════════════════════════════════ */
+.lb-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:2000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;gap:16px;
+  opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease;
+}
+.lb-overlay.open{opacity:1;visibility:visible}
+.lb-box{
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;
+  max-width:480px;width:100%;
+}
+.lb-img{
+  max-width:100%;border-radius:16px;border:4px solid var(--gold);
+  box-shadow:0 8px 40px rgba(0,0,0,.6);background:#fff;
+  animation:lbZoom .25s ease;
+}
+@keyframes lbZoom{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.lb-title{
+  color:#fff;font-size:16px;font-weight:700;text-align:center;
+  max-width:400px;line-height:1.4;
+}
+.lb-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.lb-btn{
+  padding:10px 22px;border-radius:10px;border:none;
+  font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;gap:8px;transition:var(--transition);
+}
+.lb-btn-dl{background:var(--gold);color:var(--navy)}
+.lb-btn-dl:hover{background:#c49230}
+.lb-btn-close{background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.3)}
+.lb-btn-close:hover{background:rgba(255,255,255,.28)}
+.lb-close-x{
+  position:absolute;top:-48px;left:0;
+  background:rgba(255,255,255,.12);color:#fff;border:none;
+  width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:var(--transition);
+}
+.lb-close-x:hover{background:rgba(255,255,255,.28)}
+/* cursor pointer on QR images */
+.qr-code-img{cursor:zoom-in}
+
+/* ══════════════════════════════════════════
+   Share Panel (bottom sheet on mobile / dropdown on desktop)
+══════════════════════════════════════════ */
+.share-overlay{
+  position:fixed;inset:0;z-index:3000;
+  background:rgba(0,0,0,.55);
+  display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease;
+}
+.share-overlay.open{opacity:1;visibility:visible}
+.share-panel{
+  background:#fff;width:100%;max-width:500px;
+  border-radius:22px 22px 0 0;padding:10px 20px 32px;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.34,1.08,.64,1);
+}
+.share-overlay.open .share-panel{transform:translateY(0)}
+.share-drag{width:48px;height:5px;background:#e2e8f0;border-radius:99px;margin:10px auto 18px}
+.share-title{font-size:15px;font-weight:700;color:var(--navy);text-align:center;margin-bottom:16px}
+.share-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.share-item{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  cursor:pointer;padding:10px 4px;border-radius:14px;
+  transition:background .18s ease;border:none;background:none;font-family:inherit;
+}
+.share-item:hover{background:#f0f6ff}
+.share-item .si-icon{
+  width:52px;height:52px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+}
+.share-item .si-label{font-size:11.5px;color:#334155;font-weight:500;text-align:center;line-height:1.3}
+.si-wa   .si-icon{background:#dcfce7;color:#16a34a}
+.si-tg   .si-icon{background:#dbeafe;color:#2563eb}
+.si-mail .si-icon{background:#fef9c3;color:#a16207}
+.si-copy .si-icon{background:#f1f5f9;color:#475569}
+.si-dl   .si-icon{background:#ede9fe;color:#7c3aed}
+.si-open .si-icon{background:#fff7ed;color:#ea580c}
+.share-cancel{
+  width:100%;padding:13px;border:1.5px solid #e2e8f0;border-radius:12px;
+  font-size:14px;font-weight:600;color:#64748b;cursor:pointer;
+  background:none;font-family:inherit;transition:background .18s;
+}
+.share-cancel:hover{background:#f1f5f9}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════ Loading Overlay ══════════════════════ -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner-lg"></div>
+  <div class="loading-text" id="loadingText">جاري التحميل…</div>
+</div>
+
+<!-- ══════════════════════ Toast Container ══════════════════════ -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ══════════════════════ Header ══════════════════════ -->
+<header class="header">
+  <div class="header-inner">
+    <!-- زر الرجوع -->
+    <button class="btn-back" onclick="goBack()" title="الرجوع للصفحة السابقة">
+      ◀ رجوع
+    </button>
+
+    <div class="header-brand">
+      <div class="header-logo">QR</div>
+      <div>
+        <div class="header-title">مدير QR Codes</div>
+        <div class="header-sub">مدارس الإبداع والتميز الدولية</div>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat-badge">
+        <span class="num" id="totalCount">—</span>
+        <span class="lbl">إجمالي QR</span>
+      </div>
+    </div>
+    <button class="btn-add-header" onclick="openAddForm()">
+      ➕ <span>إنشاء QR جديد</span>
+    </button>
+  </div>
+</header>
+
+<!-- ══════════════════════ Lightbox ══════════════════════ -->
+<div class="lb-overlay" id="lbOverlay" onclick="closeLightbox(event)">
+  <div class="lb-box" id="lbBox">
+    <button class="lb-close-x" onclick="closeLightbox(null)" title="إغلاق">✕</button>
+    <!-- loading state -->
+    <div id="lbSpinner" style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;display:none">
+      <div style="width:40px;height:40px;border:4px solid rgba(212,165,55,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite"></div>
+    </div>
+    <img class="lb-img" id="lbImg" src="" alt=""
+         onload="this.style.display='block';document.getElementById('lbSpinner').style.display='none'"
+         onerror="this.style.display='none';document.getElementById('lbSpinner').style.display='none'"
+         style="display:none">
+    <div class="lb-title" id="lbTitle"></div>
+    <div class="lb-actions">
+      <button class="lb-btn lb-btn-dl"    onclick="downloadFromLightbox()">⬇️ تحميل</button>
+      <button class="lb-btn" onclick="shareFromLightbox()"
+        style="background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.3)">📤 مشاركة</button>
+      <button class="lb-btn lb-btn-close" onclick="closeLightbox(null)">✕ إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ Share Panel ══════════════════════ -->
+<div class="share-overlay" id="shareOverlay" onclick="closeSharePanel(event)">
+  <div class="share-panel" id="sharePanel">
+    <div class="share-drag"></div>
+    <div class="share-title">📤 مشاركة QR Code</div>
+    <div class="share-grid">
+      <button class="share-item si-wa"   onclick="shareVia('whatsapp')">
+        <div class="si-icon">📱</div><div class="si-label">واتساب</div>
+      </button>
+      <button class="share-item si-tg"   onclick="shareVia('telegram')">
+        <div class="si-icon">✈️</div><div class="si-label">تيليغرام</div>
+      </button>
+      <button class="share-item si-mail" onclick="shareVia('email')">
+        <div class="si-icon">📧</div><div class="si-label">بريد إلكتروني</div>
+      </button>
+      <button class="share-item si-copy" onclick="shareVia('copy')">
+        <div class="si-icon">📋</div><div class="si-label">نسخ الرابط</div>
+      </button>
+      <button class="share-item si-dl"   onclick="shareVia('download')">
+        <div class="si-icon">⬇️</div><div class="si-label">تحميل QR</div>
+      </button>
+      <button class="share-item si-open" onclick="shareVia('open')">
+        <div class="si-icon">🔗</div><div class="si-label">فتح الرابط</div>
+      </button>
+      <button class="share-item" onclick="shareVia('native')" id="nativeShareBtn" style="display:none">
+        <div class="si-icon" style="background:#e8eef7;color:var(--navy)">⬆️</div>
+        <div class="si-label">مشاركة...</div>
+      </button>
+    </div>
+    <button class="share-cancel" onclick="closeSharePanel(null)">إلغاء</button>
+  </div>
+</div>
+
+<!-- ══════════════════════ Main ══════════════════════ -->
+<main class="main">
+
+  <!-- ── نموذج الإضافة / التعديل ── -->
+  <div class="form-panel" id="formPanel">
+    <button class="form-panel-toggle" id="formToggle" onclick="toggleForm()">
+      <span id="formToggleLabel">✨ إنشاء QR Code جديد</span>
+      <span class="arrow" id="formArrow">▼</span>
+    </button>
+    <div class="form-body" id="formBody">
+      <input type="hidden" id="editId">
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>العنوان <span class="req">*</span></label>
+          <input type="text" class="form-input" id="fTitle" placeholder="مثال: موقع المدرسة" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label>الرابط URL <span class="req">*</span></label>
+          <input type="url" class="form-input" id="fUrl" placeholder="https://..." oninput="onUrlChange(this.value)">
+        </div>
+        <div class="form-group">
+          <label>رابط صورة (اختياري)</label>
+          <input type="url" class="form-input" id="fImageUrl" placeholder="https://... رابط Drive أو خارجي">
+        </div>
+        <div class="form-group">
+          <label>التصنيف</label>
+          <select class="form-select" id="fCategory">
+            <option value="عام">🌐 عام</option>
+            <option value="أخبار">📰 أخبار</option>
+            <option value="جدول">📅 جدول</option>
+            <option value="تواصل اجتماعي">📱 تواصل اجتماعي</option>
+            <option value="نشاط">🎯 نشاط</option>
+            <option value="إعلان">📢 إعلان</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:16px">
+        <label>الوصف / الملاحظة</label>
+        <textarea class="form-textarea" id="fDescription" placeholder="وصف اختياري لهذا الـ QR…" maxlength="300"></textarea>
+      </div>
+
+      <!-- معاينة QR فورية -->
+      <div class="qr-preview-wrap" id="qrPreviewWrap" style="display:none">
+        <div class="qr-preview-img">
+          <img id="qrPreviewImg" src="" alt="QR Code" loading="lazy">
+        </div>
+        <div class="qr-preview-info">
+          <div class="p-title">معاينة QR</div>
+          <div class="p-url" id="qrPreviewUrl"></div>
+          <a id="qrPreviewLink" href="#" target="_blank" rel="noopener">🔗 افتح QR في نافذة جديدة</a>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" id="saveBtn" onclick="saveQR()">
+          <div class="spinner" id="saveSpinner" style="display:none"></div>
+          <span id="saveBtnLabel">💾 حفظ QR</span>
+        </button>
+        <button class="btn btn-gold" onclick="previewQR()">👁️ معاينة</button>
+        <button class="btn btn-secondary" onclick="resetForm()">🔄 إعادة ضبط</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── شريط البحث والفلتر ── -->
+  <div class="filter-bar">
+    <div class="search-wrap">
+      <span class="ic">🔍</span>
+      <input type="text" class="filter-input" id="searchInput" placeholder="بحث بالعنوان أو الرابط…" oninput="applyFilters()">
+    </div>
+    <select class="filter-select" id="catFilter" onchange="applyFilters()">
+      <option value="">كل التصنيفات</option>
+      <option value="عام">🌐 عام</option>
+      <option value="أخبار">📰 أخبار</option>
+      <option value="جدول">📅 جدول</option>
+      <option value="تواصل اجتماعي">📱 تواصل اجتماعي</option>
+      <option value="نشاط">🎯 نشاط</option>
+      <option value="إعلان">📢 إعلان</option>
+    </select>
+    <select class="filter-select" id="sortSelect" onchange="applyFilters()">
+      <option value="newest">الأحدث أولاً</option>
+      <option value="oldest">الأقدم أولاً</option>
+      <option value="alpha">حسب الاسم (أ→ي)</option>
+    </select>
+    <span class="filter-count" id="filterCount"></span>
+  </div>
+
+  <!-- ── Grid البطاقات ── -->
+  <div>
+    <div class="cards-section-title">
+      📋 QR Codes المنشأة
+      <span class="badge" id="cardsBadge">0</span>
+    </div>
+    <div class="cards-grid" id="cardsGrid"></div>
+  </div>
+
+</main>
+
+<!-- ══════════════════════ Delete Confirm Modal ══════════════════════ -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>⚠️ تأكيد الحذف</h3>
+      <button class="modal-close" onclick="closeModal('deleteModal')">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:30px 22px">
+      <div style="font-size:52px;margin-bottom:12px">🗑️</div>
+      <div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:8px" id="deleteTitle"></div>
+      <div style="font-size:14px;color:#64748b">هل أنت متأكد من حذف هذا QR؟ لا يمكن التراجع عن هذا الإجراء.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="confirmDelete()">
+        <div class="spinner" id="deleteSpinner" style="display:none"></div>
+        <span id="deleteBtnLabel">🗑️ نعم، احذف</span>
+      </button>
+      <button class="btn btn-secondary" onclick="closeModal('deleteModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  State & Helpers
+// ════════════════════════════════════════════════════════════════════
+var STATE = {
+  allData:     [],    // كل البيانات من الخادم
+  filtered:    [],    // بعد الفلترة
+  editingId:   null,  // ID القيد المُعدَّل (null = إضافة جديدة)
+  deleteId:    null,  // ID القيد المنتظر حذفه
+  deleteTitle: '',
+  previewTimer: null  // مؤقت debounce للمعاينة الفورية
+};
+
+// استخراج schoolId من URL
+var _SCHOOL_ID = (function() {
+  var qs = new URLSearchParams(window.location.search);
+  return qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
+})();
+
+/* ──────────────── Toast ──────────────── */
+function showToast(msg, type) {
+  type = type || 'info';
+  var icons = { success: '✅', error: '❌', info: 'ℹ️', warn: '⚠️' };
+  var wrap = document.getElementById('toastWrap');
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = '<span class="toast-icon">' + icons[type] + '</span><span>' + msg + '</span>';
+  wrap.appendChild(el);
+  setTimeout(function() {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-16px)';
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+  }, 3800);
+}
+
+/* ──────────────── Loading ──────────────── */
+function showLoading(txt) {
+  document.getElementById('loadingText').textContent = txt || 'جاري التحميل…';
+  document.getElementById('loadingOverlay').classList.add('open');
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.remove('open');
+}
+
+/* ──────────────── Modal ──────────────── */
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ──────────────── Date Format ──────────────── */
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    var dd = d.getDate();
+    var mm = d.getMonth() + 1;
+    var yy = d.getFullYear();
+    var hh = d.getHours();
+    var mn = d.getMinutes();
+    return dd + '/' + (mm < 10 ? '0' + mm : mm) + '/' + yy + ' ' +
+           (hh < 10 ? '0' + hh : hh) + ':' + (mn < 10 ? '0' + mn : mn);
+  } catch (e) { return iso; }
+}
+
+/* ──────────────── URL validate ──────────────── */
+function isValidUrl(url) {
+  if (!url) return false;
+  return url.indexOf('http://') === 0 || url.indexOf('https://') === 0;
+}
+
+/* ──────────────── QR URL builder (api.qrserver.com) ──────────────── */
+function buildQRUrl(url, size) {
+  size = size || 300;
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size +
+         '&format=png&qzone=2&data=' + encodeURIComponent(url);
+}
+
+/* إذا كان الـ URL القديم من Google Charts (متوقف) — أعِد بناؤه */
+function resolveQRUrl(stored, originalUrl, size) {
+  if (!stored || stored.indexOf('chart.googleapis.com') > -1) {
+    return originalUrl ? buildQRUrl(originalUrl, size) : '';
+  }
+  return stored;
+}
+
+/* ──────────────── Escape HTML ──────────────── */
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ──────────────── Category emoji ──────────────── */
+var CAT_ICONS = { 'عام': '🌐', 'أخبار': '📰', 'جدول': '📅', 'تواصل اجتماعي': '📱', 'نشاط': '🎯', 'إعلان': '📢' };
+function catIcon(cat) { return CAT_ICONS[cat] || '📌'; }
+
+// ════════════════════════════════════════════════════════════════════
+//  Load All QR Codes
+// ════════════════════════════════════════════════════════════════════
+function loadAllQR() {
+  showLoading('جاري تحميل QR Codes…');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      hideLoading();
+      if (!res || !res.success) {
+        showToast((res && res.error) || 'تعذّر تحميل البيانات', 'error');
+        renderEmptyState('تعذّر تحميل البيانات');
+        return;
+      }
+      STATE.allData = res.data || [];
+      document.getElementById('totalCount').textContent = STATE.allData.length;
+      applyFilters();
+    })
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showToast('خطأ في الاتصال: ' + e.message, 'error');
+      renderEmptyState('خطأ في الاتصال بالخادم');
+    })
+    .getAllQRCodes(_SCHOOL_ID);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Filters & Sort
+// ════════════════════════════════════════════════════════════════════
+function applyFilters() {
+  var q   = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  var cat = document.getElementById('catFilter').value;
+  var srt = document.getElementById('sortSelect').value;
+
+  var arr = STATE.allData.slice();
+
+  // فلتر نصي
+  if (q) {
+    arr = arr.filter(function(r) {
+      return (r.title || '').toLowerCase().indexOf(q) > -1 ||
+             (r.url   || '').toLowerCase().indexOf(q) > -1 ||
+             (r.description || '').toLowerCase().indexOf(q) > -1;
+    });
+  }
+  // فلتر التصنيف
+  if (cat) arr = arr.filter(function(r) { return r.category === cat; });
+
+  // الترتيب
+  if (srt === 'oldest') {
+    arr.sort(function(a,b) { return (a.createdAt||'').localeCompare(b.createdAt||''); });
+  } else if (srt === 'alpha') {
+    arr.sort(function(a,b) { return (a.title||'').localeCompare(b.title||'','ar'); });
+  } else {
+    arr.sort(function(a,b) { return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  }
+
+  STATE.filtered = arr;
+
+  document.getElementById('filterCount').textContent =
+    arr.length + ' من ' + STATE.allData.length + ' نتيجة';
+  document.getElementById('cardsBadge').textContent = arr.length;
+
+  renderCards(arr);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Render Cards
+// ════════════════════════════════════════════════════════════════════
+function renderCards(arr) {
+  var grid = document.getElementById('cardsGrid');
+
+  if (!arr || !arr.length) {
+    renderEmptyState('لا توجد QR Codes مطابقة');
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < arr.length; i++) {
+    html += buildCardHtml(arr[i]);
+  }
+  grid.innerHTML = html;
+}
+
+function renderEmptyState(msg) {
+  document.getElementById('cardsGrid').innerHTML =
+    '<div class="empty-state" style="grid-column:1/-1">' +
+    '<div class="empty-icon">📭</div>' +
+    '<div class="empty-title">' + escHtml(msg || 'لا توجد QR Codes بعد') + '</div>' +
+    '<div class="empty-sub">ابدأ بإنشاء QR Code جديد باستخدام النموذج أعلاه</div>' +
+    '<button class="btn btn-primary" onclick="openAddForm()" style="margin:0 auto">➕ إنشاء أول QR</button>' +
+    '</div>';
+}
+
+function buildCardHtml(r) {
+  // ✅ دائماً أعِد بناء رابط QR من api.qrserver.com
+  // (تجاهل أي رابط قديم من chart.googleapis.com المتوقفة)
+  var qrSrc = resolveQRUrl(r.qrImageUrl, r.url, 300);
+
+  var shortUrl = (r.url || '').length > 44
+    ? (r.url || '').substring(0, 44) + '…'
+    : (r.url || '');
+
+  var desc = r.description
+    ? '<div class="qr-card-desc">' + escHtml(r.description) + '</div>'
+    : '';
+
+  // صورة المحتوى كشريط صغير (اختياري)
+  var thumbHtml = '';
+  if (r.imageUrl) {
+    thumbHtml = '<div class="qr-card-thumb">' +
+      '<img src="' + escHtml(r.imageUrl) + '" alt="" onerror="this.parentNode.style.display=\'none\'">' +
+      '<span>📷 صورة مرفقة</span>' +
+    '</div>';
+  }
+
+  return '<div class="qr-card" id="card_' + escHtml(r.id) + '">' +
+    // ── QR كعنصر رئيسي ──
+    '<div class="qr-card-qr-main">' +
+      '<div class="qr-card-cat">' + catIcon(r.category) + ' ' + escHtml(r.category || 'عام') + '</div>' +
+      '<img class="qr-code-img" ' +
+           'src="' + escHtml(qrSrc) + '" ' +
+           'alt="QR Code لـ: ' + escHtml(r.title) + '" ' +
+           'loading="lazy" ' +
+           'title="انقر للعرض الكامل" ' +
+           'onclick="openLightbox(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ',' + JSON.stringify(r.url) + ')" ' +
+           'onerror="this.outerHTML=\'<div class=qr-code-loading>⚠️ تعذّر التحميل</div>\'">' +
+      thumbHtml +
+    '</div>' +
+    // ── بيانات البطاقة ──
+    '<div class="qr-card-body">' +
+      '<div class="qr-card-title">' + escHtml(r.title) + '</div>' +
+      '<div class="qr-card-url" title="' + escHtml(r.url) + '">🔗 ' + escHtml(shortUrl) + '</div>' +
+      '<div class="qr-card-date">📅 ' + formatDate(r.createdAt) + '</div>' +
+      desc +
+    '</div>' +
+    // ── أزرار الإجراءات ──
+    '<div class="qr-card-actions">' +
+      '<button class="btn btn-sm btn-secondary" title="تحميل QR" onclick="downloadQR(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ')">⬇️</button>' +
+      '<button class="btn btn-sm btn-secondary" title="مشاركة" onclick="openSharePanel(' + JSON.stringify(qrSrc) + ',' + JSON.stringify(r.title) + ',' + JSON.stringify(r.url) + ')">📤</button>' +
+      '<button class="btn btn-sm btn-secondary" title="نسخ الرابط" onclick="copyUrl(' + JSON.stringify(r.url) + ')">📋</button>' +
+      '<button class="btn btn-sm btn-secondary" title="فتح الرابط" onclick="window.open(' + JSON.stringify(r.url) + ',\'_blank\')">🌐</button>' +
+      '<button class="btn btn-sm btn-gold" title="تعديل" onclick="startEdit(' + JSON.stringify(r.id) + ')">✏️</button>' +
+      '<button class="btn btn-sm btn-danger" title="حذف" onclick="startDelete(' + JSON.stringify(r.id) + ',' + JSON.stringify(r.title) + ')">🗑️</button>' +
+    '</div>' +
+  '</div>';
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Form: Toggle & Reset
+// ════════════════════════════════════════════════════════════════════
+function toggleForm() {
+  var body   = document.getElementById('formBody');
+  var toggle = document.getElementById('formToggle');
+  var isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  toggle.classList.toggle('open', !isOpen);
+}
+
+function openAddForm() {
+  STATE.editingId = null;
+  resetForm();
+  document.getElementById('formToggleLabel').textContent = '✨ إنشاء QR Code جديد';
+  document.getElementById('saveBtnLabel').textContent = '💾 حفظ QR';
+  var body = document.getElementById('formBody');
+  var toggle = document.getElementById('formToggle');
+  body.classList.add('open');
+  toggle.classList.add('open');
+  document.getElementById('fTitle').focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetForm() {
+  STATE.editingId = null;
+  var ids = ['fTitle','fUrl','fImageUrl','fDescription'];
+  for (var i = 0; i < ids.length; i++) { document.getElementById(ids[i]).value = ''; }
+  document.getElementById('fCategory').value = 'عام';
+  document.getElementById('editId').value = '';
+  hideQRPreview();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  QR Preview (live on URL change)
+// ════════════════════════════════════════════════════════════════════
+function onUrlChange(val) {
+  clearTimeout(STATE.previewTimer);
+  val = (val || '').trim();
+  if (!isValidUrl(val)) { hideQRPreview(); return; }
+  STATE.previewTimer = setTimeout(function() { showQRPreview(val); }, 600);
+}
+
+function previewQR() {
+  var url = (document.getElementById('fUrl').value || '').trim();
+  if (!isValidUrl(url)) { showToast('أدخل رابطاً صالحاً (http/https) أولاً', 'warn'); return; }
+  showQRPreview(url);
+}
+
+function showQRPreview(url) {
+  var qrSrc = buildQRUrl(url, 200); // api.qrserver.com — يعمل بشكل صحيح
+  var wrap  = document.getElementById('qrPreviewWrap');
+  var img   = document.getElementById('qrPreviewImg');
+  img.src   = '';          // أعِد ضبط أولاً لإظهار التحميل
+  img.src   = qrSrc;
+  document.getElementById('qrPreviewUrl').textContent = url;
+  document.getElementById('qrPreviewLink').href = qrSrc;
+  wrap.style.display = 'flex';
+}
+
+function hideQRPreview() {
+  document.getElementById('qrPreviewWrap').style.display = 'none';
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Save QR (Create / Update)
+// ════════════════════════════════════════════════════════════════════
+function saveQR() {
+  var title    = (document.getElementById('fTitle').value || '').trim();
+  var url      = (document.getElementById('fUrl').value || '').trim();
+  var imageUrl = (document.getElementById('fImageUrl').value || '').trim();
+  var desc     = (document.getElementById('fDescription').value || '').trim();
+  var category = document.getElementById('fCategory').value;
+
+  // تحقق
+  if (!title) { showToast('العنوان مطلوب', 'warn'); document.getElementById('fTitle').focus(); return; }
+  if (!url)   { showToast('الرابط مطلوب', 'warn'); document.getElementById('fUrl').focus(); return; }
+  if (!isValidUrl(url)) { showToast('الرابط غير صالح — يجب أن يبدأ بـ http أو https', 'error'); return; }
+
+  var data = { title: title, url: url, imageUrl: imageUrl, description: desc, category: category };
+
+  setBtnLoading('saveBtn', 'saveSpinner', 'saveBtnLabel', true, '⏳ جاري الحفظ…');
+
+  if (STATE.editingId) {
+    // تحديث
+    google.script.run
+      .withSuccessHandler(function(res) {
+        setBtnLoading('saveBtn', 'saveSpinner', 'saveBtnLabel', false, '💾 حفظ QR');
+        if (!res || !res.success) { showToast((res && res.error) || 'خطأ في التحديث', 'error'); return; }
+        showToast('✅ تم تحديث QR بنجاح', 'success');
+        resetForm();
+        closeFormPanel();
+        loadAllQR();
+      })
+      .withFailureHandler(function(e) {
+        setBtnLoading('saveBtn', 'saveSpinner', 'saveBtnLabel', false, '💾 حفظ QR');
+        showToast('خطأ: ' + e.message, 'error');
+      })
+      .updateQRCode(STATE.editingId, data, _SCHOOL_ID);
+  } else {
+    // إنشاء
+    data.createdBy = 'مدير المحتوى';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        setBtnLoading('saveBtn', 'saveSpinner', 'saveBtnLabel', false, '💾 حفظ QR');
+        if (!res || !res.success) { showToast((res && res.error) || 'خطأ في الإنشاء', 'error'); return; }
+        showToast('✅ تم إنشاء QR بنجاح', 'success');
+        resetForm();
+        closeFormPanel();
+        loadAllQR();
+      })
+      .withFailureHandler(function(e) {
+        setBtnLoading('saveBtn', 'saveSpinner', 'saveBtnLabel', false, '💾 حفظ QR');
+        showToast('خطأ: ' + e.message, 'error');
+      })
+      .createQRCode(data);
+  }
+}
+
+function closeFormPanel() {
+  document.getElementById('formBody').classList.remove('open');
+  document.getElementById('formToggle').classList.remove('open');
+}
+
+function setBtnLoading(btnId, spinnerId, labelId, loading, labelText) {
+  var btn = document.getElementById(btnId);
+  var sp  = document.getElementById(spinnerId);
+  var lb  = document.getElementById(labelId);
+  if (btn) btn.disabled = loading;
+  if (sp)  sp.style.display = loading ? 'block' : 'none';
+  if (lb)  lb.textContent = labelText;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Edit QR
+// ════════════════════════════════════════════════════════════════════
+function startEdit(id) {
+  showLoading('جاري تحميل البيانات…');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      hideLoading();
+      if (!res || !res.success || !res.data) {
+        showToast((res && res.error) || 'تعذّر تحميل البيانات', 'error'); return;
+      }
+      var r = res.data;
+      STATE.editingId = id;
+      document.getElementById('fTitle').value    = r.title || '';
+      document.getElementById('fUrl').value      = r.url   || '';
+      document.getElementById('fImageUrl').value = r.imageUrl || '';
+      document.getElementById('fDescription').value = r.description || '';
+      document.getElementById('fCategory').value = r.category || 'عام';
+      document.getElementById('editId').value    = id;
+      if (r.url) showQRPreview(r.url);
+
+      document.getElementById('formToggleLabel').textContent = '✏️ تعديل: ' + (r.title || '');
+      document.getElementById('saveBtnLabel').textContent    = '💾 حفظ التعديلات';
+
+      var body = document.getElementById('formBody');
+      var toggle = document.getElementById('formToggle');
+      body.classList.add('open');
+      toggle.classList.add('open');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    })
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showToast('خطأ: ' + e.message, 'error');
+    })
+    .getQRById(id, _SCHOOL_ID);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Delete QR
+// ════════════════════════════════════════════════════════════════════
+function startDelete(id, title) {
+  STATE.deleteId    = id;
+  STATE.deleteTitle = title;
+  document.getElementById('deleteTitle').textContent = '«' + (title || id) + '»';
+  document.getElementById('deleteBtnLabel').textContent = '🗑️ نعم، احذف';
+  document.getElementById('deleteSpinner').style.display = 'none';
+  document.getElementById('deleteModal').querySelector('.btn-danger').disabled = false;
+  openModal('deleteModal');
+}
+
+function confirmDelete() {
+  if (!STATE.deleteId) return;
+  setBtnLoading('deleteModal', 'deleteSpinner', 'deleteBtnLabel', true, '⏳ جاري الحذف…');
+  // Note: modal doesn't have a single btn id pattern, handle manually
+  var btn = document.getElementById('deleteModal').querySelector('.btn-danger');
+  if (btn) { btn.disabled = true; }
+  document.getElementById('deleteSpinner').style.display = 'block';
+  document.getElementById('deleteBtnLabel').textContent = '⏳ جاري الحذف…';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      document.getElementById('deleteSpinner').style.display = 'none';
+      document.getElementById('deleteBtnLabel').textContent = '🗑️ نعم، احذف';
+      if (btn) btn.disabled = false;
+
+      if (!res || !res.success) {
+        showToast((res && res.error) || 'تعذّر الحذف', 'error');
+      } else {
+        showToast('✅ ' + ((res && res.message) || 'تم الحذف'), 'success');
+        closeModal('deleteModal');
+        // إزالة البطاقة فوراً من الـ UI ثم تحديث البيانات
+        var card = document.getElementById('card_' + STATE.deleteId);
+        if (card) { card.style.opacity = '0'; card.style.transform = 'scale(.9)'; setTimeout(function() { if(card.parentNode) card.parentNode.removeChild(card); }, 250); }
+        // تحديث STATE
+        STATE.allData = STATE.allData.filter(function(r) { return r.id !== STATE.deleteId; });
+        STATE.deleteId = null;
+        document.getElementById('totalCount').textContent = STATE.allData.length;
+        applyFilters();
+      }
+    })
+    .withFailureHandler(function(e) {
+      document.getElementById('deleteSpinner').style.display = 'none';
+      document.getElementById('deleteBtnLabel').textContent = '🗑️ نعم، احذف';
+      if (btn) btn.disabled = false;
+      showToast('خطأ: ' + e.message, 'error');
+    })
+    .deleteQRCode(STATE.deleteId, _SCHOOL_ID);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Lightbox — عرض QR بالحجم الكامل
+// ════════════════════════════════════════════════════════════════════
+var _lbCurrentUrl   = '';
+var _lbCurrentTitle = '';
+var _lbTargetUrl    = '';
+
+function openLightbox(src, title, targetUrl) {
+  _lbCurrentUrl   = src;
+  _lbCurrentTitle = title || '';
+  _lbTargetUrl    = targetUrl || '';
+
+  var overlay  = document.getElementById('lbOverlay');
+  var img      = document.getElementById('lbImg');
+  var spinner  = document.getElementById('lbSpinner');
+  var ttl      = document.getElementById('lbTitle');
+
+  // إعادة ضبط
+  img.style.display    = 'none';
+  spinner.style.display = 'flex';
+  img.src = '';
+
+  ttl.textContent = title || '';
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // تحميل الصورة بدقة أعلى (800×800) للعرض الكامل
+  var hqSrc = src.replace(/size=\d+x\d+/, 'size=800x800');
+  img.src = hqSrc;
+}
+
+function closeLightbox(e) {
+  if (e && e.target !== document.getElementById('lbOverlay')) return;
+  document.getElementById('lbOverlay').classList.remove('open');
+  document.getElementById('lbImg').src = '';
+  document.body.style.overflow = '';
+  _lbCurrentUrl = '';
+}
+
+function downloadFromLightbox() {
+  downloadQR(_lbCurrentUrl.replace(/size=\d+x\d+/, 'size=800x800'), _lbCurrentTitle);
+}
+
+function shareFromLightbox() {
+  closeLightbox(null);
+  openSharePanel(_lbCurrentUrl, _lbCurrentTitle, _lbTargetUrl);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Download — ثلاث طبقات للتوافق الكامل
+// ════════════════════════════════════════════════════════════════════
+function downloadQR(qrUrl, title) {
+  if (!qrUrl) return;
+  var dlUrl    = qrUrl.replace(/size=\d+x\d+/, 'size=800x800');
+  var safeName = (title || 'QR-Code').replace(/[\\/:*?"<>|]/g, '-').trim();
+  var fileName = safeName + '.png';
+
+  showToast('⏳ جاري التحميل…', 'info');
+
+  // ── طبقة 1 (الأفضل): Worker Proxy /qr-download — نفس النطاق، لا CORS ──
+  // متاح فقط في وضع Worker (GAS_ENDPOINT نسبي يبدأ بـ /)
+  if (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') {
+    var proxyUrl = '/qr-download?url=' + encodeURIComponent(dlUrl) +
+                   '&name=' + encodeURIComponent(safeName);
+    _triggerDownload(proxyUrl, fileName);
+    showToast('✅ جاري تنزيل ' + fileName, 'success');
+    return;
+  }
+
+  // ── طبقة 2: Canvas → DataURL (بيئات أخرى) ──
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function() {
+    try {
+      var w = img.naturalWidth  || 800;
+      var h = img.naturalHeight || 800;
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      var dataUrl = canvas.toDataURL('image/png');
+      _triggerDownload(dataUrl, fileName);
+      showToast('✅ تم التحميل: ' + fileName, 'success');
+    } catch (canvasErr) {
+      _fetchDownload(dlUrl, fileName); // ── طبقة 3
+    }
+  };
+  img.onerror = function() { _fetchDownload(dlUrl, fileName); };
+  img.src = dlUrl + '&_t=' + Date.now();
+}
+
+function _triggerDownload(dataUrl, fileName) {
+  var a = document.createElement('a');
+  a.href     = dataUrl;
+  a.download = fileName;
+  a.rel      = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { document.body.removeChild(a); }, 200);
+}
+
+function _fetchDownload(url, fileName) {
+  if (typeof fetch === 'undefined') { _openFallback(url); return; }
+  fetch(url, { mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.ok ? r.blob() : Promise.reject('HTTP ' + r.status); })
+    .then(function(blob) {
+      var objUrl = URL.createObjectURL(blob);
+      _triggerDownload(objUrl, fileName);
+      setTimeout(function() { URL.revokeObjectURL(objUrl); }, 2000);
+      showToast('✅ تم التحميل: ' + fileName, 'success');
+    })
+    .catch(function() { _openFallback(url); });
+}
+
+function _openFallback(url) {
+  // ── طبقة 3: نافذة جديدة + تعليمات ──
+  window.open(url, '_blank');
+  showToast('📥 الصورة فُتحت في نافذة جديدة — اضغط مطولاً أو انقر يميناً → "حفظ الصورة"', 'info');
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Share Panel — مشاركة عبر التطبيقات
+// ════════════════════════════════════════════════════════════════════
+var _shareData = { qrUrl: '', title: '', targetUrl: '' };
+
+function openSharePanel(qrUrl, title, targetUrl) {
+  _shareData.qrUrl     = qrUrl     || '';
+  _shareData.title     = title     || '';
+  _shareData.targetUrl = targetUrl || qrUrl || '';
+
+  // إظهار زر المشاركة الأصلية إن كانت مدعومة (موبايل غالباً)
+  var nativeBtn = document.getElementById('nativeShareBtn');
+  if (nativeBtn) nativeBtn.style.display = navigator.share ? 'flex' : 'none';
+
+  document.getElementById('shareOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSharePanel(e) {
+  if (e && e.target !== document.getElementById('shareOverlay')) return;
+  document.getElementById('shareOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function shareVia(method) {
+  var qrUrl     = _shareData.qrUrl;
+  var title     = _shareData.title;
+  var targetUrl = _shareData.targetUrl;
+  var text      = (title ? title + '\n' : '') + targetUrl;
+
+  closeSharePanel(null);
+
+  if (method === 'native' && navigator.share) {
+    navigator.share({ title: title || 'QR Code', text: text, url: targetUrl })
+      .then(function() { showToast('✅ تمت المشاركة', 'success'); })
+      .catch(function(e) { if (e.name !== 'AbortError') showToast('تعذّرت المشاركة', 'warn'); });
+
+  } else if (method === 'whatsapp') {
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+
+  } else if (method === 'telegram') {
+    window.open('https://t.me/share/url?url=' + encodeURIComponent(targetUrl) +
+      '&text=' + encodeURIComponent(title || 'QR Code'), '_blank');
+
+  } else if (method === 'email') {
+    window.open('mailto:?subject=' + encodeURIComponent(title || 'QR Code') +
+      '&body=' + encodeURIComponent(text + '\n\nQR Image:\n' + qrUrl), '_blank');
+
+  } else if (method === 'copy') {
+    copyUrl(targetUrl);
+
+  } else if (method === 'download') {
+    downloadQR(qrUrl, title);
+
+  } else if (method === 'open') {
+    window.open(targetUrl, '_blank');
+  }
+}
+
+function copyUrl(url) {
+  if (!url) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        showToast('✅ تم نسخ الرابط إلى الحافظة', 'success');
+      });
+    } else {
+      // fallback
+      var ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed'; ta.style.top = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('✅ تم نسخ الرابط', 'success');
+    }
+  } catch (e) {
+    showToast('تعذّر النسخ تلقائياً — الرابط: ' + url, 'warn');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  زر الرجوع
+// ════════════════════════════════════════════════════════════════════
+function goBack() {
+  // Worker mode: رجوع إلى لوحة CMS
+  if (window.GAS_ENDPOINT) {
+    var sid  = window.SCHOOL_ID || '';
+    var dest = '/cms/index.html' + (sid ? '?school=' + encodeURIComponent(sid) : '');
+    window.top.location.href = dest;
+    return;
+  }
+  // GAS direct mode: رجوع للصفحة السابقة في التاريخ
+  if (window.history && window.history.length > 1) {
+    window.history.back();
+  } else if (typeof google !== 'undefined' && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(function(url) {
+      window.top.location.href = url || './';
+    }).getPageUrl('');
+  } else {
+    window.location.href = './';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Close modal / lightbox on overlay click + Escape key
+// ════════════════════════════════════════════════════════════════════
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('open');
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    // أغلق share panel أولاً
+    var sp = document.getElementById('shareOverlay');
+    if (sp && sp.classList.contains('open')) {
+      sp.classList.remove('open');
+      document.body.style.overflow = '';
+      return;
+    }
+    // أغلق lightbox
+    var lb = document.getElementById('lbOverlay');
+    if (lb && lb.classList.contains('open')) {
+      lb.classList.remove('open');
+      document.getElementById('lbImg').src = '';
+      document.body.style.overflow = '';
+      _lbCurrentUrl = '';
+      return;
+    }
+    // أغلق أي modal آخر
+    var modals = document.querySelectorAll('.modal-overlay.open');
+    for (var i = 0; i < modals.length; i++) modals[i].classList.remove('open');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════════════════════════════════
+window.addEventListener('load', function() {
+  loadAllQR();
+});
+</script>
+</body>
+</html>
