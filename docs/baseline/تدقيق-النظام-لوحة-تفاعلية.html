@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تدقيق النظام — منصة مدارس الإبداع والتميز الدولية</title>
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#121a31; --card:#16203c; --card2:#1b2848;
+    --line:#26345c; --txt:#e7ecf7; --mut:#9fb0d4; --gold:#e9c46a; --gold2:#f4d68a;
+    --blue:#5b8def; --teal:#2ec4b6; --red:#ef476f; --orange:#f4a261; --green:#06d6a0; --purple:#9b8cff;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",Tahoma,system-ui,Arial,sans-serif;background:
+    radial-gradient(1200px 600px at 90% -10%,rgba(91,141,239,.12),transparent),
+    radial-gradient(900px 500px at -10% 10%,rgba(233,196,106,.10),transparent),var(--bg);
+    color:var(--txt);line-height:1.7;min-height:100vh}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px}
+  header.top{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid var(--line);
+    border-radius:20px;padding:22px 26px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  header.top::after{content:"";position:absolute;inset:0;background:
+    repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(255,255,255,.012) 18px,rgba(255,255,255,.012) 36px)}
+  .crest{width:64px;height:64px;border-radius:16px;display:grid;place-items:center;font-size:30px;
+    background:linear-gradient(135deg,var(--gold),#c9952f);color:#1a1304;font-weight:800;box-shadow:0 6px 18px rgba(233,196,106,.3);flex:0 0 auto}
+  header.top h1{font-size:22px;letter-spacing:.2px}
+  header.top .sub{color:var(--mut);font-size:13.5px;margin-top:3px}
+  .badges{margin-inline-start:auto;display:flex;gap:10px;flex-wrap:wrap}
+  .badge{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;
+    padding:6px 13px;font-size:12.5px;color:var(--mut)}
+  .badge b{color:var(--gold)}
+
+  /* KPI */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:20px 0}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden}
+  .kpi .n{font-size:30px;font-weight:800;line-height:1}
+  .kpi .l{color:var(--mut);font-size:13px;margin-top:6px}
+  .kpi .bar{position:absolute;inset-inline-start:0;top:0;bottom:0;width:5px}
+  .kpi.r .bar{background:var(--red)} .kpi.o .bar{background:var(--orange)}
+  .kpi.b .bar{background:var(--blue)} .kpi.g .bar{background:var(--green)}
+  .kpi.p .bar{background:var(--purple)} .kpi.t .bar{background:var(--teal)}
+
+  /* Tabs */
+  nav.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 18px}
+  .tab{background:var(--card);border:1px solid var(--line);color:var(--mut);
+    border-radius:12px;padding:10px 16px;cursor:pointer;font-size:14px;font-weight:600;transition:.18s;user-select:none}
+  .tab:hover{color:var(--txt);border-color:var(--blue)}
+  .tab.active{background:linear-gradient(135deg,var(--gold),#c9952f);color:#1a1304;border-color:transparent;box-shadow:0 6px 16px rgba(233,196,106,.25)}
+  section.panel{display:none;animation:fade .35s ease}
+  section.panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:18px}
+  .card h2{font-size:18px;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+  .card h2 .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:rgba(91,141,239,.16)}
+  .card .desc{color:var(--mut);font-size:13.5px;margin-bottom:14px}
+  h3.sec{font-size:15px;color:var(--gold);margin:16px 0 8px}
+  p.lead{color:var(--mut);font-size:14px;margin-bottom:6px}
+
+  /* Architecture diagram */
+  .arch{display:grid;gap:14px}
+  .layer{border:1px dashed var(--line);border-radius:14px;padding:14px;background:rgba(255,255,255,.02)}
+  .layer .lt{font-size:13px;color:var(--gold);font-weight:700;margin-bottom:10px;letter-spacing:.3px}
+  .nodes{display:flex;gap:10px;flex-wrap:wrap}
+  .node{flex:1 1 150px;min-width:140px;background:linear-gradient(135deg,var(--card2),var(--card));
+    border:1px solid var(--line);border-radius:12px;padding:12px 13px;cursor:pointer;transition:.18s;position:relative}
+  .node:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 8px 20px rgba(0,0,0,.3)}
+  .node .h{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:7px}
+  .node .m{color:var(--mut);font-size:11.5px;margin-top:4px}
+  .node .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .flowline{text-align:center;color:var(--blue);font-size:20px;opacity:.6}
+  .pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut);margin:2px 2px 0 0}
+
+  /* Dependency list */
+  .dep{display:grid;grid-template-columns:1fr;gap:8px}
+  .edge{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,255,255,.02);
+    border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px}
+  .chip{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:3px 9px;font-size:12px;white-space:nowrap}
+  .arrow{color:var(--teal);font-weight:800}
+  .warnedge{border-color:rgba(239,71,111,.5);background:rgba(239,71,111,.07)}
+
+  /* Errors table */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .fbtn{background:var(--card2);border:1px solid var(--line);color:var(--mut);border-radius:999px;
+    padding:6px 14px;font-size:12.5px;cursor:pointer;font-weight:600;transition:.15s}
+  .fbtn:hover{color:var(--txt)} .fbtn.on{color:#fff}
+  .fbtn.on[data-sev=crit]{background:var(--red);border-color:var(--red)}
+  .fbtn.on[data-sev=high]{background:var(--orange);border-color:var(--orange);color:#231400}
+  .fbtn.on[data-sev=med]{background:var(--blue);border-color:var(--blue)}
+  .fbtn.on[data-sev=low]{background:var(--teal);border-color:var(--teal);color:#04221f}
+  .fbtn.on[data-sev=all]{background:var(--gold);border-color:var(--gold);color:#1a1304}
+  .issue{border:1px solid var(--line);border-radius:14px;margin-bottom:11px;overflow:hidden;background:var(--card2)}
+  .issue .head{display:flex;align-items:center;gap:12px;padding:13px 15px;cursor:pointer}
+  .sev{font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;white-space:nowrap;letter-spacing:.4px}
+  .sev.crit{background:rgba(239,71,111,.18);color:#ff7ea0;border:1px solid rgba(239,71,111,.5)}
+  .sev.high{background:rgba(244,162,97,.16);color:var(--orange);border:1px solid rgba(244,162,97,.5)}
+  .sev.med{background:rgba(91,141,239,.16);color:#8fb2ff;border:1px solid rgba(91,141,239,.5)}
+  .sev.low{background:rgba(46,196,182,.14);color:#5fe0d2;border:1px solid rgba(46,196,182,.45)}
+  .issue .ttl{font-weight:700;font-size:14px;flex:1}
+  .issue .loc{color:var(--mut);font-size:11.5px;font-family:monospace}
+  .issue .exp{max-height:0;overflow:hidden;transition:max-height .3s ease;padding:0 15px}
+  .issue.open .exp{max-height:600px;padding:0 15px 15px}
+  .issue .exp .row{margin-top:9px;font-size:13px}
+  .issue .exp .k{color:var(--gold);font-weight:700;font-size:12px;display:block;margin-bottom:2px}
+  .chev{color:var(--mut);transition:.2s} .issue.open .chev{transform:rotate(180deg)}
+
+  /* Roadmap */
+  .phase{border-inline-start:3px solid var(--blue);padding:4px 16px 16px;margin-bottom:6px;position:relative}
+  .phase::before{content:"";position:absolute;inset-inline-start:-8px;top:6px;width:13px;height:13px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 4px var(--bg)}
+  .phase.p0{border-color:var(--green)} .phase.p0::before{background:var(--green)}
+  .phase.p1{border-color:var(--red)} .phase.p1::before{background:var(--red)}
+  .phase.p2{border-color:var(--orange)} .phase.p2::before{background:var(--orange)}
+  .phase.p3{border-color:var(--purple)} .phase.p3::before{background:var(--purple)}
+  .phase.p4{border-color:var(--teal)} .phase.p4::before{background:var(--teal)}
+  .phase .pt{font-weight:800;font-size:15px} .phase .pw{color:var(--mut);font-size:12.5px;margin-bottom:8px}
+  ul.clean{list-style:none} ul.clean li{padding:5px 0 5px 0;font-size:13.5px;position:relative;padding-inline-start:22px}
+  ul.clean li::before{content:"▸";position:absolute;inset-inline-start:0;color:var(--gold)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:right}
+  th{background:var(--card2);color:var(--gold);font-size:12.5px}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .ok{color:var(--green)} .no{color:var(--red)} .warn{color:var(--orange)}
+  code{background:#0c1530;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px;color:var(--gold2)}
+  .note{background:rgba(233,196,106,.07);border:1px solid rgba(233,196,106,.3);border-radius:12px;padding:12px 15px;font-size:13px;margin-top:12px}
+  .note b{color:var(--gold)}
+  footer{color:var(--mut);font-size:12px;text-align:center;padding:24px 0 10px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin-top:8px}
+  .legend span{display:flex;align-items:center;gap:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="crest">إ</div>
+    <div>
+      <h1>تدقيق معماري شامل — منصة مدارس الإبداع والتميز الدولية</h1>
+      <div class="sub">School App Yemen · مراجعة بدون أي تعديل على الكود · أُعدّ بواسطة Claude Cowork — 9 يونيو 2026</div>
+    </div>
+    <div class="badges">
+      <div class="badge">المصدر <b>procorners-labs/school-app-yemen-web</b></div>
+      <div class="badge">الحالة <b>تدقيق فقط</b></div>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi r"><div class="bar"></div><div class="n" id="k-crit">1</div><div class="l">خطر حَرِج (Critical)</div></div>
+    <div class="kpi o"><div class="bar"></div><div class="n" id="k-high">4</div><div class="l">أولوية عالية</div></div>
+    <div class="kpi b"><div class="bar"></div><div class="n" id="k-med">5</div><div class="l">أولوية متوسطة</div></div>
+    <div class="kpi t"><div class="bar"></div><div class="n" id="k-low">4</div><div class="l">تحسينات/نظافة كود</div></div>
+    <div class="kpi p"><div class="bar"></div><div class="n">3</div><div class="l">طبقات معمارية</div></div>
+    <div class="kpi g"><div class="bar"></div><div class="n">6</div><div class="l">مشاريع GAS</div></div>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <div class="tab active" data-p="overview">① نظرة عامة</div>
+    <div class="tab" data-p="arch">② خريطة المعمارية</div>
+    <div class="tab" data-p="deps">③ خريطة التبعيات</div>
+    <div class="tab" data-p="auth">④ المصادقة والبيانات</div>
+    <div class="tab" data-p="errors">⑤ تقرير الأخطاء</div>
+    <div class="tab" data-p="roadmap">⑥ خارطة التحسين</div>
+    <div class="tab" data-p="refactor">⑦ إعادة الهيكلة الآمنة</div>
+    <div class="tab" data-p="sources">⑧ ربط المصادر</div>
+  </nav>
+
+  <!-- ① OVERVIEW -->
+  <section class="panel active" data-p="overview">
+    <div class="card">
+      <h2><span class="ic">🏛️</span> ملخّص تنفيذي</h2>
+      <div class="desc">النظام منصّة تعليمية <b>متعددة المدارس (Multi-Tenant)</b> مبنية على ثلاث طبقات مترابطة بذكاء، تحوّل تطبيقات Google Apps Script من واجهة <code>google.script.run</code> إلى واجهة <code>fetch</code> ثابتة تعمل دون VPN ودون اتصال.</div>
+      <h3 class="sec">الخلاصة بثلاث جُمل</h3>
+      <p class="lead">١. المعمارية ذكية واقتصادية: لا خادم مدفوع — Google Sheets كقاعدة بيانات، GAS كـ API، GitHub Pages للواجهة، وCloudflare Worker لتجاوز حجب اليمن، مع طبقة PWA للعمل دون اتصال.</p>
+      <p class="lead">٢. أبرز خطر: <b style="color:var(--red)">طبقة الحماية الفعلية في <code>ApiEndpoint.js</code> تعتمد قائمة منع (blocklist) لا قائمة سماح (whitelist)</b> كما يوحي التوثيق — ما يسمح باستدعاء دوال إدارية حسّاسة من أي زائر مجهول.</p>
+      <p class="lead">٣. النسخة المحلية <code>C:\SchoolApp</code> <b>غير متزامنة</b> مع GitHub (تنقصها <code>frontend/</code> و<code>worker/</code> وملفات <code>ApiEndpoint.js</code> والملفات الرئيسية لعدة مشاريع) — يجب توحيد المصدر قبل أي عمل.</p>
+
+      <div class="note"><b>قاعدة الالتزام:</b> هذا التقرير تدقيق وفهم فقط — لم يُعدَّل أي سطر، ولم تُلمَس معرّفات النشر (Deployment IDs). كل توصية أدناه قابلة للتنفيذ لاحقاً وبشكل آمن وتدريجي.</div>
+    </div>
+
+    <div class="card">
+      <h2><span class="ic">🧩</span> المكوّنات في سطر واحد</h2>
+      <table>
+        <tr><th>المكوّن</th><th>التقنية</th><th>الدور</th><th>الموقع</th></tr>
+        <tr><td>قاعدة البيانات</td><td>Google Sheets</td><td>تخزين متعدد المدارس عبر سجل Master</td><td class="ok">حيّ ✓</td></tr>
+        <tr><td>الخلفية ×6</td><td>Google Apps Script (ES5)</td><td>doGet (HTML) + doPost (API/JSON)</td><td>script.google.com /exec</td></tr>
+        <tr><td>الواجهة الثابتة</td><td>HTML/JS + PWA</td><td>جسر fetch + عمل دون اتصال</td><td>GitHub Pages</td></tr>
+        <tr><td>الوكيل</td><td>Cloudflare Worker</td><td>تجاوز حجب github.io + CORS</td><td>workers.dev</td></tr>
+        <tr><td>تطبيق الجوال</td><td>Android WebView (Kotlin)</td><td>غلاف تثبيت + روابط ديناميكية</td><td>com.proconrers.schoolappyemen</td></tr>
+        <tr><td>أدوات البناء</td><td>Node.js</td><td>توليد الواجهة ونقاط API</td><td><code>_build/</code></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ② ARCHITECTURE -->
+  <section class="panel" data-p="arch">
+    <div class="card">
+      <h2><span class="ic">🗺️</span> خريطة المعمارية (انقر أي عقدة لعرض تفاصيلها)</h2>
+      <div class="desc">تدفّق الطلب من أعلى لأسفل: المتصفّح/التطبيق ← الوكيل ← الواجهة ← جسر GAS ← الخلفية ← الأوراق.</div>
+      <div class="arch" id="archMap">
+        <div class="layer">
+          <div class="lt">▣ طبقة العرض (Presentation)</div>
+          <div class="nodes">
+            <div class="node" data-k="browser"><div class="h"><span class="dot" style="background:var(--blue)"></span> المتصفّح / PWA</div><div class="m">صفحات frontend/ + Service Worker</div></div>
+            <div class="node" data-k="android"><div class="h"><span class="dot" style="background:var(--green)"></span> تطبيق أندرويد</div><div class="m">WebView + ?action=deployments</div></div>
+            <div class="node" data-k="offline"><div class="h"><span class="dot" style="background:var(--purple)"></span> طبقة دون اتصال</div><div class="m">IndexedDB + outbox + مزامنة</div></div>
+          </div>
+        </div>
+        <div class="flowline">▼</div>
+        <div class="layer">
+          <div class="lt">▣ طبقة الوسيط (Edge / Bridge)</div>
+          <div class="nodes">
+            <div class="node" data-k="worker"><div class="h"><span class="dot" style="background:var(--orange)"></span> Cloudflare Worker</div><div class="m">/gas/&lt;app&gt; + خدمة الصفحات</div></div>
+            <div class="node" data-k="bridge"><div class="h"><span class="dot" style="background:var(--gold)"></span> gas-bridge.js</div><div class="m">إعادة تعريف google.script.run</div></div>
+          </div>
+        </div>
+        <div class="flowline">▼</div>
+        <div class="layer">
+          <div class="lt">▣ طبقة الخلفية (GAS Backend ×6)</div>
+          <div class="nodes">
+            <div class="node" data-k="endpoint"><div class="h"><span class="dot" style="background:var(--red)"></span> ApiEndpoint.js</div><div class="m">doPost → resolve → eval</div></div>
+            <div class="node" data-k="home"><div class="h"><span class="dot" style="background:var(--blue)"></span> home</div><div class="m">الموقع + DeploymentRegistry</div></div>
+            <div class="node" data-k="teacher"><div class="h"><span class="dot" style="background:var(--teal)"></span> teacher</div><div class="m">حضور/درجات/قوائم محميّة</div></div>
+            <div class="node" data-k="student"><div class="h"><span class="dot" style="background:var(--green)"></span> student</div><div class="m">تقارير الطالب + الدخول</div></div>
+            <div class="node" data-k="cms"><div class="h"><span class="dot" style="background:var(--purple)"></span> cms</div><div class="m">أخبار/صور/فيديو + رفع</div></div>
+            <div class="node" data-k="master"><div class="h"><span class="dot" style="background:var(--gold)"></span> master-admin</div><div class="m">عزل المدارس + دور المالك</div></div>
+          </div>
+        </div>
+        <div class="flowline">▼</div>
+        <div class="layer">
+          <div class="lt">▣ طبقة البيانات (Google Sheets)</div>
+          <div class="nodes">
+            <div class="node" data-k="dbmaster"><div class="h"><span class="dot" style="background:var(--gold)"></span> Master_Admin_School</div><div class="m">سجل المدارس + الاشتراكات</div></div>
+            <div class="node" data-k="dbtenant"><div class="h"><span class="dot" style="background:var(--teal)"></span> أوراق كل مدرسة</div><div class="m">teacher/student/cms/schedule</div></div>
+            <div class="node" data-k="dbhome"><div class="h"><span class="dot" style="background:var(--blue)"></span> ورقة الموقع</div><div class="m">News/Images/Videos/Stats</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="width:9px;height:9px;border-radius:50%;background:var(--red)"></span> نقطة خطر</span>
+        <span><span class="dot" style="width:9px;height:9px;border-radius:50%;background:var(--gold)"></span> محور رئيسي</span>
+        <span>انقر العقدة لعرض الوصف والمخاطر المرتبطة</span>
+      </div>
+      <div id="nodeInfo" class="note" style="display:none"></div>
+    </div>
+  </section>
+
+  <!-- ③ DEPENDENCIES -->
+  <section class="panel" data-p="deps">
+    <div class="card">
+      <h2><span class="ic">🔗</span> خريطة التبعيات وتدفّق الطلب</h2>
+      <div class="desc">المسار الكامل لاستدعاء واحد، مع تمييز الحواف الخطرة باللون الأحمر.</div>
+      <div class="dep">
+        <div class="edge"><span class="chip">صفحة frontend</span><span class="arrow">←→</span><span class="chip">gas-bridge.js</span><span style="color:var(--mut);font-size:12px">يعترض كل google.script.run</span></div>
+        <div class="edge"><span class="chip">gas-bridge.js</span><span class="arrow">→</span><span class="chip">OfflineSync</span><span style="color:var(--mut);font-size:12px">تصنيف: قراءة/كتابة/مصادقة + طابور outbox</span></div>
+        <div class="edge"><span class="chip">XHR POST (text/plain)</span><span class="arrow">→</span><span class="chip">window.GAS_ENDPOINT</span><span style="color:var(--mut);font-size:12px">إمّا /gas/&lt;app&gt; على الـWorker أو /exec مباشرة</span></div>
+        <div class="edge warnedge"><span class="chip">Cloudflare Worker</span><span class="arrow">→</span><span class="chip">GAS /exec</span><span style="color:var(--red);font-size:12px">يجرّد ترويسات CSP وX-Frame-Options لكل الصفحات</span></div>
+        <div class="edge warnedge"><span class="chip">ApiEndpoint.doPost</span><span class="arrow">→</span><span class="chip">_apiResolve → eval(fn)</span><span style="color:var(--red);font-size:12px">يسمح بأي دالة عامة لا تبدأ بـ _ (blocklist)</span></div>
+        <div class="edge"><span class="chip">الدالة الهدف</span><span class="arrow">→</span><span class="chip">_Tenant / _MasterScope</span><span style="color:var(--mut);font-size:12px">يحدّد ملف المدرسة النشط من سجل Master</span></div>
+        <div class="edge"><span class="chip">_resolveTenantFileId</span><span class="arrow">→</span><span class="chip">Master_Admin_School › Schools</span><span style="color:var(--mut);font-size:12px">يتحقق is_active + subscription_end، ثم CacheService</span></div>
+        <div class="edge"><span class="chip">SpreadsheetApp</span><span class="arrow">→</span><span class="chip">أوراق المدرسة</span><span style="color:var(--mut);font-size:12px">قراءة/كتابة + كاش متعدد الطبقات</span></div>
+      </div>
+
+      <h3 class="sec">تبعيات عابرة للوحدات (مصدر هشاشة)</h3>
+      <table>
+        <tr><th>التابع</th><th>يعتمد على</th><th>الحالة</th></tr>
+        <tr><td><code>_MasterScope.js</code></td><td><code>Master_Admin.gs</code> (دوال <code>_getMasterSheet</code>, <code>validateMasterToken</code>, <code>TEACHER_SS_ID</code>…)</td><td class="no">الملف الأساسي غير موجود محلياً</td></tr>
+        <tr><td>كل HTML + تطبيق أندرويد</td><td><code>getDeploymentUrls()</code> في home</td><td class="ok">سليم (مع احتياطي افتراضي)</td></tr>
+        <tr><td><code>cms/_Tenant.js</code></td><td><code>SPREADSHEET_ID</code> من ملف CMS الرئيسي</td><td class="warn">ترويسة الملف موسومة خطأً "منصة المعلم"</td></tr>
+        <tr><td>الواجهة (home/teacher)</td><td><code>checkSession</code>، <code>getStudentsForView</code></td><td class="no">مُستدعاة بلا تنفيذ خادمي</td></tr>
+        <tr><td>الواجهة (schedule)</td><td>قائمة دوال API</td><td class="warn"><code>whitelist.json › schedule = []</code> فارغة</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ④ AUTH & DATA -->
+  <section class="panel" data-p="auth">
+    <div class="card">
+      <h2><span class="ic">🔐</span> تدفّق المصادقة</h2>
+      <table>
+        <tr><th>المنصّة</th><th>آلية الدخول</th><th>الحماية</th><th>ملاحظة</th></tr>
+        <tr><td>الموقع (home)</td><td>لا يوجد — عام</td><td>—</td><td class="ok">مناسب لموقع عام</td></tr>
+        <tr><td>المعلّم</td><td><code>handleTeacherLogin</code> → توكن</td><td>دوال <code>*Protected</code> تتحقق من التوكن</td><td class="ok">النمط الآمن الصحيح</td></tr>
+        <tr><td>الطالب</td><td><code>loginStudent</code></td><td>تحقق داخل الدالة</td><td class="warn">راجع تمرير الكود</td></tr>
+        <tr><td>المالك/المدير</td><td><code>validateMasterToken</code></td><td>أدوار <code>owner</code> مقابل مدير مدرسة + <code>_resolveScope</code></td><td class="ok">عزل نطاق محكم</td></tr>
+      </table>
+      <div class="note"><b>قيد جوهري:</b> بسبب طبيعة <code>fetch</code> الخارجي والنشر "Execute as Me"، فإن <code>Session.getActiveUser()</code> يُعيد <b>هوية المالك</b> لا هوية الزائر — لذا أي منطق يعتمد على هوية المستخدم من Google غير صالح، والاعتماد يجب أن يكون على التوكن فقط.</div>
+    </div>
+    <div class="card">
+      <h2><span class="ic">🗄️</span> بنية البيانات (سجل Master › ورقة Schools)</h2>
+      <table>
+        <tr><th>العمود (0-based)</th><th>المعنى</th><th>الاستخدام</th></tr>
+        <tr><td>0</td><td><code>school_id</code></td><td>مفتاح المدرسة (يُمرَّر كـ ?schoolId=)</td></tr>
+        <tr><td>1</td><td>الاسم</td><td>عرض</td></tr>
+        <tr><td>4 / 5 / 6 / 7</td><td>teacher / student / cms / schedule file_id</td><td>توجيه كل منصّة لملف المدرسة</td></tr>
+        <tr><td>9</td><td><code>subscription_end</code></td><td>بوابة انتهاء الاشتراك (مقارنة تاريخية)</td></tr>
+        <tr><td>10</td><td><code>is_active</code></td><td>تفعيل/تعطيل المدرسة</td></tr>
+      </table>
+      <p class="lead" style="margin-top:10px">التحقق الحيّ: سجل <code>Master_Admin_School</code> موجود فعلياً في Drive بالمعرّف المطابق تماماً للكود، ويوجد ملف مدرسة فعلي «منصة المدرسين» مشارَك من حساب مدرسة مستقلّ — ما يؤكّد عمل سلسلة تعدّد المدارس.</p>
+    </div>
+  </section>
+
+  <!-- ⑤ ERRORS -->
+  <section class="panel" data-p="errors">
+    <div class="card">
+      <h2><span class="ic">🐞</span> تقرير الأخطاء والمخاطر</h2>
+      <div class="desc">مصنّفة بالأولوية. انقر أي بند لعرض السبب الجذري والأثر والإصلاح المقترح. استخدم المرشّحات للتصفية.</div>
+      <div class="filters" id="sevFilters">
+        <div class="fbtn on" data-sev="all">الكل</div>
+        <div class="fbtn" data-sev="crit">حَرِج</div>
+        <div class="fbtn" data-sev="high">عالٍ</div>
+        <div class="fbtn" data-sev="med">متوسط</div>
+        <div class="fbtn" data-sev="low">منخفض</div>
+      </div>
+      <div id="issueList"></div>
+    </div>
+  </section>
+
+  <!-- ⑥ ROADMAP -->
+  <section class="panel" data-p="roadmap">
+    <div class="card">
+      <h2><span class="ic">🧭</span> خارطة طريق التحسين (متدرّجة وآمنة)</h2>
+      <div class="phase p0">
+        <div class="pt">المرحلة 0 — التوحيد (الآن · بلا تغيير كود)</div>
+        <div class="pw">إزالة الغموض وتأمين نقطة انطلاق موثوقة.</div>
+        <ul class="clean">
+          <li>مزامنة <code>C:\SchoolApp</code> مع GitHub واعتماد المستودع مصدراً وحيداً للحقيقة.</li>
+          <li>أخذ نسخة احتياطية كاملة للأوراق ومعرّفات النشر قبل أي خطوة لاحقة.</li>
+          <li>اعتماد هذا التقرير كخط أساس (baseline) موثّق.</li>
+        </ul>
+      </div>
+      <div class="phase p1">
+        <div class="pt">المرحلة 1 — الأمان (الأعلى أولوية)</div>
+        <div class="pw">سدّ ثغرة استدعاء الدوال الإدارية.</div>
+        <ul class="clean">
+          <li>تحويل <code>ApiEndpoint.js</code> لاستخدام <b>قائمة السماح</b> <code>whitelist.json</code> فعلياً بدل قائمة المنع.</li>
+          <li>إزالة <code>eval()</code> واستبداله بخريطة دوال صريحة (function map).</li>
+          <li>اشتراط التوكن على كل دالة كتابة/إدارة (لا الاكتفاء بلاحقة <code>Protected</code>).</li>
+          <li>نقل المعرّفات الحسّاسة خارج المستودع العام أو إقرار نموذج "عام بحماية دوال".</li>
+        </ul>
+      </div>
+      <div class="phase p2">
+        <div class="pt">المرحلة 2 — الصحّة الوظيفية</div>
+        <div class="pw">إغلاق التبعيات المكسورة.</div>
+        <ul class="clean">
+          <li>تنفيذ <code>checkSession</code> و<code>getStudentsForView</code> أو إزالة استدعائهما من الواجهة.</li>
+          <li>إضافة <code>Terms.html</code> أو حماية مسار <code>?page=terms</code>.</li>
+          <li>تعبئة قائمة دوال API لمنصّة <code>schedule</code>.</li>
+        </ul>
+      </div>
+      <div class="phase p3">
+        <div class="pt">المرحلة 3 — قابلية الصيانة</div>
+        <div class="pw">القضاء على التكرار.</div>
+        <ul class="clean">
+          <li>توحيد <code>DriveUrlUtils</code> و<code>DeploymentRegistry</code> في مصدر واحد يُولَّد عبر <code>_build/</code>.</li>
+          <li>إصلاح ترويسة <code>cms/_Tenant.js</code> وحذف ملفات «بلا عنوان» وفصل ملفات الاختبار.</li>
+        </ul>
+      </div>
+      <div class="phase p4">
+        <div class="pt">المرحلة 4 — المتانة</div>
+        <div class="pw">تقوية الاتساق دون اتصال.</div>
+        <ul class="clean">
+          <li>إضافة منع تكرار خادمي عبر <code>opId</code> في <code>CacheService</code> (24 ساعة).</li>
+          <li>إبطال كاش تلقائي عند الكتابة بدل المسح اليدوي.</li>
+          <li>تضييق نطاق تجريد CSP في الـWorker على الضروري فقط.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑦ REFACTOR -->
+  <section class="panel" data-p="refactor">
+    <div class="card">
+      <h2><span class="ic">🛡️</span> استراتيجية إعادة الهيكلة الآمنة</h2>
+      <div class="desc">مبادئ تضمن عدم كسر التوافق إطلاقاً أثناء أي تطوير لاحق.</div>
+      <ul class="clean">
+        <li><b>فرع لكل تغيير:</b> لا تعديل مباشر على <code>main</code>؛ مراجعة عبر Pull Request.</li>
+        <li><b>ثبات معرّفات النشر:</b> أبقِ على نفس Deployment ID دائماً (Manage deployments → Edit → New version) لتبقى روابط <code>/exec</code> والـWorker صالحة.</li>
+        <li><b>مشروع واحد في كل مرّة:</b> عدّل مشروع GAS واحداً واختبره عبر <code>?action=health</code> قبل الانتقال للتالي.</li>
+        <li><b>المصدر الواحد:</b> استخدم سكربتات <code>_build/</code> لتوليد <code>ApiEndpoint.js</code> والواجهة بدل التحرير اليدوي المتكرر.</li>
+        <li><b>مدرسة تجريبية:</b> أضف صفّ مدرسة اختبار في سجل Master للتحقق قبل لمس مدارس الإنتاج.</li>
+        <li><b>تحقق آلي:</b> سكربت يقارن قائمة الدوال العامة فعلياً مقابل <code>whitelist.json</code> ويُنبّه على أي انكشاف جديد.</li>
+        <li><b>تراجع فوري:</b> بما أن النشر بالإصدارات، يمكن الرجوع لإصدار سابق من نفس الـDeployment خلال ثوانٍ.</li>
+      </ul>
+      <div class="note"><b>التوافق مع ES5:</b> الخلفية ملتزمة بالقواعد الصارمة (var، بلا دوال سهمية، بلا قوالب نصية). لكن <code>gas-bridge.js</code> يستخدم <code>Proxy</code> (ES6) — مقبول في المتصفّحات الحديثة، لكن تحقّق من حدّ WebView الأدنى في تطبيق أندرويد لتفادي كسره على الأجهزة القديمة.</div>
+    </div>
+  </section>
+
+  <!-- ⑧ SOURCES -->
+  <section class="panel" data-p="sources">
+    <div class="card">
+      <h2><span class="ic">🔌</span> حالة ربط المصادر (قراءة فقط)</h2>
+      <div class="desc">ما تم التحقق من ربطه حيّاً، وما يُنصح بربطه لاحقاً.</div>
+      <table>
+        <tr><th>المصدر</th><th>الحالة</th><th>الدليل / الإجراء</th></tr>
+        <tr><td>GitHub — المستودع</td><td class="ok">مقروء ✓</td><td>تمّت قراءة README والكود الكامل (89 commit، فرعان مفتوحان في PR)</td></tr>
+        <tr><td>Google Drive / Sheets</td><td class="ok">متصل ✓</td><td>تم العثور على <code>Master_Admin_School</code> الحيّ + ملف مدرسة «منصة المدرسين»</td></tr>
+        <tr><td>النسخة المحلية ↔ GitHub</td><td class="no">غير متزامنة</td><td>المحلي تنقصه frontend/ وworker/ وApiEndpoint وملفات رئيسية</td></tr>
+        <tr><td>Canva</td><td class="warn">متاح للربط</td><td>موصّل Canva جاهز — يُفعّل عند الطلب لإنتاج هويّة/أصول بصرية</td></tr>
+        <tr><td>Cloudflare Worker</td><td class="warn">منشور خارجياً</td><td>يُدار من لوحة Cloudflare (خارج نطاق القراءة الحالي)</td></tr>
+      </table>
+      <div class="note"><b>الخطوة التالية المقترحة:</b> أستطيع — بأمر منك — سحب صفوف ورقة <code>Schools</code> الحيّة وعرض لوحة "المدارس النشطة + حالة الاشتراك" مباشرة، وربط Canva لإنتاج هوية بصرية موحّدة للمنصّات الخمس. كل ذلك قراءة فقط ودون لمس الكود.</div>
+    </div>
+  </section>
+
+  <footer>
+    تدقيق معماري — منصة مدارس الإبداع والتميز الدولية · لا تعديل على الكود · Claude Cowork · 2026-06-09
+  </footer>
+</div>
+
+<script>
+/* ---------- Tabs ---------- */
+var tabs=document.querySelectorAll('.tab'), panels=document.querySelectorAll('.panel');
+tabs.forEach(function(t){t.addEventListener('click',function(){
+  tabs.forEach(function(x){x.classList.remove('active')});
+  panels.forEach(function(p){p.classList.remove('active')});
+  t.classList.add('active');
+  document.querySelector('.panel[data-p="'+t.dataset.p+'"]').classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+});});
+
+/* ---------- Architecture node info ---------- */
+var nodeData={
+  browser:["المتصفّح / PWA","صفحات الواجهة الثابتة في frontend/ مع Service Worker (sw.js) يخزّن قشرة التطبيق. التنقّل: شبكة أولاً ثم الكاش.","نداءات /gas/* تمريراً فقط بلا تخزين."],
+  android:["تطبيق أندرويد","غلاف WebView يجلب روابط المنصّات ديناميكياً عبر GET ?action=deployments من مشروع home.","يعتمد كلياً على getDeploymentUrls — أي تغيّر رابط يُلتقط تلقائياً."],
+  offline:["طبقة العمل دون اتصال","offline-db.js (IndexedDB) + offline-sync.js (طابور outbox + مزامنة FIFO بإعادة محاولة أُسّية). الكتابات في المعلّم تُحفظ وتُزامن عند عودة الاتصال.","خطر منخفض: لا يوجد منع تكرار خادمي (opId) — احتمال ازدواج عند حالات إعادة المحاولة."],
+  worker:["Cloudflare Worker","يخدم الصفحات من GitHub Pages ويمرّر /gas/<app> إلى GAS. يحلّ مشكلة حجب github.io في اليمن ومشاكل CORS.","⚠️ يحذف ترويسات content-security-policy و x-frame-options لكل الصفحات — يُضعف الحماية من النقر المخادع."],
+  bridge:["gas-bridge.js","يعيد تعريف google.script.run ليصبح XHR POST بنوع text/plain (طلب بسيط بلا preflight). لذا لم يُعدَّل أي استدعاء في الصفحات الأصلية.","⚠️ يستخدم Proxy (ES6) خلافاً لعقيدة ES5 — تحقّق من WebView القديم."],
+  endpoint:["ApiEndpoint.js (نقطة الخطر الأولى)","doPost يفكّ {fn,args} ثم _apiResolve يحلّ الاسم عبر globalThis أو eval ويُنفّذه.","🔴 يعتمد blocklist (يمنع فقط ما يبدأ بـ _ ودوال الإطار) لا whitelist — فأي دالة عامّة قابلة للاستدعاء من أي زائر."],
+  home:["مشروع home","الموقع العام + سجل النشر المركزي getDeploymentUrls (ScriptProperties مع احتياطي). كاش متعدد الطبقات لورقة News/Images/Videos/Stats.","⚠️ doGet ?page=terms يشير إلى Terms.html غير الموجود → خطأ تشغيل."],
+  teacher:["مشروع teacher","حضور/درجات/قوائم عبر دوال *Protected محميّة بالتوكن. يحوي GradeSchema وGradesMigration وأدوات تشخيص.","يستدعي getStudentsForView غير المنفّذ خادمياً."],
+  student:["مشروع student","Student_Reports_Backend: تحليل درجات/حضور/مخالفات ومقارنة بمتوسط الفصل، مخرجات للرسوم البيانية.","يعتمد دوال StudentLogic.gs (_getSheet, _cacheGet…) في نفس المشروع."],
+  cms:["مشروع cms","إدارة محتوى (أخبار/صور/فيديو/جدول) + رفع للـDrive + سجل تدقيق + OAuth فيسبوك/إنستغرام عبر الوكيل.","⚠️ ترويسة _Tenant.js موسومة خطأً 'منصة المعلم'."],
+  master:["مشروع master-admin","_MasterScope: عزل متعدد المدارس، دور المالك (يرى الكل أو مدرسة مختارة)، تجميع إحصاءات كل المدارس.","يعتمد على Master_Admin.gs (غير موجود محلياً) — تبعية مكسورة في النسخة المحلية."],
+  dbmaster:["Master_Admin_School","سجل المدارس: المعرّفات والاشتراكات والتفعيل. تمّ التحقق من وجوده الحيّ في Drive بالمعرّف المطابق للكود.","محور تعدّد المدارس بأكمله — يستحق نسخاً احتياطياً دورياً."],
+  dbtenant:["أوراق كل مدرسة","ملفات teacher/student/cms/schedule مستقلّة لكل مدرسة، تُحلّ معرّفاتها من سجل Master وقت الطلب.","تم رصد ملف فعلي «منصة المدرسين» مشارَك من حساب مدرسة مستقل."],
+  dbhome:["ورقة الموقع العام","News/Images/Videos/Stats للموقع الرئيسي بمعرّف ثابت في الكود.","معالجة موحّدة لروابط Drive/YouTube — لكنها مكرّرة داخل home وفي DriveUrlUtils."]
+};
+document.querySelectorAll('#archMap .node').forEach(function(n){
+  n.addEventListener('click',function(){
+    var d=nodeData[n.dataset.k]; if(!d)return;
+    var box=document.getElementById('nodeInfo');
+    box.style.display='block';
+    box.innerHTML='<b>'+d[0]+'</b><br>'+d[1]+'<br><span style="color:var(--mut)">'+d[2]+'</span>';
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+});
+
+/* ---------- Issues ---------- */
+var issues=[
+ {sev:'crit',t:'طبقة الحماية الفعلية قائمة منع لا قائمة سماح',loc:'*/ApiEndpoint.js — _apiIsBlocked / _apiResolve',
+  cause:'doPost يسمح بأي دالة عامّة لا تبدأ بـ _ وليست من دوال الإطار، عبر eval(name). أما whitelist.json فلا يُفرض وقت التشغيل إطلاقاً.',
+  impact:'مع النشر "Anyone" + "Execute as Me"، يستطيع أي زائر مجهول استدعاء دوال إدارية حسّاسة مثل updateAllDeploymentUrls / resetDeploymentUrls / upgradeDefaultAdminToOwner / clearSchoolCache / adminDeleteTeacherByName. الدوال المنتهية بـ Protected وحدها آمنة (تتحقق من التوكن).',
+  fix:'فرض whitelist.json فعلياً داخل ApiEndpoint، استبدال eval بخريطة دوال صريحة، واشتراط التوكن على كل دالة كتابة/إدارة.'},
+ {sev:'high',t:'النسخة المحلية غير متزامنة مع GitHub',loc:'C:\\SchoolApp مقابل المستودع',
+  cause:'المحلي يحوي الملفات "المضافة" فقط (DeploymentRegistry, DriveUrlUtils, _Tenant, _MasterScope) وتنقصه frontend/ وworker/ وApiEndpoint.js (×5) وملفات رئيسية مثل Master_Admin.gs والملف الرئيسي لـCMS.',
+  impact:'خطر تحرير كود قديم أو فقدان عمل، وتحليل ناقص. _MasterScope يعتمد دوال غير موجودة محلياً.',
+  fix:'سحب آخر نسخة من main واعتماد المستودع مصدراً وحيداً قبل أي تطوير.'},
+ {sev:'high',t:'معرّفات حسّاسة داخل مستودع عام',loc:'worker/school-app-proxy.js, home/Code.js, _Tenant.js',
+  cause:'روابط /exec الستة ومعرّفات الأوراق (MASTER_SS_ID, SPREADSHEET_ID) مكتوبة صراحةً ومرفوعة إلى مستودع GitHub عام + داخل الـWorker.',
+  impact:'أي شخص يصل لنقاط النهاية مباشرة؛ ومع الثغرة الحرجة أعلاه يتضاعف الأثر.',
+  fix:'إمّا إقرار نموذج "عام بحماية دوال" (وعندها الحماية بالـwhitelist إلزامية)، أو نقل المعرّفات لمتغيرات بيئة الـWorker وScriptProperties.'},
+ {sev:'high',t:'تبعيات مكسورة: دوال مُستدعاة بلا تنفيذ',loc:'home: checkSession — teacher: getStudentsForView',
+  cause:'الواجهة تستدعيهما (ومدرجتان في whitelist.json) لكن لا تنفيذ خادمي لهما في الكود الأصلي.',
+  impact:'فشل دائم نظيف يلتقطه معالج الأخطاء — لكنه يُضعف تجربة المستخدم ويُربك الصيانة.',
+  fix:'تنفيذ الدالتين فعلياً أو إزالة الاستدعاء من الواجهة وتحديث القائمة.'},
+ {sev:'high',t:'قائمة API لمنصّة الجدول فارغة',loc:'_build/whitelist.json › schedule: []',
+  cause:'منصّة schedule لا تُعرّف أي دوال API في القائمة، بينما نموذج blocklist يكشفها ضمنياً — تناقض في الحوكمة.',
+  impact:'غموض في السطح المسموح؛ وعند فرض whitelist مستقبلاً ستتعطّل منصّة الجدول ما لم تُملأ القائمة.',
+  fix:'استخراج دوال schedule الفعلية وإدراجها صراحةً عبر _build/extract.js.'},
+ {sev:'med',t:'خطأ تشغيل في مسار الشروط',loc:'home/Code.js — doGet ?page=terms',
+  cause:"createHtmlOutputFromFile('Terms') بينما لا يوجد ملف Terms.html (يوجد Privacy.html فقط).",
+  impact:'فتح ?page=terms يرمي استثناءً ويُظهر صفحة خطأ.',
+  fix:'إضافة Terms.html أو حماية المسار بفحص وجود الملف.'},
+ {sev:'med',t:'تكرار منطقي واسع عبر الوحدات',loc:'DeploymentRegistry.js / DriveUrlUtils.js / _DeploymentClient.html ×6',
+  cause:'نفس الملفات منسوخة في كل وحدة، ودوال Drive/YouTube مكرّرة أيضاً داخل home/Code.js.',
+  impact:'إصلاح في مكان قد يُنسى في الباقي — مصدر تباين وأخطاء صامتة.',
+  fix:'مصدر مشترك واحد يُولَّد عبر _build/ بدل النسخ اليدوي.'},
+ {sev:'med',t:'ترويسة ملف موسومة خطأً (نسخ-لصق)',loc:'cms/_Tenant.js',
+  cause:"الترويسة تقول 'المشروع: منصة المعلم' رغم أن TENANT_FILE_TYPE='cms_file_id' ويخدم CMS.",
+  impact:'إشارة لقالب غير مُحدَّث؛ خطر ضبط نوع ملف خاطئ عند نسخه لمنصّة أخرى.',
+  fix:'تصحيح الترويسة وتوليد _Tenant لكل منصّة من قالب موحّد بمتغيّر واحد.'},
+ {sev:'med',t:'الوكيل يجرّد ترويسات الحماية عالمياً',loc:'worker/school-app-proxy.js',
+  cause:'حذف content-security-policy و x-frame-options عن كل الصفحات المُمرَّرة لتمكين التضمين.',
+  impact:'إزالة الحماية من النقر المخادع (clickjacking) على كامل الموقع لا الصفحات التي تحتاجها فقط.',
+  fix:'تضييق التجريد على المسارات الضرورية، أو ضبط CSP صريح بدل الحذف الكامل.'},
+ {sev:'med',t:'قيد هوية المستخدم في نموذج fetch',loc:'دوال تعتمد Session.getActiveUser()',
+  cause:'مع "Execute as Me" وطلبات fetch خارجية، تُرجع الهوية المالكَ لا الزائر.',
+  impact:'أي منطق لكل-مستخدم يعتمد هوية Google يصبح غير صحيح.',
+  fix:'الاعتماد على التوكن حصراً للهوية، وتوثيق هذا القيد في الكود.'},
+ {sev:'low',t:'ملفات "بلا عنوان" مرفوعة',loc:'teacher/student/cms — بلا عنوان.js, بلا عنوان 2.js',
+  cause:'ملفات بأسماء افتراضية (Untitled) مدفوعة ضمن الإنتاج.',
+  impact:'نظافة كود وصعوبة تتبّع المسؤوليات.',
+  fix:'تسمية واضحة أو دمج/حذف بعد المراجعة.'},
+ {sev:'low',t:'ملفات اختبار/تشخيص مع الإنتاج',loc:'teacher/test.js, TestSections.js, SchemaDiagnosticV2.js, GradesMigration.js',
+  cause:'أدوات التطوير والهجرة موضوعة بجانب كود الإنتاج.',
+  impact:'تضخيم السطح وخطر تشغيل دالة هجرة بالخطأ (خصوصاً مع الثغرة الحرجة).',
+  fix:'فصلها في مجلد/مشروع أدوات، وحجبها صراحةً في ApiEndpoint.'},
+ {sev:'low',t:'إبطال الكاش يدوي',loc:'home: clearSchoolCache / _Tenant CacheService',
+  cause:'تحديث الأوراق لا يبطل الكاش تلقائياً؛ يتطلّب نداءً يدوياً.',
+  impact:'احتمال عرض بيانات قديمة بعد التعديل اليدوي للأوراق حتى انتهاء TTL.',
+  fix:'ربط الإبطال بعمليات الكتابة أو خفض TTL للأوراق المتغيّرة بسرعة.'},
+ {sev:'low',t:'لا منع تكرار خادمي للعمليات دون اتصال',loc:'offline-sync outbox مقابل GAS',
+  cause:'الطابور يرسل ثم ينتظر تأكيد ok، لكن لا فحص opId على الخادم.',
+  impact:'في حالات إعادة المحاولة الحدّية قد تتكرّر كتابة.',
+  fix:'إضافة فحص opId في ApiEndpoint (تخزين معرّفات 24 ساعة في CacheService).'}
+];
+var sevName={crit:'حَرِج',high:'عالٍ',med:'متوسط',low:'منخفض'};
+var list=document.getElementById('issueList');
+function render(filter){
+  list.innerHTML='';
+  issues.filter(function(it){return filter==='all'||it.sev===filter})
+  .forEach(function(it){
+    var d=document.createElement('div'); d.className='issue';
+    d.innerHTML='<div class="head"><span class="sev '+it.sev+'">'+sevName[it.sev]+'</span>'+
+      '<span class="ttl">'+it.t+'</span><span class="loc">'+it.loc+'</span><span class="chev">▼</span></div>'+
+      '<div class="exp">'+
+      '<div class="row"><span class="k">السبب الجذري</span>'+it.cause+'</div>'+
+      '<div class="row"><span class="k">الأثر</span>'+it.impact+'</div>'+
+      '<div class="row"><span class="k">الإصلاح المقترح</span>'+it.fix+'</div>'+
+      '</div>';
+    d.querySelector('.head').addEventListener('click',function(){d.classList.toggle('open')});
+    list.appendChild(d);
+  });
+}
+render('all');
+document.querySelectorAll('#sevFilters .fbtn').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('#sevFilters .fbtn').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on'); render(b.dataset.sev);
+  });
+});
+</script>
+</body>
+</html>

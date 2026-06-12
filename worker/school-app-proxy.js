@@ -24,7 +24,8 @@ var GAS = {
   teacher:  'https://script.google.com/macros/s/AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND/exec',
   student:  'https://script.google.com/macros/s/AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec',
   schedule: 'https://script.google.com/macros/s/AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag/exec',
-  'master-admin': 'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec'
+  'master-admin': 'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec',
+  pricing:  'https://script.google.com/macros/s/AKfycbz11yUbrix4F1lE_GbiAFqE3EClGpoRvAb19LoLoABQX_Xo3i2U25jlQpOFcN9S_yLC/exec'
 };
 
 function withCors(resp) {
@@ -115,6 +116,25 @@ export default {
         return withCors(new Response(oBody, { status: oResp.status, headers: { 'Content-Type': oCt } }));
       } catch (oErr) {
         return withCors(new Response('<h3>تعذّر إتمام الاتصال: ' + String(oErr) + '</h3>', {
+          status: 502, headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        }));
+      }
+    }
+
+    // ── 1ج) صفحة التسعيرة (HTML من GAS) عبر الوكيل: /pricing ─────
+    //   تخدم صفحة doGet الخاصة بمشروع التسعيرة كـ HTML نظيف (لا JSON).
+    //   مناسبة للمناطق المحجوبة: المتصفّح يتكلّم مع Cloudflare فقط.
+    if (path === '/pricing' || path === '/pricing/') {
+      try {
+        var prResp = await fetch(GAS.pricing + url.search, { method: 'GET', redirect: 'follow' });
+        var prBody = await prResp.text();
+        var prCt = prResp.headers.get('Content-Type') || 'text/html; charset=utf-8';
+        var prHeaders = new Headers();
+        prHeaders.set('Content-Type', prCt);
+        prHeaders.set('Access-Control-Allow-Origin', '*');
+        return new Response(prBody, { status: prResp.status, headers: prHeaders });
+      } catch (prErr) {
+        return withCors(new Response('<h3>تعذّر فتح صفحة التسعيرة: ' + String(prErr) + '</h3>', {
           status: 502, headers: { 'Content-Type': 'text/html; charset=utf-8' }
         }));
       }

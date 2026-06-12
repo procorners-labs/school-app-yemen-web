@@ -78,7 +78,8 @@ var DEFAULT_DEPLOYMENTS = {
   DEPLOY_TEACHER:  'https://script.google.com/macros/s/AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND/exec',
   DEPLOY_STUDENT:  'https://script.google.com/macros/s/AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec',
   DEPLOY_SCHEDULE: 'https://script.google.com/macros/s/AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag/exec',
-  DEPLOY_MASTER:   'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec'
+  DEPLOY_MASTER:   'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec',
+  DEPLOY_PRICING:  'https://script.google.com/macros/s/AKfycbz11yUbrix4F1lE_GbiAFqE3EClGpoRvAb19LoLoABQX_Xo3i2U25jlQpOFcN9S_yLC/exec'
 };
 
 /**
@@ -105,6 +106,7 @@ function getDeploymentUrls() {
       student : _getDeployUrl(stored, 'DEPLOY_STUDENT'),
       schedule: _getDeployUrl(stored, 'DEPLOY_SCHEDULE'),
       master  : _getDeployUrl(stored, 'DEPLOY_MASTER'),
+      pricing : _getDeployUrl(stored, 'DEPLOY_PRICING'),
       current : _getCurrentScriptUrl(),
       ts      : new Date().getTime(),
       version : 'v2'
@@ -120,6 +122,7 @@ function getDeploymentUrls() {
       student : DEFAULT_DEPLOYMENTS.DEPLOY_STUDENT,
       schedule: DEFAULT_DEPLOYMENTS.DEPLOY_SCHEDULE,
       master  : DEFAULT_DEPLOYMENTS.DEPLOY_MASTER,
+      pricing : DEFAULT_DEPLOYMENTS.DEPLOY_PRICING,
       current : '',
       ts      : new Date().getTime(),
       version : 'v2',
@@ -215,7 +218,7 @@ function updateAllDeploymentUrls(urlsObject) {
 function resetDeploymentUrls() {
   try {
     var props = PropertiesService.getScriptProperties();
-    var keys = ['DEPLOY_HOME','DEPLOY_CMS','DEPLOY_TEACHER','DEPLOY_STUDENT','DEPLOY_SCHEDULE','DEPLOY_MASTER'];
+    var keys = ['DEPLOY_HOME','DEPLOY_CMS','DEPLOY_TEACHER','DEPLOY_STUDENT','DEPLOY_SCHEDULE','DEPLOY_MASTER','DEPLOY_PRICING'];
     for (var i = 0; i < keys.length; i++) props.deleteProperty(keys[i]);
     try { CacheService.getScriptCache().remove('deployment_urls_v2'); } catch (e) {}
     return { success: true, message: 'تمت إعادة التعيين بنجاح' };
