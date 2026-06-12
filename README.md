@@ -109,5 +109,5 @@
 ## أدوات البناء
 سكربتات `_build/` (Node) تُعيد توليد الواجهة ونقاط الخادم:
 - `node _build/build-frontend.js` → يبني `frontend/` (يحقن أيضاً طبقة العمل دون اتصال + تسجيل SW)
-- `node _build/gen-endpoints.js` → يولّد `ApiEndpoint.js` في كل تطبيق
+- `node _build/gen-endpoints.js` → يزامن قوائم الدوال الخطرة في `ApiEndpoint.js` من `denylist.generated.json` (غير تدميري — لا يلمس بقية الملف؛ `--check` للفحص فقط)
 - `node _build/extract.js` → يستخرج قوائم الدوال المسموح بها

@@ -9,7 +9,7 @@
  */
 'use strict';
 
-var CACHE = 'creativity-shell-v1';
+var CACHE = 'creativity-shell-v2';
 
 // قشرة أساسية تُخزَّن مسبقاً (مسارات مطلقة من الجذر).
 var PRECACHE = [
@@ -24,7 +24,9 @@ var PRECACHE = [
   '/student/index.html',
   '/teacher/index.html',
   '/cms/index.html',
-  '/schedule/index.html'
+  '/schedule/index.html',
+  '/master-admin/index.html',
+  '/master-admin/register.html'
 ];
 
 self.addEventListener('install', function (event) {
