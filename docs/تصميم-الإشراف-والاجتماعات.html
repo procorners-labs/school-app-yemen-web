@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تصميم الإشراف الأسبوعي والاجتماعات — منصّة المعلم</title>
+<style>
+  :root{--bg:#0c1222;--card:#15203c;--card2:#1b2a4c;--line:#2a3a64;--txt:#e9eef9;--mut:#a3b3d6;
+    --gold:#D4A537;--navy:#0F2C5C;--blue:#5b8def;--teal:#2ec4b6;--red:#ef476f;--green:#06d6a0;--purple:#9b8cff;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",Tahoma,system-ui,Arial,sans-serif;background:var(--bg);color:var(--txt);line-height:1.85}
+  .wrap{max-width:1060px;margin:0 auto;padding:22px}
+  header.top{background:linear-gradient(135deg,var(--navy),var(--card2));border:1px solid var(--line);border-radius:18px;padding:20px 24px}
+  header.top h1{font-size:20px} header.top .sub{color:var(--mut);font-size:13px;margin-top:4px}
+  nav.toc{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+  nav.toc a{background:var(--card);border:1px solid var(--line);color:var(--mut);border-radius:9px;padding:6px 12px;font-size:12.5px;text-decoration:none}
+  section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:15px}
+  h2{font-size:17px;color:var(--gold);margin-bottom:8px} h3{font-size:14.5px;color:var(--blue);margin:14px 0 5px}
+  p,li,td,th{font-size:13.5px} ul,ol{margin:6px 22px}
+  code{background:#0a1430;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--gold);font-size:12px}
+  pre{background:#0a1430;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;font-size:12.5px;color:#dbe6ff;margin:8px 0;position:relative;white-space:pre-wrap}
+  .copy{position:absolute;inset-inline-end:8px;top:8px;background:var(--card2);border:1px solid var(--line);color:var(--mut);border-radius:7px;padding:3px 10px;font-size:11px;cursor:pointer}
+  table{width:100%;border-collapse:collapse;margin:8px 0} th,td{border:1px solid var(--line);padding:7px 9px;text-align:right;vertical-align:top} th{background:var(--card2);color:var(--gold)}
+  .rule{background:rgba(212,165,55,.08);border:1px solid rgba(212,165,55,.3);border-radius:10px;padding:10px 13px;margin:8px 0;font-size:13px}
+  .ok{color:var(--green)} .new{color:var(--teal)}
+  .flow{border-inline-start:3px solid var(--blue);padding:2px 14px;margin:6px 0}
+  footer{color:var(--mut);font-size:12px;text-align:center;padding:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>تصميم الإشراف الأسبوعي والاجتماعات — صفحة «إدارة المهام والإشراف»</h1>
+    <div class="sub">منصّة المعلم · داخل نفس ورقة المهام ونفس الصفحة فقط · متوافق مع البنية الحالية</div>
+  </header>
+
+  <nav class="toc">
+    <a href="#base">① الأساس الحالي</a>
+    <a href="#meeting">② الاجتماع الذكي</a>
+    <a href="#weekly">③ الإشراف الأسبوعي</a>
+    <a href="#archive">④ التأكيد والأرشفة</a>
+    <a href="#ui">⑤ الصفحة</a>
+    <a href="#prompt">⑥ المطالبة الجاهزة</a>
+  </nav>
+
+  <section id="base">
+    <h2>① الأساس الحالي (نبني عليه — لا نظام منفصل)</h2>
+    <p>المهام تُخزَّن في ورقة واحدة عبر <code>_tcTasksSheet()</code> في <code>teacher/TeacherCore.js</code> بـ15 عموداً:</p>
+    <table>
+      <tr><th>#</th><th>العمود</th><th>#</th><th>العمود</th><th>#</th><th>العمود</th></tr>
+      <tr><td>1</td><td>id</td><td>6</td><td>date</td><td>11</td><td>deduction (خصم)</td></tr>
+      <tr><td>2</td><td>teacher</td><td>7</td><td>time</td><td>12</td><td>assignedBy (المُكلِّف)</td></tr>
+      <tr><td>3</td><td>type (النوع)</td><td>8</td><td>description</td><td>13</td><td>confirmedBy (المؤكِّد)</td></tr>
+      <tr><td>4</td><td>grade (الصف)</td><td>9</td><td>status (الحالة)</td><td>14</td><td>createdAt</td></tr>
+      <tr><td>5</td><td>section (الشعبة)</td><td>10</td><td>fee (رسم)</td><td>15</td><td>notes</td></tr>
+    </table>
+    <p class="rule">القواعد المتاحة فعلاً: تعيين مهمة لمعلم (<code>addTaskProtected</code>) · قائمة بفلاتر (<code>getTasksProtected</code>) · تأكيد المشرف وتغيير الحالة + العمود 13 (<code>updateTaskStatusProtected</code>) · إنجاز تلقائي عند انتهاء الوقت · صلاحيات عبر <code>_tcCanManageTasks</code>. <b>سنعيد استخدام هذا كلّه</b> — بلا أعمدة جديدة (نستخدم بادئة <code>id</code> و<code>type</code> و<code>notes</code> للتمييز، تفادياً لأي هجرة بيانات).</p>
+  </section>
+
+  <section id="meeting">
+    <h2>② الاجتماع الذكي (كل المعلمين + حضور بالاستثناء)</h2>
+    <ol>
+      <li><b>التعيين لكل المعلمين:</b> عند اختيار «كل المعلمين» (متاح لدور الوكيل/المدير فقط)، تُنشأ صفّ مهمة لكل معلّم نشط بنفس <code>type='اجتماع'</code> و<code>date/time/description</code>، وبمعرّف مجموعة موحّد: <code>id = 'MTG'+ts+'_'+idx</code> (يربط صفوف الاجتماع الواحد).</li>
+      <li><b>الحضور الافتراضي:</b> حالة كل الصفوف عند الإنشاء = <code class="new">«حاضر»</code> تلقائياً.</li>
+      <li><b>تسجيل الغياب بالاستثناء:</b> واجهة المشرف تعرض قائمة معلمي الاجتماع؛ يؤشّر فقط على <b>الغائبين</b> → تتحوّل صفوفهم إلى <code>«غائب»</code> عبر <code>updateTaskStatusProtected</code>؛ الباقي يبقى «حاضر» آلياً.</li>
+      <li><b>التأكيد:</b> زر «تأكيد الاجتماع» يضبط الحالة النهائية ويسجّل المؤكِّد (العمود 13)، ثم يُؤرشَف (القسم ④).</li>
+    </ol>
+    <p class="rule">دالة جديدة مقترحة <code class="new">addMeetingForAllProtected(params)</code> تلفّ المعلمين النشطين وتُنشئ الصفوف بمعرّف المجموعة — تعيد استخدام منطق <code>addTaskProtected</code>.</p>
+  </section>
+
+  <section id="weekly">
+    <h2>③ الإشراف الأسبوعي المتكرّر (نفس الملف، تبويب صغير)</h2>
+    <p>قالب التكرار يُحفظ في <b>تبويب واحد صغير داخل نفس ملف المعلم</b>: <code class="new">«الإشراف_الأسبوعي»</code> — يُدار من نفس الصفحة، والمهام المتولّدة تُكتب في <b>ورقة المهام نفسها</b>.</p>
+    <h3>نموذج تبويب «الإشراف_الأسبوعي»</h3>
+    <table>
+      <tr><th>day_of_week</th><th>teacher</th><th>duty</th><th>after_period / time</th><th>grade/section</th><th>active</th></tr>
+      <tr><td>السبت</td><td>أ. محمد</td><td>إشراف الراحة</td><td>بعد الحصة 3</td><td>—/—</td><td>TRUE</td></tr>
+      <tr><td>الأحد</td><td>أ. علي</td><td>طابور الصباح</td><td>بداية الدوام</td><td>الأول/أ</td><td>TRUE</td></tr>
+    </table>
+    <h3>المولّد (Trigger يومي)</h3>
+    <div class="flow">دالة <code class="new">generateDailySupervision()</code> تعمل يومياً: تقرأ صفوف «اليوم» (يوم الأسبوع) من تبويب الإشراف، وتُنشئ في ورقة المهام صفّاً لكل معلّم بـ<code>type='إشراف'</code> و<code>id='SUP'+date+'_'+teacher</code> و<code>time</code> محسوباً:
+      <ul>
+        <li><b>طابور الصباح</b> ← وقت «بداية الدوام» (إعداد ثابت محفوظ ومعروض في الويب).</li>
+        <li><b>إشراف الراحة</b> ← من إعداد الجدول «☕ استراحة كل صف (بعد الحصة رقم)» + تواقيت الحصص (لكل صف وقته، لا توقيت موحّد).</li>
+      </ul>
+      <b>منع التكرار:</b> قبل الإنشاء يتحقّق أنّ <code>id='SUP'+date+'_'+teacher</code> غير موجود (idempotent).</div>
+    <p class="rule">المهام التلقائية للمعلمين فقط (لا طلوع/نزول طلاب على المعلمين). كل صف/شعبة في وقت راحته الخاص فقط.</p>
+  </section>
+
+  <section id="archive">
+    <h2>④ التأكيد والأرشفة (إعادة استخدام الحالة)</h2>
+    <ul>
+      <li><b>تأكيد الإنجاز:</b> المشرف/الوكيل يضغط «تأكيد» → <code>updateTaskStatusProtected</code> يضبط الحالة إلى <code class="new">«مؤكَّد»</code> ويسجّل المؤكِّد (العمود 13).</li>
+      <li><b>الأرشفة بلا نقل بيانات:</b> «النشطة» = حالات (مكلّف/قيد التنفيذ/حاضر بانتظار التأكيد)؛ «الأرشيف» = (مؤكَّد/منفّذ/غائب/منتهٍ). فلترة بالحالة فقط — نفس الورقة، نفس الصفحة، تبويبان في الواجهة.</li>
+      <li><b>الإشراف الأسبوعي</b> يمرّ بنفس الدورة: تولّد → تأكيد → أرشيف.</li>
+    </ul>
+  </section>
+
+  <section id="ui">
+    <h2>⑤ الصفحة (frontend/teacher — إدارة المهام والإشراف)</h2>
+    <p>أربعة تبويبات داخل نفس الصفحة: <b>تعيين مهمة</b> (مع خيار «كل المعلمين») · <b>المهام النشطة</b> · <b>الإشراف الأسبوعي</b> (إدارة القالب) · <b>الأرشيف</b>. تحسينات الواجهة: استبدال «(اختياري)» بأيقونات، نوافذ منبثقة احترافية ديناميكية، خيارات بحسب نوع المهمة (اجتماع/إشراف/عامة).</p>
+  </section>
+
+  <section id="prompt">
+    <h2>⑥ المطالبة الجاهزة (جلسة Core System ثم Frontend · Opus + Plan)</h2>
+<pre><button class="copy">نسخ</button>/init
+المشروع: teacher (TeacherCore.js + frontend/teacher). ES5، Deployment ID ثابت.
+اقرأ docs/تصميم-الإشراف-والاجتماعات.html والتزم به حرفياً. ابدأ بخطة (Plan) قبل الكود.
+النطاق: كل شيء داخل صفحة «إدارة المهام والإشراف» وورقة المهام نفسها فقط (لا نظام منفصل).
+
+نفّذ على مراحل (مشروع واحد، فرع+PR لكل مرحلة):
+[١] الاجتماع الذكي: addMeetingForAllProtected — خيار «كل المعلمين» (لدور الوكيل/المدير)،
+    ينشئ صفّ مهمة لكل معلّم نشط type='اجتماع' id='MTG'+ts+'_'+idx، الحالة الافتراضية «حاضر».
+    واجهة المشرف تؤشّر الغائبين فقط (تحوّلهم «غائب»)، والباقي يبقى «حاضر».
+[٢] الإشراف الأسبوعي: تبويب «الإشراف_الأسبوعي» في نفس الملف
+    (day_of_week, teacher, duty, after_period/time, grade/section, active)
+    + generateDailySupervision() عبر Trigger يومي يكتب في ورقة المهام type='إشراف'
+    id='SUP'+date+'_'+teacher مع منع التكرار، والتوقيت:
+      طابور الصباح ← «بداية الدوام»؛ إشراف الراحة ← «استراحة كل صف (بعد الحصة رقم)» لكل صف.
+[٣] التأكيد والأرشفة: زر تأكيد (updateTaskStatusProtected، الحالة «مؤكَّد»، العمود 13)
+    + تبويبا «النشطة/الأرشيف» بالفلترة على الحالة (بلا نقل بيانات).
+[٤] الواجهة: أيقونات بدل «(اختياري)»، نوافذ منبثقة احترافية ديناميكية، خيارات حسب النوع.
+
+الصلاحيات: «كل المعلمين» والتأكيد وإدارة الإشراف = _tcCanManageTasks فقط.
+تحقّق: أنشئ اجتماعاً وأشّر غائباً واحداً؛ ولّد إشراف يوم السبت لمعلمَين؛ أكّد وأرشِف؛ ثم ?action=health.</pre>
+    <p class="rule">بعد كل مرحلة: راجع PR → ادمج → انشر مشروع teacher (clasp push + New version لنفس Deployment ID) → اختبر على الصفحة.</p>
+  </section>
+
+  <footer>تصميم الإشراف والاجتماعات — منصّة المعلم · داخل إدارة المهام وورقة المهام فقط</footer>
+</div>
+<script>
+document.querySelectorAll('.copy').forEach(function(b){b.addEventListener('click',function(){
+  var p=b.parentElement.cloneNode(true);p.querySelector('.copy').remove();
+  navigator.clipboard.writeText(p.textContent.trim()).then(function(){var t=b.textContent;b.textContent='✓';setTimeout(function(){b.textContent=t;},1000);});
+});});
+</script>
+</body>
+</html>
