@@ -4682,7 +4682,7 @@ function saveScheduleSettings() {
 // ════════════════════════════════════════════════════════════════════
 //  📌 المهام والإشراف (واجهة المرحلة 2)
 // ════════════════════════════════════════════════════════════════════
-var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active' };
+var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active', sched: null };
 var TASK_STATUSES = ['مكلّف', 'منفّذ', 'مؤكّد', 'متأخر', 'لم يُنفّذ', 'حاضر', 'غائب وقت الاجتماع فقط'];
 
 function _taskBadge(s) {
@@ -4867,11 +4867,12 @@ function tasks_toggleAssign() {
     '<div class="form-row">' +
       '<div class="form-group"><label class="form-label">المعلم *</label><select class="form-select" id="ta-teacher">' + teacherOpts + '</select></div>' +
       '<div class="form-group"><label class="form-label">نوع المهمة *</label><select class="form-select" id="ta-type">' + typeOpts + '</select></div>' +
-      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="ta-grade">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="ta-grade" onchange="tasks_periodChanged()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div>' +
       '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="ta-section">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div>' +
     '</div><div class="form-row">' +
+      '<div class="form-group"><label class="form-label">الحصة <span style="color:var(--text-muted);font-size:.75rem">(اختياري — يضبط الوقت تلقائياً)</span></label><select class="form-select" id="ta-period" onchange="tasks_periodChanged()"><option value="">— بدون حصة (وقت يدوي) —</option></select></div>' +
       '<div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="ta-date"></div>' +
-      '<div class="form-group"><label class="form-label">الوقت</label><input type="time" class="form-control" id="ta-time"></div>' +
+      '<div class="form-group"><label class="form-label">الوقت</label><input type="time" class="form-control" id="ta-time"><div id="ta-time-hint" style="font-size:.72rem;margin-top:3px"></div></div>' +
       feeField +
       '<div class="form-group flex-1"><label class="form-label">الوصف</label><input type="text" class="form-control" id="ta-desc" placeholder="تفاصيل المهمة..."></div>' +
     '</div>' +
@@ -4891,6 +4892,65 @@ function tasks_toggleAssign() {
     '</div>' +
     '<div id="ta-status" style="margin-top:8px"></div></div>';
   box.style.display = 'block';
+  tasks_loadSchedForAssign();
+}
+// ── الحصة → توقيت تلقائي حسب إعدادات الجدول وتوقيت الصف ──
+function tasks_loadSchedForAssign() {
+  if (TASKS.sched) { tasks_fillPeriodOptions(); return; }
+  callServer('getScheduleSettingsProtected', {}, function (r) {
+    if (r && r.success) { TASKS.sched = { settings: r.settings || {}, breaksByGrade: r.breaksByGrade || {} }; tasks_fillPeriodOptions(); }
+  });
+}
+function tasks_fillPeriodOptions() {
+  var sel = document.getElementById('ta-period');
+  if (!sel || !TASKS.sched) return;
+  var n = parseInt(TASKS.sched.settings.periodsCount, 10) || 7;
+  var html = '<option value="">— بدون حصة (وقت يدوي) —</option><option value="assembly">🚩 الطابور</option>';
+  for (var p = 1; p <= n; p++) html += '<option value="' + p + '">الحصة ' + p + '</option>';
+  sel.innerHTML = html;
+}
+function _taParse(t) { var m = String(t || '').match(/(\d{1,2})\s*:\s*(\d{1,2})/); return m ? (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) : 0; }
+function _taMinToHHMM(min) { min = Math.max(0, Math.round(min)); var h = Math.floor(min / 60) % 24, mn = min % 60; return (h < 10 ? '0' + h : '' + h) + ':' + (mn < 10 ? '0' + mn : '' + mn); }
+// يحاكي _tcComputePeriodTimes في الخادم: وقت بداية حصة معيّنة لصف معيّن
+function _taPeriodStartMin(grade, period) {
+  if (!TASKS.sched) return -1;
+  var s = TASKS.sched.settings, breaks = TASKS.sched.breaksByGrade || {};
+  var cursor = _taParse(s.dayStart);
+  if (period === 'assembly') return cursor; // الطابور يبدأ ببداية الدوام
+  var asm = parseInt(s.assemblyMinutes, 10) || 0;
+  if (asm > 0) cursor += asm;
+  var pCount = parseInt(s.periodsCount, 10) || 7;
+  var pMin = parseInt(s.periodMinutes, 10) || 45;
+  var bMin = parseInt(s.breakMinutes, 10) || 0;
+  var breakAfter = breaks[grade] ? parseInt(breaks[grade], 10) : 0;
+  var target = parseInt(period, 10);
+  for (var p = 1; p <= pCount; p++) {
+    if (p === target) return cursor;
+    cursor += pMin;
+    if (breakAfter && p === breakAfter && bMin > 0) cursor += bMin;
+  }
+  return -1;
+}
+function tasks_periodChanged() {
+  var period = (document.getElementById('ta-period') || {}).value || '';
+  var grade = (document.getElementById('ta-grade') || {}).value || ''; if (isAllFilter(grade)) grade = '';
+  var timeEl = document.getElementById('ta-time');
+  var hint = document.getElementById('ta-time-hint');
+  if (!period) { if (timeEl) timeEl.readOnly = false; if (hint) hint.innerHTML = ''; return; }
+  if (period !== 'assembly' && !grade) {
+    if (timeEl) timeEl.readOnly = false;
+    if (hint) hint.innerHTML = '<span style="color:var(--warning)">اختر الصف لحساب وقت الحصة</span>';
+    return;
+  }
+  var startMin = _taPeriodStartMin(grade, period);
+  if (startMin >= 0 && timeEl) {
+    timeEl.value = _taMinToHHMM(startMin);
+    timeEl.readOnly = true;
+    if (hint) hint.innerHTML = '<span style="color:var(--success)">⏱ وقت تلقائي حسب الجدول' + (grade ? ' (' + escapeHtml(grade) + ')' : '') + '</span>';
+  } else if (hint) {
+    if (timeEl) timeEl.readOnly = false;
+    hint.innerHTML = '<span style="color:var(--warning)">تعذّر حساب الوقت — اضبطه يدوياً</span>';
+  }
 }
 function tasks_setMode(mode) {
   var single = document.getElementById('ta-single'), meeting = document.getElementById('ta-meeting');
@@ -5112,24 +5172,35 @@ function loadMyTasksWidget() {
   if (!box) return;
   callServer('getMyTasksProtected', {}, function (r) {
     if (!r || !r.success) { box.style.display = 'none'; return; }
-    var pending = [];
+    // المهام القادمة/النشطة فقط (مكلّف/حاضر) — المنتهية تتحوّل تلقائياً «منفّذ» (أرشيف)
+    // في getMyTasksProtected فتختفي من هنا دون حذف من الشيت.
+    var upcoming = [];
     var tasks = r.tasks || [];
-    for (var i = 0; i < tasks.length; i++) { if (tasks[i].status === 'مكلّف' || tasks[i].status === 'منفّذ') pending.push(tasks[i]); }
+    for (var i = 0; i < tasks.length; i++) {
+      var stt = tasks[i].status;
+      if (stt === 'مكلّف' || stt === 'حاضر') upcoming.push(tasks[i]);
+    }
+    // ترتيب بالأقرب موعداً (تاريخ ثم وقت تصاعدياً)
+    upcoming.sort(function (a, b) {
+      var ad = (a.date || '') + ' ' + (a.time || ''), bd = (b.date || '') + ' ' + (b.time || '');
+      return ad.localeCompare(bd);
+    });
     // شارة القائمة الجانبية
     var badge = document.getElementById('myTasksBadge');
-    if (badge) { if (pending.length) { badge.textContent = pending.length; badge.style.display = 'inline-block'; } else badge.style.display = 'none'; }
-    if (!pending.length) { box.style.display = 'none'; return; }
+    if (badge) { if (upcoming.length) { badge.textContent = upcoming.length; badge.style.display = 'inline-block'; } else badge.style.display = 'none'; }
+    if (!upcoming.length) { box.style.display = 'none'; return; }
     var rows = '';
-    for (var j = 0; j < pending.length && j < 5; j++) {
-      var t = pending[j];
+    for (var j = 0; j < upcoming.length && j < 5; j++) {
+      var t = upcoming[j];
+      var when = ((t.date || '') + ' ' + (t.time || '')).trim() || 'بلا موعد محدّد';
       rows += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">' +
         '<span style="font-size:1.1rem">📌</span><div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:600">' + escapeHtml(t.type) + '</div>' +
-        '<div style="font-size:.78rem;color:var(--text-muted)">' + escapeHtml((t.grade || '') + ' ' + (t.section || '') + ' · ' + (t.date || '') + ' ' + (t.time || '')) + '</div></div>' +
+        '<div style="font-size:.78rem;color:var(--text-muted)">' + escapeHtml((t.grade || '') + ' ' + (t.section || '') + ' · ' + when) + '</div></div>' +
         _taskBadge(t.status) + '</div>';
     }
     box.style.display = 'block';
-    box.innerHTML = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(16,185,129,.12)">✅</div>' +
-      '<div class="section-header-title">مهامي المعلّقة (' + pending.length + ')</div>' +
+    box.innerHTML = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(16,185,129,.12)">⏰</div>' +
+      '<div class="section-header-title">مهامي القادمة (' + upcoming.length + ')</div>' +
       '<button class="btn btn-sm btn-secondary" onclick="showSection(\'myTasks\')">عرض الكل</button></div>' +
       '<div class="section-body">' + rows + '</div></div>';
   });
