@@ -9,7 +9,25 @@
  */
 'use strict';
 
-var CACHE = 'creativity-shell-v2';
+var CACHE = 'creativity-shell-v3';
+
+// مهلة قصوى لانتظار الشبكة قبل الرجوع للكاش (يمنع «الشاشة البيضاء» على
+// الشبكات التي تتجمّد دون أن تفشل — الاتصال يبقى معلّقاً بلا رد).
+var NAV_TIMEOUT_MS = 3500;   // التنقّل (الصفحات)
+var ASSET_TIMEOUT_MS = 6000; // الأصول الثابتة
+
+// fetch مع مهلة: يرفض الوعد إذا تجاوز الزمن المحدّد.
+function fetchWithTimeout(req, ms) {
+  return new Promise(function (resolve, reject) {
+    var done = false;
+    var t = setTimeout(function () { if (!done) { done = true; reject(new Error('timeout')); } }, ms);
+    fetch(req).then(function (res) {
+      if (done) return; done = true; clearTimeout(t); resolve(res);
+    })['catch'](function (e) {
+      if (done) return; done = true; clearTimeout(t); reject(e);
+    });
+  });
+}
 
 // قشرة أساسية تُخزَّن مسبقاً (مسارات مطلقة من الجذر).
 var PRECACHE = [
@@ -68,31 +86,35 @@ self.addEventListener('fetch', function (event) {
     (req.headers.get('accept') || '').indexOf('text/html') !== -1;
 
   if (isNavigation) {
+    // الشبكة أولاً بمهلة → عند البطء/الفشل ارجع لقشرة الكاش فوراً (لا شاشة بيضاء).
     event.respondWith(
-      fetch(req).then(function (res) {
+      fetchWithTimeout(req, NAV_TIMEOUT_MS).then(function (res) {
         var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(req, copy); });
         return res;
       })['catch'](function () {
         return caches.match(req).then(function (hit) {
-          return hit || caches.match('/offline.html') || caches.match('/index.html');
+          return hit ||
+                 caches.match('/' + ((url.pathname.split('/')[1]) || '') + '/index.html') ||
+                 caches.match('/offline.html') ||
+                 caches.match('/index.html');
         });
       })
     );
     return;
   }
 
-  // الأصول الثابتة: stale-while-revalidate.
+  // الأصول الثابتة: من الكاش فوراً إن وُجد (cache-first) مع تحديث بالخلفية بمهلة.
   event.respondWith(
     caches.match(req).then(function (hit) {
-      var fetchPromise = fetch(req).then(function (res) {
+      var revalidate = fetchWithTimeout(req, ASSET_TIMEOUT_MS).then(function (res) {
         if (res && res.status === 200) {
           var copy = res.clone();
           caches.open(CACHE).then(function (c) { c.put(req, copy); });
         }
         return res;
       })['catch'](function () { return hit; });
-      return hit || fetchPromise;
+      return hit || revalidate;
     })
   );
 });

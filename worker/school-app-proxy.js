@@ -153,11 +153,22 @@ export default {
     headers.delete('content-security-policy');
     headers.delete('x-frame-options');
     headers.set('Access-Control-Allow-Origin', '*');
-    // منع تخزين الواجهة في المتصفّح حتى تظهر التحديثات فوراً (لا نسخة قديمة)
-    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     headers.delete('etag');
     headers.delete('last-modified');
     headers.delete('expires');
+
+    // سياسة تخزين ذكية حسب نوع الملف:
+    //  - HTML / sw.js / manifest: لا تخزين (تظهر التحديثات فوراً، ويتحدّث الـ SW).
+    //  - الأصول الثابتة (js/css/صور/خطوط): تخزين يوم + stale-while-revalidate أسبوع
+    //    → على الشبكات الضعيفة تُعاد من كاش المتصفّح فوراً بدل جولة شبكة لكل ملف.
+    var lowerPath = path.toLowerCase();
+    var isHtml = lowerPath === '/' || /\.html?$/.test(lowerPath) || !/\.[a-z0-9]+$/.test(lowerPath);
+    var isNoCache = isHtml || /\/sw\.js$/.test(lowerPath) || /manifest\.webmanifest$/.test(lowerPath);
+    if (isNoCache) {
+      headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    }
 
     return new Response(ghResp.body, {
       status: ghResp.status,
