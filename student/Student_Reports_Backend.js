@@ -14,6 +14,18 @@
  */
 
 // ══════════════════════════════════════════════════════
+//  مُنظّف قيم الأخطاء (#REF! / #N/A / #ERROR! ...) — يمنع تلوّث
+//  التقارير بخلايا صيغ مكسورة في أوراق المدرسة (مثل «سلبيات الطالب»).
+// ══════════════════════════════════════════════════════
+function _srptClean(v) {
+  var s = _safe(v);
+  if (s && s.charAt(0) === '#') {
+    if (/^#(REF!|N\/A|ERROR!|VALUE!|DIV\/0!|NAME\?|NULL!|NUM!|CALC!|SPILL!|GETTING_DATA)/.test(s)) return '';
+  }
+  return s;
+}
+
+// ══════════════════════════════════════════════════════
 //  الدالة الرئيسية — نقطة الدخول الوحيدة
 // ══════════════════════════════════════════════════════
 function getStudentReports(studentIdOrParams) {
@@ -370,7 +382,8 @@ function _srpt_violationsStats(student) {
       var matches = (rowSid === sid) || (sid && rowName === sname);
       if (!matches) continue;
 
-      var rowType = _safe(data[i][typeCol]);
+      var rowType = _srptClean(data[i][typeCol]);
+      if (!rowType) continue; // تجاهل صفوف الخطأ/الفارغة
       var rowDate = dateCol > -1 ? data[i][dateCol] : '';
       var dateStr = rowDate ? Utilities.formatDate(new Date(rowDate),
                     Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
@@ -488,7 +501,7 @@ function _srpt_recentEventsForStudent(student, n) {
           events.push({
             type: 'violation', icon: '⚠️',
             label: 'سلوك',
-            content: _safe(vio[j][vType]),
+            content: _srptClean(vio[j][vType]),
             date: dt2 ? Utilities.formatDate(new Date(dt2),
                         Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
             ts  : dt2 ? new Date(dt2).getTime() : 0
