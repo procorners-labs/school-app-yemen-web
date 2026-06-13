@@ -4525,7 +4525,8 @@ function renderTodaySchedule() {
     smart = '<div class="ts-assembly">⏳ لا يوجد التزام الآن — التالي: <b>' + escapeHtml(items[nextIdx].title || '') + '</b> بعد ' + toGo0 + ' دقيقة</div>';
   }
 
-  var asm = d.assembly ? '<div class="ts-assembly">🚩 طابور الصباح: ' + _tsFmt(d.assembly.startMin) + ' — ' + _tsFmt(d.assembly.endMin) + '</div>' : '';
+  var dayStartTxt = d.dayStart ? ('<div class="ts-assembly" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border-color:#c7d2fe;color:#3730a3">🕐 بداية الدوام: <b>' + escapeHtml(d.dayStart) + '</b></div>') : '';
+  var asm = dayStartTxt + (d.assembly ? '<div class="ts-assembly">🚩 طابور الصباح: ' + _tsFmt(d.assembly.startMin) + ' — ' + _tsFmt(d.assembly.endMin) + '</div>' : '');
 
   var cards = '';
   for (var j = 0; j < items.length; j++) {
@@ -4535,7 +4536,7 @@ function renderTodaySchedule() {
     var cls = 'ts-card ' + status + (isNext ? ' upcoming-next' : '');
     // اللون والعنوان حسب النوع
     var color, label, icon;
-    if (p.kind === 'duty') { color = '#0ea5e9'; icon = (p.dutyType === 'assembly' ? '🚩' : '🚸'); label = 'مهمة تلقائية'; }
+    if (p.kind === 'duty') { color = '#0ea5e9'; icon = (p.dutyType === 'assembly' ? '🚩' : (p.dutyType === 'break' ? '☕' : '🚸')); label = 'مهمة تلقائية'; }
     else if (p.kind === 'task') { color = '#f59e0b'; icon = '📌'; label = 'مهمة مكلّف بها'; }
     else { color = _subjColor(p.subject || p.title); icon = '📖'; label = 'الحصة ' + (p.period || ''); }
 
@@ -4578,12 +4579,13 @@ function renderScheduleSettings() {
     '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div>';
   callServer('getScheduleSettingsProtected', {}, function (r) {
     if (!r || !r.success) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-warning">تعذّر التحميل</div>'; return; }
-    _renderSchedSetForm(r.settings, r.breaksByGrade || {});
+    _renderSchedSetForm(r.settings, r.breaksByGrade || {}, r.allGrades || []);
   }, function (e) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
-function _renderSchedSetForm(s, breaks) {
+function _renderSchedSetForm(s, breaks, allGrades) {
   var body = document.getElementById('schedSetBody');
-  var grades = myGrades();
+  // مصدر الصفوف: كل صفوف المدرسة من الجدول (لكل الفصول) مع احتياطي لصفوف المستخدم
+  var grades = (allGrades && allGrades.length) ? allGrades : myGrades();
   var h = '<div class="filter-bar"><div class="filter-bar-title">⏰ التواقيت العامة</div>' +
     '<div class="form-row">' +
     '<div class="form-group"><label class="form-label">بداية الدوام</label><input type="time" class="form-control" id="ss-start" value="' + escapeHtml(s.dayStart || '07:00') + '"></div>' +
