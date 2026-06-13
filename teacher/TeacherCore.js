@@ -4463,9 +4463,10 @@ function getMyDayScheduleProtected(params) {
 var TASKS_SHEET = 'المهام';
 var TASK_HEADERS = ['id', 'المعلم', 'النوع', 'الصف', 'الشعبة', 'التاريخ', 'الوقت', 'الوصف',
                     'الحالة', 'الرسم', 'الخصم', 'المكلّف_بواسطة', 'المؤكّد_بواسطة', 'تاريخ_الإنشاء', 'ملاحظات'];
-var TASK_TYPES = ['إشراف طابور', 'إشراف ساحة', 'الطلوع مع الطلاب للصف', 'دوري كرة قدم',
+var TASK_TYPES = ['اجتماع', 'إشراف طابور', 'إشراف ساحة', 'الطلوع مع الطلاب للصف', 'دوري كرة قدم',
                   'حصة ريادة', 'حصة تقوية', 'تغطية حصة غياب', 'مهمة أخرى'];
-var TASK_STATUS = { ASSIGNED: 'مكلّف', DONE: 'منفّذ', CONFIRMED: 'مؤكّد', LATE: 'متأخر', MISSED: 'لم يُنفّذ' };
+var TASK_STATUS = { ASSIGNED: 'مكلّف', DONE: 'منفّذ', CONFIRMED: 'مؤكّد', LATE: 'متأخر', MISSED: 'لم يُنفّذ',
+                    PRESENT: 'حاضر', ABSENT: 'غائب وقت الاجتماع فقط' };
 
 function _tcTasksSheet() {
   return _getOrCreateSheet(TASKS_SHEET, TASK_HEADERS);
@@ -4541,6 +4542,71 @@ function addTaskProtected(params) {
     SpreadsheetApp.flush();
     _tcCacheDel('tc_tasks_all');
     return { success: true, id: id, message: 'تم تعيين المهمة بنجاح' };
+  });
+}
+
+// ── الاجتماع الذكي: تعيين لكل الكادر دفعة واحدة (الحضور بالاستثناء) ──
+// يُنشئ صفّ مهمة لكل معلّم نشط بنفس مجموعة الاجتماع، الحالة الافتراضية «حاضر».
+// المشرف لاحقاً يؤشّر الغائبين فقط عبر updateTaskStatusProtected.
+function addMeetingForAllProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح بإنشاء اجتماع' };
+    var staffRes = _getAllTeachersGroupedInternal();
+    if (!staffRes || !staffRes.success) return { success: false, error: 'تعذّر جلب قائمة الكادر' };
+    var staff = staffRes.teachers || [];
+    if (!staff.length) return { success: false, error: 'لا يوجد كادر مسجّل' };
+
+    var ts = new Date().getTime();
+    var groupId = 'MTG' + ts;
+    var now = new Date().toISOString();
+    var by = _safeStr(session.teacherName);
+    var date = _safeStr(params.date);
+    var time = _safeStr(params.time);
+    var desc = _safeStr(params.description) || 'اجتماع عام';
+
+    var rows = [];
+    for (var i = 0; i < staff.length; i++) {
+      var name = _safeStr(staff[i].name);
+      if (!name) continue;
+      // id|teacher|type|grade|section|date|time|desc|status|fee|deduction|by|confirmedBy|createdAt|notes
+      rows.push([
+        groupId + '_' + i, name, 'اجتماع', '', '', date, time, desc,
+        TASK_STATUS.PRESENT, 0, 0, by, '', now, ''
+      ]);
+    }
+    if (!rows.length) return { success: false, error: 'لا يوجد كادر صالح' };
+
+    var sheet = _tcTasksSheet();
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, TASK_HEADERS.length).setValues(rows);
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, groupId: groupId, count: rows.length,
+             message: 'تم إنشاء الاجتماع لـ ' + rows.length + ' من الكادر (الجميع حاضر افتراضياً)' };
+  });
+}
+
+// ── جلب صفوف اجتماع معيّن (للتحضير بالاستثناء) ──
+function getMeetingAttendanceProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    var groupId = _safeStr(params.groupId);
+    if (!groupId) return { success: false, error: 'معرّف الاجتماع مطلوب' };
+    try {
+      var sheet = _tcTasksSheet();
+      var lr = sheet.getLastRow();
+      if (lr < 2) return { success: true, attendees: [] };
+      var data = sheet.getRange(2, 1, lr - 1, TASK_HEADERS.length).getValues();
+      var out = [];
+      var prefix = groupId + '_';
+      for (var i = 0; i < data.length; i++) {
+        var o = _tcTaskRowToObj(data[i]);
+        if (!o.id || o.id.indexOf(prefix) !== 0) continue;
+        out.push({ id: o.id, teacher: o.teacher, status: o.status,
+                   date: o.date, time: o.time, description: o.description });
+      }
+      out.sort(function (a, b) { return (a.teacher || '').localeCompare(b.teacher || ''); });
+      return { success: true, attendees: out, groupId: groupId, count: out.length };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
   });
 }
 
