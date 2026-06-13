@@ -100,8 +100,8 @@ function getStudentReports(studentIdOrParams) {
       lists: {
         lastGrades   : lastGrades,
         recentEvents : recentEvents,
-        topMerits    : vioStats.merits.slice(0, 3),
-        topViolations: vioStats.violations.slice(0, 3)
+        topMerits    : vioStats.merits.slice(0, 5),
+        topViolations: vioStats.violations.slice(0, 5)
       },
       generatedAt: _nowString()
     };
@@ -356,51 +356,76 @@ function _srpt_violationsStats(student) {
     violations: [], merits: []
   };
   try {
-    var sheet = _getSheet('المخالفات');
-    if (!sheet) sheet = _getSheet('سلبيات ومميزات الطالب');
-    if (!sheet) return result;
+    var sid    = _safe(student.code);
+    var sname  = _safe(student.name);
 
-    var data = sheet.getDataRange().getValues();
-    if (!data || data.length < 2) return result;
+    // قائمة كلمات إيجابية — تشمل «تعزيز» وكلمات المميزات الشائعة
+    // تتزامن مع POS_WORDS في renderViolations بالواجهة
+    var POS = ['تعزيز', 'تشجيع', 'ملتزم', 'التزام', 'متفوق', 'تفوق',
+               'متميز', 'تميز', 'تميّز', 'مميز', 'إيجاب', 'إيجابي', 'إيجابية',
+               'ميزة', 'مجد', 'متعاون', 'تعاون', 'نشيط', 'نشاط', 'مشارك',
+               'مشاركة', 'تفاعل', 'منظم', 'نظيف', 'مؤدب', 'مهذب', 'أدب',
+               'احترام', 'محترم', 'صادق', 'صدق', 'أمانة', 'تطوع', 'مساعدة',
+               'إنجاز', 'اجتهاد', 'مجتهد', 'انضباط', 'منضبط', 'إبداع',
+               'مبدع', 'ممتاز', 'شكر', 'إشادة', 'تكريم', 'قدوة', 'فائق'];
 
-    var headers = data[0].map(function(h) { return _safe(h); });
-    var codeCol = headers.indexOf('الكود');
-    var nameCol = headers.indexOf('الاسم');
-    var typeCol = headers.indexOf('المخالفة');
-    var dateCol = headers.indexOf('التاريخ');
-    if (typeCol === -1) typeCol = headers.indexOf('النوع');
+    // كلمات سلبية لها الأولوية (مثل «عدم التزام» لا يجب تصنيفه إيجابياً)
+    var NEG_OVERRIDE = ['عدم', 'مخالف', 'تأخر', 'تأخير', 'غياب', 'غائب',
+                        'إهمال', 'مهمل', 'شغب', 'عنف', 'إساءة', 'تخريب',
+                        'غش', 'فوضى', 'إزعاج', 'هروب', 'تهرب', 'إنذار',
+                        'خصم', 'سلبي', 'ضعف', 'رسوب', 'عصيان', 'شتم', 'ضرب'];
 
-    var sid = _safe(student.code);
-    var sname = _safe(student.name);
-
-    // قائمة كلمات إيجابية تشير إلى "ميزة"
-    var positiveKeywords = ['ملتزم', 'متفوق', 'متميز', 'إيجابي', 'إيجابية', 'ميزة', 'تشجيع'];
-
-    for (var i = 1; i < data.length; i++) {
-      var rowSid = _safe(data[i][codeCol]);
-      var rowName = nameCol > -1 ? _safe(data[i][nameCol]) : '';
-      var matches = (rowSid === sid) || (sid && rowName === sname);
-      if (!matches) continue;
-
-      var rowType = _srptClean(data[i][typeCol]);
-      if (!rowType) continue; // تجاهل صفوف الخطأ/الفارغة
-      var rowDate = dateCol > -1 ? data[i][dateCol] : '';
-      var dateStr = rowDate ? Utilities.formatDate(new Date(rowDate),
-                    Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
-
-      var isMerit = false;
-      for (var p = 0; p < positiveKeywords.length; p++) {
-        if (rowType.indexOf(positiveKeywords[p]) !== -1) { isMerit = true; break; }
+    function _isMerit(t) {
+      var i;
+      for (i = 0; i < NEG_OVERRIDE.length; i++) {
+        if (t.indexOf(NEG_OVERRIDE[i]) !== -1) return false;
       }
+      for (i = 0; i < POS.length; i++) {
+        if (t.indexOf(POS[i]) !== -1) return true;
+      }
+      return false;
+    }
 
-      if (isMerit) {
-        result.meritCount++;
-        result.merits.push({ type: rowType, date: dateStr });
-      } else {
-        result.violationCount++;
-        result.violations.push({ type: rowType, date: dateStr });
+    function _processSheet(sheet) {
+      if (!sheet) return;
+      var data = sheet.getDataRange().getValues();
+      if (!data || data.length < 2) return;
+      var headers = data[0].map(function(h) { return _safe(h); });
+      var codeCol = headers.indexOf('الكود');
+      var nameCol = headers.indexOf('الاسم');
+      var typeCol = headers.indexOf('المخالفة');
+      if (typeCol === -1) typeCol = headers.indexOf('النوع');
+      if (typeCol === -1) typeCol = headers.indexOf('نوع السلوك');
+      var dateCol = headers.indexOf('التاريخ');
+      if (codeCol === -1 && nameCol === -1) return;
+
+      for (var i = 1; i < data.length; i++) {
+        var rowSid  = _safe(data[i][codeCol]);
+        var rowName = nameCol > -1 ? _safe(data[i][nameCol]) : '';
+        if ((rowSid !== sid) && !(sid && rowName && rowName === sname)) continue;
+
+        var rowType = _srptClean(data[i][typeCol]);
+        if (!rowType) continue;
+        var rowDate = dateCol > -1 ? data[i][dateCol] : '';
+        var dateStr = '';
+        if (rowDate) {
+          try { dateStr = Utilities.formatDate(new Date(rowDate), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+          catch (_) {}
+        }
+
+        if (_isMerit(rowType)) {
+          result.meritCount++;
+          result.merits.push({ type: rowType, date: dateStr });
+        } else {
+          result.violationCount++;
+          result.violations.push({ type: rowType, date: dateStr });
+        }
       }
     }
+
+    // اقرأ من كلتا الورقتين (قد توجدان معاً أو إحداهما فقط)
+    _processSheet(_getSheet('سلبيات ومميزات الطالب'));
+    _processSheet(_getSheet('المخالفات'));
 
     result.violations.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     result.merits.sort(    function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
