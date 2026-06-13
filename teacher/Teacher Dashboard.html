@@ -4628,12 +4628,13 @@ function saveScheduleSettings() {
 //  📌 المهام والإشراف (واجهة المرحلة 2)
 // ════════════════════════════════════════════════════════════════════
 var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [] };
-var TASK_STATUSES = ['مكلّف', 'منفّذ', 'مؤكّد', 'متأخر', 'لم يُنفّذ'];
+var TASK_STATUSES = ['مكلّف', 'منفّذ', 'مؤكّد', 'متأخر', 'لم يُنفّذ', 'حاضر', 'غائب وقت الاجتماع فقط'];
 
 function _taskBadge(s) {
   var map = {
     'مكلّف': 'badge-info', 'منفّذ': 'badge-warning', 'مؤكّد': 'badge-success',
-    'متأخر': 'badge-warning', 'لم يُنفّذ': 'badge-danger'
+    'متأخر': 'badge-warning', 'لم يُنفّذ': 'badge-danger',
+    'حاضر': 'badge-success', 'غائب وقت الاجتماع فقط': 'badge-danger'
   };
   return '<span class="badge ' + (map[s] || 'badge-info') + '">' + escapeHtml(s || 'مكلّف') + '</span>';
 }
@@ -4752,8 +4753,15 @@ function tasks_toggleAssign() {
   for (var i = 0; i < TASKS.types.length; i++) typeOpts += '<option value="' + TASKS.types[i] + '">' + TASKS.types[i] + '</option>';
   var teacherOpts = '<option value="">اختر المعلم</option>';
   for (var j = 0; j < TASKS.teachers.length; j++) teacherOpts += '<option value="' + escapeHtml(TASKS.teachers[j]) + '">' + escapeHtml(TASKS.teachers[j]) + '</option>';
-  var feeField = TASKS.canSetFee ? '<div class="form-group"><label class="form-label">الرسم (اختياري)</label><input type="number" class="form-control" id="ta-fee"></div>' : '';
-  box.innerHTML = '<div class="filter-bar"><div class="filter-bar-title">➕ تعيين مهمة جديدة</div>' +
+  var feeField = TASKS.canSetFee ? '<div class="form-group"><label class="form-label">💰 المبلغ</label><input type="number" class="form-control" id="ta-fee" placeholder="0"></div>' : '';
+  box.innerHTML = '<div class="filter-bar">' +
+    '<div class="tasks-mode-switch" style="display:flex;gap:8px;margin-bottom:12px">' +
+      '<button type="button" class="btn btn-sm btn-primary" id="tm-single" onclick="tasks_setMode(\'single\')">➕ مهمة فردية</button>' +
+      '<button type="button" class="btn btn-sm btn-secondary" id="tm-meeting" onclick="tasks_setMode(\'meeting\')">👥 اجتماع لكل المعلمين</button>' +
+    '</div>' +
+    // ── نموذج المهمة الفردية ──
+    '<div id="ta-single">' +
+    '<div class="filter-bar-title">➕ تعيين مهمة جديدة</div>' +
     '<div class="form-row">' +
       '<div class="form-group"><label class="form-label">المعلم *</label><select class="form-select" id="ta-teacher">' + teacherOpts + '</select></div>' +
       '<div class="form-group"><label class="form-label">نوع المهمة *</label><select class="form-select" id="ta-type">' + typeOpts + '</select></div>' +
@@ -4765,8 +4773,32 @@ function tasks_toggleAssign() {
       feeField +
       '<div class="form-group flex-1"><label class="form-label">الوصف</label><input type="text" class="form-control" id="ta-desc" placeholder="تفاصيل المهمة..."></div>' +
     '</div>' +
-    '<button class="btn btn-primary" onclick="tasks_submitAssign()">💾 تعيين المهمة</button><div id="ta-status" style="margin-top:8px"></div></div>';
+    '<button class="btn btn-primary" onclick="tasks_submitAssign()">💾 تعيين المهمة</button>' +
+    '</div>' +
+    // ── نموذج الاجتماع (كل الكادر) ──
+    '<div id="ta-meeting" style="display:none">' +
+    '<div class="filter-bar-title">👥 اجتماع عام لكل الكادر</div>' +
+    '<div class="alert alert-info" style="margin-bottom:10px">سيُسجَّل جميع المعلمين <b>«حاضر»</b> تلقائياً، ثم أشّر <b>الغائبين فقط</b>.</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">تاريخ الاجتماع</label><input type="date" class="form-control" id="mt-date"></div>' +
+      '<div class="form-group"><label class="form-label">الوقت</label><input type="time" class="form-control" id="mt-time"></div>' +
+      '<div class="form-group flex-1"><label class="form-label">موضوع الاجتماع</label><input type="text" class="form-control" id="mt-desc" placeholder="مثال: اجتماع بداية الأسبوع..."></div>' +
+    '</div>' +
+    '<button class="btn btn-primary" onclick="tasks_submitMeeting()">👥 إنشاء الاجتماع وتحضير الجميع</button>' +
+    '<div id="mt-attendance" style="margin-top:14px"></div>' +
+    '</div>' +
+    '<div id="ta-status" style="margin-top:8px"></div></div>';
   box.style.display = 'block';
+}
+function tasks_setMode(mode) {
+  var single = document.getElementById('ta-single'), meeting = document.getElementById('ta-meeting');
+  var bS = document.getElementById('tm-single'), bM = document.getElementById('tm-meeting');
+  var isMeeting = (mode === 'meeting');
+  if (single) single.style.display = isMeeting ? 'none' : 'block';
+  if (meeting) meeting.style.display = isMeeting ? 'block' : 'none';
+  if (bS) bS.className = 'btn btn-sm ' + (isMeeting ? 'btn-secondary' : 'btn-primary');
+  if (bM) bM.className = 'btn btn-sm ' + (isMeeting ? 'btn-primary' : 'btn-secondary');
+  var st = document.getElementById('ta-status'); if (st) st.innerHTML = '';
 }
 function tasks_submitAssign() {
   var g = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
@@ -4788,6 +4820,66 @@ function tasks_setStatus(i, status) {
   callServer('updateTaskStatusProtected', { id: t.id, status: status }, function (r) {
     if (r && r.success) { toast('✅ تم تحديث الحالة', 'success'); tasks_reloadMgmt(); }
     else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  });
+}
+// ── الاجتماع الذكي: إنشاء + تحضير بالاستثناء ──
+var MEETING = { groupId: '', attendees: [] };
+function tasks_submitMeeting() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+  var st = document.getElementById('ta-status');
+  var params = { date: g('mt-date'), time: g('mt-time'), description: g('mt-desc') };
+  st.innerHTML = '<div style="color:#1a237e">⏳ جاري إنشاء الاجتماع وتحضير الكادر…</div>';
+  callServer('addMeetingForAllProtected', params, function (r) {
+    if (r && r.success) {
+      st.innerHTML = '<div style="color:#2e7d32">✅ ' + escapeHtml(r.message || 'تم') + '</div>';
+      toast('✅ تم إنشاء الاجتماع', 'success');
+      MEETING.groupId = r.groupId;
+      tasks_loadMeetingAttendance(r.groupId);
+      tasks_reloadMgmt();
+    } else st.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>';
+  }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function tasks_loadMeetingAttendance(groupId) {
+  var box = document.getElementById('mt-attendance');
+  if (box) box.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  callServer('getMeetingAttendanceProtected', { groupId: groupId }, function (r) {
+    if (!r || !r.success) { if (box) box.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر') + '</div>'; return; }
+    MEETING.attendees = r.attendees || [];
+    tasks_renderMeetingAttendance();
+  });
+}
+function tasks_renderMeetingAttendance() {
+  var box = document.getElementById('mt-attendance');
+  if (!box) return;
+  if (!MEETING.attendees.length) { box.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا يوجد كادر</div></div>'; return; }
+  var present = 0, absent = 0, i;
+  for (i = 0; i < MEETING.attendees.length; i++) { if (MEETING.attendees[i].status === 'غائب وقت الاجتماع فقط') absent++; else present++; }
+  var rows = '';
+  for (i = 0; i < MEETING.attendees.length; i++) {
+    var a = MEETING.attendees[i];
+    var isAbsent = (a.status === 'غائب وقت الاجتماع فقط');
+    var toggle = isAbsent
+      ? '<button class="btn btn-sm btn-success" onclick="tasks_markPresence(' + i + ',true)">✓ تحضير</button>'
+      : '<button class="btn btn-sm btn-danger" onclick="tasks_markPresence(' + i + ',false)">✗ تغييب</button>';
+    rows += '<tr><td style="font-weight:600">' + escapeHtml(a.teacher) + '</td><td>' + _taskBadge(a.status) + '</td><td>' + toggle + '</td></tr>';
+  }
+  box.innerHTML =
+    '<div class="filter-bar-title">📋 تحضير الاجتماع — أشّر الغائبين فقط</div>' +
+    '<div style="display:flex;gap:10px;margin-bottom:10px">' +
+      '<span class="badge badge-success" style="font-size:.9rem;padding:6px 12px">✓ حاضر: ' + present + '</span>' +
+      '<span class="badge badge-danger" style="font-size:.9rem;padding:6px 12px">✗ غائب: ' + absent + '</span>' +
+    '</div>' +
+    '<div class="table-wrap"><table><thead><tr><th>المعلم</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+function tasks_markPresence(i, makePresent) {
+  var a = MEETING.attendees[i]; if (!a) return;
+  var status = makePresent ? 'حاضر' : 'غائب وقت الاجتماع فقط';
+  callServer('updateTaskStatusProtected', { id: a.id, status: status }, function (r) {
+    if (r && r.success) {
+      MEETING.attendees[i].status = status;
+      tasks_renderMeetingAttendance();
+      tasks_reloadMgmt();
+    } else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
   });
 }
 function tasks_miss(i) {
