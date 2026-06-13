@@ -3475,21 +3475,31 @@ function renderReportsBody(data) {
     }
   }
 
-  // أحدث المميزات
-  if (lists.topMerits && lists.topMerits.length > 0) {
-    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--ok);">⭐ آخر التعزيزات الإيجابية</div>';
+  // ── المميزات / الإيجابيات ─────────────────────────────
+  var hasMerits = lists.topMerits && lists.topMerits.length > 0;
+  h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--ok);">' +
+       '⭐ المميزات / الإيجابيات' +
+       (hasMerits ? ' <span style="font-size:12px; font-weight:400;">(' + lists.topMerits.length + ')</span>' : '') +
+       '</div>';
+  if (hasMerits) {
     for (var tm = 0; tm < lists.topMerits.length; tm++) {
       var m = lists.topMerits[tm];
       h += '<div class="vio-item merit"><div class="head">' +
-           '<span class="badge-t m">تعزيز</span>' +
+           '<span class="badge-t m">تعزيز إيجابي</span>' +
            '<span class="date">📅 ' + esc(m.date || '—') + '</span>' +
            '</div><div class="body">' + esc(m.type) + '</div></div>';
     }
+  } else {
+    h += '<div style="font-size:13px; color:var(--muted); padding:8px 12px; background:var(--bg); border-radius:8px;">لا توجد تعزيزات مسجّلة</div>';
   }
 
-  // آخر السلوكيات
-  if (lists.topViolations && lists.topViolations.length > 0) {
-    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--err);">⚠️ آخر الملاحظات السلبية</div>';
+  // ── الملاحظات السلبية ─────────────────────────────────
+  var hasViolations = lists.topViolations && lists.topViolations.length > 0;
+  h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--err);">' +
+       '⚠️ الملاحظات السلبية' +
+       (hasViolations ? ' <span style="font-size:12px; font-weight:400;">(' + lists.topViolations.length + ')</span>' : '') +
+       '</div>';
+  if (hasViolations) {
     for (var tv = 0; tv < lists.topViolations.length; tv++) {
       var vv = lists.topViolations[tv];
       h += '<div class="vio-item"><div class="head">' +
@@ -3497,6 +3507,8 @@ function renderReportsBody(data) {
            '<span class="date">📅 ' + esc(vv.date || '—') + '</span>' +
            '</div><div class="body">' + esc(vv.type) + '</div></div>';
     }
+  } else {
+    h += '<div style="font-size:13px; color:var(--muted); padding:8px 12px; background:var(--bg); border-radius:8px;">✅ سجلك نظيف — لا ملاحظات سلبية</div>';
   }
 
   h += '<div style="text-align:center; font-size:11px; color:var(--muted); margin-top:18px; padding-top:12px; border-top:1px dashed var(--bdr);">' +
