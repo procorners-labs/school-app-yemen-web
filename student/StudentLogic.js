@@ -1516,6 +1516,53 @@ function healthCheck() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  findRefErrors — تشخيص جذر #REF! (يُظهِر الخطأ ولا يُخفيه)
+//  يمسح أوراق ملف الطالب ويُبلّغ عن كل خلية فيها خطأ صيغة
+//  (#REF!/#N/A/…) بموقعها A1 وصيغتها الأصلية — ليُصلَح الجذر في
+//  الورقة الحيّة (مرجع/IMPORTRANGE محذوف)، لا لإخفائه.
+//  لا يعدّل أي خلية. مكمّل لـ _srptClean (طبقة الحماية وقت القراءة).
+//  شغّلها من المحرّر أو عبر API ثم أصلح الخلايا المُبلَّغ عنها يدوياً.
+// ══════════════════════════════════════════════════════════════
+function findRefErrors() {
+  var ERR = /^#(REF!|N\/A|ERROR!|VALUE!|DIV\/0!|NAME\?|NULL!|NUM!|CALC!|SPILL!|GETTING_DATA)/;
+  var SCAN = ['سلبيات ومميزات الطالب', 'المخالفات', 'الرسوم', 'التسديد',
+              'النصفي', 'الدرجات', 'الطلاب', 'الاعدادات', 'الملاحظات'];
+  var report = { ok: true, scanned: [], errors: [], count: 0, time: _nowString() };
+
+  try {
+    var ss = _getSS();
+    for (var s = 0; s < SCAN.length; s++) {
+      var sheet = ss.getSheetByName(SCAN[s]);
+      if (!sheet || sheet.getLastRow() < 1) continue;
+      report.scanned.push(SCAN[s]);
+      var rng = sheet.getDataRange();
+      var disp = rng.getDisplayValues();
+      var formulas = rng.getFormulas();
+      for (var r = 0; r < disp.length; r++) {
+        for (var c = 0; c < disp[r].length; c++) {
+          var v = _safe(disp[r][c]);
+          if (v && v.charAt(0) === '#' && ERR.test(v)) {
+            report.errors.push({
+              sheet  : SCAN[s],
+              cell   : sheet.getRange(r + 1, c + 1).getA1Notation(),
+              error  : v,
+              formula: _safe(formulas[r][c]) || '(قيمة ثابتة — لا صيغة)'
+            });
+            report.count++;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    report.ok = false;
+    report.error = e.message;
+  }
+
+  Logger.log('findRefErrors: ' + report.count + ' خطأ في ' + report.scanned.length + ' ورقة');
+  return report;
+}
+
+// ══════════════════════════════════════════════════════════════
 // syncGradesFromMaster — مزامنة آمنة للدرجات من ملف المعلمين
 // تُستدعى يومياً أو عند الطلب بدلاً من الاعتماد على IMPORTRANGE
 // أضف هذه الدالة في StudentLogic.gs
