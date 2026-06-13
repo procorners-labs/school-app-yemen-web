@@ -16,11 +16,10 @@ var API_FRAMEWORK_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit
 
 // 🚫 دوال خطرة تُمنع صراحةً من الاستدعاء عبر الويب — مصدرها _build/denylist.generated.json
 var API_DANGEROUS_FUNCTIONS = [
-  'autoSyncAllStudentData', 'clearScheduleCache', 'clearStudentCache',
-  'createDailySync', 'createHourlyGradesSync', 'installDailySyncTriggers',
-  'migrateExistingDriveUrls', 'migrateStudentPasswordsToMaster',
-  'runDataIntegrityCheck', 'testGradesUnified', 'testV3End2End',
-  'resetDeploymentUrls', 'showDeploymentUrls', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
+  'autoSyncAllStudentData', 'clearScheduleCache', 'clearStudentCache', 'createDailySync',
+  'createHourlyGradesSync', 'findRefErrors', 'installDailySyncTriggers', 'migrateExistingDriveUrls',
+  'migrateStudentPasswordsToMaster', 'resetDeploymentUrls', 'runDataIntegrityCheck', 'showDeploymentUrls',
+  'testGradesUnified', 'testV3End2End', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
 ];
 
 var API_BLOCKED_FUNCTIONS = API_FRAMEWORK_FUNCTIONS.concat(API_DANGEROUS_FUNCTIONS);
