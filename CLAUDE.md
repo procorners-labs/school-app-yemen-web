@@ -62,6 +62,25 @@
 ## 🧭 توجيه الجلسات (سطر واحد — التفاصيل + Cheatsheet في الدليل أعلاه)
 - **Core System**=خلفية GAS/أمان/مزامنة · **Frontend & UI**=`frontend/`/تصميم · **Operations**=نشر/clasp/Worker/health · **Growth & Search**=SEO/اشتراكات/تسعيرة · **Marketing**=محتوى/Canva · **Android**=الغلاف.
 
+## 🧭 مُوجّه الجلسات (Router — اقرأه أولاً · لا تخلط نطاقين · العمق في `docs/ROUTING.md`)
+
+| الجلسة | تملك (افعل هنا) | لا تفعل → سلّم لـ |
+|---|---|---|
+| **Core System** | منطق GAS/ES5 · `ApiEndpoint`/الأمان/denylist · Tenant · المزامنة · مخطّط Sheets | واجهة→Frontend · نشر→Operations |
+| **Frontend & UI** | `frontend/` · HTML مصدر المنصّات · `gas-bridge`/PWA/`sw.js` · RTL | منطق خادمي→Core · نشر→Operations |
+| **Operations** | clasp/نشر (نفس Deployment ID) · Worker · CI · health · تراجع · دمج PR | منطق→Core · واجهة→Frontend |
+| **Growth & Search** | SEO · الاشتراك/التسعيرة · التحليلات · التدقيق | كود خلفي→Core · زر→Frontend · نشر→Operations |
+| **Marketing** | محتوى/سوشل · Canva · الهوية (claude.ai لا Code) | أي كود→الجلسة التقنية |
+| **Android** | غلاف WebView (مستودع منفصل) · AppConfig · `?action=deployments` | كود الويب→Frontend/Core |
+
+**التصعيد (كل تغيير كود ينتهي عند Operations):** `Core (منطق/مخطّط) → Frontend+Android (استهلاك العقد) → Operations (نشر+health)`.
+- غيّرت اسم/توقيع دالة خلفية؟ بلّغ Frontend (تصنيف gas-bridge + مواضع الاستدعاء) + Android ← ثم Operations يعيد النشر.
+- منطق dون اتصال؟ ارفع كاش `sw.js` (دليل §7) ← Operations. · ثغرة أمنية؟ Core فوراً (denylist) ← Operations (تراجع/نشر طارئ).
+
+**شجرة القرار (أول تطابق يفوز):** ①جوال/Kotlin/Play→**Android** · ②بصري/سوشل/Canva بلا كود→**Marketing** · ③نشر/Worker/CI/health/تراجع بلا كود→**Operations** · ④SEO/اشتراك/تسعيرة/تحليلات→**Growth** · ⑤منطق خادمي/بيانات/أمان→**Core** · ⑥واجهة HTML/CSS/PWA→**Frontend** · ⑦عدّة نطاقات→**Cowork** يقسّمه حسب التصعيد.
+
+**منع تكرار السياق:** كل جلسة تفتح **ذاكرتها فقط** — Core/Frontend=`schoolapp-deployment` · Ops=`schoolapp-status`+`schoolapp-github-network` · Growth=`schoolapp-analytics`+`schoolapp-audit-baseline` · Android=`schoolapp-android`. القواعد الحاكمة (§🔒) مشتركة — لا تتكرر في الجلسات.
+
 ## ✅ الإصلاحات المنفّذة في الكود (بانتظار النشر)
 - **المرحلة 1:** سدّ ثغرة `provisionNewSchool` (مفتاح دعوة إجباري + استثناء المالك) — `master-admin/Master_Admin.js` + `frontend/master-admin/index.html`.
 - **المرحلة 2:** حجب 10 دوال مكشوفة في `master-admin/ApiEndpoint.js` (أهمها `getMasterSetting` التي كانت تسرّب `invite_key`) + مزامنة `_build/denylist.generated.json`.
