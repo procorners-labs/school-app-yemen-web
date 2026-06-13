@@ -4858,6 +4858,172 @@ function getAllTaskSummariesProtected(params) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  🗓️ الإشراف الأسبوعي المتكرّر — قالب في تبويب «الإشراف_الأسبوعي»
+//  + توليد يومي (Trigger) يكتب في ورقة «المهام» نفسها (type='إشراف')
+//  بلا أعمدة جديدة في المهام · منع تكرار عبر id='SUP'+date+'_'+teacher+'_'+duty
+// ════════════════════════════════════════════════════════════════════
+var WEEKLY_SUP_SHEET = 'الإشراف_الأسبوعي';
+var WEEKLY_SUP_HEADERS = ['day_of_week', 'teacher', 'duty', 'after_period', 'grade', 'section', 'active'];
+var SUP_DAYS = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+
+function _tcWeeklySupSheet() {
+  return _getOrCreateSheet(WEEKLY_SUP_SHEET, WEEKLY_SUP_HEADERS);
+}
+function _tcSupActive(v) {
+  var s = _safeStr(v).toLowerCase();
+  return (s === 'true' || s === '1' || s === 'نعم' || s === 'yes' || v === true);
+}
+
+// قائمة قالب الإشراف الأسبوعي (للإدارة)
+function getWeeklySupervisionProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    try {
+      var sheet = _tcWeeklySupSheet();
+      var lr = sheet.getLastRow();
+      var rows = [];
+      if (lr >= 2) {
+        var data = sheet.getRange(2, 1, lr - 1, WEEKLY_SUP_HEADERS.length).getValues();
+        for (var i = 0; i < data.length; i++) {
+          var teacher = _safeStr(data[i][1]);
+          if (!teacher) continue;
+          rows.push({
+            row: i + 2, day: _safeStr(data[i][0]), teacher: teacher,
+            duty: _safeStr(data[i][2]), afterPeriod: _safeStr(data[i][3]),
+            grade: _safeStr(data[i][4]), section: _safeStr(data[i][5]),
+            active: _tcSupActive(data[i][6])
+          });
+        }
+      }
+      return { success: true, rows: rows, days: SUP_DAYS };
+    } catch (e) { return { success: false, error: String((e && e.message) || e) }; }
+  });
+}
+
+// إضافة صفّ قالب إشراف
+function addWeeklySupervisionRowProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    var day = _safeStr(params.day), teacher = _safeStr(params.teacher), duty = _safeStr(params.duty);
+    if (!day || !teacher || !duty) return { success: false, error: 'اليوم والمعلم والمهمة مطلوبة' };
+    var sheet = _tcWeeklySupSheet();
+    sheet.appendRow([day, teacher, duty, _safeStr(params.afterPeriod),
+                     _safeStr(params.grade), _safeStr(params.section),
+                     (params.active === false ? 'FALSE' : 'TRUE')]);
+    SpreadsheetApp.flush();
+    return { success: true, message: 'تمت إضافة صفّ الإشراف' };
+  });
+}
+
+// حذف صفّ قالب إشراف بالرقم
+function deleteWeeklySupervisionRowProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    var row = parseInt(params.row, 10);
+    if (!row || row < 2) return { success: false, error: 'رقم الصف غير صالح' };
+    var sheet = _tcWeeklySupSheet();
+    if (row > sheet.getLastRow()) return { success: false, error: 'الصف غير موجود' };
+    sheet.deleteRow(row);
+    SpreadsheetApp.flush();
+    return { success: true, message: 'تم حذف صفّ الإشراف' };
+  });
+}
+
+// يحسب وقت الإشراف من نوع المهمة وإعدادات الجدول (HH:mm)
+function _tcSupTime(duty, afterPeriod, grade, settings, breaksByGrade) {
+  var d = _safeStr(duty);
+  // طابور الصباح ← بداية الدوام
+  if (d.indexOf('طابور') !== -1) return _safeStr(settings.dayStart) || '07:00';
+  // وقت صريح HH:mm في عمود after_period
+  var ap = _safeStr(afterPeriod);
+  if (/^\d{1,2}\s*:\s*\d{2}/.test(ap)) return _tcFmtMin(_tcParseHHMM(ap));
+  // إشراف الراحة ← شريحة استراحة الصف
+  if (d.indexOf('راحة') !== -1 && grade) {
+    var t = _tcComputePeriodTimes(settings, grade, breaksByGrade);
+    for (var i = 0; i < t.slots.length; i++) { if (t.slots[i].isBreak) return _tcFmtMin(t.slots[i].startMin); }
+  }
+  // رقم حصة ← نهاية تلك الحصة (بداية ما بعدها) لصف عام
+  var pn = parseInt(ap, 10);
+  if (pn > 0) {
+    var tt = _tcComputePeriodTimes(settings, grade || '', breaksByGrade);
+    for (var j = 0; j < tt.slots.length; j++) { if (!tt.slots[j].isBreak && tt.slots[j].period === pn) return _tcFmtMin(tt.slots[j].endMin); }
+  }
+  return '';
+}
+
+// التوليد اليومي (يُستدعى من Trigger أو يدوياً) — idempotent
+function generateDailySupervision() {
+  var report = { ok: true, created: 0, skipped: 0, day: '', items: [] };
+  try {
+    var info = _tcNowInfo();
+    report.day = info.dayName;
+    var supSheet = _tcWeeklySupSheet();
+    var lr = supSheet.getLastRow();
+    if (lr < 2) return report;
+
+    var setRes = _tcGetScheduleSettings();
+    var settings = setRes.settings, breaksByGrade = setRes.breaksByGrade || {};
+    var tasks = _tcTasksSheet();
+    var tz = Session.getScriptTimeZone();
+    var todayISO = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    var dateCompact = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+    var now = new Date().toISOString();
+
+    var data = supSheet.getRange(2, 1, lr - 1, WEEKLY_SUP_HEADERS.length).getValues();
+    var newRows = [];
+    for (var i = 0; i < data.length; i++) {
+      var day = _safeStr(data[i][0]);
+      if (day !== info.dayName) continue;
+      if (!_tcSupActive(data[i][6])) continue;
+      var teacher = _safeStr(data[i][1]);
+      var duty = _safeStr(data[i][2]) || 'إشراف';
+      if (!teacher) continue;
+      var grade = _safeStr(data[i][4]), section = _safeStr(data[i][5]);
+      var id = 'SUP' + dateCompact + '_' + teacher + '_' + duty;
+      if (_tcFindTaskRow(tasks, id) !== -1) { report.skipped++; continue; } // منع التكرار
+      var time = _tcSupTime(duty, data[i][3], grade, settings, breaksByGrade);
+      var desc = duty + (grade ? (' — ' + grade + (section ? ' ' + section : '')) : '');
+      // id|teacher|type|grade|section|date|time|desc|status|fee|deduction|by|confirmedBy|createdAt|notes
+      newRows.push([id, teacher, 'إشراف', grade, section, todayISO, time, desc,
+                    TASK_STATUS.ASSIGNED, 0, 0, 'النظام (إشراف أسبوعي)', '', now, '']);
+      report.items.push({ teacher: teacher, duty: duty, time: time });
+      report.created++;
+    }
+    if (newRows.length) {
+      tasks.getRange(tasks.getLastRow() + 1, 1, newRows.length, TASK_HEADERS.length).setValues(newRows);
+      SpreadsheetApp.flush();
+      _tcCacheDel('tc_tasks_all');
+    }
+  } catch (e) { report.ok = false; report.error = String((e && e.message) || e); }
+  Logger.log('generateDailySupervision: created=' + report.created + ' skipped=' + report.skipped);
+  return report;
+}
+
+// توليد إشراف اليوم يدوياً من الواجهة (للإدارة) — idempotent
+function generateTodaySupervisionProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح' };
+    var r = generateDailySupervision();
+    if (!r.ok) return { success: false, error: r.error || 'تعذّر التوليد' };
+    return { success: true, created: r.created, skipped: r.skipped, day: r.day,
+             message: 'يوم ' + r.day + ': أُنشئت ' + r.created + ' مهمة إشراف (تجاوز ' + r.skipped + ' مكرّرة)' };
+  });
+}
+
+// تنصيب Trigger يومي لتوليد الإشراف — يُشغّله المالك مرّة من محرّر GAS (محجوبة عن الويب)
+function installSupervisionTrigger() {
+  var existing = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < existing.length; i++) {
+    if (existing[i].getHandlerFunction() === 'generateDailySupervision') {
+      ScriptApp.deleteTrigger(existing[i]);
+    }
+  }
+  ScriptApp.newTrigger('generateDailySupervision').timeBased().everyDays(1).atHour(6).create();
+  Logger.log('✅ تم تنصيب Trigger يومي لـ generateDailySupervision عند الساعة 6 صباحاً');
+  return 'installed';
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  🗓️ المرحلة 3: التقويم المدرسي 1447-1448هـ (بذر تلقائي + عرض ديناميكي)
 //  ورقة «التقويم_المدرسي»: id|النوع|العنوان|اليوم|التاريخ_الهجري|البداية|النهاية|ملاحظات
 //  الأنواع: فصل | اختبار | إجازة | مناسبة
