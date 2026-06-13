@@ -2318,6 +2318,24 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال إدخال عام (بديل احترافي لـ prompt) -->
+<div class="modal-backdrop" id="inputModal">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-header"><span id="inputModalTitle" class="modal-title">إدخال</span><button class="modal-close" onclick="closeModal('inputModal')">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:2rem;text-align:center;margin-bottom:10px" id="inputModalIcon">✏️</div>
+      <p id="inputModalMsg" style="font-size:.9rem;color:var(--text-muted);margin-bottom:10px;text-align:center"></p>
+      <label class="form-label" id="inputModalLabel">القيمة</label>
+      <input type="text" class="form-control" id="inputModalField" autocomplete="off">
+      <div id="inputModalErr" style="color:var(--danger);font-size:.8rem;margin-top:6px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('inputModal')">إلغاء</button>
+      <button class="btn btn-primary" id="inputModalOk">حفظ</button>
+    </div>
+  </div>
+</div>
+
 <!-- لايت بوكس لعرض الصور -->
 <div id="lightboxModal" class="modal-backdrop" onclick="closeLightbox()">
   <span class="modal-close" style="position:absolute; top:20px; right:30px; z-index:1001; background:rgba(0,0,0,0.5); color:#fff; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;" onclick="closeLightbox()">✕</span>
@@ -3546,6 +3564,41 @@ function confirmAction(title, msg, icon, cb) {
     };
   }
   openModal('confirmModal');
+}
+
+/**
+ * نافذة إدخال احترافية (بديل prompt). opts: {title,label,msg,icon,value,type,okText,validate}
+ * cb(value) تُستدعى عند الحفظ بقيمة صالحة. لا تُستدعى عند الإلغاء.
+ */
+function promptModal(opts, cb) {
+  opts = opts || {};
+  var set = function (id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; };
+  set('inputModalTitle', opts.title || 'إدخال');
+  set('inputModalLabel', opts.label || 'القيمة');
+  set('inputModalMsg', opts.msg || '');
+  set('inputModalIcon', opts.icon || '✏️');
+  var field = document.getElementById('inputModalField');
+  var err = document.getElementById('inputModalErr');
+  var okBtn = document.getElementById('inputModalOk');
+  if (err) err.textContent = '';
+  if (field) {
+    field.type = opts.type || 'text';
+    field.value = (opts.value !== undefined && opts.value !== null) ? String(opts.value) : '';
+  }
+  if (okBtn) {
+    okBtn.textContent = opts.okText || 'حفظ';
+    okBtn.onclick = function () {
+      var val = field ? field.value : '';
+      if (typeof opts.validate === 'function') {
+        var msg = opts.validate(val);
+        if (msg) { if (err) err.textContent = msg; return; }
+      }
+      closeModal('inputModal');
+      if (typeof cb === 'function') cb(val);
+    };
+  }
+  openModal('inputModal');
+  setTimeout(function () { if (field) { field.focus(); field.select(); } }, 50);
 }
 
 /**
@@ -4974,28 +5027,39 @@ function weeklySup_generateToday() {
 }
 function tasks_miss(i) {
   var t = TASKS.mgmt[i]; if (!t) return;
-  var ded = prompt('قيمة الخصم لعدم تنفيذ المهمة (اتركه 0 إن لا يوجد خصم):', String(t.deduction || 0));
-  if (ded === null) return;
-  callServer('updateTaskStatusProtected', { id: t.id, status: 'لم يُنفّذ', deduction: (parseFloat(ded) || 0) }, function (r) {
-    if (r && r.success) { toast('تم التسجيل', 'success'); tasks_reloadMgmt(); }
-    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  promptModal({
+    title: 'تسجيل «لم يُنفّذ»', icon: '✖', type: 'number',
+    msg: 'مهمة «' + (t.type || '') + '» للمعلم ' + (t.teacher || ''),
+    label: 'قيمة الخصم (اتركه 0 إن لا يوجد خصم)', value: (t.deduction || 0), okText: 'تسجيل',
+    validate: function (v) { if (v !== '' && isNaN(parseFloat(v))) return 'أدخل رقماً صحيحاً'; return ''; }
+  }, function (ded) {
+    callServer('updateTaskStatusProtected', { id: t.id, status: 'لم يُنفّذ', deduction: (parseFloat(ded) || 0) }, function (r) {
+      if (r && r.success) { toast('تم التسجيل', 'success'); tasks_reloadMgmt(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    });
   });
 }
 function tasks_setFee(i) {
   var t = TASKS.mgmt[i]; if (!t) return;
-  var fee = prompt('قيمة رسم/مكافأة هذه المهمة:', String(t.fee || 0));
-  if (fee === null) return;
-  callServer('setTaskFeeProtected', { id: t.id, fee: (parseFloat(fee) || 0) }, function (r) {
-    if (r && r.success) { toast('✅ تم تحديث الرسم', 'success'); tasks_reloadMgmt(); }
-    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  promptModal({
+    title: 'تحديد المبلغ', icon: '💰', type: 'number',
+    msg: 'مهمة «' + (t.type || '') + '» للمعلم ' + (t.teacher || ''),
+    label: 'المبلغ (رسم/مكافأة)', value: (t.fee || 0), okText: 'حفظ المبلغ',
+    validate: function (v) { if (v !== '' && isNaN(parseFloat(v))) return 'أدخل رقماً صحيحاً'; return ''; }
+  }, function (fee) {
+    callServer('setTaskFeeProtected', { id: t.id, fee: (parseFloat(fee) || 0) }, function (r) {
+      if (r && r.success) { toast('✅ تم تحديث المبلغ', 'success'); tasks_reloadMgmt(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    });
   });
 }
 function tasks_delete(i) {
   var t = TASKS.mgmt[i]; if (!t) return;
-  if (!confirm('حذف هذه المهمة؟')) return;
-  callServer('deleteTaskProtected', { id: t.id }, function (r) {
-    if (r && r.success) { toast('تم الحذف', 'success'); tasks_reloadMgmt(); }
-    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  confirmAction('حذف المهمة', 'حذف مهمة «' + (t.type || '') + '» للمعلم ' + (t.teacher || '') + '؟', '🗑️', function () {
+    callServer('deleteTaskProtected', { id: t.id }, function (r) {
+      if (r && r.success) { toast('تم الحذف', 'success'); tasks_reloadMgmt(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    });
   });
 }
 
