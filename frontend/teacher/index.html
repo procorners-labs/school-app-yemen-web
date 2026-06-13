@@ -4714,7 +4714,7 @@ function saveScheduleSettings() {
 // ════════════════════════════════════════════════════════════════════
 //  📌 المهام والإشراف (واجهة المرحلة 2)
 // ════════════════════════════════════════════════════════════════════
-var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [] };
+var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active' };
 var TASK_STATUSES = ['مكلّف', 'منفّذ', 'مؤكّد', 'متأخر', 'لم يُنفّذ', 'حاضر', 'غائب وقت الاجتماع فقط'];
 
 function _taskBadge(s) {
@@ -4785,6 +4785,7 @@ function renderTasksMgmt() {
     '<div class="section-body">' +
       '<div id="tasksAssignBox" style="display:none"></div>' +
       '<div id="weeklySupBox" style="display:none"></div>' +
+      '<div id="tasksTabs" class="tasks-tabs" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"></div>' +
       '<div class="filter-bar"><div class="filter-bar-title">🔎 تصفية</div><div class="form-row" style="margin-bottom:0">' +
         '<div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="tf-teacher" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
         '<div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="tf-status" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
@@ -4818,24 +4819,66 @@ function tasks_reloadMgmt() {
     tasks_renderMgmtList();
   }, function (e) { list.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
+// مجموعات الحالات للنشطة/الأرشيف (فلترة بلا نقل بيانات)
+var TASK_ACTIVE_STATUSES  = ['مكلّف', 'حاضر', 'متأخر'];
+var TASK_ARCHIVE_STATUSES = ['مؤكّد', 'منفّذ', 'غائب وقت الاجتماع فقط', 'لم يُنفّذ'];
+function _taskInView(status, view) {
+  if (view === 'archive') return TASK_ARCHIVE_STATUSES.indexOf(status) !== -1;
+  if (view === 'active')  return TASK_ACTIVE_STATUSES.indexOf(status) !== -1;
+  return true; // all
+}
+function tasks_setView(view) {
+  TASKS.view = view;
+  tasks_renderTabs();
+  tasks_renderMgmtList();
+}
+function tasks_renderTabs() {
+  var bar = document.getElementById('tasksTabs');
+  if (!bar) return;
+  var view = TASKS.view || 'active';
+  var nActive = 0, nArchive = 0, all = TASKS.mgmt || [];
+  for (var i = 0; i < all.length; i++) {
+    if (_taskInView(all[i].status, 'active')) nActive++;
+    else if (_taskInView(all[i].status, 'archive')) nArchive++;
+  }
+  function tab(key, label, n) {
+    var on = (view === key);
+    return '<button type="button" class="btn btn-sm ' + (on ? 'btn-primary' : 'btn-secondary') + '" onclick="tasks_setView(\'' + key + '\')">' +
+           label + ' <span class="badge badge-info" style="' + (on ? 'background:rgba(255,255,255,.25);color:#fff' : '') + '">' + n + '</span></button>';
+  }
+  bar.innerHTML = tab('active', '📋 النشطة', nActive) + tab('archive', '🗄️ الأرشيف', nArchive) + tab('all', '📚 الكل', all.length);
+}
 function tasks_renderMgmtList() {
   var list = document.getElementById('tasksMgmtList');
-  if (!TASKS.mgmt.length) { list.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا توجد مهام</div></div>'; return; }
+  tasks_renderTabs();
+  var view = TASKS.view || 'active';
+  var all = TASKS.mgmt || [];
+  // فلترة بالعرض مع الحفاظ على الفهرس الأصلي للأزرار
+  var shown = [];
+  for (var k = 0; k < all.length; k++) { if (_taskInView(all[k].status, view)) shown.push({ t: all[k], idx: k }); }
+  if (!shown.length) {
+    var msg = (view === 'archive') ? 'لا توجد مهام مؤرشفة' : (view === 'active' ? 'لا توجد مهام نشطة' : 'لا توجد مهام');
+    list.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">' + msg + '</div></div>';
+    return;
+  }
   var rows = '';
-  for (var i = 0; i < TASKS.mgmt.length; i++) {
-    var t = TASKS.mgmt[i];
+  for (var s = 0; s < shown.length; s++) {
+    var t = shown[s].t, i = shown[s].idx;
+    var isArchived = (TASK_ARCHIVE_STATUSES.indexOf(t.status) !== -1);
     var acts = '';
-    if (t.status !== 'مؤكّد') acts += '<button class="btn btn-sm btn-success" title="تأكيد التنفيذ" onclick="tasks_setStatus(' + i + ',\'مؤكّد\')">✅</button> ';
-    acts += '<button class="btn btn-sm btn-warning" title="متأخر" onclick="tasks_setStatus(' + i + ',\'متأخر\')">⏰</button> ';
-    acts += '<button class="btn btn-sm btn-danger" title="لم يُنفّذ + خصم" onclick="tasks_miss(' + i + ')">✖</button> ';
-    if (TASKS.canSetFee) acts += '<button class="btn btn-sm btn-secondary" title="تحديد الرسم" onclick="tasks_setFee(' + i + ')">💰</button> ';
+    if (!isArchived) {
+      if (t.status !== 'مؤكّد') acts += '<button class="btn btn-sm btn-success" title="تأكيد الإنجاز" onclick="tasks_setStatus(' + i + ',\'مؤكّد\')">✅ تأكيد</button> ';
+      acts += '<button class="btn btn-sm btn-warning" title="متأخر" onclick="tasks_setStatus(' + i + ',\'متأخر\')">⏰</button> ';
+      acts += '<button class="btn btn-sm btn-danger" title="لم يُنفّذ + خصم" onclick="tasks_miss(' + i + ')">✖</button> ';
+    }
+    if (TASKS.canSetFee) acts += '<button class="btn btn-sm btn-secondary" title="تحديد المبلغ" onclick="tasks_setFee(' + i + ')">💰</button> ';
     acts += '<button class="btn btn-sm btn-secondary" title="حذف" onclick="tasks_delete(' + i + ')">🗑️</button>';
     rows += '<tr><td style="font-weight:600">' + escapeHtml(t.teacher) + '</td><td>' + escapeHtml(t.type) + '</td>' +
       '<td>' + escapeHtml((t.grade || '') + ' ' + (t.section || '')) + '</td><td>' + escapeHtml(t.date ? _fmtDateAr(t.date) : '—') + '</td>' +
       '<td>' + escapeHtml(t.time || '—') + '</td><td>' + _taskBadge(t.status) + '</td>' +
       '<td>' + (t.fee || 0) + '</td><td style="color:#c62828">' + (t.deduction || 0) + '</td><td><div class="btn-group">' + acts + '</div></td></tr>';
   }
-  list.innerHTML = '<div class="table-wrap"><table><thead><tr><th>المعلم</th><th>النوع</th><th>الصف/الشعبة</th><th>التاريخ</th><th>الوقت</th><th>الحالة</th><th>الرسم</th><th>الخصم</th><th>إجراءات</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  list.innerHTML = '<div class="table-wrap"><table><thead><tr><th>المعلم</th><th>النوع</th><th>الصف/الشعبة</th><th>التاريخ</th><th>الوقت</th><th>الحالة</th><th>المبلغ</th><th>الخصم</th><th>إجراءات</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 function tasks_toggleAssign() {
   var box = document.getElementById('tasksAssignBox');
