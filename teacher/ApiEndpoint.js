@@ -16,12 +16,11 @@ var API_FRAMEWORK_FUNCTIONS = ['doGet', 'doPost', 'doOptions', 'onOpen', 'onEdit
 
 // 🚫 دوال خطرة تُمنع صراحةً من الاستدعاء عبر الويب — مصدرها _build/denylist.generated.json
 var API_DANGEROUS_FUNCTIONS = [
-  'clearNewsCache', 'clearTeacherCoreCache',
-  'deepAudit', 'diagnoseGradesSchema', 'diagnoseGradesSchemaV2',
-  'fullDiagnosticsForTeacher', 'inspectAllSheetsWithFormulas',
-  'migrateExistingDriveUrls', 'migrateNewsImagesToThumbnail',
-  'runFullSystemTest', 'testAuthSystem', 'testDriveAccess', 'testDriveUpload', 'testV3End2End',
-  'resetDeploymentUrls', 'showDeploymentUrls', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
+  'clearNewsCache', 'clearTeacherCoreCache', 'deepAudit', 'diagnoseGradesSchema',
+  'diagnoseGradesSchemaV2', 'fullDiagnosticsForTeacher', 'generateDailySupervision', 'inspectAllSheetsWithFormulas',
+  'installSupervisionTrigger', 'migrateExistingDriveUrls', 'migrateNewsImagesToThumbnail', 'resetDeploymentUrls',
+  'runFullSystemTest', 'showDeploymentUrls', 'testAuthSystem', 'testDriveAccess',
+  'testDriveUpload', 'testV3End2End', 'updateAllDeploymentUrls', 'updateDeploymentUrl'
 ];
 
 var API_BLOCKED_FUNCTIONS = API_FRAMEWORK_FUNCTIONS.concat(API_DANGEROUS_FUNCTIONS);

@@ -4725,9 +4725,13 @@ function renderTasksMgmt() {
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(245,158,11,.12)">🗂️</div>' +
     '<div class="section-header-title">إدارة المهام والإشراف</div>' +
-    '<button class="btn btn-primary btn-sm" onclick="tasks_toggleAssign()">➕ تعيين مهمة</button></div>' +
+    '<div style="display:flex;gap:6px">' +
+      '<button class="btn btn-secondary btn-sm" onclick="weeklySup_toggle()">🗓️ الإشراف الأسبوعي</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="tasks_toggleAssign()">➕ تعيين مهمة</button>' +
+    '</div></div>' +
     '<div class="section-body">' +
       '<div id="tasksAssignBox" style="display:none"></div>' +
+      '<div id="weeklySupBox" style="display:none"></div>' +
       '<div class="filter-bar"><div class="filter-bar-title">🔎 تصفية</div><div class="form-row" style="margin-bottom:0">' +
         '<div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="tf-teacher" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
         '<div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="tf-status" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
@@ -4915,6 +4919,90 @@ function tasks_markPresence(i, makePresent) {
       tasks_reloadMgmt();
     } else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
   });
+}
+// ── الإشراف الأسبوعي المتكرّر (قالب) ──
+var WSUP = { rows: [], days: [] };
+function weeklySup_toggle() {
+  var box = document.getElementById('weeklySupBox');
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  weeklySup_reload();
+}
+function weeklySup_reload() {
+  var box = document.getElementById('weeklySupBox');
+  box.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  callServer('getWeeklySupervisionProtected', {}, function (r) {
+    if (!r || !r.success) { box.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر') + '</div>'; return; }
+    WSUP.rows = r.rows || []; WSUP.days = r.days || [];
+    weeklySup_render();
+  });
+}
+function weeklySup_render() {
+  var box = document.getElementById('weeklySupBox');
+  var dayOpts = ''; for (var d = 0; d < WSUP.days.length; d++) dayOpts += '<option value="' + WSUP.days[d] + '">' + WSUP.days[d] + '</option>';
+  var teacherOpts = '<option value="">اختر المعلم</option>';
+  for (var j = 0; j < TASKS.teachers.length; j++) teacherOpts += '<option value="' + escapeHtml(TASKS.teachers[j]) + '">' + escapeHtml(TASKS.teachers[j]) + '</option>';
+  // نموذج الإضافة
+  var h = '<div class="filter-bar"><div class="filter-bar-title">🗓️ قالب الإشراف الأسبوعي المتكرّر</div>' +
+    '<div class="alert alert-info" style="margin-bottom:8px">صفوف القالب تتكرّر كل أسبوع. زر «توليد إشراف اليوم» (أو المُشغّل اليومي) ينشئ مهام اليوم بلا تكرار.</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">اليوم</label><select class="form-select" id="ws-day">' + dayOpts + '</select></div>' +
+      '<div class="form-group"><label class="form-label">المعلم *</label><select class="form-select" id="ws-teacher">' + teacherOpts + '</select></div>' +
+      '<div class="form-group"><label class="form-label">المهمة *</label><select class="form-select" id="ws-duty"><option value="إشراف الراحة">إشراف الراحة</option><option value="إشراف طابور الصباح">إشراف طابور الصباح</option><option value="إشراف الساحة">إشراف الساحة</option></select></div>' +
+    '</div><div class="form-row">' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="ws-grade">' + buildSelectOptions(myGrades(), '—', '', true) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="ws-section">' + buildSelectOptions(mySections(), '—', '', true) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">بعد الحصة/الوقت <span style="color:var(--text-muted);font-size:.75rem">(اختياري)</span></label><input type="text" class="form-control" id="ws-after" placeholder="مثال: 3 أو 09:30"></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px">' +
+      '<button class="btn btn-primary btn-sm" onclick="weeklySup_addRow()">➕ إضافة للقالب</button>' +
+      '<button class="btn btn-success btn-sm" onclick="weeklySup_generateToday()">⚡ توليد إشراف اليوم</button>' +
+    '</div><div id="ws-status" style="margin-top:8px"></div></div>';
+  // الجدول
+  if (!WSUP.rows.length) {
+    h += '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا توجد صفوف في القالب بعد</div></div>';
+  } else {
+    var rows = '';
+    for (var i = 0; i < WSUP.rows.length; i++) {
+      var w = WSUP.rows[i];
+      var act = w.active ? '<span class="badge badge-success">مُفعّل</span>' : '<span class="badge badge-info">موقوف</span>';
+      rows += '<tr><td style="font-weight:600">' + escapeHtml(w.day) + '</td><td>' + escapeHtml(w.teacher) + '</td>' +
+        '<td>' + escapeHtml(w.duty) + '</td><td>' + escapeHtml((w.grade || '—') + ' ' + (w.section || '')) + '</td>' +
+        '<td>' + escapeHtml(w.afterPeriod || '—') + '</td><td>' + act + '</td>' +
+        '<td><button class="btn btn-sm btn-danger" title="حذف" onclick="weeklySup_deleteRow(' + w.row + ')">🗑️</button></td></tr>';
+    }
+    h += '<div class="table-wrap"><table><thead><tr><th>اليوم</th><th>المعلم</th><th>المهمة</th><th>الصف/الشعبة</th><th>بعد الحصة/الوقت</th><th>الحالة</th><th>حذف</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  box.innerHTML = h;
+}
+function weeklySup_addRow() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+  var st = document.getElementById('ws-status');
+  var teacher = g('ws-teacher');
+  if (!teacher) { st.innerHTML = '<div class="alert alert-warning">اختر المعلم</div>'; return; }
+  var grade = g('ws-grade'); if (isAllFilter(grade)) grade = '';
+  var section = g('ws-section'); if (isAllFilter(section)) section = '';
+  var params = { day: g('ws-day'), teacher: teacher, duty: g('ws-duty'), afterPeriod: g('ws-after'), grade: grade, section: section, active: true };
+  st.innerHTML = '<div style="color:#1a237e">⏳ جاري الإضافة…</div>';
+  callServer('addWeeklySupervisionRowProtected', params, function (r) {
+    if (r && r.success) { toast('✅ أُضيف للقالب', 'success'); weeklySup_reload(); }
+    else st.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>';
+  }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function weeklySup_deleteRow(row) {
+  if (!confirm('حذف هذا الصف من القالب؟')) return;
+  callServer('deleteWeeklySupervisionRowProtected', { row: row }, function (r) {
+    if (r && r.success) { toast('تم الحذف', 'success'); weeklySup_reload(); }
+    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  });
+}
+function weeklySup_generateToday() {
+  var st = document.getElementById('ws-status');
+  st.innerHTML = '<div style="color:#1a237e">⏳ جاري توليد إشراف اليوم…</div>';
+  callServer('generateTodaySupervisionProtected', {}, function (r) {
+    if (r && r.success) { st.innerHTML = '<div style="color:#2e7d32">✅ ' + escapeHtml(r.message || 'تم') + '</div>'; toast('✅ تم التوليد', 'success'); tasks_reloadMgmt(); }
+    else st.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>';
+  }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
 function tasks_miss(i) {
   var t = TASKS.mgmt[i]; if (!t) return;
