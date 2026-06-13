@@ -4190,10 +4190,46 @@ function _tcNowInfo() {
   return { dayName: SCHED_DAY_BY_ISO[iso] || '', minutes: _tcParseHHMM(hhmm), hhmm: hhmm };
 }
 
+// كل صفوف المدرسة الموجودة في ورقة «الجدول» (المصدر الموثوق لإعداد الاستراحة لكل صف)
+function _tcAllScheduleGrades() {
+  var cached = _tcCacheGet('tc_all_grades');
+  if (cached) return cached;
+  var grades = [], seen = {};
+  try {
+    var candidates = [];
+    try { candidates.push(_activeFileId()); } catch (e0) {}
+    candidates.push('1BPtHUMB8kdi2exbfPVaKoSOcjGGZrnbJANXPHnWTD_A'); // احتياطي قديم
+    var sheet = null;
+    for (var ci = 0; ci < candidates.length; ci++) {
+      if (!candidates[ci]) continue;
+      try {
+        var f = _getSSById(candidates[ci]);
+        var sh = f ? f.getSheetByName('الجدول') : null;
+        if (sh && sh.getLastRow() >= 2) { sheet = sh; break; }
+      } catch (eC) {}
+    }
+    if (sheet) {
+      var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+      for (var i = 0; i < data.length; i++) {
+        var g = _safeStr(data[i][0]);
+        if (g && !seen[g]) { seen[g] = true; grades.push(g); }
+      }
+    }
+  } catch (e) {}
+  _tcCacheSet('tc_all_grades', grades, 300);
+  return grades;
+}
+
 // قراءة الإعدادات (تنشئ الأوراق بقيم افتراضية إن غابت)
 function getScheduleSettingsProtected(params) {
   return withAuth(params, function (session) {
-    return _tcGetScheduleSettings();
+    var res = _tcGetScheduleSettings();
+    // أرفق كل صفوف المدرسة لإظهار «استراحة كل صف» لكل الفصول (لا فصول المستخدم فقط)
+    try {
+      var out = { success: res.success, settings: res.settings, breaksByGrade: res.breaksByGrade,
+                  allGrades: _tcAllScheduleGrades() };
+      return out;
+    } catch (e) { return res; }
   });
 }
 function _tcGetScheduleSettings() {
@@ -4329,7 +4365,7 @@ function getMyDayScheduleProtected(params) {
 
       if (isWeekend) {
         return { success: true, today: info.dayName, isWeekend: true, serverTime: info.hhmm,
-                 serverMinutes: info.minutes, assembly: assemblyOut, periods: [] };
+                 serverMinutes: info.minutes, assembly: assemblyOut, dayStart: settings.dayStart, periods: [] };
       }
 
       // إعادة استخدام منطق الفلترة الكامل
@@ -4393,23 +4429,29 @@ function getMyDayScheduleProtected(params) {
           status: _statusOf(assemblyStart, assemblyEnd), auto: true
         });
       }
-      // إشراف نزول الطلاب: للمعلم الذي يدرّس الحصة السابعة فقط
+      // إشراف الراحة: لكل صف يدرّسه المعلّم عند الحصة التي تسبق استراحة ذلك الصف.
+      // كل صف له «بعد الحصة رقم» الخاص به (breaksByGrade) ووقت استراحته الخاص.
+      // معلّمون فقط — لا طلوع/نزول طلاب.
+      var breakSeen = {}; // منع تكرار الإشراف لنفس الصف/الشعبة
       for (var di = 0; di < rows.length; di++) {
         var rr = rows[di];
         var pnn = parseInt(rr.period, 10) || 0;
-        if (pnn === 7) {
-          var t2 = _tcComputePeriodTimes(settings, rr.grade, breaksByGrade);
-          var sl2 = null;
-          for (var s2 = 0; s2 < t2.slots.length; s2++) { if (!t2.slots[s2].isBreak && t2.slots[s2].period === 7) { sl2 = t2.slots[s2]; break; } }
-          if (sl2) {
-            duties.push({
-              kind: 'duty', dutyType: 'dismissal', title: 'إشراف نزول الطلاب',
-              grade: rr.grade, section: rr.section,
-              startMin: sl2.endMin, endMin: sl2.endMin + 10,
-              start: _tcMinToDisplay(sl2.endMin), end: _tcMinToDisplay(sl2.endMin + 10),
-              status: _statusOf(sl2.endMin, sl2.endMin + 10), auto: true
-            });
-          }
+        var breakAfter = (breaksByGrade && breaksByGrade[rr.grade]) ? breaksByGrade[rr.grade] : 0;
+        if (!breakAfter || pnn !== breakAfter) continue; // يشرف من يدرّس الحصة التي تسبق الاستراحة
+        var bKey = _safeStr(rr.grade) + '|' + _safeStr(rr.section);
+        if (breakSeen[bKey]) continue;
+        breakSeen[bKey] = true;
+        var tB = _tcComputePeriodTimes(settings, rr.grade, breaksByGrade);
+        var slB = null;
+        for (var sB = 0; sB < tB.slots.length; sB++) { if (tB.slots[sB].isBreak) { slB = tB.slots[sB]; break; } }
+        if (slB) {
+          duties.push({
+            kind: 'duty', dutyType: 'break', title: 'إشراف الراحة',
+            grade: rr.grade, section: rr.section,
+            startMin: slB.startMin, endMin: slB.endMin,
+            start: _tcMinToDisplay(slB.startMin), end: _tcMinToDisplay(slB.endMin),
+            status: _statusOf(slB.startMin, slB.endMin), auto: true
+          });
         }
       }
 
@@ -4445,7 +4487,7 @@ function getMyDayScheduleProtected(params) {
       });
 
       return { success: true, today: info.dayName, isWeekend: false, serverTime: info.hhmm,
-               serverMinutes: info.minutes, assembly: assemblyOut, periods: out,
+               serverMinutes: info.minutes, assembly: assemblyOut, dayStart: settings.dayStart, periods: out,
                duties: duties, tasks: todayTasks, timeline: timeline };
     } catch (e) {
       return { success: false, error: String((e && e.message) || e) };
