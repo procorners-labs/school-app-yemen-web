@@ -19,6 +19,7 @@ function analyticsBlock() {
   return [
     '<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->',
     '<meta name="google-site-verification" content="' + GSC_META_TOKEN + '" />',
+    '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />',
     '<script async src="https://www.googletagmanager.com/gtag/js?id=' + GA_MEASUREMENT_ID + '"></script>',
     '<script>',
     '  window.dataLayer = window.dataLayer || [];',
