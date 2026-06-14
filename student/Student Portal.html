@@ -1131,20 +1131,48 @@ a { color: var(--pr); text-decoration: none; }
 .ht-banner.info { background: linear-gradient(135deg,#0ea5e9,#2563eb); }
 .ht-banner.rest { background: linear-gradient(135deg,#f59e0b,#d97706); }
 .ht-banner.off  { background: linear-gradient(135deg,#64748b,#475569); }
-.ht-list { display: flex; flex-direction: column; gap: 8px; }
-.ht-item {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  border: 1px solid var(--bdr); border-radius: 10px; background: var(--card);
+/* جدول اليوم — تخطيط أعمدة متجاوب (عرض فقط) */
+.ht-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ht-list { display: flex; flex-direction: column; gap: 6px; min-width: 286px; }
+.ht-cols { display: grid; grid-template-columns: 40px minmax(0,1fr) max-content max-content; gap: 10px; align-items: center; }
+.ht-head {
+  padding: 4px 12px 6px; font-size: 10.5px; font-weight: 800; color: var(--muted);
+  letter-spacing: .2px; border-bottom: 1px dashed var(--bdr); margin-bottom: 2px;
 }
-.ht-item.now { border-color: #10b981; background: #ecfdf5; box-shadow: inset 0 0 0 1px #10b981; }
-.ht-item.past { opacity: .55; }
-.ht-pn { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; background: var(--pr-bg); color: var(--pr); font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 13px; }
-.ht-item.now .ht-pn { background: #10b981; color: #fff; }
-.ht-mid { flex: 1; min-width: 0; }
-.ht-subj { font-weight: 700; font-size: 13px; color: var(--txt); }
-.ht-teacher { font-size: 11px; color: var(--muted); }
-.ht-time { font-size: 11px; font-weight: 700; color: var(--pr); white-space: nowrap; }
+.ht-head span:nth-child(1) { text-align: center; }
+.ht-head span:nth-child(3), .ht-head span:nth-child(4) { text-align: center; }
+.ht-row {
+  padding: 9px 12px; border: 1px solid var(--bdr); border-radius: 11px;
+  background: var(--card); transition: background .2s, border-color .2s;
+}
+.ht-row.now { border-color: #10b981; background: #ecfdf5; box-shadow: inset 0 0 0 1px #10b981; }
+.ht-row.past { opacity: .5; }
+.ht-row.free { background: var(--bg); border-style: dashed; }
+.ht-pn {
+  width: 34px; height: 34px; border-radius: 9px; background: var(--pr-bg); color: var(--pr);
+  font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 13px; margin: 0 auto;
+}
+.ht-row.now .ht-pn { background: #10b981; color: #fff; }
+.ht-row.free .ht-pn { background: transparent; color: var(--soft); border: 1px dashed var(--bdr); }
+.ht-mid { min-width: 0; }
+.ht-subj { font-weight: 700; font-size: 13px; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ht-row.free .ht-subj { color: var(--soft); font-weight: 600; }
+.ht-teacher { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ht-time { font-size: 11.5px; font-weight: 700; color: var(--pr); white-space: nowrap; text-align: center; }
+.ht-row.free .ht-time { color: var(--soft); font-weight: 600; }
+.ht-status { text-align: center; white-space: nowrap; }
+.ht-st { border-radius: 50px; padding: 2px 9px; font-size: 10px; font-weight: 800; display: inline-block; }
+.ht-st.now  { background: #10b981; color: #fff; }
+.ht-st.next { background: var(--pr-bg); color: var(--pr); }
+.ht-st.past { background: var(--bg); color: var(--soft); }
+.ht-st.free { background: transparent; color: var(--soft); }
 .ht-now-tag { background: #10b981; color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 10px; font-weight: 700; }
+@media (max-width: 480px) {
+  .ht-head { display: none; }
+  .ht-cols { grid-template-columns: 32px minmax(0,1fr) max-content; gap: 8px; }
+  .ht-status { display: none; }            /* الحالة تظهر كشارة داخل المادة على الجوال */
+  .ht-pn { width: 30px; height: 30px; font-size: 12px; }
+}
 
 /* ألوان الأيام */
 .day-c0 { background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%) !important; }
@@ -3088,17 +3116,37 @@ function renderHomeToday(r) {
   else if (nowMin < st.assemblyStart) banner = '<div class="ht-banner info">⏰ ' + esc(firstName) + '، لم يبدأ الدوام بعد — صباح الخير!</div>';
   else banner = '<div class="ht-banner off">🎉 ' + esc(firstName) + '، انتهى يومك الدراسي — أحسنت، نراك غداً!</div>';
 
-  var list = '', hasAny = false;
+  var rowsHtml = '', hasAny = false;
   for (var pp = 1; pp <= st.periodsCount; pp++) {
-    var cell = byPeriod[pp]; if (!cell) continue; hasAny = true;
-    var cls = 'ht-item' + (pp === curP ? ' now' : (st.pt[pp] && nowMin >= st.pt[pp].e ? ' past' : ''));
-    list += '<div class="' + cls + '"><div class="ht-pn">' + pp + '</div><div class="ht-mid">' +
-      '<div class="ht-subj">' + esc(cell.subject || '—') + (pp === curP ? ' <span class="ht-now-tag">الآن</span>' : '') + '</div>' +
-      (cell.teacher ? '<div class="ht-teacher">👤 ' + esc(cell.teacher) + '</div>' : '') + '</div>' +
-      '<div class="ht-time">' + (st.pt[pp] ? _schedFmtT(st.pt[pp].s) + ' – ' + _schedFmtT(st.pt[pp].e) : '') + '</div></div>';
+    var cell = byPeriod[pp];
+    var isNow  = (pp === curP);
+    var isPast = (st.pt[pp] && nowMin >= st.pt[pp].e && !isNow);
+    var isNext = (pp === nextP);
+    var rowCls = 'ht-row ht-cols' + (cell ? (isNow ? ' now' : (isPast ? ' past' : '')) : ' free');
+    var timeTxt = st.pt[pp] ? (_schedFmtT(st.pt[pp].s) + ' – ' + _schedFmtT(st.pt[pp].e)) : '';
+    var statusHtml = '';
+    if (!cell)        statusHtml = '<span class="ht-st free">—</span>';
+    else if (isNow)   statusHtml = '<span class="ht-st now">الآن</span>';
+    else if (isNext)  statusHtml = '<span class="ht-st next">التالية</span>';
+    else if (isPast)  statusHtml = '<span class="ht-st past">انتهت</span>';
+    var subj = cell ? esc(cell.subject || '—') : 'فراغ';
+    var inlineNow = isNow ? ' <span class="ht-now-tag">الآن</span>' : '';
+    var teacherHtml = (cell && cell.teacher) ? '<div class="ht-teacher">👤 ' + esc(cell.teacher) + '</div>' : '';
+    if (cell) hasAny = true;
+    rowsHtml += '<div class="' + rowCls + '">' +
+      '<div class="ht-pn">' + pp + '</div>' +
+      '<div class="ht-mid"><div class="ht-subj">' + subj + inlineNow + '</div>' + teacherHtml + '</div>' +
+      '<div class="ht-time">' + timeTxt + '</div>' +
+      '<div class="ht-status">' + statusHtml + '</div></div>';
   }
-  if (!hasAny) list = '<div class="ht-banner off">📭 لا توجد حصص لك اليوم.</div>';
-  body.innerHTML = banner + '<div class="ht-list">' + list + '</div>';
+  var inner;
+  if (!hasAny) {
+    inner = '<div class="ht-banner off">📭 لا توجد حصص مجدولة لك اليوم.</div>';
+  } else {
+    var head = '<div class="ht-head ht-cols"><span>الحصة</span><span>المادة</span><span>الوقت</span><span>الحالة</span></div>';
+    inner = '<div class="ht-table-wrap"><div class="ht-list">' + head + rowsHtml + '</div></div>';
+  }
+  body.innerHTML = banner + inner;
 }
 
 function loadSchedule(force) {
