@@ -1013,11 +1013,15 @@ function _buildCertGrade(month, grade, section, session) {
     }
   }
 
-  // المواد النشطة لهذا الصف (لها بيانات لطالب واحد على الأقل). إن لم تنشط أي
-  // مادة (صف بلا أي إدخال) نُبقي كل المواد المقرّرة لإظهار الهيكل.
+  // مواد الصف المقرّرة فقط = المواد التي أُدخلت لها درجات فعلية لطالب واحد على
+  // الأقل في هذا الصف/الفترة. (القيمة 0 تُعدّ إدخالاً فعلياً؛ الخلية الفارغة = غير
+  // مقرّرة.) لا يوجد جدول رسمي «مواد الصف» في القوائم، فهذا هو المصدر الموثوق.
+  // ⚠️ لا احتياطي بإظهار «كل المواد» — حتى لا تظهر مواد غير مقرّرة للصف.
   var activeIdx = [];
   for (var ai = 0; ai < subjMeta.length; ai++) if (subjMeta[ai]._active) activeIdx.push(ai);
-  if (!activeIdx.length) for (var bi = 0; bi < subjMeta.length; bi++) activeIdx.push(bi);
+  if (!activeIdx.length) {
+    return { success: false, error: 'لا توجد مواد لها درجات مُدخلة لهذا الصف في هذه الفترة' };
+  }
 
   var activeNames = [];
   for (var ni = 0; ni < activeIdx.length; ni++) activeNames.push(subjMeta[activeIdx[ni]].name);
@@ -1087,15 +1091,19 @@ function getScoreSheetsDataProtected(params) {
         gradesToBuild = [grade];
       }
 
-      var allStudents = [], subjOrder = [], subjSeen = {}, periodType = 'regular';
+      var allStudents = [], subjOrder = [], subjSeen = {}, periodType = 'regular', lastErr = '';
       for (var gi = 0; gi < gradesToBuild.length; gi++) {
         var b = _buildCertGrade(month, gradesToBuild[gi], section, session);
-        if (!b || !b.success) continue;
+        if (!b || !b.success) { lastErr = (b && b.error) || lastErr; continue; }
         periodType = b.periodType;
         for (var s = 0; s < b.subjects.length; s++) {
           if (!subjSeen[b.subjects[s]]) { subjSeen[b.subjects[s]] = true; subjOrder.push(b.subjects[s]); }
         }
         for (var st = 0; st < b.students.length; st++) allStudents.push(b.students[st]);
+      }
+      // صف واحد بلا أي مادة مقرّرة لها درجات → أظهر الرسالة الواضحة بدل جدول فارغ.
+      if (!isAll && !allStudents.length) {
+        return { success: false, error: lastErr || 'لا توجد بيانات لهذا الصف في هذه الفترة' };
       }
 
       if (isAll) {
