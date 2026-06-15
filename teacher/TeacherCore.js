@@ -4492,13 +4492,20 @@ function getMyScheduleProtected(params) {
           if (nameMatch) {
             showRow = true;
             viaName = true;
-          } else if (!nameMatch && !hasAllClasses) {
-            // المعلم لا يرى حصص معلمين آخرين
-            showRow = false;
           } else if (hasAllClasses && !hasAllSubjects) {
             // مشرف بصلاحية "جميع الفصول" لكن مواد محددة
             // يرى فقط حصص مادته في أي فصل
             showRow = hasAllSubjects || allowedSubjects.indexOf(subject) !== -1;
+          } else {
+            // ── مطابقة ببيانات المعلم نفسه (المادة + الفصل + الشعبة) ──
+            // تُغطّي حالة اختلاف كتابة الاسم بين ملف الجداول وحساب الدخول:
+            // إن طابقت المادة والفصل والشعبة المسجّلة في حساب المعلم فهي حصته.
+            // نطلب تطابق الفصل تحديداً (لا «جميع الفصول») لتفادي إظهار حصص زميل.
+            var subjOk = hasAllSubjects || allowedSubjects.indexOf(subject) !== -1;
+            var gradeOk = allowedClasses.indexOf(grade) !== -1;
+            var secOk = hasAllSections || section === 'جميع الشعب' || allowedSections.indexOf(section) !== -1;
+            showRow = (subjOk && gradeOk && secOk);
+            if (showRow) viaName = true;   // مطابقة دقيقة ببياناته → لا يُعاد قصّها بفلتر الشعبة
           }
         }
 
