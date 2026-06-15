@@ -1871,9 +1871,14 @@ function loadHomeBundle(){
           renderVideos(data.videos);
           // SEO ديناميكي حسب المدرسة: لو أرجع الخادم اسم/بيانات مدرسة
           if(data.school && window.applySchoolSeo){
-            var merged = {}, k;
+            var merged = {}, k, sc = data.school;
             for(k in window.SCHOOL_PROFILE) merged[k] = window.SCHOOL_PROFILE[k];
-            for(k in data.school){ if(data.school[k]) merged[k] = data.school[k]; }
+            for(k in sc){ if(sc[k]) merged[k] = sc[k]; }
+            // أسماء أعمدة بديلة من سجل المدرسة (لوجو/إحداثيات/خريطة) → توحيد ديناميكي
+            if(sc.logo_url) merged.logo = sc.logo_url;
+            if(sc.lat) merged.latitude = sc.lat;
+            if(sc.lng) merged.longitude = sc.lng;
+            if(sc.map_url) merged.hasMap = sc.map_url;
             window.applySchoolSeo(merged);
           }
         } else {
@@ -1967,7 +1972,7 @@ document.addEventListener('DOMContentLoaded',function(){
 (function(){
   var SCHOOL_PROFILE = {
     name: 'مدارس الإبداع والتميز الدولية',
-    tagline: 'منصة تعليمية ذكية متكاملة',
+    tagline: 'مدرسة أهلية رائدة في صنعاء',
     description: 'مدارس الإبداع والتميز الدولية بصنعاء — صرح تعليمي رائد يقدّم مراحل رياض الأطفال والابتدائية والمتوسطة والثانوية، بأقسام منفصلة للبنين والبنات، ضمن منصة تعليمية ذكية متكاملة تبني جيلاً مبدعاً ومتميزاً أخلاقياً وعلمياً.',
     url: 'https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html',
     logo: 'https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400',
@@ -1976,6 +1981,9 @@ document.addEventListener('DOMContentLoaded',function(){
     streetAddress: 'السنينة - حي الطيران',
     addressLocality: 'صنعاء',
     addressCountry: 'YE',
+    latitude: 15.3533474,
+    longitude: 44.163141,
+    hasMap: 'https://www.google.com/maps/search/?api=1&query=15.3533474,44.163141',
     sameAs: [
       'https://www.facebook.com/abdaawatmuaz.school',
       'https://www.instagram.com/ebdaa.2026',
@@ -2027,12 +2035,28 @@ document.addEventListener('DOMContentLoaded',function(){
       },
       sameAs: p.sameAs
     };
-    var old = document.getElementById('ld-school');
+    if(p.latitude && p.longitude){
+      ld.geo = { '@type':'GeoCoordinates', latitude: p.latitude, longitude: p.longitude };
+    }
+    if(p.hasMap) ld.hasMap = p.hasMap;
+    injectLd('ld-school', ld);
+
+    // WebSite — يجعل Google يعرض اسم المدرسة كـ«اسم الموقع» بدل نطاق Cloudflare
+    var siteUrl = (window.location && window.location.origin) ? (window.location.origin + '/') : p.url;
+    injectLd('ld-website', {
+      '@context':'https://schema.org', '@type':'WebSite',
+      name: p.name, alternateName: p.alternateName || 'الإبداع والتميز',
+      url: siteUrl, inLanguage:'ar'
+    });
+  }
+
+  function injectLd(id, obj){
+    var old = document.getElementById(id);
     if(old) old.parentNode.removeChild(old);
     var s = document.createElement('script');
     s.type = 'application/ld+json';
-    s.id = 'ld-school';
-    s.textContent = JSON.stringify(ld);
+    s.id = id;
+    s.textContent = JSON.stringify(obj);
     document.head.appendChild(s);
   }
 
