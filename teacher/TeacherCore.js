@@ -891,14 +891,25 @@ function getCertificatesDataProtected(params) {
     var section = _safeStr(params.section);
     if (!month || !grade) return { success: false, error: 'اختر الفصل/الشهر والصف الدراسي' };
     try {
-      // مواد الصف لهذا الشهر (توزيع المواد حسب الصف)
+      // مواد الصف لهذا الشهر (توزيع المواد حسب الصف).
+      // قراءة قوية بسلسلة احتياطيات — تماماً كما تعمل صفحة إدارة الدرجات:
+      //   subjectsByMonth[month] → allSubjects → مواد المعلم → ALL_SUBJECTS_ORDERED.
+      // هذا يمنع "لا توجد مواد" عند نصف/نهاية العام أو اختلاف نص رأس الشهر.
       var struct = _getGradesStructureInternal({
         isAdmin: session.isAdmin, subjects: session.subjects,
         classes: session.classes, sections: session.sections
       });
-      var subjects = (struct && struct.subjectsByMonth && struct.subjectsByMonth[month]) ||
-                     (struct && struct.allSubjects) || [];
-      if (!subjects.length) return { success: false, error: 'لا توجد مواد مُعرّفة لهذا الشهر' };
+      var subjects = (struct && struct.subjectsByMonth && struct.subjectsByMonth[month]) || [];
+      if (!subjects.length) subjects = (struct && struct.allSubjects) || [];
+      if (!subjects.length && session.subjects && session.subjects.indexOf('جميع المواد') === -1) {
+        subjects = session.subjects;
+      }
+      if (!subjects.length && typeof ALL_SUBJECTS_ORDERED !== 'undefined') {
+        subjects = ALL_SUBJECTS_ORDERED;
+      }
+      if (!subjects.length) {
+        return { success: false, error: 'لا توجد مواد مُعرّفة. تأكد من رؤوس ورقة "النصفي/الدرجات".' };
+      }
 
       var periodType = (typeof GS_getPeriodType === 'function') ? GS_getPeriodType(month) : 'regular';
       var byCode = {}, order = [];
@@ -911,17 +922,21 @@ function getCertificatesDataProtected(params) {
         for (var i = 0; i < res.students.length; i++) {
           var st = res.students[i];
           if (!st.code) continue;
+          // ذكاء: تجاهل المواد غير المقرّرة لهذا الشهر/الصف (لا أعمدة درجات)
+          // حتى لا تظهر صفوف فارغة في الشهادة — يُظهر فقط المواد الحقيقية.
+          if (!st.grades || !st.grades.length) continue;
           if (!byCode[st.code]) {
             byCode[st.code] = { code: st.code, name: st.name, grade: st.grade, section: st.section, subjects: [] };
             order.push(st.code);
           }
-          byCode[st.code].subjects.push({ name: subj, grades: st.grades || [] });
+          byCode[st.code].subjects.push({ name: subj, grades: st.grades });
         }
       }
 
       var students = [];
       for (var k = 0; k < order.length; k++) {
         var stu = byCode[order[k]];
+        if (!stu.subjects.length) continue;   // لا مواد فعلية لهذا الطالب → تجاوز
         var totalSum = 0, maxSum = 0, entered = 0;
         for (var m = 0; m < stu.subjects.length; m++) {
           var g = stu.subjects[m].grades || [], tot = '', tmax = 100;
