@@ -8650,15 +8650,35 @@ function renderCertificates(){
 }
 
 function cert_loadStructure(){
+  // ① املأ القوائم فوراً من الثوابت/الصلاحيات — نفس مصدر صفحة إدارة الدرجات،
+  //    فلا تعتمد الواجهة على الخادم لتظهر (تعمل حتى لو تأخّر/فشل الاتصال).
+  var months   = (typeof ALL_MONTHS !== 'undefined' && ALL_MONTHS.length) ? ALL_MONTHS.slice() : [];
+  var grades   = (typeof myGrades   === 'function') ? myGrades()   : [];
+  var sections = (typeof mySections === 'function') ? mySections() : [];
+  cert_fillFilters(months, grades, sections);
+  // ② تحسين اختياري من الخادم (يدمج فقط إن رجع غير فارغ — لا يمسح المملوء محلياً).
   callServer('getGradesStructureProtected', {}, function(r){
     CERT.struct = r || {};
-    var months = (r && r.months) || [];
-    var grades = (r && r.grades) || (typeof myGrades==='function'?myGrades():[]);
-    var sections = (r && r.sections) || (typeof mySections==='function'?mySections():[]);
-    var mEl=document.getElementById('cert-month'); if(mEl){ var mo='<option value="">— اختر —</option>'; for(var i=0;i<months.length;i++) mo+='<option value="'+escapeHtml(months[i])+'">'+escapeHtml(months[i])+'</option>'; mEl.innerHTML=mo; }
-    var gEl=document.getElementById('cert-grade'); if(gEl){ var go='<option value="">— اختر —</option>'; for(var j=0;j<grades.length;j++) go+='<option value="'+escapeHtml(grades[j])+'">'+escapeHtml(grades[j])+'</option>'; gEl.innerHTML=go; }
-    var sEl=document.getElementById('cert-section'); if(sEl){ var so='<option value="جميع الشعب">— جميع الشعب —</option>'; for(var k=0;k<sections.length;k++) so+='<option value="'+escapeHtml(sections[k])+'">'+escapeHtml(sections[k])+'</option>'; sEl.innerHTML=so; }
-  }, function(){ /* تجاهل: تبقى القوائم فارغة */ });
+    cert_fillFilters(
+      (r && r.months   && r.months.length)   ? r.months   : months,
+      (r && r.grades   && r.grades.length)   ? r.grades   : grades,
+      (r && r.sections && r.sections.length) ? r.sections : sections
+    );
+  }, function(){ /* تجاهل: القوائم مملوءة محلياً بالفعل */ });
+}
+
+function cert_fillFilters(months, grades, sections){
+  var mEl=document.getElementById('cert-month');
+  if(mEl){ var cm=mEl.value; mEl.innerHTML=buildSelectOptions(months,'— اختر الفصل/الشهر —',cm); }
+  var gEl=document.getElementById('cert-grade');
+  if(gEl){ var cg=gEl.value; gEl.innerHTML=buildSelectOptions(grades,'— اختر الصف —',cg); }
+  var sEl=document.getElementById('cert-section');
+  if(sEl){
+    var cs=sEl.value || 'جميع الشعب';
+    var so='<option value="جميع الشعب"'+(cs==='جميع الشعب'?' selected':'')+'>— جميع الشعب —</option>';
+    for(var k=0;k<sections.length;k++){ var sv=String(sections[k]); if(!sv||sv==='جميع الشعب') continue; so+='<option value="'+escapeHtml(sv)+'"'+(cs===sv?' selected':'')+'>'+escapeHtml(sv)+'</option>'; }
+    sEl.innerHTML=so;
+  }
 }
 
 function cert_loadData(){
@@ -8703,8 +8723,10 @@ function cert_renderPreview(){
 function cert_certHtml(stu){
   var d=CERT.data, type=d.periodType, month=d.month;
   var subjects=stu.subjects||[];
-  // رؤوس الأعمدة من أول مادة (تتكيّف مع نوع الفترة: شهري/نصفي/نهائي)
-  var cols=(subjects[0]&&subjects[0].grades)?subjects[0].grades:[];
+  // رؤوس الأعمدة: نختار المادة ذات أكثر أعمدة كقالب (تتكيّف مع نوع الفترة:
+  // شهري/نصفي/نهائي) ودفاعياً تغطّي كل المواد إن اختلفت عدد الأعمدة.
+  var cols=[];
+  for(var ci=0; ci<subjects.length; ci++){ var gg=(subjects[ci]&&subjects[ci].grades)?subjects[ci].grades:[]; if(gg.length>cols.length) cols=gg; }
   var thead='<th style="width:34px">م</th><th>المادة</th>';
   for(var c=0;c<cols.length;c++){ var lab=cols[c].type+(cols[c].isTotal?(' / '+(cols[c].max||100)):''); thead+='<th>'+escapeHtml(lab)+'</th>'; }
   var rows='';
