@@ -1835,6 +1835,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
+  <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
@@ -4152,6 +4153,7 @@ function showSection(name) {
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
+      scoresheets: renderScoreSheets,
       calendar: renderCalendar,
       profile: renderProfile
     };
@@ -4253,7 +4255,7 @@ function initSidebarByRole() {
   if (u.role === 'supervisor' || u.role === 'deputy') {
     if (adminSection) adminSection.style.display = 'block';
     var hideItems = ['si-teachers-mgmt', 'si-lists-mgmt', 'si-adminTeachers', 'si-adminStudents'];
-    if (u.role === 'supervisor') { hideItems.push('si-schedSettings'); hideItems.push('si-certificates'); } // المشرف لا يضبط التواقيت ولا يطبع الشهادات
+    if (u.role === 'supervisor') { hideItems.push('si-schedSettings'); hideItems.push('si-certificates'); hideItems.push('si-scoresheets'); } // المشرف لا يضبط التواقيت ولا يطبع الشهادات/الكشوفات
     for (var i = 0; i < hideItems.length; i++) {
       var item = document.getElementById(hideItems[i]);
       if (item) item.style.display = 'none';
@@ -8736,66 +8738,313 @@ function cert_certHtml(stu){
     for(var gi=0; gi<cols.length; gi++){ var v=(g[gi]&&g[gi].value!=='' && g[gi].value!=null)?g[gi].value:'-'; rows+='<td'+((cols[gi]&&cols[gi].isTotal)?' style="font-weight:700"':'')+'>'+escapeHtml(String(v))+'</td>'; }
     rows+='</tr>';
   }
-  var resColor = stu.result==='ناجح' ? '#2e7d32' : (stu.result==='راسب' ? '#c62828' : '#e65100');
+  var resClass = stu.result==='ناجح' ? 'ok' : (stu.result==='راسب' ? 'no' : 'rev');
+  var sn=cert_schoolName();
   return ''+
   '<div class="cert">' +
+    '<div class="cert-watermark">'+escapeHtml(sn)+'</div>' +
     '<div class="cert-head">' +
-      '<div class="cert-logo">🏫</div>' +
-      '<div class="cert-school">'+escapeHtml(cert_schoolName())+'</div>' +
-      '<div class="cert-sub">'+escapeHtml(cert_periodTitle(type))+' — '+escapeHtml(month)+' · '+escapeHtml(stu.grade||'')+'</div>' +
+      '<div class="cert-crest">🎓</div>' +
+      '<div class="cert-htext">' +
+        '<div class="cert-school">'+escapeHtml(sn)+'</div>' +
+        '<div class="cert-title">شهادة درجات الطالب</div>' +
+        '<div class="cert-sub">'+escapeHtml(month)+' · '+escapeHtml(stu.grade||'')+(stu.section?(' / '+escapeHtml(stu.section)):'')+'</div>' +
+      '</div>' +
     '</div>' +
     '<div class="cert-info">' +
-      '<div><span>اسم الطالب:</span> <b>'+escapeHtml(stu.name||'')+'</b></div>' +
-      '<div><span>الكود:</span> <b>'+escapeHtml(stu.code||'')+'</b></div>' +
-      '<div><span>الصف:</span> <b>'+escapeHtml(stu.grade||'')+'</b></div>' +
-      '<div><span>الشعبة:</span> <b>'+escapeHtml(stu.section||'')+'</b></div>' +
-      '<div><span>الفصل:</span> <b>'+escapeHtml(month)+'</b></div>' +
-      '<div><span>التاريخ:</span> <b>'+escapeHtml(cert_hijriDate())+'</b></div>' +
+      '<div><span>اسم الطالب</span><b>'+escapeHtml(stu.name||'')+'</b></div>' +
+      '<div><span>الكود</span><b>'+escapeHtml(stu.code||'')+'</b></div>' +
+      '<div><span>الصف</span><b>'+escapeHtml(stu.grade||'')+'</b></div>' +
+      '<div><span>الشعبة</span><b>'+escapeHtml(stu.section||'')+'</b></div>' +
+      '<div><span>الفترة</span><b>'+escapeHtml(month)+'</b></div>' +
+      '<div><span>التاريخ</span><b>'+escapeHtml(cert_hijriDate())+'</b></div>' +
     '</div>' +
-    '<div class="cert-grades-title">📋 كشف درجات المواد الدراسية</div>' +
     '<table class="cert-table"><thead><tr>'+thead+'</tr></thead><tbody>'+rows+'</tbody></table>' +
     '<div class="cert-summary">' +
-      '<div class="cs-box"><div class="cs-v">'+stu.totalSum+' / '+stu.maxSum+'</div><div class="cs-l">المجموع الكلي ('+stu.subjectCount+' مادة)</div></div>' +
-      '<div class="cs-box"><div class="cs-v">'+stu.percentage+'%</div><div class="cs-l">النسبة المئوية · '+escapeHtml(cert_periodTag(type))+'</div></div>' +
-      '<div class="cs-box"><div class="cs-v">'+escapeHtml(stu.gradeLabel)+'</div><div class="cs-l">التقدير</div></div>' +
-      '<div class="cs-box"><div class="cs-v" style="color:'+resColor+'">'+escapeHtml(stu.result)+'</div><div class="cs-l">النتيجة · '+stu.enteredCount+'/'+stu.subjectCount+'</div></div>' +
+      '<div class="cs-box b1"><div class="cs-v">'+stu.totalSum+'<small> / '+stu.maxSum+'</small></div><div class="cs-l">المجموع الكلي · '+stu.subjectCount+' مادة</div></div>' +
+      '<div class="cs-box b2"><div class="cs-v">'+stu.percentage+'%</div><div class="cs-l">النسبة المئوية</div></div>' +
+      '<div class="cs-box b3"><div class="cs-v">'+escapeHtml(stu.gradeLabel)+'</div><div class="cs-l">التقدير العام</div></div>' +
+      '<div class="cs-box '+resClass+'"><div class="cs-v">'+escapeHtml(stu.result)+'</div><div class="cs-l">النتيجة · '+stu.enteredCount+'/'+stu.subjectCount+'</div></div>' +
     '</div>' +
     '<div class="cert-sign">' +
-      '<div><div class="cs-role">مدير المدرسة</div><div class="cs-line">التوقيع</div></div>' +
-      '<div><div class="cs-role">رائد الصف</div><div class="cs-line">التوقيع</div></div>' +
-      '<div><div class="cs-role">المرشد الأكاديمي</div><div class="cs-line">التوقيع</div></div>' +
+      '<div><div class="cs-role">مدير المدرسة</div><div class="cs-line"></div></div>' +
+      '<div><div class="cs-role">رائد الصف</div><div class="cs-line"></div></div>' +
+      '<div><div class="cs-role">المرشد الأكاديمي</div><div class="cs-line"></div></div>' +
     '</div>' +
-    '<div class="cert-foot">تم إنشاء هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(cert_schoolName())+'</div>' +
+    '<div class="cert-foot">صدرت هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(sn)+'</div>' +
   '</div>';
 }
 
 function cert_styleBlock(){
   return '<style id="cert-style">' +
-  '.cert-print-area{display:flex;flex-direction:column;gap:14px;margin-top:14px}' +
-  '.cert{border:1px solid var(--border,#e2e8f0);border-radius:12px;background:#fff;color:#1e293b;padding:16px 18px;page-break-inside:avoid;break-inside:avoid}' +
-  '.cert-head{text-align:center;border-bottom:2px solid #0F2C5C;padding-bottom:10px;margin-bottom:10px}' +
-  '.cert-logo{font-size:34px}' +
-  '.cert-school{font-size:18px;font-weight:800;color:#0F2C5C;margin-top:2px}' +
-  '.cert-sub{font-size:12px;color:#64748b;margin-top:2px}' +
-  '.cert-info{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;font-size:13px;margin-bottom:10px}' +
-  '.cert-info span{color:#64748b}' +
-  '.cert-grades-title{font-weight:700;font-size:13px;margin:6px 0;color:#0F2C5C}' +
-  '.cert-table{width:100%;border-collapse:collapse;font-size:12px}' +
-  '.cert-table th,.cert-table td{border:1px solid #cbd5e1;padding:5px 6px;text-align:center}' +
-  '.cert-table th{background:#0F2C5C;color:#fff;font-weight:700}' +
+  '.cert-print-area{display:flex;flex-direction:column;gap:18px;margin-top:14px;--cv-navy:#0F2C5C;--cv-navy2:#1e3a8a;--cv-gold:#C9A227;--cv-gold2:#E6C757}' +
+  '.cert{position:relative;overflow:hidden;border:1px solid #e2e8f0;border-radius:14px;background:#fff;color:#1e293b;padding:0 0 14px;box-shadow:0 8px 24px rgba(15,44,92,.10);page-break-inside:avoid;break-inside:avoid}' +
+  '.cert::before{content:"";position:absolute;top:6px;left:6px;right:6px;bottom:6px;border:2px solid var(--cv-gold);border-radius:10px;opacity:.45;pointer-events:none}' +
+  '.cert-watermark{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:900;color:rgba(15,44,92,.045);transform:rotate(-18deg);white-space:nowrap;pointer-events:none}' +
+  '.cert-head{position:relative;display:flex;align-items:center;gap:14px;justify-content:center;text-align:center;background:linear-gradient(135deg,var(--cv-navy),var(--cv-navy2));color:#fff;padding:14px 18px;border-bottom:3px solid var(--cv-gold)}' +
+  '.cert-crest{flex:0 0 auto;width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:27px;background:linear-gradient(135deg,var(--cv-gold),var(--cv-gold2));box-shadow:0 0 0 3px rgba(255,255,255,.25),0 4px 10px rgba(0,0,0,.18)}' +
+  '.cert-htext{text-align:center}' +
+  '.cert-school{font-size:17px;font-weight:800;letter-spacing:.2px}' +
+  '.cert-title{font-size:13px;font-weight:700;color:var(--cv-gold2);margin-top:1px}' +
+  '.cert-sub{font-size:11px;opacity:.92;margin-top:1px}' +
+  '.cert-info{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:7px 12px;font-size:12.5px;margin:12px 14px 8px;padding:10px 12px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px}' +
+  '.cert-info>div{display:flex;flex-direction:column}' +
+  '.cert-info span{color:#64748b;font-size:10px}' +
+  '.cert-info b{color:var(--cv-navy)}' +
+  '.cert-table{position:relative;width:calc(100% - 28px);margin:0 14px;border-collapse:collapse;font-size:12px}' +
+  '.cert-table th,.cert-table td{border:1px solid #d7dee8;padding:5px 6px;text-align:center}' +
+  '.cert-table th{background:var(--cv-navy);color:#fff;font-weight:700;font-size:11px}' +
+  '.cert-table th.tot,.cert-table td.tot{background:rgba(201,162,39,.16);font-weight:800;color:var(--cv-navy)}' +
+  '.cert-table td.subj{text-align:right;font-weight:700;color:var(--cv-navy)}' +
   '.cert-table tbody tr:nth-child(even){background:#f8fafc}' +
-  '.cert-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}' +
-  '.cs-box{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:8px;text-align:center}' +
-  '.cs-v{font-size:15px;font-weight:800;color:#0F2C5C}.cs-l{font-size:10.5px;color:#64748b;margin-top:2px}' +
-  '.cert-sign{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;text-align:center}' +
-  '.cs-role{font-weight:700;font-size:12px}.cs-line{margin-top:26px;border-top:1px dashed #94a3b8;font-size:11px;color:#64748b;padding-top:3px}' +
-  '.cert-foot{margin-top:12px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px}' +
+  '.cert-summary{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 14px}' +
+  '.cs-box{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:9px 6px;text-align:center;border-top:3px solid var(--cv-navy)}' +
+  '.cs-box.b2{border-top-color:var(--cv-gold)}.cs-box.b3{border-top-color:#6366f1}' +
+  '.cs-box.ok{border-top-color:#16a34a}.cs-box.no{border-top-color:#dc2626}.cs-box.rev{border-top-color:#ea580c}' +
+  '.cs-v{font-size:16px;font-weight:800;color:var(--cv-navy)}.cs-v small{font-size:10px;color:#64748b;font-weight:600}' +
+  '.cs-box.ok .cs-v{color:#16a34a}.cs-box.no .cs-v{color:#dc2626}.cs-box.rev .cs-v{color:#ea580c}' +
+  '.cs-l{font-size:10px;color:#64748b;margin-top:2px}' +
+  '.cert-sign{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:16px 14px 0;text-align:center}' +
+  '.cs-role{font-weight:700;font-size:11.5px;color:var(--cv-navy)}.cs-line{margin-top:24px;border-top:1.5px dotted #94a3b8}' +
+  '.cert-foot{position:relative;margin:12px 14px 0;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px}' +
+  '.cert,.cert *{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
   '@media print{' +
     'body *{visibility:hidden!important}' +
     '#certPrintArea,#certPrintArea *{visibility:visible!important}' +
-    '#certPrintArea{position:absolute;inset:0;margin:0;padding:0;gap:0;display:block}' +
-    '.cert{border:none;border-radius:0;box-shadow:none;height:148.5mm;padding:10mm 12mm;page-break-inside:avoid;break-inside:avoid;border-bottom:1px dashed #cbd5e1}' +
+    '#certPrintArea{position:absolute;top:0;left:0;right:0;margin:0;padding:0;gap:0;display:block}' +
+    '.cert{border:none;border-radius:0;box-shadow:none;height:148.5mm;padding:0 0 6mm;page-break-inside:avoid;break-inside:avoid}' +
+    '.cert::before{top:4mm;left:4mm;right:4mm;bottom:4mm}' +
+    '.cert-head{padding:6mm 10mm}' +
+    '.cert-info,.cert-summary,.cert-sign,.cert-foot{margin-left:10mm;margin-right:10mm}' +
+    '.cert-table{width:auto;margin-left:10mm;margin-right:10mm}' +
     '@page{size:A4 portrait;margin:0}' +
+  '}' +
+  '</style>';
+}
+
+// ════════════════════════════════════════════════════════
+//  📋 SCORE SHEETS — نظام عرض وطباعة الكشوفات (مدير/وكيل/محاسب)
+//  جدول نتائج كل الطلاب لفترة، صف واحد أو الكل، بأعمدة فرعية ديناميكية،
+//  معدّل لكل طالب + معدّل عام + إحصائيات + طباعة أفقية A4.
+// ════════════════════════════════════════════════════════
+var SS = { data: null };
+
+function ss_num(v){ if(v===''||v==null||v==='—')return null; var n=parseFloat(v); return isNaN(n)?null:n; }
+function ss_band(pct){ pct=parseFloat(pct)||0;
+  if(pct>=90)return{l:'ممتاز',c:'#16a34a'}; if(pct>=80)return{l:'جيد جداً',c:'#2563eb'};
+  if(pct>=65)return{l:'جيد',c:'#0891b2'}; if(pct>=50)return{l:'مقبول',c:'#ca8a04'};
+  if(pct>=35)return{l:'ضعيف',c:'#ea580c'}; return{l:'ضعيف جداً',c:'#dc2626'}; }
+
+function renderScoreSheets(){
+  var el=document.getElementById('dynamicContent');
+  el.innerHTML =
+    '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(37,99,235,.12)">📋</div>' +
+      '<div class="section-header-title">نظام عرض وطباعة الكشوفات</div></div>' +
+      '<div class="section-body">' +
+        '<div class="alert alert-info" style="margin-bottom:12px">عرض وطباعة نتائج جميع الطلاب جدولياً — يدعم الشهور العادية ونصف العام ونهاية العام · مواد كل صف ديناميكياً · معدّل وإحصائيات تلقائية.</div>' +
+        '<div class="filter-bar"><div class="filter-bar-title">🔎 تصفية البيانات</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group"><label class="form-label">الفترة الدراسية *</label><select class="form-select" id="ss-month"><option value="">— اختر —</option></select></div>' +
+            '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="ss-grade"><option value="الكل">— كل الصفوف —</option></select></div>' +
+            '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="ss-section"><option value="جميع الشعب">— جميع الشعب —</option></select></div>' +
+          '</div>' +
+          '<button class="btn btn-primary" onclick="ss_loadData()">📥 تحميل البيانات</button>' +
+          '<div id="ss-status" style="margin-top:8px"></div>' +
+        '</div>' +
+        '<div id="ss-toolbar" style="display:none;margin:12px 0;gap:8px;flex-wrap:wrap;align-items:center"></div>' +
+        '<div id="ssReport"></div>' +
+      '</div></div>' + ss_styleBlock();
+  ss_loadStructure();
+}
+
+function ss_loadStructure(){
+  var months=(typeof ALL_MONTHS!=='undefined'&&ALL_MONTHS.length)?ALL_MONTHS.slice():[];
+  var grades=(typeof myGrades==='function')?myGrades():[];
+  var sections=(typeof mySections==='function')?mySections():[];
+  ss_fillFilters(months,grades,sections);
+  callServer('getGradesStructureProtected',{},function(r){
+    ss_fillFilters(
+      (r&&r.months&&r.months.length)?r.months:months,
+      (r&&r.grades&&r.grades.length)?r.grades:grades,
+      (r&&r.sections&&r.sections.length)?r.sections:sections
+    );
+  },function(){ /* القوائم مملوءة محلياً */ });
+}
+function ss_fillFilters(months,grades,sections){
+  var mEl=document.getElementById('ss-month');
+  if(mEl){ var cm=mEl.value; mEl.innerHTML=buildSelectOptions(months,'— اختر الفترة —',cm); }
+  var gEl=document.getElementById('ss-grade');
+  if(gEl){ var cg=gEl.value||'الكل'; var go='<option value="الكل"'+(cg==='الكل'?' selected':'')+'>— كل الصفوف —</option>';
+    for(var j=0;j<grades.length;j++){ var gv=String(grades[j]); if(!gv||gv==='الكل')continue; go+='<option value="'+escapeHtml(gv)+'"'+(cg===gv?' selected':'')+'>'+escapeHtml(gv)+'</option>'; }
+    gEl.innerHTML=go; }
+  var sEl=document.getElementById('ss-section');
+  if(sEl){ var cs=sEl.value||'جميع الشعب'; var so='<option value="جميع الشعب"'+(cs==='جميع الشعب'?' selected':'')+'>— جميع الشعب —</option>';
+    for(var k=0;k<sections.length;k++){ var sv=String(sections[k]); if(!sv||sv==='جميع الشعب')continue; so+='<option value="'+escapeHtml(sv)+'"'+(cs===sv?' selected':'')+'>'+escapeHtml(sv)+'</option>'; }
+    sEl.innerHTML=so; }
+}
+
+function ss_loadData(){
+  var gv=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  var month=gv('ss-month'), grade=gv('ss-grade'), section=gv('ss-section');
+  var st=document.getElementById('ss-status');
+  if(!month){ st.innerHTML='<div class="alert alert-warning">اختر الفترة الدراسية</div>'; return; }
+  st.innerHTML='<div style="color:#1a237e">⏳ جارٍ تحميل البيانات...</div>';
+  callServer('getScoreSheetsDataProtected', { month:month, grade:grade, section:section }, function(r){
+    if(!r || !r.success){ st.innerHTML='<div class="alert alert-danger">'+((r&&r.error)||'تعذّر التحميل')+'</div>'; return; }
+    SS.data=r;
+    st.innerHTML='<div style="color:#2e7d32">✅ تم تحميل بيانات '+(r.count||0)+' طالب بنجاح.</div>';
+    ss_renderToolbar(); ss_renderReport();
+  }, function(e){ st.innerHTML='<div class="alert alert-danger">'+((e&&e.message)||'خطأ في الاتصال')+'</div>'; });
+}
+
+function ss_renderToolbar(){
+  var tb=document.getElementById('ss-toolbar'); if(!tb||!SS.data) return;
+  tb.style.display='flex';
+  tb.innerHTML='<button class="btn btn-primary btn-sm" onclick="ss_print()">🖨️ طباعة الكشف</button>' +
+    '<span class="badge badge-info">'+(SS.data.count||0)+' طالب · '+((SS.data.subjects||[]).length)+' مادة</span>';
+}
+function ss_print(){ try{ window.print(); }catch(e){ toast('تعذّرت الطباعة على هذا الجهاز','error'); } }
+
+function ss_renderReport(){
+  var area=document.getElementById('ssReport'); if(!area||!SS.data) return;
+  var d=SS.data, students=d.students||[], subjects=d.subjects||[];
+  if(!students.length){ area.innerHTML='<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا يوجد طلاب لعرضهم</div></div>'; return; }
+
+  // قالب الأعمدة الفرعية: المادة الأكثر أعمدة (يتكيّف مع نوع الفترة)
+  var tpl=[];
+  for(var i=0;i<students.length;i++){ var ss=students[i].subjects||[]; for(var j=0;j<ss.length;j++){ var gg=ss[j].grades||[]; if(gg.length>tpl.length) tpl=gg; } }
+  var nSub=tpl.length||1;
+  var dataType = nSub+' أعمدة لكل مادة';
+
+  var nowStr=''; try{ nowStr=new Date().toLocaleString('ar'); }catch(e){ nowStr=cert_hijriDate(); }
+
+  // بطاقة معلومات التقرير
+  var info='<div class="ss-info-card"><div class="ss-card-title">📄 معلومات التقرير</div><div class="ss-info-grid">' +
+    '<div><span>الفترة</span><b>'+escapeHtml(d.month||'')+'</b></div>' +
+    '<div><span>الصف</span><b>'+escapeHtml(d.grade||'الكل')+'</b></div>' +
+    '<div><span>عدد الطلاب</span><b>'+students.length+'</b></div>' +
+    '<div><span>عدد المواد</span><b>'+subjects.length+'</b></div>' +
+    '<div><span>نوع البيانات</span><b>'+escapeHtml((d.month||'')+' · '+dataType)+'</b></div>' +
+    '<div><span>تاريخ التحميل</span><b>'+escapeHtml(nowStr)+'</b></div>' +
+    '</div></div>';
+
+  // قائمة المواد
+  var subjList='<div class="ss-info-card"><div class="ss-card-title">📚 المواد المدرجة</div><div class="ss-subjects">';
+  for(var s2=0;s2<subjects.length;s2++){ subjList+='<span class="ss-chip"><b>'+(s2+1)+'</b> '+escapeHtml(subjects[s2])+'</span>'; }
+  subjList+='</div></div>';
+
+  // مفتاح الألوان (مطابق لتقدير الخادم)
+  var legend='<div class="ss-legend">' +
+    '<span style="--c:#16a34a">ممتاز (90+)</span><span style="--c:#2563eb">جيد جداً (80-89)</span>' +
+    '<span style="--c:#0891b2">جيد (65-79)</span><span style="--c:#ca8a04">مقبول (50-64)</span>' +
+    '<span style="--c:#ea580c">ضعيف (35-49)</span><span style="--c:#dc2626">ضعيف جداً (<35)</span></div>';
+
+  area.innerHTML = info + subjList + legend + ss_tableHtml(students,subjects,tpl) + ss_statsHtml(students);
+}
+
+function ss_tableHtml(students,subjects,tpl){
+  var nSub=tpl.length||1, isAll=(SS.data.grade==='الكل');
+  // رأس مزدوج
+  var fixed='<th rowspan="2">#</th><th rowspan="2">الكود</th><th rowspan="2" class="nm">الاسم</th>' +
+    (isAll?'<th rowspan="2">الصف</th>':'') + '<th rowspan="2">الشعبة</th><th rowspan="2" class="avg">المعدل</th>';
+  var h1='<tr>'+fixed, h2='<tr>';
+  for(var si=0;si<subjects.length;si++){
+    h1+='<th colspan="'+nSub+'" class="subjh">'+escapeHtml(subjects[si])+'</th>';
+    for(var c=0;c<nSub;c++){ var lab=(tpl[c]&&tpl[c].type)?tpl[c].type:('ع'+(c+1)); h2+='<th'+((tpl[c]&&tpl[c].isTotal)?' class="tot"':'')+'>'+escapeHtml(lab)+'</th>'; }
+  }
+  h1+='</tr>'; h2+='</tr>';
+
+  // مجاميع الأعمدة للمعدل العام
+  var colSum=[]; for(var a=0;a<subjects.length;a++){ colSum[a]=[]; for(var b=0;b<nSub;b++) colSum[a][b]={s:0,n:0}; }
+  var avgSum=0, avgN=0;
+
+  var body='';
+  for(var r=0;r<students.length;r++){
+    var stu=students[r], map={};
+    var sj=stu.subjects||[]; for(var m=0;m<sj.length;m++) map[sj[m].name]=sj[m].grades||[];
+    var band=ss_band(stu.percentage);
+    if(stu.enteredCount>0){ avgSum+=(parseFloat(stu.average)||0); avgN++; }
+    body+='<tr><td>'+(r+1)+'</td><td>'+escapeHtml(stu.code||'')+'</td><td class="nm">'+escapeHtml(stu.name||'')+'</td>' +
+      (isAll?('<td>'+escapeHtml(stu.grade||'')+'</td>'):'') +
+      '<td>'+escapeHtml(stu.section||'')+'</td>' +
+      '<td class="avg" style="color:'+band.c+';font-weight:800">'+(stu.average!=null?stu.average:'—')+'</td>';
+    for(var si2=0;si2<subjects.length;si2++){
+      var grades=map[subjects[si2]]||[];
+      for(var c2=0;c2<nSub;c2++){
+        var cell=grades[c2], val=(cell&&cell.value!=='' && cell.value!=null)?cell.value:'—';
+        var nv=ss_num(val); if(nv!==null){ colSum[si2][c2].s+=nv; colSum[si2][c2].n++; }
+        body+='<td'+((tpl[c2]&&tpl[c2].isTotal)?' class="tot"':'')+'>'+escapeHtml(String(val))+'</td>';
+      }
+    }
+    body+='</tr>';
+  }
+
+  // صف المعدل العام
+  var foot='<tr class="ss-grand"><td colspan="'+(isAll?4:3)+'">المعدل العام</td>' +
+    '<td class="avg">'+(avgN?(Math.round((avgSum/avgN)*100)/100):'—')+'</td>';
+  for(var si3=0;si3<subjects.length;si3++){
+    for(var c3=0;c3<nSub;c3++){ var o=colSum[si3][c3]; foot+='<td'+((tpl[c3]&&tpl[c3].isTotal)?' class="tot"':'')+'>'+(o.n?(Math.round((o.s/o.n)*10)/10):'—')+'</td>'; }
+  }
+  foot+='</tr>';
+
+  return '<div class="ss-card-title" style="margin-top:6px">📊 نتائج الطلاب</div>' +
+    '<div class="ss-wrap"><table class="ss-table"><thead>'+h1+h2+'</thead><tbody>'+body+'</tbody><tfoot>'+foot+'</tfoot></table></div>';
+}
+
+function ss_statsHtml(students){
+  var sum=0,n=0,hi=null,lo=null,pass=0,fail=0;
+  for(var i=0;i<students.length;i++){
+    var st=students[i]; if(st.enteredCount<=0) continue;
+    var a=parseFloat(st.average)||0, p=parseFloat(st.percentage)||0;
+    sum+=a; n++; if(hi===null||a>hi)hi=a; if(lo===null||a<lo)lo=a;
+    if(p>=50)pass++; else fail++;
+  }
+  var avg=n?(Math.round((sum/n)*100)/100):0;
+  var rate=(pass+fail)?(Math.round((pass/(pass+fail))*1000)/10):0;
+  function card(v,l,c){ return '<div class="ss-stat" style="--c:'+c+'"><div class="ss-stat-v">'+v+'</div><div class="ss-stat-l">'+l+'</div></div>'; }
+  return '<div class="ss-card-title" style="margin-top:10px">📈 إحصائيات النتائج</div><div class="ss-stats">' +
+    card(avg,'متوسط الدرجات','#2563eb') + card(hi===null?0:hi,'أعلى درجة','#16a34a') +
+    card(lo===null?0:lo,'أقل درجة','#ea580c') + card(rate+'%','نسبة النجاح','#0891b2') +
+    card(pass,'عدد الناجحين','#16a34a') + card(fail,'عدد الراسبين','#dc2626') + '</div>';
+}
+
+function ss_styleBlock(){
+  return '<style id="ss-style">' +
+  '#ssReport{--ssn:#0F2C5C}' +
+  '.ss-info-card{background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:10px 12px;margin:12px 0}' +
+  '.ss-card-title{font-weight:800;color:var(--ssn);font-size:13px;margin-bottom:8px}' +
+  '.ss-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;font-size:12.5px}' +
+  '.ss-info-grid>div{display:flex;flex-direction:column}.ss-info-grid span{color:#64748b;font-size:10px}.ss-info-grid b{color:var(--ssn)}' +
+  '.ss-subjects{display:flex;flex-wrap:wrap;gap:6px}' +
+  '.ss-chip{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:3px 10px;font-size:12px;color:var(--ssn)}.ss-chip b{color:#2563eb}' +
+  '.ss-legend{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}' +
+  '.ss-legend span{font-size:11px;color:#334155;display:inline-flex;align-items:center;gap:5px}' +
+  '.ss-legend span::before{content:"";width:11px;height:11px;border-radius:3px;background:var(--c)}' +
+  '.ss-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;margin-top:6px}' +
+  '.ss-table{width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap}' +
+  '.ss-table th,.ss-table td{border:1px solid #d7dee8;padding:4px 6px;text-align:center}' +
+  '.ss-table thead th{background:var(--ssn);color:#fff;font-weight:700;font-size:10.5px;position:sticky;top:0}' +
+  '.ss-table th.subjh{background:#1e3a8a;border-bottom:2px solid #C9A227}' +
+  '.ss-table th.tot,.ss-table td.tot{background:rgba(201,162,39,.14);font-weight:800}' +
+  '.ss-table td.nm,.ss-table th.nm{text-align:right;min-width:150px;font-weight:600;color:var(--ssn)}' +
+  '.ss-table td.avg,.ss-table th.avg{background:#eef4ff;font-weight:800}' +
+  '.ss-table tbody tr:nth-child(even){background:#f8fafc}' +
+  '.ss-table tfoot .ss-grand td{background:#0F2C5C;color:#fff;font-weight:800}' +
+  '.ss-table tfoot .ss-grand td.tot{background:#11407a}' +
+  '.ss-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}' +
+  '.ss-stat{background:#fff;border:1px solid #e2e8f0;border-top:3px solid var(--c);border-radius:10px;padding:9px 6px;text-align:center}' +
+  '.ss-stat-v{font-size:17px;font-weight:800;color:var(--c)}.ss-stat-l{font-size:10.5px;color:#64748b;margin-top:2px}' +
+  '@media (max-width:640px){.ss-info-grid{grid-template-columns:repeat(2,1fr)}.ss-stats{grid-template-columns:repeat(3,1fr)}}' +
+  '#ssReport,#ssReport *{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+  '@media print{' +
+    'body *{visibility:hidden!important}' +
+    '#ssReport,#ssReport *{visibility:visible!important}' +
+    '#ssReport{position:absolute;top:0;left:0;right:0;margin:0;padding:6mm}' +
+    '.ss-wrap{overflow:visible;border:none}' +
+    '.ss-table{font-size:9px}.ss-table td,.ss-table th{padding:3px 4px}' +
+    '.ss-legend,.ss-stats{page-break-inside:avoid}' +
+    '@page{size:A4 landscape;margin:6mm}' +
   '}' +
   '</style>';
 }
