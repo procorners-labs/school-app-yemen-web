@@ -861,6 +861,97 @@ function getV3Config() {
   if (typeof GS_getV3Config === 'function') return GS_getV3Config();
   return { enabled: false, features: {}, labels: {}, version: '0' };
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  🏅 نظام الشهادات الدراسية — بيانات فقط (قراءة) — مدير/وكيل/محاسب فقط
+//  يدعم: شهر عادي (السلوك/الواجبات/الشفوي/التحريري/الإجمالي)،
+//        نصف العام، نهاية العام — حسب الشهر المختار عبر GS_getPeriodType.
+//  يعيد استخدام _getStudentsInternal لكل مادة ويدمج طلاب الصف بالكود.
+// ════════════════════════════════════════════════════════════════════
+function _tcCanCertificates(session) {
+  var r = _safeStr(session.role);
+  return (r === 'admin' || r === 'deputy' || r === 'accountant');
+}
+function _certGradeLabel(pct) {
+  pct = _safeFloat(pct);
+  if (pct >= 90) return 'ممتاز';
+  if (pct >= 80) return 'جيد جداً';
+  if (pct >= 65) return 'جيد';
+  if (pct >= 50) return 'مقبول';
+  if (pct >= 35) return 'ضعيف';
+  return 'ضعيف جداً';
+}
+function getCertificatesDataProtected(params) {
+  return withAuth(params, function (session) {
+    if (!_tcCanCertificates(session)) {
+      return { success: false, error: 'غير مصرّح — الشهادات للمدير والوكيل والمحاسب فقط' };
+    }
+    var month   = _safeStr(params.month);
+    var grade   = _safeStr(params.grade);
+    var section = _safeStr(params.section);
+    if (!month || !grade) return { success: false, error: 'اختر الفصل/الشهر والصف الدراسي' };
+    try {
+      // مواد الصف لهذا الشهر (توزيع المواد حسب الصف)
+      var struct = _getGradesStructureInternal({
+        isAdmin: session.isAdmin, subjects: session.subjects,
+        classes: session.classes, sections: session.sections
+      });
+      var subjects = (struct && struct.subjectsByMonth && struct.subjectsByMonth[month]) ||
+                     (struct && struct.allSubjects) || [];
+      if (!subjects.length) return { success: false, error: 'لا توجد مواد مُعرّفة لهذا الشهر' };
+
+      var periodType = (typeof GS_getPeriodType === 'function') ? GS_getPeriodType(month) : 'regular';
+      var byCode = {}, order = [];
+
+      for (var si = 0; si < subjects.length; si++) {
+        var subj = _safeStr(subjects[si]);
+        if (!subj) continue;
+        var res = _getStudentsInternal(grade, section, month, subj);
+        if (!res || !res.success || !res.students) continue;
+        for (var i = 0; i < res.students.length; i++) {
+          var st = res.students[i];
+          if (!st.code) continue;
+          if (!byCode[st.code]) {
+            byCode[st.code] = { code: st.code, name: st.name, grade: st.grade, section: st.section, subjects: [] };
+            order.push(st.code);
+          }
+          byCode[st.code].subjects.push({ name: subj, grades: st.grades || [] });
+        }
+      }
+
+      var students = [];
+      for (var k = 0; k < order.length; k++) {
+        var stu = byCode[order[k]];
+        var totalSum = 0, maxSum = 0, entered = 0;
+        for (var m = 0; m < stu.subjects.length; m++) {
+          var g = stu.subjects[m].grades || [], tot = '', tmax = 100;
+          for (var gi = 0; gi < g.length; gi++) { if (g[gi].isTotal) { tot = g[gi].value; tmax = _safeFloat(g[gi].max) || 100; } }
+          maxSum += tmax;
+          if (tot !== '' && tot !== null && tot !== undefined) { totalSum += _safeFloat(tot); entered++; }
+        }
+        var pct = (maxSum > 0) ? Math.round((totalSum / maxSum) * 100) : 0;
+        var complete = (entered === stu.subjects.length && stu.subjects.length > 0);
+        students.push({
+          code: stu.code, name: stu.name, grade: stu.grade, section: stu.section,
+          subjects: stu.subjects,
+          totalSum: totalSum, maxSum: maxSum, percentage: pct,
+          subjectCount: stu.subjects.length, enteredCount: entered,
+          gradeLabel: _certGradeLabel(pct),
+          result: complete ? (pct >= 50 ? 'ناجح' : 'راسب') : 'تحت المراجعة'
+        });
+      }
+      students.sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'ar'); });
+
+      return {
+        success: true, month: month, periodType: periodType,
+        grade: grade, section: section, subjects: subjects,
+        count: students.length, students: students
+      };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  });
+}
   // ══════════════════════════════════════════════════════
 // دالة مساعدة جديدة: قراءة الدرجات بكفاءة
 // أضفها في TeacherCore.gs (قبل getStudentsProtected)

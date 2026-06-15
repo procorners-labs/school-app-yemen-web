@@ -1834,6 +1834,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
+  <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
@@ -4150,6 +4151,7 @@ function showSection(name) {
       schedSettings: renderScheduleSettings,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
+      certificates: renderCertificates,
       calendar: renderCalendar,
       profile: renderProfile
     };
@@ -4251,7 +4253,7 @@ function initSidebarByRole() {
   if (u.role === 'supervisor' || u.role === 'deputy') {
     if (adminSection) adminSection.style.display = 'block';
     var hideItems = ['si-teachers-mgmt', 'si-lists-mgmt', 'si-adminTeachers', 'si-adminStudents'];
-    if (u.role === 'supervisor') hideItems.push('si-schedSettings'); // المشرف لا يضبط التواقيت
+    if (u.role === 'supervisor') { hideItems.push('si-schedSettings'); hideItems.push('si-certificates'); } // المشرف لا يضبط التواقيت ولا يطبع الشهادات
     for (var i = 0; i < hideItems.length; i++) {
       var item = document.getElementById(hideItems[i]);
       if (item) item.style.display = 'none';
@@ -8608,6 +8610,173 @@ function lm_deleteItem(type,rowIdx){ if(rowIdx<0){ alert('تعذر تحديد ا
 function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1a237e;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val}); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected({token:App.user.token, listType:_lmCurrentType, value:val}); } }
 function lm_closeModal(){ document.getElementById('lm-modal').style.display='none'; }
 function lm_setStatus(msg,color){ var el=document.getElementById('lm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';">'+msg+'</div>'; }
+
+// ════════════════════════════════════════════════════════
+//  🏅 CERTIFICATES — نظام طباعة الشهادات (مدير/وكيل/محاسب)
+//  عرض فقط: يقرأ getCertificatesDataProtected ويبني شهادات قابلة للطباعة.
+// ════════════════════════════════════════════════════════
+var CERT = { struct: null, data: null, selected: '' };
+
+function cert_schoolName(){ var el=document.querySelector('.school-brand-name'); return (el && (el.textContent||'').trim()) || 'مدرسة الإبداع والتميز الدولية'; }
+function cert_hijriDate(){
+  try { return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura',{day:'numeric',month:'long',year:'numeric'}).format(new Date()) + ' هـ'; }
+  catch(e){ try { return new Date().toLocaleDateString('ar'); } catch(_){ return ''; } }
+}
+function _certGrade(pct){ pct=parseFloat(pct)||0; if(pct>=90)return'ممتاز'; if(pct>=80)return'جيد جداً'; if(pct>=65)return'جيد'; if(pct>=50)return'مقبول'; if(pct>=35)return'ضعيف'; return'ضعيف جداً'; }
+function cert_periodTitle(type){ return type==='term' ? 'شهادة فترة' : 'شهادة شهرية'; }
+function cert_periodTag(type){ return type==='term' ? 'فصلي' : 'شهري'; }
+
+function renderCertificates(){
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML =
+    '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(245,158,11,.12)">🏅</div>' +
+      '<div class="section-header-title">نظام طباعة الشهادات الدراسية</div></div>' +
+      '<div class="section-body">' +
+        '<div class="alert alert-info" style="margin-bottom:12px">يدعم مسميات نصف العام ونهاية العام · توزيع المواد حسب الصف · حساب تلقائي للمجموع والتقدير · طباعة الكل: شهادتان في صفحة A4.</div>' +
+        '<div class="filter-bar"><div class="filter-bar-title">🔎 معايير البحث</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group"><label class="form-label">الفصل / الشهر *</label><select class="form-select" id="cert-month"><option value="">— اختر —</option></select></div>' +
+            '<div class="form-group"><label class="form-label">الصف الدراسي *</label><select class="form-select" id="cert-grade"><option value="">— اختر —</option></select></div>' +
+            '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="cert-section"><option value="جميع الشعب">— جميع الشعب —</option></select></div>' +
+          '</div>' +
+          '<button class="btn btn-primary" onclick="cert_loadData()">📥 تحميل البيانات</button>' +
+          '<div id="cert-status" style="margin-top:8px"></div>' +
+        '</div>' +
+        '<div id="cert-toolbar" style="display:none;margin:12px 0;gap:8px;flex-wrap:wrap;align-items:center;"></div>' +
+        '<div id="certPrintArea" class="cert-print-area"></div>' +
+      '</div></div>' + cert_styleBlock();
+  cert_loadStructure();
+}
+
+function cert_loadStructure(){
+  callServer('getGradesStructureProtected', {}, function(r){
+    CERT.struct = r || {};
+    var months = (r && r.months) || [];
+    var grades = (r && r.grades) || (typeof myGrades==='function'?myGrades():[]);
+    var sections = (r && r.sections) || (typeof mySections==='function'?mySections():[]);
+    var mEl=document.getElementById('cert-month'); if(mEl){ var mo='<option value="">— اختر —</option>'; for(var i=0;i<months.length;i++) mo+='<option value="'+escapeHtml(months[i])+'">'+escapeHtml(months[i])+'</option>'; mEl.innerHTML=mo; }
+    var gEl=document.getElementById('cert-grade'); if(gEl){ var go='<option value="">— اختر —</option>'; for(var j=0;j<grades.length;j++) go+='<option value="'+escapeHtml(grades[j])+'">'+escapeHtml(grades[j])+'</option>'; gEl.innerHTML=go; }
+    var sEl=document.getElementById('cert-section'); if(sEl){ var so='<option value="جميع الشعب">— جميع الشعب —</option>'; for(var k=0;k<sections.length;k++) so+='<option value="'+escapeHtml(sections[k])+'">'+escapeHtml(sections[k])+'</option>'; sEl.innerHTML=so; }
+  }, function(){ /* تجاهل: تبقى القوائم فارغة */ });
+}
+
+function cert_loadData(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  var month=g('cert-month'), grade=g('cert-grade'), section=g('cert-section');
+  var st=document.getElementById('cert-status');
+  if(!month || !grade){ st.innerHTML='<div class="alert alert-warning">اختر الفصل/الشهر والصف الدراسي</div>'; return; }
+  st.innerHTML='<div style="color:#1a237e">⏳ جارٍ تحميل البيانات...</div>';
+  callServer('getCertificatesDataProtected', { month:month, grade:grade, section:section }, function(r){
+    if(!r || !r.success){ st.innerHTML='<div class="alert alert-danger">'+((r&&r.error)||'تعذّر التحميل')+'</div>'; return; }
+    CERT.data=r; CERT.selected='';
+    st.innerHTML='<div style="color:#2e7d32">✅ تم تحميل '+(r.count||0)+' طالب</div>';
+    cert_renderToolbar(); cert_renderPreview();
+  }, function(e){ st.innerHTML='<div class="alert alert-danger">'+((e&&e.message)||'خطأ في الاتصال')+'</div>'; });
+}
+
+function cert_renderToolbar(){
+  var tb=document.getElementById('cert-toolbar'); if(!tb||!CERT.data) return;
+  var students=CERT.data.students||[];
+  var opts='<option value="">— كل الطلاب —</option>';
+  for(var i=0;i<students.length;i++) opts+='<option value="'+escapeHtml(students[i].code)+'">'+escapeHtml(students[i].name)+'</option>';
+  tb.style.display='flex';
+  tb.innerHTML=
+    '<div class="form-group" style="margin:0;min-width:220px"><label class="form-label">طالب محدّد (اختياري)</label><select class="form-select" id="cert-student" onchange="cert_pickStudent(this.value)">'+opts+'</select></div>' +
+    '<button class="btn btn-secondary btn-sm" onclick="cert_print()">🖨️ طباعة المعروض</button>' +
+    '<button class="btn btn-primary btn-sm" onclick="cert_printAll()">🖨️ طباعة الكل ('+students.length+')</button>';
+}
+function cert_pickStudent(code){ CERT.selected=code||''; cert_renderPreview(); }
+function cert_printAll(){ CERT.selected=''; var s=document.getElementById('cert-student'); if(s) s.value=''; cert_renderPreview(); setTimeout(cert_print, 60); }
+function cert_print(){ try{ window.print(); }catch(e){ toast('تعذّرت الطباعة على هذا الجهاز','error'); } }
+
+function cert_renderPreview(){
+  var area=document.getElementById('certPrintArea'); if(!area||!CERT.data) return;
+  var students=CERT.data.students||[];
+  if(CERT.selected){ students=students.filter(function(s){return s.code===CERT.selected;}); }
+  if(!students.length){ area.innerHTML='<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا يوجد طلاب لعرضهم</div></div>'; return; }
+  var html='';
+  for(var i=0;i<students.length;i++){ html+=cert_certHtml(students[i]); }
+  area.innerHTML=html;
+}
+
+function cert_certHtml(stu){
+  var d=CERT.data, type=d.periodType, month=d.month;
+  var subjects=stu.subjects||[];
+  // رؤوس الأعمدة من أول مادة (تتكيّف مع نوع الفترة: شهري/نصفي/نهائي)
+  var cols=(subjects[0]&&subjects[0].grades)?subjects[0].grades:[];
+  var thead='<th style="width:34px">م</th><th>المادة</th>';
+  for(var c=0;c<cols.length;c++){ var lab=cols[c].type+(cols[c].isTotal?(' / '+(cols[c].max||100)):''); thead+='<th>'+escapeHtml(lab)+'</th>'; }
+  var rows='';
+  for(var s=0;s<subjects.length;s++){
+    var subj=subjects[s], g=subj.grades||[];
+    rows+='<tr><td>'+(s+1)+'</td><td style="text-align:right;font-weight:600">'+escapeHtml(subj.name)+'</td>';
+    for(var gi=0; gi<cols.length; gi++){ var v=(g[gi]&&g[gi].value!=='' && g[gi].value!=null)?g[gi].value:'-'; rows+='<td'+((cols[gi]&&cols[gi].isTotal)?' style="font-weight:700"':'')+'>'+escapeHtml(String(v))+'</td>'; }
+    rows+='</tr>';
+  }
+  var resColor = stu.result==='ناجح' ? '#2e7d32' : (stu.result==='راسب' ? '#c62828' : '#e65100');
+  return ''+
+  '<div class="cert">' +
+    '<div class="cert-head">' +
+      '<div class="cert-logo">🏫</div>' +
+      '<div class="cert-school">'+escapeHtml(cert_schoolName())+'</div>' +
+      '<div class="cert-sub">'+escapeHtml(cert_periodTitle(type))+' — '+escapeHtml(month)+' · '+escapeHtml(stu.grade||'')+'</div>' +
+    '</div>' +
+    '<div class="cert-info">' +
+      '<div><span>اسم الطالب:</span> <b>'+escapeHtml(stu.name||'')+'</b></div>' +
+      '<div><span>الكود:</span> <b>'+escapeHtml(stu.code||'')+'</b></div>' +
+      '<div><span>الصف:</span> <b>'+escapeHtml(stu.grade||'')+'</b></div>' +
+      '<div><span>الشعبة:</span> <b>'+escapeHtml(stu.section||'')+'</b></div>' +
+      '<div><span>الفصل:</span> <b>'+escapeHtml(month)+'</b></div>' +
+      '<div><span>التاريخ:</span> <b>'+escapeHtml(cert_hijriDate())+'</b></div>' +
+    '</div>' +
+    '<div class="cert-grades-title">📋 كشف درجات المواد الدراسية</div>' +
+    '<table class="cert-table"><thead><tr>'+thead+'</tr></thead><tbody>'+rows+'</tbody></table>' +
+    '<div class="cert-summary">' +
+      '<div class="cs-box"><div class="cs-v">'+stu.totalSum+' / '+stu.maxSum+'</div><div class="cs-l">المجموع الكلي ('+stu.subjectCount+' مادة)</div></div>' +
+      '<div class="cs-box"><div class="cs-v">'+stu.percentage+'%</div><div class="cs-l">النسبة المئوية · '+escapeHtml(cert_periodTag(type))+'</div></div>' +
+      '<div class="cs-box"><div class="cs-v">'+escapeHtml(stu.gradeLabel)+'</div><div class="cs-l">التقدير</div></div>' +
+      '<div class="cs-box"><div class="cs-v" style="color:'+resColor+'">'+escapeHtml(stu.result)+'</div><div class="cs-l">النتيجة · '+stu.enteredCount+'/'+stu.subjectCount+'</div></div>' +
+    '</div>' +
+    '<div class="cert-sign">' +
+      '<div><div class="cs-role">مدير المدرسة</div><div class="cs-line">التوقيع</div></div>' +
+      '<div><div class="cs-role">رائد الصف</div><div class="cs-line">التوقيع</div></div>' +
+      '<div><div class="cs-role">المرشد الأكاديمي</div><div class="cs-line">التوقيع</div></div>' +
+    '</div>' +
+    '<div class="cert-foot">تم إنشاء هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(cert_schoolName())+'</div>' +
+  '</div>';
+}
+
+function cert_styleBlock(){
+  return '<style id="cert-style">' +
+  '.cert-print-area{display:flex;flex-direction:column;gap:14px;margin-top:14px}' +
+  '.cert{border:1px solid var(--border,#e2e8f0);border-radius:12px;background:#fff;color:#1e293b;padding:16px 18px;page-break-inside:avoid;break-inside:avoid}' +
+  '.cert-head{text-align:center;border-bottom:2px solid #0F2C5C;padding-bottom:10px;margin-bottom:10px}' +
+  '.cert-logo{font-size:34px}' +
+  '.cert-school{font-size:18px;font-weight:800;color:#0F2C5C;margin-top:2px}' +
+  '.cert-sub{font-size:12px;color:#64748b;margin-top:2px}' +
+  '.cert-info{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;font-size:13px;margin-bottom:10px}' +
+  '.cert-info span{color:#64748b}' +
+  '.cert-grades-title{font-weight:700;font-size:13px;margin:6px 0;color:#0F2C5C}' +
+  '.cert-table{width:100%;border-collapse:collapse;font-size:12px}' +
+  '.cert-table th,.cert-table td{border:1px solid #cbd5e1;padding:5px 6px;text-align:center}' +
+  '.cert-table th{background:#0F2C5C;color:#fff;font-weight:700}' +
+  '.cert-table tbody tr:nth-child(even){background:#f8fafc}' +
+  '.cert-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}' +
+  '.cs-box{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:8px;text-align:center}' +
+  '.cs-v{font-size:15px;font-weight:800;color:#0F2C5C}.cs-l{font-size:10.5px;color:#64748b;margin-top:2px}' +
+  '.cert-sign{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;text-align:center}' +
+  '.cs-role{font-weight:700;font-size:12px}.cs-line{margin-top:26px;border-top:1px dashed #94a3b8;font-size:11px;color:#64748b;padding-top:3px}' +
+  '.cert-foot{margin-top:12px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px}' +
+  '@media print{' +
+    'body *{visibility:hidden!important}' +
+    '#certPrintArea,#certPrintArea *{visibility:visible!important}' +
+    '#certPrintArea{position:absolute;inset:0;margin:0;padding:0;gap:0;display:block}' +
+    '.cert{border:none;border-radius:0;box-shadow:none;height:148.5mm;padding:10mm 12mm;page-break-inside:avoid;break-inside:avoid;border-bottom:1px dashed #cbd5e1}' +
+    '@page{size:A4 portrait;margin:0}' +
+  '}' +
+  '</style>';
+}
 
 // ==================== STARTUP ====================
 window.onload = function() {
