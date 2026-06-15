@@ -933,8 +933,36 @@ function _certTeacherSubjectMap() {
   if (typeof _tcCacheSet === 'function') _tcCacheSet(cKey, map, 300);
   return map;
 }
-// المواد المقرّرة لصفٍّ بعينه (مواده + المواد المُدرَّسة لكل الصفوف).
+// خريطة «مواد كل صف» من الجدول الدراسي (ورقة «الجدول»: الصف[0]+المادة[4]).
+// هذا هو المصدر الأساسي والأدقّ — مواد كل صف بحسب جدوله الفعلي (كل المواد
+// المُدرَّسة للصف عبر كل الأيام/الحصص). تخزين مؤقّت 5 دقائق.
+function _certScheduleSubjectMap() {
+  var cKey = 'cert_sched_subj_map_v1';
+  var cached = (typeof _tcCacheGet === 'function') ? _tcCacheGet(cKey) : null;
+  if (cached) return cached;
+  var map = { byGrade: {} };
+  try {
+    var sheet = _getSheet('الجدول');
+    if (sheet && sheet.getLastRow() >= 2) {
+      var data = sheet.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        var g = _safeStr(data[i][0]), subj = _safeStr(data[i][4]);
+        if (!g || !subj || subj === 'جميع المواد') continue;
+        if (!map.byGrade[g]) map.byGrade[g] = [];
+        if (map.byGrade[g].indexOf(subj) === -1) map.byGrade[g].push(subj);
+      }
+    }
+  } catch (e) { /* تجاهل */ }
+  if (typeof _tcCacheSet === 'function') _tcCacheSet(cKey, map, 300);
+  return map;
+}
+// المواد المقرّرة لصفٍّ بعينه:
+//  1) من الجدول الدراسي (المصدر الأساسي — كل مواد جدول الصف).
+//  2) احتياطاً: تكليفات المعلمين (المادة+الفصل) إن لم يُرفع الجدول.
 function _certSubjectsForGrade(grade) {
+  var sm = _certScheduleSubjectMap();
+  var fromSched = (sm.byGrade[_safeStr(grade)] || []).slice();
+  if (fromSched.length) return fromSched;
   var m = _certTeacherSubjectMap();
   var out = (m.byGrade[_safeStr(grade)] || []).slice();
   for (var i = 0; i < m.all.length; i++) if (out.indexOf(m.all[i]) === -1) out.push(m.all[i]);
@@ -4449,6 +4477,7 @@ function getMyScheduleProtected(params) {
         var teacherClean = teacher.replace(/\./g, '').toLowerCase().trim();
 
         var showRow = false;
+        var viaName = false;   // هل أُدرِجت الحصة لأن الاسم طابق عمود المعلم؟
 
         if (viewAll) {
           // ── المدير والوكيل: يرون كل الجدول ──
@@ -4462,6 +4491,7 @@ function getMyScheduleProtected(params) {
 
           if (nameMatch) {
             showRow = true;
+            viaName = true;
           } else if (!nameMatch && !hasAllClasses) {
             // المعلم لا يرى حصص معلمين آخرين
             showRow = false;
@@ -4472,8 +4502,11 @@ function getMyScheduleProtected(params) {
           }
         }
 
-        // ── تحقق إضافي من الشعبة (للمعلم العادي فقط) ──
-        if (showRow && !viewAll && !hasAllSections) {
+        // ── تحقق إضافي من الشعبة ──
+        // مهم: لا يُطبَّق على الحصص المطابِقة بالاسم — إن كان اسمك على الحصة فهي
+        // حصتك مهما كانت شعبتها (يصلح عرض جدول المعلم كاملاً مهما تعددت شعبه).
+        // يُطبَّق فقط على الإدراج عبر صلاحية «جميع الفصول» بمادة محددة.
+        if (showRow && !viewAll && !viaName && !hasAllSections) {
           if (allowedSections.length > 0 &&
               allowedSections.indexOf(section) === -1 &&
               section !== 'جميع الشعب') {
