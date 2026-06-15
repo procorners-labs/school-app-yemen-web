@@ -881,6 +881,40 @@ function _certGradeLabel(pct) {
   if (pct >= 35) return 'ضعيف';
   return 'ضعيف جداً';
 }
+// يبني مصفوفة درجات مادة واحدة من صف الطالب (في الذاكرة، بلا قراءة شيت)
+// بنفس شكل _getStudentsInternal: regular/term/yearend.
+function _certRowGrades(row, meta) {
+  if (meta.kind === 'yearend') {
+    var ye = _yeComputeFromRow(row, meta.yeCols, meta.yeNisfExam, meta.yeSrc);
+    return [
+      { key: 'monthly_score',   type: 'محصلة الفصل الأول',  value: (ye.m1    == null ? '' : String(ye.m1)),    max: 20 },
+      { key: 'midterm_exam',    type: 'اختبار نصف العام',   value: (ye.mid   == null ? '' : String(ye.mid)),   max: 30 },
+      { key: 'monthly_score_2', type: 'محصلة الفصل الثاني', value: (ye.m2    == null ? '' : String(ye.m2)),    max: 20 },
+      { key: 'final_exam',      type: 'الاختبار النهائي',    value: (ye.fin   == null ? '' : String(ye.fin)),   max: 30 },
+      { key: 'grand_total',     type: 'الإجمالي',            value: (ye.total == null ? '' : String(ye.total)), max: 100, isTotal: true }
+    ];
+  }
+  if (meta.kind === 'term') {
+    var c = meta.cols;
+    var rm = _readCellValue(row, c.monthly_score), re = _readCellValue(row, c.exam_score), rt = _readCellValue(row, c.total_score);
+    return [
+      { key: 'monthly_score', type: 'الأعمال المستمرة', value: (rm === '' ? '' : String(rm)), max: 20 },
+      { key: 'exam_score',    type: 'درجة الاختبار',    value: (re === '' ? '' : String(re)), max: 30 },
+      { key: 'total_score',   type: 'المحصلة',          value: (rt === '' ? '' : String(rt)), max: 50, isTotal: true }
+    ];
+  }
+  // regular
+  var rc = meta.cols;
+  var b = _readCellValue(row, rc.behavior), h = _readCellValue(row, rc.homework),
+      o = _readCellValue(row, rc.oral),     w = _readCellValue(row, rc.written), t = _readCellValue(row, rc.total);
+  return [
+    { key: 'behavior', type: 'السلوك',    value: (b === '' ? '' : String(b)), max: 20 },
+    { key: 'homework', type: 'الواجبات',  value: (h === '' ? '' : String(h)), max: 20 },
+    { key: 'oral',     type: 'الشفوي',    value: (o === '' ? '' : String(o)), max: 20 },
+    { key: 'written',  type: 'التحريري',  value: (w === '' ? '' : String(w)), max: 40 },
+    { key: 'total',    type: 'الإجمالي',  value: (t === '' ? '' : String(t)), max: 100, isTotal: true }
+  ];
+}
 function getCertificatesDataProtected(params) {
   return withAuth(params, function (session) {
     if (!_tcCanCertificates(session)) {
@@ -914,22 +948,55 @@ function getCertificatesDataProtected(params) {
       var periodType = (typeof GS_getPeriodType === 'function') ? GS_getPeriodType(month) : 'regular';
       var byCode = {}, order = [];
 
+      // ── الأداء: قراءة ورقة الدرجات مرّة واحدة فقط ──────────────────
+      // النسخة السابقة كانت تستدعي _getStudentsInternal لكل مادة، وكل نداء
+      // يقرأ كامل الورقة (getValues) → عشرات القراءات الكاملة في طلب واحد →
+      // "انتهت مهلة الاتصال". هنا نحدّد أعمدة كل مادة من الرؤوس فقط (رخيص)،
+      // ثم نقرأ بيانات الطلاب مرّة واحدة ونستخرج كل المواد في مرور واحد.
+      var sheet = (_getSheet('النصفي') || _getSheet('الدرجات'));
+      if (!sheet) return { success: false, error: 'ورقة "النصفي/الدرجات" غير موجودة' };
+      var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+
+      var isYearEnd = (month === 'نهاية العام');
+      var subjMeta = [];
       for (var si = 0; si < subjects.length; si++) {
         var subj = _safeStr(subjects[si]);
         if (!subj) continue;
-        var res = _getStudentsInternal(grade, section, month, subj);
-        if (!res || !res.success || !res.students) continue;
-        for (var i = 0; i < res.students.length; i++) {
-          var st = res.students[i];
-          if (!st.code) continue;
-          // ذكاء: تجاهل المواد غير المقرّرة لهذا الشهر/الصف (لا أعمدة درجات)
-          // حتى لا تظهر صفوف فارغة في الشهادة — يُظهر فقط المواد الحقيقية.
-          if (!st.grades || !st.grades.length) continue;
-          if (!byCode[st.code]) {
-            byCode[st.code] = { code: st.code, name: st.name, grade: st.grade, section: st.section, subjects: [] };
-            order.push(st.code);
+        if (isYearEnd) {
+          var yeCols = _teacherYearEndCols(sheet, subj);
+          if (!yeCols || (yeCols.total === undefined && yeCols.finalEx === undefined && yeCols.m1 === undefined)) continue;
+          var _nf = _findSubjectLocation('نصف العام', subj);
+          var yeNisfExam = (_nf && _nf.success && _nf.columns && _nf.columns.exam_score >= 0) ? _nf.columns.exam_score : -1;
+          var yeSrc = {
+            t1: [_findSubjectLocation('محرم', subj), _findSubjectLocation('صفر', subj)],
+            t2: [_findSubjectLocation('جماد اول', subj), _findSubjectLocation('جماد ثاني', subj)]
+          };
+          subjMeta.push({ name: subj, kind: 'yearend', yeCols: yeCols, yeNisfExam: yeNisfExam, yeSrc: yeSrc });
+        } else {
+          var loc = _findSubjectLocation(month, subj);
+          if (loc && loc.success) {
+            subjMeta.push({ name: subj, kind: loc.isTermMonth ? 'term' : 'regular', cols: loc.columns });
           }
-          byCode[st.code].subjects.push({ name: subj, grades: st.grades });
+        }
+      }
+      if (!subjMeta.length) return { success: false, error: 'لا توجد مواد مقرّرة لهذا الشهر في ورقة الدرجات' };
+
+      if (lastRow >= 4) {
+        var data = sheet.getRange(4, 1, lastRow - 3, lastCol).getValues();
+        for (var r = 0; r < data.length; r++) {
+          var row = data[r];
+          var code = _safeStr(row[0]), nm = _safeStr(row[1]), g = _safeStr(row[2]), sec = _safeStr(row[3]);
+          if (!code || !nm) continue;
+          if (grade && g !== grade) continue;
+          if (section && section !== 'جميع الشعب' && sec !== section) continue;
+          var subjArr = [];
+          for (var mi = 0; mi < subjMeta.length; mi++) {
+            var grds = _certRowGrades(row, subjMeta[mi]);
+            if (grds && grds.length) subjArr.push({ name: subjMeta[mi].name, grades: grds });
+          }
+          if (!subjArr.length) continue;   // لا مواد فعلية لهذا الطالب → تجاوز
+          byCode[code] = { code: code, name: nm.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''), grade: g, section: sec, subjects: subjArr };
+          order.push(code);
         }
       }
 
@@ -957,9 +1024,11 @@ function getCertificatesDataProtected(params) {
       }
       students.sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'ar'); });
 
+      var usedSubjects = [];
+      for (var ui = 0; ui < subjMeta.length; ui++) usedSubjects.push(subjMeta[ui].name);
       return {
         success: true, month: month, periodType: periodType,
-        grade: grade, section: section, subjects: subjects,
+        grade: grade, section: section, subjects: usedSubjects,
         count: students.length, students: students
       };
     } catch (e) {
