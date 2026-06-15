@@ -838,6 +838,49 @@ function getSchoolStats() {
  * يجلب جميع بيانات الصفحة الرئيسية في طلب واحد + روابط المنصات
  * تُستدعى من Index.html عند بدء التحميل
  */
+// معرّف سجل المدارس الرئيسي (Master) — لقراءة هوية المدرسة فقط (اسم/لوجو/هاتف).
+var MASTER_SHEET_ID = '10Zk0vwjrHagydYlU0kyjB6X9uoyVCN6sl5nSet1_c7w';
+
+/**
+ * يقرأ هوية المدرسة الحالية من سجل Master (ورقة Schools) ويُرجِع اسمها ولوجوها
+ * وهاتفها لتغذية SEO الديناميكي في الواجهة (محرّك applySchoolSeo).
+ * المطابقة الآمنة: عمود cms_file_id (6) = CONFIG.SPREADSHEET_ID (شيت الموقع الحالي) —
+ * فلا حاجة لمعرفة school_id مسبقاً. مُغلّف بـ try/catch: أي فشل يُعيد null فلا ينكسر
+ * getHomeData (الواجهة تبقى على القيم الافتراضية المضمّنة). لا يُرجِع أي بيانات حسّاسة.
+ * أعمدة Schools: school_id(0) school_name(1) … cms_file_id(6) … phone(12) address(13) logo_url(14)
+ */
+function getSchoolIdentity() {
+  try {
+    var ss = _getSSById(MASTER_SHEET_ID);
+    var sh = ss.getSheetByName('Schools');
+    if (!sh) return null;
+    var values = sh.getDataRange().getValues();
+    if (!values || values.length < 2) return null;
+
+    var i, row;
+    for (i = 1; i < values.length; i++) {
+      row = values[i];
+      if (String(row[6]) === String(CONFIG.SPREADSHEET_ID)) {
+        var logoRaw = row[14] ? String(row[14]) : '';
+        var logo = logoRaw ? normalizeGoogleDriveUrl(logoRaw, 400) : '';
+        var phone = row[12] ? String(row[12]) : '';
+        if (phone && phone.charAt(0) !== '+') {
+          phone = '+967' + phone.replace(/^0+/, '');   // أرقام اليمن
+        }
+        return {
+          name     : row[1] ? String(row[1]) : '',
+          logo     : logo,
+          logo_url : logo,
+          telephone: phone
+        };
+      }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function getHomeData() {
   var cacheKey = 'home_data_bundle';
   var cached = getCacheObject(cacheKey);
@@ -848,6 +891,7 @@ function getHomeData() {
     news       : getNewsForSchool(CONFIG.DEFAULT_LIMITS.news),
     images     : getImagesForSchool(CONFIG.DEFAULT_LIMITS.images),
     videos     : getVideosForSchool(CONFIG.DEFAULT_LIMITS.videos),
+    school     : getSchoolIdentity(),       // ⭐ هوية المدرسة (لوجو/اسم/هاتف) لـ SEO ديناميكي
     deployments: getDeploymentUrls(),       // ⭐ جديد: روابط المنصات في نفس الطلب
     generatedAt: nowISOString()
   };
