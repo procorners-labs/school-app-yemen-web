@@ -43,6 +43,16 @@
 **المستودع المصدر:** https://github.com/procorners-labs/school-app-yemen-web
 **أدوات البناء:** `_build/` → `build-frontend.js` · `gen-endpoints.js` · `extract.js`
 
+### ⚙️ أوامر البناء وسير العمل (إلزامي)
+```bash
+node _build/build-frontend.js   # يبني frontend/ من مصادر HTML (يحقن GA4+robots+الجسر+طبقة offline)
+node _build/test-offline.js     # اختبارات العمل دون اتصال + المزامنة (15 اختباراً)
+node _build/gen-endpoints.js    # يولّد ApiEndpoint.js داخل كل تطبيق
+```
+- **لا تُعدّل `frontend/` يدوياً** — هي ناتج مُولّد. عدّل المصدر (مثل `home/Index.html` بأحرف CamelCase) ثم **أعد البناء** والتزم بالمصدر و`frontend/` **معاً**. الاستثناء الوحيد المكتوب يدوياً: `frontend/index.html` (البوابة).
+- **CI يفرض التطابق** (`ci.yml`): يعيد البناء ويفشل إن اختلفت `frontend/` عن المصدر. أي تعديل HTML بلا إعادة بناء = بناء أحمر.
+- على Windows قد تُظهر `git status` فروق أسطر (CRLF) وهمية بعد البناء — ميّز التغيير الحقيقي بـ `git diff --ignore-all-space` والتزم بالملفات ذات المحتوى الفعلي فقط.
+
 ---
 
 ## 🔌 ربط البيانات (تم التحقق منه حيّاً)
