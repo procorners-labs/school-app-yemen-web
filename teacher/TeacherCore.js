@@ -4489,7 +4489,6 @@ function getMyScheduleProtected(params) {
       // اسم المعلم النظيف (بدون نقاط، مُقطَّع)
       var teacherName      = _safeStr(session.teacherName).trim();
       var teacherNameClean = teacherName.replace(/\./g, '').toLowerCase().trim();
-      var teacherKey       = _tcNameKey(teacherName);   // مفتاح مُطبَّع للتطابق التامّ
 
       // فصول وشعب المعلم المسموح بها (للتحقق الإضافي)
       var allowedClasses   = session.classes   || [];
@@ -4499,11 +4498,6 @@ function getMyScheduleProtected(params) {
       var hasAllClasses  = allowedClasses.indexOf('جميع الفصول') !== -1;
       var hasAllSections = allowedSections.indexOf('جميع الشعب') !== -1;
       var hasAllSubjects = allowedSubjects.indexOf('جميع المواد') !== -1;
-
-      // ── تكليفات المعلم الدقيقة (مادة+فصل+شعبة) من ورقة «المدرسين» ──
-      // ضرورية لتفادي «الخلط»: قوائم الفصول/الشعب في الجلسة مسطّحة، فمطابقتها
-      // كحاصل ضرب (كل فصل × كل شعبة) تُظهر حصص زميل. هنا نطابق الأزواج الفعلية.
-      var myAssign = viewAll ? [] : _tcTeacherAssignments(teacherName);
 
       for (var i = 1; i < data.length; i++) {
         var grade   = _safeStr(data[i][0]);
@@ -4527,29 +4521,19 @@ function getMyScheduleProtected(params) {
           showRow = true;
 
         } else {
-          // ── المعلم العادي والمشرف: تطابق الاسم تامّاً (بعد التطبيع) ──
-          // نتجنّب المطابقة الذكية المتساهلة هنا لأنها تخلط الأسماء المتشابهة/القصيرة
-          // (مثل «عاصم»). الاعتماد الأساسي على التكليفات الدقيقة أدناه.
-          var nameMatch = (teacherClean !== '' && _tcNameKey(teacher) === teacherKey);
+          // ── المرجع الموثوق: عمود «المعلم» في الجدول المنشور ──
+          // مشروع الجداول يحلّ اسم المعلم لكل حصة إلى الاسم الرسمي ويكتبه في العمود،
+          // فالحصة لمن اسمه عليها. نطابق بمطابقة ذكية تتسامح مع اختلاف صيغة الاسم بين
+          // المشروعين (مثل «هبة» / «هبة السياغي»). لا نعتمد على تكليفات «المدرسين»
+          // لأنها قد تخالف الجدول الفعلي فتسبّب خلط حصص المعلمين.
+          var nameMatch = (teacherClean !== '' && _tcSmartNameMatch(teacher, teacherName));
 
           if (nameMatch) {
             showRow = true;
             viaName = true;
           } else if (hasAllClasses && !hasAllSubjects) {
-            // مشرف بصلاحية "جميع الفصول" لكن مواد محددة
-            // يرى فقط حصص مادته في أي فصل
-            showRow = hasAllSubjects || allowedSubjects.indexOf(subject) !== -1;
-          } else {
-            // ── مطابقة بتكليفات المعلم الدقيقة (مادة+فصل+شعبة كزوج فعلي) ──
-            // تُغطّي اختلاف كتابة الاسم بين ملف الجداول وحساب الدخول، وتمنع الخلط:
-            // لا تظهر إلا الحصص المطابِقة لأحد تكليفات المعلم تماماً، لا حاصل الضرب.
-            for (var _ai = 0; _ai < myAssign.length; _ai++) {
-              var _t = myAssign[_ai];
-              var _subjOk = (_t.subject === subject) || (_t.subject === 'جميع المواد');
-              var _gradeOk = (_t.grade === grade) || (_t.grade === 'جميع الفصول');
-              var _secOk = (_t.section === section) || (_t.section === 'جميع الشعب') || (section === 'جميع الشعب');
-              if (_subjOk && _gradeOk && _secOk) { showRow = true; viaName = true; break; }
-            }
+            // مشرف بصلاحية "جميع الفصول" لكن مواد محددة → حصص مادته في أي فصل
+            showRow = (allowedSubjects.indexOf(subject) !== -1);
           }
         }
 
