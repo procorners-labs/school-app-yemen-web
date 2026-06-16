@@ -403,6 +403,17 @@ function _auth_buildTeacherFromName(teacherName, data) {
     sections.indexOf('محاسب') !== -1
   );
 
+  // مشرف الأنشطة: تكفي قيمة «مشرف الأنشطة» (أو «مشرف» + «نشاط/الأنشطة») في عمود
+  // المادة. دور خاص: إدارة الأنشطة/المهام + عرض كل الصفوف — بلا إدارة/مالية/درجات.
+  var isActivitiesSup = false;
+  for (var aci = 0; aci < subjects.length; aci++) {
+    var asv = _safeStr(subjects[aci]);
+    if (asv.indexOf('مشرف') > -1 &&
+        (asv.indexOf('نشاط') > -1 || asv.indexOf('الأنشطة') > -1 || asv.indexOf('الانشطة') > -1)) {
+      isActivitiesSup = true; break;
+    }
+  }
+
   var role;
   var isAdmin;
 
@@ -422,6 +433,13 @@ function _auth_buildTeacherFromName(teacherName, data) {
     role    = 'accountant';
     isAdmin = true;
     subjects = ['جميع المواد'];
+    classes  = ['جميع الفصول'];
+    sections = ['جميع الشعب'];
+  } else if (isActivitiesSup) {
+    // مشرف الأنشطة: ليس مديراً — يدير الأنشطة/المهام ويعرض كل الصفوف فقط.
+    role    = 'activities';
+    isAdmin = false;
+    subjects = ['الأنشطة'];
     classes  = ['جميع الفصول'];
     sections = ['جميع الشعب'];
   } else if (isSupervisor) {

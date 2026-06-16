@@ -30,8 +30,23 @@ var ALL_MONTHS_ORDERED = ['محرم', 'صفر', 'نصف العام', 'جماد �
 var ALL_SUBJECTS_ORDERED = [
   'قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية',
   'الرياضيات', 'العلوم', 'الاجتماعيات',
-  'الفيزياء', 'الكيمياء', 'الاحياء', 'الجغرافيا', 'التاريخ', 'المجتمع'
+  'الفيزياء', 'الكيمياء', 'الاحياء', 'الجغرافيا', 'التاريخ', 'المجتمع',
+  // مواد الأنشطة العملية (تُعامَل كمواد عادية لكل صف بحسب الجدول)
+  'الحاسوب', 'حاسوب', 'رياضة', 'التربية الرياضية', 'فنية', 'التربية الفنية',
+  'تدبير منزلي', 'التدبير المنزلي', 'المهارات الحياتية'
 ];
+
+// قيم «علامات الأدوار» التي قد تظهر في عمود المادة لحسابات خاصة، ويجب ألا
+// تُحسب أبداً كمادة دراسية للصف (الشهادات/الكشوفات/الجدول): المدير/الوكيل/
+// المحاسب/المشرف/مشرف الأنشطة/الأنشطة/نشاط/جميع المواد.
+function _tcIsRoleMarkerSubject(s) {
+  s = _safeStr(s);
+  if (!s) return true;
+  if (s === 'جميع المواد' || s === 'المدير' || s === 'الوكيل' || s === 'محاسب' || s === 'مشرف') return true;
+  if (s.indexOf('مشرف') > -1) return true;                 // مشرف / مشرف الأنشطة …
+  if (s === 'الأنشطة' || s === 'الانشطة' || s === 'نشاط' || s.indexOf('نشاط') > -1) return true;
+  return false;
+}
 
 // ═══════════════════════════════════════════════════════════
 // ⭐ PATCH #1 — Feature Flag لنظام الدرجات الموحّد
@@ -355,6 +370,8 @@ function _tcCacheDel(key) {
       'قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية',
       'الرياضيات', 'العلوم', 'الاجتماعيات',
       'الفيزياء', 'الكيمياء', 'الاحياء', 'الجغرافيا', 'التاريخ', 'المجتمع',
+      'الحاسوب', 'حاسوب', 'رياضة', 'التربية الرياضية', 'فنية', 'التربية الفنية',
+      'تدبير منزلي', 'التدبير المنزلي', 'المهارات الحياتية',
       'جميع المواد'
     ];
     var sortedSubjects = [];
@@ -922,7 +939,7 @@ function _certTeacherSubjectMap() {
       var data = sheet.getDataRange().getValues();
       for (var i = 1; i < data.length; i++) {
         var subj = _safeStr(data[i][1]), g = _safeStr(data[i][2]);
-        if (!subj || subj === 'جميع المواد') continue;     // صف الإدارة لا يضيف كل المواد
+        if (!subj || _tcIsRoleMarkerSubject(subj)) continue;   // علامات الأدوار ليست مواد
         if (g === 'جميع الفصول') { if (map.all.indexOf(subj) === -1) map.all.push(subj); continue; }
         if (!g) continue;
         if (!map.byGrade[g]) map.byGrade[g] = [];
@@ -947,7 +964,7 @@ function _certScheduleSubjectMap() {
       var data = sheet.getDataRange().getValues();
       for (var i = 1; i < data.length; i++) {
         var g = _safeStr(data[i][0]), subj = _safeStr(data[i][4]);
-        if (!g || !subj || subj === 'جميع المواد') continue;
+        if (!g || !subj || _tcIsRoleMarkerSubject(subj)) continue;
         if (!map.byGrade[g]) map.byGrade[g] = [];
         if (map.byGrade[g].indexOf(subj) === -1) map.byGrade[g].push(subj);
       }
@@ -1085,7 +1102,7 @@ function _buildCertGrade(month, grade, section, session) {
   var subjMeta = [];
   for (var si = 0; si < subjects.length; si++) {
     var subj = _safeStr(subjects[si]);
-    if (!subj || subj === 'جميع المواد') continue;
+    if (!subj || _tcIsRoleMarkerSubject(subj)) continue;
     var meta = null;
     if (isYearEnd) {
       var yeCols = _teacherYearEndCols(sheet, subj);
@@ -4932,7 +4949,7 @@ function _tcIsActivities(session) {
 }
 function _tcCanManageTasks(session) {
   var r = _safeStr(session.role);
-  return (r === 'admin' || r === 'deputy' || r === 'supervisor' || r === 'accountant' || _tcIsActivities(session));
+  return (r === 'admin' || r === 'deputy' || r === 'supervisor' || r === 'accountant' || r === 'activities' || _tcIsActivities(session));
 }
 function _tcCanSetFee(session) {
   var r = _safeStr(session.role);
