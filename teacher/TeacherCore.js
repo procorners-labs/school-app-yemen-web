@@ -4424,6 +4424,25 @@ function _tcSmartNameMatch(a, b) {
   if (firstMatch && (ta.length === 1 || tb.length === 1)) return true; // أحدهما اسم أول فقط
   return false;
 }
+// مطابقة بالاحتواء الكامل للكلمات: كل كلمات الاسم الأقصر موجودة في الأطول.
+// أدقّ من _tcSmartNameMatch لمطابقة الجدول: تقبل الاختصار («هبة» ⊆ «هبة السياغي»)
+// لكنها تُميّز بين أشخاص يتشاركون كلمات («مها عبدالله علي» ≠ «مها عبدالله محمد الدبعي»)
+// فلا تخلط حصصهم.
+function _tcNameSubsetMatch(a, b) {
+  var ka = _tcNameKey(a), kb = _tcNameKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  var ta = [], tb = [], sa = ka.split(' '), sb = kb.split(' ');
+  for (var i = 0; i < sa.length; i++) if (sa[i].length >= 2) ta.push(sa[i]);
+  for (var j = 0; j < sb.length; j++) if (sb[j].length >= 2) tb.push(sb[j]);
+  if (!ta.length || !tb.length) return false;
+  var shorter = (ta.length <= tb.length) ? ta : tb;
+  var longer  = (ta.length <= tb.length) ? tb : ta;
+  for (var k = 0; k < shorter.length; k++) {
+    if (longer.indexOf(shorter[k]) === -1) return false;
+  }
+  return true;
+}
 
 // تكليفات معلّم: قائمة الأزواج الفعلية {subject, grade, section} من ورقة «المدرسين»
 // (تتجاهل علامات الأدوار). تُستخدم لمطابقة الجدول دون خلط الفصول/الشعب.
@@ -4526,7 +4545,7 @@ function getMyScheduleProtected(params) {
           // فالحصة لمن اسمه عليها. نطابق بمطابقة ذكية تتسامح مع اختلاف صيغة الاسم بين
           // المشروعين (مثل «هبة» / «هبة السياغي»). لا نعتمد على تكليفات «المدرسين»
           // لأنها قد تخالف الجدول الفعلي فتسبّب خلط حصص المعلمين.
-          var nameMatch = (teacherClean !== '' && _tcSmartNameMatch(teacher, teacherName));
+          var nameMatch = (teacherClean !== '' && _tcNameSubsetMatch(teacher, teacherName));
 
           if (nameMatch) {
             showRow = true;
