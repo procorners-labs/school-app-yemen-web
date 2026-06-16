@@ -4437,7 +4437,7 @@ function _tcTeacherAssignments(teacherName) {
     for (var i = 1; i < d.length; i++) {
       var nm = _safeStr(d[i][0]);
       if (!nm) continue;
-      if (_tcNameKey(nm) !== key && !_tcSmartNameMatch(nm, teacherName)) continue;
+      if (_tcNameKey(nm) !== key) continue;   // تطابق تامّ فقط — لا تسامح يسبب خلط الأسماء المتشابهة
       var subj = _safeStr(d[i][1]), g = _safeStr(d[i][2]), sec = _safeStr(d[i][3]);
       if (!subj || _tcIsRoleMarkerSubject(subj)) continue;
       out.push({ subject: subj, grade: g, section: sec });
@@ -4489,6 +4489,7 @@ function getMyScheduleProtected(params) {
       // اسم المعلم النظيف (بدون نقاط، مُقطَّع)
       var teacherName      = _safeStr(session.teacherName).trim();
       var teacherNameClean = teacherName.replace(/\./g, '').toLowerCase().trim();
+      var teacherKey       = _tcNameKey(teacherName);   // مفتاح مُطبَّع للتطابق التامّ
 
       // فصول وشعب المعلم المسموح بها (للتحقق الإضافي)
       var allowedClasses   = session.classes   || [];
@@ -4526,10 +4527,10 @@ function getMyScheduleProtected(params) {
           showRow = true;
 
         } else {
-          // ── المعلم العادي والمشرف: الشرط الأساسي هو تطابق الاسم ──
-          // المبدأ: إذا كان اسمك في عمود المعلم → هذه حصتك (مطابقة ذكية تتسامح مع
-          // الاختصار/الترتيب/النقاط/الهمزات لأن الأسماء قد تختلف بين المشروعين)
-          var nameMatch = (teacherClean !== '' && _tcSmartNameMatch(teacher, teacherName));
+          // ── المعلم العادي والمشرف: تطابق الاسم تامّاً (بعد التطبيع) ──
+          // نتجنّب المطابقة الذكية المتساهلة هنا لأنها تخلط الأسماء المتشابهة/القصيرة
+          // (مثل «عاصم»). الاعتماد الأساسي على التكليفات الدقيقة أدناه.
+          var nameMatch = (teacherClean !== '' && _tcNameKey(teacher) === teacherKey);
 
           if (nameMatch) {
             showRow = true;
