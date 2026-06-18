@@ -915,6 +915,7 @@ function getV3Config() {
 //  يعيد استخدام _getStudentsInternal لكل مادة ويدمج طلاب الصف بالكود.
 // ════════════════════════════════════════════════════════════════════
 function _tcCanCertificates(session) {
+  if (session.isAdmin) return true;
   var r = _safeStr(session.role);
   return (r === 'admin' || r === 'deputy' || r === 'accountant');
 }
@@ -1105,25 +1106,20 @@ function _buildCertGrade(month, grade, section, session) {
   if (!sheet) return { success: false, error: 'ورقة "النصفي/الدرجات" غير موجودة' };
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
 
-  // ── المصدر الموثوق لمواد الصف: تكليفات المعلمين (ورقة «المدرسين»: المادة+الفصل) ──
-  // مستقل تماماً عن إدخال الدرجات: يُظهر المواد المقرّرة للصف حتى لو لم تُدخَل بعد،
-  // ولا يُظهر أبداً مادة غير مقرّرة للصف. إن لم تتوفّر تكليفات للصف → احتياط بنيوي.
+  // مواد الشهادة: تكليفات المعلمين + رؤوس ورقة الشهر — يضمن عرض كل المواد المُدخلة
+  // حتى لو كانت التكليفات ناقصة (صفوف بمعلم واحد فقط أو بلا تكليف).
   var prescribed = _certSubjectsForGrade(grade);
-  var usePrescribed = (prescribed.length > 0);
-
-  var subjects;
-  if (usePrescribed) {
-    subjects = _certSortSubjects(prescribed);
-  } else {
-    var struct = _getGradesStructureInternal({
-      isAdmin: session.isAdmin, subjects: session.subjects,
-      classes: session.classes, sections: session.sections
-    });
-    subjects = (struct && struct.subjectsByMonth && struct.subjectsByMonth[month]) || [];
-    if (!subjects.length) subjects = (struct && struct.allSubjects) || [];
-    if (!subjects.length && typeof ALL_SUBJECTS_ORDERED !== 'undefined') subjects = ALL_SUBJECTS_ORDERED;
-    if (!subjects.length) return { success: false, error: 'لا توجد مواد مُعرّفة. تأكد من رؤوس ورقة "النصفي/الدرجات".' };
+  var structAll = _getGradesStructureInternal({ isAdmin: true, subjects: null, classes: null, sections: null });
+  var fromStruct = (structAll && structAll.subjectsByMonth && structAll.subjectsByMonth[month]) ||
+                   (structAll && structAll.allSubjects) || [];
+  var merged = prescribed.slice();
+  for (var msi = 0; msi < fromStruct.length; msi++) {
+    var mss = _safeStr(fromStruct[msi]);
+    if (mss && merged.indexOf(mss) === -1) merged.push(mss);
   }
+  var usePrescribed = (prescribed.length > 0);
+  var subjects = (merged.length > 0) ? _certSortSubjects(merged) : [];
+  if (!subjects.length) return { success: false, error: 'لا توجد مواد مُعرّفة. تأكد من رؤوس ورقة "النصفي/الدرجات".' };
 
   // تحديد أعمدة كل مادة من الرؤوس فقط (رخيص). المادة المقرّرة بلا عمود لهذه الفترة
   // تُعرض فارغة (kind='empty') في وضع المقرّرة، وتُتجاهَل في وضع الاحتياط.
@@ -1202,7 +1198,7 @@ function _buildCertGrade(month, grade, section, session) {
 function getCertificatesDataProtected(params) {
   return withAuth(params, function (session) {
     if (!_tcCanCertificates(session)) {
-      return { success: false, error: 'غير مصرّح — الشهادات للمدير والوكيل والمحاسب فقط' };
+      return { success: false, error: 'غير مصرّح — الشهادات للمدراء والمشرفين فقط' };
     }
     var month   = _safeStr(params.month);
     var grade   = _safeStr(params.grade);
@@ -1230,7 +1226,7 @@ function getCertificatesDataProtected(params) {
 function getScoreSheetsDataProtected(params) {
   return withAuth(params, function (session) {
     if (!_tcCanCertificates(session)) {
-      return { success: false, error: 'غير مصرّح — الكشوفات للمدير والوكيل والمحاسب فقط' };
+      return { success: false, error: 'غير مصرّح — الكشوفات للمدراء والمشرفين فقط' };
     }
     var month   = _safeStr(params.month);
     var grade   = _safeStr(params.grade);
@@ -1575,6 +1571,7 @@ function _findSubjectLocation(month, subject) {
   function findSubjectLocation(month, subject) {
     return _findSubjectLocation(month, subject);
   }
+
 
   // ══════════════════════════════════════════════════════
   //  حفظ الدرجات
