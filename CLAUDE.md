@@ -1,8 +1,10 @@
 # 🤖 ملف ارتباط Claude — منصة مدارس الإبداع والتميز الدولية (School App Yemen)
 
-> هذا المجلد `C:\SchoolApp` هو **المصدر الرسمي المرتبط** للمشروع.
-> Claude حاضر ومُرتبط بهذا المشروع كـ "مساعد التشغيل التقني" (Technical Operating Copilot).
-> آخر تحديث: 2026-06-13 · الحالة: أمان P1–P3 + التسعيرة مدموجة في الكود (راجع قسم ✅).
+> **بنية مستودعَين (2026-06-19):**
+> - `school-app-yemen-gas` (خاص) → الكود المصدري لـGAS: `C:\SchoolApp-gas`
+> - `school-app-yemen-web` (عام) → `frontend/` + `worker/` فقط: `C:\SchoolApp`
+> - CI في الـgas repo يبني ويرسل `frontend/` هنا تلقائياً عند كل push.
+> آخر تحديث: 2026-06-19 · الحالة: أمان P1–P3 + التسعيرة مدموجة + بنية مستودعَين محمية.
 
 ---
 
@@ -40,18 +42,21 @@
 - **PWA** عمل دون اتصال: `sw.js` + IndexedDB + طابور `outbox`.
 - **تطبيق أندرويد** (WebView) — مستودع منفصل: `com.proconrers.schoolappyemen`.
 
-**المستودع المصدر:** https://github.com/procorners-labs/school-app-yemen-web
-**أدوات البناء:** `_build/` → `build-frontend.js` · `gen-endpoints.js` · `extract.js`
+**المستودع العام (هذا الـrepo):** https://github.com/procorners-labs/school-app-yemen-web → `frontend/` + `worker/`
+**المستودع الخاص (الكود المصدري):** https://github.com/procorners-labs/school-app-yemen-gas → GAS + `_build/`
+**أدوات البناء** (في `C:\SchoolApp-gas\_build\`): `build-frontend.js` · `gen-endpoints.js` · `extract.js`
 
 ### ⚙️ أوامر البناء وسير العمل (إلزامي)
+تُشغَّل من `C:\SchoolApp-gas`:
 ```bash
-node _build/build-frontend.js   # يبني frontend/ من مصادر HTML (يحقن GA4+robots+الجسر+طبقة offline)
-node _build/test-offline.js     # اختبارات العمل دون اتصال + المزامنة (15 اختباراً)
+node _build/build-frontend.js   # يبني frontend/ من مصادر HTML
+node _build/test-offline.js     # اختبارات العمل دون اتصال (15 اختباراً)
 node _build/gen-endpoints.js    # يولّد ApiEndpoint.js داخل كل تطبيق
 ```
-- **لا تُعدّل `frontend/` يدوياً** — هي ناتج مُولّد. عدّل المصدر (مثل `home/Index.html` بأحرف CamelCase) ثم **أعد البناء** والتزم بالمصدر و`frontend/` **معاً**. الاستثناء الوحيد المكتوب يدوياً: `frontend/index.html` (البوابة).
-- **CI يفرض التطابق** (`ci.yml`): يعيد البناء ويفشل إن اختلفت `frontend/` عن المصدر. أي تعديل HTML بلا إعادة بناء = بناء أحمر.
-- على Windows قد تُظهر `git status` فروق أسطر (CRLF) وهمية بعد البناء — ميّز التغيير الحقيقي بـ `git diff --ignore-all-space` والتزم بالملفات ذات المحتوى الفعلي فقط.
+- **لا تُعدّل `frontend/` يدوياً** — تُبنى تلقائياً بواسطة CI في gas repo عند كل push لـmain.
+- **CI في gas repo** (`build-and-deploy.yml`): يبني → يختبر → يرسل `frontend/` إلى هذا الـrepo.
+- تعديل GAS source → اعمل في `C:\SchoolApp-gas` وادفع هناك، لا هنا.
+- على Windows قد تُظهر `git status` فروق أسطر (CRLF) وهمية — ميّز بـ `git diff --ignore-all-space`.
 
 ---
 
