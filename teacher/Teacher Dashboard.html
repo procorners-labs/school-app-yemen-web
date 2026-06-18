@@ -3327,12 +3327,12 @@ function bootApp() {
   // تحميل عدّاد إشعارات الأخبار (الجرس)
   loadNewsNotifications();
 
-  // إظهار «غياب المعلمين» للمشرف/الوكيل/المدير فقط
+  // إظهار «غياب المعلمين» و«الغياب اليومي» للمشرف/الوكيل/المدير فقط
+  var _attPriv = App.user.isAdmin || App.user.role === 'admin' || App.user.role === 'deputy' || App.user.role === 'supervisor';
   var _siTabs = document.getElementById('si-teacher-absence');
-  if (_siTabs) {
-    var _priv = App.user.isAdmin || App.user.role === 'admin' || App.user.role === 'deputy' || App.user.role === 'supervisor';
-    _siTabs.style.display = _priv ? '' : 'none';
-  }
+  if (_siTabs) _siTabs.style.display = _attPriv ? '' : 'none';
+  var _siAtt = document.getElementById('si-attendance');
+  if (_siAtt) _siAtt.style.display = _attPriv ? '' : 'none';
 
   // بدء مؤقت الجلسة
   initSessionTimer(App.user.expiresIn || 28800);
@@ -4083,6 +4083,9 @@ function showSection(name) {
 
     // معالجة الأقسام الثابتة الخاصة
     if (name === 'attendance') {
+      var _au = App.user || {};
+      var _canAtt = _au.isAdmin || _au.role === 'admin' || _au.role === 'deputy' || _au.role === 'supervisor';
+      if (!_canAtt) { showSection('dashboard'); return; }
       if (attendanceDiv) attendanceDiv.style.display = 'block';
       dynamicEl.style.display = 'none';
       att_init();
@@ -4355,7 +4358,9 @@ function renderDashboard() {
     qa += '<div class="qa-btn" onclick="openHomeworkModal()"><span class="qa-icon">📝</span><span class="qa-label">إضافة واجب</span></div>';
     qa += '<div class="qa-btn" onclick="openViolationModal()"><span class="qa-icon">⚠️</span><span class="qa-label">تسجيل مخالفة</span></div>';
     qa += '<div class="qa-btn" onclick="openNewsModal()"><span class="qa-icon">📢</span><span class="qa-label">نشر خبر</span></div>';
-    qa += '<div class="qa-btn" onclick="showSection(\'attendance\')"><span class="qa-icon">📋</span><span class="qa-label">الغياب اليومي</span></div>';
+    if (u.isAdmin || u.role === 'admin' || u.role === 'deputy' || u.role === 'supervisor') {
+      qa += '<div class="qa-btn" onclick="showSection(\'attendance\')"><span class="qa-icon">📋</span><span class="qa-label">الغياب اليومي</span></div>';
+    }
     qa += '<div class="qa-btn" onclick="showSection(\'studentDirectory\')"><span class="qa-icon">🎒</span><span class="qa-label">أسماء الطلاب</span></div>';
     qa += '<div class="qa-btn" onclick="showSection(\'studentStatus\')"><span class="qa-icon">🔎</span><span class="qa-label">بيان حالة طالب</span></div>';
     qa += '<div class="qa-btn" onclick="showSection(\'mySchedule\')"><span class="qa-icon">📅</span><span class="qa-label">جدولي</span></div>';
