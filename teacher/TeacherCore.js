@@ -951,6 +951,11 @@ function _tcCanCertificates(session) {
   var r = _safeStr(session.role);
   return (r === 'admin' || r === 'deputy' || r === 'accountant');
 }
+function _tcCanAttendance(session) {
+  if (session.isAdmin) return true;
+  var r = _safeStr(session.role);
+  return (r === 'admin' || r === 'deputy' || r === 'supervisor');
+}
 function _certGradeLabel(pct) {
   pct = _safeFloat(pct);
   if (pct >= 90) return 'ممتاز';
@@ -5922,6 +5927,9 @@ function _getStudentSheetColumnMap() {
  */
 function getAttendanceListProtected(params) {
   return withAuthAndClass(params, params.grade, params.section, function(session) {
+    if (!_tcCanAttendance(session)) {
+      return { success: false, error: 'الغياب اليومي متاح للمدير والوكيل والمشرف فقط' };
+    }
     try {
       var grade   = _safeStr(params.grade);
       var section = _safeStr(params.section);
@@ -6009,6 +6017,9 @@ function getAttendanceListProtected(params) {
  */
 function saveAttendanceProtected(params) {
   return withAuthAndClass(params, params.grade, params.section, function(session) {
+    if (!_tcCanAttendance(session)) {
+      return { success: false, error: 'الغياب اليومي متاح للمدير والوكيل والمشرف فقط' };
+    }
     try {
       var records = params.records;
       var grade   = _safeStr(params.grade);
@@ -6780,6 +6791,9 @@ function getEnhancedListsProtected(params) {
 // ══════════════════════════════════════════════════════════════
 function saveAttendanceSingleProtected(params) {
   return withAuthAndClass(params, params.grade, params.section, function(session) {
+    if (!_tcCanAttendance(session)) {
+      return { success: false, error: 'الغياب اليومي متاح للمدير والوكيل والمشرف فقط' };
+    }
     try {
       var code    = _safeStr(params.code);
       var name    = _safeStr(params.name);
