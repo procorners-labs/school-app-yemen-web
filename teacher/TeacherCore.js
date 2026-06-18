@@ -36,6 +36,38 @@ var ALL_SUBJECTS_ORDERED = [
   'تدبير منزلي', 'التدبير المنزلي', 'المهارات الحياتية'
 ];
 
+// المرجع الدائم للمواد المقرّرة لكل صف — مصدر الحقيقة للشهادات والكشوفات.
+// الأسماء هنا للمطابقة المعيارية (_tcNormSubj)؛ الاسم الفعلي يُؤخذ من ورقة النصفي.
+// لا تُضاف مواد من الجدول أو المدرسين — هذا المرجع فقط.
+var _GRADE_CURRICULUM = [
+  { grades: ['KG2', 'kg2', 'تمهيدي', 'تمهيدى', 'روضة', 'روضه'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم'] },
+  { grades: ['الأول', 'اول', 'الاول', 'الأول ابتدائي', 'الاول ابتدائي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'الرياضيات', 'العلوم'] },
+  { grades: ['الثاني', 'ثاني', 'الثانى', 'الثاني ابتدائي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'الرياضيات', 'العلوم'] },
+  { grades: ['الثالث', 'ثالث', 'الثالث ابتدائي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['الرابع', 'رابع', 'الرابع ابتدائي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['الخامس', 'خامس', 'الخامس ابتدائي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['السادس', 'سادس', 'السادس ابتدائي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['السابع', 'سابع', 'السابع متوسط', 'الأول متوسط', 'الاول متوسط'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['الثامن', 'ثامن', 'الثامن متوسط', 'الثاني متوسط'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['التاسع', 'تاسع', 'التاسع متوسط', 'الثالث متوسط'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'العلوم', 'الاجتماعيات'] },
+  { grades: ['الأول ثانوي', 'اول ثانوي', 'الاول ثانوي', 'الثانوي الأول', 'الثانوي الاول', 'الأول الثانوي', 'الاول الثانوي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الاحياء', 'المجتمع', 'التاريخ', 'الجغرافيا'] },
+  { grades: ['الثاني ثانوي', 'ثاني ثانوي', 'الثانى ثانوي', 'الثانوي الثاني', 'الثاني الثانوي', 'الثانوي الثانى'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الاحياء'] },
+  { grades: ['الثالث ثانوي', 'ثالث ثانوي', 'الثانوي الثالث', 'الثالث الثانوي'],
+    subjects: ['قران كريم', 'تربية اسلامية', 'اللغة العربية', 'اللغة الانجليزية', 'الرياضيات', 'الفيزياء', 'الكيمياء', 'الاحياء'] }
+];
+
 // قيم «علامات الأدوار» التي قد تظهر في عمود المادة لحسابات خاصة، ويجب ألا
 // تُحسب أبداً كمادة دراسية للصف (الشهادات/الكشوفات/الجدول): المدير/الوكيل/
 // المحاسب/المشرف/مشرف الأنشطة/الأنشطة/نشاط/جميع المواد.
@@ -919,6 +951,11 @@ function _tcCanCertificates(session) {
   var r = _safeStr(session.role);
   return (r === 'admin' || r === 'deputy' || r === 'accountant');
 }
+function _tcCanAttendance(session) {
+  if (session.isAdmin) return true;
+  var r = _safeStr(session.role);
+  return (r === 'admin' || r === 'deputy' || r === 'supervisor');
+}
 function _certGradeLabel(pct) {
   pct = _safeFloat(pct);
   if (pct >= 90) return 'ممتاز';
@@ -1003,9 +1040,24 @@ function _certScheduleSubjectMap() {
   if (typeof _tcCacheSet === 'function') _tcCacheSet(cKey, map, 300);
   return map;
 }
-// المواد المقرّرة لصفٍّ بعينه:
-//  1) من الجدول الدراسي (المصدر الأساسي — كل مواد جدول الصف).
-//  2) احتياطاً: تكليفات المعلمين (المادة+الفصل) إن لم يُرفع الجدول.
+// يُعيد قائمة مواد المنهج المقرّر لصف بحسب _GRADE_CURRICULUM.
+// يطابق اسم الصف معيارياً (_tcNormSubj + toLowerCase + حذف «الصف»).
+// يُعيد null إن لم يُعرَّف الصف في المرجع.
+function _certCurriculumForGrade(grade) {
+  var normGrade = _tcNormSubj(_safeStr(grade)).toLowerCase().replace(/^الصف\s+/, '');
+  for (var ci = 0; ci < _GRADE_CURRICULUM.length; ci++) {
+    var entry = _GRADE_CURRICULUM[ci];
+    for (var gi = 0; gi < entry.grades.length; gi++) {
+      var normEntry = _tcNormSubj(entry.grades[gi]).toLowerCase().replace(/^الصف\s+/, '');
+      if (normEntry === normGrade) return entry.subjects;
+    }
+  }
+  return null;
+}
+
+// المواد المقرّرة لصفٍّ بعينه (احتياط لما لا يُغطّيه _certCurriculumForGrade):
+//  1) من الجدول الدراسي.
+//  2) تكليفات المعلمين إن لم يُرفع الجدول.
 function _certSubjectsForGrade(grade) {
   var sm = _certScheduleSubjectMap();
   var fromSched = (sm.byGrade[_safeStr(grade)] || []).slice();
@@ -1106,24 +1158,34 @@ function _buildCertGrade(month, grade, section, session) {
   if (!sheet) return { success: false, error: 'ورقة "النصفي/الدرجات" غير موجودة' };
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
 
-  // مواد الشهادة:
-  //  ① مقرّرة (جدول > مدرسين): تظهر دائماً حتى لو فارغة.
-  //  ② إضافية من رؤوس الشهر: تظهر فقط إن كان لها درجات فعلية لهذا الصف (_active).
-  //  هكذا: صف «الأول» يظهر فقط مواده لا مواد الصفوف الأخرى.
-  var prescribed = _certSubjectsForGrade(grade);
+  // مواد الشهادة: المرجع الدائم _GRADE_CURRICULUM يُحدّد مواد كل صف،
+  // أسماؤها الفعلية تُؤخذ من رؤوس «النصفي» بمطابقة معيارية — لا من الجدول.
+  var curricList = _certCurriculumForGrade(grade);
   var structAll = _getGradesStructureInternal({ isAdmin: true, subjects: null, classes: null, sections: null });
-  var fromStruct = (structAll && structAll.subjectsByMonth && structAll.subjectsByMonth[month]) ||
-                   (structAll && structAll.allSubjects) || [];
-  var merged = prescribed.slice();
-  for (var msi = 0; msi < fromStruct.length; msi++) {
-    var mss = _safeStr(fromStruct[msi]);
-    if (mss && merged.indexOf(mss) === -1) merged.push(mss);
+  var allMonthSubjs = (structAll && structAll.subjectsByMonth && structAll.subjectsByMonth[month]) ||
+                      (structAll && structAll.allSubjects) || [];
+  var subjects, usePrescribed;
+  if (curricList && curricList.length) {
+    // بناء مجموعة المنهج بصيغة معيارية مع رقم الترتيب
+    var curricNorm = {};
+    for (var cni = 0; cni < curricList.length; cni++) curricNorm[_tcNormSubj(curricList[cni])] = cni;
+    // اختيار المواد الموجودة في «النصفي» والمطابقة للمنهج، بترتيب المنهج
+    var matched = [];
+    for (var ami = 0; ami < allMonthSubjs.length; ami++) {
+      var amn = _tcNormSubj(_safeStr(allMonthSubjs[ami]));
+      if (amn && typeof curricNorm[amn] !== 'undefined') {
+        matched.push({ name: allMonthSubjs[ami], order: curricNorm[amn] });
+      }
+    }
+    matched.sort(function (a, b) { return a.order - b.order; });
+    subjects = [];
+    for (var mri = 0; mri < matched.length; mri++) subjects.push(matched[mri].name);
+    usePrescribed = true;
+  } else {
+    // احتياط لصف خارج المرجع: كل مواد الشهر (تُفلتَر لاحقاً بـ _active)
+    subjects = allMonthSubjs.slice();
+    usePrescribed = false;
   }
-  var usePrescribed = (prescribed.length > 0);
-  // مجموعة المواد المقرّرة (للبحث السريع في منطق idx)
-  var _prescribedSet = {};
-  for (var _psi = 0; _psi < prescribed.length; _psi++) _prescribedSet[_safeStr(prescribed[_psi])] = true;
-  var subjects = (merged.length > 0) ? _certSortSubjects(merged) : [];
   if (!subjects.length) return { success: false, error: 'لا توجد مواد مُعرّفة. تأكد من رؤوس ورقة "النصفي/الدرجات".' };
 
   // تحديد أعمدة كل مادة من الرؤوس فقط (رخيص). المادة المقرّرة بلا عمود لهذه الفترة
@@ -1176,13 +1238,11 @@ function _buildCertGrade(month, grade, section, session) {
   }
 
   // المواد المعروضة:
-  //  - مقرّرة: تُعرض دائماً (حتى فارغة) + مواد الورقة ذات البيانات الفعلية للصف.
-  //  - احتياط (لا تكليفات): فقط ما له بيانات لهذا الصف.
+  //  - منهج مقرّر: كل مواد subjects (مفلترة مسبقاً بالمنهج) تُعرض حتى لو فارغة.
+  //  - احتياط (صف خارج المرجع): فقط المواد ذات البيانات الفعلية للصف (_active).
   var idx = [];
   if (usePrescribed) {
-    for (var pi = 0; pi < subjMeta.length; pi++) {
-      if (_prescribedSet[_safeStr(subjMeta[pi].name)] || subjMeta[pi]._active) idx.push(pi);
-    }
+    for (var pi = 0; pi < subjMeta.length; pi++) idx.push(pi);
     if (!idx.length) return { success: false, error: 'لا توجد مواد مقرّرة لهذا الصف في هذه الفترة' };
   } else {
     for (var ai = 0; ai < subjMeta.length; ai++) if (subjMeta[ai]._active) idx.push(ai);
@@ -5867,6 +5927,9 @@ function _getStudentSheetColumnMap() {
  */
 function getAttendanceListProtected(params) {
   return withAuthAndClass(params, params.grade, params.section, function(session) {
+    if (!_tcCanAttendance(session)) {
+      return { success: false, error: 'الغياب اليومي متاح للمدير والوكيل والمشرف فقط' };
+    }
     try {
       var grade   = _safeStr(params.grade);
       var section = _safeStr(params.section);
@@ -5954,6 +6017,9 @@ function getAttendanceListProtected(params) {
  */
 function saveAttendanceProtected(params) {
   return withAuthAndClass(params, params.grade, params.section, function(session) {
+    if (!_tcCanAttendance(session)) {
+      return { success: false, error: 'الغياب اليومي متاح للمدير والوكيل والمشرف فقط' };
+    }
     try {
       var records = params.records;
       var grade   = _safeStr(params.grade);
@@ -6725,6 +6791,9 @@ function getEnhancedListsProtected(params) {
 // ══════════════════════════════════════════════════════════════
 function saveAttendanceSingleProtected(params) {
   return withAuthAndClass(params, params.grade, params.section, function(session) {
+    if (!_tcCanAttendance(session)) {
+      return { success: false, error: 'الغياب اليومي متاح للمدير والوكيل والمشرف فقط' };
+    }
     try {
       var code    = _safeStr(params.code);
       var name    = _safeStr(params.name);

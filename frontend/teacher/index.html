@@ -1855,7 +1855,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <span class="sidebar-label">الأدوات الأكاديمية</span>
   <button class="sidebar-item" id="si-grades"     onclick="showSection('grades')">    <span class="si-icon">📊</span> الدرجات</button>
   <button class="sidebar-item" id="si-homework"   onclick="showSection('homework')">  <span class="si-icon">📝</span> الواجبات</button>
-  <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">⚠️</span> المخالفات</button>
+  <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">📋</span> السجل السلوكي</button>
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')">      <span class="si-icon">📢</span> الأخبار والإشعارات</button>
@@ -2289,11 +2289,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
-<!-- مودال تسجيل مخالفة -->
+<!-- مودال تسجيل سلوك -->
 <div class="modal-backdrop" id="violationModal">
   <div class="modal-dialog modal-lg">
     <div class="modal-header">
-      <span>⚠️ تسجيل مخالفة</span>
+      <span>📋 تسجيل سلوك</span>
       <button class="modal-close" onclick="closeModal('violationModal')">✕</button>
     </div>
     <div class="modal-body">
@@ -2305,14 +2305,14 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div id="vioStep2" style="display:none">
         <div class="alert alert-info mb-3" id="vioSelectedStudent"></div>
-        <div class="form-group mb-3"><label class="form-label">نوع المخالفة <span style="color:var(--danger)">*</span></label><select class="form-select" id="vioType"></select></div>
+        <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label><select class="form-select" id="vioType"></select></div>
         <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد</label><textarea class="form-control" id="vioReply" placeholder="ملاحظات إضافية..." rows="3"></textarea></div>
         <button class="btn btn-secondary btn-sm" onclick="vioBackToSearch()">← العودة للبحث</button>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('violationModal')">إلغاء</button>
-      <button class="btn btn-danger" id="vioSaveBtn" onclick="saveViolation()" style="display:none">⚠️ تسجيل المخالفة</button>
+      <button class="btn btn-primary" id="vioSaveBtn" onclick="saveViolation()" style="display:none">💾 حفظ التسجيل</button>
     </div>
   </div>
 </div>
@@ -3376,12 +3376,12 @@ function bootApp() {
   // تحميل عدّاد إشعارات الأخبار (الجرس)
   loadNewsNotifications();
 
-  // إظهار «غياب المعلمين» للمشرف/الوكيل/المدير فقط
+  // إظهار «غياب المعلمين» و«الغياب اليومي» للمشرف/الوكيل/المدير فقط
+  var _attPriv = App.user.isAdmin || App.user.role === 'admin' || App.user.role === 'deputy' || App.user.role === 'supervisor';
   var _siTabs = document.getElementById('si-teacher-absence');
-  if (_siTabs) {
-    var _priv = App.user.isAdmin || App.user.role === 'admin' || App.user.role === 'deputy' || App.user.role === 'supervisor';
-    _siTabs.style.display = _priv ? '' : 'none';
-  }
+  if (_siTabs) _siTabs.style.display = _attPriv ? '' : 'none';
+  var _siAtt = document.getElementById('si-attendance');
+  if (_siAtt) _siAtt.style.display = _attPriv ? '' : 'none';
 
   // بدء مؤقت الجلسة
   initSessionTimer(App.user.expiresIn || 28800);
@@ -3484,8 +3484,10 @@ function _getDefaultLists() {
     ],
     sections   : ['أ', 'ب', 'ج'],
     violations : [
-      'تأخر عن الدوام', 'عدم التزام بالزي المدرسي', 'إهمال الواجبات',
-      'سلوك غير لائق', 'استخدام الجوال', 'غياب بدون عذر', 'إزعاج الفصل'
+      'تأخر عن الدوام', 'عدم الالتزام بالزي المدرسي', 'إهمال الواجبات',
+      'سلوك مزعج داخل الفصل', 'استخدام الجوال أثناء الدرس', 'غياب غير مبرر',
+      'عدم احترام المعلم', 'تميّز أكاديمي', 'مشاركة فعّالة',
+      'سلوك مثالي', 'إنجاز متميز', 'تعاون وروح الفريق', 'انضباط واتزان'
     ],
     _ts        : Date.now()
   };
@@ -4014,7 +4016,7 @@ function openViolationModal() {
   document.getElementById('vioSaveBtn').style.display = 'none';
   document.getElementById('vioSearchInput').value = '';
   document.getElementById('vioStudentResults').innerHTML = '';
-  document.getElementById('vioType').innerHTML = buildSelectOptions(App.lists.violations || [], 'اختر نوع المخالفة');
+  document.getElementById('vioType').innerHTML = buildSelectOptions(App.lists.violations || [], 'اختر نوع السلوك');
   document.getElementById('vioReply').value = '';
   openModal('violationModal');
 }
@@ -4078,9 +4080,9 @@ function saveViolation() {
   if (!s) { toast('يرجى اختيار طالب أولاً', 'warning'); return; }
   var type = document.getElementById('vioType').value;
   var reply = document.getElementById('vioReply').value;
-  if (!type) { toast('يرجى اختيار نوع المخالفة', 'warning'); return; }
+  if (!type) { toast('يرجى اختيار نوع السلوك', 'warning'); return; }
 
-  showLoading('جاري حفظ المخالفة...');
+  showLoading('جاري حفظ التسجيل...');
   callServer('addViolationProtected', {
     studentRow: s.rowIndex,
     violation: type,
@@ -4089,10 +4091,10 @@ function saveViolation() {
   }, function(r) {
     hideLoading();
     if (r && r.success) {
-      toast(r.message || 'تم تسجيل المخالفة بنجاح', 'success');
+      toast(r.message || 'تم التسجيل بنجاح', 'success');
       closeModal('violationModal');
     } else {
-      showError(r ? r.error : 'فشل حفظ المخالفة');
+      showError(r ? r.error : 'فشل حفظ التسجيل');
     }
   });
 }
@@ -4132,6 +4134,9 @@ function showSection(name) {
 
     // معالجة الأقسام الثابتة الخاصة
     if (name === 'attendance') {
+      var _au = App.user || {};
+      var _canAtt = _au.isAdmin || _au.role === 'admin' || _au.role === 'deputy' || _au.role === 'supervisor';
+      if (!_canAtt) { showSection('dashboard'); return; }
       if (attendanceDiv) attendanceDiv.style.display = 'block';
       dynamicEl.style.display = 'none';
       att_init();
@@ -4402,9 +4407,11 @@ function renderDashboard() {
     var qa = '';
     qa += '<div class="qa-btn" onclick="showSection(\'grades\')"><span class="qa-icon">📊</span><span class="qa-label">إدخال الدرجات</span></div>';
     qa += '<div class="qa-btn" onclick="openHomeworkModal()"><span class="qa-icon">📝</span><span class="qa-label">إضافة واجب</span></div>';
-    qa += '<div class="qa-btn" onclick="openViolationModal()"><span class="qa-icon">⚠️</span><span class="qa-label">تسجيل مخالفة</span></div>';
+    qa += '<div class="qa-btn" onclick="openViolationModal()"><span class="qa-icon">📋</span><span class="qa-label">تسجيل سلوك</span></div>';
     qa += '<div class="qa-btn" onclick="openNewsModal()"><span class="qa-icon">📢</span><span class="qa-label">نشر خبر</span></div>';
-    qa += '<div class="qa-btn" onclick="showSection(\'attendance\')"><span class="qa-icon">📋</span><span class="qa-label">الغياب اليومي</span></div>';
+    if (u.isAdmin || u.role === 'admin' || u.role === 'deputy' || u.role === 'supervisor') {
+      qa += '<div class="qa-btn" onclick="showSection(\'attendance\')"><span class="qa-icon">📋</span><span class="qa-label">الغياب اليومي</span></div>';
+    }
     qa += '<div class="qa-btn" onclick="showSection(\'studentDirectory\')"><span class="qa-icon">🎒</span><span class="qa-label">أسماء الطلاب</span></div>';
     qa += '<div class="qa-btn" onclick="showSection(\'studentStatus\')"><span class="qa-icon">🔎</span><span class="qa-label">بيان حالة طالب</span></div>';
     qa += '<div class="qa-btn" onclick="showSection(\'mySchedule\')"><span class="qa-icon">📅</span><span class="qa-label">جدولي</span></div>';
@@ -4482,7 +4489,7 @@ function loadDashboardStats(data) {
       }
       statsEl.innerHTML =
         card('📝', 'rgba(79,70,229,.1)',  'var(--primary)',  hw,  'واجبات مسجلة',  "showSection('homework')") +
-        card('⚠️', 'rgba(239,68,68,.1)',  'var(--danger)',   vio, 'مخالفات مسجلة', "showSection('violations')") +
+        card('📋', 'rgba(79,70,229,.1)',   'var(--primary)',  vio, 'سجلات سلوكية',  "showSection('violations')") +
         card('📢', 'rgba(6,182,212,.1)',  'var(--secondary)',news,'أخبار منشورة',  "showSection('news')") +
         card('📊', 'rgba(16,185,129,.1)', 'var(--success)',  (hw + vio + news), 'إجمالي النشاط', "showSection('reports')");
     }
@@ -4496,7 +4503,7 @@ function loadDashboardStats(data) {
       all.push({ type:'hw', icon:'📝', color:'var(--primary)', text: hw2[i].homework || '', date: hw2[i].date || '', label:'واجب' });
     }
     for (var j = 0; j < vio2.length; j++) {
-      all.push({ type:'vio', icon:'⚠️', color:'var(--danger)', text: vio2[j].violation || '', date: vio2[j].date || '', label:'مخالفة' });
+      all.push({ type:'vio', icon:'📋', color:'var(--primary)', text: vio2[j].violation || '', date: vio2[j].date || '', label:'سلوك' });
     }
     for (var k = 0; k < n2.length; k++) {
       all.push({ type:'news', icon:'📢', color:'var(--secondary)', text: n2[k].news || '', date: n2[k].date || '', label:'خبر' });
@@ -6224,14 +6231,24 @@ var _vioCurrentPage    = 1;     // الصفحة الحالية
 var _vioPageSize       = 20;    // عدد المخالفات في كل صفحة
 var _vioTotalPages     = 1;     // إجمالي عدد الصفحات
 
+// دالة مساعدة: تحدد لون الشارة بناءً على نوع السلوك (إيجابي/سلبي)
+function _vioBadgeClass(type) {
+  var t = _tcNorm(type || '');
+  var pos = ['تميز', 'مشاركة', 'انجاز', 'تعاون', 'مثالي', 'حضور', 'انضباط', 'ابداع', 'ابتكار', 'تفوق', 'تقدير', 'سلوك مثالي', 'تميز'];
+  for (var i = 0; i < pos.length; i++) {
+    if (t.indexOf(pos[i]) > -1) return 'badge-success';
+  }
+  return 'badge-danger';
+}
+
 // --- 1. عرض الصفحة الأساسية (لا يتغير) ---
 function renderViolations() {
   document.getElementById('dynamicContent').innerHTML = 
     '<div class="section-card">' +
       '<div class="section-header">' +
-        '<div class="section-header-icon" style="background:rgba(239,68,68,.1)">⚠️</div>' +
-        '<div class="section-header-title">المخالفات السلوكية</div>' +
-        '<button class="btn btn-danger btn-sm" onclick="openViolationModal()">➕ تسجيل مخالفة</button>' +
+        '<div class="section-header-icon" style="background:rgba(79,70,229,.1)">📋</div>' +
+        '<div class="section-header-title">السجل السلوكي</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="openViolationModal()">➕ تسجيل سلوك</button>' +
       '</div>' +
       '<div class="section-body">' +
         '<div class="filter-bar"><div class="filter-bar-title">🔎 تصفية وبحث</div>' +
@@ -6258,7 +6275,7 @@ function renderViolations() {
           '</div>' +
           '<div class="form-group flex-1">' +
             '<label class="form-label">بحث</label>' +
-            '<div class="search-wrap"><input type="text" class="form-control" id="vioFilterSearch" placeholder="اسم الطالب أو الكود أو المخالفة..." oninput="_debounceFilterViolations()"><span class="search-icon">🔍</span></div>' +
+            '<div class="search-wrap"><input type="text" class="form-control" id="vioFilterSearch" placeholder="اسم الطالب أو الكود أو نوع السلوك..." oninput="_debounceFilterViolations()"><span class="search-icon">🔍</span></div>' +
           '</div>' +
         '</div></div>' +
         '<div id="vioListArea">' +
@@ -6280,7 +6297,7 @@ function loadViolations() {
       _allViolations = (r.data && r.data.violations) ? r.data.violations : [];
       filterViolations();
     } else {
-      if (area) area.innerHTML = '<div class="alert alert-warning">⚠️ تعذر تحميل المخالفات</div>';
+      if (area) area.innerHTML = '<div class="alert alert-warning">⚠️ تعذر تحميل السجل السلوكي</div>';
     }
   });
 }
@@ -6325,7 +6342,7 @@ function renderViolationsPage() {
   if (!area) return;
   
   if (!_vioFilteredList.length) {
-    area.innerHTML = '<div class="empty-state"><div class="es-icon">⚠️</div><div class="es-title">لا توجد مخالفات مسجلة</div></div>';
+    area.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">لا توجد سجلات سلوكية</div></div>';
     return;
   }
   
@@ -6340,9 +6357,9 @@ function renderViolationsPage() {
                  '<th style="padding:10px;text-align:right;">الطالب</th>' +
                  '<th style="padding:10px;text-align:center;">الفصل</th>' +
                  '<th style="padding:10px;text-align:center;">الشعبة</th>' +
-                 '<th style="padding:10px;text-align:right;">المخالفة</th>' +
+                 '<th style="padding:10px;text-align:right;">السلوك</th>' +
                  '<th style="padding:10px;text-align:center;">التاريخ</th>' +
-                 '<th style="padding:10px;text-align:center;">الرد</th>';
+                 '<th style="padding:10px;text-align:center;">ملاحظة</th>';
   if (isFullAdmin()) html += '<th style="padding:10px;text-align:center;">إجراء</th>';
   html += '</tr></thead><tbody>';
   
@@ -6355,7 +6372,7 @@ function renderViolationsPage() {
               '</td>' +
               '<td style="padding:10px;text-align:center;">' + escapeHtml(v.grade || '—') + '</td>' +
               '<td style="padding:10px;text-align:center;">' + escapeHtml(v.section || '—') + '</td>' +
-              '<td style="padding:10px;"><span class="badge badge-danger">' + escapeHtml(v.violation || '—') + '</span></td>' +
+              '<td style="padding:10px;"><span class="badge ' + _vioBadgeClass(v.violation) + '">' + escapeHtml(v.violation || '—') + '</span></td>' +
               '<td style="padding:10px;text-align:center;font-size:.82rem;">' + formatDate(v.date) + '</td>' +
               '<td style="padding:10px;text-align:center;">' + 
                 (v.reply && v.reply.trim() ? '<span class="badge badge-success">💬 ' + escapeHtml(v.reply.substring(0,20)) + '...</span>' : '<span class="badge" style="background:#eef2ff;">—</span>') +
@@ -6378,7 +6395,7 @@ function renderViolationsPage() {
             '</div>';
   }
   
-  html += '<div style="font-size:.8rem;color:#666;margin-top:10px;text-align:center;">📊 إجمالي المخالفات: ' + _vioFilteredList.length + '</div>';
+  html += '<div style="font-size:.8rem;color:#666;margin-top:10px;text-align:center;">📊 إجمالي السجلات: ' + _vioFilteredList.length + '</div>';
   area.innerHTML = html;
 }
 
@@ -6409,9 +6426,9 @@ function openViolationModal() {
   document.getElementById('vioSearchInput').value = '';
   document.getElementById('vioStudentResults').innerHTML = '';
   
-  // تعبئة قائمة أنواع المخالفات
+  // تعبئة قائمة أنواع السلوك
   var violationsList = (App.lists && App.lists.violations) ? App.lists.violations : [];
-  fillSelect('vioType', violationsList, 'اختر نوع المخالفة');
+  fillSelect('vioType', violationsList, 'اختر نوع السلوك');
   document.getElementById('vioReply').value = '';
   openModal('violationModal');
 }
@@ -6540,11 +6557,11 @@ function saveViolation() {
   var type = document.getElementById('vioType').value;
   var reply = document.getElementById('vioReply').value;
   if (!type) {
-    toast('يرجى اختيار نوع المخالفة', 'warning');
+    toast('يرجى اختيار نوع السلوك', 'warning');
     return;
   }
-  
-  showLoading('جاري حفظ المخالفة...');
+
+  showLoading('جاري حفظ التسجيل...');
   callServer('addViolationProtected', {
     studentRow: s.rowIndex,
     violation: type,
@@ -6553,12 +6570,12 @@ function saveViolation() {
   }, function(r) {
     hideLoading();
     if (r && r.success) {
-      toast(r.message || 'تم تسجيل المخالفة بنجاح', 'success');
+      toast(r.message || 'تم التسجيل بنجاح', 'success');
       closeModal('violationModal');
       _allViolations = [];          // إفراغ الكاش المحلي
       loadViolations();             // إعادة التحميل
     } else {
-      showError(r ? r.error : 'فشل حفظ المخالفة');
+      showError(r ? r.error : 'فشل حفظ التسجيل');
     }
   });
 }
@@ -6566,11 +6583,11 @@ function saveViolation() {
 // --- 9. حذف مخالفة (بإذن المدير فقط) ---
 function deleteViolationItem(rowIndex) {
   if (!isFullAdmin()) {
-    toast('غير مصرح لك بحذف المخالفات', 'error');
+    toast('غير مصرح لك بحذف السجلات', 'error');
     return;
   }
-  confirmAction('حذف المخالفة', 'هل تريد حذف هذه المخالفة نهائياً؟', '🗑️', function() {
-    showLoading('جاري حذف المخالفة...');
+  confirmAction('حذف السجل', 'هل تريد حذف هذا السجل السلوكي نهائياً؟', '🗑️', function() {
+    showLoading('جاري حذف السجل...');
     callServer('deleteViolationProtected', { rowIndex: rowIndex }, function(r) {
       hideLoading();
       if (r && r.success) {
@@ -6578,7 +6595,7 @@ function deleteViolationItem(rowIndex) {
         _allViolations = [];
         loadViolations();
       } else {
-        showError(r ? r.error : 'فشل حذف المخالفة');
+        showError(r ? r.error : 'فشل حذف السجل');
       }
     });
   });
@@ -9870,14 +9887,14 @@ function rep_shareReport() {
   function add(label, val) { if (val !== undefined && val !== null && val !== '') lines.push('• ' + label + ': ' + val); }
   if (d.scope === 'admin' || d.scope === 'deputy') {
     add('إجمالي الطلاب', s.totalStudents); add('إجمالي المعلمين', s.totalTeachers); add('الفصول', s.totalClasses);
-    add('الأخبار المنشورة', s.totalNews); add('الواجبات', s.totalHomework); add('المخالفات', s.totalViolations);
+    add('الأخبار المنشورة', s.totalNews); add('الواجبات', s.totalHomework); add('السجل السلوكي', s.totalViolations);
     add('الملاحظات', s.totalNotes); if (s.attendanceRate) add('نسبة الحضور', s.attendanceRate + '%');
   } else if (d.scope === 'supervisor') {
     add('الطلاب المُشرف عليهم', s.supervisedStudents); add('الفصول', s.supervisedClasses);
-    add('الأخبار', s.totalNews); add('الواجبات', s.totalHomework); add('المخالفات', s.totalViolations);
+    add('الأخبار', s.totalNews); add('الواجبات', s.totalHomework); add('السجل السلوكي', s.totalViolations);
   } else {
     add('طلابي', s.myStudents); add('حصص أسبوعية', s.weeklyPeriods); add('واجبات نشرتها', s.myHomework);
-    add('أخبار نشرتها', s.myNews); add('مخالفات سجّلتها', s.myViolations); if (s.avgGrade) add('متوسط درجات طلابي', s.avgGrade);
+    add('أخبار نشرتها', s.myNews); add('سجلات أضفتُها', s.myViolations); if (s.avgGrade) add('متوسط درجات طلابي', s.avgGrade);
   }
   // أداء المهام (إن توفّر داخل اللوحة)
   var g = window._repTaskList;
@@ -10062,7 +10079,7 @@ function _rpt_renderAdmin(d) {
   html += _rpt_stat('🏫', s.totalClasses,   'الفصول',            'rgba(6,182,212,.12)');
   html += _rpt_stat('📢', s.totalNews,      'الأخبار المنشورة',  'rgba(245,158,11,.12)');
   html += _rpt_stat('📝', s.totalHomework,  'الواجبات',          'rgba(139,92,246,.12)');
-  html += _rpt_stat('⚠️', s.totalViolations,'المخالفات',         'rgba(239,68,68,.12)');
+  html += _rpt_stat('📋', s.totalViolations,'السجل السلوكي',     'rgba(79,70,229,.12)');
   html += _rpt_stat('✉️', s.totalNotes,     'الملاحظات',         'rgba(20,184,166,.12)');
   if (s.attendanceRate) {
     html += _rpt_stat('📋', s.attendanceRate + '%', 'نسبة الحضور', 'rgba(34,197,94,.12)');
@@ -10080,8 +10097,8 @@ function _rpt_renderAdmin(d) {
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('🏆', 'أعلى 5 معلمين تفاعلاً',
     _rpt_topList(d.lists.topTeachers, 'name', 'total', 'نشاط'));
-  html += _rpt_card('⚠️', 'أكثر 5 طلاب مخالفات',
-    _rpt_topList(d.lists.topViolatedStudents, 'name', 'total', 'مخالفة',
+  html += _rpt_card('📋', 'أعلى 5 طلاب في السجل السلوكي',
+    _rpt_topList(d.lists.topViolatedStudents, 'name', 'total', 'سجل',
       function(it) { return (it.class || '') + ' ' + (it.section || ''); }));
   html += '</div>';
  
@@ -10106,20 +10123,20 @@ function _rpt_renderSupervisor(d) {
   html += _rpt_stat('🏫', s.supervisedClasses,  'الفصول',                'rgba(6,182,212,.12)');
   html += _rpt_stat('📢', s.totalNews,          'الأخبار',                'rgba(245,158,11,.12)');
   html += _rpt_stat('📝', s.totalHomework,      'الواجبات',               'rgba(16,185,129,.12)');
-  html += _rpt_stat('⚠️', s.totalViolations,    'المخالفات',              'rgba(239,68,68,.12)');
+  html += _rpt_stat('📋', s.totalViolations,    'السجل السلوكي',          'rgba(79,70,229,.12)');
   html += '</div>';
- 
+
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
   html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
     _rpt_barChart(d.charts.contentByClass, 'value', 8));
   html += '</div>';
- 
+
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('🏆', 'أعلى المعلمين تفاعلاً',
     _rpt_topList(d.lists.topTeachers, 'name', 'total', 'نشاط'));
-  html += _rpt_card('⚠️', 'أعلى الطلاب مخالفات',
-    _rpt_topList(d.lists.topViolatedStudents, 'name', 'total', 'مخالفة'));
+  html += _rpt_card('📋', 'أعلى الطلاب في السجل السلوكي',
+    _rpt_topList(d.lists.topViolatedStudents, 'name', 'total', 'سجل'));
   html += '</div>';
  
   return html;
@@ -10135,7 +10152,7 @@ function _rpt_renderTeacher(d) {
   html += _rpt_stat('📅', s.weeklyPeriods, 'حصص أسبوعية',         'rgba(6,182,212,.12)');
   html += _rpt_stat('📝', s.myHomework,    'واجبات نشرتها',       'rgba(16,185,129,.12)');
   html += _rpt_stat('📢', s.myNews,        'أخبار نشرتها',        'rgba(245,158,11,.12)');
-  html += _rpt_stat('⚠️', s.myViolations,  'مخالفات سجّلتها',     'rgba(239,68,68,.12)');
+  html += _rpt_stat('📋', s.myViolations,  'سجلات أضفتُها',       'rgba(79,70,229,.12)');
   if (s.avgGrade) {
     html += _rpt_stat('📊', s.avgGrade,    'متوسط درجات طلابي',   'rgba(139,92,246,.12)');
   }
@@ -10144,8 +10161,8 @@ function _rpt_renderTeacher(d) {
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('📊', 'متوسط الدرجات حسب المادة',
     _rpt_barChart(d.charts.gradesBySubject, 'value', 100, 'success'));
-  html += _rpt_card('⚠️', 'المخالفات حسب الفصل',
-    _rpt_barChart(d.charts.violationsByClass, 'value', null, 'danger'));
+  html += _rpt_card('📋', 'السجل السلوكي حسب الفصل',
+    _rpt_barChart(d.charts.violationsByClass, 'value', null, 'primary'));
   html += '</div>';
  
   html += _rpt_card('📈', 'نشاطي خلال 7 أيام',
@@ -10233,7 +10250,7 @@ function _rpt_weekChart(days) {
   html += '<div class="rpt-week-legend">' +
             '<span><span class="dot" style="background:var(--primary)"></span>واجبات</span>' +
             '<span><span class="dot" style="background:var(--secondary)"></span>أخبار</span>' +
-            '<span><span class="dot" style="background:var(--danger)"></span>مخالفات</span>' +
+            '<span><span class="dot" style="background:var(--primary)"></span>سجل سلوكي</span>' +
           '</div>';
   return html;
 }
@@ -11080,7 +11097,7 @@ function renderStudentStatus() {
     '</div></div>' +
     '<div class="mb-3"><label class="form-label">أقسام التقرير (تأشيرات)</label><div style="display:flex;gap:16px;flex-wrap:wrap">' +
       sstat_flag('basic', 'المعلومات الأساسية') + sstat_flag('fees', 'الرسوم') + sstat_flag('grades', 'الدرجات') +
-      sstat_flag('attendance', 'الحضور والغياب') + sstat_flag('violations', 'المخالفات') + sstat_flag('homework', 'الواجبات') +
+      sstat_flag('attendance', 'الحضور والغياب') + sstat_flag('violations', 'السجل السلوكي') + sstat_flag('homework', 'الواجبات') +
     '</div></div>' +
     '<button class="btn btn-primary" onclick="sstat_generate()">🔍 إنشاء التقرير</button>' +
     '<div id="sstat-report" class="mt-3"></div></div></div>';
@@ -11118,7 +11135,7 @@ function sstat_renderReport(r) {
        sstat_kv('المتبقي', r.fees.remaining) + sstat_kv('النسبة', r.fees.percent + '%') + '</div>');
   if (r.grades) h += sstat_card('📊 الدرجات', sstat_grades(r.grades));
   if (r.attendance) h += sstat_card('🗓️ الحضور والغياب', sstat_list(r.attendance, ['date', 'status'], ['التاريخ', 'الحالة']));
-  if (r.violations) h += sstat_card('⚠️ المخالفات', sstat_list(r.violations, ['type', 'teacher', 'date', 'reply'], ['المخالفة', 'المدرس', 'التاريخ', 'الرد']));
+  if (r.violations) h += sstat_card('📋 السجل السلوكي', sstat_list(r.violations, ['type', 'teacher', 'date', 'reply'], ['السلوك', 'المدرس', 'التاريخ', 'ملاحظة']));
   if (r.homework) h += sstat_card('📝 الواجبات', sstat_list(r.homework, ['subject', 'homework', 'teacher', 'date'], ['المادة', 'الواجب', 'المدرس', 'التاريخ']));
   h += '</div>';
   h += '<div style="margin-top:12px;text-align:left"><button class="btn btn-secondary" onclick="sstat_print()">🖨️ طباعة</button></div>';
