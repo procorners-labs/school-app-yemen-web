@@ -1106,8 +1106,10 @@ function _buildCertGrade(month, grade, section, session) {
   if (!sheet) return { success: false, error: 'ورقة "النصفي/الدرجات" غير موجودة' };
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
 
-  // مواد الشهادة: تكليفات المعلمين + رؤوس ورقة الشهر — يضمن عرض كل المواد المُدخلة
-  // حتى لو كانت التكليفات ناقصة (صفوف بمعلم واحد فقط أو بلا تكليف).
+  // مواد الشهادة:
+  //  ① مقرّرة (جدول > مدرسين): تظهر دائماً حتى لو فارغة.
+  //  ② إضافية من رؤوس الشهر: تظهر فقط إن كان لها درجات فعلية لهذا الصف (_active).
+  //  هكذا: صف «الأول» يظهر فقط مواده لا مواد الصفوف الأخرى.
   var prescribed = _certSubjectsForGrade(grade);
   var structAll = _getGradesStructureInternal({ isAdmin: true, subjects: null, classes: null, sections: null });
   var fromStruct = (structAll && structAll.subjectsByMonth && structAll.subjectsByMonth[month]) ||
@@ -1118,6 +1120,9 @@ function _buildCertGrade(month, grade, section, session) {
     if (mss && merged.indexOf(mss) === -1) merged.push(mss);
   }
   var usePrescribed = (prescribed.length > 0);
+  // مجموعة المواد المقرّرة (للبحث السريع في منطق idx)
+  var _prescribedSet = {};
+  for (var _psi = 0; _psi < prescribed.length; _psi++) _prescribedSet[_safeStr(prescribed[_psi])] = true;
   var subjects = (merged.length > 0) ? _certSortSubjects(merged) : [];
   if (!subjects.length) return { success: false, error: 'لا توجد مواد مُعرّفة. تأكد من رؤوس ورقة "النصفي/الدرجات".' };
 
@@ -1171,11 +1176,14 @@ function _buildCertGrade(month, grade, section, session) {
   }
 
   // المواد المعروضة:
-  //  - وضع المقرّرة (تكليفات معلمين): كل مواد الصف المقرّرة (حتى الفارغة) — وهو المطلوب.
-  //  - وضع الاحتياط (لا تكليفات): ما له بيانات فقط؛ إن لا شيء → رسالة (بلا «كل المواد»).
+  //  - مقرّرة: تُعرض دائماً (حتى فارغة) + مواد الورقة ذات البيانات الفعلية للصف.
+  //  - احتياط (لا تكليفات): فقط ما له بيانات لهذا الصف.
   var idx = [];
   if (usePrescribed) {
-    for (var pi = 0; pi < subjMeta.length; pi++) idx.push(pi);
+    for (var pi = 0; pi < subjMeta.length; pi++) {
+      if (_prescribedSet[_safeStr(subjMeta[pi].name)] || subjMeta[pi]._active) idx.push(pi);
+    }
+    if (!idx.length) return { success: false, error: 'لا توجد مواد مقرّرة لهذا الصف في هذه الفترة' };
   } else {
     for (var ai = 0; ai < subjMeta.length; ai++) if (subjMeta[ai]._active) idx.push(ai);
     if (!idx.length) return { success: false, error: 'لا توجد مواد لها درجات مُدخلة لهذا الصف في هذه الفترة' };
