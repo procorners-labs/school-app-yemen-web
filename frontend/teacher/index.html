@@ -2317,6 +2317,41 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال تعديل مهمة -->
+<div class="modal-backdrop" id="taskEditModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-header">
+      <span>✏️ تعديل المهمة</span>
+      <button class="modal-close" onclick="closeModal('taskEditModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="te-id">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">المعلم *</label><select class="form-select" id="te-teacher"></select></div>
+        <div class="form-group"><label class="form-label">نوع المهمة *</label><select class="form-select" id="te-type"></select></div>
+        <div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="te-status"></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="te-grade"></select></div>
+        <div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="te-section"></select></div>
+        <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="te-date"></div>
+        <div class="form-group"><label class="form-label">الوقت</label><input type="time" class="form-control" id="te-time"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group flex-1"><label class="form-label">الوصف</label><input type="text" class="form-control" id="te-desc" placeholder="تفاصيل المهمة..."></div>
+        <div class="form-group"><label class="form-label">💰 الرسم</label><input type="number" class="form-control" id="te-fee" placeholder="0" style="width:90px"></div>
+        <div class="form-group"><label class="form-label">🔻 الخصم</label><input type="number" class="form-control" id="te-deduction" placeholder="0" style="width:90px"></div>
+      </div>
+      <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="form-control" id="te-notes" placeholder="ملاحظات إضافية..." rows="2"></textarea></div>
+      <div id="te-status-msg" style="margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('taskEditModal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="tasks_submitEdit()">💾 حفظ التعديلات</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال إضافة/تعديل معلم (كلاسيكي) -->
 <div class="modal-backdrop" id="teacherModal">
   <div class="modal-dialog">
@@ -4742,7 +4777,7 @@ function saveScheduleSettings() {
 // ════════════════════════════════════════════════════════════════════
 //  📌 المهام والإشراف (واجهة المرحلة 2)
 // ════════════════════════════════════════════════════════════════════
-var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active', sched: null };
+var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active', sched: null, selected: {} };
 var TASK_STATUSES = ['مكلّف', 'منفّذ', 'مؤكّد', 'متأخر', 'لم يُنفّذ', 'حاضر', 'غائب وقت الاجتماع فقط'];
 
 function _taskBadge(s) {
@@ -4818,6 +4853,7 @@ function renderTasksMgmt() {
         '<div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="tf-teacher" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
         '<div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="tf-status" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
         '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="tf-grade" onchange="tasks_reloadMgmt()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div>' +
+        '<div class="form-group"><label class="form-label">النوع</label><select class="form-select" id="tf-type" onchange="tasks_applyLocalFilters()"><option value="">الكل</option></select></div>' +
       '</div></div>' +
       '<div id="tasksMgmtList"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
     '</div></div>';
@@ -4829,10 +4865,15 @@ function renderTasksMgmt() {
     var tSel = document.getElementById('tf-teacher');
     if (tSel) for (var j = 0; j < TASKS.teachers.length; j++) tSel.innerHTML += '<option value="' + escapeHtml(TASKS.teachers[j]) + '">' + escapeHtml(TASKS.teachers[j]) + '</option>';
   });
-  callServer('getTaskTypesProtected', {}, function (r) { TASKS.types = (r && r.types) || []; });
+  callServer('getTaskTypesProtected', {}, function (r) {
+    TASKS.types = (r && r.types) || [];
+    var tySel = document.getElementById('tf-type');
+    if (tySel) { for (var i = 0; i < TASKS.types.length; i++) tySel.innerHTML += '<option value="' + escapeHtml(TASKS.types[i]) + '">' + escapeHtml(TASKS.types[i]) + '</option>'; }
+  });
   tasks_reloadMgmt();
 }
 function tasks_reloadMgmt() {
+  TASKS.selected = {};
   var p = {
     teacher: (document.getElementById('tf-teacher') || {}).value || '',
     status: (document.getElementById('tf-status') || {}).value || '',
@@ -4846,6 +4887,10 @@ function tasks_reloadMgmt() {
     TASKS.mgmt = r.tasks || []; TASKS.canSetFee = !!r.canSetFee;
     tasks_renderMgmtList();
   }, function (e) { list.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function tasks_applyLocalFilters() {
+  TASKS.selected = {};
+  tasks_renderMgmtList();
 }
 // مجموعات الحالات للنشطة/الأرشيف (فلترة بلا نقل بيانات)
 var TASK_ACTIVE_STATUSES  = ['مكلّف', 'حاضر', 'متأخر'];
@@ -4880,34 +4925,322 @@ function tasks_renderMgmtList() {
   var list = document.getElementById('tasksMgmtList');
   tasks_renderTabs();
   var view = TASKS.view || 'active';
+  var typeF = (document.getElementById('tf-type') || {}).value || '';
   var all = TASKS.mgmt || [];
-  // فلترة بالعرض مع الحفاظ على الفهرس الأصلي للأزرار
+
+  // فلترة بالعرض + النوع مع الحفاظ على الفهرس الأصلي
   var shown = [];
-  for (var k = 0; k < all.length; k++) { if (_taskInView(all[k].status, view)) shown.push({ t: all[k], idx: k }); }
+  for (var k = 0; k < all.length; k++) {
+    if (!_taskInView(all[k].status, view)) continue;
+    if (typeF && all[k].type !== typeF) continue;
+    shown.push({ t: all[k], idx: k });
+  }
+
+  // تنظيف التحديدات الخارجة عن النطاق المرئي
+  var shownSet = {};
+  for (var z = 0; z < shown.length; z++) shownSet[shown[z].idx] = true;
+  for (var key in TASKS.selected) { if (!shownSet[key]) delete TASKS.selected[key]; }
+
   if (!shown.length) {
-    var msg = (view === 'archive') ? 'لا توجد مهام مؤرشفة' : (view === 'active' ? 'لا توجد مهام نشطة' : 'لا توجد مهام');
+    var msg = typeF ? ('لا توجد مهام من نوع «' + typeF + '»') :
+              (view === 'archive') ? 'لا توجد مهام مؤرشفة' :
+              (view === 'active' ? 'لا توجد مهام نشطة' : 'لا توجد مهام');
     list.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">' + msg + '</div></div>';
     return;
   }
+
+  var selKeys = Object.keys(TASKS.selected);
+  var selCount = selKeys.length;
+  var allChecked = (selCount === shown.length && shown.length > 0);
+  var someChecked = (selCount > 0 && !allChecked);
+
+  // ── شريط الإجراءات الجماعية ──
+  var bulkBar = '<div id="tasksBulkBar" style="' +
+    (selCount > 0 ? 'display:flex' : 'display:none') +
+    ';align-items:center;gap:8px;flex-wrap:wrap;background:rgba(79,70,229,.08);border:1px solid rgba(79,70,229,.25);border-radius:8px;padding:10px 14px;margin-bottom:10px">' +
+    '<span style="font-weight:700;color:var(--primary);min-width:80px" id="tasksBulkCount">' + selCount + ' محدد</span>' +
+    '<button class="btn btn-sm btn-secondary" onclick="tasks_deselectAll()" title="إلغاء التحديد">✕ إلغاء</button>' +
+    '<span style="color:var(--text-muted);font-size:.8rem;padding:0 4px">|</span>' +
+    '<span style="font-size:.8rem;color:var(--text-muted)">تحديث الحالة:</span>' +
+    '<button class="btn btn-sm btn-success" onclick="tasks_bulkSetStatus(\'مؤكّد\')">✅ تأكيد الكل</button>' +
+    '<button class="btn btn-sm btn-warning" onclick="tasks_bulkSetStatus(\'متأخر\')">⏰ متأخر</button>' +
+    '<button class="btn btn-sm btn-danger" onclick="tasks_bulkSetStatus(\'لم يُنفّذ\')">✖ لم يُنفّذ</button>' +
+    '<button class="btn btn-sm btn-secondary" onclick="tasks_bulkDelete()" style="margin-right:auto">🗑️ حذف المحدد</button>' +
+    '</div>';
+
   var rows = '';
   for (var s = 0; s < shown.length; s++) {
     var t = shown[s].t, i = shown[s].idx;
-    var isArchived = (TASK_ARCHIVE_STATUSES.indexOf(t.status) !== -1);
-    var acts = '';
-    if (!isArchived) {
-      if (t.status !== 'مؤكّد') acts += '<button class="btn btn-sm btn-success" title="تأكيد الإنجاز" onclick="tasks_setStatus(' + i + ',\'مؤكّد\')">✅ تأكيد</button> ';
-      acts += '<button class="btn btn-sm btn-warning" title="متأخر" onclick="tasks_setStatus(' + i + ',\'متأخر\')">⏰</button> ';
-      acts += '<button class="btn btn-sm btn-danger" title="لم يُنفّذ + خصم" onclick="tasks_miss(' + i + ')">✖</button> ';
-    }
-    if (TASKS.canSetFee) acts += '<button class="btn btn-sm btn-secondary" title="تحديد المبلغ" onclick="tasks_setFee(' + i + ')">💰</button> ';
-    acts += '<button class="btn btn-sm btn-secondary" title="حذف" onclick="tasks_delete(' + i + ')">🗑️</button>';
-    rows += '<tr><td style="font-weight:600">' + escapeHtml(t.teacher) + '</td><td>' + escapeHtml(t.type) + '</td>' +
-      '<td>' + escapeHtml((t.grade || '') + ' ' + (t.section || '')) + '</td><td>' + escapeHtml(t.date ? _fmtDateAr(t.date) : '—') + '</td>' +
-      '<td>' + escapeHtml(t.time || '—') + '</td><td>' + _taskBadge(t.status) + '</td>' +
-      '<td>' + (t.fee || 0) + '</td><td style="color:#c62828">' + (t.deduction || 0) + '</td><td><div class="btn-group">' + acts + '</div></td></tr>';
+    var isSel = !!TASKS.selected[i];
+    rows += '<tr style="' + (isSel ? 'background:rgba(79,70,229,.07)' : '') + '">' +
+      '<td style="text-align:center;padding:6px"><input type="checkbox" class="task-row-cb" ' + (isSel ? 'checked' : '') +
+        ' onchange="tasks_toggleSelect(' + i + ')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)"></td>' +
+      '<td style="font-weight:600">' + escapeHtml(t.teacher) + '</td>' +
+      '<td>' + escapeHtml(t.type) + '</td>' +
+      '<td>' + escapeHtml((t.grade || '') + (t.section ? ' / ' + t.section : '')) + '</td>' +
+      '<td>' + escapeHtml(t.date ? _fmtDateAr(t.date) : '—') + '</td>' +
+      '<td>' + escapeHtml(t.time || '—') + '</td>' +
+      '<td>' + _taskBadge(t.status) + '</td>' +
+      '<td>' + (t.fee || 0) + '</td>' +
+      '<td style="color:#c62828">' + (t.deduction || 0) + '</td>' +
+      '<td><button class="btn btn-sm btn-secondary" onclick="tasks_openMenu(event,' + i + ')" title="الإجراءات">⚙️ ▾</button></td>' +
+      '</tr>';
   }
-  list.innerHTML = '<div class="table-wrap"><table><thead><tr><th>المعلم</th><th>النوع</th><th>الصف/الشعبة</th><th>التاريخ</th><th>الوقت</th><th>الحالة</th><th>المبلغ</th><th>الخصم</th><th>إجراءات</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+  var headerCb = '<input type="checkbox" id="tasks-sel-all" ' + (allChecked ? 'checked' : '') +
+    ' onchange="tasks_toggleSelectAll()" style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)" title="تحديد الكل / إلغاء الكل">';
+
+  list.innerHTML = bulkBar +
+    '<div class="table-wrap"><table><thead><tr>' +
+    '<th style="text-align:center;width:36px">' + headerCb + '</th>' +
+    '<th>المعلم</th><th>النوع</th><th>الصف/الشعبة</th><th>التاريخ</th><th>الوقت</th><th>الحالة</th><th>المبلغ</th><th>الخصم</th><th>إجراءات</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+  // ضبط خاصية indeterminate بعد رسم DOM
+  var cbAll = document.getElementById('tasks-sel-all');
+  if (cbAll && someChecked) cbAll.indeterminate = true;
 }
+// ── دوال التحديد الجماعي ──
+function tasks_toggleSelect(idx) {
+  if (TASKS.selected[idx]) { delete TASKS.selected[idx]; } else { TASKS.selected[idx] = true; }
+  // تحديث الشريط والـcheckbox الرئيسي بدون إعادة رسم كامل
+  var selCount = Object.keys(TASKS.selected).length;
+  var bar = document.getElementById('tasksBulkBar');
+  var cnt = document.getElementById('tasksBulkCount');
+  if (bar) bar.style.display = selCount > 0 ? 'flex' : 'none';
+  if (cnt) cnt.innerHTML = selCount + ' محدد';
+  // ضبط checkbox الرأس
+  var visibleCbs = document.querySelectorAll('input.task-row-cb');
+  var cbAll = document.getElementById('tasks-sel-all');
+  if (cbAll && visibleCbs.length) {
+    var checkedCount = 0;
+    for (var i = 0; i < visibleCbs.length; i++) { if (visibleCbs[i].checked) checkedCount++; }
+    cbAll.checked = (checkedCount === visibleCbs.length);
+    cbAll.indeterminate = (checkedCount > 0 && checkedCount < visibleCbs.length);
+  }
+}
+function tasks_toggleSelectAll() {
+  var cbAll = document.getElementById('tasks-sel-all');
+  var willSelect = cbAll ? cbAll.checked : true;
+  var list = document.getElementById('tasksMgmtList');
+  if (!list) return;
+  // تعبئة أو تفريغ TASKS.selected بناءً على الصفوف المرئية
+  var cbs = list.querySelectorAll('tbody tr');
+  for (var i = 0; i < cbs.length; i++) {
+    var cb = cbs[i].querySelector('input[type=checkbox]');
+    if (!cb) continue;
+    var idxMatch = cb.getAttribute('onchange').match(/tasks_toggleSelect\((\d+)\)/);
+    if (!idxMatch) continue;
+    var idx = parseInt(idxMatch[1], 10);
+    if (willSelect) { TASKS.selected[idx] = true; } else { delete TASKS.selected[idx]; }
+    cb.checked = willSelect;
+  }
+  var selCount = Object.keys(TASKS.selected).length;
+  var bar = document.getElementById('tasksBulkBar');
+  var cnt = document.getElementById('tasksBulkCount');
+  if (bar) bar.style.display = selCount > 0 ? 'flex' : 'none';
+  if (cnt) cnt.innerHTML = selCount + ' محدد';
+  if (cbAll) { cbAll.indeterminate = false; cbAll.checked = willSelect; }
+}
+function tasks_deselectAll() {
+  TASKS.selected = {};
+  tasks_renderMgmtList();
+}
+function tasks_bulkSetStatus(status) {
+  var ids = [];
+  var all = TASKS.mgmt || [];
+  for (var key in TASKS.selected) { var t = all[parseInt(key, 10)]; if (t) ids.push(t.id); }
+  if (!ids.length) return;
+  if (!confirm('تحديث ' + ids.length + ' مهمة إلى «' + status + '»؟')) return;
+  showLoading('جاري التحديث…');
+  callServer('updateTaskStatusBulkProtected', { ids: ids, status: status }, function(r) {
+    hideLoading();
+    if (r && r.success) {
+      toast('✅ تم تحديث ' + (r.updated || ids.length) + ' مهمة', 'success');
+      tasks_reloadMgmt();
+    } else {
+      toast('❌ ' + ((r && r.error) || 'فشل التحديث'), 'error');
+    }
+  });
+}
+function tasks_bulkDelete() {
+  var idxArr = [];
+  for (var key in TASKS.selected) idxArr.push(parseInt(key, 10));
+  if (!idxArr.length) return;
+  if (!confirm('حذف ' + idxArr.length + ' مهمة نهائياً؟')) return;
+  // الحذف بالتسلسل (لا توجد bulk delete API بعد — نستخدم deleteTaskProtected بشكل متتالٍ)
+  var all = TASKS.mgmt || [];
+  var pending = idxArr.length, failed = 0;
+  showLoading('جاري الحذف…');
+  for (var i = 0; i < idxArr.length; i++) {
+    (function(idx) {
+      var t = all[idx]; if (!t) { pending--; if (pending === 0) { hideLoading(); tasks_reloadMgmt(); } return; }
+      callServer('deleteTaskProtected', { id: t.id }, function(r) {
+        if (!r || !r.success) failed++;
+        pending--;
+        if (pending === 0) {
+          hideLoading();
+          if (failed) toast('⚠️ فشل حذف ' + failed + ' مهمة', 'warning');
+          else toast('🗑️ تم حذف المهام المحددة', 'success');
+          tasks_reloadMgmt();
+        }
+      });
+    })(idxArr[i]);
+  }
+}
+
+// ── قائمة إجراءات المهمة المنسدلة ──
+var _taskMenuEl = null;
+var _taskMenuHandler = null;
+function _taskMenuClose() {
+  if (_taskMenuEl) { try { _taskMenuEl.parentNode.removeChild(_taskMenuEl); } catch(e) {} _taskMenuEl = null; }
+  if (_taskMenuHandler) { document.removeEventListener('click', _taskMenuHandler); _taskMenuHandler = null; }
+}
+function tasks_openMenu(event, idx) {
+  event.stopPropagation();
+  _taskMenuClose();
+  var t = TASKS.mgmt[idx]; if (!t) return;
+  var btn = event.currentTarget;
+  var rect = btn.getBoundingClientRect();
+
+  var div = document.createElement('div');
+  div.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1px solid rgba(0,0,0,.12);' +
+    'border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.16);min-width:190px;padding:5px 0;direction:rtl;';
+  div.style.top = Math.min(rect.bottom + 4, window.innerHeight - 260) + 'px';
+  div.style.right = Math.max(window.innerWidth - rect.right, 8) + 'px';
+
+  function mkItem(icon, label, color, fn) {
+    var b = document.createElement('button');
+    b.style.cssText = 'display:block;width:100%;text-align:right;padding:9px 16px;border:none;background:none;' +
+      'cursor:pointer;font-size:.87rem;color:' + (color || 'inherit') + ';';
+    b.onmouseover = function() { b.style.background = 'rgba(79,70,229,.07)'; };
+    b.onmouseout  = function() { b.style.background = 'none'; };
+    b.innerHTML = icon + ' ' + label;
+    b.onclick = function(e) { e.stopPropagation(); _taskMenuClose(); fn(); };
+    return b;
+  }
+  function mkSep() {
+    var d = document.createElement('div');
+    d.style.cssText = 'border-top:1px solid rgba(0,0,0,.08);margin:4px 8px';
+    return d;
+  }
+
+  // ── حالات (كل الحالات متاحة بغض النظر عن الأرشفة) ──
+  var allStatuses = [
+    ['مكلّف',   '📋', null],
+    ['حاضر',    '✅', null],
+    ['منفّذ',   '📝', null],
+    ['مؤكّد',   '✔️', '#1b5e20'],
+    ['متأخر',   '⏰', '#e65100'],
+    ['لم يُنفّذ','✖',  '#c62828'],
+    ['غائب وقت الاجتماع فقط', '🚫', '#c62828']
+  ];
+  for (var si = 0; si < allStatuses.length; si++) {
+    (function(st) {
+      if (st[0] === t.status) return;
+      div.appendChild(mkItem(st[1], 'الحالة: ' + st[0], st[2],
+        st[0] === 'لم يُنفّذ' ? function() { tasks_miss(idx); } : function() { tasks_setStatus(idx, st[0]); }
+      ));
+    })(allStatuses[si]);
+  }
+
+  div.appendChild(mkSep());
+  div.appendChild(mkItem('✏️', 'تعديل تفاصيل المهمة', null, function() { tasks_openEdit(idx); }));
+  if (TASKS.canSetFee) div.appendChild(mkItem('💰', 'تحديد المبلغ', null, function() { tasks_setFee(idx); }));
+  div.appendChild(mkSep());
+  div.appendChild(mkItem('🗑️', 'حذف المهمة', '#c62828', function() { tasks_delete(idx); }));
+
+  document.body.appendChild(div);
+  _taskMenuEl = div;
+  setTimeout(function() {
+    _taskMenuHandler = function(e) { if (!div.contains(e.target)) _taskMenuClose(); };
+    document.addEventListener('click', _taskMenuHandler);
+  }, 0);
+}
+
+// ── تعديل تفاصيل المهمة ──
+function tasks_openEdit(idx) {
+  var t = TASKS.mgmt[idx]; if (!t) return;
+  // ضبط الحقول
+  var g = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
+  g('te-id', t.id);
+  g('te-date', t.date || '');
+  g('te-time', t.time || '');
+  g('te-desc', t.description || '');
+  g('te-fee', t.fee || 0);
+  g('te-deduction', t.deduction || 0);
+  g('te-notes', t.notes || '');
+
+  // بناء قوائم المعلم والنوع والحالة والصف/الشعبة
+  var teacherSel = document.getElementById('te-teacher');
+  var typeSel    = document.getElementById('te-type');
+  var statusSel  = document.getElementById('te-status');
+  var gradeSel   = document.getElementById('te-grade');
+  var secSel     = document.getElementById('te-section');
+  if (teacherSel) {
+    teacherSel.innerHTML = '';
+    for (var j = 0; j < TASKS.teachers.length; j++) {
+      var o = document.createElement('option');
+      o.value = TASKS.teachers[j]; o.text = TASKS.teachers[j];
+      if (TASKS.teachers[j] === t.teacher) o.selected = true;
+      teacherSel.appendChild(o);
+    }
+  }
+  if (typeSel) {
+    typeSel.innerHTML = '';
+    for (var k = 0; k < TASKS.types.length; k++) {
+      var ot = document.createElement('option');
+      ot.value = TASKS.types[k]; ot.text = TASKS.types[k];
+      if (TASKS.types[k] === t.type) ot.selected = true;
+      typeSel.appendChild(ot);
+    }
+    if (!typeSel.value && t.type) { var of = document.createElement('option'); of.value = t.type; of.text = t.type; of.selected = true; typeSel.insertBefore(of, typeSel.firstChild); }
+  }
+  if (statusSel) {
+    statusSel.innerHTML = '';
+    for (var si = 0; si < TASK_STATUSES.length; si++) {
+      var os = document.createElement('option');
+      os.value = TASK_STATUSES[si]; os.text = TASK_STATUSES[si];
+      if (TASK_STATUSES[si] === t.status) os.selected = true;
+      statusSel.appendChild(os);
+    }
+  }
+  if (gradeSel) {
+    gradeSel.innerHTML = buildSelectOptions(myGrades(), '—', '', true);
+    if (t.grade) gradeSel.value = t.grade;
+  }
+  if (secSel) {
+    secSel.innerHTML = buildSelectOptions(mySections(), '—', '', true);
+    if (t.section) secSel.value = t.section;
+  }
+  var msg = document.getElementById('te-status-msg'); if (msg) msg.innerHTML = '';
+  openModal('taskEditModal');
+}
+function tasks_submitEdit() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  var id = g('te-id');
+  var msg = document.getElementById('te-status-msg');
+  if (!id) { if (msg) msg.innerHTML = '<div class="alert alert-warning">خطأ: لا يوجد معرّف</div>'; return; }
+  var grade = g('te-grade'); if (isAllFilter(grade)) grade = '';
+  var sec   = g('te-section'); if (isAllFilter(sec)) sec = '';
+  var params = {
+    id: id, teacher: g('te-teacher'), type: g('te-type'), status: g('te-status'),
+    grade: grade, section: sec, date: g('te-date'), time: g('te-time'),
+    description: g('te-desc'), fee: parseFloat(g('te-fee') || 0), deduction: parseFloat(g('te-deduction') || 0),
+    notes: g('te-notes')
+  };
+  if (msg) msg.innerHTML = '<div style="color:#1a237e">⏳ جاري الحفظ…</div>';
+  callServer('updateTaskProtected', params, function(r) {
+    if (r && r.success) {
+      if (msg) msg.innerHTML = '<div style="color:#2e7d32">✅ تم الحفظ</div>';
+      toast('✅ تم تحديث المهمة', 'success');
+      setTimeout(function() { closeModal('taskEditModal'); tasks_reloadMgmt(); }, 600);
+    } else {
+      if (msg) msg.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل الحفظ') + '</div>';
+    }
+  });
+}
+
 function tasks_toggleAssign() {
   var box = document.getElementById('tasksAssignBox');
   if (box.style.display === 'block') { box.style.display = 'none'; return; }
@@ -10753,7 +11086,9 @@ function smm_renderQR() {
       ? r.qrImageUrl
       : 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&format=png&qzone=2&data=' + encodeURIComponent(r.url || '');
     html += '<div class="smm-qr-mini">' +
-      '<img src="' + smm_escHtml(qrSrc) + '" onerror="this.style.display=\'none\'">' +
+      '<img src="' + smm_escHtml(qrSrc) + '"' +
+        ' onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'/qr-img?url=\'+encodeURIComponent(this.getAttribute(\'data-qr\'));}" ' +
+        ' data-qr="' + smm_escHtml(qrSrc) + '">' +
       '<div class="qmtitle">' + smm_escHtml(r.title || '—') + '</div>' +
       '<div style="display:flex;gap:4px;justify-content:center;">' +
         '<button onclick="window.open(' + JSON.stringify(r.url || '') + ',\'_blank\')" style="background:#0F2C5C;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">🔗 فتح</button>' +

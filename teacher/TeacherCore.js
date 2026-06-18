@@ -5303,6 +5303,56 @@ function updateTaskStatusProtected(params) {
   });
 }
 
+// تعديل تفاصيل المهمة (بعد الأرشفة أيضاً) — للإدارة فقط
+function updateTaskProtected(params) {
+  return withAuth(params, function(session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح — للإدارة فقط' };
+    var id = _safeStr(params.id);
+    if (!id) return { success: false, error: 'معرّف المهمة مطلوب' };
+    var sheet = _tcTasksSheet();
+    var row = _tcFindTaskRow(sheet, id);
+    if (row === -1) return { success: false, error: 'المهمة غير موجودة' };
+    // تحديث الحقول القابلة للتعديل (العمود 2–9 و 10 و 15)
+    if (params.teacher  !== undefined) sheet.getRange(row, 2).setValue(_safeStr(params.teacher));
+    if (params.type     !== undefined) sheet.getRange(row, 3).setValue(_safeStr(params.type));
+    if (params.grade    !== undefined) sheet.getRange(row, 4).setValue(_safeStr(params.grade));
+    if (params.section  !== undefined) sheet.getRange(row, 5).setValue(_safeStr(params.section));
+    if (params.date     !== undefined) sheet.getRange(row, 6).setValue(_safeStr(params.date));
+    if (params.time     !== undefined) sheet.getRange(row, 7).setValue(_safeStr(params.time));
+    if (params.description !== undefined) sheet.getRange(row, 8).setValue(_safeStr(params.description));
+    if (params.status   !== undefined) sheet.getRange(row, 9).setValue(_safeStr(params.status));
+    if (params.fee      !== undefined) sheet.getRange(row, 10).setValue(_safeFloat(params.fee));
+    if (params.deduction !== undefined) sheet.getRange(row, 11).setValue(_safeFloat(params.deduction));
+    if (params.notes    !== undefined) sheet.getRange(row, 15).setValue(_safeStr(params.notes));
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, message: 'تم تحديث المهمة' };
+  });
+}
+
+// تحديث حالة مجموعة مهام دفعةً واحدة — للإدارة فقط
+function updateTaskStatusBulkProtected(params) {
+  return withAuth(params, function(session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح — للإدارة فقط' };
+    var ids = params.ids;
+    var status = _safeStr(params.status);
+    if (!ids || !ids.length || !status) return { success: false, error: 'بيانات ناقصة' };
+    var sheet = _tcTasksSheet();
+    var updated = 0;
+    for (var i = 0; i < ids.length; i++) {
+      var row = _tcFindTaskRow(sheet, _safeStr(ids[i]));
+      if (row === -1) continue;
+      sheet.getRange(row, 9).setValue(status);
+      if (params.deduction === 0 || params.deduction) sheet.getRange(row, 11).setValue(_safeFloat(params.deduction));
+      sheet.getRange(row, 13).setValue(_safeStr(session.teacherName));
+      updated++;
+    }
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, updated: updated };
+  });
+}
+
 // تحديد قيمة الرسم — المدير/المحاسب فقط
 function setTaskFeeProtected(params) {
   return withAuth(params, function (session) {
