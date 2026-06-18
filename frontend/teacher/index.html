@@ -2317,6 +2317,41 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال تعديل مهمة -->
+<div class="modal-backdrop" id="taskEditModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-header">
+      <span>✏️ تعديل المهمة</span>
+      <button class="modal-close" onclick="closeModal('taskEditModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="te-id">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">المعلم *</label><select class="form-select" id="te-teacher"></select></div>
+        <div class="form-group"><label class="form-label">نوع المهمة *</label><select class="form-select" id="te-type"></select></div>
+        <div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="te-status"></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="te-grade"></select></div>
+        <div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="te-section"></select></div>
+        <div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="te-date"></div>
+        <div class="form-group"><label class="form-label">الوقت</label><input type="time" class="form-control" id="te-time"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group flex-1"><label class="form-label">الوصف</label><input type="text" class="form-control" id="te-desc" placeholder="تفاصيل المهمة..."></div>
+        <div class="form-group"><label class="form-label">💰 الرسم</label><input type="number" class="form-control" id="te-fee" placeholder="0" style="width:90px"></div>
+        <div class="form-group"><label class="form-label">🔻 الخصم</label><input type="number" class="form-control" id="te-deduction" placeholder="0" style="width:90px"></div>
+      </div>
+      <div class="form-group"><label class="form-label">ملاحظات</label><textarea class="form-control" id="te-notes" placeholder="ملاحظات إضافية..." rows="2"></textarea></div>
+      <div id="te-status-msg" style="margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('taskEditModal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="tasks_submitEdit()">💾 حفظ التعديلات</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال إضافة/تعديل معلم (كلاسيكي) -->
 <div class="modal-backdrop" id="teacherModal">
   <div class="modal-dialog">
@@ -4936,16 +4971,7 @@ function tasks_renderMgmtList() {
   var rows = '';
   for (var s = 0; s < shown.length; s++) {
     var t = shown[s].t, i = shown[s].idx;
-    var isArchived = (TASK_ARCHIVE_STATUSES.indexOf(t.status) !== -1);
     var isSel = !!TASKS.selected[i];
-    var acts = '';
-    if (!isArchived) {
-      if (t.status !== 'مؤكّد') acts += '<button class="btn btn-sm btn-success" title="تأكيد الإنجاز" onclick="tasks_setStatus(' + i + ',\'مؤكّد\')">✅</button> ';
-      acts += '<button class="btn btn-sm btn-warning" title="متأخر" onclick="tasks_setStatus(' + i + ',\'متأخر\')">⏰</button> ';
-      acts += '<button class="btn btn-sm btn-danger" title="لم يُنفّذ + خصم" onclick="tasks_miss(' + i + ')">✖</button> ';
-    }
-    if (TASKS.canSetFee) acts += '<button class="btn btn-sm btn-secondary" title="تحديد المبلغ" onclick="tasks_setFee(' + i + ')">💰</button> ';
-    acts += '<button class="btn btn-sm btn-secondary" title="حذف" onclick="tasks_delete(' + i + ')">🗑️</button>';
     rows += '<tr style="' + (isSel ? 'background:rgba(79,70,229,.07)' : '') + '">' +
       '<td style="text-align:center;padding:6px"><input type="checkbox" class="task-row-cb" ' + (isSel ? 'checked' : '') +
         ' onchange="tasks_toggleSelect(' + i + ')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)"></td>' +
@@ -4957,7 +4983,7 @@ function tasks_renderMgmtList() {
       '<td>' + _taskBadge(t.status) + '</td>' +
       '<td>' + (t.fee || 0) + '</td>' +
       '<td style="color:#c62828">' + (t.deduction || 0) + '</td>' +
-      '<td><div class="btn-group">' + acts + '</div></td>' +
+      '<td><button class="btn btn-sm btn-secondary" onclick="tasks_openMenu(event,' + i + ')" title="الإجراءات">⚙️ ▾</button></td>' +
       '</tr>';
   }
 
@@ -5061,6 +5087,158 @@ function tasks_bulkDelete() {
       });
     })(idxArr[i]);
   }
+}
+
+// ── قائمة إجراءات المهمة المنسدلة ──
+var _taskMenuEl = null;
+var _taskMenuHandler = null;
+function _taskMenuClose() {
+  if (_taskMenuEl) { try { _taskMenuEl.parentNode.removeChild(_taskMenuEl); } catch(e) {} _taskMenuEl = null; }
+  if (_taskMenuHandler) { document.removeEventListener('click', _taskMenuHandler); _taskMenuHandler = null; }
+}
+function tasks_openMenu(event, idx) {
+  event.stopPropagation();
+  _taskMenuClose();
+  var t = TASKS.mgmt[idx]; if (!t) return;
+  var btn = event.currentTarget;
+  var rect = btn.getBoundingClientRect();
+
+  var div = document.createElement('div');
+  div.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1px solid rgba(0,0,0,.12);' +
+    'border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.16);min-width:190px;padding:5px 0;direction:rtl;';
+  div.style.top = Math.min(rect.bottom + 4, window.innerHeight - 260) + 'px';
+  div.style.right = Math.max(window.innerWidth - rect.right, 8) + 'px';
+
+  function mkItem(icon, label, color, fn) {
+    var b = document.createElement('button');
+    b.style.cssText = 'display:block;width:100%;text-align:right;padding:9px 16px;border:none;background:none;' +
+      'cursor:pointer;font-size:.87rem;color:' + (color || 'inherit') + ';';
+    b.onmouseover = function() { b.style.background = 'rgba(79,70,229,.07)'; };
+    b.onmouseout  = function() { b.style.background = 'none'; };
+    b.innerHTML = icon + ' ' + label;
+    b.onclick = function(e) { e.stopPropagation(); _taskMenuClose(); fn(); };
+    return b;
+  }
+  function mkSep() {
+    var d = document.createElement('div');
+    d.style.cssText = 'border-top:1px solid rgba(0,0,0,.08);margin:4px 8px';
+    return d;
+  }
+
+  // ── حالات (كل الحالات متاحة بغض النظر عن الأرشفة) ──
+  var allStatuses = [
+    ['مكلّف',   '📋', null],
+    ['حاضر',    '✅', null],
+    ['منفّذ',   '📝', null],
+    ['مؤكّد',   '✔️', '#1b5e20'],
+    ['متأخر',   '⏰', '#e65100'],
+    ['لم يُنفّذ','✖',  '#c62828'],
+    ['غائب وقت الاجتماع فقط', '🚫', '#c62828']
+  ];
+  for (var si = 0; si < allStatuses.length; si++) {
+    (function(st) {
+      if (st[0] === t.status) return;
+      div.appendChild(mkItem(st[1], 'الحالة: ' + st[0], st[2],
+        st[0] === 'لم يُنفّذ' ? function() { tasks_miss(idx); } : function() { tasks_setStatus(idx, st[0]); }
+      ));
+    })(allStatuses[si]);
+  }
+
+  div.appendChild(mkSep());
+  div.appendChild(mkItem('✏️', 'تعديل تفاصيل المهمة', null, function() { tasks_openEdit(idx); }));
+  if (TASKS.canSetFee) div.appendChild(mkItem('💰', 'تحديد المبلغ', null, function() { tasks_setFee(idx); }));
+  div.appendChild(mkSep());
+  div.appendChild(mkItem('🗑️', 'حذف المهمة', '#c62828', function() { tasks_delete(idx); }));
+
+  document.body.appendChild(div);
+  _taskMenuEl = div;
+  setTimeout(function() {
+    _taskMenuHandler = function(e) { if (!div.contains(e.target)) _taskMenuClose(); };
+    document.addEventListener('click', _taskMenuHandler);
+  }, 0);
+}
+
+// ── تعديل تفاصيل المهمة ──
+function tasks_openEdit(idx) {
+  var t = TASKS.mgmt[idx]; if (!t) return;
+  // ضبط الحقول
+  var g = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
+  g('te-id', t.id);
+  g('te-date', t.date || '');
+  g('te-time', t.time || '');
+  g('te-desc', t.description || '');
+  g('te-fee', t.fee || 0);
+  g('te-deduction', t.deduction || 0);
+  g('te-notes', t.notes || '');
+
+  // بناء قوائم المعلم والنوع والحالة والصف/الشعبة
+  var teacherSel = document.getElementById('te-teacher');
+  var typeSel    = document.getElementById('te-type');
+  var statusSel  = document.getElementById('te-status');
+  var gradeSel   = document.getElementById('te-grade');
+  var secSel     = document.getElementById('te-section');
+  if (teacherSel) {
+    teacherSel.innerHTML = '';
+    for (var j = 0; j < TASKS.teachers.length; j++) {
+      var o = document.createElement('option');
+      o.value = TASKS.teachers[j]; o.text = TASKS.teachers[j];
+      if (TASKS.teachers[j] === t.teacher) o.selected = true;
+      teacherSel.appendChild(o);
+    }
+  }
+  if (typeSel) {
+    typeSel.innerHTML = '';
+    for (var k = 0; k < TASKS.types.length; k++) {
+      var ot = document.createElement('option');
+      ot.value = TASKS.types[k]; ot.text = TASKS.types[k];
+      if (TASKS.types[k] === t.type) ot.selected = true;
+      typeSel.appendChild(ot);
+    }
+    if (!typeSel.value && t.type) { var of = document.createElement('option'); of.value = t.type; of.text = t.type; of.selected = true; typeSel.insertBefore(of, typeSel.firstChild); }
+  }
+  if (statusSel) {
+    statusSel.innerHTML = '';
+    for (var si = 0; si < TASK_STATUSES.length; si++) {
+      var os = document.createElement('option');
+      os.value = TASK_STATUSES[si]; os.text = TASK_STATUSES[si];
+      if (TASK_STATUSES[si] === t.status) os.selected = true;
+      statusSel.appendChild(os);
+    }
+  }
+  if (gradeSel) {
+    gradeSel.innerHTML = buildSelectOptions(myGrades(), '—', '', true);
+    if (t.grade) gradeSel.value = t.grade;
+  }
+  if (secSel) {
+    secSel.innerHTML = buildSelectOptions(mySections(), '—', '', true);
+    if (t.section) secSel.value = t.section;
+  }
+  var msg = document.getElementById('te-status-msg'); if (msg) msg.innerHTML = '';
+  openModal('taskEditModal');
+}
+function tasks_submitEdit() {
+  var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  var id = g('te-id');
+  var msg = document.getElementById('te-status-msg');
+  if (!id) { if (msg) msg.innerHTML = '<div class="alert alert-warning">خطأ: لا يوجد معرّف</div>'; return; }
+  var grade = g('te-grade'); if (isAllFilter(grade)) grade = '';
+  var sec   = g('te-section'); if (isAllFilter(sec)) sec = '';
+  var params = {
+    id: id, teacher: g('te-teacher'), type: g('te-type'), status: g('te-status'),
+    grade: grade, section: sec, date: g('te-date'), time: g('te-time'),
+    description: g('te-desc'), fee: parseFloat(g('te-fee') || 0), deduction: parseFloat(g('te-deduction') || 0),
+    notes: g('te-notes')
+  };
+  if (msg) msg.innerHTML = '<div style="color:#1a237e">⏳ جاري الحفظ…</div>';
+  callServer('updateTaskProtected', params, function(r) {
+    if (r && r.success) {
+      if (msg) msg.innerHTML = '<div style="color:#2e7d32">✅ تم الحفظ</div>';
+      toast('✅ تم تحديث المهمة', 'success');
+      setTimeout(function() { closeModal('taskEditModal'); tasks_reloadMgmt(); }, 600);
+    } else {
+      if (msg) msg.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل الحفظ') + '</div>';
+    }
+  });
 }
 
 function tasks_toggleAssign() {
