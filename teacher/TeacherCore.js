@@ -48,6 +48,35 @@ function _tcIsRoleMarkerSubject(s) {
   return false;
 }
 
+// تطبيع اسم المادة للمقارنة: توحيد الهمزات والألف المقصورة والتاء المربوطة وحذف
+// الفراغات الزائدة. (للاستبعاد الآمن بصرف النظر عن صيغ الكتابة.)
+function _tcNormSubj(s) {
+  s = _safeStr(s);
+  if (!s) return '';
+  s = s.replace(/[أإآ]/g, 'ا')  // أ إ آ → ا
+       .replace(/ى/g, 'ي')                 // ى → ي
+       .replace(/ة/g, 'ه');                // ة → ه
+  return s.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+}
+
+// مواد أنشطة/خدمية لا تُرصد لها درجات في ورقة «النصفي» — يجب ألا تظهر إطلاقاً في
+// الشهادات أو الكشوفات ولا تُحتسب: حاسوب، رياضة/تربية بدنية، فنية، مكتبة، إرشاد،
+// تدبير منزلي. ملاحظة مهمّة: «الرياضيات» مادة مرصودة ولا تُستبعد.
+function _tcIsNonGradedSubject(s) {
+  var n = _tcNormSubj(s);
+  if (!n) return false;
+  if (n.indexOf('حاسوب') > -1 || n.indexOf('حاسب') > -1) return true; // حاسوب/حاسب
+  if (n.toLowerCase().indexOf('computer') > -1) return true;
+  if (n.indexOf('بدنيه') > -1) return true;                                           // بدنيه (تربية بدنية)
+  if (n.indexOf('رياضيه') > -1) return true;                                     // رياضيه (تربية رياضية) — ليست «رياضيات»
+  if (/(^|\s|ال)رياضه(\s|$)/.test(n)) return true;                          // رياضه (مادة الرياضة) ككلمة مستقلّة
+  if (n.indexOf('فنيه') > -1 || n.indexOf('فنون') > -1) return true;    // فنيه/فنون
+  if (n.indexOf('مكتبه') > -1) return true;                                           // مكتبه
+  if (n.indexOf('ارشاد') > -1) return true;                                           // ارشاد
+  if (n.indexOf('تدبير') > -1 || n.indexOf('منزلي') > -1) return true; // تدبير/منزلي
+  return false;
+}
+
 // ═══════════════════════════════════════════════════════════
 // ⭐ PATCH #1 — Feature Flag لنظام الدرجات الموحّد
 //    true  = استخدام GradeSchema.gs (الطبقة الجديدة)
@@ -939,7 +968,7 @@ function _certTeacherSubjectMap() {
       var data = sheet.getDataRange().getValues();
       for (var i = 1; i < data.length; i++) {
         var subj = _safeStr(data[i][1]), g = _safeStr(data[i][2]);
-        if (!subj || _tcIsRoleMarkerSubject(subj)) continue;   // علامات الأدوار ليست مواد
+        if (!subj || _tcIsRoleMarkerSubject(subj) || _tcIsNonGradedSubject(subj)) continue;   // علامات الأدوار/مواد بلا درجات ليست مواد شهادة
         if (g === 'جميع الفصول') { if (map.all.indexOf(subj) === -1) map.all.push(subj); continue; }
         if (!g) continue;
         if (!map.byGrade[g]) map.byGrade[g] = [];
@@ -964,7 +993,7 @@ function _certScheduleSubjectMap() {
       var data = sheet.getDataRange().getValues();
       for (var i = 1; i < data.length; i++) {
         var g = _safeStr(data[i][0]), subj = _safeStr(data[i][4]);
-        if (!g || !subj || _tcIsRoleMarkerSubject(subj)) continue;
+        if (!g || !subj || _tcIsRoleMarkerSubject(subj) || _tcIsNonGradedSubject(subj)) continue;
         if (!map.byGrade[g]) map.byGrade[g] = [];
         if (map.byGrade[g].indexOf(subj) === -1) map.byGrade[g].push(subj);
       }
@@ -1102,7 +1131,7 @@ function _buildCertGrade(month, grade, section, session) {
   var subjMeta = [];
   for (var si = 0; si < subjects.length; si++) {
     var subj = _safeStr(subjects[si]);
-    if (!subj || _tcIsRoleMarkerSubject(subj)) continue;
+    if (!subj || _tcIsRoleMarkerSubject(subj) || _tcIsNonGradedSubject(subj)) continue;
     var meta = null;
     if (isYearEnd) {
       var yeCols = _teacherYearEndCols(sheet, subj);

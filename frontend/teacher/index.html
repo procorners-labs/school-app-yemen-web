@@ -9118,6 +9118,54 @@ function lm_closeModal(){ document.getElementById('lm-modal').style.display='non
 function lm_setStatus(msg,color){ var el=document.getElementById('lm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';">'+msg+'</div>'; }
 
 // ════════════════════════════════════════════════════════
+//  🧰 أدوات مشتركة: نافذة طباعة مخصّصة + تنزيل ملف نصّي
+//  نافذة الطباعة: شريط علوي ثابت (طباعة/حفظ PDF + إغلاق) يُخفى عند الطباعة،
+//  ودعم زر الرجوع في أندرويد (pushState + popstate) — نفس نمط طباعة الجداول.
+// ════════════════════════════════════════════════════════
+function _docPrintWindow(title, sizeCss, bodyCss, bodyHtml){
+  var w = window.open('', '_blank');
+  if(!w){ toast('اسمح بالنوافذ المنبثقة للطباعة','warning'); return null; }
+  var safeT = String(title||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var tb = '.sPT{position:fixed;inset:0 0 auto 0;z-index:9999;background:#1e3a5f;color:#fff;' +
+    'display:flex;align-items:center;gap:8px;padding:8px 14px;direction:rtl;' +
+    'font-family:Tahoma,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.4)}' +
+    '.sPT strong{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.sPTb{padding:7px 16px;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-family:Tahoma,sans-serif}' +
+    '.sPTp{background:#4f46e5;color:#fff}.sPTp:hover{background:#4338ca}' +
+    '.sPTc{background:#374151;color:#d1d5db}.sPTc:hover{background:#dc2626;color:#fff}' +
+    '.sPTbd{margin-top:54px}' +
+    '@media print{.sPT{display:none!important}.sPTbd{margin-top:0!important}}';
+  var toolbar = '<div class="sPT"><strong>' + safeT + '</strong>' +
+    '<button class="sPTb sPTp" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>' +
+    '<button class="sPTb sPTc" onclick="try{window.close();}catch(e){window.history.back();}">✕ إغلاق</button></div>';
+  var script = '<scr'+'ipt>try{history.pushState({p:1},"","");}catch(e){}' +
+    'window.addEventListener("popstate",function(){try{window.close();}catch(e){window.history.go(-2);}});<\/scr'+'ipt>';
+  w.document.write(
+    '<html dir="rtl"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + safeT + '</title><style>' + tb + sizeCss + bodyCss + '</style></head>' +
+    '<body>' + toolbar + '<div class="sPTbd">' + bodyHtml + '</div>' + script + '</body></html>'
+  );
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 500);
+  return w;
+}
+
+// تنزيل نصّ كملف (CSV/نص) — مع BOM لدعم العربية في Excel — بلا أي مكتبات خارجية.
+function _downloadText(filename, text, mime){
+  try{
+    var blob = new Blob(['﻿' + text], { type: (mime||'text/csv') + ';charset=utf-8' });
+    var url  = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 200);
+    toast('تم تنزيل الملف ✓','success');
+  }catch(e){ toast('تعذّر التصدير على هذا الجهاز','error'); }
+}
+
+// ════════════════════════════════════════════════════════
 //  🏅 CERTIFICATES — نظام طباعة الشهادات (مدير/وكيل/محاسب)
 //  عرض فقط: يقرأ getCertificatesDataProtected ويبني شهادات قابلة للطباعة.
 // ════════════════════════════════════════════════════════
@@ -9210,11 +9258,26 @@ function cert_renderToolbar(){
   tb.innerHTML=
     '<div class="form-group" style="margin:0;min-width:220px"><label class="form-label">طالب محدّد (اختياري)</label><select class="form-select" id="cert-student" onchange="cert_pickStudent(this.value)">'+opts+'</select></div>' +
     '<button class="btn btn-secondary btn-sm" onclick="cert_print()">🖨️ طباعة المعروض</button>' +
-    '<button class="btn btn-primary btn-sm" onclick="cert_printAll()">🖨️ طباعة الكل ('+students.length+')</button>';
+    '<button class="btn btn-primary btn-sm" onclick="cert_printAll()">🖨️ طباعة الكل ('+students.length+') · شهادتان/A4</button>' +
+    '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="cert_pdf()">⬇️ تحميل PDF</button>';
 }
 function cert_pickStudent(code){ CERT.selected=code||''; cert_renderPreview(); }
 function cert_printAll(){ CERT.selected=''; var s=document.getElementById('cert-student'); if(s) s.value=''; cert_renderPreview(); setTimeout(cert_print, 60); }
-function cert_print(){ try{ window.print(); }catch(e){ toast('تعذّرت الطباعة على هذا الجهاز','error'); } }
+
+// طباعة الشهادات المعروضة (الكل أو طالب محدّد) في نافذة مستقلّة — شهادتان لكل
+// صفحة A4 — مع شريط إغلاق ودعم زر رجوع أندرويد. الطباعة هنا = «حفظ كـ PDF».
+function cert_print(){
+  var area=document.getElementById('certPrintArea');
+  if(!area || !area.innerHTML.replace(/\s/g,'')){ toast('لا يوجد ما يُطبع','warning'); return; }
+  var sn=cert_schoolName();
+  _docPrintWindow(
+    (sn?sn+' — ':'')+'شهادات الدرجات',
+    '@page{size:A4 portrait;margin:6mm}',
+    cert_winCss(),
+    '<div class="cert-print-area">'+area.innerHTML+'</div>'
+  );
+}
+function cert_pdf(){ toast('في نافذة الطباعة اختر «حفظ كـ PDF»','info'); cert_print(); }
 
 function cert_renderPreview(){
   var area=document.getElementById('certPrintArea'); if(!area||!CERT.data) return;
@@ -9279,8 +9342,9 @@ function cert_certHtml(stu){
   '</div>';
 }
 
-function cert_styleBlock(){
-  return '<style id="cert-style">' +
+// القواعد البصرية المشتركة (للعرض على الشاشة وفي نافذة الطباعة معاً).
+function cert_cssRules(){
+  return '' +
   '.cert-print-area{display:flex;flex-direction:column;gap:18px;margin-top:14px;--cv-navy:#0F2C5C;--cv-navy2:#1e3a8a;--cv-gold:#C9A227;--cv-gold2:#E6C757}' +
   '.cert{position:relative;overflow:hidden;border:1px solid #e2e8f0;border-radius:14px;background:#fff;color:#1e293b;padding:0 0 14px;box-shadow:0 8px 24px rgba(15,44,92,.10);page-break-inside:avoid;break-inside:avoid}' +
   '.cert::before{content:"";position:absolute;top:6px;left:6px;right:6px;bottom:6px;border:2px solid var(--cv-gold);border-radius:10px;opacity:.45;pointer-events:none}' +
@@ -9311,12 +9375,18 @@ function cert_styleBlock(){
   '.cert-sign{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:16px 14px 0;text-align:center}' +
   '.cs-role{font-weight:700;font-size:11.5px;color:var(--cv-navy)}.cs-line{margin-top:24px;border-top:1.5px dotted #94a3b8}' +
   '.cert-foot{position:relative;margin:12px 14px 0;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px}' +
-  '.cert,.cert *{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+  '.cert,.cert *{-webkit-print-color-adjust:exact;print-color-adjust:exact}';
+}
+
+function cert_styleBlock(){
+  // للشاشة + احتياطي طباعة الصفحة مباشرة (Ctrl+P) — شهادتان لكل A4.
+  return '<style id="cert-style">' + cert_cssRules() +
   '@media print{' +
     'body *{visibility:hidden!important}' +
     '#certPrintArea,#certPrintArea *{visibility:visible!important}' +
     '#certPrintArea{position:absolute;top:0;left:0;right:0;margin:0;padding:0;gap:0;display:block}' +
     '.cert{border:none;border-radius:0;box-shadow:none;height:148.5mm;padding:0 0 6mm;page-break-inside:avoid;break-inside:avoid}' +
+    '.cert:nth-of-type(2n){page-break-after:always}' +
     '.cert::before{top:4mm;left:4mm;right:4mm;bottom:4mm}' +
     '.cert-head{padding:6mm 10mm}' +
     '.cert-info,.cert-summary,.cert-sign,.cert-foot{margin-left:10mm;margin-right:10mm}' +
@@ -9324,6 +9394,19 @@ function cert_styleBlock(){
     '@page{size:A4 portrait;margin:0}' +
   '}' +
   '</style>';
+}
+
+// CSS نافذة الطباعة المستقلّة — شهادتان لكل صفحة A4 بثبات (page-break كل ثانية).
+function cert_winCss(){
+  return cert_cssRules() +
+  'body{margin:0;background:#fff}' +
+  '.cert-print-area{gap:0;margin:0;padding:0}' +
+  '.cert{border:none;border-radius:0;box-shadow:none;height:140mm;padding:0 0 5mm;page-break-inside:avoid;break-inside:avoid}' +
+  '.cert:nth-of-type(2n){page-break-after:always}' +
+  '.cert::before{top:3mm;left:3mm;right:3mm;bottom:3mm}' +
+  '.cert-head{padding:5mm 8mm}' +
+  '.cert-info,.cert-summary,.cert-sign,.cert-foot{margin-left:8mm;margin-right:8mm}' +
+  '.cert-table{width:auto;margin-left:8mm;margin-right:8mm}';
 }
 
 // ════════════════════════════════════════════════════════
@@ -9405,10 +9488,75 @@ function ss_loadData(){
 function ss_renderToolbar(){
   var tb=document.getElementById('ss-toolbar'); if(!tb||!SS.data) return;
   tb.style.display='flex';
-  tb.innerHTML='<button class="btn btn-primary btn-sm" onclick="ss_print()">🖨️ طباعة الكشف</button>' +
+  tb.innerHTML=
+    '<div class="form-group" style="margin:0;min-width:140px"><label class="form-label">حجم الورق</label>' +
+      '<select class="form-select" id="ss-size"><option value="A4">A4 أفقي</option><option value="A3">A3 أفقي (للجداول الواسعة)</option></select></div>' +
+    '<button class="btn btn-primary btn-sm" onclick="ss_print()">🖨️ طباعة الكشف</button>' +
+    '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="ss_pdf()">⬇️ تحميل PDF</button>' +
+    '<button class="btn btn-sm" style="background:#10b981;color:#fff" onclick="ss_exportCsv()">📄 تصدير CSV</button>' +
     '<span class="badge badge-info">'+(SS.data.count||0)+' طالب · '+((SS.data.subjects||[]).length)+' مادة</span>';
 }
-function ss_print(){ try{ window.print(); }catch(e){ toast('تعذّرت الطباعة على هذا الجهاز','error'); } }
+
+// طباعة الكشف في نافذة مستقلّة بحجم A4/A3 أفقي حسب الاختيار — مع شريط إغلاق
+// ودعم زر رجوع أندرويد. الطباعة = «حفظ كـ PDF» من حوار المتصفّح.
+function ss_print(){
+  var rep=document.getElementById('ssReport');
+  if(!rep || !rep.innerHTML.replace(/\s/g,'')){ toast('لا يوجد كشف لطباعته','warning'); return; }
+  var sel=document.getElementById('ss-size');
+  var sz=(sel && sel.value==='A3') ? 'A3 landscape' : 'A4 landscape';
+  var sn=cert_schoolName();
+  _docPrintWindow(
+    (sn?sn+' — ':'')+'كشف الدرجات',
+    '@page{size:'+sz+';margin:6mm}',
+    ss_winCss(),
+    '<div id="ssReport">'+rep.innerHTML+'</div>'
+  );
+}
+function ss_pdf(){ toast('في نافذة الطباعة اختر «حفظ كـ PDF»','info'); ss_print(); }
+
+// CSS نافذة طباعة الكشف (مستقلّ، يُلغي اللصق اللاصق والتمرير ويصغّر الخط للطباعة).
+function ss_winCss(){
+  return '#ssReport{--ssn:#0F2C5C}' +
+  '.ss-info-card{background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:10px 12px;margin:10px 0}' +
+  '.ss-card-title{font-weight:800;color:var(--ssn);font-size:13px;margin-bottom:8px}' +
+  '.ss-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;font-size:12px}' +
+  '.ss-info-grid>div{display:flex;flex-direction:column}.ss-info-grid span{color:#64748b;font-size:10px}.ss-info-grid b{color:var(--ssn)}' +
+  '.ss-subjects{display:flex;flex-wrap:wrap;gap:6px}.ss-chip{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:3px 10px;font-size:11px;color:var(--ssn)}.ss-chip b{color:#2563eb}' +
+  '.ss-legend{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.ss-legend span{font-size:11px;color:#334155;display:inline-flex;align-items:center;gap:5px}.ss-legend span::before{content:"";width:11px;height:11px;border-radius:3px;background:var(--c)}' +
+  '.ss-wrap{border:1px solid #e2e8f0;border-radius:10px;margin-top:6px}' +
+  '.ss-table{width:100%;border-collapse:collapse;font-size:10px;white-space:nowrap}' +
+  '.ss-table th,.ss-table td{border:1px solid #d7dee8;padding:3px 4px;text-align:center}' +
+  '.ss-table thead th{background:var(--ssn);color:#fff;font-weight:700;font-size:9.5px}' +
+  '.ss-table th.subjh{background:#1e3a8a;border-bottom:2px solid #C9A227}' +
+  '.ss-table th.tot,.ss-table td.tot{background:rgba(201,162,39,.14);font-weight:800}' +
+  '.ss-table td.nm,.ss-table th.nm{text-align:right;min-width:120px;font-weight:600;color:var(--ssn)}' +
+  '.ss-table td.avg,.ss-table th.avg{background:#eef4ff;font-weight:800}' +
+  '.ss-table tbody tr:nth-child(even){background:#f8fafc}' +
+  '.ss-table tfoot .ss-grand td{background:#0F2C5C;color:#fff;font-weight:800}.ss-table tfoot .ss-grand td.tot{background:#11407a}' +
+  '.ss-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.ss-stat{background:#fff;border:1px solid #e2e8f0;border-top:3px solid var(--c);border-radius:10px;padding:9px 6px;text-align:center}.ss-stat-v{font-size:16px;font-weight:800;color:var(--c)}.ss-stat-l{font-size:10px;color:#64748b;margin-top:2px}' +
+  '*{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+  '.ss-info-card,.ss-legend,.ss-stats{page-break-inside:avoid}';
+}
+
+// تصدير الكشف كملف CSV (يُفتح في Excel) — يطابق أعمدة الجدول المعروض تماماً.
+function ss_exportCsv(){
+  if(!SS.data || !(SS.data.students||[]).length){ toast('لا توجد بيانات للتصدير','warning'); return; }
+  var d=SS.data, students=d.students||[], subjects=d.subjects||[], isAll=(d.grade==='الكل');
+  var tpl=[]; for(var i=0;i<students.length;i++){ var sj=students[i].subjects||[]; for(var j=0;j<sj.length;j++){ var gg=sj[j].grades||[]; if(gg.length>tpl.length) tpl=gg; } }
+  var nSub=tpl.length||1;
+  function esc(v){ v=(v==null?'':String(v)); return /[",\n\r]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+  var head=['#','الكود','الاسم']; if(isAll) head.push('الصف'); head.push('الشعبة','المعدل');
+  for(var s=0;s<subjects.length;s++){ for(var c=0;c<nSub;c++){ var lab=(tpl[c]&&tpl[c].type)?tpl[c].type:('عمود '+(c+1)); head.push(subjects[s]+' - '+lab); } }
+  var lines=[head.map(esc).join(',')];
+  for(var r=0;r<students.length;r++){
+    var stu=students[r], map={}; var sj2=stu.subjects||[]; for(var m=0;m<sj2.length;m++) map[sj2[m].name]=sj2[m].grades||[];
+    var row=[(r+1), stu.code||'', stu.name||'']; if(isAll) row.push(stu.grade||''); row.push(stu.section||'', (stu.average!=null?stu.average:''));
+    for(var s2=0;s2<subjects.length;s2++){ var gr=map[subjects[s2]]||[]; for(var c2=0;c2<nSub;c2++){ var cell=gr[c2]; row.push((cell&&cell.value!==''&&cell.value!=null)?cell.value:''); } }
+    lines.push(row.map(esc).join(','));
+  }
+  var fname='كشف-'+(d.month||'')+'-'+(d.grade||'الكل')+'.csv';
+  _downloadText(fname, lines.join('\r\n'), 'text/csv');
+}
 
 function ss_renderReport(){
   var area=document.getElementById('ssReport'); if(!area||!SS.data) return;
