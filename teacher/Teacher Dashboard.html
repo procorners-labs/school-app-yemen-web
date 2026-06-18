@@ -7210,6 +7210,9 @@ function renderMySchedule() {
     '<div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(16,185,129,.1)">📅</div>' +
     '<div class="section-header-title">' + title + '</div>' +
+    '<div class="btn-group">' +
+    '<button class="btn btn-secondary btn-sm" onclick="showSection(\'dashboard\')" style="font-size:.8rem;">↩ رجوع</button>' +
+    '</div>' +
     '</div>' +
     '<div class="section-body">' +
     '<div id="schedFilterBar"></div>' +
@@ -7251,6 +7254,16 @@ function _schedDistinctTeachers() {
   return out;
 }
 
+function _schedDistinctSubjects() {
+  var seen = {}, out = [], rows = _cachedSchedule || [];
+  for (var i = 0; i < rows.length; i++) {
+    var s = _schedNorm(rows[i].subject);
+    if (s && !seen[s]) { seen[s] = 1; out.push(s); }
+  }
+  out.sort(function(a, b) { return a.localeCompare(b, 'ar'); });
+  return out;
+}
+
 function _schedPeriodMax() {
   var rows = _cachedSchedule || [], mx = 0;
   for (var i = 0; i < rows.length; i++) { var p = parseInt(rows[i].period, 10); if (p > mx) mx = p; }
@@ -7264,9 +7277,9 @@ function _schedBuildFilterBar() {
   var priv = _schedIsPriv();
   var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
   var h = '<div class="form-row mb-3">';
-  // المادة
+  // المادة — مبنية من بيانات الجدول مباشرة لضمان التطابق
   h += '<div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="schedSubjectFilter" onchange="_schedApply()"><option value="">كل المواد</option>';
-  var subs = mySubjects();
+  var subs = _schedDistinctSubjects();
   for (var si = 0; si < subs.length; si++) h += '<option value="' + escapeHtml(subs[si]) + '">' + escapeHtml(subs[si]) + '</option>';
   h += '</select></div>';
   // المعلم (للمشرف/الوكيل/المدير)
@@ -7303,6 +7316,7 @@ function _schedBuildToolbar() {
     h += '<button class="btn btn-secondary btn-sm" onclick="_schedPrintGrid(\'A4\')">🖨️ طباعة A4</button>';
     h += '<button class="btn btn-secondary btn-sm" onclick="_schedPrintGrid(\'A3\')">🖨️ طباعة A3</button>';
   }
+  h += '<button class="btn btn-sm" style="background:var(--success,#10b981);color:#fff;" onclick="_schedShare()">📤 مشاركة الجدول</button>';
   tb.innerHTML = h;
   _schedUpdateToolbarActive();
 }
@@ -7544,6 +7558,55 @@ function _schedPrintPerTeacher() {
     body += '<div class="sched-page"><h2>' + escapeHtml(sn || 'جدول الحصص') + '</h2><h4>جدول المعلم: ' + escapeHtml(tn) + '</h4>' + _schedPrintGridTable(groups[tn]) + '</div>';
   }
   _schedPrintWindow(body, 'جداول المعلمين', 'A4');
+}
+
+// ── مشاركة الجدول ─────────────────────────────────
+function _schedShare() {
+  var rows = _schedFilterRows();
+  if (!rows.length) { toast('لا يوجد جدول لمشاركته — طبّق فلتراً أو انتظر تحميل البيانات', 'warning'); return; }
+  var f = _schedReadFilters();
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim();
+  var lines = [];
+  lines.push('📅 جدول الحصص' + (sn ? ' — ' + sn : ''));
+  if (f.teacher) lines.push('المعلم: ' + f.teacher);
+  if (f.subj)    lines.push('المادة: ' + f.subj);
+  if (f.grade   && f.grade   !== 'الكل') lines.push('الفصل: '  + f.grade);
+  if (f.section && f.section !== 'الكل') lines.push('الشعبة: ' + f.section);
+  if (f.day)     lines.push('اليوم: ' + f.day);
+  lines.push('إجمالي الحصص: ' + rows.length);
+  lines.push('');
+  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var byDay = {};
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (!byDay[r.day]) byDay[r.day] = [];
+    byDay[r.day].push(r);
+  }
+  for (var d = 0; d < days.length; d++) {
+    var dayRows = byDay[days[d]];
+    if (!dayRows) continue;
+    lines.push('📌 ' + days[d] + ':');
+    dayRows.sort(function(a, b) { return parseInt(a.period, 10) - parseInt(b.period, 10); });
+    for (var j = 0; j < dayRows.length; j++) {
+      var x = dayRows[j];
+      var cls = (x.grade || '') + (x.section && x.section !== 'جميع الشعب' ? ' ' + x.section : '');
+      var tch = x.teacher ? ' (' + x.teacher + ')' : '';
+      lines.push('  ح' + x.period + ': ' + (x.subject || '') + (cls ? ' — ' + cls : '') + tch);
+    }
+  }
+  var text = lines.join('\n');
+  if (navigator.share) {
+    navigator.share({ title: 'جدول الحصص', text: text }).catch(function() { _schedShareFallback(text); });
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() { toast('تم نسخ الجدول إلى الحافظة ✓', 'success'); }).catch(function() { _schedShareFallback(text); });
+  } else {
+    _schedShareFallback(text);
+  }
+}
+
+function _schedShareFallback(text) {
+  try { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
+  catch(e) { toast('تعذّرت المشاركة على هذا الجهاز', 'error'); }
 }
 
 // ==================== ADMIN TEACHERS (كلاسيكي) ====================
