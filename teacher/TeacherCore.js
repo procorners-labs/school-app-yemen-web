@@ -5303,6 +5303,29 @@ function updateTaskStatusProtected(params) {
   });
 }
 
+// تحديث حالة مجموعة مهام دفعةً واحدة — للإدارة فقط
+function updateTaskStatusBulkProtected(params) {
+  return withAuth(params, function(session) {
+    if (!_tcCanManageTasks(session)) return { success: false, error: 'غير مصرح — للإدارة فقط' };
+    var ids = params.ids;
+    var status = _safeStr(params.status);
+    if (!ids || !ids.length || !status) return { success: false, error: 'بيانات ناقصة' };
+    var sheet = _tcTasksSheet();
+    var updated = 0;
+    for (var i = 0; i < ids.length; i++) {
+      var row = _tcFindTaskRow(sheet, _safeStr(ids[i]));
+      if (row === -1) continue;
+      sheet.getRange(row, 9).setValue(status);
+      if (params.deduction === 0 || params.deduction) sheet.getRange(row, 11).setValue(_safeFloat(params.deduction));
+      sheet.getRange(row, 13).setValue(_safeStr(session.teacherName));
+      updated++;
+    }
+    SpreadsheetApp.flush();
+    _tcCacheDel('tc_tasks_all');
+    return { success: true, updated: updated };
+  });
+}
+
 // تحديد قيمة الرسم — المدير/المحاسب فقط
 function setTaskFeeProtected(params) {
   return withAuth(params, function (session) {

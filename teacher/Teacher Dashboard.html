@@ -4693,7 +4693,7 @@ function saveScheduleSettings() {
 // ════════════════════════════════════════════════════════════════════
 //  📌 المهام والإشراف (واجهة المرحلة 2)
 // ════════════════════════════════════════════════════════════════════
-var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active', sched: null };
+var TASKS = { mgmt: [], my: [], canSetFee: false, teachers: [], types: [], view: 'active', sched: null, selected: {} };
 var TASK_STATUSES = ['مكلّف', 'منفّذ', 'مؤكّد', 'متأخر', 'لم يُنفّذ', 'حاضر', 'غائب وقت الاجتماع فقط'];
 
 function _taskBadge(s) {
@@ -4769,6 +4769,7 @@ function renderTasksMgmt() {
         '<div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="tf-teacher" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
         '<div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="tf-status" onchange="tasks_reloadMgmt()"><option value="">الكل</option></select></div>' +
         '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="tf-grade" onchange="tasks_reloadMgmt()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div>' +
+        '<div class="form-group"><label class="form-label">النوع</label><select class="form-select" id="tf-type" onchange="tasks_applyLocalFilters()"><option value="">الكل</option></select></div>' +
       '</div></div>' +
       '<div id="tasksMgmtList"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
     '</div></div>';
@@ -4780,10 +4781,15 @@ function renderTasksMgmt() {
     var tSel = document.getElementById('tf-teacher');
     if (tSel) for (var j = 0; j < TASKS.teachers.length; j++) tSel.innerHTML += '<option value="' + escapeHtml(TASKS.teachers[j]) + '">' + escapeHtml(TASKS.teachers[j]) + '</option>';
   });
-  callServer('getTaskTypesProtected', {}, function (r) { TASKS.types = (r && r.types) || []; });
+  callServer('getTaskTypesProtected', {}, function (r) {
+    TASKS.types = (r && r.types) || [];
+    var tySel = document.getElementById('tf-type');
+    if (tySel) { for (var i = 0; i < TASKS.types.length; i++) tySel.innerHTML += '<option value="' + escapeHtml(TASKS.types[i]) + '">' + escapeHtml(TASKS.types[i]) + '</option>'; }
+  });
   tasks_reloadMgmt();
 }
 function tasks_reloadMgmt() {
+  TASKS.selected = {};
   var p = {
     teacher: (document.getElementById('tf-teacher') || {}).value || '',
     status: (document.getElementById('tf-status') || {}).value || '',
@@ -4797,6 +4803,10 @@ function tasks_reloadMgmt() {
     TASKS.mgmt = r.tasks || []; TASKS.canSetFee = !!r.canSetFee;
     tasks_renderMgmtList();
   }, function (e) { list.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function tasks_applyLocalFilters() {
+  TASKS.selected = {};
+  tasks_renderMgmtList();
 }
 // مجموعات الحالات للنشطة/الأرشيف (فلترة بلا نقل بيانات)
 var TASK_ACTIVE_STATUSES  = ['مكلّف', 'حاضر', 'متأخر'];
@@ -4831,34 +4841,179 @@ function tasks_renderMgmtList() {
   var list = document.getElementById('tasksMgmtList');
   tasks_renderTabs();
   var view = TASKS.view || 'active';
+  var typeF = (document.getElementById('tf-type') || {}).value || '';
   var all = TASKS.mgmt || [];
-  // فلترة بالعرض مع الحفاظ على الفهرس الأصلي للأزرار
+
+  // فلترة بالعرض + النوع مع الحفاظ على الفهرس الأصلي
   var shown = [];
-  for (var k = 0; k < all.length; k++) { if (_taskInView(all[k].status, view)) shown.push({ t: all[k], idx: k }); }
+  for (var k = 0; k < all.length; k++) {
+    if (!_taskInView(all[k].status, view)) continue;
+    if (typeF && all[k].type !== typeF) continue;
+    shown.push({ t: all[k], idx: k });
+  }
+
+  // تنظيف التحديدات الخارجة عن النطاق المرئي
+  var shownSet = {};
+  for (var z = 0; z < shown.length; z++) shownSet[shown[z].idx] = true;
+  for (var key in TASKS.selected) { if (!shownSet[key]) delete TASKS.selected[key]; }
+
   if (!shown.length) {
-    var msg = (view === 'archive') ? 'لا توجد مهام مؤرشفة' : (view === 'active' ? 'لا توجد مهام نشطة' : 'لا توجد مهام');
+    var msg = typeF ? ('لا توجد مهام من نوع «' + typeF + '»') :
+              (view === 'archive') ? 'لا توجد مهام مؤرشفة' :
+              (view === 'active' ? 'لا توجد مهام نشطة' : 'لا توجد مهام');
     list.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">' + msg + '</div></div>';
     return;
   }
+
+  var selKeys = Object.keys(TASKS.selected);
+  var selCount = selKeys.length;
+  var allChecked = (selCount === shown.length && shown.length > 0);
+  var someChecked = (selCount > 0 && !allChecked);
+
+  // ── شريط الإجراءات الجماعية ──
+  var bulkBar = '<div id="tasksBulkBar" style="' +
+    (selCount > 0 ? 'display:flex' : 'display:none') +
+    ';align-items:center;gap:8px;flex-wrap:wrap;background:rgba(79,70,229,.08);border:1px solid rgba(79,70,229,.25);border-radius:8px;padding:10px 14px;margin-bottom:10px">' +
+    '<span style="font-weight:700;color:var(--primary);min-width:80px" id="tasksBulkCount">' + selCount + ' محدد</span>' +
+    '<button class="btn btn-sm btn-secondary" onclick="tasks_deselectAll()" title="إلغاء التحديد">✕ إلغاء</button>' +
+    '<span style="color:var(--text-muted);font-size:.8rem;padding:0 4px">|</span>' +
+    '<span style="font-size:.8rem;color:var(--text-muted)">تحديث الحالة:</span>' +
+    '<button class="btn btn-sm btn-success" onclick="tasks_bulkSetStatus(\'مؤكّد\')">✅ تأكيد الكل</button>' +
+    '<button class="btn btn-sm btn-warning" onclick="tasks_bulkSetStatus(\'متأخر\')">⏰ متأخر</button>' +
+    '<button class="btn btn-sm btn-danger" onclick="tasks_bulkSetStatus(\'لم يُنفّذ\')">✖ لم يُنفّذ</button>' +
+    '<button class="btn btn-sm btn-secondary" onclick="tasks_bulkDelete()" style="margin-right:auto">🗑️ حذف المحدد</button>' +
+    '</div>';
+
   var rows = '';
   for (var s = 0; s < shown.length; s++) {
     var t = shown[s].t, i = shown[s].idx;
     var isArchived = (TASK_ARCHIVE_STATUSES.indexOf(t.status) !== -1);
+    var isSel = !!TASKS.selected[i];
     var acts = '';
     if (!isArchived) {
-      if (t.status !== 'مؤكّد') acts += '<button class="btn btn-sm btn-success" title="تأكيد الإنجاز" onclick="tasks_setStatus(' + i + ',\'مؤكّد\')">✅ تأكيد</button> ';
+      if (t.status !== 'مؤكّد') acts += '<button class="btn btn-sm btn-success" title="تأكيد الإنجاز" onclick="tasks_setStatus(' + i + ',\'مؤكّد\')">✅</button> ';
       acts += '<button class="btn btn-sm btn-warning" title="متأخر" onclick="tasks_setStatus(' + i + ',\'متأخر\')">⏰</button> ';
       acts += '<button class="btn btn-sm btn-danger" title="لم يُنفّذ + خصم" onclick="tasks_miss(' + i + ')">✖</button> ';
     }
     if (TASKS.canSetFee) acts += '<button class="btn btn-sm btn-secondary" title="تحديد المبلغ" onclick="tasks_setFee(' + i + ')">💰</button> ';
     acts += '<button class="btn btn-sm btn-secondary" title="حذف" onclick="tasks_delete(' + i + ')">🗑️</button>';
-    rows += '<tr><td style="font-weight:600">' + escapeHtml(t.teacher) + '</td><td>' + escapeHtml(t.type) + '</td>' +
-      '<td>' + escapeHtml((t.grade || '') + ' ' + (t.section || '')) + '</td><td>' + escapeHtml(t.date ? _fmtDateAr(t.date) : '—') + '</td>' +
-      '<td>' + escapeHtml(t.time || '—') + '</td><td>' + _taskBadge(t.status) + '</td>' +
-      '<td>' + (t.fee || 0) + '</td><td style="color:#c62828">' + (t.deduction || 0) + '</td><td><div class="btn-group">' + acts + '</div></td></tr>';
+    rows += '<tr style="' + (isSel ? 'background:rgba(79,70,229,.07)' : '') + '">' +
+      '<td style="text-align:center;padding:6px"><input type="checkbox" class="task-row-cb" ' + (isSel ? 'checked' : '') +
+        ' onchange="tasks_toggleSelect(' + i + ')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)"></td>' +
+      '<td style="font-weight:600">' + escapeHtml(t.teacher) + '</td>' +
+      '<td>' + escapeHtml(t.type) + '</td>' +
+      '<td>' + escapeHtml((t.grade || '') + (t.section ? ' / ' + t.section : '')) + '</td>' +
+      '<td>' + escapeHtml(t.date ? _fmtDateAr(t.date) : '—') + '</td>' +
+      '<td>' + escapeHtml(t.time || '—') + '</td>' +
+      '<td>' + _taskBadge(t.status) + '</td>' +
+      '<td>' + (t.fee || 0) + '</td>' +
+      '<td style="color:#c62828">' + (t.deduction || 0) + '</td>' +
+      '<td><div class="btn-group">' + acts + '</div></td>' +
+      '</tr>';
   }
-  list.innerHTML = '<div class="table-wrap"><table><thead><tr><th>المعلم</th><th>النوع</th><th>الصف/الشعبة</th><th>التاريخ</th><th>الوقت</th><th>الحالة</th><th>المبلغ</th><th>الخصم</th><th>إجراءات</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+  var headerCb = '<input type="checkbox" id="tasks-sel-all" ' + (allChecked ? 'checked' : '') +
+    ' onchange="tasks_toggleSelectAll()" style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)" title="تحديد الكل / إلغاء الكل">';
+
+  list.innerHTML = bulkBar +
+    '<div class="table-wrap"><table><thead><tr>' +
+    '<th style="text-align:center;width:36px">' + headerCb + '</th>' +
+    '<th>المعلم</th><th>النوع</th><th>الصف/الشعبة</th><th>التاريخ</th><th>الوقت</th><th>الحالة</th><th>المبلغ</th><th>الخصم</th><th>إجراءات</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+  // ضبط خاصية indeterminate بعد رسم DOM
+  var cbAll = document.getElementById('tasks-sel-all');
+  if (cbAll && someChecked) cbAll.indeterminate = true;
 }
+// ── دوال التحديد الجماعي ──
+function tasks_toggleSelect(idx) {
+  if (TASKS.selected[idx]) { delete TASKS.selected[idx]; } else { TASKS.selected[idx] = true; }
+  // تحديث الشريط والـcheckbox الرئيسي بدون إعادة رسم كامل
+  var selCount = Object.keys(TASKS.selected).length;
+  var bar = document.getElementById('tasksBulkBar');
+  var cnt = document.getElementById('tasksBulkCount');
+  if (bar) bar.style.display = selCount > 0 ? 'flex' : 'none';
+  if (cnt) cnt.innerHTML = selCount + ' محدد';
+  // ضبط checkbox الرأس
+  var visibleCbs = document.querySelectorAll('input.task-row-cb');
+  var cbAll = document.getElementById('tasks-sel-all');
+  if (cbAll && visibleCbs.length) {
+    var checkedCount = 0;
+    for (var i = 0; i < visibleCbs.length; i++) { if (visibleCbs[i].checked) checkedCount++; }
+    cbAll.checked = (checkedCount === visibleCbs.length);
+    cbAll.indeterminate = (checkedCount > 0 && checkedCount < visibleCbs.length);
+  }
+}
+function tasks_toggleSelectAll() {
+  var cbAll = document.getElementById('tasks-sel-all');
+  var willSelect = cbAll ? cbAll.checked : true;
+  var list = document.getElementById('tasksMgmtList');
+  if (!list) return;
+  // تعبئة أو تفريغ TASKS.selected بناءً على الصفوف المرئية
+  var cbs = list.querySelectorAll('tbody tr');
+  for (var i = 0; i < cbs.length; i++) {
+    var cb = cbs[i].querySelector('input[type=checkbox]');
+    if (!cb) continue;
+    var idxMatch = cb.getAttribute('onchange').match(/tasks_toggleSelect\((\d+)\)/);
+    if (!idxMatch) continue;
+    var idx = parseInt(idxMatch[1], 10);
+    if (willSelect) { TASKS.selected[idx] = true; } else { delete TASKS.selected[idx]; }
+    cb.checked = willSelect;
+  }
+  var selCount = Object.keys(TASKS.selected).length;
+  var bar = document.getElementById('tasksBulkBar');
+  var cnt = document.getElementById('tasksBulkCount');
+  if (bar) bar.style.display = selCount > 0 ? 'flex' : 'none';
+  if (cnt) cnt.innerHTML = selCount + ' محدد';
+  if (cbAll) { cbAll.indeterminate = false; cbAll.checked = willSelect; }
+}
+function tasks_deselectAll() {
+  TASKS.selected = {};
+  tasks_renderMgmtList();
+}
+function tasks_bulkSetStatus(status) {
+  var ids = [];
+  var all = TASKS.mgmt || [];
+  for (var key in TASKS.selected) { var t = all[parseInt(key, 10)]; if (t) ids.push(t.id); }
+  if (!ids.length) return;
+  if (!confirm('تحديث ' + ids.length + ' مهمة إلى «' + status + '»؟')) return;
+  showLoading('جاري التحديث…');
+  callServer('updateTaskStatusBulkProtected', { ids: ids, status: status }, function(r) {
+    hideLoading();
+    if (r && r.success) {
+      toast('✅ تم تحديث ' + (r.updated || ids.length) + ' مهمة', 'success');
+      tasks_reloadMgmt();
+    } else {
+      toast('❌ ' + ((r && r.error) || 'فشل التحديث'), 'error');
+    }
+  });
+}
+function tasks_bulkDelete() {
+  var idxArr = [];
+  for (var key in TASKS.selected) idxArr.push(parseInt(key, 10));
+  if (!idxArr.length) return;
+  if (!confirm('حذف ' + idxArr.length + ' مهمة نهائياً؟')) return;
+  // الحذف بالتسلسل (لا توجد bulk delete API بعد — نستخدم deleteTaskProtected بشكل متتالٍ)
+  var all = TASKS.mgmt || [];
+  var pending = idxArr.length, failed = 0;
+  showLoading('جاري الحذف…');
+  for (var i = 0; i < idxArr.length; i++) {
+    (function(idx) {
+      var t = all[idx]; if (!t) { pending--; if (pending === 0) { hideLoading(); tasks_reloadMgmt(); } return; }
+      callServer('deleteTaskProtected', { id: t.id }, function(r) {
+        if (!r || !r.success) failed++;
+        pending--;
+        if (pending === 0) {
+          hideLoading();
+          if (failed) toast('⚠️ فشل حذف ' + failed + ' مهمة', 'warning');
+          else toast('🗑️ تم حذف المهام المحددة', 'success');
+          tasks_reloadMgmt();
+        }
+      });
+    })(idxArr[i]);
+  }
+}
+
 function tasks_toggleAssign() {
   var box = document.getElementById('tasksAssignBox');
   if (box.style.display === 'block') { box.style.display = 'none'; return; }
