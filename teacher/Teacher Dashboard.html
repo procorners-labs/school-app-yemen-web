@@ -9221,11 +9221,20 @@ function cert_print(){
   var area=document.getElementById('certPrintArea');
   if(!area || !area.innerHTML.replace(/\s/g,'')){ toast('لا يوجد ما يُطبع','warning'); return; }
   var sn=cert_schoolName();
+  // نجمع كل شهادة في أزواج داخل div.cert-pair لضمان شهادتين لكل A4 بثبات.
+  var certs=area.querySelectorAll('.cert');
+  var pairedHtml='';
+  for(var i=0;i<certs.length;i++){
+    if(i%2===0) pairedHtml+='<div class="cert-pair">';
+    pairedHtml+=certs[i].outerHTML;
+    if(i%2===1||i===certs.length-1) pairedHtml+='</div>';
+  }
+  if(!pairedHtml){ toast('لا يوجد ما يُطبع','warning'); return; }
   _docPrintWindow(
     (sn?sn+' — ':'')+'شهادات الدرجات',
-    '@page{size:A4 portrait;margin:6mm}',
+    '@page{size:A4 portrait;margin:5mm}',
     cert_winCss(),
-    '<div class="cert-print-area">'+area.innerHTML+'</div>'
+    '<div class="cert-print-area">'+pairedHtml+'</div>'
   );
 }
 function cert_pdf(){ toast('في نافذة الطباعة اختر «حفظ كـ PDF»','info'); cert_print(); }
@@ -9335,29 +9344,62 @@ function cert_styleBlock(){
   '@media print{' +
     'body *{visibility:hidden!important}' +
     '#certPrintArea,#certPrintArea *{visibility:visible!important}' +
-    '#certPrintArea{position:absolute;top:0;left:0;right:0;margin:0;padding:0;gap:0;display:block}' +
-    '.cert{border:none;border-radius:0;box-shadow:none;height:148.5mm;padding:0 0 6mm;page-break-inside:avoid;break-inside:avoid}' +
-    '.cert:nth-of-type(2n){page-break-after:always}' +
-    '.cert::before{top:4mm;left:4mm;right:4mm;bottom:4mm}' +
-    '.cert-head{padding:6mm 10mm}' +
-    '.cert-info,.cert-summary,.cert-sign,.cert-foot{margin-left:10mm;margin-right:10mm}' +
-    '.cert-table{width:auto;margin-left:10mm;margin-right:10mm}' +
-    '@page{size:A4 portrait;margin:0}' +
+    '#certPrintArea{position:absolute;top:0;left:0;right:0;margin:0;padding:0;display:block}' +
+    '.cert{border:none;border-radius:0;box-shadow:none;height:143mm;padding:0;margin:0;overflow:hidden;page-break-inside:avoid;break-inside:avoid}' +
+    '.cert:nth-of-type(2n){page-break-after:always;break-after:page}' +
+    '.cert::before{top:2mm;left:2mm;right:2mm;bottom:2mm}' +
+    '.cert-head{padding:3.5mm 7mm}' +
+    '.cert-crest{width:42px;height:42px;font-size:21px}' +
+    '.cert-school{font-size:14px}' +
+    '.cert-info{margin:4px 7mm 3px;padding:5px 8px;font-size:11.5px}' +
+    '.cert-table{width:calc(100% - 14mm);margin:0 7mm;font-size:11px;text-align:center}' +
+    '.cert-table th,.cert-table td{padding:3px 4px;text-align:center}' +
+    '.cert-table td:nth-child(2){text-align:right}' +
+    '.cert-summary{margin:4px 7mm;gap:5px}' +
+    '.cs-box{padding:5px 4px}' +
+    '.cs-v{font-size:13px}.cs-l{font-size:9px}' +
+    '.cert-sign{margin:6px 7mm 0;gap:10px}' +
+    '.cs-line{margin-top:18px}' +
+    '.cert-foot{margin:4px 7mm 0;font-size:9.5px}' +
+    '@page{size:A4 portrait;margin:5mm}' +
   '}' +
   '</style>';
 }
 
-// CSS نافذة الطباعة المستقلّة — شهادتان لكل صفحة A4 بثبات (page-break كل ثانية).
+// CSS نافذة الطباعة المستقلّة — شهادتان لكل A4 عبر cert-pair wrapper.
+// @page margin:5mm → مساحة الطباعة = 287mm ارتفاعاً · كل شهادة 143mm.
 function cert_winCss(){
   return cert_cssRules() +
-  'body{margin:0;background:#fff}' +
-  '.cert-print-area{gap:0;margin:0;padding:0}' +
-  '.cert{border:none;border-radius:0;box-shadow:none;height:140mm;padding:0 0 5mm;page-break-inside:avoid;break-inside:avoid}' +
-  '.cert:nth-of-type(2n){page-break-after:always}' +
-  '.cert::before{top:3mm;left:3mm;right:3mm;bottom:3mm}' +
-  '.cert-head{padding:5mm 8mm}' +
-  '.cert-info,.cert-summary,.cert-sign,.cert-foot{margin-left:8mm;margin-right:8mm}' +
-  '.cert-table{width:auto;margin-left:8mm;margin-right:8mm}';
+  'body{margin:0;background:#fff;direction:rtl;font-family:Tahoma,Arial,sans-serif}' +
+  '.cert-print-area{display:block;margin:0;padding:0}' +
+  // كل زوج = صفحة A4 كاملة بـ page-break-after
+  '.cert-pair{display:flex;flex-direction:column;height:287mm;width:100%;' +
+    'page-break-after:always;break-after:page;overflow:hidden}' +
+  // كل شهادة = نصف صفحة A4
+  '.cert-pair .cert{flex:0 0 143mm;height:143mm;border:none;border-radius:0;' +
+    'box-shadow:none;padding:0;margin:0;overflow:hidden;page-break-inside:avoid;break-inside:avoid}' +
+  '.cert::before{top:2mm;left:2mm;right:2mm;bottom:2mm}' +
+  // رأس مضغوط
+  '.cert-head{padding:3.5mm 7mm}' +
+  '.cert-crest{width:42px;height:42px;font-size:21px}' +
+  '.cert-school{font-size:14px}' +
+  '.cert-title{font-size:11.5px}' +
+  '.cert-sub{font-size:10px}' +
+  // معلومات الطالب مضغوطة
+  '.cert-info{margin:4px 7mm 3px;padding:5px 8px;font-size:11.5px;gap:4px 8px}' +
+  '.cert-info span{font-size:9.5px}' +
+  // جدول عرض كامل + درجات في المنتصف
+  '.cert-table{width:calc(100% - 14mm);margin:0 7mm;font-size:11px;text-align:center}' +
+  '.cert-table th,.cert-table td{padding:3px 4px;text-align:center}' +
+  '.cert-table td:nth-child(2){text-align:right}' +
+  // ملخص الدرجات
+  '.cert-summary{margin:4px 7mm;gap:5px}' +
+  '.cs-box{padding:5px 4px;border-radius:8px}' +
+  '.cs-v{font-size:13px}.cs-l{font-size:9px}' +
+  // التوقيعات والتذييل
+  '.cert-sign{margin:6px 7mm 0;gap:10px}' +
+  '.cs-role{font-size:10.5px}.cs-line{margin-top:18px}' +
+  '.cert-foot{margin:4px 7mm 0;font-size:9.5px}';
 }
 
 // ════════════════════════════════════════════════════════
