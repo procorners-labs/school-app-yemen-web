@@ -7194,142 +7194,208 @@ function renderParentNotesList(notes) { var container = document.getElementById(
 function submitNoteReply(noteId) { var input = document.getElementById('replyInput_' + noteId); var reply = input.value.trim(); if (!reply) { toast('الرجاء كتابة رد', 'warning'); return; } showLoading('جاري حفظ الرد...'); callServer('addNoteReplyProtected', { noteId: noteId, reply: reply }, function(r) { hideLoading(); if (r.success) { toast('تم حفظ الرد بنجاح', 'success'); loadParentNotesForUI(); } else showError(r.error); }); }
 
 // ==================== MY SCHEDULE ====================
+var _schedView = 'grid';
+
+function _schedIsPriv() {
+  var u = App.user || {};
+  return !!(u.isAdmin || u.role === 'admin' || u.role === 'deputy' || u.role === 'supervisor');
+}
+
 function renderMySchedule() {
-  var u = App.user;
+  var u = App.user || {};
   var title = u.isAdmin ? 'جدول الحصص الكامل' : ('جدولي الدراسي — ' + (u.teacherName || ''));
-
-  var filterHtml = '';
-  filterHtml += '<div class="form-row mb-3">';
-  filterHtml += '<div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="schedSubjectFilter" onchange="applyScheduleFilter()"><option value="">كل المواد</option>';
-  var mySubs = mySubjects();
-  for (var si = 0; si < mySubs.length; si++) {
-    filterHtml += '<option value="' + mySubs[si] + '">' + mySubs[si] + '</option>';
-  }
-  filterHtml += '</select></div>';
-
-  if (u.isAdmin) {
-    filterHtml += '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="schedGradeFilter" onchange="applyScheduleFilter()">' + buildSelectOptions(App.lists.grades || [], 'الكل', '', true) + '</select></div>';
-    filterHtml += '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="schedSectionFilter" onchange="applyScheduleFilter()">' + buildSelectOptions(App.lists.sections || [], 'الكل', '', true) + '</select></div>';
-  }
-  filterHtml += '</div>';
-
-  // ← حقل البحث الجديد
-  filterHtml += '<div class="sched-search-wrap">';
-  filterHtml += '<input type="text" id="schedSearchInput" placeholder="🔍 بحث عن معلم، مادة، أو فصل..." oninput="searchSchedule(this.value)">';
-  filterHtml += '<span class="sched-search-icon">🔍</span>';
-  filterHtml += '</div>';
-
+  _schedView = 'grid';
   document.getElementById('dynamicContent').innerHTML =
     '<div class="section-card">' +
     '<div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(16,185,129,.1)">📅</div>' +
     '<div class="section-header-title">' + title + '</div>' +
     '</div>' +
-    '<div class="section-body">' + filterHtml + '<div id="myScheduleArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
+    '<div class="section-body">' +
+    '<div id="schedFilterBar"></div>' +
+    '<div id="schedToolbar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>' +
+    '<div id="myScheduleArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
     '</div></div>';
-
   loadMySchedule();
 }
 
-function searchSchedule(query) {
-  if (!_cachedSchedule) return;
-  var q = (query || '').trim().toLowerCase();
-
-  if (q === '') {
-    // إعادة عرض الجدول مع الفلتر الحالي
-    applyScheduleFilter();
-    return;
-  }
-
-  // تصفية حسب البحث
-  var results = [];
-  for (var i = 0; i < _cachedSchedule.length; i++) {
-    var r = _cachedSchedule[i];
-    var teacher = (r.teacher || '').toLowerCase();
-    var subject = (r.subject || '').toLowerCase();
-    var grade   = (r.grade   || '').toLowerCase();
-    var section = (r.section || '').toLowerCase();
-
-    if (teacher.indexOf(q) !== -1 || subject.indexOf(q) !== -1 ||
-        grade.indexOf(q)   !== -1 || section.indexOf(q) !== -1) {
-      results.push(r);
-    }
-  }
-
-  // عرض النتائج مع skipDropdownFilter = true لتجاهل الفلاتر المنسدلة
-  renderScheduleData(results, '', true);
-}
-function loadMySchedule() { var area = document.getElementById('myScheduleArea'); if (area) area.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>'; _cachedSchedule = null; callServer('getMyScheduleProtected', {}, 'my_schedule', 600, function(r) { if (!r || !r.success) { var errMsg = (r && r.error) ? r.error : 'لم يتم رفع الجدول بعد'; if (area) area.innerHTML = '<div style="padding:16px;border-radius:12px;background:#fffbeb;border:1px solid #fbbf24;color:#92400e;">📅 ' + errMsg + '<br><br><small>لتفعيل الجدول: شغّل <strong>syncScheduleToStudentFile()</strong> من أداة الحصص</small></div>'; return; } _cachedSchedule = r.schedule || []; renderScheduleData(_cachedSchedule); }); }
-function applyScheduleFilter() {
-  if (!_cachedSchedule) return;
-  // مسح حقل البحث عند تغيير الفلتر
-  var searchInput = document.getElementById('schedSearchInput');
-  if (searchInput) searchInput.value = '';
-  var subjEl = document.getElementById('schedSubjectFilter');
-  var subj = subjEl ? subjEl.value : '';
-  renderScheduleData(_cachedSchedule, subj);
-}
-function renderScheduleData(rows, subjectFilter, skipDropdownFilter) {
+function loadMySchedule() {
   var area = document.getElementById('myScheduleArea');
-  if (!area) return;
+  if (area) area.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  _cachedSchedule = null;
+  callServer('getMyScheduleProtected', {}, 'my_schedule', 600, function(r) {
+    if (!r || !r.success) {
+      var errMsg = (r && r.error) ? r.error : 'لم يتم رفع الجدول بعد';
+      if (area) area.innerHTML = '<div style="padding:16px;border-radius:12px;background:#fffbeb;border:1px solid #fbbf24;color:#92400e;">📅 ' + errMsg + '<br><br><small>لتفعيل الجدول: شغّل <strong>syncScheduleToStudentFile()</strong> من أداة الحصص</small></div>';
+      var fb = document.getElementById('schedFilterBar'); if (fb) fb.innerHTML = '';
+      var tb = document.getElementById('schedToolbar'); if (tb) tb.innerHTML = '';
+      return;
+    }
+    _cachedSchedule = r.schedule || [];
+    _schedBuildFilterBar();
+    _schedBuildToolbar();
+    _schedApply();
+  });
+}
 
-  if (subjectFilter === undefined && !skipDropdownFilter) {
-    var subjEl = document.getElementById('schedSubjectFilter');
-    subjectFilter = subjEl ? subjEl.value : '';
+// ── أدوات مساعدة للفلترة ─────────────────────────────────
+function _schedNorm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+
+function _schedDistinctTeachers() {
+  var seen = {}, out = [], rows = _cachedSchedule || [];
+  for (var i = 0; i < rows.length; i++) {
+    var t = _schedNorm(rows[i].teacher);
+    if (t && !seen[t]) { seen[t] = 1; out.push(t); }
   }
+  out.sort(function(a, b) { return a.localeCompare(b, 'ar'); });
+  return out;
+}
 
-  var gf = '', sf = '';
-  if (!skipDropdownFilter) {
-    var gEl = document.getElementById('schedGradeFilter');
-    var sEl = document.getElementById('schedSectionFilter');
-    if (gEl) gf = gEl.value || '';
-    if (sEl) sf = sEl.value || '';
+function _schedPeriodMax() {
+  var rows = _cachedSchedule || [], mx = 0;
+  for (var i = 0; i < rows.length; i++) { var p = parseInt(rows[i].period, 10); if (p > mx) mx = p; }
+  if (mx < 1) mx = 7; if (mx > 7) mx = 7;
+  return mx;
+}
+
+function _schedBuildFilterBar() {
+  var bar = document.getElementById('schedFilterBar');
+  if (!bar) return;
+  var priv = _schedIsPriv();
+  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var h = '<div class="form-row mb-3">';
+  // المادة
+  h += '<div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="schedSubjectFilter" onchange="_schedApply()"><option value="">كل المواد</option>';
+  var subs = mySubjects();
+  for (var si = 0; si < subs.length; si++) h += '<option value="' + escapeHtml(subs[si]) + '">' + escapeHtml(subs[si]) + '</option>';
+  h += '</select></div>';
+  // المعلم (للمشرف/الوكيل/المدير)
+  if (priv) {
+    var ts = _schedDistinctTeachers();
+    h += '<div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="schedTeacherFilter" onchange="_schedApply()"><option value="">كل المعلمين</option>';
+    for (var ti = 0; ti < ts.length; ti++) h += '<option value="' + escapeHtml(ts[ti]) + '">' + escapeHtml(ts[ti]) + '</option>';
+    h += '</select></div>';
+    h += '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="schedGradeFilter" onchange="_schedApply()">' + buildSelectOptions(App.lists.grades || [], 'الكل', '', true) + '</select></div>';
+    h += '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="schedSectionFilter" onchange="_schedApply()">' + buildSelectOptions(App.lists.sections || [], 'الكل', '', true) + '</select></div>';
   }
+  // اليوم
+  h += '<div class="form-group"><label class="form-label">اليوم</label><select class="form-select" id="schedDayFilter" onchange="_schedApply()"><option value="">كل الأيام</option>';
+  for (var di = 0; di < days.length; di++) h += '<option value="' + days[di] + '">' + days[di] + '</option>';
+  h += '</select></div>';
+  h += '</div>';
+  // بحث
+  h += '<div class="sched-search-wrap">';
+  h += '<input type="text" id="schedSearchInput" placeholder="🔍 بحث عن معلم، مادة، فصل، أو قاعة..." oninput="_schedApply()">';
+  h += '<span class="sched-search-icon">🔍</span>';
+  h += '</div>';
+  bar.innerHTML = h;
+}
 
-  var filtered = [];
+function _schedBuildToolbar() {
+  var tb = document.getElementById('schedToolbar');
+  if (!tb) return;
+  var priv = _schedIsPriv();
+  var h = '';
+  h += '<button class="btn btn-sm" id="schedBtnGrid" onclick="_schedSetView(\'grid\')">📅 عرض الجدول</button>';
+  if (priv) h += '<button class="btn btn-sm" id="schedBtnFree" onclick="_schedSetView(\'free\')">🕳️ الحصص الفارغة</button>';
+  h += '<button class="btn btn-primary btn-sm" onclick="_schedPrintPerTeacher()">🖨️ طباعة جدول كل مدرس</button>';
+  if (priv) {
+    h += '<button class="btn btn-secondary btn-sm" onclick="_schedPrintGrid(\'A4\')">🖨️ طباعة A4</button>';
+    h += '<button class="btn btn-secondary btn-sm" onclick="_schedPrintGrid(\'A3\')">🖨️ طباعة A3</button>';
+  }
+  tb.innerHTML = h;
+  _schedUpdateToolbarActive();
+}
+
+function _schedUpdateToolbarActive() {
+  var g = document.getElementById('schedBtnGrid'), f = document.getElementById('schedBtnFree');
+  if (g) g.className = 'btn btn-sm ' + (_schedView === 'grid' ? 'btn-primary' : 'btn-secondary');
+  if (f) f.className = 'btn btn-sm ' + (_schedView === 'free' ? 'btn-primary' : 'btn-secondary');
+}
+
+function _schedSetView(v) { _schedView = v; _schedUpdateToolbarActive(); _schedApply(); }
+
+function _schedReadFilters() {
+  function val(id) { var e = document.getElementById(id); return e ? (e.value || '') : ''; }
+  return {
+    subj: val('schedSubjectFilter'),
+    teacher: val('schedTeacherFilter'),
+    grade: val('schedGradeFilter'),
+    section: val('schedSectionFilter'),
+    day: val('schedDayFilter'),
+    q: (val('schedSearchInput') || '').trim().toLowerCase()
+  };
+}
+
+function _schedFilterRows() {
+  var rows = _cachedSchedule || [], f = _schedReadFilters(), out = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    if (!skipDropdownFilter) {
-      if (gf && gf !== 'الكل' && r.grade !== gf) continue;
-      if (sf && sf !== 'الكل' && r.section !== sf) continue;
-      if (subjectFilter && String(r.subject || '').replace(/\s+/g, ' ').trim() !== String(subjectFilter).replace(/\s+/g, ' ').trim()) continue;
+    if (f.subj && _schedNorm(r.subject) !== _schedNorm(f.subj)) continue;
+    if (f.teacher && _schedNorm(r.teacher) !== _schedNorm(f.teacher)) continue;
+    if (f.grade && f.grade !== 'الكل' && r.grade !== f.grade) continue;
+    if (f.section && f.section !== 'الكل' && r.section !== f.section) continue;
+    if (f.day && r.day !== f.day) continue;
+    if (f.q) {
+      var hay = ((r.teacher || '') + ' ' + (r.subject || '') + ' ' + (r.grade || '') + ' ' + (r.section || '') + ' ' + (r.room || '')).toLowerCase();
+      if (hay.indexOf(f.q) === -1) continue;
     }
-    filtered.push(r);
+    out.push(r);
   }
+  return out;
+}
 
-  if (!filtered.length) {
+// نقطة العرض الموحّدة — كل الفلاتر والبحث تعمل معاً وبالترتيب
+function _schedApply() {
+  var area = document.getElementById('myScheduleArea');
+  if (!area) return;
+  var rows = _schedFilterRows();
+  if (!rows.length) {
     area.innerHTML = '<div class="empty-state"><div class="es-icon">📅</div><div class="es-title">لا توجد حصص للفلتر المحدد</div></div>';
     return;
   }
+  if (_schedView === 'free' && _schedIsPriv()) {
+    area.innerHTML = _schedFreeTableHtml(rows);
+  } else {
+    area.innerHTML = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;padding:10px 16px;background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);"><span style="font-size:.82rem;color:var(--text-muted);">📌 إجمالي الحصص: <strong>' + rows.length + '</strong></span></div>' +
+      _schedGridTableHtml(rows, { showTeacher: !!(App.user && App.user.isAdmin) });
+  }
+}
 
-  // بناء الجدول - باقي الكود كما هو دون تغيير
+// توافق مع النداءات القديمة
+function applyScheduleFilter() { _schedApply(); }
+function searchSchedule() { _schedApply(); }
+function renderScheduleData(rows) {
+  var area = document.getElementById('myScheduleArea');
+  if (area && rows) area.innerHTML = _schedGridTableHtml(rows, { showTeacher: !!(App.user && App.user.isAdmin) });
+}
+
+function _schedGridTableHtml(rows, opts) {
+  opts = opts || {};
   var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
-  var periods = [1,2,3,4,5,6,7];
+  var pmax = 7;
   var dayIcons = { 'السبت':'🕌', 'الأحد':'📖', 'الاثنين':'✏️', 'الثلاثاء':'📐', 'الأربعاء':'🏆' };
   var dayColors = { 'السبت':'#667eea', 'الأحد':'#f5576c', 'الاثنين':'#4facfe', 'الثلاثاء':'#43e97b', 'الأربعاء':'#fa709a' };
   var grid = {};
-  for (var d = 0; d < 5; d++) { grid[d] = {}; for (var p = 0; p < 7; p++) grid[d][p] = []; }
-  for (var i = 0; i < filtered.length; i++) {
-    var item = filtered[i];
+  for (var d = 0; d < 5; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
+  for (var i = 0; i < rows.length; i++) {
+    var item = rows[i];
     var dayIdx = days.indexOf(item.day);
     if (dayIdx === -1) continue;
-    var perIdx = parseInt(item.period) - 1;
-    if (perIdx < 0 || perIdx > 6) continue;
+    var perIdx = parseInt(item.period, 10) - 1;
+    if (perIdx < 0 || perIdx > pmax - 1) continue;
     grid[dayIdx][perIdx].push(item);
   }
-
-  var html = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;padding:10px 16px;background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);"><span style="font-size:.82rem;color:var(--text-muted);">📌 إجمالي الحصص: <strong>' + filtered.length + '</strong></span></div>';
-  html += '<div style="overflow-x:auto;border-radius:var(--radius-md);border:1px solid var(--border);"><table style="width:100%;border-collapse:collapse;font-size:.85rem;"><thead><tr style="background:var(--primary);color:#fff;"><th style="padding:14px 8px;text-align:center;font-weight:800;min-width:80px;">اليوم</th>';
-  for (var p = 0; p < 7; p++) html += '<th style="padding:14px 4px;text-align:center;font-weight:700;">' + periods[p] + '</th>';
+  var html = '<div style="overflow-x:auto;border-radius:var(--radius-md);border:1px solid var(--border);"><table style="width:100%;border-collapse:collapse;font-size:.85rem;"><thead><tr style="background:var(--primary);color:#fff;"><th style="padding:14px 8px;text-align:center;font-weight:800;min-width:80px;">اليوم</th>';
+  for (var p = 0; p < pmax; p++) html += '<th style="padding:14px 4px;text-align:center;font-weight:700;">' + (p + 1) + '</th>';
   html += '</tr></thead><tbody>';
-
   for (var d = 0; d < 5; d++) {
     var dayName = days[d];
     var icon = dayIcons[dayName] || '📅';
     var dayColor = dayColors[dayName] || 'var(--primary)';
     var rowBg = (d % 2 === 0) ? 'background:var(--surface2);' : 'background:var(--surface);';
     html += '<tr style="' + rowBg + '"><td style="padding:10px 8px;text-align:center;font-weight:800;color:#fff;background:' + dayColor + ';border-radius:8px;min-width:80px;"><div style="font-size:1.3rem;">' + icon + '</div><div style="font-size:.82rem;">' + dayName + '</div></td>';
-    for (var p = 0; p < 7; p++) {
+    for (var p = 0; p < pmax; p++) {
       var items = grid[d][p];
       var cellHtml = '';
       if (items.length === 0) {
@@ -7338,9 +7404,9 @@ function renderScheduleData(rows, subjectFilter, skipDropdownFilter) {
         for (var k = 0; k < items.length; k++) {
           var it = items[k];
           if (k > 0) cellHtml += '<div style="border-top:1px dashed var(--border);margin:3px 0;padding-top:3px;"></div>';
-          cellHtml += '<div style="font-weight:700;color:var(--primary);">' + (it.subject || '—') + '</div>';
-          cellHtml += '<div style="font-size:.72rem;color:var(--purple);font-weight:600;">' + (it.grade || '') + (it.section && it.section !== 'جميع الشعب' ? ' ' + it.section : '') + '</div>';
-          if (App.user && App.user.isAdmin && it.teacher) cellHtml += '<div style="font-size:.65rem;color:var(--text-muted);">' + it.teacher + '</div>';
+          cellHtml += '<div style="font-weight:700;color:var(--primary);">' + escapeHtml(it.subject || '—') + '</div>';
+          cellHtml += '<div style="font-size:.72rem;color:var(--purple);font-weight:600;">' + escapeHtml((it.grade || '') + (it.section && it.section !== 'جميع الشعب' ? ' ' + it.section : '')) + '</div>';
+          if (opts.showTeacher && it.teacher) cellHtml += '<div style="font-size:.65rem;color:var(--text-muted);">' + escapeHtml(it.teacher) + '</div>';
         }
       }
       html += '<td style="padding:8px 5px;text-align:center;vertical-align:top;min-width:90px;border-radius:8px;transition:all .2s ease;cursor:default;">' + cellHtml + '</td>';
@@ -7348,7 +7414,136 @@ function renderScheduleData(rows, subjectFilter, skipDropdownFilter) {
     html += '</tr>';
   }
   html += '</tbody></table></div>';
-  area.innerHTML = html;
+  return html;
+}
+
+// عرض الحصص الفارغة لكل معلم (للمشرف/الوكيل/المدير) — ديناميكي ويحترم الفلاتر
+function _schedFreeTableHtml(rows) {
+  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var pmax = _schedPeriodMax();
+  var occ = {}, order = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], t = _schedNorm(r.teacher);
+    if (!t) continue;
+    var di = days.indexOf(r.day); if (di === -1) continue;
+    var pp = parseInt(r.period, 10); if (pp < 1 || pp > pmax) continue;
+    if (!occ[t]) { occ[t] = {}; order.push(t); for (var d = 0; d < 5; d++) occ[t][d] = {}; }
+    occ[t][di][pp] = true;
+  }
+  order.sort(function(a, b) { return a.localeCompare(b, 'ar'); });
+  if (!order.length) return '<div class="empty-state"><div class="es-icon">🕳️</div><div class="es-title">لا توجد بيانات</div></div>';
+  var html = '<div style="margin-bottom:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:.82rem;color:var(--text-muted);">🕳️ الحصص الفارغة لكل معلم — الأرقام تمثّل الحصص الشاغرة في كل يوم (متاح للمشرف والوكيل والمدير).</div>';
+  html += '<div style="overflow-x:auto;border-radius:var(--radius-md);border:1px solid var(--border);"><table style="width:100%;border-collapse:collapse;font-size:.82rem;"><thead><tr style="background:var(--primary);color:#fff;"><th style="padding:12px 8px;text-align:right;min-width:150px;">المعلم</th>';
+  for (var d = 0; d < 5; d++) html += '<th style="padding:12px 6px;text-align:center;">' + days[d] + '</th>';
+  html += '<th style="padding:12px 6px;text-align:center;min-width:70px;">إجمالي الفراغ</th></tr></thead><tbody>';
+  for (var oi = 0; oi < order.length; oi++) {
+    var tn = order[oi];
+    var rowBg = (oi % 2 === 0) ? 'background:var(--surface2);' : 'background:var(--surface);';
+    html += '<tr style="' + rowBg + '"><td style="padding:10px 8px;font-weight:700;">' + escapeHtml(tn) + '</td>';
+    var tot = 0;
+    for (var d2 = 0; d2 < 5; d2++) {
+      var cell = '', cnt = 0;
+      for (var pq = 1; pq <= pmax; pq++) {
+        if (!occ[tn][d2][pq]) {
+          cnt++;
+          cell += '<span style="display:inline-block;min-width:20px;margin:1px;padding:1px 5px;border-radius:6px;background:rgba(245,158,11,.15);color:#b45309;font-weight:700;font-size:.72rem;">' + pq + '</span>';
+        }
+      }
+      tot += cnt;
+      if (!cnt) cell = '<span style="color:var(--success);font-weight:700;">✔ ممتلئ</span>';
+      html += '<td style="padding:8px 5px;text-align:center;vertical-align:top;">' + cell + '</td>';
+    }
+    html += '<td style="padding:8px 6px;text-align:center;font-weight:800;color:#b45309;">' + tot + '</td></tr>';
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// ── الطباعة (تحترم الفلاتر النشطة) ───────────────────────
+function _schedPrintWindow(bodyHtml, title, page) {
+  var size = (page === 'A3') ? 'A3 landscape' : 'A4 landscape';
+  var w = window.open('', '_blank');
+  if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
+  var css = 'body{font-family:"Tahoma","Segoe UI",sans-serif;direction:rtl;padding:6mm;color:#111}' +
+    'h2{text-align:center;margin:0 0 4px;font-size:18px}h4{text-align:center;margin:0 0 12px;color:#555;font-weight:500;font-size:13px}' +
+    'table{width:100%;border-collapse:collapse;font-size:12px}' +
+    'th,td{border:1px solid #444;padding:5px;text-align:center;vertical-align:top}' +
+    'thead th{background:#1f2937;color:#fff}' +
+    'td.day{background:#374151;color:#fff;font-weight:700}' +
+    '.subj{font-weight:700}.meta{font-size:10px;color:#374151}.tch{font-size:9px;color:#666}' +
+    '.sched-page{page-break-after:always}.sched-page:last-child{page-break-after:auto}' +
+    '@page{size:' + size + ';margin:8mm}';
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>' + title + '</title><style>' + css + '</style></head><body>' + bodyHtml + '</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function() { try { w.print(); } catch (e) {} }, 300);
+}
+
+function _schedPrintGridTable(rows) {
+  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var pmax = 7;
+  var grid = {};
+  for (var d = 0; d < 5; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
+  for (var i = 0; i < rows.length; i++) {
+    var it = rows[i]; var di = days.indexOf(it.day); if (di === -1) continue;
+    var pi = parseInt(it.period, 10) - 1; if (pi < 0 || pi > pmax - 1) continue;
+    grid[di][pi].push(it);
+  }
+  var h = '<table><thead><tr><th>اليوم</th>';
+  for (var p = 0; p < pmax; p++) h += '<th>الحصة ' + (p + 1) + '</th>';
+  h += '</tr></thead><tbody>';
+  for (var d2 = 0; d2 < 5; d2++) {
+    h += '<tr><td class="day">' + days[d2] + '</td>';
+    for (var pp = 0; pp < pmax; pp++) {
+      var items = grid[d2][pp], cell = '';
+      for (var k = 0; k < items.length; k++) {
+        var x = items[k];
+        if (k > 0) cell += '<hr style="border:none;border-top:1px dashed #999;margin:2px 0">';
+        cell += '<div class="subj">' + escapeHtml(x.subject || '') + '</div>';
+        cell += '<div class="meta">' + escapeHtml((x.grade || '') + (x.section && x.section !== 'جميع الشعب' ? ' ' + x.section : '')) + '</div>';
+        if (x.teacher) cell += '<div class="tch">' + escapeHtml(x.teacher) + '</div>';
+      }
+      if (!items.length) cell = '—';
+      h += '<td>' + cell + '</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  return h;
+}
+
+function _schedPrintGrid(page) {
+  if (!_cachedSchedule) { toast('الجدول غير محمّل', 'warning'); return; }
+  var rows = _schedFilterRows();
+  if (!rows.length) { toast('لا توجد حصص للطباعة', 'warning'); return; }
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim();
+  var f = _schedReadFilters(), subt = [];
+  if (f.teacher) subt.push('المعلم: ' + f.teacher);
+  if (f.subj) subt.push('المادة: ' + f.subj);
+  if (f.grade && f.grade !== 'الكل') subt.push('الفصل: ' + f.grade);
+  if (f.section && f.section !== 'الكل') subt.push('الشعبة: ' + f.section);
+  if (f.day) subt.push('اليوم: ' + f.day);
+  var body = '<div class="sched-page"><h2>' + escapeHtml(sn || 'جدول الحصص') + '</h2><h4>جدول الحصص' + (subt.length ? (' — ' + escapeHtml(subt.join(' · '))) : '') + '</h4>' + _schedPrintGridTable(rows) + '</div>';
+  _schedPrintWindow(body, 'جدول الحصص', page);
+}
+
+function _schedPrintPerTeacher() {
+  if (!_cachedSchedule) { toast('الجدول غير محمّل', 'warning'); return; }
+  var rows = _schedFilterRows();
+  if (!rows.length) { toast('لا توجد حصص للطباعة', 'warning'); return; }
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim();
+  var groups = {}, order = [];
+  for (var i = 0; i < rows.length; i++) {
+    var t = _schedNorm(rows[i].teacher) || 'بدون اسم';
+    if (!groups[t]) { groups[t] = []; order.push(t); }
+    groups[t].push(rows[i]);
+  }
+  order.sort(function(a, b) { return a.localeCompare(b, 'ar'); });
+  var body = '';
+  for (var oi = 0; oi < order.length; oi++) {
+    var tn = order[oi];
+    body += '<div class="sched-page"><h2>' + escapeHtml(sn || 'جدول الحصص') + '</h2><h4>جدول المعلم: ' + escapeHtml(tn) + '</h4>' + _schedPrintGridTable(groups[tn]) + '</div>';
+  }
+  _schedPrintWindow(body, 'جداول المعلمين', 'A4');
 }
 
 // ==================== ADMIN TEACHERS (كلاسيكي) ====================
@@ -9122,6 +9317,7 @@ function renderReports() {
           '<div class="sub" id="rptScopeLabel">جاري تحميل النطاق...</div>' +
         '</div>' +
         '<button class="refresh-btn" onclick="loadReports(true)">🔄 تحديث</button>' +
+        '<button class="refresh-btn" onclick="rep_shareReport()" style="margin-inline-start:6px">📤 مشاركة</button>' +
       '</div>' +
       '<div id="rptBody">' +
         '<div class="rpt-card">' +
@@ -9163,7 +9359,48 @@ function loadReports(force) {
     bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
   });
 }
- 
+
+// زر المشاركة التفاعلي — يبني ملخصاً نصياً للتقرير المعروض ويشاركه
+function rep_shareReport() {
+  var d = _RPT_CACHE;
+  if (!d) { toast('لا توجد بيانات تقرير للمشاركة — افتح التقارير أولاً', 'warning'); return; }
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim();
+  var s = d.summary || {}, lines = [];
+  lines.push('📊 تقرير ' + (d.scopeLabel || '') + (sn ? (' — ' + sn) : ''));
+  lines.push('');
+  function add(label, val) { if (val !== undefined && val !== null && val !== '') lines.push('• ' + label + ': ' + val); }
+  if (d.scope === 'admin' || d.scope === 'deputy') {
+    add('إجمالي الطلاب', s.totalStudents); add('إجمالي المعلمين', s.totalTeachers); add('الفصول', s.totalClasses);
+    add('الأخبار المنشورة', s.totalNews); add('الواجبات', s.totalHomework); add('المخالفات', s.totalViolations);
+    add('الملاحظات', s.totalNotes); if (s.attendanceRate) add('نسبة الحضور', s.attendanceRate + '%');
+  } else if (d.scope === 'supervisor') {
+    add('الطلاب المُشرف عليهم', s.supervisedStudents); add('الفصول', s.supervisedClasses);
+    add('الأخبار', s.totalNews); add('الواجبات', s.totalHomework); add('المخالفات', s.totalViolations);
+  } else {
+    add('طلابي', s.myStudents); add('حصص أسبوعية', s.weeklyPeriods); add('واجبات نشرتها', s.myHomework);
+    add('أخبار نشرتها', s.myNews); add('مخالفات سجّلتها', s.myViolations); if (s.avgGrade) add('متوسط درجات طلابي', s.avgGrade);
+  }
+  // أداء المهام (إن توفّر داخل اللوحة)
+  var g = window._repTaskList;
+  if (g && g.length && window._repTaskGrand) {
+    var gr = window._repTaskGrand;
+    lines.push(''); lines.push('📌 أداء المهام: إجمالي ' + (gr.total || 0) + ' · منفّذة/مؤكّدة ' + ((gr.done || 0) + (gr.confirmed || 0)) + ' · متأخرة ' + (gr.late || 0));
+  }
+  lines.push(''); lines.push('— عبر منصة المعلم');
+  var text = lines.join('\n');
+  if (navigator.share) {
+    navigator.share({ title: 'تقرير ' + (d.scopeLabel || ''), text: text }).then(function() {}, function() {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() { toast('📋 تم نسخ ملخص التقرير — يمكنك لصقه ومشاركته', 'success'); }, function() { _repShareFallback(text); });
+  } else {
+    _repShareFallback(text);
+  }
+}
+function _repShareFallback(text) {
+  try { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
+  catch (e) { toast('تعذّرت المشاركة على هذا الجهاز', 'error'); }
+}
+
 function _renderReportsBody(data) {
   var lblEl = document.getElementById('rptScopeLabel');
   if (lblEl) lblEl.textContent = (data.scopeLabel || '') +
@@ -9195,6 +9432,7 @@ function rep_loadTaskPerformance(scope) {
     callServer('getAllTaskSummariesProtected', {}, function (res) {
       if (!res || !res.success) { box.innerHTML = ''; return; }
       window._repTaskList = res.teachers || [];
+      window._repTaskGrand = res.grand || null;
       var inner = (!res.teachers || !res.teachers.length)
         ? '<p style="color:#94a3b8;">لا توجد مهام مسجّلة بعد</p>'
         : rep_taskGrandStats(res.grand) + rep_taskBars(res.teachers) + rep_taskTable(res.teachers);
