@@ -7316,7 +7316,8 @@ function _schedBuildToolbar() {
     h += '<button class="btn btn-secondary btn-sm" onclick="_schedPrintGrid(\'A4\')">🖨️ طباعة A4</button>';
     h += '<button class="btn btn-secondary btn-sm" onclick="_schedPrintGrid(\'A3\')">🖨️ طباعة A3</button>';
   }
-  h += '<button class="btn btn-sm" style="background:var(--success,#10b981);color:#fff;" onclick="_schedShare()">📤 مشاركة الجدول</button>';
+  h += '<button class="btn btn-sm" style="background:var(--success,#10b981);color:#fff;" onclick="_schedShare()">📤 مشاركة نصاً</button>';
+  h += '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff;" onclick="_schedShareAsImage()">📷 مشاركة صورة/PDF</button>';
   tb.innerHTML = h;
   _schedUpdateToolbarActive();
 }
@@ -7478,8 +7479,20 @@ function _schedPrintWindow(bodyHtml, title, page) {
   var size = (page === 'A3') ? 'A3 landscape' : 'A4 landscape';
   var w = window.open('', '_blank');
   if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
+  var safeT = title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // شريط علوي ثابت (مخفي عند الطباعة)
+  var tb = '.sPT{position:fixed;inset:0 0 auto 0;z-index:9999;background:#1e3a5f;color:#fff;' +
+    'display:flex;align-items:center;gap:8px;padding:8px 14px;direction:rtl;' +
+    'font-family:Tahoma,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.4);}' +
+    '.sPT strong{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+    '.sPTb{padding:7px 16px;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-family:Tahoma,sans-serif;}' +
+    '.sPTp{background:#4f46e5;color:#fff;}.sPTp:hover{background:#4338ca;}' +
+    '.sPTc{background:#374151;color:#d1d5db;}.sPTc:hover{background:#dc2626;color:#fff;}' +
+    '.sPTbd{margin-top:54px;}' +
+    '@media print{.sPT{display:none!important}.sPTbd{margin-top:0!important}}';
   var css = 'body{font-family:"Tahoma","Segoe UI",sans-serif;direction:rtl;padding:6mm;color:#111}' +
-    'h2{text-align:center;margin:0 0 4px;font-size:18px}h4{text-align:center;margin:0 0 12px;color:#555;font-weight:500;font-size:13px}' +
+    'h2{text-align:center;margin:0 0 4px;font-size:18px}' +
+    'h4{text-align:center;margin:0 0 12px;color:#555;font-weight:500;font-size:13px}' +
     'table{width:100%;border-collapse:collapse;font-size:12px}' +
     'th,td{border:1px solid #444;padding:5px;text-align:center;vertical-align:top}' +
     'thead th{background:#1f2937;color:#fff}' +
@@ -7487,9 +7500,24 @@ function _schedPrintWindow(bodyHtml, title, page) {
     '.subj{font-weight:700}.meta{font-size:10px;color:#374151}.tch{font-size:9px;color:#666}' +
     '.sched-page{page-break-after:always}.sched-page:last-child{page-break-after:auto}' +
     '@page{size:' + size + ';margin:8mm}';
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>' + title + '</title><style>' + css + '</style></head><body>' + bodyHtml + '</body></html>');
-  w.document.close(); w.focus();
-  setTimeout(function() { try { w.print(); } catch (e) {} }, 300);
+  var toolbar = '<div class="sPT"><strong>' + safeT + '</strong>' +
+    '<button class="sPTb sPTp" onclick="window.print()">🖨️ طباعة</button>' +
+    '<button class="sPTb sPTc" onclick="try{window.close();}catch(e){window.history.back();}">✕ إغلاق</button>' +
+    '</div>';
+  // history.pushState + popstate تعامل مع زر الرجوع في أندرويد
+  var script = '<scr'+'ipt>' +
+    'try{history.pushState({p:1},"","");}catch(e){}' +
+    'window.addEventListener("popstate",function(){try{window.close();}catch(e){window.history.go(-2);}});' +
+    '<\/scr'+'ipt>';
+  w.document.write(
+    '<html dir="rtl"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + safeT + '</title><style>' + tb + css + '</style></head>' +
+    '<body>' + toolbar + '<div class="sPTbd">' + bodyHtml + '</div>' + script + '</body></html>'
+  );
+  w.document.close();
+  w.focus();
+  setTimeout(function() { try { w.print(); } catch (e) {} }, 500);
 }
 
 function _schedPrintGridTable(rows) {
@@ -7607,6 +7635,175 @@ function _schedShare() {
 function _schedShareFallback(text) {
   try { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
   catch(e) { toast('تعذّرت المشاركة على هذا الجهاز', 'error'); }
+}
+
+// ── مشاركة الجدول كصورة PNG / حفظ PDF ─────────────────
+function _schedShareAsImage() {
+  var rows = _schedFilterRows();
+  if (!rows.length) { toast('لا يوجد جدول لمشاركته', 'warning'); return; }
+  toast('جارٍ إنشاء الصورة…', 'info');
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim();
+  try {
+    var canvas = _schedBuildCanvas(rows, sn);
+    var fname = 'جدول-الحصص.png';
+    if (!canvas.toBlob) {
+      _schedSavePng(canvas, fname);
+      return;
+    }
+    canvas.toBlob(function(blob) {
+      if (!blob) { toast('تعذّر إنشاء الصورة على هذا الجهاز', 'error'); return; }
+      var file = new File([blob], fname, { type: 'image/png' });
+      var canShare = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+      if (canShare) {
+        navigator.share({ files: [file], title: 'جدول الحصص', text: sn ? 'جدول الحصص — ' + sn : 'جدول الحصص' })
+          .catch(function() { _schedSavePng(canvas, fname); });
+      } else {
+        _schedSavePng(canvas, fname);
+      }
+    }, 'image/png');
+  } catch(e) { toast('خطأ في إنشاء الصورة: ' + e.message, 'error'); }
+}
+
+function _schedSavePng(canvas, fname) {
+  try {
+    var a = document.createElement('a');
+    a.download = fname;
+    a.href = canvas.toDataURL('image/png');
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { try { document.body.removeChild(a); } catch(e2){} }, 200);
+    toast('تم حفظ الصورة ✓ — أو استخدم "طباعة" للحصول على PDF', 'success');
+  } catch(e) { toast('تعذّر الحفظ على هذا الجهاز', 'error'); }
+}
+
+function _schedBuildCanvas(rows, schoolName) {
+  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var pmax = _schedPeriodMax();
+  if (pmax < 1) pmax = 7;
+
+  // بناء الشبكة
+  var grid = {};
+  for (var d = 0; d < 5; d++) {
+    grid[d] = {};
+    for (var p = 0; p < pmax; p++) grid[d][p] = [];
+  }
+  for (var i = 0; i < rows.length; i++) {
+    var it = rows[i];
+    var di = days.indexOf(it.day);
+    if (di === -1) continue;
+    var pi = parseInt(it.period, 10) - 1;
+    if (pi < 0 || pi >= pmax) continue;
+    grid[di][pi].push(it);
+  }
+
+  // أبعاد الرسم
+  var DPR    = Math.min(window.devicePixelRatio || 1, 2);
+  var DAY_W  = 76, COL_W = 112, HDR_H = 42, ROW_H = 70;
+  var TTL_H  = schoolName ? 46 : 0;
+  var W = DAY_W + pmax * COL_W;
+  var H = TTL_H + HDR_H + 5 * ROW_H;
+
+  var canvas = document.createElement('canvas');
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+
+  var ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+  ctx.direction = 'rtl';
+
+  // خلفية بيضاء
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, W, H);
+
+  // شريط عنوان المدرسة
+  if (schoolName) {
+    ctx.fillStyle = '#1e3a5f';
+    ctx.fillRect(0, 0, W, TTL_H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 15px Tahoma';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(_schedTruncStr(schoolName + ' — جدول الحصص', 60), W / 2, TTL_H / 2);
+  }
+
+  var Y0 = TTL_H;
+
+  // رؤوس الأعمدة
+  ctx.fillStyle = '#1f2937';
+  ctx.fillRect(0, Y0, W, HDR_H);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px Tahoma';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('اليوم', DAY_W / 2, Y0 + HDR_H / 2);
+  for (var ph = 0; ph < pmax; ph++) {
+    ctx.fillText('ح' + (ph + 1), DAY_W + ph * COL_W + COL_W / 2, Y0 + HDR_H / 2);
+  }
+
+  var dayColors = ['#667eea', '#f5576c', '#4facfe', '#43e97b', '#fa709a'];
+  var rowBgs    = ['#f0f4ff', '#ffffff'];
+  var showTch   = !!(App && App.user && App.user.isAdmin);
+
+  for (var dr = 0; dr < 5; dr++) {
+    var rowY = Y0 + HDR_H + dr * ROW_H;
+
+    // خلفية الصف
+    ctx.fillStyle = rowBgs[dr % 2];
+    ctx.fillRect(DAY_W, rowY, W - DAY_W, ROW_H);
+
+    // خلية اليوم
+    ctx.fillStyle = dayColors[dr % dayColors.length];
+    ctx.fillRect(0, rowY, DAY_W, ROW_H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Tahoma';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(days[dr], DAY_W / 2, rowY + ROW_H / 2);
+
+    for (var cp = 0; cp < pmax; cp++) {
+      var cx = DAY_W + cp * COL_W;
+      var its = grid[dr][cp];
+
+      // حدود الخلية
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(cx + 0.25, rowY + 0.25, COL_W - 0.5, ROW_H - 0.5);
+
+      if (its.length) {
+        var x0 = its[0];
+        // اسم المادة
+        ctx.fillStyle = '#4338ca';
+        ctx.font = 'bold 11px Tahoma';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(_schedTruncStr(x0.subject || '', 13), cx + COL_W / 2, rowY + 7);
+        // الفصل + الشعبة
+        var cls = (x0.grade || '') + (x0.section && x0.section !== 'جميع الشعب' ? ' ' + x0.section : '');
+        ctx.fillStyle = '#7c3aed';
+        ctx.font = '10px Tahoma';
+        ctx.fillText(cls, cx + COL_W / 2, rowY + 27);
+        // اسم المعلم (للمدير فقط)
+        if (showTch && x0.teacher) {
+          ctx.fillStyle = '#6b7280';
+          ctx.font = '9px Tahoma';
+          ctx.fillText(_schedTruncStr(x0.teacher, 11), cx + COL_W / 2, rowY + 46);
+        }
+      } else {
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '16px Tahoma';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('—', cx + COL_W / 2, rowY + ROW_H / 2);
+      }
+    }
+  }
+
+  return canvas;
+}
+
+function _schedTruncStr(s, n) {
+  s = String(s == null ? '' : s);
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
 // ==================== ADMIN TEACHERS (كلاسيكي) ====================
