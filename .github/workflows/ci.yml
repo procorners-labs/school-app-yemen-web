@@ -1,4 +1,7 @@
-name: CI — build & offline tests
+name: Validate Worker & Frontend
+
+# الـfrontend/ يُبنى ويُرسَل تلقائياً من school-app-yemen-gas عبر DEPLOY_PAT
+# هذا الـCI يتحقّق فقط من صحة كود الـWorker وبنية الـfrontend
 
 on:
   push:
@@ -10,32 +13,18 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Check Worker JS syntax
+        run: node --check worker/school-app-proxy.js
 
-      # إعادة بناء الواجهة من المصدر (لا تبعيات npm — سكربتات Node مدمجة فقط)
-      - name: Build frontend
-        run: node _build/build-frontend.js
-
-      # التأكّد أن frontend/ المُولّدة مطابقة للمصدر (أي تعديل HTML يجب إعادة بنائه قبل الدفع)
-      - name: Ensure frontend is in sync with source
+      - name: Verify frontend directory exists
         run: |
-          if ! git diff --quiet -- frontend; then
-            echo "::error::frontend/ غير متطابقة مع المصدر — شغّل: node _build/build-frontend.js ثم التزم بالتغييرات"
-            git --no-pager diff --stat -- frontend
+          if [ ! -d "frontend" ]; then
+            echo "::error::مجلد frontend/ مفقود — يُبنى تلقائياً من school-app-yemen-gas"
             exit 1
           fi
-
-      # اختبارات سلوك العمل دون اتصال + المزامنة
-      - name: Run offline sync tests
-        run: node _build/test-offline.js
-
-      # التأكّد أن قوائم الدوال الخطرة في ApiEndpoint.js متزامنة مع denylist.generated.json
-      - name: Ensure ApiEndpoint denylists are in sync
-        run: node _build/gen-endpoints.js --check
+          echo "frontend/ موجود ✓ ($(ls frontend | wc -l) مجلدات فرعية)"
