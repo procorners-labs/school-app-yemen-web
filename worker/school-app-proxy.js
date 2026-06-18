@@ -79,6 +79,27 @@ export default {
       }
     }
 
+    // ── 1ب) عرض صورة QR عبر Proxy (inline): /qr-img?url=... ──────
+    //   يجلب الصورة من api.qrserver.com ويُعيدها مباشرةً (بلا attachment)
+    //   يُستخدم كـ fallback في <img onerror> عندما يكون qrserver.com محجوباً
+    if (path === '/qr-img') {
+      var qiUrl = url.searchParams.get('url') || '';
+      if (!qiUrl || !qiUrl.startsWith('https://api.qrserver.com/')) {
+        return jsonResponse({ error: 'رابط QR غير مقبول' }, 400);
+      }
+      try {
+        var qiFetch = await fetch(qiUrl, { method: 'GET' });
+        var qiBuf = await qiFetch.arrayBuffer();
+        var qiHeaders = new Headers();
+        qiHeaders.set('Content-Type', 'image/png');
+        qiHeaders.set('Access-Control-Allow-Origin', '*');
+        qiHeaders.set('Cache-Control', 'public, max-age=86400');
+        return new Response(qiBuf, { status: 200, headers: qiHeaders });
+      } catch (qiErr) {
+        return new Response('', { status: 502 });
+      }
+    }
+
     // ── 1ب) تحميل QR عبر Proxy: /qr-download?url=...&name=... ────
     //   يجلب الصورة من api.qrserver.com ويُضيف Content-Disposition:attachment
     //   حل مثالي: نفس النطاق → لا مشكلة CORS عند التحميل
