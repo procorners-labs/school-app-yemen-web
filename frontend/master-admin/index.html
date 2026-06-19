@@ -188,10 +188,37 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
 .sync-step-name{font-size:13px;font-weight:600}
 .sync-step-detail{font-size:11px;color:#888;margin-top:2px}
 
+/* ── المالية ── */
+.info-box{background:#e3f2fd;border-right:3px solid #1565c0;color:#1565c0;
+  padding:10px 14px;border-radius:8px;font-size:13px;margin:8px 0}
+.error-box{background:#ffebee;border-right:3px solid #c62828;color:#c62828;
+  padding:10px 14px;border-radius:8px;font-size:13px;margin:8px 0}
+.fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;margin-bottom:18px}
+.fin-kpi{background:#fff;border-radius:12px;padding:16px;text-align:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #eef1f4}
+.fin-kpi.big{grid-column:span 2}
+.fin-kpi-v{font-size:23px;font-weight:800;letter-spacing:-.5px}
+.fin-kpi-l{color:#7a8794;font-size:12px;margin-top:6px}
+.fin-kpi-s{color:#9aa6b2;font-size:11px;margin-top:2px}
+.fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.fin-t{width:100%;border-collapse:collapse;font-size:13px}
+.fin-t td{padding:7px 5px;border-bottom:1px solid #f0f2f4}
+.fin-lbl{font-weight:600;max-width:200px}
+.fin-amt{font-weight:700;white-space:nowrap;text-align:left}
+.fin-pct{color:#9aa6b2;font-size:12px;white-space:nowrap;text-align:left}
+.fin-barc{width:40%}
+.fin-bar{height:13px;border-radius:7px;min-width:2px}
 @media(max-width:768px){
   .sidebar{width:100%;height:auto;position:relative}
   .main-content{margin-right:0}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .fin-kpi.big{grid-column:span 1}
+  .fin-grid{grid-template-columns:1fr}
+}
+@media print{
+  .sidebar,.top-bar,#finance-status,button{display:none!important}
+  .main-content{margin:0!important}
 }
 </style>
 </head>
@@ -271,6 +298,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     </div>
     <div class="nav-item" onclick="showSection('reports')" id="nav-reports">
       <span class="nav-icon">📈</span><span>التقارير</span>
+    </div>
+    <div class="nav-item" onclick="showSection('finance')" id="nav-finance">
+      <span class="nav-icon">💰</span><span>المالية</span>
     </div>
     <div class="nav-item" onclick="showSection('schools')" id="nav-schools">
       <span class="nav-icon">🏫</span><span>إدارة المدارس</span>
@@ -434,6 +464,39 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
           <div class="form-col" style="justify-content:flex-end;"><button class="btn btn-success" onclick="rep_whatsapp()">📱 جلب روابط واتساب</button></div>
         </div>
         <div id="rep-wa-result" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <!-- ═══ المالية (مزامنة Access) ═══ -->
+    <div id="section-finance" class="section">
+      <div class="section-title">💰 التقارير المالية الشاملة</div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="finance_load(true)">🔄 تحديث البيانات</button>
+        <button class="btn" style="background:#455a64;color:#fff;" onclick="window.print()">🖨️ طباعة</button>
+        <span id="finance-sync-info" style="color:#888;font-size:12px;"></span>
+      </div>
+      <div id="finance-status"></div>
+      <div id="finance-kpis" class="fin-kpis"></div>
+      <div class="panel" id="finance-chart-panel" style="display:none;">
+        <div class="panel-title">📊 الدخل مقابل المصروفات شهرياً
+          <span style="float:left;font-size:11px;font-weight:400;color:#888;">
+            <b style="color:#1a8d5f;">■</b> دخل &nbsp; <b style="color:#c0392b;">■</b> مصروفات</span>
+        </div>
+        <div id="finance-chart" style="overflow-x:auto;"></div>
+      </div>
+      <div class="fin-grid">
+        <div class="panel" id="finance-methods-panel" style="display:none;">
+          <div class="panel-title">💳 الدخل حسب طريقة الدفع</div>
+          <div id="finance-methods"></div>
+        </div>
+        <div class="panel" id="finance-grade-panel" style="display:none;">
+          <div class="panel-title">👨‍🎓 توزيع الطلاب حسب الصف</div>
+          <div id="finance-grade"></div>
+        </div>
+      </div>
+      <div class="panel" id="finance-topexp-panel" style="display:none;">
+        <div class="panel-title">🔻 أكبر 15 مصروفاً</div>
+        <div id="finance-topexp" style="overflow-x:auto;"></div>
       </div>
     </div>
 
@@ -671,9 +734,10 @@ function app_logout() {
 // ── التنقل بين الأقسام ────────────────────────────────────────
 
 function showSection(name) {
-  var sections = ['dashboard','sync','reports','schools','audit','settings','portals'];
+  var sections = ['dashboard','sync','reports','finance','schools','audit','settings','portals'];
   var titles   = {
     dashboard:'📊 Dashboard', sync:'🔄 المزامنة', reports:'📈 التقارير',
+    finance:'💰 المالية',
     schools:'🏫 المدارس', audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات',
     portals:'🚀 منصاتي'
   };
@@ -693,6 +757,154 @@ function showSection(name) {
   if (name === 'settings') settings_loadAll();
   if (name === 'portals') portals_load();
   if (name === 'dashboard') dashboard_load(); // تحميل الإحصائيات عند زيارة Dashboard
+  if (name === 'finance') finance_load(false);
+}
+
+// ── المالية (بيانات Access المُزامنة) ─────────────────────────
+
+var _financeLoaded = false;
+
+function finance_load(force) {
+  if (_financeLoaded && !force) return;
+  var st = document.getElementById('finance-status');
+  st.innerHTML = '<div class="info-box">⏳ جارٍ تحميل البيانات المالية...</div>';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) {
+        st.innerHTML = '<div class="error-box">⚠️ ' +
+          ((res && res.error) || 'تعذّر تحميل التقرير المالي') + '</div>';
+        return;
+      }
+      _financeLoaded = true;
+      st.innerHTML = '';
+      _finRender(res);
+    })
+    .withFailureHandler(function (err) {
+      st.innerHTML = '<div class="error-box">⚠️ خطأ: ' +
+        ((err && err.message) || err) + '</div>';
+    })
+    .getFinancialReportProtected({ token: App.token, noCache: force === true });
+}
+
+function _finRender(res) {
+  var k = res.kpi || {};
+  var info = document.getElementById('finance-sync-info');
+  if (info) info.textContent = res.lastSync ? ('آخر مزامنة: ' + res.lastSync) : '';
+
+  // ── بطاقات المؤشرات ──
+  var netColor = (k.net >= 0) ? '#1a8d5f' : '#c0392b';
+  var netLabel = (k.net >= 0) ? 'فائض' : 'عجز';
+  var cards = [
+    { v: _fmt(k.income),   l: 'إجمالي الدخل', sub: (k.receiptsCount||0)+' سند', c:'#1a8d5f', big:true },
+    { v: _fmt(k.expense),  l: 'إجمالي المصروفات', sub: (k.expenseCount||0)+' حركة', c:'#c0392b', big:true },
+    { v: _fmt(k.net),      l: 'الصافي ('+netLabel+')', sub:'', c:netColor, big:true },
+    { v: _fmt(k.expected), l: 'الرسوم المتوقَّعة', sub:'', c:'#2c3e50' },
+    { v: _fmt(k.collected),l: 'المحصَّل', sub:'', c:'#1a8d5f' },
+    { v: _fmt(k.outstanding), l:'المتبقّي على الطلاب', sub:'', c:'#d68910' },
+    { v: _fmt(k.salaries), l: 'الرواتب الشهرية', sub:'', c:'#2c3e50' },
+    { v: _fmt(k.students), l: 'عدد الطلاب', sub:'', c:'#2c3e50' },
+    { v: _fmt(k.staff),    l: 'عدد الموظفين', sub:'', c:'#2c3e50' }
+  ];
+  var h = '';
+  for (var i = 0; i < cards.length; i++) {
+    var cd = cards[i];
+    h += '<div class="fin-kpi' + (cd.big ? ' big' : '') + '">' +
+         '<div class="fin-kpi-v" style="color:' + cd.c + '">' + cd.v + '</div>' +
+         '<div class="fin-kpi-l">' + cd.l + '</div>' +
+         (cd.sub ? '<div class="fin-kpi-s">' + cd.sub + '</div>' : '') + '</div>';
+  }
+  document.getElementById('finance-kpis').innerHTML = h;
+
+  // ── الرسم الشهري (SVG) ──
+  if (res.months && res.months.length) {
+    document.getElementById('finance-chart-panel').style.display = '';
+    document.getElementById('finance-chart').innerHTML = _finChart(res.months);
+  }
+
+  // ── طرق الدفع ──
+  if (res.methods && res.methods.length) {
+    document.getElementById('finance-methods-panel').style.display = '';
+    document.getElementById('finance-methods').innerHTML =
+      _finBars(res.methods, k.income, '#1a8d5f');
+  }
+
+  // ── توزيع الطلاب ──
+  if (res.byGrade && res.byGrade.length) {
+    document.getElementById('finance-grade-panel').style.display = '';
+    var mxg = 0, j;
+    for (j = 0; j < res.byGrade.length; j++) if (res.byGrade[j].value > mxg) mxg = res.byGrade[j].value;
+    var gh = '<table class="fin-t">';
+    for (j = 0; j < res.byGrade.length; j++) {
+      var gp = res.byGrade[j];
+      gh += '<tr><td class="fin-lbl">صف ' + gp.name + '</td>' +
+            '<td class="fin-barc"><div class="fin-bar" style="width:' +
+            (mxg ? (gp.value / mxg * 100) : 0) + '%;background:#2c6fb0;"></div></td>' +
+            '<td class="fin-amt">' + gp.value + ' طالب</td></tr>';
+    }
+    gh += '</table>';
+    document.getElementById('finance-grade').innerHTML = gh;
+  }
+
+  // ── أكبر المصروفات ──
+  if (res.topExpenses && res.topExpenses.length) {
+    document.getElementById('finance-topexp-panel').style.display = '';
+    var th = '<table class="master-table"><thead><tr><th>التسمية</th><th>المبلغ</th><th>التاريخ</th></tr></thead><tbody>';
+    for (var t = 0; t < res.topExpenses.length; t++) {
+      var ex = res.topExpenses[t];
+      th += '<tr><td>' + (ex.label || '—') + '</td><td><b>' + _fmt(ex.amount) +
+            '</b></td><td>' + (ex.date || '') + '</td></tr>';
+    }
+    th += '</tbody></table>';
+    document.getElementById('finance-topexp').innerHTML = th;
+  }
+}
+
+// جدول أعمدة أفقية لطرق الدفع
+function _finBars(pairs, total, color) {
+  var mx = 0, i;
+  for (i = 0; i < pairs.length; i++) if (pairs[i].value > mx) mx = pairs[i].value;
+  var html = '<table class="fin-t">';
+  for (i = 0; i < pairs.length; i++) {
+    var p = pairs[i];
+    var pct = mx ? (p.value / mx * 100) : 0;
+    var share = total ? (p.value / total * 100) : 0;
+    html += '<tr><td class="fin-lbl">' + (p.name || '—') + '</td>' +
+            '<td class="fin-barc"><div class="fin-bar" style="width:' + pct +
+            '%;background:' + color + ';"></div></td>' +
+            '<td class="fin-amt">' + _fmt(p.value) + '</td>' +
+            '<td class="fin-pct">' + share.toFixed(1) + '%</td></tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+// رسم SVG لأعمدة الدخل/المصروفات الشهرية
+function _finChart(months) {
+  var W = 880, H = 300, pad = 38;
+  var n = months.length, i;
+  var mx = 1;
+  for (i = 0; i < n; i++) {
+    if (months[i].income > mx) mx = months[i].income;
+    if (months[i].expense > mx) mx = months[i].expense;
+  }
+  var gw = (W - pad * 2) / n;
+  var bw = Math.min(gw * 0.33, 24);
+  var bars = '', labels = '';
+  for (i = 0; i < n; i++) {
+    var cx = pad + gw * i + gw / 2;
+    var hin = months[i].income / mx * (H - pad * 2);
+    var hout = months[i].expense / mx * (H - pad * 2);
+    bars += '<rect x="' + (cx - bw - 2) + '" y="' + (H - pad - hin) +
+            '" width="' + bw + '" height="' + hin + '" rx="3" fill="#1a8d5f"></rect>';
+    bars += '<rect x="' + (cx + 2) + '" y="' + (H - pad - hout) +
+            '" width="' + bw + '" height="' + hout + '" rx="3" fill="#c0392b"></rect>';
+    labels += '<text x="' + cx + '" y="' + (H - pad + 15) +
+              '" font-size="10" fill="#666" text-anchor="middle">' +
+              months[i].m.substring(2) + '</text>';
+  }
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;min-width:560px;">' +
+         '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) +
+         '" y2="' + (H - pad) + '" stroke="#ccc"></line>' + bars + labels + '</svg>';
 }
 
 // ── Dashboard ─────────────────────────────────────────────────
