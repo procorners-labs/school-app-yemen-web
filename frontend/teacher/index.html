@@ -1859,6 +1859,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')">      <span class="si-icon">📢</span> الأخبار والإشعارات</button>
+  <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> المحتوى والمهام</button>
   <button class="sidebar-item" id="si-reports"    onclick="showSection('reports')">   <span class="si-icon">📊</span> التقارير</button>
   <button class="sidebar-item" id="si-notes"      onclick="showSection('notes')">
     <span class="si-icon">💬</span> ملاحظات أولياء الأمور
@@ -4230,6 +4231,7 @@ function showSection(name) {
       homework: renderHomework,
       violations: renderViolations,
       news: renderNews,
+      contentHub: renderContentHub,
       notes: renderNotes,
       mySchedule: renderMySchedule,
       reports: renderReports,      // ← دالة احتياطية موجودة الآن
@@ -11503,6 +11505,275 @@ function sstat_print() {
   w.document.close(); w.focus(); w.print();
 }
 
+</script>
+
+<!-- ═══════════ المحتوى والمهام — تبويب المعلم (محتوى + مهام) ═══════════ -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+#ch-root{font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right;
+  --ch-navy:#0F2C5C; --ch-gold:#D4A537; --ch-bg:#f6f8fc; --ch-line:#e3e8f0;}
+#ch-root .ch-card{background:#fff;border:1px solid var(--ch-line);border-radius:14px;
+  padding:18px;margin-bottom:18px;box-shadow:0 2px 10px rgba(15,44,92,.06);}
+#ch-root .ch-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+#ch-root .ch-head .ch-ico{width:38px;height:38px;border-radius:10px;display:flex;
+  align-items:center;justify-content:center;background:rgba(15,44,92,.08);font-size:20px;}
+#ch-root .ch-title{font-weight:700;color:var(--ch-navy);font-size:1.05rem;}
+#ch-root .ch-field{margin-bottom:12px;}
+#ch-root label.ch-lbl{display:block;font-size:.85rem;color:var(--ch-navy);margin-bottom:5px;font-weight:600;}
+#ch-root .ch-input,#ch-root .ch-textarea,#ch-root .ch-select{width:100%;box-sizing:border-box;
+  border:1px solid var(--ch-line);border-radius:9px;padding:9px 11px;font-family:inherit;font-size:.9rem;background:#fff;}
+#ch-root .ch-textarea{min-height:70px;resize:vertical;}
+#ch-root .ch-row{display:flex;gap:12px;flex-wrap:wrap;}
+#ch-root .ch-row>.ch-field{flex:1;min-width:160px;}
+#ch-root .ch-btn{border:none;border-radius:10px;padding:10px 18px;font-family:inherit;
+  font-weight:700;font-size:.9rem;cursor:pointer;transition:filter .15s ease,transform .05s ease;}
+#ch-root .ch-btn:active{transform:scale(.98);}
+#ch-root .ch-btn-primary{background:var(--ch-navy);color:#fff;}
+#ch-root .ch-btn-primary:hover{filter:brightness(1.12);}
+#ch-root .ch-btn-gold{background:var(--ch-gold);color:var(--ch-navy);}
+#ch-root .ch-btn-gold:hover{filter:brightness(1.05);}
+#ch-root .ch-btn-sm{padding:6px 12px;font-size:.82rem;}
+#ch-root .ch-progress{height:8px;background:var(--ch-line);border-radius:6px;overflow:hidden;display:none;margin-top:10px;}
+#ch-root .ch-progress.show{display:block;}
+#ch-root .ch-bar{height:100%;width:40%;background:linear-gradient(90deg,var(--ch-navy),var(--ch-gold));
+  border-radius:6px;animation:chSlide 1.1s infinite ease-in-out;}
+@keyframes chSlide{0%{margin-right:-40%}100%{margin-right:100%}}
+#ch-root .ch-status{margin-top:10px;font-size:.88rem;font-weight:600;min-height:20px;}
+#ch-root .ch-ok{color:#1b7a3d;} #ch-root .ch-err{color:#c0392b;}
+#ch-root table.ch-tbl{width:100%;border-collapse:collapse;font-size:.86rem;}
+#ch-root .ch-tbl th{background:var(--ch-navy);color:#fff;padding:9px;text-align:right;white-space:nowrap;}
+#ch-root .ch-tbl td{border-bottom:1px solid var(--ch-line);padding:9px;}
+#ch-root .ch-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.76rem;font-weight:700;}
+#ch-root .ch-b-assigned{background:rgba(15,44,92,.12);color:var(--ch-navy);}
+#ch-root .ch-b-progress{background:#fff3cd;color:#8a6d00;}
+#ch-root .ch-b-review{background:rgba(212,165,55,.2);color:#8a6d00;}
+#ch-root .ch-b-done{background:#d6f5e0;color:#1b7a3d;}
+#ch-root .ch-b-rejected{background:#fde2e1;color:#c0392b;}
+#ch-root .ch-empty{text-align:center;color:#8a93a6;padding:26px 10px;}
+#ch-root .ch-tbl-wrap{overflow-x:auto;}
+</style>
+
+<div class="modal-backdrop" id="chSubmitModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>📤 تسليم المهمة</span>
+      <button type="button" class="modal-close" onclick="closeModal('chSubmitModal')">✕</button>
+    </div>
+    <div class="modal-body" style="font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right">
+      <input type="hidden" id="chSubmitTaskId">
+      <div id="chSubmitTaskTitle" style="font-weight:700;color:#0F2C5C;margin-bottom:10px"></div>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:.85rem;color:#0F2C5C;margin-bottom:5px;font-weight:600">روابط الملفات (افصل بفاصلة أو سطر جديد)</label>
+        <textarea id="chSubmitUrls" style="width:100%;box-sizing:border-box;min-height:80px;border:1px solid #e3e8f0;border-radius:9px;padding:9px;font-family:inherit" placeholder="https://drive.google.com/..."></textarea>
+        <div style="font-size:.78rem;color:#8a93a6;margin-top:4px">يمكنك أيضاً رفع ملف من قسم «رفع محتوى» ونسخ رابطه هنا.</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <label style="display:block;font-size:.85rem;color:#0F2C5C;margin-bottom:5px;font-weight:600">ملاحظة (اختياري)</label>
+        <textarea id="chSubmitNote" style="width:100%;box-sizing:border-box;min-height:50px;border:1px solid #e3e8f0;border-radius:9px;padding:9px;font-family:inherit"></textarea>
+      </div>
+      <div id="chSubmitStatus" style="font-size:.88rem;font-weight:600;min-height:18px"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('chSubmitModal')">إلغاء</button>
+      <button type="button" class="btn btn-primary" id="chSubmitBtn" onclick="window.chDoSubmit()" style="background:#0F2C5C">📤 تسليم</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function _chToken() { return (typeof App !== 'undefined' && App.user && App.user.token) ? App.user.token : ''; }
+  function _chEsc(s) {
+    s = (s === null || s === undefined) ? '' : String(s);
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function _chBadge(status) {
+    var map = {
+      'مُكلّف': 'ch-b-assigned', 'قيد_التنفيذ': 'ch-b-progress',
+      'بانتظار_المراجعة': 'ch-b-review', 'مكتمل': 'ch-b-done', 'مرفوض': 'ch-b-rejected'
+    };
+    var cls = map[status] || 'ch-b-assigned';
+    return '<span class="ch-badge ' + cls + '">' + _chEsc(status || '—') + '</span>';
+  }
+  function _chCanSubmit(status) {
+    return status === 'مُكلّف' || status === 'قيد_التنفيذ' || status === 'مرفوض';
+  }
+
+  window.renderContentHub = function () {
+    var el = document.getElementById('dynamicContent');
+    if (!el) return;
+    var cats = ['إعلان', 'نشاط', 'إنجاز', 'فعالية'];
+    var opts = '';
+    for (var i = 0; i < cats.length; i++) { opts += '<option value="' + cats[i] + '">' + cats[i] + '</option>'; }
+
+    var html = '' +
+      '<div id="ch-root">' +
+        '<div class="ch-card">' +
+          '<div class="ch-head"><div class="ch-ico">🎨</div><div class="ch-title">رفع محتوى</div></div>' +
+          '<div class="ch-row">' +
+            '<div class="ch-field"><label class="ch-lbl">العنوان</label>' +
+              '<input type="text" id="chTitle" class="ch-input" placeholder="عنوان المحتوى"></div>' +
+            '<div class="ch-field"><label class="ch-lbl">الفئة</label>' +
+              '<select id="chCategory" class="ch-select">' + opts + '</select></div>' +
+          '</div>' +
+          '<div class="ch-field"><label class="ch-lbl">الوصف</label>' +
+            '<textarea id="chDesc" class="ch-textarea" placeholder="وصف مختصر"></textarea></div>' +
+          '<div class="ch-field"><label class="ch-lbl">الملف (صورة / فيديو)</label>' +
+            '<input type="file" id="chFile" class="ch-input" accept="image/*,video/*"></div>' +
+          '<button type="button" class="ch-btn ch-btn-primary" onclick="window.chUpload()">⬆️ رفع المحتوى</button>' +
+          '<div class="ch-progress" id="chProgress"><div class="ch-bar"></div></div>' +
+          '<div class="ch-status" id="chUploadStatus"></div>' +
+        '</div>' +
+        '<div class="ch-card">' +
+          '<div class="ch-head"><div class="ch-ico">✅</div><div class="ch-title">مهامي</div>' +
+            '<div style="flex:1"></div>' +
+            '<button type="button" class="ch-btn ch-btn-gold ch-btn-sm" onclick="window.chLoadTasks()">🔄 تحديث</button>' +
+          '</div>' +
+          '<div id="chTasks"><div class="ch-empty">⏳ جارٍ التحميل...</div></div>' +
+        '</div>' +
+      '</div>';
+    el.innerHTML = html;
+    window.chLoadTasks();
+  };
+
+  window.chUpload = function () {
+    var token = _chToken();
+    var statusEl = document.getElementById('chUploadStatus');
+    var progEl = document.getElementById('chProgress');
+    function setStatus(msg, cls) { if (statusEl) { statusEl.className = 'ch-status ' + (cls || ''); statusEl.innerHTML = msg; } }
+
+    var title = (document.getElementById('chTitle').value || '').trim();
+    var desc = (document.getElementById('chDesc').value || '').trim();
+    var category = document.getElementById('chCategory').value || '';
+    var fileInput = document.getElementById('chFile');
+    var file = (fileInput && fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+
+    if (!title) { setStatus('⚠️ أدخل عنواناً', 'ch-err'); return; }
+    if (!file) { setStatus('⚠️ اختر ملفاً', 'ch-err'); return; }
+    if (file.size > 25 * 1024 * 1024) { setStatus('⚠️ حجم الملف يتجاوز 25MB', 'ch-err'); return; }
+
+    if (progEl) progEl.className = 'ch-progress show';
+    setStatus('⏳ جارٍ الرفع...', '');
+
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var base64 = e.target.result;
+      var meta = { fileName: file.name, mimeType: file.type, title: title, description: desc, category: category };
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (progEl) progEl.className = 'ch-progress';
+          if (res && res.success) {
+            setStatus('✅ ' + (res.message || 'تم الرفع'), 'ch-ok');
+            document.getElementById('chTitle').value = '';
+            document.getElementById('chDesc').value = '';
+            if (fileInput) fileInput.value = '';
+            if (typeof toast === 'function') toast('تم رفع المحتوى', 'success');
+          } else {
+            setStatus('❌ ' + ((res && res.error) || 'فشل الرفع'), 'ch-err');
+          }
+        })
+        .withFailureHandler(function (err) {
+          if (progEl) progEl.className = 'ch-progress';
+          setStatus('❌ ' + (err && err.message ? err.message : 'خطأ في الخادم'), 'ch-err');
+        })
+        .teacherUploadMedia(token, base64, meta);
+    };
+    reader.onerror = function () {
+      if (progEl) progEl.className = 'ch-progress';
+      setStatus('❌ فشل قراءة الملف', 'ch-err');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  window.chLoadTasks = function () {
+    var token = _chToken();
+    var box = document.getElementById('chTasks');
+    if (box) box.innerHTML = '<div class="ch-empty">⏳ جارٍ التحميل...</div>';
+    google.script.run
+      .withSuccessHandler(function (res) { window.chRenderTasks(res); })
+      .withFailureHandler(function (err) {
+        if (box) box.innerHTML = '<div class="ch-empty">❌ ' + _chEsc(err && err.message ? err.message : 'خطأ') + '</div>';
+      })
+      .teacherGetMyTasks(token);
+  };
+
+  window.chRenderTasks = function (res) {
+    var box = document.getElementById('chTasks');
+    if (!box) return;
+    if (!res || res.success === false) {
+      box.innerHTML = '<div class="ch-empty">❌ ' + _chEsc((res && res.error) || 'تعذّر التحميل') + '</div>';
+      return;
+    }
+    var tasks = res.tasks || [];
+    window._chTasks = tasks;
+    if (tasks.length === 0) {
+      box.innerHTML = '<div class="ch-empty">🗂️ لا توجد مهام مكلّف بها حالياً</div>';
+      return;
+    }
+    var rows = '';
+    for (var i = 0; i < tasks.length; i++) {
+      var t = tasks[i];
+      var status = t['الحالة'] || '';
+      var act = _chCanSubmit(status)
+        ? '<button type="button" class="ch-btn ch-btn-gold ch-btn-sm" onclick="window.chOpenSubmit(' + i + ')">📤 تسليم</button>'
+        : '<span style="color:#8a93a6">—</span>';
+      rows += '<tr>' +
+        '<td>' + _chEsc(t['العنوان']) + '</td>' +
+        '<td>' + _chEsc(t['الموعد_النهائي']) + '</td>' +
+        '<td>' + _chBadge(status) + '</td>' +
+        '<td>' + act + '</td>' +
+      '</tr>';
+    }
+    box.innerHTML = '<div class="ch-tbl-wrap"><table class="ch-tbl"><thead><tr>' +
+      '<th>العنوان</th><th>الموعد النهائي</th><th>الحالة</th><th>إجراء</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  };
+
+  window.chOpenSubmit = function (index) {
+    var tasks = window._chTasks || [];
+    var t = tasks[index];
+    if (!t) return;
+    document.getElementById('chSubmitTaskId').value = t['task_id'] || '';
+    document.getElementById('chSubmitTaskTitle').innerHTML = _chEsc(t['العنوان'] || '');
+    document.getElementById('chSubmitUrls').value = '';
+    document.getElementById('chSubmitNote').value = '';
+    document.getElementById('chSubmitStatus').innerHTML = '';
+    if (typeof openModal === 'function') openModal('chSubmitModal');
+  };
+
+  window.chDoSubmit = function () {
+    var token = _chToken();
+    var taskId = document.getElementById('chSubmitTaskId').value || '';
+    var urls = (document.getElementById('chSubmitUrls').value || '').trim();
+    var note = (document.getElementById('chSubmitNote').value || '').trim();
+    var st = document.getElementById('chSubmitStatus');
+    var btn = document.getElementById('chSubmitBtn');
+    function setS(msg, color) { if (st) { st.style.color = color || '#0F2C5C'; st.innerHTML = msg; } }
+
+    if (!urls) { setS('⚠️ أدخل رابطاً واحداً على الأقل', '#c0392b'); return; }
+    if (btn) btn.disabled = true;
+    setS('⏳ جارٍ التسليم...', '#0F2C5C');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (btn) btn.disabled = false;
+        if (res && res.success) {
+          setS('✅ ' + (res.message || 'تم التسليم'), '#1b7a3d');
+          if (typeof toast === 'function') toast('تم تسليم المهمة', 'success');
+          if (typeof closeModal === 'function') closeModal('chSubmitModal');
+          window.chLoadTasks();
+        } else {
+          setS('❌ ' + ((res && res.error) || 'فشل التسليم'), '#c0392b');
+        }
+      })
+      .withFailureHandler(function (err) {
+        if (btn) btn.disabled = false;
+        setS('❌ ' + (err && err.message ? err.message : 'خطأ في الخادم'), '#c0392b');
+      })
+      .teacherSubmitTaskOutput(token, taskId, urls, note);
+  };
+})();
 </script>
 </body>
 </html>
