@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # school-app-yemen-web — منصة مدارس الإبداع والتميز الدولية
 
 > هذا الـrepo (**عام**) يحتوي فقط: `frontend/` + `worker/`
-> كود GAS المصدري والأدوات موجودة في `C:\SchoolApp-gas` (مستودع **خاص**).
+> كود GAS المصدري والأدوات موجودة في `C:\Users\osama\SchoolApp-gas` (مستودع **خاص**).
 > آخر تحديث: 2026-06-19
 
 ---
@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `wrangler.jsonc` | ✅ عدِّل هنا | إعداد Cloudflare Worker |
 | `frontend/` | ❌ لا تعدِّل | يُبنى تلقائياً من gas repo عبر CI |
 
-**أي تعديل في GAS (teacher/student/home/cms/schedule/master-admin) → اذهب إلى `C:\SchoolApp-gas`.**
+**أي تعديل في GAS (teacher/student/home/cms/schedule/master-admin) → اذهب إلى `C:\Users\osama\SchoolApp-gas`.**
 
 ---
 
@@ -91,7 +91,7 @@ node --check worker/school-app-proxy.js
 1. **فرع لكل تغيير** — لا دفع مباشر إلى `main`.
 2. **لا تعديل `frontend/` يدوياً** — هي ناتج مُولَّد، أي تعديل يُحذف بأول CI تلقائي.
 3. **ثبات Deployment IDs** — أي تغيير يكسر `gas-bridge.js` + تطبيق الأندرويد.
-4. **Worker syntax فقط من هنا** — منطق الجلسات/البيانات/الأمان في `C:\SchoolApp-gas`.
+4. **Worker syntax فقط من هنا** — منطق الجلسات/البيانات/الأمان في `C:\Users\osama\SchoolApp-gas`.
 
 ---
 
@@ -99,8 +99,8 @@ node --check worker/school-app-proxy.js
 
 | المستودع | النطاق | المسار المحلي |
 |---|---|---|
-| `procorners-labs/school-app-yemen-web` (هذا) | `frontend/` + `worker/` | `C:\SchoolApp` |
-| `procorners-labs/school-app-yemen-gas` (خاص) | GAS source + `_build/` + `assets/` | `C:\SchoolApp-gas` |
+| `procorners-labs/school-app-yemen-web` (هذا) | `frontend/` + `worker/` | `C:\Users\osama\SchoolApp` |
+| `procorners-labs/school-app-yemen-gas` (خاص) | GAS source + `_build/` + `assets/` | `C:\Users\osama\SchoolApp-gas` |
 | `com.proconrers.schoolappyemen` | Android WebView | مستودع منفصل |
 
 ---
