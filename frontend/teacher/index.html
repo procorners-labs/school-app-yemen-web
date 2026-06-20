@@ -1859,7 +1859,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')">      <span class="si-icon">📢</span> الأخبار والإشعارات</button>
-  <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> المحتوى والمهام</button>
+  <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> إدارة المحتوى والأنشطة</button>
   <button type="button" class="sidebar-item" id="si-activitySup" onclick="showSection('activitySup')" style="display:none;"><span class="si-icon">🗂️</span> إدارة الأنشطة والإشراف</button>
   <button class="sidebar-item" id="si-reports"    onclick="showSection('reports')">   <span class="si-icon">📊</span> التقارير</button>
   <button class="sidebar-item" id="si-notes"      onclick="showSection('notes')">
@@ -11513,7 +11513,7 @@ function sstat_print() {
 
 </script>
 
-<!-- ═══════════ المحتوى والمهام — تبويب المعلم (محتوى + مهام) ═══════════ -->
+<!-- ═══════════ إدارة المحتوى والأنشطة — تبويب المعلم (رفع + أنشطتي + مهام) ═══════════ -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
 #ch-root{font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right;
@@ -11557,6 +11557,40 @@ function sstat_print() {
 #ch-root .ch-b-rejected{background:#fde2e1;color:#c0392b;}
 #ch-root .ch-empty{text-align:center;color:#8a93a6;padding:26px 10px;}
 #ch-root .ch-tbl-wrap{overflow-x:auto;}
+/* ترويسة الصفحة */
+#ch-root .ch-page-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+#ch-root .ch-page-head .ch-pico{width:42px;height:42px;border-radius:12px;display:flex;
+  align-items:center;justify-content:center;background:var(--ch-navy);color:#fff;font-size:22px;}
+#ch-root .ch-page-title{font-weight:700;color:var(--ch-navy);font-size:1.2rem;}
+#ch-root .ch-page-sub{color:#6b7588;font-size:.82rem;}
+/* بطاقة التعليمات (خلفية ذهبية فاتحة، حدود كحلية) */
+#ch-root .ch-help{background:rgba(212,165,55,.12);border:1px solid var(--ch-navy);
+  border-radius:14px;padding:14px 16px;margin-bottom:18px;}
+#ch-root .ch-help .ch-help-t{font-weight:700;color:var(--ch-navy);margin-bottom:6px;font-size:.96rem;}
+#ch-root .ch-help ul{margin:0;padding-inline-start:20px;color:#33425b;font-size:.86rem;line-height:1.85;}
+/* قائمة الملفات المختارة قبل الرفع */
+#ch-root .ch-files{margin-top:10px;display:flex;flex-direction:column;gap:7px;}
+#ch-root .ch-file{display:flex;align-items:center;gap:9px;border:1px solid var(--ch-line);
+  border-radius:9px;padding:7px 10px;background:#fbfcfe;}
+#ch-root .ch-file .ch-fn{flex:1;font-size:.84rem;color:var(--ch-navy);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;}
+#ch-root .ch-file .ch-fsz{font-size:.76rem;color:#8a93a6;white-space:nowrap;}
+#ch-root .ch-file .ch-fst{font-size:.78rem;font-weight:700;white-space:nowrap;}
+#ch-root .ch-file .ch-fx{border:none;background:#fde2e1;color:#c0392b;border-radius:7px;
+  width:26px;height:26px;cursor:pointer;font-weight:700;line-height:1;}
+#ch-root .ch-st-wait{color:#8a6d00;} #ch-root .ch-st-ok{color:#1b7a3d;} #ch-root .ch-st-err{color:#c0392b;}
+/* معرض «أنشطتي» */
+#ch-root .ch-grp{border:1px solid var(--ch-line);border-radius:12px;padding:12px;margin-bottom:12px;background:#fbfcfe;}
+#ch-root .ch-grp-head{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap;}
+#ch-root .ch-grp-title{font-weight:700;color:var(--ch-navy);font-size:.92rem;}
+#ch-root .ch-grp-meta{font-size:.76rem;color:#8a93a6;}
+#ch-root .ch-thumbs{display:flex;gap:8px;flex-wrap:wrap;}
+#ch-root .ch-thumb{position:relative;width:84px;height:84px;border-radius:9px;overflow:hidden;
+  border:1px solid var(--ch-line);background:#eef2f8;display:block;}
+#ch-root .ch-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+#ch-root .ch-thumb .ch-play{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;font-size:26px;color:#fff;background:rgba(15,44,92,.45);}
+#ch-root .ch-b-pub{background:#dbeafe;color:#1e40af;}
 </style>
 
 <div class="modal-backdrop" id="chSubmitModal">
@@ -11615,8 +11649,26 @@ function sstat_print() {
 
     var html = '' +
       '<div id="ch-root">' +
+        // ── ترويسة الصفحة ──
+        '<div class="ch-page-head">' +
+          '<div class="ch-pico">🎨</div>' +
+          '<div><div class="ch-page-title">إدارة المحتوى والأنشطة</div>' +
+          '<div class="ch-page-sub">ارفع أنشطتك وتابع حالتها ومهامك المكلّف بها</div></div>' +
+        '</div>' +
+        // ── بطاقة التعليمات ──
+        '<div class="ch-help">' +
+          '<div class="ch-help-t">📌 ماذا تفعل هنا؟</div>' +
+          '<ul>' +
+            '<li>ارفع صور وفيديوهات أنشطتك — يمكنك رفع أكثر من ملف دفعة واحدة.</li>' +
+            '<li>يمكنك الرفع بمبادرتك دون انتظار مهمة، أو تنفيذ مهمة مكلّف بها.</li>' +
+            '<li>ما ترفعه يصل لمشرفة الأنشطة/الإدارة للمراجعة والاعتماد ثم التصميم والنشر.</li>' +
+            '<li>تابع كل ما رفعته وحالته في قسم (أنشطتي).</li>' +
+            '<li>الحد الأقصى 25 ميجابايت لكل ملف.</li>' +
+          '</ul>' +
+        '</div>' +
+        // ── رفع المحتوى (متعدد) ──
         '<div class="ch-card">' +
-          '<div class="ch-head"><div class="ch-ico">🎨</div><div class="ch-title">رفع محتوى</div></div>' +
+          '<div class="ch-head"><div class="ch-ico">⬆️</div><div class="ch-title">رفع محتوى (بمبادرتك أو لمهمة)</div></div>' +
           '<div class="ch-row">' +
             '<div class="ch-field"><label class="ch-lbl">العنوان</label>' +
               '<input type="text" id="chTitle" class="ch-input" placeholder="عنوان المحتوى"></div>' +
@@ -11625,12 +11677,22 @@ function sstat_print() {
           '</div>' +
           '<div class="ch-field"><label class="ch-lbl">الوصف</label>' +
             '<textarea id="chDesc" class="ch-textarea" placeholder="وصف مختصر"></textarea></div>' +
-          '<div class="ch-field"><label class="ch-lbl">الملف (صورة / فيديو)</label>' +
-            '<input type="file" id="chFile" class="ch-input" accept="image/*,video/*"></div>' +
-          '<button type="button" class="ch-btn ch-btn-primary" onclick="window.chUpload()">⬆️ رفع المحتوى</button>' +
+          '<div class="ch-field"><label class="ch-lbl">الملفات (صور / فيديوهات — يمكن اختيار أكثر من ملف)</label>' +
+            '<input type="file" id="chFile" class="ch-input" accept="image/*,video/*" multiple onchange="window.chPickFiles()"></div>' +
+          '<div class="ch-files" id="chFileList"></div>' +
+          '<button type="button" class="ch-btn ch-btn-primary" onclick="window.chUpload()" style="margin-top:10px">⬆️ رفع المحتوى</button>' +
           '<div class="ch-progress" id="chProgress"><div class="ch-bar"></div></div>' +
           '<div class="ch-status" id="chUploadStatus"></div>' +
         '</div>' +
+        // ── أنشطتي ──
+        '<div class="ch-card">' +
+          '<div class="ch-head"><div class="ch-ico">📁</div><div class="ch-title">أنشطتي</div>' +
+            '<div style="flex:1"></div>' +
+            '<button type="button" class="ch-btn ch-btn-gold ch-btn-sm" onclick="window.chLoadMyContent()">🔄 تحديث</button>' +
+          '</div>' +
+          '<div id="chMyContent"><div class="ch-empty">⏳ جارٍ التحميل...</div></div>' +
+        '</div>' +
+        // ── مهامي ──
         '<div class="ch-card">' +
           '<div class="ch-head"><div class="ch-ico">✅</div><div class="ch-title">مهامي</div>' +
             '<div style="flex:1"></div>' +
@@ -11640,9 +11702,67 @@ function sstat_print() {
         '</div>' +
       '</div>';
     el.innerHTML = html;
+    window._chFiles = [];
+    window.chLoadMyContent();
     window.chLoadTasks();
   };
 
+  var CH_MAX_BYTES = 25 * 1024 * 1024;
+  function _chFmtSize(b) {
+    if (b >= 1048576) return (b / 1048576).toFixed(1) + ' م.ب';
+    if (b >= 1024) return Math.round(b / 1024) + ' ك.ب';
+    return b + ' ب';
+  }
+  function _chIsMedia(file) {
+    var t = (file && file.type) ? file.type : '';
+    return t.indexOf('image/') === 0 || t.indexOf('video/') === 0;
+  }
+
+  // اختيار/إضافة ملفات: يتحقق من النوع والحجم، يعرض القائمة مع إمكانية الإزالة
+  window.chPickFiles = function () {
+    var input = document.getElementById('chFile');
+    var picked = (input && input.files) ? input.files : [];
+    window._chFiles = window._chFiles || [];
+    for (var i = 0; i < picked.length; i++) {
+      var f = picked[i];
+      var entry = { file: f, name: f.name, size: f.size, status: 'wait', msg: '' };
+      if (!_chIsMedia(f)) { entry.status = 'err'; entry.msg = 'نوع غير مدعوم'; }
+      else if (f.size > CH_MAX_BYTES) { entry.status = 'err'; entry.msg = 'يتجاوز 25MB'; }
+      window._chFiles.push(entry);
+    }
+    if (input) input.value = ''; // يسمح بإعادة اختيار نفس الملف لاحقاً
+    window.chRenderFileList();
+  };
+
+  window.chRemoveFile = function (idx) {
+    if (!window._chFiles) return;
+    window._chFiles.splice(idx, 1);
+    window.chRenderFileList();
+  };
+
+  window.chRenderFileList = function () {
+    var box = document.getElementById('chFileList');
+    if (!box) return;
+    var files = window._chFiles || [];
+    if (files.length === 0) { box.innerHTML = ''; return; }
+    var html = '';
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      var stTxt = '⏳ بانتظار', stCls = 'ch-st-wait';
+      if (f.status === 'ok') { stTxt = '✅ تم'; stCls = 'ch-st-ok'; }
+      else if (f.status === 'err') { stTxt = '❌ ' + (f.msg || 'فشل'); stCls = 'ch-st-err'; }
+      else if (f.status === 'uploading') { stTxt = '⏳ جارٍ'; stCls = 'ch-st-wait'; }
+      html += '<div class="ch-file">' +
+        '<span class="ch-fn">' + _chEsc(f.name) + '</span>' +
+        '<span class="ch-fsz">' + _chFmtSize(f.size) + '</span>' +
+        '<span class="ch-fst ' + stCls + '">' + stTxt + '</span>' +
+        '<button type="button" class="ch-fx" onclick="window.chRemoveFile(' + i + ')" title="إزالة">✕</button>' +
+      '</div>';
+    }
+    box.innerHTML = html;
+  };
+
+  // رفع متعدد: يقرأ الملفات الصالحة، يرفعها دفعة واحدة بمجموعة_id مشتركة
   window.chUpload = function () {
     var token = _chToken();
     var statusEl = document.getElementById('chUploadStatus');
@@ -11652,44 +11772,135 @@ function sstat_print() {
     var title = (document.getElementById('chTitle').value || '').trim();
     var desc = (document.getElementById('chDesc').value || '').trim();
     var category = document.getElementById('chCategory').value || '';
-    var fileInput = document.getElementById('chFile');
-    var file = (fileInput && fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+    var all = window._chFiles || [];
 
     if (!title) { setStatus('⚠️ أدخل عنواناً', 'ch-err'); return; }
-    if (!file) { setStatus('⚠️ اختر ملفاً', 'ch-err'); return; }
-    if (file.size > 25 * 1024 * 1024) { setStatus('⚠️ حجم الملف يتجاوز 25MB', 'ch-err'); return; }
+    if (all.length === 0) { setStatus('⚠️ اختر ملفاً واحداً على الأقل', 'ch-err'); return; }
+
+    // الملفات الصالحة فقط (المرفوضة محلياً تبقى معروضة بحالتها)
+    var pending = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].status !== 'err') { all[i].status = 'uploading'; pending.push({ idx: i, entry: all[i] }); }
+    }
+    if (pending.length === 0) { setStatus('⚠️ لا توجد ملفات صالحة للرفع', 'ch-err'); return; }
+    window.chRenderFileList();
 
     if (progEl) progEl.className = 'ch-progress show';
-    setStatus('⏳ جارٍ الرفع...', '');
+    setStatus('⏳ جارٍ رفع ' + pending.length + ' ملف...', '');
 
-    var reader = new FileReader();
-    reader.onload = function (e) {
-      var base64 = e.target.result;
-      var meta = { fileName: file.name, mimeType: file.type, title: title, description: desc, category: category };
+    // قراءة كل الملفات base64 ثم استدعاء واحد (مجموعة واحدة)
+    var payload = [];
+    var read = 0;
+    function afterRead() {
+      read++;
+      if (read < pending.length) return;
+      var meta = { title: title, description: desc, category: category }; // مبادرة: بلا task_id
       google.script.run
         .withSuccessHandler(function (res) {
           if (progEl) progEl.className = 'ch-progress';
+          var results = (res && res.results) ? res.results : [];
+          for (var k = 0; k < pending.length; k++) {
+            var r = results[k];
+            if (r && r.success) { pending[k].entry.status = 'ok'; }
+            else { pending[k].entry.status = 'err'; pending[k].entry.msg = (r && r.error) || 'فشل'; }
+          }
+          window.chRenderFileList();
           if (res && res.success) {
             setStatus('✅ ' + (res.message || 'تم الرفع'), 'ch-ok');
-            document.getElementById('chTitle').value = '';
-            document.getElementById('chDesc').value = '';
-            if (fileInput) fileInput.value = '';
             if (typeof toast === 'function') toast('تم رفع المحتوى', 'success');
+            window.chLoadMyContent();
           } else {
             setStatus('❌ ' + ((res && res.error) || 'فشل الرفع'), 'ch-err');
           }
         })
         .withFailureHandler(function (err) {
           if (progEl) progEl.className = 'ch-progress';
+          for (var k = 0; k < pending.length; k++) { pending[k].entry.status = 'err'; pending[k].entry.msg = 'خطأ خادم'; }
+          window.chRenderFileList();
           setStatus('❌ ' + (err && err.message ? err.message : 'خطأ في الخادم'), 'ch-err');
         })
-        .teacherUploadMedia(token, base64, meta);
-    };
-    reader.onerror = function () {
-      if (progEl) progEl.className = 'ch-progress';
-      setStatus('❌ فشل قراءة الملف', 'ch-err');
-    };
-    reader.readAsDataURL(file);
+        .teacherUploadMedia(token, payload, meta);
+    }
+
+    for (var p = 0; p < pending.length; p++) {
+      (function (slot) {
+        var file = slot.entry.file;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          payload.push({ data: e.target.result, fileName: file.name, mimeType: file.type });
+          afterRead();
+        };
+        reader.onerror = function () {
+          slot.entry.status = 'err'; slot.entry.msg = 'تعذّر القراءة';
+          payload.push({ data: '', fileName: file.name, mimeType: file.type });
+          afterRead();
+        };
+        reader.readAsDataURL(file);
+      })(pending[p]);
+    }
+  };
+
+  function _chMediaBadge(status) {
+    var map = { 'جديد': 'ch-b-review', 'معتمد': 'ch-b-done', 'منشور': 'ch-b-pub', 'مرفوض': 'ch-b-rejected' };
+    var lbl = { 'جديد': 'قيد المراجعة', 'معتمد': 'معتمد', 'منشور': 'منشور', 'مرفوض': 'مرفوض' };
+    var cls = map[status] || 'ch-b-assigned';
+    return '<span class="ch-badge ' + cls + '">' + _chEsc(lbl[status] || status || '—') + '</span>';
+  }
+
+  window.chLoadMyContent = function () {
+    var token = _chToken();
+    var box = document.getElementById('chMyContent');
+    if (box) box.innerHTML = '<div class="ch-empty">⏳ جارٍ التحميل...</div>';
+    google.script.run
+      .withSuccessHandler(function (res) { window.chRenderMyContent(res); })
+      .withFailureHandler(function (err) {
+        if (box) box.innerHTML = '<div class="ch-empty">❌ ' + _chEsc(err && err.message ? err.message : 'خطأ') + '</div>';
+      })
+      .teacherGetMyContent(token);
+  };
+
+  window.chRenderMyContent = function (res) {
+    var box = document.getElementById('chMyContent');
+    if (!box) return;
+    if (!res || res.success === false) {
+      box.innerHTML = '<div class="ch-empty">❌ ' + _chEsc((res && res.error) || 'تعذّر التحميل') + '</div>';
+      return;
+    }
+    var groups = res.groups || [];
+    if (groups.length === 0) {
+      box.innerHTML = '<div class="ch-empty">📭 لم ترفع أي محتوى بعد — ابدأ بالرفع من الأعلى</div>';
+      return;
+    }
+    var html = '';
+    for (var g = 0; g < groups.length; g++) {
+      var grp = groups[g];
+      var items = grp.items || [];
+      var thumbs = '';
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var isVideo = (it.type === 'فيديو') || (String(it.type).indexOf('فيديو') !== -1);
+        var url = _chEsc(it.link || '');
+        var thumbSrc = _chEsc(it.thumbnail || it.link || '');
+        var inner = isVideo
+          ? '<div class="ch-play">▶️</div>'
+          : '<img src="' + thumbSrc + '" alt="' + _chEsc(it.title) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        thumbs += '<a class="ch-thumb" href="' + url + '" target="_blank" rel="noopener" title="' + _chEsc(it.title) + '">' + inner + '</a>';
+      }
+      var srcTag = grp.source ? ('<span class="ch-grp-meta">• ' + _chEsc(grp.source) + '</span>') : '';
+      var catTag = grp.category ? ('<span class="ch-grp-meta">• ' + _chEsc(grp.category) + '</span>') : '';
+      html += '<div class="ch-grp">' +
+        '<div class="ch-grp-head">' +
+          '<span class="ch-grp-title">' + _chEsc(grp.title || 'بدون عنوان') + '</span>' +
+          _chMediaBadge(grp.status) +
+          '<span class="ch-grp-meta">(' + (grp.count || items.length) + ' ملف)</span>' +
+          catTag + srcTag +
+          '<div style="flex:1"></div>' +
+          '<span class="ch-grp-meta">' + _chEsc(grp.uploaded_at || '') + '</span>' +
+        '</div>' +
+        '<div class="ch-thumbs">' + thumbs + '</div>' +
+      '</div>';
+    }
+    box.innerHTML = html;
   };
 
   window.chLoadTasks = function () {
