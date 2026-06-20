@@ -1860,6 +1860,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')">      <span class="si-icon">📢</span> الأخبار والإشعارات</button>
   <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> المحتوى والمهام</button>
+  <button type="button" class="sidebar-item" id="si-activitySup" onclick="showSection('activitySup')" style="display:none;"><span class="si-icon">🗂️</span> إدارة الأنشطة والإشراف</button>
   <button class="sidebar-item" id="si-reports"    onclick="showSection('reports')">   <span class="si-icon">📊</span> التقارير</button>
   <button class="sidebar-item" id="si-notes"      onclick="showSection('notes')">
     <span class="si-icon">💬</span> ملاحظات أولياء الأمور
@@ -4232,6 +4233,7 @@ function showSection(name) {
       violations: renderViolations,
       news: renderNews,
       contentHub: renderContentHub,
+      activitySup: renderActivitySup,
       notes: renderNotes,
       mySchedule: renderMySchedule,
       reports: renderReports,      // ← دالة احتياطية موجودة الآن
@@ -4328,6 +4330,10 @@ function initSidebarByRole() {
     })());
 
   if (socialSection) socialSection.style.display = isSocialAllowed ? 'block' : 'none';
+
+  // ── تبويب «إدارة الأنشطة والإشراف»: لمشرفة الأنشطة فقط (role==='activities') ──
+  var siActivitySup = document.getElementById('si-activitySup');
+  if (siActivitySup) siActivitySup.style.display = (u.role === 'activities') ? '' : 'none';
 
   // ── «إدارة المهام»: مدير/وكيل/مشرف/محاسب/أنشطة ──
   var canManageTasks = (u.role === 'admin' || u.role === 'deputy' || u.role === 'supervisor' || u.role === 'accountant') || isSocialAllowed;
@@ -11772,6 +11778,302 @@ function sstat_print() {
         setS('❌ ' + (err && err.message ? err.message : 'خطأ في الخادم'), '#c0392b');
       })
       .teacherSubmitTaskOutput(token, taskId, urls, note);
+  };
+})();
+</script>
+
+<!-- ═══════════ إدارة الأنشطة والإشراف — لوحة مشرفة الأنشطة ═══════════ -->
+<style>
+#as-root{font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right;
+  --as-navy:#0F2C5C; --as-gold:#D4A537; --as-line:#e3e8f0;}
+#as-root .as-stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+#as-root .as-stat{flex:1;min-width:120px;background:#fff;border:1px solid var(--as-line);
+  border-radius:12px;padding:12px;text-align:center;}
+#as-root .as-stat b{display:block;font-size:1.4rem;color:var(--as-navy);}
+#as-root .as-stat span{font-size:.78rem;color:#6b7588;}
+#as-root .as-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;border-bottom:2px solid var(--as-line);}
+#as-root .as-tab{border:none;background:none;padding:10px 14px;font-family:inherit;font-weight:700;
+  font-size:.88rem;color:#6b7588;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;}
+#as-root .as-tab.active{color:var(--as-navy);border-bottom-color:var(--as-gold);}
+#as-root .as-panel{display:none;} #as-root .as-panel.active{display:block;}
+#as-root .as-card{background:#fff;border:1px solid var(--as-line);border-radius:12px;padding:16px;margin-bottom:12px;}
+#as-root label.as-lbl{display:block;font-size:.84rem;color:var(--as-navy);font-weight:600;margin-bottom:5px;}
+#as-root .as-input,#as-root .as-textarea,#as-root .as-select{width:100%;box-sizing:border-box;
+  border:1px solid var(--as-line);border-radius:9px;padding:9px 11px;font-family:inherit;font-size:.9rem;background:#fff;}
+#as-root .as-textarea{min-height:60px;resize:vertical;}
+#as-root .as-row{display:flex;gap:12px;flex-wrap:wrap;} #as-root .as-row>div{flex:1;min-width:150px;margin-bottom:10px;}
+#as-root .as-btn{border:none;border-radius:10px;padding:9px 16px;font-family:inherit;font-weight:700;font-size:.86rem;cursor:pointer;}
+#as-root .as-btn-navy{background:var(--as-navy);color:#fff;} #as-root .as-btn-navy:hover{filter:brightness(1.12);}
+#as-root .as-btn-gold{background:var(--as-gold);color:var(--as-navy);}
+#as-root .as-btn-ok{background:#1b7a3d;color:#fff;} #as-root .as-btn-no{background:#c0392b;color:#fff;}
+#as-root .as-btn-sm{padding:6px 12px;font-size:.8rem;}
+#as-root .as-status{margin-top:10px;font-size:.86rem;font-weight:600;min-height:18px;}
+#as-root .as-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;}
+#as-root .as-tile{border:1px solid var(--as-line);border-radius:12px;overflow:hidden;background:#fff;}
+#as-root .as-tile img{width:100%;height:120px;object-fit:cover;display:block;background:#f0f2f7;}
+#as-root .as-tile .as-tbody{padding:8px;}
+#as-root .as-tile .as-ttl{font-size:.82rem;font-weight:700;color:var(--as-navy);margin-bottom:4px;}
+#as-root .as-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;}
+#as-root .as-b-new{background:rgba(15,44,92,.1);color:var(--as-navy);}
+#as-root .as-b-approved{background:#d6f5e0;color:#1b7a3d;}
+#as-root .as-b-published{background:rgba(212,165,55,.22);color:#8a6d00;}
+#as-root .as-empty{text-align:center;color:#8a93a6;padding:24px;}
+#as-root .as-rev{border:1px solid var(--as-line);border-radius:12px;padding:12px;margin-bottom:10px;}
+#as-root .as-rev a{color:var(--as-navy);font-size:.82rem;word-break:break-all;}
+</style>
+<script>
+(function () {
+  function _asTok() { return (typeof App !== 'undefined' && App.user && App.user.token) ? App.user.token : ''; }
+  function _asEsc(s) {
+    s = (s === null || s === undefined) ? '' : String(s);
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function _asBadge(st) {
+    var c = 'as-b-new';
+    if (st === 'معتمد') c = 'as-b-approved'; else if (st === 'منشور') c = 'as-b-published';
+    return '<span class="as-badge ' + c + '">' + _asEsc(st || 'جديد') + '</span>';
+  }
+
+  window.renderActivitySup = function () {
+    var el = document.getElementById('dynamicContent');
+    if (!el) return;
+    el.innerHTML = '' +
+      '<div id="as-root">' +
+        '<div class="as-stats" id="as-stats"></div>' +
+        '<div class="as-tabs">' +
+          '<button type="button" class="as-tab active" id="as-tab-assign" onclick="window.asSwitchTab(\'assign\',this)">➕ تكليف مهمة</button>' +
+          '<button type="button" class="as-tab" id="as-tab-review" onclick="window.asSwitchTab(\'review\',this)">📋 مراجعة المهام</button>' +
+          '<button type="button" class="as-tab" id="as-tab-library" onclick="window.asSwitchTab(\'library\',this)">🖼️ مكتبة المحتوى</button>' +
+          '<button type="button" class="as-tab" id="as-tab-publish" onclick="window.asSwitchTab(\'publish\',this)">🚀 حالة النشر</button>' +
+        '</div>' +
+        // 1) تكليف مهمة
+        '<div class="as-panel active" id="as-panel-assign">' +
+          '<div class="as-card">' +
+            '<div class="as-row">' +
+              '<div><label class="as-lbl">المعلم</label><select class="as-select" id="as-teacher"><option value="">جارٍ التحميل...</option></select></div>' +
+              '<div><label class="as-lbl">الموعد النهائي</label><input type="date" class="as-input" id="as-deadline"></div>' +
+            '</div>' +
+            '<div style="margin-bottom:10px"><label class="as-lbl">عنوان المهمة</label><input type="text" class="as-input" id="as-title" placeholder="مثال: تصوير فعالية اليوم الرياضي"></div>' +
+            '<div style="margin-bottom:10px"><label class="as-lbl">الوصف</label><textarea class="as-textarea" id="as-desc" placeholder="تفاصيل المطلوب"></textarea></div>' +
+            '<button type="button" class="as-btn as-btn-navy" onclick="window.asAssign()">📌 تكليف المهمة</button>' +
+            '<div class="as-status" id="as-assign-status"></div>' +
+          '</div>' +
+        '</div>' +
+        // 2) مراجعة المهام
+        '<div class="as-panel" id="as-panel-review"><div id="as-review-list"><div class="as-empty">⏳ جارٍ التحميل...</div></div></div>' +
+        // 3) مكتبة المحتوى
+        '<div class="as-panel" id="as-panel-library">' +
+          '<div class="as-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">' +
+            '<div style="flex:1;min-width:140px"><label class="as-lbl">الحالة</label><select class="as-select" id="as-fstatus" onchange="window.asRenderLibrary()">' +
+              '<option value="">الكل</option><option value="جديد">جديد</option><option value="معتمد">معتمد</option><option value="منشور">منشور</option><option value="مرفوض">مرفوض</option></select></div>' +
+            '<div style="flex:1;min-width:140px"><label class="as-lbl">الفئة</label><select class="as-select" id="as-fcat" onchange="window.asRenderLibrary()">' +
+              '<option value="">الكل</option><option value="إعلان">إعلان</option><option value="نشاط">نشاط</option><option value="إنجاز">إنجاز</option><option value="فعالية">فعالية</option></select></div>' +
+            '<button type="button" class="as-btn as-btn-gold" onclick="window.asApproveSelected()">✅ اعتماد المحدّد</button>' +
+          '</div>' +
+          '<div class="as-grid" id="as-lib-grid"><div class="as-empty">⏳ جارٍ التحميل...</div></div>' +
+          '<div class="as-status" id="as-lib-status"></div>' +
+        '</div>' +
+        // 4) حالة النشر
+        '<div class="as-panel" id="as-panel-publish"><div id="as-publish-list"><div class="as-empty">⏳ جارٍ التحميل...</div></div></div>' +
+      '</div>';
+    window.asLoadDashboard();
+  };
+
+  window.asSwitchTab = function (key, btn) {
+    var tabs = document.querySelectorAll('#as-root .as-tab');
+    for (var i = 0; i < tabs.length; i++) tabs[i].className = 'as-tab';
+    if (btn) btn.className = 'as-tab active';
+    var panels = ['assign', 'review', 'library', 'publish'];
+    for (var p = 0; p < panels.length; p++) {
+      var el = document.getElementById('as-panel-' + panels[p]);
+      if (el) el.className = (panels[p] === key) ? 'as-panel active' : 'as-panel';
+    }
+  };
+
+  window.asLoadDashboard = function () {
+    var token = _asTok();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || res.success === false) {
+          var el = document.getElementById('dynamicContent');
+          if (el) el.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">' + _asEsc((res && res.error) || 'تعذّر التحميل') + '</div></div>';
+          return;
+        }
+        window._asData = res;
+        window.asRenderStats(res.stats);
+        window.asFillTeachers(res.teachers || []);
+        window.asRenderReview(res.pendingTasks || []);
+        window.asRenderLibrary();
+        window.asRenderPublish();
+      })
+      .withFailureHandler(function (err) {
+        var el = document.getElementById('dynamicContent');
+        if (el) el.innerHTML = '<div class="empty-state"><div class="es-icon">⚠️</div><div class="es-title">' + _asEsc(err && err.message ? err.message : 'خطأ') + '</div></div>';
+      })
+      .asGetDashboardData(token);
+  };
+
+  window.asRenderStats = function (s) {
+    s = s || {};
+    var box = document.getElementById('as-stats');
+    if (!box) return;
+    var cards = [
+      ['👥', s.teachers || 0, 'المعلمون'],
+      ['📋', s.pendingReview || 0, 'بانتظار المراجعة'],
+      ['🖼️', s.library || 0, 'عناصر المكتبة'],
+      ['✅', s.approved || 0, 'معتمد'],
+      ['🚀', s.published || 0, 'منشور']
+    ];
+    var h = '';
+    for (var i = 0; i < cards.length; i++) {
+      h += '<div class="as-stat"><b>' + _asEsc(cards[i][1]) + '</b><span>' + cards[i][0] + ' ' + _asEsc(cards[i][2]) + '</span></div>';
+    }
+    box.innerHTML = h;
+  };
+
+  window.asFillTeachers = function (names) {
+    var sel = document.getElementById('as-teacher');
+    if (!sel) return;
+    var h = '<option value="">اختر معلماً</option>';
+    for (var i = 0; i < names.length; i++) h += '<option value="' + _asEsc(names[i]) + '">' + _asEsc(names[i]) + '</option>';
+    sel.innerHTML = h;
+  };
+
+  window.asAssign = function () {
+    var token = _asTok();
+    var st = document.getElementById('as-assign-status');
+    function setS(m, c) { if (st) { st.style.color = c || '#0F2C5C'; st.innerHTML = m; } }
+    var teacher = document.getElementById('as-teacher').value || '';
+    var title = (document.getElementById('as-title').value || '').trim();
+    var desc = (document.getElementById('as-desc').value || '').trim();
+    var deadline = document.getElementById('as-deadline').value || '';
+    if (!teacher) { setS('⚠️ اختر معلماً', '#c0392b'); return; }
+    if (!title) { setS('⚠️ أدخل عنوان المهمة', '#c0392b'); return; }
+    setS('⏳ جارٍ التكليف...', '#0F2C5C');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.success) {
+          setS('✅ ' + (res.message || 'تم'), '#1b7a3d');
+          document.getElementById('as-title').value = '';
+          document.getElementById('as-desc').value = '';
+          if (typeof toast === 'function') toast('تم تكليف المهمة', 'success');
+          window.asLoadDashboard();
+        } else { setS('❌ ' + ((res && res.error) || 'فشل'), '#c0392b'); }
+      })
+      .withFailureHandler(function (err) { setS('❌ ' + (err && err.message ? err.message : 'خطأ'), '#c0392b'); })
+      .asAssignTask(token, { teacher: teacher, title: title, description: desc, deadline: deadline });
+  };
+
+  window.asRenderReview = function (tasks) {
+    var box = document.getElementById('as-review-list');
+    if (!box) return;
+    if (!tasks || tasks.length === 0) { box.innerHTML = '<div class="as-empty">🗂️ لا مهام بانتظار المراجعة</div>'; return; }
+    var h = '';
+    for (var i = 0; i < tasks.length; i++) {
+      var t = tasks[i];
+      var attach = _asEsc(t['المرفقات_URL']);
+      var links = '';
+      if (attach) {
+        var parts = attach.split(/[,\n]/);
+        for (var k = 0; k < parts.length; k++) {
+          var u = parts[k].replace(/^\s+|\s+$/g, '');
+          if (u) links += '<div><a href="' + _asEsc(u) + '" target="_blank" rel="noopener">🔗 ' + _asEsc(u) + '</a></div>';
+        }
+      }
+      h += '<div class="as-rev">' +
+        '<div style="font-weight:700;color:#0F2C5C">' + _asEsc(t['العنوان']) + '</div>' +
+        '<div style="font-size:.82rem;color:#6b7588;margin:4px 0">المعلم: ' + _asEsc(t['اسم_المعلم']) + ' • تسليم</div>' +
+        (links || '<div style="font-size:.8rem;color:#8a93a6">بلا مرفقات</div>') +
+        '<input type="text" class="as-input" id="as-note-' + i + '" placeholder="ملاحظة (اختياري)" style="margin:8px 0">' +
+        '<button type="button" class="as-btn as-btn-ok as-btn-sm" onclick="window.asReview(' + i + ',\'اعتماد\')">✅ اعتماد</button> ' +
+        '<button type="button" class="as-btn as-btn-no as-btn-sm" onclick="window.asReview(' + i + ',\'رفض\')">✖ رفض</button>' +
+      '</div>';
+    }
+    box.innerHTML = h;
+  };
+
+  window.asReview = function (index, decision) {
+    var token = _asTok();
+    var data = (window._asData && window._asData.pendingTasks) ? window._asData.pendingTasks : [];
+    var t = data[index];
+    if (!t) return;
+    var noteEl = document.getElementById('as-note-' + index);
+    var note = noteEl ? (noteEl.value || '') : '';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.success) { if (typeof toast === 'function') toast('تمت المراجعة: ' + res.status, 'success'); window.asLoadDashboard(); }
+        else if (typeof toast === 'function') toast((res && res.error) || 'فشل', 'error');
+      })
+      .withFailureHandler(function (err) { if (typeof toast === 'function') toast(err && err.message ? err.message : 'خطأ', 'error'); })
+      .asReviewTask(token, t['task_id'], decision, note);
+  };
+
+  window.asRenderLibrary = function () {
+    var grid = document.getElementById('as-lib-grid');
+    if (!grid) return;
+    var lib = (window._asData && window._asData.library) ? window._asData.library : [];
+    var fs = (document.getElementById('as-fstatus') || {}).value || '';
+    var fc = (document.getElementById('as-fcat') || {}).value || '';
+    var h = '';
+    var shown = 0;
+    for (var i = 0; i < lib.length; i++) {
+      var m = lib[i];
+      if (fs && String(m['الحالة']) !== fs) continue;
+      if (fc && String(m['الفئة']) !== fc) continue;
+      shown++;
+      var thumb = _asEsc(m['الرابط_المصغّر'] || m['الرابط']);
+      var canApprove = (String(m['الحالة']) === 'جديد');
+      h += '<div class="as-tile">' +
+        '<img src="' + thumb + '" alt="" onerror="this.style.display=\'none\'">' +
+        '<div class="as-tbody">' +
+          '<div class="as-ttl">' + _asEsc(m['العنوان']) + '</div>' +
+          '<div style="font-size:.74rem;color:#6b7588;margin-bottom:6px">' + _asEsc(m['اسم_المعلم']) + ' • ' + _asEsc(m['الفئة']) + '</div>' +
+          _asBadge(String(m['الحالة'])) +
+          (canApprove ? ' <label style="font-size:.74rem"><input type="checkbox" class="as-mchk" value="' + _asEsc(m['media_id']) + '"> تحديد</label>' : '') +
+        '</div>' +
+      '</div>';
+    }
+    grid.innerHTML = shown ? h : '<div class="as-empty">لا عناصر مطابقة</div>';
+  };
+
+  window.asApproveSelected = function () {
+    var token = _asTok();
+    var st = document.getElementById('as-lib-status');
+    var boxes = document.querySelectorAll('#as-lib-grid .as-mchk:checked');
+    if (!boxes.length) { if (st) { st.style.color = '#c0392b'; st.innerHTML = '⚠️ حدّد عنصراً واحداً على الأقل'; } return; }
+    if (st) { st.style.color = '#0F2C5C'; st.innerHTML = '⏳ جارٍ اعتماد ' + boxes.length + ' عنصر...'; }
+    var ids = [];
+    for (var i = 0; i < boxes.length; i++) ids.push(boxes[i].value);
+    var done = 0, okc = 0;
+    function next() {
+      if (done >= ids.length) {
+        if (st) { st.style.color = '#1b7a3d'; st.innerHTML = '✅ تم اعتماد ' + okc + ' عنصر'; }
+        window.asLoadDashboard();
+        return;
+      }
+      var id = ids[done];
+      google.script.run
+        .withSuccessHandler(function (res) { if (res && res.success) okc++; done++; next(); })
+        .withFailureHandler(function () { done++; next(); })
+        .asApproveMedia(token, id);
+    }
+    next();
+  };
+
+  window.asRenderPublish = function () {
+    var box = document.getElementById('as-publish-list');
+    if (!box) return;
+    var lib = (window._asData && window._asData.library) ? window._asData.library : [];
+    var rows = '';
+    for (var i = 0; i < lib.length; i++) {
+      var m = lib[i];
+      var st = String(m['الحالة']);
+      if (st !== 'معتمد' && st !== 'منشور') continue;
+      rows += '<tr><td>' + _asEsc(m['العنوان']) + '</td><td>' + _asEsc(m['اسم_المعلم']) + '</td><td>' + _asBadge(st) + '</td></tr>';
+    }
+    box.innerHTML = rows
+      ? '<div class="as-card"><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:#0F2C5C;color:#fff"><th style="padding:8px;text-align:right">العنوان</th><th style="padding:8px;text-align:right">المعلم</th><th style="padding:8px;text-align:right">الحالة</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="as-empty">🚀 لا عناصر معتمدة/منشورة بعد</div>';
   };
 })();
 </script>
