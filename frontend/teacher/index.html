@@ -11789,7 +11789,8 @@ function sstat_print() {
     setStatus('⏳ جارٍ رفع ' + pending.length + ' ملف...', '');
 
     // قراءة كل الملفات base64 ثم استدعاء واحد (مجموعة واحدة)
-    var payload = [];
+    // payload مفهرس بالموضع حتى لا يختل ترتيب النتائج عند انتهاء القراءات بترتيب مختلف
+    var payload = new Array(pending.length);
     var read = 0;
     function afterRead() {
       read++;
@@ -11823,20 +11824,20 @@ function sstat_print() {
     }
 
     for (var p = 0; p < pending.length; p++) {
-      (function (slot) {
+      (function (slot, slotIndex) {
         var file = slot.entry.file;
         var reader = new FileReader();
         reader.onload = function (e) {
-          payload.push({ data: e.target.result, fileName: file.name, mimeType: file.type });
+          payload[slotIndex] = { data: e.target.result, fileName: file.name, mimeType: file.type };
           afterRead();
         };
         reader.onerror = function () {
           slot.entry.status = 'err'; slot.entry.msg = 'تعذّر القراءة';
-          payload.push({ data: '', fileName: file.name, mimeType: file.type });
+          payload[slotIndex] = { data: '', fileName: file.name, mimeType: file.type };
           afterRead();
         };
         reader.readAsDataURL(file);
-      })(pending[p]);
+      })(pending[p], p);
     }
   };
 
