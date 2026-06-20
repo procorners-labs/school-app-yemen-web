@@ -4331,9 +4331,10 @@ function initSidebarByRole() {
 
   if (socialSection) socialSection.style.display = isSocialAllowed ? 'block' : 'none';
 
-  // ── تبويب «إدارة الأنشطة والإشراف»: لمشرفة الأنشطة فقط (role==='activities') ──
+  // ── تبويب «إدارة الأنشطة والإشراف»: مشرف الأنشطة + المدير + الوكيل ──
   var siActivitySup = document.getElementById('si-activitySup');
-  if (siActivitySup) siActivitySup.style.display = (u.role === 'activities') ? '' : 'none';
+  var canSupervise = (u.role === 'activities' || u.role === 'admin' || u.role === 'deputy');
+  if (siActivitySup) siActivitySup.style.display = canSupervise ? '' : 'none';
 
   // ── «إدارة المهام»: مدير/وكيل/مشرف/محاسب/أنشطة ──
   var canManageTasks = (u.role === 'admin' || u.role === 'deputy' || u.role === 'supervisor' || u.role === 'accountant') || isSocialAllowed;
@@ -12032,6 +12033,26 @@ function sstat_print() {
 #as-root .as-empty{text-align:center;color:#8a93a6;padding:24px;}
 #as-root .as-rev{border:1px solid var(--as-line);border-radius:12px;padding:12px;margin-bottom:10px;}
 #as-root .as-rev a{color:var(--as-navy);font-size:.82rem;word-break:break-all;}
+/* معرض المجموعة (مراجعة المحتوى + النظرة الشاملة) */
+#as-root .as-gal{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;}
+#as-root .as-gthumb{position:relative;width:84px;height:84px;border-radius:9px;overflow:hidden;
+  border:1px solid var(--as-line);background:#eef2f8;display:block;}
+#as-root .as-gthumb img{width:100%;height:100%;object-fit:cover;display:block;}
+#as-root .as-gplay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:24px;color:#fff;background:rgba(15,44,92,.45);}
+#as-root .as-src{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:20px;
+  background:rgba(212,165,55,.18);color:#8a6d00;margin-inline-start:6px;}
+#as-root .as-src-task{background:rgba(15,44,92,.1);color:var(--as-navy);}
+/* رقائق المنصات لقائمة النشر */
+#as-root .as-plats{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;}
+#as-root .as-plat{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--as-line);
+  border-radius:20px;padding:5px 11px;font-size:.8rem;cursor:pointer;background:#fff;color:var(--as-navy);}
+#as-root .as-plat input{accent-color:var(--as-navy);}
+/* النظرة الشاملة */
+#as-root .as-ov{border:1px solid var(--as-line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff;}
+#as-root .as-ov-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+#as-root .as-ov-name{font-weight:700;color:var(--as-navy);}
+#as-root .as-pill{font-size:.72rem;padding:2px 8px;border-radius:20px;background:#f0f2f7;color:#33425b;}
 </style>
 <script>
 (function () {
@@ -12054,7 +12075,8 @@ function sstat_print() {
         '<div class="as-stats" id="as-stats"></div>' +
         '<div class="as-tabs">' +
           '<button type="button" class="as-tab active" id="as-tab-assign" onclick="window.asSwitchTab(\'assign\',this)">➕ تكليف مهمة</button>' +
-          '<button type="button" class="as-tab" id="as-tab-review" onclick="window.asSwitchTab(\'review\',this)">📋 مراجعة المهام</button>' +
+          '<button type="button" class="as-tab" id="as-tab-review" onclick="window.asSwitchTab(\'review\',this)">📋 مراجعة المحتوى</button>' +
+          '<button type="button" class="as-tab" id="as-tab-overview" onclick="window.asSwitchTab(\'overview\',this)">👁️ نظرة شاملة</button>' +
           '<button type="button" class="as-tab" id="as-tab-library" onclick="window.asSwitchTab(\'library\',this)">🖼️ مكتبة المحتوى</button>' +
           '<button type="button" class="as-tab" id="as-tab-publish" onclick="window.asSwitchTab(\'publish\',this)">🚀 حالة النشر</button>' +
         '</div>' +
@@ -12071,8 +12093,14 @@ function sstat_print() {
             '<div class="as-status" id="as-assign-status"></div>' +
           '</div>' +
         '</div>' +
-        // 2) مراجعة المهام
-        '<div class="as-panel" id="as-panel-review"><div id="as-review-list"><div class="as-empty">⏳ جارٍ التحميل...</div></div></div>' +
+        // 2) مراجعة المحتوى (مجموعات: مهمة + مبادرة) + مراجعة المهام
+        '<div class="as-panel" id="as-panel-review">' +
+          '<div id="as-review-groups"><div class="as-empty">⏳ جارٍ التحميل...</div></div>' +
+          '<div style="margin:14px 0 6px;font-weight:700;color:#0F2C5C">📝 مهام بانتظار المراجعة</div>' +
+          '<div id="as-review-list"><div class="as-empty">—</div></div>' +
+        '</div>' +
+        // نظرة شاملة
+        '<div class="as-panel" id="as-panel-overview"><div id="as-overview-list"><div class="as-empty">⏳ جارٍ التحميل...</div></div></div>' +
         // 3) مكتبة المحتوى
         '<div class="as-panel" id="as-panel-library">' +
           '<div class="as-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">' +
@@ -12095,7 +12123,7 @@ function sstat_print() {
     var tabs = document.querySelectorAll('#as-root .as-tab');
     for (var i = 0; i < tabs.length; i++) tabs[i].className = 'as-tab';
     if (btn) btn.className = 'as-tab active';
-    var panels = ['assign', 'review', 'library', 'publish'];
+    var panels = ['assign', 'review', 'overview', 'library', 'publish'];
     for (var p = 0; p < panels.length; p++) {
       var el = document.getElementById('as-panel-' + panels[p]);
       if (el) el.className = (panels[p] === key) ? 'as-panel active' : 'as-panel';
@@ -12114,7 +12142,9 @@ function sstat_print() {
         window._asData = res;
         window.asRenderStats(res.stats);
         window.asFillTeachers(res.teachers || []);
+        window.asRenderReviewGroups(res.reviewGroups || []);
         window.asRenderReview(res.pendingTasks || []);
+        window.asRenderOverview(res.overview || []);
         window.asRenderLibrary();
         window.asRenderPublish();
       })
@@ -12272,20 +12302,162 @@ function sstat_print() {
     next();
   };
 
+  // ── معرض مصغّرات المجموعة (صور + أيقونة فيديو) ──
+  function _asGallery(group) {
+    var items = (group && group.items) ? group.items : [];
+    var h = '<div class="as-gal">';
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var isVideo = String(it.type).indexOf('فيديو') !== -1;
+      var url = _asEsc(it.link || '');
+      var thumb = _asEsc(it.thumbnail || it.link || '');
+      var inner = isVideo
+        ? '<div class="as-gplay">▶️</div>'
+        : '<img src="' + thumb + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">';
+      h += '<a class="as-gthumb" href="' + url + '" target="_blank" rel="noopener">' + inner + '</a>';
+    }
+    return h + '</div>';
+  }
+  function _asSrcBadge(src) {
+    var cls = (src === 'مهمة') ? 'as-src as-src-task' : 'as-src';
+    return '<span class="' + cls + '">' + _asEsc(src || 'مبادرة') + '</span>';
+  }
+
+  // ── 2) مراجعة المحتوى: مجموعات (مهمة + مبادرة) مع معرض + اعتماد/رفض + نشر كخبر ──
+  window.asRenderReviewGroups = function (groups) {
+    window._asReviewGroups = groups || [];
+    var box = document.getElementById('as-review-groups');
+    if (!box) return;
+    if (!groups || groups.length === 0) { box.innerHTML = '<div class="as-empty">📭 لا محتوى بانتظار المراجعة</div>'; return; }
+    var h = '';
+    for (var i = 0; i < groups.length; i++) {
+      var g = groups[i];
+      h += '<div class="as-rev">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<span style="font-weight:700;color:#0F2C5C">' + _asEsc(g.title || 'بدون عنوان') + '</span>' +
+          _asSrcBadge(g.source) +
+          '<span style="font-size:.78rem;color:#6b7588">• ' + _asEsc(g.teacher) + '</span>' +
+          (g.category ? '<span style="font-size:.78rem;color:#6b7588">• ' + _asEsc(g.category) + '</span>' : '') +
+          '<span style="font-size:.76rem;color:#8a93a6">(' + (g.count || (g.items ? g.items.length : 0)) + ' ملف)</span>' +
+        '</div>' +
+        (g.description ? '<div style="font-size:.82rem;color:#33425b;margin:4px 0">' + _asEsc(g.description) + '</div>' : '') +
+        _asGallery(g) +
+        '<input type="text" class="as-input" id="as-gnote-' + i + '" placeholder="ملاحظة (اختياري)" style="margin:8px 0">' +
+        '<button type="button" class="as-btn as-btn-ok as-btn-sm" onclick="window.asReviewGroup(' + i + ',\'اعتماد\')">✅ اعتماد</button> ' +
+        '<button type="button" class="as-btn as-btn-no as-btn-sm" onclick="window.asReviewGroup(' + i + ',\'رفض\')">✖ رفض</button> ' +
+        '<button type="button" class="as-btn as-btn-gold as-btn-sm" onclick="window.asPublishNews(' + i + ')">📰 نشر كخبر</button>' +
+      '</div>';
+    }
+    box.innerHTML = h;
+  };
+
+  window.asReviewGroup = function (index, decision) {
+    var token = _asTok();
+    var g = (window._asReviewGroups || [])[index];
+    if (!g) return;
+    var noteEl = document.getElementById('as-gnote-' + index);
+    var note = noteEl ? (noteEl.value || '') : '';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.success) { if (typeof toast === 'function') toast(res.message || 'تمت المراجعة', 'success'); window.asLoadDashboard(); }
+        else if (typeof toast === 'function') toast((res && res.error) || 'فشل', 'error');
+      })
+      .withFailureHandler(function (err) { if (typeof toast === 'function') toast(err && err.message ? err.message : 'خطأ', 'error'); })
+      .asReviewGroup(token, g.group_id, decision, note);
+  };
+
+  window.asPublishNews = function (index) {
+    var token = _asTok();
+    var g = (window._asReviewGroups || [])[index];
+    if (!g) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.success) { if (typeof toast === 'function') toast('تم نشر الخبر — سيظهر على الموقع', 'success'); }
+        else if (typeof toast === 'function') toast((res && res.error) || 'فشل النشر كخبر', 'error');
+      })
+      .withFailureHandler(function (err) { if (typeof toast === 'function') toast(err && err.message ? err.message : 'خطأ', 'error'); })
+      .asPublishAsNews(token, g.group_id);
+  };
+
+  // ── نظرة شاملة: كل معلم ومحتواه وإحصاءاته ──
+  window.asRenderOverview = function (list) {
+    var box = document.getElementById('as-overview-list');
+    if (!box) return;
+    if (!list || list.length === 0) { box.innerHTML = '<div class="as-empty">لا بيانات بعد</div>'; return; }
+    var h = '';
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      var m = t.media || {};
+      var tk = t.tasks || {};
+      var pills = '<span class="as-pill">📦 ' + (m.total || 0) + ' ملف</span>' +
+        '<span class="as-pill">🆕 ' + (m['جديد'] || 0) + '</span>' +
+        '<span class="as-pill">✅ ' + (m['معتمد'] || 0) + '</span>' +
+        '<span class="as-pill">🚀 ' + (m['منشور'] || 0) + '</span>' +
+        '<span class="as-pill">📋 مهام: ' + ((tk['بانتظار_المراجعة'] || 0) + (tk['مُكلّف'] || 0) + (tk['قيد_التنفيذ'] || 0) + (tk['مكتمل'] || 0)) + '</span>';
+      var gals = '';
+      var groups = t.groups || [];
+      for (var g = 0; g < groups.length && g < 6; g++) { gals += _asGallery(groups[g]); }
+      h += '<div class="as-ov">' +
+        '<div class="as-ov-head"><span class="as-ov-name">👤 ' + _asEsc(t.teacher) + '</span>' + pills + '</div>' +
+        (gals || '<div style="font-size:.78rem;color:#8a93a6">لا محتوى مرفوع</div>') +
+      '</div>';
+    }
+    box.innerHTML = h;
+  };
+
+  // ── 4) حالة النشر: لكل مجموعة معتمدة منصات + إرسال لقائمة النشر ──
   window.asRenderPublish = function () {
     var box = document.getElementById('as-publish-list');
     if (!box) return;
-    var lib = (window._asData && window._asData.library) ? window._asData.library : [];
-    var rows = '';
-    for (var i = 0; i < lib.length; i++) {
-      var m = lib[i];
-      var st = String(m['الحالة']);
-      if (st !== 'معتمد' && st !== 'منشور') continue;
-      rows += '<tr><td>' + _asEsc(m['العنوان']) + '</td><td>' + _asEsc(m['اسم_المعلم']) + '</td><td>' + _asBadge(st) + '</td></tr>';
+    var groups = (window._asData && window._asData.groups) ? window._asData.groups : [];
+    var approved = [];
+    for (var i = 0; i < groups.length; i++) {
+      var st = String(groups[i].status);
+      if (st === 'معتمد' || st === 'منشور') approved.push(groups[i]);
     }
-    box.innerHTML = rows
-      ? '<div class="as-card"><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:#0F2C5C;color:#fff"><th style="padding:8px;text-align:right">العنوان</th><th style="padding:8px;text-align:right">المعلم</th><th style="padding:8px;text-align:right">الحالة</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-      : '<div class="as-empty">🚀 لا عناصر معتمدة/منشورة بعد</div>';
+    window._asPubGroups = approved;
+    if (approved.length === 0) { box.innerHTML = '<div class="as-empty">🚀 لا عناصر معتمدة بعد — اعتمد محتوى من تبويب المراجعة</div>'; return; }
+    var plats = ['فيسبوك', 'إنستغرام', 'واتساب', 'الموقع'];
+    var h = '';
+    for (var j = 0; j < approved.length; j++) {
+      var g = approved[j];
+      var chips = '';
+      for (var p = 0; p < plats.length; p++) {
+        chips += '<label class="as-plat"><input type="checkbox" class="as-plat-' + j + '" value="' + _asEsc(plats[p]) + '"> ' + _asEsc(plats[p]) + '</label>';
+      }
+      h += '<div class="as-rev">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<span style="font-weight:700;color:#0F2C5C">' + _asEsc(g.title || 'بدون عنوان') + '</span>' +
+          _asBadge(String(g.status)) +
+          '<span style="font-size:.78rem;color:#6b7588">• ' + _asEsc(g.teacher) + '</span>' +
+        '</div>' +
+        _asGallery(g) +
+        '<div class="as-plats">' + chips + '</div>' +
+        '<button type="button" class="as-btn as-btn-navy as-btn-sm" onclick="window.asSendQueue(' + j + ')">📤 إرسال لقائمة النشر</button>' +
+        '<span class="as-status" id="as-q-' + j + '" style="display:inline-block;margin-inline-start:8px"></span>' +
+      '</div>';
+    }
+    box.innerHTML = h;
+  };
+
+  window.asSendQueue = function (index) {
+    var token = _asTok();
+    var g = (window._asPubGroups || [])[index];
+    if (!g) return;
+    var boxes = document.querySelectorAll('.as-plat-' + index + ':checked');
+    var st = document.getElementById('as-q-' + index);
+    function setS(m, c) { if (st) { st.style.color = c || '#0F2C5C'; st.innerHTML = m; } }
+    if (!boxes.length) { setS('⚠️ اختر منصة', '#c0392b'); return; }
+    var platforms = [];
+    for (var i = 0; i < boxes.length; i++) platforms.push(boxes[i].value);
+    setS('⏳ جارٍ الإرسال...', '#0F2C5C');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.success) { setS('✅ ' + (res.message || 'تمت الإضافة'), '#1b7a3d'); if (typeof toast === 'function') toast('أُضيف لقائمة النشر', 'success'); }
+        else setS('❌ ' + ((res && res.error) || 'فشل'), '#c0392b');
+      })
+      .withFailureHandler(function (err) { setS('❌ ' + (err && err.message ? err.message : 'خطأ'), '#c0392b'); })
+      .asSendToPublishQueue(token, g.group_id, platforms, '');
   };
 })();
 </script>
