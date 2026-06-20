@@ -1180,6 +1180,8 @@ img,video,iframe{max-width:100%;display:block}
     </div>
     <div class="hero-chips">
       <div class="hero-chip"><i class="fas fa-calendar-check"></i> <span id="hcYears">٢٠+</span> عاماً من التميز</div>
+      <div class="hero-chip"><i class="fas fa-venus-mars"></i> بنين وبنات · أقسام منفصلة</div>
+      <div class="hero-chip"><i class="fas fa-bolt"></i> متابعة رقمية لحظية</div>
       <div class="hero-chip"><i class="fas fa-trophy"></i> <span id="hcAwards">١٠+</span> جائزة تربوية</div>
     </div>
   </div>
@@ -1213,15 +1215,25 @@ img,video,iframe{max-width:100%;display:block}
 <section id="stats" class="stats">
   <div class="wrap">
     <div class="stats-row">
-      <div class="stat reveal" data-delay="3">
+      <div class="stat reveal" data-delay="1">
         <div class="stat-ico ico-amber"><i class="fas fa-calendar-check"></i></div>
         <div class="stat-num" id="yearsCount">…</div>
         <div class="stat-lbl">عاماً من التميز</div>
       </div>
+      <div class="stat reveal" data-delay="2">
+        <div class="stat-ico ico-blue"><i class="fas fa-newspaper"></i></div>
+        <div class="stat-num" id="newsCount">…</div>
+        <div class="stat-lbl">خبر وفعالية</div>
+      </div>
+      <div class="stat reveal" data-delay="3">
+        <div class="stat-ico ico-teal"><i class="fas fa-images"></i></div>
+        <div class="stat-num" id="imagesCount">…</div>
+        <div class="stat-lbl">صورة من أنشطتنا</div>
+      </div>
       <div class="stat reveal" data-delay="4">
-        <div class="stat-ico ico-rose"><i class="fas fa-trophy"></i></div>
-        <div class="stat-num" id="awardsCount">…</div>
-        <div class="stat-lbl">جوائز تربوية</div>
+        <div class="stat-ico ico-rose"><i class="fas fa-play-circle"></i></div>
+        <div class="stat-num" id="videosCount">…</div>
+        <div class="stat-lbl">فيديو من فعالياتنا</div>
       </div>
     </div>
   </div>
@@ -1656,9 +1668,8 @@ function counter(el,target,suffix){
 ══════════════════════════════════════════ */
 function renderStats(s){
   if(!s)return;
+  // إحصاءات ثابتة موثوقة فقط (سنوات/جوائز)؛ أعداد المحتوى تُضبط ديناميكياً من البيانات الفعلية
   var data=[
-    {id:'studentsCount',hid:'hcStudents',v:+(s.students||1000)},
-    {id:'teachersCount',hid:'hcTeachers',v:+(s.teachers||80)},
     {id:'yearsCount',   hid:'hcYears',   v:+(s.years||20)},
     {id:'awardsCount',  hid:'hcAwards',  v:+(s.awards||10)}
   ];
@@ -1667,6 +1678,12 @@ function renderStats(s){
     var hel=$(d.hid);
     if(hel)hel.textContent=toArabicNum(d.v)+'+';
   });
+}
+
+// يضبط عدّاد محتوى حقيقياً (من طول القائمة الفعلية)
+function _homeSetCount(id,n){
+  var el=$(id); if(!el)return;
+  el.textContent=toArabicNum(n||0);
 }
 
 /* ══════════════════════════════════════════
@@ -1695,6 +1712,7 @@ function animateCards(grid){
 function renderNews(items) {
   var g = $('dynamicNewsGrid');
   if (!g) return;
+  _homeSetCount('newsCount', (items && items.length) ? items.length : 0);
   if (!items || !items.length) {
     g.innerHTML = '<div class="st-error"><i class="fas fa-exclamation-triangle err-ico"></i><p class="empty-msg">لا توجد أخبار حالياً</p></div>';
     return;
@@ -1722,6 +1740,7 @@ function renderImages(items) {
   var g = $('dynamicImagesGrid');
   if (!g) return;
   window._homeImg = items || [];   // للمعرض التفاعلي (Lightbox)
+  _homeSetCount('imagesCount', (items && items.length) ? items.length : 0);
   if (!items || !items.length) {
     g.innerHTML = '<div class="st-error"><p class="empty-msg">لا توجد صور حالياً</p></div>';
     return;
@@ -1733,9 +1752,14 @@ function renderImages(items) {
     // normalizeGoogleDriveUrl يحول رابط Drive إلى thumbnail مباشر
     var imgSrc = n.url || n.image || '';
     if (!imgSrc) continue;
+    // ألبوم متعدد الصور (مجموعة منشورة): شارة عدد + يفتح المعرض داخل المجموعة
+    var galN = (n.gallery && n.gallery.length > 1) ? n.gallery.length : 0;
+    var albumBadge = galN
+      ? '<span class="cc-badge bg-album" style="left:auto;right:10px;background:rgba(15,44,92,.82)"><i class="fas fa-images"></i> ' + galN + ' صور</span>'
+      : '';
     h += '<article class="cc" tabindex="0">'
        + '<div class="cc-thumb">'
-       + '<span class="cc-badge bg-img"><i class="fas fa-image"></i> صورة</span>'
+       + '<span class="cc-badge bg-img"><i class="fas fa-image"></i> صورة</span>' + albumBadge
        + '<img src="' + esc(imgSrc) + '" loading="lazy" alt="' + esc(n.title || 'صورة') + '" style="cursor:zoom-in" onclick="homeLightbox(' + i + ')" onerror="this.parentNode.innerHTML=\'<div class=\\\'cc-no-img\\\'><i class=\\\"fas fa-image\\\"></i></div>\'">'
        + '</div>'
        + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title || '') + '</h3></div>'
@@ -1750,6 +1774,7 @@ function renderImages(items) {
 function renderVideos(items) {
   var g = $('dynamicVideoGrid');
   if (!g) return;
+  _homeSetCount('videosCount', (items && items.length) ? items.length : 0);
   if (!items || !items.length) {
     g.innerHTML = '<div class="st-error"><p class="empty-msg">لا توجد فيديوهات حالياً</p></div>';
     return;
@@ -1803,22 +1828,38 @@ function homeNewsFilter(q) {
   }
 }
 
-/* معرض صور Lightbox تفاعلي (تكبير + تنقّل) */
-var _homeLbIdx = 0;
+/* معرض صور Lightbox تفاعلي — يدعم ألبوم المجموعة (تنقّل داخل صور المجموعة) */
+var _homeLb = { i: 0, group: null, gi: 0 };
 function homeLightbox(i) {
-  var arr = window._homeImg || []; if (!arr.length) return;
-  _homeLbIdx = i; _homeLbShow();
+  var arr = window._homeImg || []; var it = arr[i]; if (!it) return;
+  _homeLb.i = i;
+  _homeLb.group = (it.gallery && it.gallery.length > 1) ? it.gallery : null;
+  _homeLb.gi = 0;
+  _homeLbShow();
   var lb = $('homeLb'); if (lb) lb.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 }
 function _homeLbShow() {
-  var arr = window._homeImg || []; var n = arr[_homeLbIdx]; if (!n) return;
-  var img = $('homeLbImg'); if (img) img.src = n.url || n.image || '';
-  var cap = $('homeLbCap'); if (cap) cap.textContent = n.title || '';
+  var arr = window._homeImg || []; var it = arr[_homeLb.i]; if (!it) return;
+  var src, cap;
+  if (_homeLb.group) {
+    src = _homeLb.group[_homeLb.gi];
+    cap = (it.title || '') + ' — ' + (_homeLb.gi + 1) + '/' + _homeLb.group.length;
+  } else {
+    src = it.url || it.image || '';
+    cap = it.title || '';
+  }
+  var img = $('homeLbImg'); if (img) img.src = src || '';
+  var capEl = $('homeLbCap'); if (capEl) capEl.textContent = cap;
 }
 function homeLbNav(d) {
-  var arr = window._homeImg || []; if (!arr.length) return;
-  _homeLbIdx = (_homeLbIdx + d + arr.length) % arr.length; _homeLbShow();
+  if (_homeLb.group) {
+    _homeLb.gi = (_homeLb.gi + d + _homeLb.group.length) % _homeLb.group.length;
+  } else {
+    var arr = window._homeImg || []; if (!arr.length) return;
+    _homeLb.i = (_homeLb.i + d + arr.length) % arr.length;
+  }
+  _homeLbShow();
 }
 function homeLbClose() {
   var lb = $('homeLb'); if (lb) lb.style.display = 'none';
