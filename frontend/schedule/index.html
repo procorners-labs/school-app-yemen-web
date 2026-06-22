@@ -242,6 +242,7 @@ select{cursor:pointer}
   <div class="auto-btns">
     <button class="btn btn-auto" onclick="doAutoAll()">⚡ توزيع الكل تلقائياً</button>
     <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="doCheckConflicts()">⚠️ فحص التعارضات</button>
+    <button class="btn" id="syncNamesBtn" style="background:rgba(255,255,255,.2);color:#fff" onclick="doSyncNames()">🔄 مزامنة الأسماء</button>
     <button class="btn" id="publishBtn" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 3px 12px rgba(16,185,129,.4)" onclick="doPublishSchedule()">📢 نشر للمنصتين</button>
   </div>
 </div>
@@ -258,9 +259,8 @@ select{cursor:pointer}
 <!-- ══ تبويب 1: جدول المعلم ══ -->
 <div id="t1" class="tc active">
   <div class="tb">
-    <select id="teacherSel" onchange="loadTeacher()" style="flex:1;max-width:280px">
-      <option value="">— اختر معلماً —</option>
-    </select>
+    <input id="teacherSel" list="teacherList" onchange="loadTeacher()" placeholder="🔎 اكتب اسم المعلم (اسم أو اسمين) أو اختره…" autocomplete="off" style="flex:1;max-width:320px">
+    <datalist id="teacherList"></datalist>
     <button class="btn btn-auto btn-sm" onclick="doAutoTeacher()">🤖 توزيع تلقائي</button>
     <button class="btn btn-warn btn-sm" onclick="doUndo()">↩️ تراجع</button>
     <button class="btn btn-err btn-sm" onclick="doReset()">🗑️ مسح</button>
@@ -313,9 +313,10 @@ select{cursor:pointer}
 <div id="addModal" class="mo" style="display:none" onclick="if(event.target===this)closeModal('addModal')">
 <div class="mb">
   <h3>➕ إضافة سجل مدرس</h3>
-  <div class="fg"><label>اسم المدرس</label><input id="m_t" placeholder="الاسم الكامل"></div>
-  <div class="fg"><label>المادة</label><select id="m_s"><option value="">—</option></select></div>
-  <div class="fg"><label>الفصل</label><select id="m_c"><option value="">—</option></select></div>
+  <div class="fg"><label>اسم المدرس</label><input id="m_t" list="teacherList" autocomplete="off" placeholder="اكتب اسماً (اسم أو اسمين)"></div>
+  <div class="fg"><label>المادة</label><input id="m_s" list="subjList" autocomplete="off" placeholder="اكتب أو اختر المادة («جميع المواد» للكل)"></div>
+  <div class="fg"><label>الصف</label><input id="m_g" list="gradeList" autocomplete="off" placeholder="مثال: الخامس"></div>
+  <div class="fg"><label>الشعبة</label><input id="m_sec" list="secList" autocomplete="off" placeholder="أ / ب / ج أو «جميع الشعب»"></div>
   <div class="fg"><label>عدد الحصص/أسبوع</label><input id="m_p" type="number" min="1" max="30" placeholder="مثال: 5"></div>
   <div class="mb-btns">
     <button class="btn btn-ghost" onclick="closeModal('addModal')">إلغاء</button>
@@ -328,15 +329,21 @@ select{cursor:pointer}
 <div class="mb">
   <h3>✏️ تعديل سجل</h3>
   <input type="hidden" id="e_row">
-  <div class="fg"><label>اسم المدرس</label><input id="e_t"></div>
-  <div class="fg"><label>المادة</label><input id="e_s"></div>
-  <div class="fg"><label>الفصل</label><input id="e_c"></div>
+  <div class="fg"><label>اسم المدرس</label><input id="e_t" list="teacherList" autocomplete="off"></div>
+  <div class="fg"><label>المادة</label><input id="e_s" list="subjList" autocomplete="off"></div>
+  <div class="fg"><label>الصف</label><input id="e_g" list="gradeList" autocomplete="off"></div>
+  <div class="fg"><label>الشعبة</label><input id="e_sec" list="secList" autocomplete="off"></div>
   <div class="fg"><label>عدد الحصص</label><input id="e_p" type="number" min="1" max="30"></div>
   <div class="mb-btns">
     <button class="btn btn-ghost" onclick="closeModal('editModal')">إلغاء</button>
     <button class="btn btn-pr" onclick="submitEdit()">💾 حفظ</button>
   </div>
 </div></div>
+
+<!-- قوائم التنبؤ المشتركة (datalist) -->
+<datalist id="subjList"></datalist>
+<datalist id="gradeList"></datalist>
+<datalist id="secList"></datalist>
 
 <!-- Modal تعيين فصل -->
 <div id="assignModal" class="mo" style="display:none" onclick="if(event.target===this)closeModal('assignModal')">
@@ -366,10 +373,14 @@ var _teacher   = '';
 var _tData     = null;
 var _subjects  = [];
 var _classes   = [];
+var _teachers  = [];
+var _grades    = [];
+var _sections  = [];
 var _showSugg  = true;
 var _pendDay   = -1;
 var _pendPer   = -1;
 var _pendCls   = '';
+var _pendAvail = [];
 var _toastTm   = null;
 
 // ══════════════════════════════════════════
@@ -381,22 +392,38 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initLists() {
-  gsr('getTeachersList', {}, function(list) {
-    var sel = document.getElementById('teacherSel');
-    sel.innerHTML = '<option value="">— اختر معلماً —</option>';
-    for (var i = 0; i < list.length; i++) {
-      sel.innerHTML += '<option value="' + _e(list[i]) + '">' + _e(list[i]) + '</option>';
-    }
-  });
-  gsr('getSubjectsAndClasses', {}, function(r) {
-    _subjects = r.subjects || [];
-    _classes  = r.classes  || [];
-    _fill('m_s', _subjects);
-    _fill('m_c', _classes);
+  // خيارات النماذج: أسماء + مواد + صفوف + شعب + فصول (للتنبؤ datalist)
+  gsr('getFormOptions', {}, function(o) {
+    _teachers = o.teachers || [];
+    _subjects = o.subjects || [];
+    _grades   = o.grades   || [];
+    _sections = o.sections || [];
+    _classes  = o.classes  || [];
+    _fillDatalist('teacherList', _teachers);
+    _fillDatalist('subjList', _subjects);
+    _fillDatalist('gradeList', _grades);
+    _fillDatalist('secList', _sections);
     var sel = document.getElementById('classSel');
     sel.innerHTML = '<option value="">— اختر فصلاً —</option>';
     for (var i = 0; i < _classes.length; i++) {
       sel.innerHTML += '<option value="' + _e(_classes[i]) + '">' + _e(_classes[i]) + '</option>';
+    }
+  });
+}
+
+// مزامنة أسماء المعلمين من ملف Teacher إلى ملف الجداول
+function doSyncNames() {
+  var btn = document.getElementById('syncNamesBtn');
+  if (btn) { btn.disabled = true; }
+  toast('🔄 جاري مزامنة أسماء المعلمين...', 'info', 12000);
+  gsr('syncTeacherNamesToSchedule', [], function(r) {
+    if (btn) { btn.disabled = false; }
+    if (r && r.ok) {
+      toast('✅ ' + (r.message || 'تمت المزامنة') + ' (إجمالي: ' + r.total + ')', 'ok', 6000);
+      initLists();
+      loadStats();
+    } else {
+      toast('❌ فشل المزامنة: ' + ((r && (r.error || r.message)) || 'خطأ غير معروف'), 'err', 6000);
     }
   });
 }
@@ -546,13 +573,14 @@ function renderTeacher(d) {
       else if (isSugg) cls = 'cs';
       else cls = 'ce';
 
-      // إيجاد المادة للخلية
-      var sub = _getSubject(cv, d.classesList);
+      // فصل الصف عن المادة للعرض النظيف
+      var sub  = _getSubject(cv, d.classesList);
+      var clsP = _getClassPart(cv);
 
       html += '<td><div class="cell ' + cls + '" ';
       if (cv) {
         html += 'onclick="_delCell(' + day + ',' + per + ')" title="حذف: ' + _e(cv) + '">';
-        html += '<span>' + _e(cv) + '</span>';
+        html += '<span>' + _e(clsP) + '</span>';
         if (sub) html += '<span class="cell-sub">' + _e(sub) + '</span>';
       } else {
         html += 'onclick="_openAssign(' + day + ',' + per + ')" title="إضافة حصة">';
@@ -615,7 +643,7 @@ function renderTeacher(d) {
     for (var si = 0; si < d.suggestions.length; si++) {
       var sg = d.suggestions[si];
       var isEx = sg.quality === 'ممتاز';
-      html += '<div class="sgi' + (isEx ? ' ex' : '') + '" onclick="_openAssignWith(' + sg.day + ',' + sg.period + ',\'' + _e(sg.className) + '\')">';
+      html += '<div class="sgi' + (isEx ? ' ex' : '') + '" onclick="_openAssignWith(' + sg.day + ',' + sg.period + ',\'' + _e(sg.className) + '\',\'' + _e(sg.subject) + '\')">';
       html += '<div class="sg-info">' + _e(sg.className) + ' — ' + _e(sg.subject) + '<br><span style="font-weight:500">' + sg.dayName + ' الحصة ' + sg.periodNum + '</span></div>';
       html += '<span class="sg-q">' + sg.quality + '</span>';
       html += '</div>';
@@ -645,34 +673,35 @@ function _openAssign(day, per) {
     if (!_tData.classesList[i].complete) avail.push(_tData.classesList[i]);
   }
   if (avail.length === 0) { toast('جميع الفصول مكتملة لهذا المعلم ✅', 'ok'); return; }
-  if (avail.length === 1) { _doAssign(avail[0].name); return; }
+  if (avail.length === 1) { _doAssign(avail[0].name, avail[0].subject); return; }
 
+  _pendAvail = avail;
   document.getElementById('assignTitle').textContent = '📌 ' + DAY_NAMES[day] + ' — الحصة ' + (per+1);
   var sel = document.getElementById('a_cls');
   sel.innerHTML = '<option value="">— اختر الفصل —</option>';
   for (var j = 0; j < avail.length; j++) {
-    sel.innerHTML += '<option value="' + _e(avail[j].name) + '">' + _e(avail[j].name) + ' — ' + _e(avail[j].subject) + ' (' + avail[j].remaining + ' متبقية)</option>';
+    sel.innerHTML += '<option value="' + j + '">' + _e(avail[j].name) + ' — ' + _e(avail[j].subject) + ' (' + avail[j].remaining + ' متبقية)</option>';
   }
   document.getElementById('assignModal').style.display = 'flex';
 }
 
-function _openAssignWith(day, per, cls) {
+function _openAssignWith(day, per, cls, subject) {
   _pendDay = day; _pendPer = per; _pendCls = cls;
-  _doAssign(cls);
+  _doAssign(cls, subject);
 }
 
 function submitAssign() {
-  var cls = document.getElementById('a_cls').value;
-  if (!cls) { toast('اختر فصلاً', 'warn'); return; }
+  var idx = document.getElementById('a_cls').value;
+  if (idx === '' || !_pendAvail[idx]) { toast('اختر فصلاً', 'warn'); return; }
   closeModal('assignModal');
-  _doAssign(cls);
+  _doAssign(_pendAvail[idx].name, _pendAvail[idx].subject);
 }
 
-function _doAssign(cls) {
+function _doAssign(cls, subject) {
   if (!_teacher) { toast('اختر معلماً أولاً', 'warn'); return; }
   toast('⏳ جاري التعيين...', 'info');
-  // ✅ استخدام gsr بدلاً من الاستدعاء المباشر لضمان تمرير schoolId
-  gsr('assignPeriod', [_teacher, cls, _pendDay, _pendPer], function(r) {
+  // تمرير المادة صراحةً (gsr يُلحق schoolId تلقائياً)
+  gsr('assignPeriod', [_teacher, cls, (subject || ''), _pendDay, _pendPer], function(r) {
     if (r.success) { toast('✅ ' + r.message, 'ok'); loadTeacher(); loadStats(); }
     else toast('❌ ' + r.error, 'err');
   });
@@ -695,7 +724,7 @@ function _quickAssign(cls) {
   if (!_tData || !_tData.suggestions) { toast('لا توجد اقتراحات متاحة', 'warn'); return; }
   for (var i = 0; i < _tData.suggestions.length; i++) {
     var sg = _tData.suggestions[i];
-    if (sg.className === cls) { _pendDay = sg.day; _pendPer = sg.period; _doAssign(cls); return; }
+    if (sg.className === cls) { _pendDay = sg.day; _pendPer = sg.period; _doAssign(cls, sg.subject); return; }
   }
   toast('لا توجد خانات مقترحة لـ ' + cls + '. اضغط على خانة فارغة في الجدول.', 'warn', 4000);
 }
@@ -874,7 +903,7 @@ function loadManageTab() {
       html += '<td style="padding:7px;text-align:center"><span style="background:var(--info-l);color:var(--info);border-radius:5px;padding:1px 7px">' + _e(r.className) + '</span></td>';
       html += '<td style="padding:7px;text-align:center"><span style="background:var(--pr);color:#fff;border-radius:5px;padding:1px 8px">' + r.periods + '</span></td>';
       html += '<td style="padding:7px;text-align:center">';
-      html += '<button class="btn btn-xs btn-ghost" onclick="showEdit(' + r.rowIndex + ',\'' + _e(r.teacher) + '\',\'' + _e(r.subject) + '\',\'' + _e(r.className) + '\',' + r.periods + ')">✏️</button> ';
+      html += '<button class="btn btn-xs btn-ghost" onclick="showEdit(' + r.rowIndex + ',\'' + _e(r.teacher) + '\',\'' + _e(r.subject) + '\',\'' + _e(r.grade) + '\',\'' + _e(r.section) + '\',' + r.periods + ')">✏️</button> ';
       html += '<button class="btn btn-xs btn-err" onclick="delTeacher(' + r.rowIndex + ',\'' + _e(r.teacher) + '\')">🗑️</button>';
       html += '</td></tr>';
     }
@@ -885,44 +914,48 @@ function loadManageTab() {
 
 function showAddModal() {
   document.getElementById('m_t').value = '';
+  document.getElementById('m_s').value = '';
+  document.getElementById('m_g').value = '';
+  document.getElementById('m_sec').value = '';
   document.getElementById('m_p').value = '';
-  _fill('m_s', _subjects);
-  _fill('m_c', _classes);
   document.getElementById('addModal').style.display = 'flex';
 }
 
 function submitAdd() {
   var t = document.getElementById('m_t').value.trim();
-  var s = document.getElementById('m_s').value;
-  var c = document.getElementById('m_c').value;
+  var s = document.getElementById('m_s').value.trim();
+  var g = document.getElementById('m_g').value.trim();
+  var sec = document.getElementById('m_sec').value.trim() || 'جميع الشعب';
   var p = document.getElementById('m_p').value;
-  if (!t || !s || !c || !p) { toast('يرجى تعبئة جميع الحقول', 'warn'); return; }
+  if (!t || !s || !g || !p) { toast('يرجى تعبئة الاسم والمادة والصف والحصص', 'warn'); return; }
   toast('⏳ جاري الإضافة...', 'info');
-  gsr('addTeacherRow', [t, s, c, parseInt(p, 10)], function(r) {
-    if (r.success) { toast('✅ ' + r.message, 'ok'); closeModal('addModal'); loadManageTab(); initLists(); loadStats(); }
+  gsr('addTeacherRowEx', [t, s, g, sec, parseInt(p, 10)], function(r) {
+    if (r.success) { toast('✅ تمت الإضافة', 'ok'); closeModal('addModal'); loadManageTab(); initLists(); loadStats(); }
     else toast('❌ ' + r.error, 'err');
   });
 }
 
-function showEdit(ri, t, s, c, p) {
+function showEdit(ri, t, s, g, sec, p) {
   document.getElementById('e_row').value = ri;
   document.getElementById('e_t').value   = t;
   document.getElementById('e_s').value   = s;
-  document.getElementById('e_c').value   = c;
+  document.getElementById('e_g').value   = g;
+  document.getElementById('e_sec').value = sec;
   document.getElementById('e_p').value   = p;
   document.getElementById('editModal').style.display = 'flex';
 }
 
 function submitEdit() {
-  var ri = document.getElementById('e_row').value;
-  var t  = document.getElementById('e_t').value.trim();
-  var s  = document.getElementById('e_s').value.trim();
-  var c  = document.getElementById('e_c').value.trim();
-  var p  = document.getElementById('e_p').value;
-  if (!t || !s || !c || !p) { toast('يرجى تعبئة جميع الحقول', 'warn'); return; }
+  var ri  = document.getElementById('e_row').value;
+  var t   = document.getElementById('e_t').value.trim();
+  var s   = document.getElementById('e_s').value.trim();
+  var g   = document.getElementById('e_g').value.trim();
+  var sec = document.getElementById('e_sec').value.trim() || 'جميع الشعب';
+  var p   = document.getElementById('e_p').value;
+  if (!t || !s || !g || !p) { toast('يرجى تعبئة الاسم والمادة والصف والحصص', 'warn'); return; }
   toast('⏳ جاري الحفظ...', 'info');
-  gsr('updateTeacherRow', [parseInt(ri,10), t, s, c, parseInt(p,10)], function(r) {
-    if (r.success) { toast('✅ تم التعديل بنجاح', 'ok'); closeModal('editModal'); loadManageTab(); loadStats(); }
+  gsr('updateTeacherRowEx', [parseInt(ri,10), t, s, g, sec, parseInt(p,10)], function(r) {
+    if (r.success) { toast('✅ تم التعديل بنجاح', 'ok'); closeModal('editModal'); loadManageTab(); initLists(); loadStats(); }
     else toast('❌ ' + r.error, 'err');
   });
 }
@@ -1002,6 +1035,14 @@ function _fill(id, list) {
   }
 }
 
+function _fillDatalist(id, list) {
+  var dl = document.getElementById(id);
+  if (!dl) return;
+  var html = '';
+  for (var i = 0; i < list.length; i++) html += '<option value="' + _e(list[i]) + '"></option>';
+  dl.innerHTML = html;
+}
+
 function _e(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -1031,12 +1072,25 @@ function _hasConflict(day, per, conflicts) {
   return false;
 }
 
-function _getSubject(className, classesList) {
-  if (!className || !classesList) return '';
-  for (var i = 0; i < classesList.length; i++) {
-    if (classesList[i].name === className) return classesList[i].subject;
+// يستخرج المادة من قيمة الخلية "الصف+الشعبة (المادة)"، أو يطابق بالاسم احتياطياً
+function _getSubject(cellValue, classesList) {
+  if (!cellValue) return '';
+  var m = String(cellValue).match(/\(([^()]*)\)\s*$/);
+  if (m) return m[1].replace(/^\s+|\s+$/g, '');
+  if (classesList) {
+    for (var i = 0; i < classesList.length; i++) {
+      if (classesList[i].name === cellValue) return classesList[i].subject;
+    }
   }
   return '';
+}
+
+// يستخرج جزء الفصل (بدون المادة) من قيمة الخلية
+function _getClassPart(cellValue) {
+  if (!cellValue) return '';
+  var s = String(cellValue);
+  var m = s.match(/^(.*?)\s*\([^()]*\)\s*$/);
+  return m ? m[1].replace(/^\s+|\s+$/g, '') : s.replace(/^\s+|\s+$/g, '');
 }
 
 function toast(msg, type, dur) {
