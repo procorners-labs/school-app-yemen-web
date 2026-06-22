@@ -313,10 +313,10 @@ select{cursor:pointer}
 <div id="addModal" class="mo" style="display:none" onclick="if(event.target===this)closeModal('addModal')">
 <div class="mb">
   <h3>➕ إضافة سجل مدرس</h3>
-  <div class="fg"><label>اسم المدرس</label><input id="m_t" list="teacherList" autocomplete="off" placeholder="اكتب اسماً (اسم أو اسمين)"></div>
-  <div class="fg"><label>المادة</label><input id="m_s" list="subjList" autocomplete="off" placeholder="اكتب أو اختر المادة («جميع المواد» للكل)"></div>
-  <div class="fg"><label>الصف</label><input id="m_g" list="gradeList" autocomplete="off" placeholder="مثال: الخامس"></div>
-  <div class="fg"><label>الشعبة</label><input id="m_sec" list="secList" autocomplete="off" placeholder="أ / ب / ج أو «جميع الشعب»"></div>
+  <div class="fg"><label>اسم المدرس</label><input id="m_t" list="teacherList" autocomplete="off" onchange="onTeacherPick('m_t','m_s','m_g','m_sec')" placeholder="اكتب اسماً (اسم أو اسمين)"></div>
+  <div class="fg"><label>المادة <span style="font-size:.7rem;color:var(--muted)">(مادة واحدة)</span></label><select id="m_s"><option value="">—</option></select></div>
+  <div class="fg"><label>الصف <span style="font-size:.7rem;color:var(--muted)">(صف واحد)</span></label><select id="m_g"><option value="">—</option></select></div>
+  <div class="fg"><label>الشعبة</label><select id="m_sec"><option value="">—</option></select></div>
   <div class="fg"><label>عدد الحصص/أسبوع</label><input id="m_p" type="number" min="1" max="30" placeholder="مثال: 5"></div>
   <div class="mb-btns">
     <button class="btn btn-ghost" onclick="closeModal('addModal')">إلغاء</button>
@@ -329,10 +329,10 @@ select{cursor:pointer}
 <div class="mb">
   <h3>✏️ تعديل سجل</h3>
   <input type="hidden" id="e_row">
-  <div class="fg"><label>اسم المدرس</label><input id="e_t" list="teacherList" autocomplete="off"></div>
-  <div class="fg"><label>المادة</label><input id="e_s" list="subjList" autocomplete="off"></div>
-  <div class="fg"><label>الصف</label><input id="e_g" list="gradeList" autocomplete="off"></div>
-  <div class="fg"><label>الشعبة</label><input id="e_sec" list="secList" autocomplete="off"></div>
+  <div class="fg"><label>اسم المدرس</label><input id="e_t" list="teacherList" autocomplete="off" onchange="onTeacherPick('e_t','e_s','e_g','e_sec')"></div>
+  <div class="fg"><label>المادة <span style="font-size:.7rem;color:var(--muted)">(مادة واحدة)</span></label><select id="e_s"><option value="">—</option></select></div>
+  <div class="fg"><label>الصف <span style="font-size:.7rem;color:var(--muted)">(صف واحد)</span></label><select id="e_g"><option value="">—</option></select></div>
+  <div class="fg"><label>الشعبة</label><select id="e_sec"><option value="">—</option></select></div>
   <div class="fg"><label>عدد الحصص</label><input id="e_p" type="number" min="1" max="30"></div>
   <div class="mb-btns">
     <button class="btn btn-ghost" onclick="closeModal('editModal')">إلغاء</button>
@@ -903,7 +903,7 @@ function loadManageTab() {
       html += '<td style="padding:7px;text-align:center"><span style="background:var(--info-l);color:var(--info);border-radius:5px;padding:1px 7px">' + _e(r.className) + '</span></td>';
       html += '<td style="padding:7px;text-align:center"><span style="background:var(--pr);color:#fff;border-radius:5px;padding:1px 8px">' + r.periods + '</span></td>';
       html += '<td style="padding:7px;text-align:center">';
-      html += '<button class="btn btn-xs btn-ghost" onclick="showEdit(' + r.rowIndex + ',\'' + _e(r.teacher) + '\',\'' + _e(r.subject) + '\',\'' + _e(r.grade) + '\',\'' + _e(r.section) + '\',' + r.periods + ')">✏️</button> ';
+      html += '<button class="btn btn-xs btn-ghost" onclick="showEdit(' + r.rowIndex + ',\'' + _e(r.teacher) + '\',\'' + _e(r.subjectFirst) + '\',\'' + _e(r.grade) + '\',\'' + _e(r.section) + '\',' + r.periods + ')">✏️</button> ';
       html += '<button class="btn btn-xs btn-err" onclick="delTeacher(' + r.rowIndex + ',\'' + _e(r.teacher) + '\')">🗑️</button>';
       html += '</td></tr>';
     }
@@ -912,22 +912,44 @@ function loadManageTab() {
   });
 }
 
+// يملأ <select> بقائمة مفردة مع تحديد قيمة (اختيار واحد فقط)
+function _fillSelect(id, list, selected) {
+  var sel = document.getElementById(id);
+  if (!sel) return;
+  var html = '<option value="">—</option>';
+  for (var i = 0; i < list.length; i++) {
+    var v = _e(list[i]);
+    html += '<option value="' + v + '"' + (list[i] === selected ? ' selected' : '') + '>' + v + '</option>';
+  }
+  sel.innerHTML = html;
+}
+
+// عند اختيار/كتابة اسم المعلم: حمّل مواده وصفوفه وشعبه (اختيار مفرد ديناميكي)
+function onTeacherPick(tId, sId, gId, secId, selS, selG, selSec) {
+  var name = document.getElementById(tId).value.trim();
+  gsr('getTeacherOptions', [name], function(o) {
+    if (!o) return;
+    _fillSelect(sId, o.subjects || [], selS || '');
+    _fillSelect(gId, o.grades || [], selG || '');
+    _fillSelect(secId, o.sections || [], selSec || '');
+  });
+}
+
 function showAddModal() {
   document.getElementById('m_t').value = '';
-  document.getElementById('m_s').value = '';
-  document.getElementById('m_g').value = '';
-  document.getElementById('m_sec').value = '';
   document.getElementById('m_p').value = '';
+  // قوائم مفردة عامة (لا أستاذ محدد بعد)
+  onTeacherPick('m_t', 'm_s', 'm_g', 'm_sec');
   document.getElementById('addModal').style.display = 'flex';
 }
 
 function submitAdd() {
   var t = document.getElementById('m_t').value.trim();
-  var s = document.getElementById('m_s').value.trim();
-  var g = document.getElementById('m_g').value.trim();
-  var sec = document.getElementById('m_sec').value.trim() || 'جميع الشعب';
+  var s = document.getElementById('m_s').value;
+  var g = document.getElementById('m_g').value;
+  var sec = document.getElementById('m_sec').value || 'جميع الشعب';
   var p = document.getElementById('m_p').value;
-  if (!t || !s || !g || !p) { toast('يرجى تعبئة الاسم والمادة والصف والحصص', 'warn'); return; }
+  if (!t || !s || !g || !p) { toast('اختر الاسم والمادة (واحدة) والصف (واحد) والحصص', 'warn'); return; }
   toast('⏳ جاري الإضافة...', 'info');
   gsr('addTeacherRowEx', [t, s, g, sec, parseInt(p, 10)], function(r) {
     if (r.success) { toast('✅ تمت الإضافة', 'ok'); closeModal('addModal'); loadManageTab(); initLists(); loadStats(); }
@@ -935,24 +957,23 @@ function submitAdd() {
   });
 }
 
-function showEdit(ri, t, s, g, sec, p) {
+function showEdit(ri, t, sFirst, g, sec, p) {
   document.getElementById('e_row').value = ri;
   document.getElementById('e_t').value   = t;
-  document.getElementById('e_s').value   = s;
-  document.getElementById('e_g').value   = g;
-  document.getElementById('e_sec').value = sec;
   document.getElementById('e_p').value   = p;
+  // حمّل خيارات هذا المعلم وحدّد المادة/الصف/الشعبة المفردة الحالية
+  onTeacherPick('e_t', 'e_s', 'e_g', 'e_sec', sFirst, g, (sec || 'جميع الشعب'));
   document.getElementById('editModal').style.display = 'flex';
 }
 
 function submitEdit() {
   var ri  = document.getElementById('e_row').value;
   var t   = document.getElementById('e_t').value.trim();
-  var s   = document.getElementById('e_s').value.trim();
-  var g   = document.getElementById('e_g').value.trim();
-  var sec = document.getElementById('e_sec').value.trim() || 'جميع الشعب';
+  var s   = document.getElementById('e_s').value;
+  var g   = document.getElementById('e_g').value;
+  var sec = document.getElementById('e_sec').value || 'جميع الشعب';
   var p   = document.getElementById('e_p').value;
-  if (!t || !s || !g || !p) { toast('يرجى تعبئة الاسم والمادة والصف والحصص', 'warn'); return; }
+  if (!t || !s || !g || !p) { toast('اختر الاسم والمادة (واحدة) والصف (واحد) والحصص', 'warn'); return; }
   toast('⏳ جاري الحفظ...', 'info');
   gsr('updateTeacherRowEx', [parseInt(ri,10), t, s, g, sec, parseInt(p,10)], function(r) {
     if (r.success) { toast('✅ تم التعديل بنجاح', 'ok'); closeModal('editModal'); loadManageTab(); initLists(); loadStats(); }
