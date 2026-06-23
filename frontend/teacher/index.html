@@ -1787,6 +1787,32 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           ← العودة للموقع الرئيسي
         </a>
       </div>
+
+      <!-- 🆘 زر المساعدة والتواصل مع الدعم الفني (IT) -->
+      <style>
+        .login-help{margin-top:14px;border:1px solid rgba(255,255,255,.25);border-radius:12px;background:rgba(255,255,255,.06);overflow:hidden;text-align:right;}
+        .login-help>summary{list-style:none;cursor:pointer;padding:11px 14px;font-size:13.5px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;justify-content:center;user-select:none;}
+        .login-help>summary::-webkit-details-marker{display:none;}
+        .login-help[open]>summary{border-bottom:1px solid rgba(255,255,255,.18);}
+        .login-help-body{padding:13px 15px;font-size:13px;line-height:1.7;color:rgba(255,255,255,.9);}
+        .login-wa-btn{display:flex;align-items:center;justify-content:center;gap:9px;margin:12px 0 8px;padding:11px 16px;background:#25D366;color:#fff;border-radius:11px;text-decoration:none;font-weight:800;font-size:14px;box-shadow:0 4px 14px rgba(37,211,102,.35);transition:transform .15s,box-shadow .15s;}
+        .login-wa-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(37,211,102,.5);}
+        .login-help-phone{text-align:center;font-weight:700;letter-spacing:.5px;color:rgba(255,255,255,.85);font-size:13.5px;}
+      </style>
+      <details class="login-help">
+        <summary>🆘 تحتاج مساعدة؟ نسيت كلمة المرور؟</summary>
+        <div class="login-help-body">
+          إذا لم تستطع تسجيل الدخول، أو نسيت كلمة المرور، أو لديك أي استفسار —
+          تواصل مع الدعم الفني (IT) لمنصة <b>مدارس الإبداع والتميز الدولية</b>:
+          <a class="login-wa-btn"
+             href="https://wa.me/967778505751?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%AD%D8%AA%D8%A7%D8%AC%20%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A9%20%D9%81%D9%8A%20%D8%A7%D9%84%D8%AF%D8%AE%D9%88%D9%84%20%D8%A5%D9%84%D9%89%20%D9%85%D9%86%D8%B5%D8%A9%20%D8%A7%D9%84%D9%85%D8%B9%D9%84%D9%85%D9%8A%D9%86"
+             target="_blank" rel="noopener">
+            <span>💬</span> تواصل عبر واتساب
+          </a>
+          <div class="login-help-phone" dir="ltr">+967 778 505 751</div>
+        </div>
+      </details>
+
       <div class="login-footer">© 2026 جميع الحقوق محفوظة — School App Yemen</div>
     </div>
   </div>
@@ -1880,6 +1906,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 <div class="sidebar-section" id="adminSection" style="display:none;">
   <span class="sidebar-label">إدارة النظام</span>
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
+  <button class="sidebar-item" id="si-supervisorPerms" onclick="showSection('supervisorPerms')" style="display:none;"><span class="si-icon">🛡️</span> ضبط صلاحيات المشرف</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
   <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
@@ -4384,6 +4411,7 @@ function showSection(name) {
       certificates: renderCertificates,
       scoresheets: renderScoreSheets,
       calendar: renderCalendar,
+      supervisorPerms: renderSupervisorPerms,
       profile: renderProfile
     };
 
@@ -4477,19 +4505,22 @@ function initSidebarByRole() {
   var tasksMgmtItem = document.getElementById('si-tasksMgmt');
   if (tasksMgmtItem) tasksMgmtItem.style.display = canManageTasks ? '' : 'none';
 
-  // المدير الكامل والمحاسب: يرى كل شيء
+  var spItem = document.getElementById('si-supervisorPerms');
+
+  // المدير الكامل والمحاسب: يرى كل شيء (صفحة ضبط الصلاحيات للمدير فقط)
   if (u.role === 'admin' || u.role === 'accountant') {
     if (adminSection) adminSection.style.display = 'block';
     if (siAdminStudents) siAdminStudents.style.display = '';
+    if (spItem) spItem.style.display = (u.role === 'admin') ? '' : 'none';
     _refreshNotesBadge();
     return;
   }
 
-  // الوكيل والمشرف: يرى الأقسام الإدارية باستثناء قائمة الطلاب وإعداداتها
-  if (u.role === 'supervisor' || u.role === 'deputy') {
+  // الوكيل: إداري موسّع + يضبط صلاحيات المشرف (يبقى مخفياً عنه ما كان مخفياً سابقاً)
+  if (u.role === 'deputy') {
     if (adminSection) adminSection.style.display = 'block';
+    if (spItem) spItem.style.display = '';
     var hideItems = ['si-teachers-mgmt', 'si-lists-mgmt', 'si-adminTeachers', 'si-adminStudents'];
-    if (u.role === 'supervisor') { hideItems.push('si-schedSettings'); hideItems.push('si-certificates'); hideItems.push('si-scoresheets'); } // المشرف لا يضبط التواقيت ولا يطبع الشهادات/الكشوفات
     for (var i = 0; i < hideItems.length; i++) {
       var item = document.getElementById(hideItems[i]);
       if (item) item.style.display = 'none';
@@ -4498,9 +4529,156 @@ function initSidebarByRole() {
     return;
   }
 
+  // المشرف: الصفحات تُقاد من الإعداد (pagePerms) إن ضُبط، وإلا الافتراضي «كما كان سابقاً»
+  if (u.role === 'supervisor') {
+    if (adminSection) adminSection.style.display = 'block';
+    if (spItem) spItem.style.display = 'none';
+    _applySupervisorPagePerms(u);
+    _refreshNotesBadge();
+    return;
+  }
+
   // المعلم العادي: لا يرى القسم الإداري
   if (adminSection) adminSection.style.display = 'none';
   _refreshNotesBadge();
+}
+
+// ==================== صلاحيات المشرف: فهرس الصفحات + البوابة ====================
+// مفاتيح الصفحات القابلة للضبط لكل مشرف (المفتاح = id عنصر القائمة الجانبية)
+var SUPERVISOR_PAGE_CATALOG = [
+  { key:'si-grades',           label:'📊 الدرجات' },
+  { key:'si-homework',         label:'📝 الواجبات' },
+  { key:'si-violations',       label:'📋 السجل السلوكي' },
+  { key:'si-mySchedule',       label:'📅 جدول الحصص' },
+  { key:'si-calendar',         label:'🗓️ التقويم المدرسي' },
+  { key:'si-news',             label:'📢 الأخبار والإشعارات' },
+  { key:'si-contentHub',       label:'🎨 إدارة المحتوى والأنشطة' },
+  { key:'si-activitySup',      label:'🗂️ إدارة الأنشطة والإشراف' },
+  { key:'si-reports',          label:'📊 التقارير' },
+  { key:'si-notes',            label:'💬 ملاحظات أولياء الأمور' },
+  { key:'si-attendance',       label:'📋 الغياب اليومي' },
+  { key:'si-teacher-absence',  label:'🧑‍🏫 غياب المعلمين' },
+  { key:'si-teachers-mgmt',    label:'👥 إدارة المعلمين' },
+  { key:'si-adminTeachers',    label:'👥 المعلمون (موسّع)' },
+  { key:'si-adminActivities',  label:'📋 جميع الأنشطة' },
+  { key:'si-certificates',     label:'🏅 الشهادات' },
+  { key:'si-scoresheets',      label:'📋 الكشوفات' },
+  { key:'si-myTasks',          label:'✅ مهامي' },
+  { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام' },
+  { key:'si-studentDirectory', label:'🎒 أسماء الطلاب' },
+  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' }
+];
+// الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
+function _supDefaultHidden(){ return ['si-certificates','si-scoresheets']; }
+
+// تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
+function _applySupervisorPagePerms(u){
+  var perms = (u && u.pagePerms && u.pagePerms.length) ? u.pagePerms : null;
+  var hidden = _supDefaultHidden();
+  for (var i=0;i<SUPERVISOR_PAGE_CATALOG.length;i++){
+    var key = SUPERVISOR_PAGE_CATALOG[i].key;
+    var el = document.getElementById(key); if(!el) continue;
+    var show = perms ? (perms.indexOf(key)>=0) : (hidden.indexOf(key)<0);
+    el.style.display = show ? '' : 'none';
+  }
+}
+
+// ==================== صفحة ضبط صلاحيات المشرف (مدير/وكيل) ====================
+var _spvList = [];        // قائمة المشرفين وإعداداتهم
+var _spvCurrent = null;   // اسم المشرف المختار حالياً
+
+function renderSupervisorPerms(){
+  var u = App.user || {};
+  var box = document.getElementById('dynamicContent');
+  if (!(u.role === 'admin' || u.role === 'deputy')) {
+    box.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">هذه الصفحة للمدير والوكيل فقط</div></div>';
+    return;
+  }
+  box.innerHTML =
+    '<div class="page-head"><h2 style="margin:0;">🛡️ ضبط صلاحيات المشرف</h2>'+
+    '<p style="color:#64748b;margin:6px 0 0;font-size:14px;">حدّد لكل مشرف: الصفوف والشعب المسؤول عنها + الصفحات المسموح له بالاطلاع عليها. التغيير يسري عند تسجيل دخول المشرف التالي.</p></div>'+
+    '<div id="spv-list" style="margin:14px 0;"><p style="color:#999;text-align:center;padding:20px;">⏳ جارٍ تحميل المشرفين...</p></div>'+
+    '<div id="spv-form"></div>';
+  callServer('getSupervisorPermsConfigProtected', {}, function(res){
+    if(!res||!res.success){ document.getElementById('spv-list').innerHTML='<p style="color:#c62828;text-align:center;padding:20px;">❌ '+(res?res.error:'خطأ')+'</p>'; return; }
+    _spvList = res.supervisors || [];
+    _spvRenderList();
+  }, function(err){ document.getElementById('spv-list').innerHTML='<p style="color:#c62828;text-align:center;padding:20px;">❌ '+err.message+'</p>'; });
+}
+
+function _spvRenderList(){
+  var el = document.getElementById('spv-list'); if(!el) return;
+  if(!_spvList.length){ el.innerHTML='<div class="empty-state"><div class="es-icon">🛡️</div><div class="es-title">لا يوجد مشرفون</div><div class="es-sub">أضِف معلّماً بدور «مشرف» في صفحة إدارة المعلمين أولاً</div></div>'; return; }
+  var h='<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+  for(var i=0;i<_spvList.length;i++){ var s=_spvList[i];
+    var configured = (s.grades.length||s.sections.length||s.pages.length);
+    h+='<button onclick="_spvPick('+i+')" style="padding:9px 14px;border:1px solid '+(_spvCurrent===s.name?'#1a237e':'#cbd5e1')+';background:'+(_spvCurrent===s.name?'#1a237e':'#fff')+';color:'+(_spvCurrent===s.name?'#fff':'#0f172a')+';border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;">🛡️ '+escapeHtml(s.name)+(configured?' ✅':'')+'</button>';
+  }
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function _spvChecks(id, items, selected, valueOf, labelOf){
+  var sel = selected||[];
+  var h='<div id="'+id+'" style="display:flex;flex-wrap:wrap;gap:6px;">';
+  for(var i=0;i<items.length;i++){
+    var v=valueOf(items[i]), l=labelOf(items[i]);
+    var on = sel.indexOf(v)>=0;
+    h+='<label style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid '+(on?'#1a237e':'#e2e8f0')+';border-radius:9px;background:'+(on?'#eef2ff':'#fff')+';cursor:pointer;font-size:13px;">'+
+       '<input type="checkbox" value="'+escapeHtml(v)+'"'+(on?' checked':'')+'> '+escapeHtml(l)+'</label>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function _spvPick(i){
+  var s=_spvList[i]; if(!s) return; _spvCurrent=s.name; _spvRenderList();
+  var L = (App && App.lists) ? App.lists : {};
+  var grades=L.grades||[], sections=L.sections||[];
+  var f=document.getElementById('spv-form'); if(!f) return;
+  var idn=function(x){return x;};
+  f.innerHTML=
+    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);">'+
+    '<h3 style="margin:0 0 4px;">⚙️ إعداد: '+escapeHtml(s.name)+'</h3>'+
+    '<div style="font-size:12px;color:#94a3b8;margin-bottom:12px;">اترك الصفوف/الشعب فارغة = جميعها. اترك الصفحات فارغة = الوضع الافتراضي.</div>'+
+    '<div style="font-weight:700;margin:10px 0 6px;">🏫 الصفوف المسؤول عنها</div>'+_spvChecks('spv-grades', grades, s.grades, idn, idn)+
+    '<div style="font-weight:700;margin:14px 0 6px;">🔠 الشعب المسؤول عنها</div>'+_spvChecks('spv-sections', sections, s.sections, idn, idn)+
+    '<div style="font-weight:700;margin:14px 0 6px;">📄 الصفحات المسموح بها</div>'+
+       _spvChecks('spv-pages', SUPERVISOR_PAGE_CATALOG, s.pages, function(x){return x.key;}, function(x){return x.label;})+
+    '<div style="font-weight:700;margin:14px 0 6px;">📝 ملاحظات</div>'+
+       '<input id="spv-notes" value="'+escapeHtml(s.notes||'')+'" style="padding:8px;border:1px solid #ddd;border-radius:8px;width:100%;max-width:420px;">'+
+    '<div style="margin-top:16px;display:flex;gap:10px;align-items:center;">'+
+       '<button onclick="_spvSave()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;font-weight:700;">💾 حفظ</button>'+
+       '<button onclick="_spvSelectAllPages()" style="background:#e2e8f0;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;">تحديد كل الصفحات</button>'+
+       '<span id="spv-status" style="font-size:13px;"></span>'+
+    '</div></div>';
+}
+
+function _spvSelectAllPages(){
+  var box=document.getElementById('spv-pages'); if(!box) return;
+  var cbs=box.querySelectorAll('input[type=checkbox]');
+  for(var i=0;i<cbs.length;i++) cbs[i].checked=true;
+}
+
+function _spvCollect(id){
+  var box=document.getElementById(id); var out=[]; if(!box) return out;
+  var cbs=box.querySelectorAll('input[type=checkbox]:checked');
+  for(var i=0;i<cbs.length;i++) out.push(cbs[i].value);
+  return out;
+}
+
+function _spvSave(){
+  if(!_spvCurrent) return;
+  var st=document.getElementById('spv-status'); if(st) st.innerHTML='<span style="color:#1a237e;">⏳ جارٍ الحفظ...</span>';
+  var p={ name:_spvCurrent, grades:_spvCollect('spv-grades'), sections:_spvCollect('spv-sections'),
+          pages:_spvCollect('spv-pages'), notes:(document.getElementById('spv-notes')||{}).value||'' };
+  callServer('saveSupervisorPermsProtected', p, function(res){
+    if(!res||!res.success){ if(st) st.innerHTML='<span style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</span>'; return; }
+    if(st) st.innerHTML='<span style="color:#2e7d32;">✅ '+res.message+'</span>';
+    // حدّث النسخة المحلية
+    for(var i=0;i<_spvList.length;i++){ if(_spvList[i].name===_spvCurrent){ _spvList[i].grades=p.grades; _spvList[i].sections=p.sections; _spvList[i].pages=p.pages; _spvList[i].notes=p.notes; } }
+    _spvRenderList();
+  }, function(err){ if(st) st.innerHTML='<span style="color:#c62828;">❌ '+err.message+'</span>'; });
 }
 
 // ==================== REFRESH NOTES BADGE (مُحسَّن وآمن) ====================
@@ -9415,7 +9593,14 @@ function tabs_save(){
   if(kind==='حصة'){ p.grade=(document.getElementById('tabs-grade').value||'').trim(); p.section=(document.getElementById('tabs-section').value||'').trim(); p.subject=(document.getElementById('tabs-subject').value||'').trim(); p.period=(document.getElementById('tabs-num').value||'').trim(); }
   st.innerHTML='<span style="color:#1a237e;">⏳ جارٍ التسجيل...</span>';
   callServer('recordTeacherAbsenceProtected', p, function(res){
-    if(!res||!res.success){ st.innerHTML='<span style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</span>'; return; }
+    if(!res||!res.success){
+      if(res&&res.duplicate){
+        st.innerHTML='<span style="color:#c62828;font-weight:700;">⚠️ '+res.error+'</span>';
+      } else {
+        st.innerHTML='<span style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</span>';
+      }
+      return;
+    }
     st.innerHTML='<span style="color:#2e7d32;">✅ '+res.message+'</span>';
     document.getElementById('tabs-teacher').value=''; document.getElementById('tabs-notes').value='';
     tabs_loadSummary();
@@ -9444,20 +9629,65 @@ function tabs_renderSummary(list){
        '<td style="text-align:center;color:#c62828;">'+t.unexcused+'</td>'+
        '<td style="text-align:center;color:#1565c0;">'+t.tasked+'</td>'+
        '<td style="text-align:center;"><button onclick="tabs_details('+i+')" style="background:none;border:1px solid #ddd;border-radius:6px;padding:4px 8px;cursor:pointer;">👁️</button></td></tr>';
-    h+='<tr id="tabs-det-'+i+'" style="display:none;background:#f8fafc;"><td colspan="8" style="font-size:13px;padding:10px;line-height:1.8;">'+tabs_detailsHtml(t.records)+'</td></tr>';
+    h+='<tr id="tabs-det-'+i+'" style="display:none;background:#f8fafc;"><td colspan="8" style="font-size:13px;padding:10px;line-height:1.8;">'+tabs_detailsHtml(t.records, t.teacher)+'</td></tr>';
   }
   h+='</tbody></table></div>';
   box.innerHTML=h;
 }
-function tabs_detailsHtml(recs){
+// خريطة السجلات حسب رقم الصفّ (لمحرّر التعديل المضمّن)
+var _tabsRecMap={};
+function tabs_detailsHtml(recs, teacher){
   if(!recs||!recs.length) return 'لا تفاصيل';
   var s='';
   for(var i=0;i<recs.length;i++){ var r=recs[i];
-    s+='• '+r.date+' — '+(r.kind==='يوم'?'يوم كامل':('حصة '+r.period+' / '+r.grade+(r.section?'/'+r.section:'')+(r.subject?' — '+r.subject:'')))+' — <b>'+r.type+'</b>'+(r.day?' ('+r.day+')':'')+(r.notes?' — '+r.notes:'')+(r.recorder?' — سجّله: '+r.recorder:'')+'<br>';
+    var ri=r.rowIndex;
+    if(ri){ r.teacher=teacher; _tabsRecMap[ri]=r; }
+    var desc=(r.kind==='يوم'?'يوم كامل':('حصة '+r.period+' / '+r.grade+(r.section?'/'+r.section:'')+(r.subject?' — '+r.subject:'')));
+    s+='<div id="tabs-rec-'+ri+'" style="padding:6px 0;border-bottom:1px dashed #e2e8f0;">'+
+       '• '+r.date+' — '+desc+' — <b>'+r.type+'</b>'+(r.day?' ('+r.day+')':'')+(r.notes?' — '+r.notes:'')+(r.recorder?' — سجّله: '+r.recorder:'')+
+       (ri?(' &nbsp;<button onclick="tabs_recEdit('+ri+')" title="تعديل" style="background:none;border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;cursor:pointer;">✏️</button>'+
+            ' <button onclick="tabs_recDelete('+ri+')" title="إلغاء" style="background:none;border:1px solid #fca5a5;color:#c62828;border-radius:6px;padding:2px 7px;cursor:pointer;">🗑️</button>'):'')+
+       '</div>';
   }
   return s;
 }
 function tabs_details(i){ var el=document.getElementById('tabs-det-'+i); if(el) el.style.display=(el.style.display==='none'?'':'none'); }
+
+// إلغاء (حذف) سجلّ غياب
+function tabs_recDelete(rowIndex){
+  var r=_tabsRecMap[rowIndex]; if(!r) return;
+  if(!confirm('هل تريد إلغاء سجلّ الغياب التالي؟\n'+r.date+' — '+(r.kind==='يوم'?'يوم كامل':'حصة '+r.period)+' — '+r.type)) return;
+  callServer('deleteTeacherAbsenceProtected', {rowIndex:rowIndex, teacherName:r.teacher}, function(res){
+    if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; }
+    toast('✅ '+res.message,'success'); tabs_loadSummary();
+  }, function(err){ alert('❌ '+err.message); });
+}
+
+// محرّر تعديل مضمّن (النوع + الملاحظات) — بلا prompt لتوافق WebView
+function tabs_recEdit(rowIndex){
+  var r=_tabsRecMap[rowIndex]; var box=document.getElementById('tabs-rec-'+rowIndex); if(!r||!box) return;
+  function opt(v){ return '<option value="'+v+'"'+(r.type===v?' selected':'')+'>'+v+'</option>'; }
+  var nv=(r.notes||'').replace(/"/g,'&quot;');
+  box.innerHTML='<div style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px;">'+
+    '<div style="font-size:12px;color:#64748b;margin-bottom:6px;">تعديل سجلّ: '+r.date+' — '+(r.kind==='يوم'?'يوم كامل':'حصة '+r.period)+'</div>'+
+    'نوع الغياب: <select id="tabs-edit-type-'+rowIndex+'" style="padding:6px;border:1px solid #ddd;border-radius:6px;">'+
+       opt('بعذر')+opt('بدون عذر')+opt('مكلف بمهمة')+'</select> '+
+    'ملاحظات: <input id="tabs-edit-notes-'+rowIndex+'" value="'+nv+'" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:140px;"> '+
+    '<button onclick="tabs_recSave('+rowIndex+')" style="background:#1a237e;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">💾 حفظ</button> '+
+    '<button onclick="tabs_loadSummary()" style="background:#e2e8f0;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">إلغاء</button>'+
+  '</div>';
+}
+function tabs_recSave(rowIndex){
+  var r=_tabsRecMap[rowIndex]; if(!r) return;
+  var typeEl=document.getElementById('tabs-edit-type-'+rowIndex);
+  var notesEl=document.getElementById('tabs-edit-notes-'+rowIndex);
+  var p={ rowIndex:rowIndex, teacherName:r.teacher,
+          absType:(typeEl?typeEl.value:r.type), notes:(notesEl?notesEl.value:r.notes) };
+  callServer('updateTeacherAbsenceProtected', p, function(res){
+    if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; }
+    toast('✅ '+res.message,'success'); tabs_loadSummary();
+  }, function(err){ alert('❌ '+err.message); });
+}
 
 // ==================== LOAD XLSX (للاستيراد/التصدير) – نسخة محسنة ومتوافقة مع التطبيق ====================
 var _xlsxLoading = false;      // منع التحميل المتكرر
