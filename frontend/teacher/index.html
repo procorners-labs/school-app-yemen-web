@@ -1838,7 +1838,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
       <!-- جرس إشعارات الأخبار -->
       <button type="button" class="nav-bell" id="navBell"
-        title="الإشعارات والأخبار" onclick="openNewsNotifications(); return false;">
+        title="الإشعارات" onclick="openNotificationsPanel(event); return false;">
         🔔<span class="nav-bell-badge hidden" id="navBellBadge">0</span>
       </button>
 
@@ -3990,6 +3990,77 @@ function markNewsRead() {
 function openNewsNotifications() {
   markNewsRead();
   showSection('news');
+}
+
+/* ── نافذة الإشعارات المنبثقة (أخبار + ملاحظات أولياء الأمور) ── */
+function _notifOutside(e) {
+  var p = document.getElementById('notif-panel');
+  var b = document.getElementById('navBell');
+  if (p && !p.contains(e.target) && b && !b.contains(e.target)) closeNotificationsPanel();
+}
+function closeNotificationsPanel() {
+  var p = document.getElementById('notif-panel');
+  if (p && p.parentNode) p.parentNode.removeChild(p);
+  document.removeEventListener('mousedown', _notifOutside);
+}
+function openNotificationsPanel(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  if (document.getElementById('notif-panel')) { closeNotificationsPanel(); return; } // toggle
+  var host = document.createElement('div');
+  host.id = 'notif-panel';
+  host.style.cssText = 'position:fixed;top:58px;inset-inline-end:10px;width:340px;max-width:92vw;max-height:72vh;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.18);z-index:9998;';
+  host.innerHTML =
+    '<div style="padding:12px 14px;border-bottom:1px solid #eef2f7;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff">' +
+      '<b style="color:#0F2C5C">🔔 الإشعارات</b>' +
+      '<button onclick="closeNotificationsPanel()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8">✕</button>' +
+    '</div>' +
+    '<div id="notif-body" style="padding:8px"><div style="text-align:center;color:#94a3b8;padding:22px">⏳ جارٍ التحميل...</div></div>';
+  document.body.appendChild(host);
+  setTimeout(function () { document.addEventListener('mousedown', _notifOutside); }, 0);
+  _loadNotificationsList();
+}
+function _notifItem(icon, title, sub, onclick) {
+  return '<div onclick="' + onclick + '" style="display:flex;gap:10px;padding:10px;border-radius:10px;cursor:pointer;align-items:flex-start" ' +
+    'onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">' +
+    '<div style="font-size:17px">' + icon + '</div>' +
+    '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px;color:#0f172a">' + title + '</div>' +
+    (sub ? '<div style="font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + sub + '</div>' : '') + '</div></div>';
+}
+function _loadNotificationsList() {
+  var body = document.getElementById('notif-body'); if (!body) return;
+  var parts = { news: '', notes: '' };
+  var pending = 2;
+  function render() {
+    pending--;
+    if (pending > 0) return;
+    var html = parts.news + parts.notes;
+    body.innerHTML = html || '<div style="text-align:center;color:#94a3b8;padding:24px">لا توجد إشعارات جديدة 🎉</div>';
+    markNewsRead();
+  }
+  // 1) أحدث الأخبار
+  callServer('getAllNewsProtected', { page: 1, pageSize: 5 }, function (r) {
+    var list = (r && r.success && r.news) ? r.news : [];
+    if (list.length) {
+      parts.news = '<div style="font-size:11px;color:#94a3b8;padding:6px 10px">📢 أحدث الأخبار</div>';
+      for (var i = 0; i < list.length; i++) {
+        var n = list[i];
+        var title = ('' + (n.title || n.text || n.content || n['العنوان'] || 'خبر')).slice(0, 60);
+        var who = ('' + (n.teacher || n['اسم المدرس'] || '')).slice(0, 24);
+        var date = ('' + (n.date || n['التاريخ'] || '')).slice(0, 16);
+        parts.news += _notifItem('📢', escapeHtml(title), escapeHtml((who ? who + ' · ' : '') + date), "closeNotificationsPanel();showSection('news')");
+      }
+    }
+    render();
+  }, function () { render(); });
+  // 2) ملاحظات أولياء الأمور غير المقروءة
+  callServer('getUnreadNotesCountProtected', {}, function (r) {
+    var cnt = (r && r.success) ? (parseInt(r.count, 10) || 0) : 0;
+    if (cnt > 0) {
+      parts.notes = '<div style="font-size:11px;color:#94a3b8;padding:6px 10px">💬 أولياء الأمور</div>' +
+        _notifItem('💬', cnt + ' ملاحظة جديدة من أولياء الأمور', 'اضغط للاطلاع والرد', "closeNotificationsPanel();showSection('notes')");
+    }
+    render();
+  }, function () { render(); });
 }
 
 /**
@@ -6924,14 +6995,19 @@ var _vioCurrentPage    = 1;     // الصفحة الحالية
 var _vioPageSize       = 20;    // عدد المخالفات في كل صفحة
 var _vioTotalPages     = 1;     // إجمالي عدد الصفحات
 
-// دالة مساعدة: تحدد لون الشارة بناءً على نوع السلوك (إيجابي/سلبي)
+// دالة مساعدة: تحدد لون الشارة بناءً على نوع السلوك (إيجابي/سلبي/محايد)
+//   إيجابي = أخضر · سلبي = أحمر · غير ذلك (ملاحظة/محايد) = كهرماني — لا أحمر افتراضي.
 function _vioBadgeClass(type) {
   var t = _tcNorm(type || '');
-  var pos = ['تميز', 'مشاركة', 'انجاز', 'تعاون', 'مثالي', 'حضور', 'انضباط', 'ابداع', 'ابتكار', 'تفوق', 'تقدير', 'سلوك مثالي', 'تميز'];
+  var pos = ['تميز', 'مشاركة', 'انجاز', 'إنجاز', 'تعاون', 'مثالي', 'حضور', 'انضباط', 'ابداع', 'إبداع', 'ابتكار', 'تفوق', 'تقدير', 'اجتهاد', 'تطوع', 'مساعدة', 'احترام', 'نظافة', 'التزام', 'نشاط'];
   for (var i = 0; i < pos.length; i++) {
     if (t.indexOf(pos[i]) > -1) return 'badge-success';
   }
-  return 'badge-danger';
+  var neg = ['مخالف', 'تأخر', 'تاخر', 'غياب', 'هروب', 'شغب', 'عنف', 'اعتداء', 'اهمال', 'إهمال', 'تخريب', 'سب', 'شتم', 'غش', 'تدخين', 'مشاجرة', 'ازعاج', 'إزعاج', 'سيئ', 'سيء', 'عدم', 'رسوب', 'ضعف'];
+  for (var j = 0; j < neg.length; j++) {
+    if (t.indexOf(neg[j]) > -1) return 'badge-danger';
+  }
+  return 'badge-warning'; // محايد / ملاحظة عامّة
 }
 
 // --- 1. عرض الصفحة الأساسية (لا يتغير) ---
@@ -8674,7 +8750,7 @@ function doImportTeachers(inp) {
 // ==================== ADMIN ACTIVITIES ====================
 function renderAdminActivities() {
   if (!isAdmin()) { toast('ليس لديك صلاحية', 'error'); showSection('dashboard'); return; }
-  var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(245,158,11,.1)">📋</div><div class="section-header-title">جميع الأنشطة</div></div><div class="section-body"><div class="tabs mb-3"><button class="tab-btn active" onclick="switchActivitiesTab(\'homework\',this)">📝 الواجبات</button><button class="tab-btn" onclick="switchActivitiesTab(\'news\',this)">📢 الأخبار</button><button class="tab-btn" onclick="switchActivitiesTab(\'violations\',this)">⚠️ المخالفات</button></div><div id="adminActivitiesContent"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div></div>';
+  var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(245,158,11,.1)">📋</div><div class="section-header-title">جميع الأنشطة</div></div><div class="section-body"><div class="tabs mb-3"><button class="tab-btn active" onclick="switchActivitiesTab(\'homework\',this)">📝 الواجبات</button><button class="tab-btn" onclick="switchActivitiesTab(\'news\',this)">📢 الأخبار</button><button class="tab-btn" onclick="switchActivitiesTab(\'violations\',this)">⚠️ السلوكيات</button></div><div id="adminActivitiesContent"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div></div>';
   document.getElementById('dynamicContent').innerHTML = html;
   loadAdminActivities();
 }
@@ -9910,7 +9986,7 @@ function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); i
 // ==================== LM (إدارة القوائم) ====================
 function lm_load(){ var grid=document.getElementById('lm-grid'); if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_render(res); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).getListsDataProtected({token:App.user.token}); }
 function lm_reload(){ lm_load(); }
-function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',title:'⚠️ أنواع المخالفات',items:data.violations||[],color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
+function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',title:'⚠️ أنواع السلوكيات',items:data.violations||[],color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
 function lm_findRowIndex(rawRows,type,value){ if(!rawRows) return -1; var colMap={grade:'grade',subject:'subject',section:'section',violation:'violation'}; var col=colMap[type]; for(var i=0;i<rawRows.length;i++) if(rawRows[i][col]===value) return rawRows[i].rowIndex; return -1; }
 function lm_showAddModal(type,title){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
 function lm_editItem(type,rowIdx,currentVal){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
