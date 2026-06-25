@@ -988,6 +988,11 @@
     .badge-info    { background:rgba(59,130,246,.12);  color:var(--info); }
     .badge-purple  { background:rgba(139,92,246,.12); color:var(--purple); }
 
+    /* CHIP (التعاميم) */
+    .chip { display:inline-block; padding:3px 10px; border-radius:999px; font-size:.74rem;
+            font-weight:600; background:var(--primary-glow,rgba(79,70,229,.1)); color:var(--primary);
+            white-space:nowrap; }
+
     /* EMPTY STATE */
     .empty-state {
       text-align:center; padding:48px 24px; color:var(--text-muted);
@@ -1885,6 +1890,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')">      <span class="si-icon">📢</span> الأخبار والإشعارات</button>
+  <button class="sidebar-item" id="si-circulars"  onclick="showSection('circulars')"> <span class="si-icon">📜</span> التعاميم الإدارية <span class="badge" id="badge-circulars" style="display:none;"></span></button>
   <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> إدارة المحتوى والأنشطة</button>
   <button type="button" class="sidebar-item" id="si-activitySup" onclick="showSection('activitySup')" style="display:none;"><span class="si-icon">🗂️</span> إدارة الأنشطة والإشراف</button>
   <button class="sidebar-item" id="si-reports"    onclick="showSection('reports')">   <span class="si-icon">📊</span> التقارير</button>
@@ -4439,6 +4445,238 @@ function renderReports() {
  * عرض القسم المطلوب (الصفحة) والقفز إلى المحتوى
  * @param {string} name - اسم القسم (dashboard, grades, homework, ...)
  */
+// ==================== التعاميم الإدارية (المرحلة 6) ====================
+var _circList = [];
+var _circEditId = null;
+
+function _circAudienceLabel(a) {
+  if (a === 'teachers') return '🧑‍🏫 المعلمون';
+  if (a === 'students') return '🎒 الطلاب';
+  return '👥 الجميع';
+}
+
+function _circFormHTML() {
+  return '' +
+  '<div class="card" style="padding:16px;margin-top:8px;">' +
+    '<h3 style="margin:0 0 12px;font-size:16px;" id="circFormTitle">✍️ تعميم جديد</h3>' +
+    '<input type="hidden" id="circEditId">' +
+    '<div class="form-group mb-2"><label class="form-label">العنوان</label>' +
+      '<input type="text" class="form-control" id="circTitle" placeholder="عنوان التعميم"></div>' +
+    '<div class="form-group mb-2"><label class="form-label">النص <span style="color:var(--danger)">*</span></label>' +
+      '<textarea class="form-control" id="circBody" rows="3" placeholder="نص التعميم..."></textarea></div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">الجهة المستهدفة</label>' +
+        '<select class="form-select" id="circAudience">' +
+          '<option value="both">👥 الجميع (معلمون وطلاب)</option>' +
+          '<option value="teachers">🧑‍🏫 المعلمون فقط</option>' +
+          '<option value="students">🎒 الطلاب فقط</option>' +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">مدة العرض</label>' +
+        '<select class="form-select" id="circDuration">' +
+          '<option value="perm">♾️ دائم</option>' +
+          '<option value="1d">يوم واحد</option>' +
+          '<option value="2d">يومان</option>' +
+          '<option value="1w">أسبوع</option>' +
+          '<option value="1m">شهر</option>' +
+        '</select></div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">الفصل</label>' +
+        '<select class="form-select" id="circGrade"></select></div>' +
+      '<div class="form-group"><label class="form-label">الشعبة</label>' +
+        '<select class="form-select" id="circSection"></select></div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">معلمون محددون (اختياري)</label>' +
+        '<input type="text" class="form-control" id="circTeachers" placeholder="أسماء مفصولة بفواصل — فارغ = كل المعلمين"></div>' +
+      '<div class="form-group"><label class="form-label">طلاب محددون (اختياري)</label>' +
+        '<input type="text" class="form-control" id="circStudents" placeholder="أرقام/أسماء مفصولة بفواصل — فارغ = كل الطلاب"></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;">' +
+      '<button class="btn btn-primary" onclick="saveCircular()">📤 نشر التعميم</button>' +
+      '<button class="btn btn-secondary" id="circCancelBtn" style="display:none;" onclick="circResetForm()">إلغاء التعديل</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function _circInitFormSelects() {
+  var g = document.getElementById('circGrade');
+  if (g) {
+    var grades = (typeof myGrades === 'function' ? myGrades() : []) || [];
+    var html = '<option value="الجميع">كل الفصول</option>';
+    for (var i = 0; i < grades.length; i++) html += '<option value="' + esc(grades[i]) + '">' + esc(grades[i]) + '</option>';
+    g.innerHTML = html;
+    g.onchange = _circFillSections;
+  }
+  _circFillSections();
+}
+
+function _circFillSections() {
+  var s = document.getElementById('circSection');
+  if (!s) return;
+  var g = document.getElementById('circGrade');
+  var grade = g ? g.value : 'الجميع';
+  var html = '<option value="الجميع">كل الشعب</option>';
+  if (grade && grade !== 'الجميع') {
+    var secs = (typeof getMySectionsForGrade === 'function' ? getMySectionsForGrade(grade) : []) || [];
+    for (var i = 0; i < secs.length; i++) html += '<option value="' + esc(secs[i]) + '">' + esc(secs[i]) + '</option>';
+  }
+  s.innerHTML = html;
+}
+
+function renderCirculars() {
+  var u = App.user || {};
+  var box = document.getElementById('dynamicContent');
+  if (!box) return;
+  var isMgr = (u.role === 'admin' || u.role === 'deputy');
+  var head = '<div class="page-head"><h2 style="margin:0;">📜 التعاميم الإدارية</h2>' +
+    '<p style="color:#64748b;margin:6px 0 0;font-size:14px;">' +
+    (isMgr ? 'أنشئ تعميماً موجّهاً للمعلمين/الطلاب مع تحديد الفصل/الشعبة ومدة العرض. يظهر تلقائياً في منصتي المعلم والطالب.'
+           : 'التعاميم الصادرة من الإدارة الموجَّهة إليك.') + '</p></div>';
+  box.innerHTML = head + (isMgr ? _circFormHTML() : '') +
+    '<div id="circ-list" style="margin-top:16px;"><p style="color:#999;text-align:center;padding:20px;">⏳ جارٍ التحميل...</p></div>';
+  if (isMgr) _circInitFormSelects();
+  _circLoadList(isMgr);
+}
+
+function _circLoadList(isMgr) {
+  callServer('listCircularsProtected', { manage: !!isMgr }, function (res) {
+    var list = document.getElementById('circ-list');
+    if (!list) return;
+    if (!res || !res.success) {
+      list.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? esc(res.error) : 'تعذّر التحميل') + '</p>';
+      return;
+    }
+    _circList = res.circulars || [];
+    _circRenderList(res.isManager === true);
+  }, function (err) {
+    var list = document.getElementById('circ-list');
+    if (list) list.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + esc(err.message || err) + '</p>';
+  });
+}
+
+function _circScopeChip(c) {
+  var parts = [];
+  if (c.grade && c.grade !== 'الجميع') parts.push(esc(c.grade));
+  if (c.section && c.section !== 'الجميع') parts.push(esc(c.section));
+  var teachers = (c.teachers || '').trim();
+  var students = (c.students || '').trim();
+  if (teachers) parts.push('معلمون: ' + esc(teachers));
+  if (students) parts.push('طلاب: ' + esc(students));
+  return parts.length ? parts.join(' · ') : 'عام';
+}
+
+function _circRenderList(isMgr) {
+  var box = document.getElementById('circ-list');
+  if (!box) return;
+  if (!_circList.length) {
+    box.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا توجد تعاميم</div></div>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < _circList.length; i++) {
+    var c = _circList[i];
+    var expLabel = c.expiresAt ? ('ينتهي: ' + esc(c.expiresAt)) : 'دائم';
+    var statusChips =
+      '<span class="chip">' + _circAudienceLabel(c.audience) + '</span>' +
+      '<span class="chip">' + _circScopeChip(c) + '</span>' +
+      '<span class="chip">⏳ ' + expLabel + '</span>' +
+      (isMgr && !c.active ? '<span class="chip" style="background:#fde8e8;color:#c62828;">معطّل</span>' : '') +
+      (isMgr && c.isExpired ? '<span class="chip" style="background:#fef3c7;color:#92400e;">منتهٍ</span>' : '');
+    var actions = '';
+    if (isMgr) {
+      actions = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">' +
+        '<button class="btn btn-sm btn-secondary" onclick="circEdit(\'' + esc(c.id) + '\')">✏️ تعديل</button>' +
+        '<button class="btn btn-sm btn-secondary" onclick="circToggle(\'' + esc(c.id) + '\')">' + (c.active ? '🚫 تعطيل' : '✅ تفعيل') + '</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="circDelete(\'' + esc(c.id) + '\')">🗑️ حذف</button>' +
+        '</div>';
+    }
+    h += '<div class="card" style="padding:14px;margin-bottom:10px;' + (isMgr && (!c.active || c.isExpired) ? 'opacity:.7;' : '') + '">' +
+         (c.title ? '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + esc(c.title) + '</div>' : '') +
+         '<div style="white-space:pre-wrap;line-height:1.7;">' + esc(c.body) + '</div>' +
+         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">' + statusChips + '</div>' +
+         '<div style="font-size:12px;color:#94a3b8;margin-top:6px;">📅 ' + esc(c.date || c.createdAt || '') +
+            (c.author ? ' · ✍️ ' + esc(c.author) : '') + '</div>' +
+         actions +
+         '</div>';
+  }
+  box.innerHTML = h;
+}
+
+function saveCircular() {
+  var body = (document.getElementById('circBody').value || '').trim();
+  if (!body) { toast('نص التعميم مطلوب', 'warning'); return; }
+  var data = {
+    title    : (document.getElementById('circTitle').value || '').trim(),
+    body     : body,
+    audience : document.getElementById('circAudience').value || 'both',
+    grade    : document.getElementById('circGrade').value || 'الجميع',
+    section  : document.getElementById('circSection').value || 'الجميع',
+    teachers : (document.getElementById('circTeachers').value || '').trim(),
+    students : (document.getElementById('circStudents').value || '').trim(),
+    duration : document.getElementById('circDuration').value || 'perm'
+  };
+  var editId = document.getElementById('circEditId').value || '';
+  var fn = editId ? 'updateCircularProtected' : 'createCircularProtected';
+  if (editId) data.id = editId;
+  showLoading('جاري النشر...');
+  callServer(fn, data, function (r) {
+    hideLoading();
+    if (r && r.success) {
+      toast(r.message || 'تم', 'success');
+      circResetForm();
+      _circLoadList(true);
+    } else {
+      showError(r ? r.error : 'فشل النشر');
+    }
+  }, function (err) { hideLoading(); showError(err.message || err); });
+}
+
+function circResetForm() {
+  var ids = ['circTitle', 'circBody', 'circTeachers', 'circStudents', 'circEditId'];
+  for (var i = 0; i < ids.length; i++) { var el = document.getElementById(ids[i]); if (el) el.value = ''; }
+  var a = document.getElementById('circAudience'); if (a) a.value = 'both';
+  var d = document.getElementById('circDuration'); if (d) d.value = 'perm';
+  var g = document.getElementById('circGrade'); if (g) g.value = 'الجميع';
+  _circFillSections();
+  var ft = document.getElementById('circFormTitle'); if (ft) ft.textContent = '✍️ تعميم جديد';
+  var cb = document.getElementById('circCancelBtn'); if (cb) cb.style.display = 'none';
+}
+
+function circEdit(id) {
+  var c = null;
+  for (var i = 0; i < _circList.length; i++) { if (_circList[i].id === id) { c = _circList[i]; break; } }
+  if (!c) return;
+  document.getElementById('circEditId').value = c.id;
+  document.getElementById('circTitle').value = c.title || '';
+  document.getElementById('circBody').value = c.body || '';
+  document.getElementById('circAudience').value = c.audience || 'both';
+  document.getElementById('circTeachers').value = c.teachers || '';
+  document.getElementById('circStudents').value = c.students || '';
+  document.getElementById('circDuration').value = 'perm'; // الإبقاء على الانتهاء الحالي ما لم يُغيَّر
+  var g = document.getElementById('circGrade');
+  if (g) { g.value = (c.grade || 'الجميع'); _circFillSections(); }
+  var s = document.getElementById('circSection'); if (s) s.value = (c.section || 'الجميع');
+  var ft = document.getElementById('circFormTitle'); if (ft) ft.textContent = '✏️ تعديل التعميم #' + esc(c.id);
+  var cb = document.getElementById('circCancelBtn'); if (cb) cb.style.display = '';
+  var box = document.getElementById('dynamicContent'); if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth' });
+}
+
+function circToggle(id) {
+  callServer('toggleCircularActiveProtected', { id: id }, function (r) {
+    if (r && r.success) { toast(r.active ? 'تم التفعيل' : 'تم التعطيل', 'success'); _circLoadList(true); }
+    else showError(r ? r.error : 'فشل');
+  });
+}
+
+function circDelete(id) {
+  if (!confirm('حذف هذا التعميم نهائياً؟')) return;
+  callServer('deleteCircularProtected', { id: id }, function (r) {
+    if (r && r.success) { toast('تم الحذف', 'success'); _circLoadList(true); }
+    else showError(r ? r.error : 'فشل الحذف');
+  });
+}
+
 function showSection(name) {
   try {
     // التأكد من وجود العنصر الرئيسي dynamicContent
@@ -4540,6 +4778,7 @@ function showSection(name) {
       scoresheets: renderScoreSheets,
       calendar: renderCalendar,
       supervisorPerms: renderSupervisorPerms,
+      circulars: renderCirculars,
       profile: renderProfile
     };
 

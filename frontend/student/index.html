@@ -1012,6 +1012,26 @@ a { color: var(--pr); text-decoration: none; }
   transition: background var(--tr), transform var(--tr);
 }
 .news-card .gal-dot.active { background: #fff; transform: scale(1.25); }
+/* ── التعاميم الإدارية ── */
+#circularsCard .card-h .ttl { color: var(--pr); }
+.circ-item {
+  border-inline-start: 4px solid var(--pr);
+  background: var(--bg-2);
+  border-radius: var(--rad-s);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.circ-item:last-child { margin-bottom: 0; }
+.circ-title { font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
+.circ-body { line-height: 1.7; font-size: 13.5px; white-space: pre-wrap; }
+.circ-meta {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-top: 8px; font-size: 11.5px; color: var(--muted);
+}
+.circ-meta .circ-scope {
+  background: var(--pr); color: #fff;
+  padding: 1px 8px; border-radius: 999px; font-weight: 600;
+}
 .news-card .pdf-link, .news-card .video-link {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 14px;
@@ -1750,6 +1770,13 @@ a { color: var(--pr); text-decoration: none; }
 
     <!-- 📢 الأخبار -->
     <section data-section="news" style="display:none;">
+      <div class="card" id="circularsCard" style="display:none;">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📜</span> التعاميم الإدارية</div>
+        </div>
+        <div id="circularsList"></div>
+      </div>
+
       <div class="card">
         <div class="card-h">
           <div class="ttl"><span class="ic">📢</span> الأخبار والإشعارات</div>
@@ -2825,7 +2852,53 @@ function renderHomework(data) {
 // ═══════════════════════════════════════════════════════════
 function loadNews() {
   APP.loaded.news = true;
+  loadCirculars();
   resetNewsAndLoad();
+}
+
+// ── التعاميم الإدارية (تظهر أعلى الأخبار) ──
+function loadCirculars() {
+  if (!APP.user) return;
+  var params = {
+    klass      : APP.user.class,
+    section    : APP.user.section,
+    studentId  : APP.user.id,
+    studentName: APP.user.name,
+    schoolId   : APP.user.schoolId
+  };
+  callServerSmart(
+    'getStudentCircularsFiltered',
+    params,
+    'circ_' + APP.user.class + '_' + APP.user.section + '_' + APP.user.id,
+    120,
+    function (r) { renderCirculars((r && r.success) ? (r.circulars || []) : []); },
+    function () { renderCirculars([]); }
+  );
+}
+
+function renderCirculars(items) {
+  var card = $('circularsCard');
+  var list = $('circularsList');
+  if (!card || !list) return;
+  if (!items || !items.length) { card.style.display = 'none'; list.innerHTML = ''; return; }
+  var h = '';
+  for (var i = 0; i < items.length; i++) {
+    var c = items[i];
+    var scope = '';
+    if (c.grade && c.grade !== 'الجميع') scope = esc(c.grade);
+    if (c.section && c.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(c.section);
+    h += '<div class="circ-item">' +
+           (c.title ? '<div class="circ-title">📌 ' + esc(c.title) + '</div>' : '') +
+           '<div class="circ-body">' + nl2br(c.body) + '</div>' +
+           '<div class="circ-meta">' +
+             (c.author ? '<span>✍️ ' + esc(c.author) + '</span>' : '') +
+             (c.date ? '<span>📅 ' + esc(fmtDate(c.date)) + '</span>' : '') +
+             (scope ? '<span class="circ-scope">' + scope + '</span>' : '') +
+           '</div>' +
+         '</div>';
+  }
+  list.innerHTML = h;
+  card.style.display = 'block';
 }
 
 function resetNewsAndLoad() {
