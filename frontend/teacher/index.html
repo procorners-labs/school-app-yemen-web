@@ -4848,23 +4848,24 @@ function initSidebarByRole() {
   var socialSection   = document.getElementById('socialSection');
   var siAdminStudents = document.getElementById('si-adminStudents');
 
-  // ── هل يملك صلاحية التحكم الاجتماعي؟ ──
-  // مدير / وكيل / أي معلم دوره "activities" أو مادته تحتوي كلمة "نشاط"
-  var isSocialAllowed = (u.role === 'admin' || u.role === 'deputy' || u.role === 'accountant') ||
-    (u.role === 'activities') ||
-    (u.subjects && (function() {
-      for (var si = 0; si < u.subjects.length; si++) {
-        var s = String(u.subjects[si] || '').trim();
-        if (s === 'الأنشطة' || s === 'نشاط' || s.indexOf('نشاط') > -1 || s.indexOf('الأنشطة') > -1) return true;
-      }
-      return false;
-    })());
+  // ── كشف دور الأنشطة: الدور 'activities' أو وجود «نشاط/الأنشطة» في المواد ──
+  //   (دفاعي: حتى لو لم يُحسم الدور خلفياً، وجود مادة الأنشطة يكفي لإظهار صفحاتها)
+  var subjHasActivity = !!(u.subjects && (function() {
+    for (var si = 0; si < u.subjects.length; si++) {
+      var s = String(u.subjects[si] || '').trim();
+      if (s.indexOf('نشاط') > -1 || s.indexOf('الأنشطة') > -1 || s.indexOf('الانشطة') > -1) return true;
+    }
+    return false;
+  })());
+  var isActivitiesRole = (u.role === 'activities') || subjHasActivity;
 
+  // ── هل يملك صلاحية التحكم الاجتماعي؟ مدير/وكيل/محاسب أو دور الأنشطة ──
+  var isSocialAllowed = (u.role === 'admin' || u.role === 'deputy' || u.role === 'accountant') || isActivitiesRole;
   if (socialSection) socialSection.style.display = isSocialAllowed ? 'block' : 'none';
 
-  // ── تبويب «إدارة الأنشطة والإشراف»: مشرف الأنشطة + المدير + الوكيل ──
+  // ── تبويب «إدارة الأنشطة والإشراف»: دور الأنشطة + المدير + الوكيل ──
   var siActivitySup = document.getElementById('si-activitySup');
-  var canSupervise = (u.role === 'activities' || u.role === 'admin' || u.role === 'deputy');
+  var canSupervise = (isActivitiesRole || u.role === 'admin' || u.role === 'deputy');
   if (siActivitySup) siActivitySup.style.display = canSupervise ? '' : 'none';
 
   // ── «إدارة المهام»: مدير/وكيل/مشرف/محاسب/أنشطة ──
@@ -4900,6 +4901,12 @@ function initSidebarByRole() {
   if (u.role === 'supervisor') {
     if (adminSection) adminSection.style.display = 'block';
     if (spItem) spItem.style.display = 'none';
+    // أدوات إدارية خاصة بالمدير/الوكيل — تبقى مخفية دائماً عن المشرف (غير قابلة للضبط)
+    var supHideAlways = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings'];
+    for (var sh = 0; sh < supHideAlways.length; sh++) {
+      var she = document.getElementById(supHideAlways[sh]);
+      if (she) she.style.display = 'none';
+    }
     _applySupervisorPagePerms(u);
     _refreshNotesBadge();
     return;
@@ -4907,7 +4914,7 @@ function initSidebarByRole() {
 
   // مشرف الأنشطة: صفحاته = الأنشطة/الإشراف + المحتوى + الأخبار + المهام (أعلاه)
   //   + «جميع الأنشطة» من القسم الإداري (دون بقية أدوات الإدارة).
-  if (u.role === 'activities') {
+  if (isActivitiesRole) {
     if (adminSection) {
       adminSection.style.display = 'block';
       var aItems = adminSection.querySelectorAll('.sidebar-item');
@@ -4950,7 +4957,7 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' }
 ];
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
-function _supDefaultHidden(){ return ['si-certificates','si-scoresheets']; }
+function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminTeachers','si-adminStudents']; }
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
 function _applySupervisorPagePerms(u){
