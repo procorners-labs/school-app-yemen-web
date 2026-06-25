@@ -10608,6 +10608,19 @@ window.togglePasswordVisibility = togglePasswordVisibility;
 // ════════════════════════════════════════════════════════
  
 var _RPT_CACHE = null; // cache بسيط داخل المتصفح
+var _RPT_SECTION = '';  // الشعبة المختارة لعرض التقرير حسب الشعبة
+function rep_setSection(v) { _RPT_SECTION = v || ''; loadReports(true); }
+function rep_fillSectionPicker(d) {
+  var sel = document.getElementById('rptSection'); if (!sel) return;
+  var secs = (d && d.availableSections) || [];
+  if (!secs.length) { sel.style.display = 'none'; return; }
+  var o = '<option value="">كل الشعب</option>';
+  for (var i = 0; i < secs.length; i++) {
+    var v = secs[i];
+    o += '<option value="' + escapeHtml(v) + '"' + (v === _RPT_SECTION ? ' selected' : '') + '>شعبة ' + escapeHtml(v) + '</option>';
+  }
+  sel.innerHTML = o; sel.style.display = '';
+}
  
 function renderReports() {
   var html = '' +
@@ -10618,6 +10631,7 @@ function renderReports() {
           '<div class="lbl">لوحة التقارير</div>' +
           '<div class="sub" id="rptScopeLabel">جاري تحميل النطاق...</div>' +
         '</div>' +
+        '<select id="rptSection" onchange="rep_setSection(this.value)" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-inline-end:6px;display:none"></select>' +
         '<button class="refresh-btn" onclick="loadReports(true)">🔄 تحديث</button>' +
         '<button class="refresh-btn" onclick="rep_shareReport()" style="margin-inline-start:6px">📤 مشاركة</button>' +
       '</div>' +
@@ -10649,7 +10663,7 @@ function loadReports(force) {
       '<div class="sk-line skeleton w50"></div>' +
     '</div>';
  
-  callServer('getTeacherReportsProtected', {}, function(r) {
+  callServer('getTeacherReportsProtected', { section: _RPT_SECTION || '' }, function(r) {
     if (!r || !r.success) {
       bodyEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
         ((r && r.error) || 'خطأ غير معروف') + '</div>';
@@ -10657,6 +10671,7 @@ function loadReports(force) {
     }
     _RPT_CACHE = r.data;
     _renderReportsBody(r.data);
+    rep_fillSectionPicker(r.data);
   }, function(err) {
     bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
   });
@@ -10877,6 +10892,9 @@ function _rpt_renderAdmin(d) {
   html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
   html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
     _rpt_barChart(d.charts.contentByClass, 'value', 8));
+  if (d.charts.studentsBySection && d.charts.studentsBySection.length)
+    html += _rpt_card('🔠', 'توزيع الطلاب على الشعب',
+      _rpt_barChart(d.charts.studentsBySection, 'value', 12));
   html += '</div>';
  
   // Lists
@@ -10916,6 +10934,9 @@ function _rpt_renderSupervisor(d) {
   html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
   html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
     _rpt_barChart(d.charts.contentByClass, 'value', 8));
+  if (d.charts.studentsBySection && d.charts.studentsBySection.length)
+    html += _rpt_card('🔠', 'توزيع الطلاب على الشعب',
+      _rpt_barChart(d.charts.studentsBySection, 'value', 12));
   html += '</div>';
 
   html += '<div class="rpt-grid-2">';
