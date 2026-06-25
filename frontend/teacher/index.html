@@ -2302,12 +2302,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div class="form-group mb-3"><label class="form-label">نص الخبر <span style="color:var(--danger)">*</span></label><textarea class="form-control" id="newsText" placeholder="اكتب الخبر أو الإشعار..."></textarea></div>
       <div class="form-group mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="newsDate"></div>
-      <div class="form-group"><label class="form-label">مرفق (صورة أو ملف — اختياري)</label>
+      <div class="form-group"><label class="form-label">مرفقات (صور متعددة أو فيديو أو ملف — اختياري)</label>
         <div class="file-drop-zone" id="newsDropZone" onclick="document.getElementById('newsFile').click()">
-          <div>📎 انقر لاختيار ملف أو اسحبه هنا</div>
-          <div style="font-size:.78rem;color:var(--text-light);margin-top:4px;">الحد الأقصى: 5MB</div>
+          <div>📎 انقر لاختيار صورة/صور أو فيديو أو اسحبها هنا</div>
+          <div style="font-size:.78rem;color:var(--text-light);margin-top:4px;">يمكنك اختيار عدة صور لعرضها كمعرض · صورة ≤ 5MB · فيديو ≤ 25MB</div>
         </div>
-        <input type="file" id="newsFile" style="display:none" accept="image/*,application/pdf" onchange="handleFileSelect(this,'newsDropZone','newsFileInfo')">
+        <input type="file" id="newsFile" style="display:none" accept="image/*,video/*,application/pdf" multiple onchange="handleNewsFileSelect(this)">
         <div id="newsFileInfo" class="attachment-preview mt-2 hidden"></div>
       </div>
     </div>
@@ -4234,22 +4234,79 @@ function saveNews() {
   var data = { id: id, teacher: '', grade: grade, section: section, news: news, date: date };
 
   var fileInput = document.getElementById('newsFile');
-  var file = (fileInput && fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+  var files = (fileInput && fileInput.files) ? fileInput.files : null;
 
-  if (file) {
-    if (file.size > 5 * 1024 * 1024) {
-      toast('حجم الملف يتجاوز 5MB', 'warning');
+  if (!files || files.length === 0) {
+    sendSaveNews(data, id);
+    return;
+  }
+
+  // التحقق من الأحجام: صورة ≤ 5MB · فيديو ≤ 25MB
+  var IMG_MAX = 5 * 1024 * 1024, VID_MAX = 25 * 1024 * 1024;
+  var picked = [];
+  for (var fi = 0; fi < files.length; fi++) {
+    var f = files[fi];
+    var isVid = (f.type && f.type.indexOf('video') === 0);
+    var cap = isVid ? VID_MAX : IMG_MAX;
+    if (f.size > cap) {
+      toast('حجم «' + f.name + '» يتجاوز ' + (isVid ? '25MB' : '5MB'), 'warning');
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      data.attachment = { base64: e.target.result, fileName: file.name, mimeType: file.type };
-      sendSaveNews(data, id);
-    };
-    reader.onerror = function() { toast('فشل قراءة الملف', 'error'); };
-    reader.readAsDataURL(file);
-  } else {
-    sendSaveNews(data, id);
+    picked.push(f);
+  }
+
+  // قراءة كل الملفات إلى base64 ثم الإرسال كقائمة
+  var listOut = [];
+  var done = 0, failed = false;
+  for (var pi = 0; pi < picked.length; pi++) {
+    (function (file) {
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        listOut.push({ base64: e.target.result, fileName: file.name, mimeType: file.type });
+        done++;
+        if (done === picked.length && !failed) {
+          data.attachmentList = listOut;
+          // توافق رجعي: لو ملف واحد فقط، مرّره أيضاً كمرفق مفرد
+          if (listOut.length === 1) data.attachment = listOut[0];
+          sendSaveNews(data, id);
+        }
+      };
+      reader.onerror = function () {
+        if (!failed) { failed = true; toast('فشل قراءة الملف: ' + file.name, 'error'); }
+      };
+      reader.readAsDataURL(file);
+    })(picked[pi]);
+  }
+}
+
+/**
+ * معاينة مرفقات الخبر المتعددة (عدد + أنواع)
+ */
+function handleNewsFileSelect(input) {
+  var info = document.getElementById('newsFileInfo');
+  var zone = document.getElementById('newsDropZone');
+  if (!input || !input.files || input.files.length === 0) {
+    if (info) { info.classList.add('hidden'); info.innerHTML = ''; }
+    return;
+  }
+  var n = input.files.length, imgs = 0, vids = 0, others = 0;
+  for (var i = 0; i < n; i++) {
+    var t = input.files[i].type || '';
+    if (t.indexOf('image') === 0) imgs++;
+    else if (t.indexOf('video') === 0) vids++;
+    else others++;
+  }
+  var parts = [];
+  if (imgs) parts.push('🖼️ ' + imgs + ' صورة');
+  if (vids) parts.push('🎬 ' + vids + ' فيديو');
+  if (others) parts.push('📎 ' + others + ' ملف');
+  if (info) {
+    info.classList.remove('hidden');
+    info.innerHTML = '<div style="font-size:.85rem;color:var(--text-dark)">تم اختيار: ' + parts.join(' · ') + '</div>';
+  }
+  if (zone) {
+    var head = zone.querySelector('div');
+    if (head) head.textContent = '📎 تم اختيار ' + n + ' ملف — انقر للتغيير';
   }
 }
 

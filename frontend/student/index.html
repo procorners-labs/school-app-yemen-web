@@ -948,6 +948,70 @@ a { color: var(--pr); text-decoration: none; }
   padding: 14px;
   background: var(--bg);
 }
+/* ── فيديو مدمج ── */
+.news-card .video-embed {
+  position: relative;
+  width: 100%;
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+.news-card .video-embed iframe,
+.news-card .video-embed video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border: 0; display: block;
+  object-fit: contain; background: #000;
+}
+/* ── معرض صور (يمين/يسار) ── */
+.news-card .news-gallery {
+  position: relative;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.news-card .gal-stage {
+  position: relative;
+  width: 100%;
+  min-height: 220px;
+  max-height: 380px;
+  background: var(--bg-2);
+}
+.news-card .gal-slide { display: none; }
+.news-card .gal-slide.active { display: block; }
+.news-card .gal-slide img {
+  width: 100%; display: block;
+  object-fit: cover;
+  max-height: 380px;
+  cursor: zoom-in;
+}
+.news-card .gal-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 38px;
+  border: 0; border-radius: 50%;
+  background: rgba(0,0,0,.5); color: #fff;
+  font-size: 24px; line-height: 1; font-weight: 700;
+  cursor: pointer; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--tr);
+}
+.news-card .gal-nav:hover { background: rgba(0,0,0,.78); }
+.news-card .gal-prev { right: 8px; }   /* RTL: السابق على اليمين */
+.news-card .gal-next { left: 8px; }    /* RTL: التالي على اليسار */
+.news-card .gal-counter {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(0,0,0,.6); color: #fff;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; z-index: 2;
+}
+.news-card .gal-dots {
+  position: absolute; bottom: 8px; left: 0; right: 0;
+  display: flex; gap: 6px; justify-content: center; z-index: 2;
+}
+.news-card .gal-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,.55); cursor: pointer;
+  transition: background var(--tr), transform var(--tr);
+}
+.news-card .gal-dot.active { background: #fff; transform: scale(1.25); }
 .news-card .pdf-link, .news-card .video-link {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 14px;
@@ -2870,6 +2934,113 @@ function renderNewsList() {
   }, 600);
 }
 
+// ── وسائط الخبر: معرض صور (يمين/يسار) + فيديو مدمج + ملفات ──
+var _galSeq = 0;
+
+function _ytId(u) {
+  var s = (u || '').toString();
+  var m = s.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : '';
+}
+function _driveId(u) {
+  var s = (u || '').toString();
+  var m = s.match(/[?&]id=([A-Za-z0-9_-]{10,})/) || s.match(/\/d\/([A-Za-z0-9_-]{10,})/);
+  return m ? m[1] : '';
+}
+
+function newsVideoHTML(url) {
+  var u = (url || '').toString();
+  var low = u.toLowerCase();
+  var yt = _ytId(u);
+  if (yt) {
+    return '<div class="video-embed"><iframe src="https://www.youtube.com/embed/' + esc(yt) + '" ' +
+           'frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" ' +
+           'allowfullscreen loading="lazy"></iframe></div>';
+  }
+  if (/\.(mp4|webm|mov|m4v)(\?.*)?$/.test(low)) {
+    return '<div class="video-embed"><video src="' + esc(u) + '" controls preload="metadata" playsinline ' +
+           'onerror="this.parentNode.innerHTML=\'<a href=&quot;' + esc(u) + '&quot; target=_blank class=video-link>🎬 مشاهدة الفيديو</a>\'"></video></div>';
+  }
+  if (low.indexOf('drive.google.com') !== -1) {
+    var did = _driveId(u);
+    if (did) {
+      return '<div class="video-embed"><iframe src="https://drive.google.com/file/d/' + esc(did) + '/preview" ' +
+             'frameborder="0" allowfullscreen loading="lazy"></iframe></div>';
+    }
+  }
+  // Facebook / Instagram / Vimeo / أخرى — رابط مباشر
+  return '<div class="video-wrap"><a href="' + esc(u) + '" target="_blank" class="video-link">🎬 مشاهدة الفيديو</a></div>';
+}
+
+function newsGalleryHTML(imgs) {
+  if (imgs.length === 1) {
+    return '<div class="img-wrap" onclick="openLightbox(\'' + esc(imgs[0]) + '\')">' +
+           '<img src="' + esc(imgs[0]) + '" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">' +
+           '</div>';
+  }
+  var gid = 'gal' + (++_galSeq);
+  var slides = '', dots = '';
+  for (var i = 0; i < imgs.length; i++) {
+    slides += '<div class="gal-slide' + (i === 0 ? ' active' : '') + '">' +
+              '<img src="' + esc(imgs[i]) + '" alt="" loading="lazy" ' +
+              'onclick="openLightbox(\'' + esc(imgs[i]) + '\')" ' +
+              'onerror="this.style.display=\'none\'"></div>';
+    dots += '<span class="gal-dot' + (i === 0 ? ' active' : '') + '" onclick="galGo(\'' + gid + '\',' + i + ')"></span>';
+  }
+  return '<div class="news-gallery" id="' + gid + '" data-count="' + imgs.length + '" data-cur="0">' +
+           '<div class="gal-stage">' + slides + '</div>' +
+           '<button type="button" class="gal-nav gal-prev" onclick="galMove(\'' + gid + '\',-1)" aria-label="السابق">‹</button>' +
+           '<button type="button" class="gal-nav gal-next" onclick="galMove(\'' + gid + '\',1)" aria-label="التالي">›</button>' +
+           '<span class="gal-counter">1/' + imgs.length + '</span>' +
+           '<div class="gal-dots">' + dots + '</div>' +
+         '</div>';
+}
+
+function newsMediaHTML(n) {
+  var list = (n.media && n.media.length) ? n.media : null;
+  // توافق رجعي: لو لم يصل media، ابنِ عنصراً واحداً من الحقول القديمة
+  if (!list && n.hasAttach && n.attachments) {
+    list = [{ url: n.attachments, isImage: n.isImage, isVideo: n.isVideo, isPdf: n.isPdf }];
+  }
+  if (!list || !list.length) return '';
+
+  var imgs = [], extra = '';
+  for (var i = 0; i < list.length; i++) {
+    var m = list[i];
+    if (!m || !m.url) continue;
+    if (m.isImage) { imgs.push(m.url); }
+    else if (m.isVideo) { extra += newsVideoHTML(m.url); }
+    else if (m.isPdf) { extra += '<div class="pdf-wrap"><a href="' + esc(m.url) + '" target="_blank" class="pdf-link">📄 فتح ملف PDF</a></div>'; }
+    else { extra += '<div class="pdf-wrap"><a href="' + esc(m.url) + '" target="_blank" class="pdf-link">📎 تحميل المرفق</a></div>'; }
+  }
+  var gal = imgs.length ? newsGalleryHTML(imgs) : '';
+  return gal + extra;
+}
+
+function galShow(gid, idx) {
+  var g = document.getElementById(gid);
+  if (!g) return;
+  var slides = g.querySelectorAll('.gal-slide');
+  var dots = g.querySelectorAll('.gal-dot');
+  var cnt = slides.length;
+  if (!cnt) return;
+  idx = ((idx % cnt) + cnt) % cnt;
+  for (var i = 0; i < cnt; i++) {
+    if (i === idx) { slides[i].classList.add('active'); } else { slides[i].classList.remove('active'); }
+    if (dots[i]) { if (i === idx) { dots[i].classList.add('active'); } else { dots[i].classList.remove('active'); } }
+  }
+  g.setAttribute('data-cur', idx);
+  var counter = g.querySelector('.gal-counter');
+  if (counter) counter.textContent = (idx + 1) + '/' + cnt;
+}
+function galMove(gid, dir) {
+  var g = document.getElementById(gid);
+  if (!g) return;
+  var cur = parseInt(g.getAttribute('data-cur') || '0', 10);
+  galShow(gid, cur + dir);
+}
+function galGo(gid, idx) { galShow(gid, idx); }
+
 function newsCardHTML(n) {
   var initials = (n.teacher || '?').charAt(0);
   var likeCls = n.myLike ? 'liked' : '';
@@ -2879,20 +3050,7 @@ function newsCardHTML(n) {
     if (n.likes > n.firstLikers.length) likers += ' و' + (n.likes - n.firstLikers.length) + ' آخرين';
   }
 
-  var media = '';
-  if (n.hasAttach) {
-    if (n.isImage) {
-      media = '<div class="img-wrap" onclick="openLightbox(\'' + esc(n.attachments) + '\')">' +
-              '<img src="' + esc(n.attachments) + '" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">' +
-              '</div>';
-    } else if (n.isPdf) {
-      media = '<div class="pdf-wrap"><a href="' + esc(n.attachments) + '" target="_blank" class="pdf-link">📄 فتح ملف PDF</a></div>';
-    } else if (n.isVideo) {
-      media = '<div class="video-wrap"><a href="' + esc(n.attachments) + '" target="_blank" class="video-link">🎬 مشاهدة الفيديو</a></div>';
-    } else {
-      media = '<div class="pdf-wrap"><a href="' + esc(n.attachments) + '" target="_blank" class="pdf-link">📎 تحميل المرفق</a></div>';
-    }
-  }
+  var media = newsMediaHTML(n);
 
   var scope = '';
   if (n.grade && n.grade !== 'الجميع') scope = esc(n.grade);
