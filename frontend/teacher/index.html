@@ -2315,6 +2315,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
         <input type="file" id="newsFile" style="display:none" accept="image/*,video/*,application/pdf" multiple onchange="handleNewsFileSelect(this)">
         <div id="newsFileInfo" class="attachment-preview mt-2 hidden"></div>
+        <!-- [3.2] محرّر الوسائط المنشورة: حذف/إعادة ترتيب يمين-شمال + إضافة جديدة -->
+        <div id="newsExistingMedia" class="hidden" style="margin-top:10px"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -3014,6 +3016,45 @@ function getMyGradesForSubject(subject) {
   return out.length ? out : myGrades();
 }
 
+// ── تتالي الصف → المواد المقررة له ──────────────────────────────
+// المواد المقررة لصف محدد. للمعلم: من تكليفاته فقط (المواد التي يدرّسها لهذا
+// الصف). للمدير/المشرف الذي يرى الكل: خريطة «المقرر لكل صف» (subjectsByGrade)
+// من بيانات النظام، مع تراجع آمن للقائمة الكاملة إن لم يوجد ربط للصف.
+function subjectsForGrade(grade) {
+  var all = (App.lists && App.lists.subjects) ? App.lists.subjects.slice() : [];
+  if (!grade || grade === 'جميع الفصول' || grade === 'الكل') return all;
+
+  // معلم عادي: المواد التي يدرّسها فعلاً لهذا الصف من تكليفاته
+  if (App.user && !isAdmin()) {
+    var asg = _myAssignments();
+    if (asg) {
+      var out = [], seen = {};
+      for (var i = 0; i < asg.length; i++) {
+        var grs = asg[i].grades || [];
+        for (var k = 0; k < grs.length; k++) {
+          if (grs[k].grade === grade || grs[k].grade === 'جميع الفصول') {
+            var sj = asg[i].subject;
+            if (sj && sj !== 'جميع المواد' && !seen[sj]) { seen[sj] = true; out.push(sj); }
+          }
+        }
+      }
+      if (out.length) return out;
+    }
+    var ms = mySubjects();
+    return (ms && ms.length) ? ms : all;
+  }
+
+  // مدير/مشرف يرى الكل: خريطة المقرر لكل صف (مرتّبة حسب ترتيب القائمة الكاملة)
+  var map = (App.lists && App.lists.subjectsByGrade) ? App.lists.subjectsByGrade : null;
+  if (map && map[grade] && map[grade].length) {
+    var gset = map[grade], ordered = [];
+    for (var a = 0; a < all.length; a++) { if (gset.indexOf(all[a]) !== -1) ordered.push(all[a]); }
+    for (var b = 0; b < gset.length; b++) { if (ordered.indexOf(gset[b]) === -1) ordered.push(gset[b]); }
+    return ordered;
+  }
+  return all; // تراجع آمن: لا ربط للصف ⇒ القائمة الكاملة (سلوك غير أسوأ من الحالي)
+}
+
 // ── تتالي الصف (+ المادة اختيارياً) → الشعبة ─────────────────────
 // شعب صف محدد ضمن سياق المادة إن مُرِّرت. ترجع الشعب «الخام» (بلا خيار «جميع
 // الشعب») — مناسبة لفلاتر العرض. الشعب محلولة فعلياً من الخادم في assignments.
@@ -3655,11 +3696,12 @@ function _fetchListsFromServer(callback) {
   callServer('getListsDataProtected', { token: App.user.token }, 'lists_data', 1800, function(r) {
     if (r && r.success) {
       App.lists = {
-        grades     : r.grades     || [],
-        subjects   : r.subjects   || [],
-        sections   : r.sections   || [],
-        violations : r.violations || [],
-        _ts        : Date.now()
+        grades         : r.grades     || [],
+        subjects       : r.subjects   || [],
+        sections       : r.sections   || [],
+        violations     : r.violations || [],
+        subjectsByGrade: r.subjectsByGrade || {},
+        _ts            : Date.now()
       };
       try { sessionStorage.setItem('teacherLists_v1', JSON.stringify(App.lists)); } catch(e) {}
       if (callback) callback(true);
@@ -4193,6 +4235,9 @@ function openNewsModal(id) {
   document.getElementById('newsFile').value = '';
   document.getElementById('newsDropZone').innerHTML = '📎 انقر لاختيار ملف أو اسحبه هنا<div style="font-size:.78rem;color:var(--text-light);margin-top:4px">الحد الأقصى: 5MB</div>';
   document.getElementById('newsFileInfo').classList.add('hidden');
+  // [3.2] إعادة تعيين محرّر الوسائط المنشورة (يُملأ عند التعديل فقط)
+  window._newsKeepMedia = [];
+  _newsRenderExistingMedia();
 
   var gradeSelect = document.getElementById('newsGrade');
   if (gradeSelect) {
@@ -4212,6 +4257,9 @@ function openNewsModal(id) {
         document.getElementById('newsSection').value = n.section || '';
         document.getElementById('newsText').value = n.news || '';
         document.getElementById('newsDate').value = n.date || todayDate();
+        // [3.2] تحميل وسائط الخبر الحالية في المحرّر (حذف/ترتيب/إضافة)
+        window._newsKeepMedia = _newsParseMedia(n.attachments);
+        _newsRenderExistingMedia();
         openModal('newsModal');
       } else {
         toast('تعذر تحميل الخبر: ' + ((r && r.error) || 'خطأ'), 'error');
@@ -4220,6 +4268,67 @@ function openNewsModal(id) {
   } else {
     openModal('newsModal');
   }
+}
+
+// ── [3.2] محرّر وسائط الخبر المنشور (حذف/إعادة ترتيب/إضافة) ────────────────
+function _newsParseMedia(raw) {
+  var out = [];
+  if (!raw) return out;
+  var parts = String(raw).split(/[\r\n]+|\s*\|\s*/);
+  for (var i = 0; i < parts.length; i++) {
+    var u = (parts[i] || '').trim();
+    if (u.indexOf('http') === 0 && out.indexOf(u) === -1) out.push(u);
+  }
+  return out;
+}
+
+function _newsMediaIsVideo(u) {
+  var low = String(u || '').toLowerCase();
+  return (low.indexOf('youtube.com') !== -1 || low.indexOf('youtu.be') !== -1 ||
+          low.indexOf('vimeo.com') !== -1 || low.indexOf('/preview') !== -1 ||
+          /\.(mp4|webm|mov|avi|mkv)(\?.*)?$/.test(low));
+}
+
+function _newsRenderExistingMedia() {
+  var box = document.getElementById('newsExistingMedia');
+  if (!box) return;
+  var list = window._newsKeepMedia || [];
+  if (!list.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  var h = '<div style="font-size:.82rem;color:var(--text-dark);margin-bottom:6px">🖼️ الوسائط الحالية (' + list.length + ') — رتّبها أو احذف صوراً، وأضف جديداً من الأعلى:</div>';
+  h += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+  for (var i = 0; i < list.length; i++) {
+    var u = list[i];
+    var isVid = _newsMediaIsVideo(u);
+    var thumb = isVid
+      ? '<div style="width:74px;height:74px;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;border-radius:8px;font-size:22px">🎬</div>'
+      : '<img src="' + esc(u) + '" style="width:74px;height:74px;object-fit:cover;border-radius:8px" onerror="this.style.opacity=\'.4\'">';
+    h += '<div style="border:1px solid var(--border);border-radius:8px;padding:4px;text-align:center">' +
+      thumb +
+      '<div style="display:flex;gap:2px;justify-content:center;margin-top:3px">' +
+        '<button type="button" class="btn btn-sm" title="تقديم" onclick="_newsMoveMedia(' + i + ',-1)" ' + (i === 0 ? 'disabled' : '') + ' style="padding:1px 6px">▶</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" title="حذف" onclick="_newsRemoveMedia(' + i + ')" style="padding:1px 6px">✕</button>' +
+        '<button type="button" class="btn btn-sm" title="تأخير" onclick="_newsMoveMedia(' + i + ',1)" ' + (i === list.length - 1 ? 'disabled' : '') + ' style="padding:1px 6px">◀</button>' +
+      '</div>' +
+    '</div>';
+  }
+  h += '</div>';
+  box.innerHTML = h;
+}
+
+function _newsMoveMedia(idx, dir) {
+  var list = window._newsKeepMedia || [];
+  var j = idx + dir;
+  if (j < 0 || j >= list.length) return;
+  var tmp = list[idx]; list[idx] = list[j]; list[j] = tmp;
+  _newsRenderExistingMedia();
+}
+
+function _newsRemoveMedia(idx) {
+  var list = window._newsKeepMedia || [];
+  if (idx < 0 || idx >= list.length) return;
+  list.splice(idx, 1);
+  _newsRenderExistingMedia();
 }
 
 /**
@@ -4238,6 +4347,8 @@ function saveNews() {
   }
 
   var data = { id: id, teacher: '', grade: grade, section: section, news: news, date: date };
+  // [3.2] في وضع التعديل: أرسل قائمة الوسائط المُبقاة (مرتّبة) — الجديد يُلحق بعدها
+  if (id) { data.keepUrls = window._newsKeepMedia || []; }
 
   var fileInput = document.getElementById('newsFile');
   var files = (fileInput && fileInput.files) ? fileInput.files : null;
@@ -4487,10 +4598,13 @@ function _circFormHTML() {
         '<select class="form-select" id="circSection"></select></div>' +
     '</div>' +
     '<div class="form-row">' +
-      '<div class="form-group"><label class="form-label">معلمون محددون (اختياري)</label>' +
-        '<input type="text" class="form-control" id="circTeachers" placeholder="أسماء مفصولة بفواصل — فارغ = كل المعلمين"></div>' +
-      '<div class="form-group"><label class="form-label">طلاب محددون (اختياري)</label>' +
-        '<input type="text" class="form-control" id="circStudents" placeholder="أرقام/أسماء مفصولة بفواصل — فارغ = كل الطلاب"></div>' +
+      '<div class="form-group" style="flex:1">' +
+        '<label class="form-label" id="circRecipLabel">مستلمون محددون (اختياري)</label>' +
+        '<div id="circRecipientWrap"><div style="color:#94a3b8;font-size:13px;padding:8px;">اختر الجهة المستهدفة لإظهار قائمة المستلمين</div></div>' +
+        // حقول مخفية تحافظ على عقد saveCircular (CSV) وتُملأ من القوائم الديناميكية
+        '<input type="hidden" id="circTeachers">' +
+        '<input type="hidden" id="circStudents">' +
+      '</div>' +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:8px;">' +
       '<button class="btn btn-primary" onclick="saveCircular()">📤 نشر التعميم</button>' +
@@ -4508,7 +4622,12 @@ function _circInitFormSelects() {
     g.innerHTML = html;
     g.onchange = _circFillSections;
   }
+  var sec = document.getElementById('circSection');
+  if (sec) sec.onchange = function () { _circUpdateRecipients(); };
+  var aud = document.getElementById('circAudience');
+  if (aud) aud.onchange = function () { _circUpdateRecipients(); };
   _circFillSections();
+  _circUpdateRecipients();
 }
 
 function _circFillSections() {
@@ -4522,7 +4641,115 @@ function _circFillSections() {
     for (var i = 0; i < secs.length; i++) html += '<option value="' + esc(secs[i]) + '">' + esc(secs[i]) + '</option>';
   }
   s.innerHTML = html;
+  // عند تغيير الفصل تتغيّر قائمة الطلاب المعروضة (إن كان الاستهداف طلاباً)
+  _circUpdateRecipients();
 }
+
+// ── [3.1] قائمة المستلمين الديناميكية (تتغيّر بحسب الجهة المستهدفة) ──────────
+var _circTeacherNames = null;   // كاش أسماء المعلمين الفعليين
+var _circStudentsAll  = null;   // كاش الطلاب الفعليين (code/name/grade/section)
+
+function _circSetHidden(id, val) { var el = document.getElementById(id); if (el) el.value = val; }
+
+// يجلب بيانات المستلمين مرة واحدة ثم ينفّذ cb()
+function _circLoadRecipientData(cb) {
+  var needT = (_circTeacherNames === null);
+  var needS = (_circStudentsAll === null);
+  if (!needT && !needS) { if (cb) cb(); return; }
+  var pending = 0, done = function () { pending--; if (pending <= 0 && cb) cb(); };
+  if (needT) {
+    pending++;
+    callServer('getTeacherNamesProtected', {}, function (r) {
+      _circTeacherNames = (r && r.success && r.teachers) ? r.teachers : [];
+      done();
+    }, function () { _circTeacherNames = []; done(); });
+  }
+  if (needS) {
+    pending++;
+    callServer('getStudentsDirectoryProtected', {}, function (r) {
+      _circStudentsAll = (r && r.success && r.students) ? r.students : [];
+      done();
+    }, function () { _circStudentsAll = []; done(); });
+  }
+  if (pending === 0 && cb) cb();
+}
+
+function _circUpdateRecipients() {
+  var wrap = document.getElementById('circRecipientWrap');
+  if (!wrap) return;
+  var aud = (document.getElementById('circAudience') || {}).value || 'both';
+  var lbl = document.getElementById('circRecipLabel');
+
+  if (aud === 'both') {
+    if (lbl) lbl.textContent = 'مستلمون محددون';
+    wrap.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px;">يُرسل للجميع ضمن الفصل/الشعبة المحددة</div>';
+    _circSetHidden('circTeachers', ''); _circSetHidden('circStudents', '');
+    return;
+  }
+  wrap.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px;">⏳ جارٍ تحميل القائمة...</div>';
+  _circLoadRecipientData(function () {
+    if (aud === 'teachers') {
+      if (lbl) lbl.textContent = '🧑‍🏫 معلمون محددون (اختياري — لا تختر شيئاً = كل المعلمين)';
+      _circRenderTeacherSelect(wrap);
+    } else {
+      if (lbl) lbl.textContent = '🎒 طلاب محددون (اختياري — لا تختر شيئاً = كل الطلاب في النطاق)';
+      _circRenderStudentSelect(wrap);
+    }
+  });
+}
+
+function _circRenderTeacherSelect(wrap) {
+  var names = _circTeacherNames || [];
+  if (!names.length) { wrap.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px;">لا يوجد معلمون</div>'; return; }
+  var prev = _circCsvToObj('circTeachers');
+  var h = '<select multiple class="form-select" id="circTeachersSel" size="6" style="min-height:120px" onchange="_circSyncTeachers()">';
+  for (var i = 0; i < names.length; i++) {
+    var nm = names[i];
+    h += '<option value="' + esc(nm) + '"' + (prev[nm] ? ' selected' : '') + '>' + esc(nm) + '</option>';
+  }
+  h += '</select><div style="font-size:11px;color:#94a3b8;margin-top:4px">اضغط Ctrl للاختيار المتعدد</div>';
+  wrap.innerHTML = h;
+}
+
+function _circRenderStudentSelect(wrap) {
+  var all = _circStudentsAll || [];
+  var g = (document.getElementById('circGrade') || {}).value || 'الجميع';
+  var s = (document.getElementById('circSection') || {}).value || 'الجميع';
+  var prev = _circCsvToObj('circStudents');
+  var h = '<select multiple class="form-select" id="circStudentsSel" size="6" style="min-height:120px" onchange="_circSyncStudents()">';
+  var shown = 0;
+  for (var i = 0; i < all.length; i++) {
+    var st = all[i];
+    if (g !== 'الجميع' && _safeS(st.grade) !== g) continue;
+    if (s !== 'الجميع' && _safeS(st.section) !== s) continue;
+    var code = _safeS(st.code), name = _safeS(st.name);
+    var val = code || name;
+    var label = (code ? (code + ' - ') : '') + name + (st.section ? (' (' + _safeS(st.section) + ')') : '');
+    h += '<option value="' + esc(val) + '"' + (prev[val] ? ' selected' : '') + '>' + esc(label) + '</option>';
+    shown++;
+  }
+  h += '</select><div style="font-size:11px;color:#94a3b8;margin-top:4px">' + shown + ' طالب · اضغط Ctrl للاختيار المتعدد</div>';
+  wrap.innerHTML = shown ? h : '<div style="color:#94a3b8;font-size:13px;padding:8px;">لا يوجد طلاب في النطاق المحدد</div>';
+}
+
+function _safeS(v) { return (v === null || v === undefined) ? '' : String(v).trim(); }
+
+function _circCsvToObj(hiddenId) {
+  var raw = ((document.getElementById(hiddenId) || {}).value || '').split(',');
+  var o = {};
+  for (var i = 0; i < raw.length; i++) { var t = raw[i].trim(); if (t) o[t] = 1; }
+  return o;
+}
+
+function _circSyncSelectToHidden(selId, hiddenId) {
+  var sel = document.getElementById(selId);
+  if (!sel) return;
+  var vals = [];
+  for (var i = 0; i < sel.options.length; i++) { if (sel.options[i].selected) vals.push(sel.options[i].value); }
+  _circSetHidden(hiddenId, vals.join(', '));
+}
+function _circSyncTeachers() { _circSyncSelectToHidden('circTeachersSel', 'circTeachers'); }
+function _circSyncStudents() { _circSyncSelectToHidden('circStudentsSel', 'circStudents'); }
 
 function renderCirculars() {
   var u = App.user || {};
@@ -4657,6 +4884,7 @@ function circEdit(id) {
   var g = document.getElementById('circGrade');
   if (g) { g.value = (c.grade || 'الجميع'); _circFillSections(); }
   var s = document.getElementById('circSection'); if (s) s.value = (c.section || 'الجميع');
+  _circUpdateRecipients(); // إعادة بناء قائمة المستلمين بعد ضبط الفصل/الشعبة والاستهداف
   var ft = document.getElementById('circFormTitle'); if (ft) ft.textContent = '✏️ تعديل التعميم #' + esc(c.id);
   var cb = document.getElementById('circCancelBtn'); if (cb) cb.style.display = '';
   var box = document.getElementById('dynamicContent'); if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth' });
@@ -7120,6 +7348,15 @@ function hwFilterCascade(which) {
     var keepG = gradeEl.value;
     gradeEl.innerHTML = buildSelectOptions(grades, 'كل الفصول', '', true);
     gradeEl.value = (keepG && grades.indexOf(keepG) !== -1) ? keepG : '';
+  }
+  // عند تغيير الصف: ضيّق قائمة المواد إلى «المواد المقررة لهذا الصف»
+  if (which === 'grade' && subjEl) {
+    var gsel = gradeEl ? (gradeEl.value || '') : '';
+    var gsubs = gsel ? subjectsForGrade(gsel) : mySubjects();
+    var keepSub = subjEl.value;
+    subjEl.innerHTML = buildSelectOptions(gsubs, 'كل المواد', '', true);
+    subjEl.value = (keepSub && gsubs.indexOf(keepSub) !== -1) ? keepSub : '';
+    subj = subjEl.value;
   }
   if (secEl) {
     var grade = gradeEl ? (gradeEl.value || '') : '';
@@ -12607,7 +12844,7 @@ function sstat_print() {
         '</div>' +
         // ── أنشطتي ──
         '<div class="ch-card">' +
-          '<div class="ch-head"><div class="ch-ico">📁</div><div class="ch-title">أنشطتي</div>' +
+          '<div class="ch-head"><div class="ch-ico">📁</div><div class="ch-title" id="chMyContentTitle">أنشطتي</div>' +
             '<div style="flex:1"></div>' +
             '<button type="button" class="ch-btn ch-btn-gold ch-btn-sm" onclick="window.chLoadMyContent()">🔄 تحديث</button>' +
           '</div>' +
@@ -12789,8 +13026,14 @@ function sstat_print() {
       return;
     }
     var groups = res.groups || [];
+    var seeAll = (res.seeAll === true);
+    // عند رؤية الكل: حدِّث عنوان القسم ليوضّح أنها أنشطة جميع المعلمين
+    var titleEl = document.getElementById('chMyContentTitle');
+    if (titleEl) titleEl.textContent = seeAll ? 'كل الأنشطة (جميع المعلمين)' : 'أنشطتي';
     if (groups.length === 0) {
-      box.innerHTML = '<div class="ch-empty">📭 لم ترفع أي محتوى بعد — ابدأ بالرفع من الأعلى</div>';
+      box.innerHTML = '<div class="ch-empty">' +
+        (seeAll ? '📭 لا توجد أنشطة مرفوعة بعد' : '📭 لم ترفع أي محتوى بعد — ابدأ بالرفع من الأعلى') +
+        '</div>';
       return;
     }
     var html = '';
@@ -12810,9 +13053,11 @@ function sstat_print() {
       }
       var srcTag = grp.source ? ('<span class="ch-grp-meta">• ' + _chEsc(grp.source) + '</span>') : '';
       var catTag = grp.category ? ('<span class="ch-grp-meta">• ' + _chEsc(grp.category) + '</span>') : '';
+      var ownerTag = grp.owner ? ('<span class="ch-grp-meta" style="color:var(--gold,#b8860b);font-weight:600">👤 ' + _chEsc(grp.owner) + '</span>') : '';
       html += '<div class="ch-grp">' +
         '<div class="ch-grp-head">' +
           '<span class="ch-grp-title">' + _chEsc(grp.title || 'بدون عنوان') + '</span>' +
+          ownerTag +
           _chMediaBadge(grp.status) +
           '<span class="ch-grp-meta">(' + (grp.count || items.length) + ' ملف)</span>' +
           catTag + srcTag +
