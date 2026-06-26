@@ -3624,6 +3624,9 @@ function bootApp() {
   // تحميل عدّاد إشعارات الأخبار (الجرس)
   loadNewsNotifications();
 
+  // جسر إشعارات الهاتف (FCM) — تسجيل رمز جهاز الأندرويد
+  _initFcmBridge();
+
   // إظهار «غياب المعلمين» و«الغياب اليومي» للمشرف/الوكيل/المدير فقط
   var _attPriv = App.user.isAdmin || App.user.role === 'admin' || App.user.role === 'deputy' || App.user.role === 'supervisor';
   var _siTabs = document.getElementById('si-teacher-absence');
@@ -3988,6 +3991,37 @@ function handleViewportResize() {
     setTimeout(syncViewportHeight, 250);
   }, { passive: true });
 })();
+
+/* ── جسر إشعارات الهاتف (FCM) مع تطبيق الأندرويد الأصلي ──────────────────
+   التطبيق الأصلي (WebView) يستدعي window.registerFcmToken(token) بعد حصوله
+   على رمز جهاز FCM، فنخزّنه عبر registerDeviceTokenProtected ليصله البث عند
+   نشر أي خبر. كما نقرأ رمزاً محقوناً مسبقاً إن وُجد. خامل دون أي ضرر إن لم
+   يكن داخل التطبيق الأصلي. */
+window.registerFcmToken = function (deviceToken) {
+  try {
+    if (!deviceToken || typeof App === 'undefined' || !App || !App.user) return;
+    callServer('registerDeviceTokenProtected', { deviceToken: deviceToken, platform: 'android' },
+      function () {}, function () {});
+  } catch (e) {}
+};
+function _initFcmBridge() {
+  try {
+    var t = window.__FCM_TOKEN__ ||
+      (window.AndroidPush && typeof window.AndroidPush.getToken === 'function' && window.AndroidPush.getToken()) ||
+      (window.SchoolAppNative && typeof window.SchoolAppNative.getFcmToken === 'function' && window.SchoolAppNative.getFcmToken());
+    if (t) window.registerFcmToken(t);
+  } catch (e) {}
+}
+// اختبار بثّ إشعار الهاتف — للمدير (يُستدعى من زر الاختبار بعد تفعيل FCM)
+function sendTestPush() {
+  callServer('sendTestPushProtected', {}, function (r) {
+    if (r && r.success) {
+      toast('تم إرسال إشعار تجريبي لـ ' + (r.sent || 0) + ' جهاز', 'success');
+    } else {
+      toast('تعذّر الإرسال: ' + ((r && (r.reason || r.error)) || 'غير مفعّل بعد'), 'warning');
+    }
+  }, function () { toast('تعذّر الاتصال بالخادم', 'error'); });
+}
 
 /* ── إشعارات الأخبار داخل التطبيق (جرس 🔔) ──────────────────────────────
    تعتمد على getAllNewsProtected (يُعيد total المُفلتر حسب دور المعلم).
@@ -5491,6 +5525,7 @@ function renderDashboard() {
     if (u.isAdmin) {
       qa += '<div class="qa-btn" onclick="showSection(\'adminActivities\')"><span class="qa-icon">📋</span><span class="qa-label">كل الأنشطة</span></div>';
       qa += '<div class="qa-btn" onclick="showSection(\'teachers-mgmt\')"><span class="qa-icon">👥</span><span class="qa-label">إدارة المعلمين</span></div>';
+      qa += '<div class="qa-btn" onclick="sendTestPush()"><span class="qa-icon">🔔</span><span class="qa-label">اختبار إشعار الهاتف</span></div>';
     }
 
     var html = '<div class="dashboard-greeting mb-4">' +

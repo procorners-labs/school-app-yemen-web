@@ -2271,7 +2271,33 @@ function resetLogin() {
 // ═══════════════════════════════════════════════════════════
 // 4. تهيئة التطبيق بعد الدخول
 // ═══════════════════════════════════════════════════════════
+/* ── جسر إشعارات الهاتف (FCM) مع تطبيق الأندرويد الأصلي ──────────────────
+   التطبيق الأصلي يستدعي window.registerFcmToken(token) بعد الحصول على رمز
+   جهاز FCM، فنخزّنه في «أجهزة_الإشعارات» بملف المدرسة ليصله بثّ الأخبار. */
+window.registerFcmToken = function (deviceToken) {
+  try {
+    if (!deviceToken) return;
+    var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID ||
+      (new URLSearchParams(window.location.search)).get('school') || '';
+    if (!sid) return; // ننتظر توفّر معرّف المدرسة (بعد الدخول)
+    google.script.run
+      .withSuccessHandler(function () {})
+      .withFailureHandler(function () {})
+      .registerDeviceToken({ deviceToken: deviceToken, schoolId: sid, platform: 'android' });
+  } catch (e) {}
+};
+function _initFcmBridge() {
+  try {
+    var t = window.__FCM_TOKEN__ ||
+      (window.AndroidPush && typeof window.AndroidPush.getToken === 'function' && window.AndroidPush.getToken()) ||
+      (window.SchoolAppNative && typeof window.SchoolAppNative.getFcmToken === 'function' && window.SchoolAppNative.getFcmToken());
+    if (t) window.registerFcmToken(t);
+  } catch (e) {}
+}
+
 function initApp() {
+  // جسر إشعارات الهاتف (FCM) — تسجيل رمز جهاز ولي الأمر بعد الدخول
+  try { _initFcmBridge(); } catch (e) {}
   // تحديث Navbar
   $('navName').textContent = APP.user.name || '—';
   var meta = '';
