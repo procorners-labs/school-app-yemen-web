@@ -4010,9 +4010,47 @@ function loadNewsNotifications() {
         }
         var lastSeen = parseInt(stored, 10) || 0;
         var unread = total - lastSeen;
-        updateBellBadge(unread < 0 ? 0 : unread);
+        window._bellNews = unread < 0 ? 0 : unread;
+        refreshBellBadge();
       });
   } catch (e) { /* تجاهل */ }
+  // عدّاد التعاميم الإدارية الجديدة (يُدمج في نفس الجرس)
+  loadCircularsNotifications();
+}
+
+/* ── عدّاد التعاميم الإدارية غير المقروءة (جزء من الجرس) ── */
+function loadCircularsNotifications() {
+  try {
+    if (typeof App === 'undefined' || !App || !App.user) return;
+    callServer('listCircularsProtected', { manage: false }, 'circ_notif', 120, function (r) {
+      if (!r || !r.success) return;
+      var list = r.circulars || [];
+      // أعلى رقم تعميم حالي مؤشّر «أحدث» تعميم
+      var maxId = 0;
+      for (var i = 0; i < list.length; i++) {
+        var n = parseInt(list[i].id, 10);
+        if (!isNaN(n) && n > maxId) maxId = n;
+      }
+      window._circMaxId = maxId;
+      var stored = null;
+      try { stored = localStorage.getItem('teacher_lastSeenCircId'); } catch (e) {}
+      if (stored === null) { markCircularsRead(); return; } // أول تشغيل: اعتبرها مقروءة
+      var lastSeen = parseInt(stored, 10) || 0;
+      var unread = 0;
+      for (var j = 0; j < list.length; j++) {
+        var cid = parseInt(list[j].id, 10);
+        if (!isNaN(cid) && cid > lastSeen) unread++;
+      }
+      window._bellCirc = unread;
+      refreshBellBadge();
+    });
+  } catch (e) { /* تجاهل */ }
+}
+
+// مجموع عدّادات الجرس (أخبار + تعاميم)
+function refreshBellBadge() {
+  var n = (window._bellNews || 0) + (window._bellCirc || 0);
+  updateBellBadge(n);
 }
 
 function updateBellBadge(count) {
@@ -4032,7 +4070,17 @@ function markNewsRead() {
                 ? App._newsTotal : 0;
     localStorage.setItem('teacher_lastSeenNewsTotal', String(total));
   } catch (e) {}
-  updateBellBadge(0);
+  window._bellNews = 0;
+  refreshBellBadge();
+}
+
+function markCircularsRead() {
+  try {
+    var mx = (typeof window._circMaxId === 'number') ? window._circMaxId : 0;
+    localStorage.setItem('teacher_lastSeenCircId', String(mx));
+  } catch (e) {}
+  window._bellCirc = 0;
+  refreshBellBadge();
 }
 
 function openNewsNotifications() {
@@ -4076,15 +4124,31 @@ function _notifItem(icon, title, sub, onclick) {
 }
 function _loadNotificationsList() {
   var body = document.getElementById('notif-body'); if (!body) return;
-  var parts = { news: '', notes: '' };
-  var pending = 2;
+  var parts = { circ: '', news: '', notes: '' };
+  var pending = 3;
   function render() {
     pending--;
     if (pending > 0) return;
-    var html = parts.news + parts.notes;
+    var html = parts.circ + parts.news + parts.notes;
     body.innerHTML = html || '<div style="text-align:center;color:#94a3b8;padding:24px">لا توجد إشعارات جديدة 🎉</div>';
     markNewsRead();
+    markCircularsRead();
   }
+  // 0) التعاميم الإدارية النشطة
+  callServer('listCircularsProtected', { manage: false }, function (r) {
+    var list = (r && r.success && r.circulars) ? r.circulars : [];
+    if (list.length) {
+      parts.circ = '<div style="font-size:11px;color:#94a3b8;padding:6px 10px">📜 التعاميم الإدارية</div>';
+      var max = Math.min(list.length, 5);
+      for (var i = 0; i < max; i++) {
+        var c = list[i];
+        var ttl = ('' + (c.title || c.body || 'تعميم')).slice(0, 60);
+        var meta = ('' + (c.author || '') + (c.createdAt ? (' · ' + ('' + c.createdAt).slice(0, 16)) : '')).slice(0, 40);
+        parts.circ += _notifItem('📜', escapeHtml(ttl), escapeHtml(meta), "closeNotificationsPanel();showSection('circulars')");
+      }
+    }
+    render();
+  }, function () { render(); });
   // 1) أحدث الأخبار
   callServer('getAllNewsProtected', { page: 1, pageSize: 5 }, function (r) {
     var list = (r && r.success && r.news) ? r.news : [];
@@ -5439,6 +5503,7 @@ function renderDashboard() {
                 '</div>' +
                '</div>' +
                assignHtml +
+               '<div id="dashCirculars" style="display:none;margin-bottom:16px"></div>' +
                '<div class="today-sched" id="todaySchedule">' +
                  '<div class="ts-head"><span class="ts-title">📅 جدول اليوم</span></div>' +
                  '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>' +
@@ -5463,6 +5528,7 @@ function renderDashboard() {
     loadCalendarWidget();
     loadTodaySchedule();
     loadMyTasksWidget();
+    loadDashboardCirculars();
 
     callServer('getMyActivitiesProtected', {}, 'my_activities', 90,
       function(r) {
@@ -5479,6 +5545,45 @@ function renderDashboard() {
     toast('حدث خطأ في عرض لوحة التحكم', 'error');
   }
 }
+
+/**
+ * بطاقة التعاميم الإدارية في لوحة التحكم الرئيسية — عرض مبسّط وأنيق.
+ * تعرض أحدث 3 تعاميم نشطة موجَّهة للمستخدم، مع زر «عرض الكل».
+ */
+function loadDashboardCirculars() {
+  var box = document.getElementById('dashCirculars');
+  if (!box) return;
+  callServer('listCircularsProtected', { manage: false }, 'dash_circulars', 90, function (res) {
+    var list = (res && res.success && res.circulars) ? res.circulars : [];
+    if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    var show = list.slice(0, 3);
+    var items = '';
+    for (var i = 0; i < show.length; i++) {
+      var c = show[i];
+      var title = escapeHtml(('' + (c.title || c.body || 'تعميم')).slice(0, 90));
+      var body  = c.title ? escapeHtml(('' + (c.body || '')).slice(0, 120)) : '';
+      var meta  = escapeHtml((c.author ? ('📌 ' + c.author) : '') + (c.createdAt ? ('  ·  ' + ('' + c.createdAt).slice(0, 16)) : ''));
+      items += '<div onclick="showSection(\'circulars\')" style="cursor:pointer;padding:10px 12px;border-radius:10px;background:#fff;border:1px solid #eef2f7;margin-bottom:8px;transition:.15s" ' +
+        'onmouseover="this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.07)\'" onmouseout="this.style.boxShadow=\'\'">' +
+        '<div style="font-weight:700;font-size:13.5px;color:#0f172a">📜 ' + title + '</div>' +
+        (body ? '<div style="font-size:12.5px;color:#475569;margin-top:2px;line-height:1.5">' + body + '</div>' : '') +
+        (meta ? '<div style="font-size:11px;color:#94a3b8;margin-top:4px">' + meta + '</div>' : '') +
+        '</div>';
+    }
+    var moreCount = list.length - show.length;
+    box.innerHTML =
+      '<div style="background:linear-gradient(135deg,#eef2ff,#f8fafc);border:1px solid #e0e7ff;border-radius:14px;padding:12px 14px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+          '<div style="font-weight:800;color:#0F2C5C;font-size:14px">📜 التعاميم الإدارية</div>' +
+          '<button class="btn btn-sm btn-secondary" onclick="showSection(\'circulars\')">عرض الكل' +
+            (moreCount > 0 ? (' (' + list.length + ')') : '') + '</button>' +
+        '</div>' +
+        items +
+      '</div>';
+    box.style.display = 'block';
+  }, function () { box.style.display = 'none'; });
+}
+
 /**
  * تحميل إحصائيات لوحة التحكم (عدد الواجبات، المخالفات، الأخبار، إلخ)
  * @param {object} data - البيانات المستلمة من الخادم
@@ -11373,10 +11478,134 @@ function _renderReportsBody(data) {
     html = _rpt_renderTeacher(data);
   }
   document.getElementById('rptBody').innerHTML = html +
+    '<div id="rpt-teachers-activity" style="margin-top:14px;"></div>' +
     '<div id="rpt-absence" style="margin-top:14px;"></div>' +
     '<div id="rpt-tasks" style="margin-top:14px;"></div>';
+  rep_loadAllTeacherActivity(data.scope);
   rep_loadTeacherAbsence(data.scope);
   rep_loadTaskPerformance(data.scope);
+}
+
+// ── تقرير موسّع: نشاط كل المعلمين (للمدير/الوكيل فقط) ──────────
+function rep_loadAllTeacherActivity(scope) {
+  var box = document.getElementById('rpt-teachers-activity');
+  if (!box) return;
+  // حصري للمدير/الوكيل — لا يظهر للمشرف/المعلم
+  if (scope !== 'admin' && scope !== 'deputy') { box.innerHTML = ''; return; }
+  box.innerHTML = _rpt_card('🧑‍🏫', 'نشاط المعلمين — تقرير موسّع وشامل', '<p style="color:#94a3b8;">⏳ جارٍ التحميل...</p>');
+  callServer('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '' }, function (res) {
+    if (!res || !res.success) { box.innerHTML = ''; return; }
+    window._repAllTeachers = res.teachers || [];
+    window._repAllTeachersSummary = res.summary || null;
+    var list = res.teachers || [];
+    var inner;
+    if (!list.length) {
+      inner = '<p style="color:#94a3b8;">لا يوجد معلمون في الكشف بعد</p>';
+    } else {
+      inner = rep_allActStats(res.summary) +
+              rep_allActHighlights(res.summary) +
+              rep_allActBars(list) +
+              rep_allActTable(list);
+    }
+    var actions = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+      '<button class="btn btn-secondary" onclick="rep_printAllTeacherActivity()">🖨️ طباعة</button>' +
+      '<button class="btn btn-primary" onclick="showSection(\'adminActivities\')">📋 كل الأنشطة</button></div>';
+    box.innerHTML = _rpt_card('🧑‍🏫', 'نشاط المعلمين — تقرير موسّع وشامل', inner + actions);
+  }, function () { box.innerHTML = ''; });
+}
+
+function rep_allActStats(s) {
+  if (!s) return '';
+  function st(ic, v, l, col) {
+    return '<div style="flex:1;min-width:110px;background:' + col + ';border-radius:12px;padding:12px;text-align:center">' +
+      '<div style="font-size:1.4rem">' + ic + '</div><div style="font-size:1.3rem;font-weight:800">' + (v || 0) + '</div>' +
+      '<div style="font-size:.72rem;color:var(--text-muted)">' + l + '</div></div>';
+  }
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    st('👥', s.totalTeachers,    'إجمالي المعلمين', 'rgba(79,70,229,.1)') +
+    st('🔥', s.activeTeachers,   'معلمون نشطون',    'rgba(16,185,129,.1)') +
+    st('💤', s.inactiveTeachers, 'بلا نشاط',        'rgba(239,68,68,.1)') +
+    st('📊', s.totalActivities,  'إجمالي الأنشطة',  'rgba(6,182,212,.1)') +
+    st('📝', s.totalHomework,    'الواجبات',        'rgba(139,92,246,.1)') +
+    st('📢', s.totalNews,        'الأخبار',         'rgba(245,158,11,.12)') +
+    st('📋', s.totalViolations,  'السجل السلوكي',   'rgba(20,184,166,.1)') +
+    st('📈', s.avgPerTeacher,    'متوسط/معلم',      'rgba(34,197,94,.1)') +
+  '</div>';
+}
+
+function rep_allActHighlights(s) {
+  if (!s) return '';
+  function chips(arr, emptyTxt) {
+    if (!arr || !arr.length) return '<span style="color:#94a3b8;font-size:.8rem">' + emptyTxt + '</span>';
+    var h = '';
+    for (var i = 0; i < arr.length; i++) {
+      h += '<span class="assign-chip">' + escapeHtml(arr[i].name) +
+        ' <b>' + (arr[i].total || 0) + '</b></span>';
+    }
+    return h;
+  }
+  return '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">' +
+    '<div style="flex:1;min-width:240px"><div style="font-size:.8rem;font-weight:700;color:#2e7d32;margin-bottom:6px">🏆 الأكثر نشاطاً</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + chips(s.mostActive, 'لا يوجد') + '</div></div>' +
+    '<div style="flex:1;min-width:240px"><div style="font-size:.8rem;font-weight:700;color:#c62828;margin-bottom:6px">⚠️ الأقل نشاطاً (بحاجة لمتابعة)</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + chips(s.leastActive, 'لا يوجد') + '</div></div>' +
+  '</div>';
+}
+
+function rep_allActBars(list) {
+  // شريط نشاط نسبي لكل معلم — مرتّب تنازلياً، يُبرز الضعيف بالأحمر
+  var max = 1;
+  for (var i = 0; i < list.length; i++) if (list[i].total > max) max = list[i].total;
+  var h = '<div style="margin-bottom:14px">';
+  for (var j = 0; j < list.length; j++) {
+    var t = list[j];
+    var pct = Math.round((t.total / max) * 100);
+    if (pct < 2 && t.total > 0) pct = 2;
+    var col = t.total === 0 ? 'var(--danger)' : (t.total >= (max * 0.5) ? 'var(--success)' : 'var(--warning)');
+    h += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:3px">' +
+      '<span style="font-weight:600">' + escapeHtml(t.name) + (t.subject ? ' <span style="color:#94a3b8;font-weight:400">· ' + escapeHtml(t.subject) + '</span>' : '') + '</span>' +
+      '<span style="font-weight:700;color:' + col + '">' + t.total + '</span></div>' +
+      '<div style="background:var(--surface2);border-radius:50px;height:9px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + col + ';border-radius:50px;transition:width .5s"></div></div></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function rep_allActTable(list) {
+  var h = '<div style="overflow-x:auto"><table class="att-table" style="min-width:680px"><thead><tr>' +
+    '<th>#</th><th>المعلم</th><th>المادة</th><th>📝 الواجبات</th><th>📢 الأخبار</th><th>📋 السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>';
+  for (var i = 0; i < list.length; i++) {
+    var t = list[i];
+    var zero = (t.total === 0);
+    h += '<tr' + (zero ? ' style="background:rgba(239,68,68,.06)"' : '') + '>' +
+      '<td style="text-align:center;color:#94a3b8">' + (i + 1) + '</td>' +
+      '<td style="font-weight:600">' + escapeHtml(t.name) + '</td>' +
+      '<td style="text-align:center;color:#64748b">' + escapeHtml(t.subject || '—') + '</td>' +
+      '<td style="text-align:center">' + t.homework + '</td>' +
+      '<td style="text-align:center">' + t.news + '</td>' +
+      '<td style="text-align:center">' + t.violations + '</td>' +
+      '<td style="text-align:center;font-weight:800;color:' + (zero ? '#c62828' : '#0f172a') + '">' + t.total + '</td>' +
+      '<td style="text-align:center;color:#64748b">' + (t.last || '—') + '</td></tr>';
+  }
+  h += '</tbody></table></div>';
+  return h;
+}
+
+function rep_printAllTeacherActivity() {
+  var list = window._repAllTeachers || [];
+  var s = window._repAllTeachersSummary || {};
+  var rows = '';
+  for (var i = 0; i < list.length; i++) {
+    var t = list[i];
+    rows += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(t.name) + '</td><td>' + escapeHtml(t.subject || '') + '</td><td>' + t.homework + '</td><td>' + t.news + '</td><td>' + t.violations + '</td><td>' + t.total + '</td><td>' + (t.last || '') + '</td></tr>';
+  }
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent) || '';
+  var head = '<p style="text-align:center">إجمالي المعلمين: ' + (s.totalTeachers || list.length) +
+    ' · نشطون: ' + (s.activeTeachers || 0) + ' · بلا نشاط: ' + (s.inactiveTeachers || 0) +
+    ' · متوسط النشاط/معلم: ' + (s.avgPerTeacher || 0) + '</p>';
+  var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  w.document.close(); w.focus(); w.print();
 }
 
 // ── تقرير أداء المهام (مدمج داخل لوحة التقارير) ──────────
