@@ -4601,95 +4601,10 @@ function sendSaveNews(data, id) {
 /**
  * فتح مودال تسجيل مخالفة
  */
-function openViolationModal() {
-  App.vioSelectedStudent = null;
-  document.getElementById('vioStep1').style.display = 'block';
-  document.getElementById('vioStep2').style.display = 'none';
-  document.getElementById('vioSaveBtn').style.display = 'none';
-  document.getElementById('vioSearchInput').value = '';
-  document.getElementById('vioStudentResults').innerHTML = '';
-  document.getElementById('vioType').innerHTML = buildSelectOptions(App.lists.violations || [], 'اختر نوع السلوك');
-  document.getElementById('vioReply').value = '';
-  openModal('violationModal');
-}
-
-/**
- * البحث عن طالب لإضافة مخالفة (مع debounce)
- */
-var _vioSearchTimer = null;
-function searchStudentsForViolation(query) {
-  if (_vioSearchTimer) clearTimeout(_vioSearchTimer);
-  var resultsEl = document.getElementById('vioStudentResults');
-  if (!query || query.trim().length < 2) {
-    resultsEl.innerHTML = '<div style="text-align:center;color:#888;padding:8px;">اكتب حرفين على الأقل للبحث</div>';
-    return;
-  }
-  resultsEl.innerHTML = '<div style="text-align:center;padding:8px;">🔍 جاري البحث...</div>';
-  _vioSearchTimer = setTimeout(function() {
-    callServer('searchStudentsForTeacher', { query: query }, function(r) {
-      if (!r || !r.success || !r.data || r.data.length === 0) {
-        resultsEl.innerHTML = '<div style="padding:12px;text-align:center;color:#856404;">🔍 لا توجد نتائج</div>';
-        return;
-      }
-      var data = r.data.slice(0, 20);
-      var html = '';
-      for (var i = 0; i < data.length; i++) {
-        var s = data[i];
-        html += '<div style="padding:10px;border:1px solid #ddd;border-radius:8px;margin-bottom:6px;cursor:pointer;background:#fff;" onclick="selectVioStudent(\'' + s.rowIndex + '\',\'' + s.code + '\',\'' + s.name.replace(/'/g, "\\'") + '\',\'' + s.grade + '\',\'' + s.section + '\')">' +
-                '<strong>' + s.name + '</strong> | ' + s.grade + '/' + s.section + ' | كود: ' + s.code +
-                '</div>';
-      }
-      resultsEl.innerHTML = html;
-    });
-  }, 400);
-}
-
-/**
- * اختيار طالب من نتائج البحث
- */
-function selectVioStudent(rowIndex, code, name, grade, section) {
-  App.vioSelectedStudent = { rowIndex: rowIndex, code: code, name: name, grade: grade, section: section };
-  document.getElementById('vioStep1').style.display = 'none';
-  document.getElementById('vioStep2').style.display = 'block';
-  document.getElementById('vioSaveBtn').style.display = 'inline-flex';
-  document.getElementById('vioSelectedStudent').innerHTML = '👨‍🎓 <strong>' + name + '</strong> — ' + grade + '/' + section + ' (كود: ' + code + ')';
-}
-
-/**
- * العودة إلى خطوة البحث
- */
-function vioBackToSearch() {
-  document.getElementById('vioStep1').style.display = 'block';
-  document.getElementById('vioStep2').style.display = 'none';
-  document.getElementById('vioSaveBtn').style.display = 'none';
-}
-
-/**
- * حفظ المخالفة
- */
-function saveViolation() {
-  var s = App.vioSelectedStudent;
-  if (!s) { toast('يرجى اختيار طالب أولاً', 'warning'); return; }
-  var type = document.getElementById('vioType').value;
-  var reply = document.getElementById('vioReply').value;
-  if (!type) { toast('يرجى اختيار نوع السلوك', 'warning'); return; }
-
-  showLoading('جاري حفظ التسجيل...');
-  callServer('addViolationProtected', {
-    studentRow: s.rowIndex,
-    violation: type,
-    teacherName: App.user.teacherName,
-    reply: reply.trim()
-  }, function(r) {
-    hideLoading();
-    if (r && r.success) {
-      toast(r.message || 'تم التسجيل بنجاح', 'success');
-      closeModal('violationModal');
-    } else {
-      showError(r ? r.error : 'فشل حفظ التسجيل');
-    }
-  });
-}
+/* [مزال] نسخ مكرّرة قديمة من دوال المخالفات (openViolationModal/searchStudentsForViolation/
+   selectVioStudent/vioBackToSearch/saveViolation) — كانت تُتجاوَز أصلاً بالنسخ المحسّنة
+   الأحدث (~7888-8051، مع window.selectVioStudent). حُذفت لمنع ازدواجية split-brain مستقبلية.
+   النسخ المعتمدة هي الأحدث في القسم اللاحق. */
 // ==================== SECTION ROUTER (مُحسَّن بالكامل وآمن) ====================
 
 /**
@@ -11450,7 +11365,8 @@ function rep_shareReport() {
   lines.push('');
   function add(label, val) { if (val !== undefined && val !== null && val !== '') lines.push('• ' + label + ': ' + val); }
   if (d.scope === 'admin' || d.scope === 'deputy') {
-    add('إجمالي الطلاب', s.totalStudents); add('إجمالي المعلمين', s.totalTeachers); add('الفصول', s.totalClasses);
+    if (App.user && App.user.role === 'admin') add('إجمالي الطلاب', s.totalStudents); // المدير فقط
+    add('إجمالي المعلمين', s.totalTeachers); add('الفصول', s.totalClasses);
     add('الأخبار المنشورة', s.totalNews); add('الواجبات', s.totalHomework); add('السجل السلوكي', s.totalViolations);
     add('الملاحظات', s.totalNotes); if (s.attendanceRate) add('نسبة الحضور', s.attendanceRate + '%');
   } else if (d.scope === 'supervisor') {
@@ -11762,7 +11678,10 @@ function _rpt_renderAdmin(d) {
  
   // Stats grid
   html += '<div class="rpt-stats">';
-  html += _rpt_stat('🎒', s.totalStudents,  'إجمالي الطلاب',     'rgba(79,70,229,.12)');
+  // الإجمالي الكلي لأعداد الطلاب: للمدير فقط (دور admin)
+  if (App.user && App.user.role === 'admin') {
+    html += _rpt_stat('🎒', s.totalStudents,  'إجمالي الطلاب',     'rgba(79,70,229,.12)');
+  }
   html += _rpt_stat('👨‍🏫', s.totalTeachers, 'إجمالي المعلمين',   'rgba(16,185,129,.12)');
   html += _rpt_stat('🏫', s.totalClasses,   'الفصول',            'rgba(6,182,212,.12)');
   html += _rpt_stat('📢', s.totalNews,      'الأخبار المنشورة',  'rgba(245,158,11,.12)');
@@ -12600,6 +12519,13 @@ function sdir_load() {
   });
 }
 
+// عدد طلاب فصول المعلم (st.mine) — بديل عن الإجمالي الكلي المحجوب عنه
+function sdir_mineCount() {
+  var n = 0, s = SDIR.students || [];
+  for (var i = 0; i < s.length; i++) if (s[i].mine) n++;
+  return n;
+}
+
 // ── وضع المعلم: يرى كل الطلاب (لكل الشعب) ويعدّل الصف/الشعبة؛
 //    كلمة المرور والإرسال لطلاب فصوله فقط ──
 function sdir_renderTeacher() {
@@ -12612,7 +12538,8 @@ function sdir_renderTeacher() {
     '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sdir-fs" onchange="sdir_renderRows()">' + buildSelectOptions(sections, 'كل الشعب', '', true) + '</select></div>' +
     '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="sdir-q" placeholder="🔍 اسم / كود" oninput="sdir_renderRows()"></div>' +
     '</div>' +
-    '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap"><span class="badge badge-info">' + s.length + ' طالب (كل الشعب)</span>' +
+    // الإجمالي الكلي لأعداد الطلاب لا يظهر للمعلم (للمدير فقط) — نعرض عدد طلاب فصوله فقط
+    '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap"><span class="badge badge-info">طلاب فصولك: ' + sdir_mineCount() + '</span>' +
     '<span style="font-size:12px;color:#64748b">كلمة المرور والإرسال متاحان لطلاب فصولك فقط</span></div>';
   h += '<div class="table-wrap"><table id="sdir-table"><thead><tr><th>اسم الطالب</th><th>الفصل</th><th>الشعبة</th><th>كلمة المرور</th><th>إرسال</th></tr></thead><tbody id="sdir-tbody"></tbody></table></div>';
   body.innerHTML = h;
@@ -12661,8 +12588,10 @@ function sdir_analyticsHtml() {
     }
     return h + '</div>';
   }
+  // الإجمالي الكلي لأعداد الطلاب يظهر للمدير فقط (a.showTotal)؛ التفصيلات تبقى للجميع المصرّح لهم
+  var totalTxt = (a.showTotal && a.total != null) ? (' (الإجمالي: ' + a.total + ')') : '';
   return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:14px">' +
-    '<div style="font-weight:800;margin-bottom:10px;color:#0F2C5C">📊 إحصاءات الطلاب (الإجمالي: ' + a.total + ')</div>' +
+    '<div style="font-weight:800;margin-bottom:10px;color:#0F2C5C">📊 إحصاءات الطلاب' + totalTxt + '</div>' +
     '<div style="display:flex;gap:24px;flex-wrap:wrap">' + bars('حسب الصف', a.byGrade) + bars('حسب الشعبة', a.bySection) + '</div></div>';
 }
 
