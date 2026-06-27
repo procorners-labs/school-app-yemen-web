@@ -8699,44 +8699,10 @@ function showNewsViewers(newsId, newsTeacherName) {
   });
 }
  
-function openNewsModal(id) {
-  document.getElementById('newsEditId').value = id || '';
-  document.getElementById('newsModalTitle').textContent = id ? '✏️ تعديل خبر' : '📢 إضافة خبر / إشعار';
-  fillSelect('newsGrade', myGrades(), 'اختر الفصل', isAdmin() ? '' : pickDefault(myGrades()));
-  var defGrade = document.getElementById('newsGrade').value;
-  fillSelect('newsSection', getMySectionsForGrade(defGrade), 'اختر الشعبة', isAdmin() ? '' : pickDefault(mySections()));
-  document.getElementById('newsDate').value = todayDate();
-  document.getElementById('newsText').value = '';
-  document.getElementById('newsFile').value = '';
-  document.getElementById('newsDropZone').innerHTML = '📎 انقر لاختيار ملف أو اسحبه هنا<div style="font-size:.78rem;color:var(--text-light);margin-top:4px">الحد الأقصى: 5MB</div>';
-  document.getElementById('newsFileInfo').classList.add('hidden');
-  var gradeSelect = document.getElementById('newsGrade');
-  if (gradeSelect) gradeSelect.onchange = function() { updateSectionSelect('newsGrade', 'newsSection'); };
-
-  if (id) {
-    showLoading('جاري تحميل بيانات الخبر...');
-    callServer('getNewsByIdProtected', { id: id }, function(r) {
-      hideLoading();
-      if (!r || !r.success) { showError(r ? r.error : 'تعذر جلب الخبر'); return; }
-      var n = r.data || {};
-      document.getElementById('newsGrade').value = n.grade || '';
-      document.getElementById('newsSection').value = n.section || '';
-      document.getElementById('newsText').value = n.news || '';
-      document.getElementById('newsDate').value = n.date || todayDate();
-      updateSectionSelect('newsGrade', 'newsSection');
-      var secEl = document.getElementById('newsSection');
-      if (secEl && n.section) secEl.value = n.section;
-      openModal('newsModal');
-    }, function(err) {
-      hideLoading();
-      showError(err);
-    });
-  } else {
-    openModal('newsModal');
-  }
-}
-function saveNews() { var id = document.getElementById('newsEditId').value || null; var grade = document.getElementById('newsGrade').value || ''; var section = document.getElementById('newsSection').value || ''; var news = (document.getElementById('newsText').value || '').trim(); var date = document.getElementById('newsDate').value || todayDate(); if (!news || !grade || !section) { toast('أكمل الحقول المطلوبة', 'warning'); return; } var data = { id: id, teacher: App.user.teacherName, grade: grade, section: section, news: news, date: date }; var fileInput = document.getElementById('newsFile'); var file = (fileInput && fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null; if (file) { if (file.size > 5*1024*1024) { toast('حجم الملف يتجاوز 5MB', 'warning'); return; } var reader = new FileReader(); reader.onload = function(e) { data.attachment = { base64: e.target.result, fileName: file.name, mimeType: file.type }; sendSaveNews(data, id); }; reader.onerror = function() { toast('فشل قراءة الملف', 'error'); }; reader.readAsDataURL(file); } else { sendSaveNews(data, id); } }
-function sendSaveNews(data, id) { showLoading('جاري النشر...'); var fn = id ? 'updateNewsProtected' : 'addNewsProtected'; callServer(fn, data, function(r) { hideLoading(); if (r && r.success) { toast(r.message || 'تم نشر الخبر', 'success'); closeModal('newsModal'); document.getElementById('newsFile').value = ''; document.getElementById('newsDropZone').innerHTML = '📎 انقر لاختيار ملف أو اسحبه هنا...'; document.getElementById('newsFileInfo').classList.add('hidden'); applyNewsFilters(); } else { showError(r ? r.error : 'فشل نشر الخبر'); } }); }
+/* [مزال] نسخ قديمة مكرّرة من openNewsModal/saveNews/sendSaveNews (نسخة الملف الواحد)
+   كانت تتأخّر في الملف فتتجاوز النسخ الجديدة متعددة الوسائط (أعلى الملف) — مما أدى إلى
+   عدم إرسال الصور (تقرأ files[0] بينما المعالج الجديد يُفرّغ input ويراكم في window._newsNewFiles).
+   النسخ المعتمدة الآن: openNewsModal@~4291 · saveNews@~4403 · sendSaveNews@~4526. */
 function editNews(id) { openNewsModal(id); }
 function deleteNewsItem(id) { confirmAction('حذف الخبر', 'هل تريد حذف هذا الخبر؟', '🗑️', function() { showLoading(); callServer('deleteNewsProtected', { id: id }, function(r) { hideLoading(); if (r.success) { toast(r.message, 'success'); applyNewsFilters(); } else showError(r.error); }); }); }
 
