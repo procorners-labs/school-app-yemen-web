@@ -4012,6 +4012,21 @@ function _initFcmBridge() {
     if (t) window.registerFcmToken(t);
   } catch (e) {}
 }
+// إصلاح مشاركة ملفات صور/فيديو الأخبار — للمدير (يجعلها متاحة للعرض بالرابط)
+function repairNewsMedia() {
+  if (!confirm('سيتم ضبط مشاركة كل صور/فيديو الأخبار على «أي شخص بالرابط — مشاهدة» لتظهر في الصفحة. متابعة؟')) return;
+  showLoading('جارٍ إصلاح روابط الصور...');
+  callServer('repairNewsMediaSharingProtected', {}, function (r) {
+    hideLoading();
+    if (r && r.success) {
+      toast('تم إصلاح ' + (r.fixed || 0) + ' من ' + (r.total || 0) + ' ملف' +
+        ((r.failed) ? (' · تعذّر ' + r.failed) : ''), 'success');
+    } else {
+      toast('تعذّر الإصلاح: ' + ((r && r.error) || 'خطأ غير معروف'), 'error');
+    }
+  }, function () { hideLoading(); toast('تعذّر الاتصال بالخادم', 'error'); });
+}
+
 // اختبار بثّ إشعار الهاتف — للمدير (يُستدعى من زر الاختبار بعد تفعيل FCM)
 function sendTestPush() {
   callServer('sendTestPushProtected', {}, function (r) {
@@ -5526,6 +5541,7 @@ function renderDashboard() {
       qa += '<div class="qa-btn" onclick="showSection(\'adminActivities\')"><span class="qa-icon">📋</span><span class="qa-label">كل الأنشطة</span></div>';
       qa += '<div class="qa-btn" onclick="showSection(\'teachers-mgmt\')"><span class="qa-icon">👥</span><span class="qa-label">إدارة المعلمين</span></div>';
       qa += '<div class="qa-btn" onclick="sendTestPush()"><span class="qa-icon">🔔</span><span class="qa-label">اختبار إشعار الهاتف</span></div>';
+      qa += '<div class="qa-btn" onclick="repairNewsMedia()"><span class="qa-icon">🛠️</span><span class="qa-label">إصلاح روابط صور الأخبار</span></div>';
     }
 
     var html = '<div class="dashboard-greeting mb-4">' +
