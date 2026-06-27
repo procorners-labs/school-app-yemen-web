@@ -161,6 +161,40 @@ export default {
       }
     }
 
+    // ── 1د) بثّ فيديو Google Drive عبر الوكيل: /media/drive/<fileId> ──
+    //   يجلب بايتات الفيديو من Drive ويبثّها كـ video/mp4 مع دعم Range،
+    //   ليُشغّل في وسم <video> الأصلي بدل مشغّل Drive المتعثّر
+    //   ("تعذّر تحميل الفيديو. يُرجى إعادة المحاولة"). خفيف: بثّ مباشر بلا تخزين.
+    var mediaMatch = path.match(/^\/media\/drive\/([a-zA-Z0-9_-]+)\/?$/);
+    if (mediaMatch) {
+      var fileId = mediaMatch[1];
+      if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }));
+      try {
+        var range = request.headers.get('Range');
+        var fInit = { method: 'GET', redirect: 'follow', headers: {} };
+        if (range) fInit.headers['Range'] = range;
+        // نقطة التنزيل المباشر الحديثة (تتجاوز صفحة فحص الفيروسات بـ confirm=t)
+        var driveUrl = 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
+        var dResp = await fetch(driveUrl, fInit);
+        var ct = dResp.headers.get('Content-Type') || '';
+        // لو رجعت صفحة HTML (تأكيد/خطأ) جرّب نقطة uc التقليدية
+        if (ct.indexOf('text/html') !== -1) {
+          dResp = await fetch('https://drive.google.com/uc?export=download&id=' + fileId + '&confirm=t', fInit);
+          ct = dResp.headers.get('Content-Type') || '';
+        }
+        var outHeaders = new Headers();
+        outHeaders.set('Content-Type', (ct && ct.indexOf('text/html') === -1) ? ct : 'video/mp4');
+        outHeaders.set('Accept-Ranges', 'bytes');
+        outHeaders.set('Access-Control-Allow-Origin', '*');
+        outHeaders.set('Cache-Control', 'public, max-age=3600');
+        var cr = dResp.headers.get('Content-Range'); if (cr) outHeaders.set('Content-Range', cr);
+        var cl = dResp.headers.get('Content-Length'); if (cl) outHeaders.set('Content-Length', cl);
+        return new Response(dResp.body, { status: dResp.status, headers: outHeaders });
+      } catch (mErr) {
+        return withCors(new Response('video proxy error: ' + String(mErr), { status: 502 }));
+      }
+    }
+
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
     if (path === '/' || path === '') path = '/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;
