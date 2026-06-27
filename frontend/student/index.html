@@ -3047,6 +3047,15 @@ function _driveId(u) {
   return m ? m[1] : '';
 }
 
+// مصدر بثّ فيديو Drive المباشر (يُشغَّل في <video> الأصلي — يتجاوز مشغّل Drive المتعثّر)
+function _drvVideoSrcStu(fileId) {
+  return 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
+}
+// تراجع: إن فشل البثّ المباشر، نعرض مشغّل Drive (/preview) داخل نفس الإطار
+function _stuVideoFallback(videoEl, fid) {
+  var wrap = videoEl && videoEl.parentNode; if (!wrap) return;
+  wrap.innerHTML = '<iframe src="https://drive.google.com/file/d/' + fid + '/preview" frameborder="0" allowfullscreen></iframe>';
+}
 function newsVideoHTML(url) {
   var u = (url || '').toString();
   var low = u.toLowerCase();
@@ -3063,8 +3072,10 @@ function newsVideoHTML(url) {
   if (low.indexOf('drive.google.com') !== -1) {
     var did = _driveId(u);
     if (did) {
-      return '<div class="video-embed"><iframe src="https://drive.google.com/file/d/' + esc(did) + '/preview" ' +
-             'frameborder="0" allowfullscreen loading="lazy"></iframe></div>';
+      // فيديو Drive → بثّ مباشر في <video>؛ وعند الفشل تراجع لمشغّل Drive (/preview)
+      var vs = _drvVideoSrcStu(did);
+      return '<div class="video-embed"><video src="' + esc(vs) + '" controls autoplay playsinline preload="metadata" ' +
+             'onerror="_stuVideoFallback(this,\'' + esc(did) + '\')"></video></div>';
     }
   }
   // Facebook / Instagram / Vimeo / أخرى — رابط مباشر

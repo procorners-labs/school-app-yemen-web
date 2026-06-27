@@ -8301,11 +8301,33 @@ function _tcGalMove(gid, dir) {
   _tcGalShow(gid, (((cur + dir) % cnt) + cnt) % cnt);
 }
 function _tcGalGo(gid, idx) { _tcGalShow(gid, idx); }
-// تشغيل الفيديو عند الطلب (تحميل كسول للـiframe — أداء أفضل مع عدة فيديوهات)
+// مصدر بثّ فيديو Drive المباشر (يُشغَّل في <video> الأصلي — يتجاوز مشغّل Drive المتعثّر)
+function _drvVideoSrc(fileId) {
+  return 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
+}
+// تراجع: إن فشل البثّ المباشر، نعرض مشغّل Drive (/preview) داخل نفس الإطار
+function _tcVideoFallback(videoEl, fid) {
+  var wrap = videoEl && videoEl.parentNode; if (!wrap) return;
+  wrap.innerHTML = '<iframe src="https://drive.google.com/file/d/' + fid + '/preview" ' +
+    'style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen></iframe>';
+}
+// تشغيل الفيديو عند الطلب (تحميل كسول): Drive/ملف → <video> · YouTube → iframe
 function _tcPlayVideo(el) {
-  var src = el.getAttribute('data-src'); if (!src) return;
-  el.innerHTML = '<iframe src="' + src + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen></iframe>';
-  el.removeAttribute('onclick'); el.style.cursor = 'default';
+  var kind = el.getAttribute('data-kind') || 'iframe', inner;
+  if (kind === 'drive') {
+    var fid = el.getAttribute('data-fid') || '';
+    inner = '<video src="' + _drvVideoSrc(fid) + '" controls autoplay playsinline preload="metadata" ' +
+      'style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000" ' +
+      'onerror="_tcVideoFallback(this,\'' + fid + '\')"></video>';
+  } else if (kind === 'file') {
+    var src = el.getAttribute('data-vsrc') || '';
+    inner = '<video src="' + src + '" controls autoplay playsinline preload="metadata" ' +
+      'style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000"></video>';
+  } else {
+    var src2 = el.getAttribute('data-vsrc') || '';
+    inner = '<iframe src="' + src2 + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen></iframe>';
+  }
+  el.innerHTML = inner; el.removeAttribute('onclick'); el.style.cursor = 'default';
 }
 
 function _tcNewsMediaHtml(rawAttach, newsId) {
@@ -8318,11 +8340,16 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
     var drive = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (/youtube\.com|youtu\.be/.test(low)) {
       var yt = u.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-      items.push({ t: 'video', u: (yt && yt[1]) ? ('https://www.youtube.com/embed/' + yt[1]) : u });
+      items.push({ t: 'video', kind: 'iframe', u: (yt && yt[1]) ? ('https://www.youtube.com/embed/' + yt[1]) : u });
     } else if (low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low)) {
-      if (drive && drive[1] && low.indexOf('/preview') === -1 && low.indexOf('drive.google') !== -1) {
-        items.push({ t: 'video', u: 'https://drive.google.com/file/d/' + drive[1] + '/preview' });
-      } else { items.push({ t: 'video', u: u }); }
+      if (drive && drive[1]) {
+        // فيديو Drive → بثّ مباشر في <video> مع تراجع لمشغّل Drive
+        items.push({ t: 'video', kind: 'drive', u: drive[1] });
+      } else if (/\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low)) {
+        items.push({ t: 'video', kind: 'file', u: u });   // ملف فيديو مباشر
+      } else {
+        items.push({ t: 'video', kind: 'iframe', u: u });
+      }
     } else if (/\.pdf(\?|$)/.test(low)) {
       items.push({ t: 'pdf', u: (drive && drive[1]) ? ('https://drive.google.com/file/d/' + drive[1] + '/view') : u });
     } else if (drive && drive[1]) {
@@ -8340,7 +8367,8 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
       inner = '<img src="' + esc(it.u) + '" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
         'style="max-width:100%;max-height:430px;object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">';
     } else if (it.t === 'video') {
-      inner = '<div class="tcm-vwrap" data-src="' + esc(it.u) + '" onclick="_tcPlayVideo(this)" ' +
+      var _vattr = (it.kind === 'drive') ? ('data-fid="' + esc(it.u) + '"') : ('data-vsrc="' + esc(it.u) + '"');
+      inner = '<div class="tcm-vwrap" data-kind="' + (it.kind || 'iframe') + '" ' + _vattr + ' onclick="_tcPlayVideo(this)" ' +
         'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000;border-radius:6px;overflow:hidden">' +
         '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center">' +
         '<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:24px;color:#0F2C5C;box-shadow:0 4px 16px rgba(0,0,0,.45)">▶</div>' +
