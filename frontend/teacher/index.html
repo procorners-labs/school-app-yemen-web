@@ -3623,6 +3623,8 @@ function bootApp() {
 
   // تحميل عدّاد إشعارات الأخبار (الجرس)
   loadNewsNotifications();
+  // عدّاد رسائل أولياء الأمور المعلّقة (يبقى حتى الرد)
+  loadNotesNotifications();
 
   // جسر إشعارات الهاتف (FCM) — تسجيل رمز جهاز الأندرويد
   _initFcmBridge();
@@ -4096,10 +4098,22 @@ function loadCircularsNotifications() {
   } catch (e) { /* تجاهل */ }
 }
 
-// مجموع عدّادات الجرس (أخبار + تعاميم)
+// مجموع عدّادات الجرس (أخبار + تعاميم + رسائل أولياء أمور معلّقة)
 function refreshBellBadge() {
-  var n = (window._bellNews || 0) + (window._bellCirc || 0);
+  var n = (window._bellNews || 0) + (window._bellCirc || 0) + (window._bellNotes || 0);
   updateBellBadge(n);
+}
+
+// عدّاد رسائل أولياء الأمور المعلّقة (بلا رد) — تبقى في الجرس حتى يَرُدّ المعلم عليها
+function loadNotesNotifications() {
+  try {
+    if (typeof App === 'undefined' || !App || !App.user) return;
+    callServer('getUnreadNotesCountProtected', {}, 'notes_pending', 90, function (r) {
+      if (!r || !r.success) return;
+      window._bellNotes = parseInt((r.unread != null ? r.unread : r.count) || 0, 10) || 0;
+      refreshBellBadge();
+    });
+  } catch (e) { /* تجاهل */ }
 }
 
 function updateBellBadge(count) {
@@ -8636,7 +8650,7 @@ function applyParentNotesFilters() { var gEl = document.getElementById('notesFil
 if (!isAllFilter(sec) && n.section !== sec) continue; if (q) { var hay = _tcNorm((n.studentName || '') + ' ' + (n.teacher || '') + ' ' + (n.message || '')); if (hay.indexOf(q) === -1) continue; } filtered.push(n); } filtered.sort(_tcByNewest); renderParentNotesList(filtered); }
 function filterParentNotes() { applyParentNotesFilters(); }
 function renderParentNotesList(notes) { var container = document.getElementById('notesListArea'); if (!notes.length) { container.innerHTML = '<div class="empty-state"><div class="es-icon">💬</div><div class="es-title">لا توجد ملاحظات</div><div class="es-sub">ستظهر هنا ملاحظات أولياء الأمور عند وصولها</div></div>'; return; } var html = '<div style="display:flex; flex-direction:column; gap:14px;">'; for (var i = 0; i < notes.length; i++) { var n = notes[i]; var hasReply = n.reply && n.reply.trim() !== ''; var canReply = isAdmin() || (App.user.teacherName === n.teacher); html += '<div class="note-card" style="border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; background:var(--surface);"><div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;"><span class="badge badge-info">' + (n.grade || '') + '</span><span class="badge badge-purple">' + (n.section || '') + '</span><span style="font-weight:600;">' + (n.studentName || '') + '</span><span style="color:var(--text-muted); font-size:0.85rem;">إلى: ' + (n.teacher || '') + '</span><span style="margin-right:auto; font-size:0.78rem; color:var(--text-light);">' + formatDate(n.date) + '</span>' + (hasReply ? '<span class="badge badge-success">تم الرد</span>' : '<span class="badge badge-warning">بانتظار الرد</span>') + '</div><p style="margin:0 0 12px 0; line-height:1.6; background:var(--surface2); padding:12px; border-radius:var(--radius-sm);">' + (n.message || '') + '</p>'; if (hasReply) { html += '<div style="background:#f0fdf4; border-right:3px solid var(--success); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:12px;"><div style="font-weight:600; font-size:0.8rem; color:var(--success); margin-bottom:4px;">💬 الرد:</div><div style="font-size:0.9rem;">' + n.reply + '</div></div>'; } if (!hasReply && canReply) { html += '<div style="display:flex; gap:8px; margin-top:8px;"><input type="text" class="form-control" id="replyInput_' + n.id + '" placeholder="اكتب رداً..." style="flex:1;"><button class="btn btn-sm btn-primary" onclick="submitNoteReply(' + n.id + ')">إرسال الرد</button></div>'; } html += '</div>'; } html += '</div>'; container.innerHTML = html; }
-function submitNoteReply(noteId) { var input = document.getElementById('replyInput_' + noteId); var reply = input.value.trim(); if (!reply) { toast('الرجاء كتابة رد', 'warning'); return; } showLoading('جاري حفظ الرد...'); callServer('addNoteReplyProtected', { noteId: noteId, reply: reply }, function(r) { hideLoading(); if (r.success) { toast('تم حفظ الرد بنجاح', 'success'); loadParentNotesForUI(); } else showError(r.error); }); }
+function submitNoteReply(noteId) { var input = document.getElementById('replyInput_' + noteId); var reply = input.value.trim(); if (!reply) { toast('الرجاء كتابة رد', 'warning'); return; } showLoading('جاري حفظ الرد...'); callServer('addNoteReplyProtected', { noteId: noteId, reply: reply }, function(r) { hideLoading(); if (r.success) { toast('تم حفظ الرد بنجاح', 'success'); loadParentNotesForUI(); try { ClientCache.del('notes_pending'); } catch(e){} loadNotesNotifications(); } else showError(r.error); }); }
 
 // ==================== MY SCHEDULE ====================
 var _schedView = 'grid';
