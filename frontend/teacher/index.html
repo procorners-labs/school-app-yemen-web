@@ -2321,7 +2321,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('newsModal')">إلغاء</button>
-      <button class="btn btn-primary" onclick="saveNews()">📤 نشر</button>
+      <button class="btn btn-primary" id="newsSaveBtn" onclick="saveNews()">📤 نشر</button>
     </div>
   </div>
 </div>
@@ -4475,54 +4475,57 @@ function saveNews() {
     return;
   }
 
-  var data = { id: id, teacher: '', grade: grade, section: section, news: news, date: date };
-  // [3.2] في وضع التعديل: أرسل قائمة الوسائط المُبقاة (مرتّبة) — الجديد يُلحق بعدها
-  if (id) { data.keepUrls = window._newsKeepMedia || []; }
-
-  // [3.2/fix] الملفات المتراكمة عبر عدة اختيارات (لا فقط آخر اختيار من input)
+  // الوسائط المُبقاة (وضع التعديل) — روابط جاهزة
+  var keptUrls = id ? ((window._newsKeepMedia || []).slice()) : [];
   var files = window._newsNewFiles || [];
 
-  if (!files || files.length === 0) {
-    sendSaveNews(data, id);
+  // لا ملفات جديدة → أرسل الروابط المُبقاة فقط (طلب صغير سريع)
+  if (!files.length) {
+    sendSaveNews({ id: id, grade: grade, section: section, news: news, date: date,
+                   attachments: keptUrls.join('\n') }, id);
     return;
   }
 
   // التحقق من الأحجام: صورة ≤ 5MB · فيديو ≤ 25MB
   var IMG_MAX = 5 * 1024 * 1024, VID_MAX = 25 * 1024 * 1024;
-  var picked = [];
   for (var fi = 0; fi < files.length; fi++) {
-    var f = files[fi];
-    var isVid = (f.type && f.type.indexOf('video') === 0);
-    var cap = isVid ? VID_MAX : IMG_MAX;
-    if (f.size > cap) {
-      toast('حجم «' + f.name + '» يتجاوز ' + (isVid ? '25MB' : '5MB'), 'warning');
+    var f0 = files[fi];
+    var isVid0 = (f0.type && f0.type.indexOf('video') === 0);
+    if (f0.size > (isVid0 ? VID_MAX : IMG_MAX)) {
+      toast('حجم «' + f0.name + '» يتجاوز ' + (isVid0 ? '25MB' : '5MB'), 'warning');
       return;
     }
-    picked.push(f);
   }
 
-  // قراءة كل الملفات إلى base64 ثم الإرسال كقائمة
-  var listOut = [];
-  var done = 0, failed = false;
-  for (var pi = 0; pi < picked.length; pi++) {
-    (function (file) {
-      var reader = new FileReader();
-      reader.onload = function (e) {
-        listOut.push({ base64: e.target.result, fileName: file.name, mimeType: file.type });
-        done++;
-        if (done === picked.length && !failed) {
-          data.attachmentList = listOut;
-          // توافق رجعي: لو ملف واحد فقط، مرّره أيضاً كمرفق مفرد
-          if (listOut.length === 1) data.attachment = listOut[0];
-          sendSaveNews(data, id);
-        }
-      };
-      reader.onerror = function () {
-        if (!failed) { failed = true; toast('فشل قراءة الملف: ' + file.name, 'error'); }
-      };
-      reader.readAsDataURL(file);
-    })(picked[pi]);
+  // ★ رفع كل ملف على حدة (يتجنّب طلباً ضخماً يتجاوز حدود الوكيل/الخادم → status 0/مهلة)،
+  //   ثم إنشاء/تحديث الخبر بالروابط فقط (طلب صغير لا يفشل).
+  var newUrls = [], i = 0;
+  var saveBtn = document.getElementById('newsSaveBtn');
+  if (saveBtn) saveBtn.disabled = true;
+  function _newsUploadNext() {
+    if (i >= files.length) {
+      if (saveBtn) saveBtn.disabled = false;
+      sendSaveNews({ id: id, grade: grade, section: section, news: news, date: date,
+                     attachments: keptUrls.concat(newUrls).join('\n') }, id);
+      return;
+    }
+    var file = files[i];
+    showLoading('جارٍ رفع الملفات ' + (i + 1) + '/' + files.length + '...');
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      callServer('uploadNewsMediaProtected',
+        { file: { base64: e.target.result, fileName: file.name, mimeType: file.type } },
+        function (r) {
+          if (r && r.success && r.url) { newUrls.push(r.url); i++; _newsUploadNext(); }
+          else { hideLoading(); if (saveBtn) saveBtn.disabled = false; toast('تعذّر رفع «' + file.name + '»: ' + ((r && r.error) || ''), 'error'); }
+        },
+        function (err) { hideLoading(); if (saveBtn) saveBtn.disabled = false; toast('تعذّر رفع «' + file.name + '»: ' + (err.message || err), 'error'); }
+      );
+    };
+    reader.onerror = function () { hideLoading(); if (saveBtn) saveBtn.disabled = false; toast('فشل قراءة الملف: ' + file.name, 'error'); };
+    reader.readAsDataURL(file);
   }
+  _newsUploadNext();
 }
 
 /**
@@ -8364,12 +8367,26 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
   for (var s = 0; s < items.length; s++) {
     var it = items[s], disp = (s === 0) ? 'flex' : 'none', inner;
     if (it.t === 'image') {
-      inner = '<img src="' + esc(it.u) + '" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
-        'style="max-width:100%;max-height:430px;object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">';
+      // شارة تكبير (تُوضّح أن الصورة قابلة للفتح) + شارة عدد الوسائط على الأولى
+      var _zoom = '<span style="position:absolute;top:8px;right:8px;z-index:2;background:rgba(0,0,0,.45);color:#fff;font-size:.7rem;padding:3px 8px;border-radius:10px;pointer-events:none">🔍 اضغط للتكبير</span>';
+      var _countBadge = (multi && s === 0) ? ('<span style="position:absolute;bottom:8px;right:8px;z-index:2;background:rgba(15,44,92,.85);color:#fff;font-size:.72rem;padding:3px 9px;border-radius:10px;pointer-events:none">🖼️ ' + items.length + ' عناصر</span>') : '';
+      inner = '<div style="position:relative;display:flex;align-items:center;justify-content:center;width:100%">' +
+        '<img src="' + esc(it.u) + '" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
+        'style="max-width:100%;max-height:430px;object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">' +
+        _zoom + _countBadge + '</div>';
     } else if (it.t === 'video') {
       var _vattr = (it.kind === 'drive') ? ('data-fid="' + esc(it.u) + '"') : ('data-vsrc="' + esc(it.u) + '"');
+      // صورة مصغّرة للفيديو (إطار أول) بدل الشاشة السوداء
+      var _vposter = '';
+      if (it.kind === 'drive') {
+        _vposter = '<img src="https://drive.google.com/thumbnail?id=' + esc(it.u) + '&sz=w1000" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+      } else if (it.kind === 'iframe') {
+        var _ytm = String(it.u).match(/embed\/([a-zA-Z0-9_-]{11})/);
+        if (_ytm) _vposter = '<img src="https://img.youtube.com/vi/' + _ytm[1] + '/hqdefault.jpg" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+      }
       inner = '<div class="tcm-vwrap" data-kind="' + (it.kind || 'iframe') + '" ' + _vattr + ' onclick="_tcPlayVideo(this)" ' +
         'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000;border-radius:6px;overflow:hidden">' +
+        _vposter +
         '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center">' +
         '<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:24px;color:#0F2C5C;box-shadow:0 4px 16px rgba(0,0,0,.45)">▶</div>' +
         '<span style="position:absolute;bottom:8px;right:10px;color:#fff;font-size:.72rem;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:10px">🎬 فيديو</span></div></div>';

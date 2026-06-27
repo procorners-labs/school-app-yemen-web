@@ -34,7 +34,9 @@
     var xhr = new XMLHttpRequest();
     xhr.open('POST', endpoint, true);
     xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
-    xhr.timeout = 25000; // 25 ثانية
+    // مهلة أطول لدوال رفع الملفات (قد يصل الفيديو إلى 25MB)؛ والبقية 25 ثانية.
+    var _isUpload = /upload|media|attach/i.test(fnName);
+    xhr.timeout = _isUpload ? 180000 : 25000;
 
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;

@@ -3128,10 +3128,14 @@ function newsMediaHTML(n) {
   return gal + extra;
 }
 
-// شارة فيديو قابلة للنقر (تحميل كسول) داخل شريحة المعرض
+// شارة فيديو قابلة للنقر (تحميل كسول) + صورة مصغّرة (إطار أول) بدل الشاشة السوداء
 function _stuVideoPoster(url) {
+  var did = _driveId(url), yt = _ytId(url), poster = '';
+  if (did) poster = '<img src="https://drive.google.com/thumbnail?id=' + esc(did) + '&sz=w1000" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+  else if (yt) poster = '<img src="https://img.youtube.com/vi/' + esc(yt) + '/hqdefault.jpg" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
   return '<div data-url="' + esc(url) + '" onclick="stuPlayVideo(this)" ' +
     'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000">' +
+    poster +
     '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center">' +
     '<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;color:#0F2C5C;box-shadow:0 4px 14px rgba(0,0,0,.4)">▶</div></div>' +
     '<span style="position:absolute;bottom:8px;inset-inline-end:10px;color:#fff;font-size:11px;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:10px">🎬 فيديو</span></div>';
@@ -3158,11 +3162,15 @@ function newsUnifiedGalleryHTML(media) {
     slides += '<div class="gal-slide' + (i === 0 ? ' active' : '') + '">' + inner + '</div>';
     dots += '<span class="gal-dot' + (i === 0 ? ' active' : '') + '" onclick="galGo(\'' + gid + '\',' + i + ')"></span>';
   }
-  return '<div class="news-gallery" id="' + gid + '" data-count="' + media.length + '" data-cur="0">' +
+  var _badge = multi
+    ? '<span style="position:absolute;bottom:10px;inset-inline-end:10px;z-index:3;background:rgba(15,44,92,.85);color:#fff;font-size:12px;padding:3px 9px;border-radius:10px;pointer-events:none">🖼️ ' + media.length + ' عناصر</span>'
+    : '';
+  return '<div class="news-gallery" id="' + gid + '" data-count="' + media.length + '" data-cur="0" style="position:relative">' +
            '<div class="gal-stage">' + slides + '</div>' +
            (multi ? ('<button type="button" class="gal-nav gal-prev" onclick="galMove(\'' + gid + '\',-1)" aria-label="السابق">‹</button>' +
                      '<button type="button" class="gal-nav gal-next" onclick="galMove(\'' + gid + '\',1)" aria-label="التالي">›</button>' +
                      '<span class="gal-counter">1/' + media.length + '</span>' +
+                     _badge +
                      '<div class="gal-dots">' + dots + '</div>') : '') +
          '</div>';
 }
