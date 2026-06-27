@@ -8268,21 +8268,35 @@ function renderNewsList(list, isFirst) {
 // _buildNewsCard_Teacher — بناء بطاقة خبر (نسخة مُصلحة وشاملة)
 // ══════════════════════════════════════════════════════════════════
 // ── معرض وسائط خبر المعلم: يدعم عدة صور (تنقّل) + فيديو + PDF ────────────────
+// معرض موحّد احترافي: صور + فيديو + PDF في شريط واحد (سهم/عدّاد/نقاط)
+function _tcGalShow(gid, idx) {
+  var g = document.getElementById(gid); if (!g) return;
+  var slides = g.querySelectorAll('.tcm-slide');
+  var cnt = slides.length; if (!cnt) return;
+  if (idx < 0) idx = 0; if (idx >= cnt) idx = cnt - 1;
+  for (var i = 0; i < cnt; i++) slides[i].style.display = (i === idx) ? 'flex' : 'none';
+  g.setAttribute('data-cur', idx);
+  var c = document.getElementById(gid + '-c'); if (c) c.textContent = (idx + 1) + '/' + cnt;
+  var dots = g.querySelectorAll('.tcm-dot');
+  for (var d = 0; d < dots.length; d++) dots[d].style.opacity = (d === idx) ? '1' : '.45';
+}
 function _tcGalMove(gid, dir) {
-  var g = document.getElementById(gid);
-  if (!g) return;
-  var imgs = g.querySelectorAll('img[data-idx]');
-  var cnt = imgs.length; if (!cnt) return;
+  var g = document.getElementById(gid); if (!g) return;
+  var cnt = g.querySelectorAll('.tcm-slide').length; if (!cnt) return;
   var cur = parseInt(g.getAttribute('data-cur') || '0', 10);
-  cur = (((cur + dir) % cnt) + cnt) % cnt;
-  for (var i = 0; i < cnt; i++) { imgs[i].style.display = (i === cur) ? 'block' : 'none'; }
-  g.setAttribute('data-cur', cur);
-  var c = document.getElementById(gid + '-c'); if (c) c.textContent = (cur + 1) + '/' + cnt;
+  _tcGalShow(gid, (((cur + dir) % cnt) + cnt) % cnt);
+}
+function _tcGalGo(gid, idx) { _tcGalShow(gid, idx); }
+// تشغيل الفيديو عند الطلب (تحميل كسول للـiframe — أداء أفضل مع عدة فيديوهات)
+function _tcPlayVideo(el) {
+  var src = el.getAttribute('data-src'); if (!src) return;
+  el.innerHTML = '<iframe src="' + src + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen></iframe>';
+  el.removeAttribute('onclick'); el.style.cursor = 'default';
 }
 
 function _tcNewsMediaHtml(rawAttach, newsId) {
   var parts = String(rawAttach || '').split(/[\r\n]+|\s*\|\s*/);
-  var imgs = [], vids = [], pdfs = [];
+  var items = [];
   for (var i = 0; i < parts.length; i++) {
     var u = (parts[i] || '').trim();
     if (u.indexOf('http') !== 0) continue;
@@ -8290,62 +8304,56 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
     var drive = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (/youtube\.com|youtu\.be/.test(low)) {
       var yt = u.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-      vids.push((yt && yt[1]) ? ('https://www.youtube.com/embed/' + yt[1]) : u);
+      items.push({ t: 'video', u: (yt && yt[1]) ? ('https://www.youtube.com/embed/' + yt[1]) : u });
     } else if (low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low)) {
       if (drive && drive[1] && low.indexOf('/preview') === -1 && low.indexOf('drive.google') !== -1) {
-        vids.push('https://drive.google.com/file/d/' + drive[1] + '/preview');
-      } else { vids.push(u); }
+        items.push({ t: 'video', u: 'https://drive.google.com/file/d/' + drive[1] + '/preview' });
+      } else { items.push({ t: 'video', u: u }); }
     } else if (/\.pdf(\?|$)/.test(low)) {
-      pdfs.push((drive && drive[1]) ? ('https://drive.google.com/file/d/' + drive[1] + '/view') : u);
+      items.push({ t: 'pdf', u: (drive && drive[1]) ? ('https://drive.google.com/file/d/' + drive[1] + '/view') : u });
     } else if (drive && drive[1]) {
-      imgs.push((low.indexOf('thumbnail') !== -1) ? u : ('https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w1000'));
-    } else { imgs.push(u); } // افتراضي: صورة (روابط مباشرة بلا امتداد واضح)
-  }
-
-  var html = '';
-  if (imgs.length === 1) {
-    html +=
-      '<div class="news-image-wrapper" onclick="window.open(\'' + esc(imgs[0]) + '\',\'_blank\')" ' +
-           'style="position:relative;overflow:hidden;max-height:340px;background:var(--surface2);cursor:pointer;">' +
-        '<img src="' + esc(imgs[0]) + '" alt="مرفق الخبر" loading="lazy" ' +
-             'style="width:100%;display:block;object-fit:cover;max-height:340px;" ' +
-             'onerror="this.style.display=\'none\'">' +
-      '</div>';
-  } else if (imgs.length > 1) {
-    var gid = 'tcgal-' + newsId;
-    var slides = '';
-    for (var s = 0; s < imgs.length; s++) {
-      slides +=
-        '<img src="' + esc(imgs[s]) + '" data-idx="' + s + '" loading="lazy" ' +
-             'onclick="window.open(\'' + esc(imgs[s]) + '\',\'_blank\')" ' +
-             'style="width:100%;display:' + (s === 0 ? 'block' : 'none') + ';object-fit:cover;max-height:340px;cursor:pointer;" ' +
-             'onerror="this.style.display=\'none\'">';
+      items.push({ t: 'image', u: (low.indexOf('thumbnail') !== -1) ? u : ('https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w1000') });
+    } else {
+      items.push({ t: 'image', u: u });
     }
-    html +=
-      '<div class="news-image-wrapper" id="' + gid + '" data-cur="0" data-count="' + imgs.length + '" ' +
-           'style="position:relative;overflow:hidden;max-height:340px;background:var(--surface2);">' +
-        slides +
-        '<button type="button" onclick="_tcGalMove(\'' + gid + '\',-1)" aria-label="السابق" ' +
-                'style="position:absolute;top:50%;right:8px;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:18px;">‹</button>' +
-        '<button type="button" onclick="_tcGalMove(\'' + gid + '\',1)" aria-label="التالي" ' +
-                'style="position:absolute;top:50%;left:8px;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:18px;">›</button>' +
-        '<span id="' + gid + '-c" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.6);color:#fff;font-size:.72rem;padding:2px 10px;border-radius:12px;">1/' + imgs.length + '</span>' +
-      '</div>';
   }
-  for (var v = 0; v < vids.length; v++) {
-    html +=
-      '<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;background:#000;">' +
-        '<iframe src="' + esc(vids[v]) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen loading="lazy"></iframe>' +
-      '</div>';
+  if (!items.length) return '';
+  var gid = 'tcgal-' + newsId, multi = items.length > 1;
+  var slides = '';
+  for (var s = 0; s < items.length; s++) {
+    var it = items[s], disp = (s === 0) ? 'flex' : 'none', inner;
+    if (it.t === 'image') {
+      inner = '<img src="' + esc(it.u) + '" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
+        'style="max-width:100%;max-height:430px;object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">';
+    } else if (it.t === 'video') {
+      inner = '<div class="tcm-vwrap" data-src="' + esc(it.u) + '" onclick="_tcPlayVideo(this)" ' +
+        'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000;border-radius:6px;overflow:hidden">' +
+        '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center">' +
+        '<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:24px;color:#0F2C5C;box-shadow:0 4px 16px rgba(0,0,0,.45)">▶</div>' +
+        '<span style="position:absolute;bottom:8px;right:10px;color:#fff;font-size:.72rem;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:10px">🎬 فيديو</span></div></div>';
+    } else {
+      inner = '<a href="' + esc(it.u) + '" target="_blank" rel="noopener" ' +
+        'style="display:inline-flex;align-items:center;gap:8px;padding:14px 22px;background:var(--primary);color:#fff;border-radius:10px;font-weight:700;text-decoration:none">📄 عرض ملف PDF</a>';
+    }
+    slides += '<div class="tcm-slide" data-idx="' + s + '" style="display:' + disp + ';align-items:center;justify-content:center;width:100%;min-height:120px;padding:6px;box-sizing:border-box">' + inner + '</div>';
   }
-  for (var p = 0; p < pdfs.length; p++) {
-    html +=
-      '<div style="padding:14px;background:var(--surface2);border-top:1px solid var(--border);">' +
-        '<a href="' + esc(pdfs[p]) + '" target="_blank" rel="noopener" ' +
-           'style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background:var(--primary);color:#fff;border-radius:var(--radius-sm);font-size:.88rem;font-weight:600;text-decoration:none;">📄 عرض ملف PDF</a>' +
-      '</div>';
+  var nav = '';
+  if (multi) {
+    nav =
+      '<button type="button" onclick="_tcGalMove(\'' + gid + '\',-1)" aria-label="السابق" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:20px">‹</button>' +
+      '<button type="button" onclick="_tcGalMove(\'' + gid + '\',1)" aria-label="التالي" style="position:absolute;top:50%;left:8px;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:20px">›</button>' +
+      '<span id="' + gid + '-c" style="position:absolute;top:8px;left:8px;z-index:3;background:rgba(0,0,0,.6);color:#fff;font-size:.72rem;padding:2px 10px;border-radius:12px">1/' + items.length + '</span>';
+    if (items.length <= 12) {
+      var dots = '';
+      for (var d = 0; d < items.length; d++) {
+        dots += '<span class="tcm-dot" onclick="_tcGalGo(\'' + gid + '\',' + d + ')" style="width:8px;height:8px;border-radius:50%;background:#fff;opacity:' + (d === 0 ? '1' : '.45') + ';cursor:pointer"></span>';
+      }
+      nav += '<div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:6px;background:rgba(0,0,0,.35);padding:5px 8px;border-radius:12px">' + dots + '</div>';
+    }
   }
-  return html;
+  return '<div class="tcm-gal" id="' + gid + '" data-cur="0" data-count="' + items.length + '" ' +
+    'style="position:relative;overflow:hidden;background:#0b1220;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:120px">' +
+    slides + nav + '</div>';
 }
 
 function _buildNewsCard_Teacher(n) {

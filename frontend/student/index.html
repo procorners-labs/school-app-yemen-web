@@ -3103,17 +3103,57 @@ function newsMediaHTML(n) {
   }
   if (!list || !list.length) return '';
 
-  var imgs = [], extra = '';
+  // معرض موحّد: صور + فيديو في شريط واحد (تشغيل كسول للفيديو)؛ PDF/مرفقات أسفله
+  var media = [], extra = '';
   for (var i = 0; i < list.length; i++) {
     var m = list[i];
     if (!m || !m.url) continue;
-    if (m.isImage) { imgs.push(m.url); }
-    else if (m.isVideo) { extra += newsVideoHTML(m.url); }
+    if (m.isVideo) { media.push({ t: 'video', u: m.url }); }
     else if (m.isPdf) { extra += '<div class="pdf-wrap"><a href="' + esc(m.url) + '" target="_blank" class="pdf-link">📄 فتح ملف PDF</a></div>'; }
+    else if (m.isImage) { media.push({ t: 'image', u: m.url }); }
     else { extra += '<div class="pdf-wrap"><a href="' + esc(m.url) + '" target="_blank" class="pdf-link">📎 تحميل المرفق</a></div>'; }
   }
-  var gal = imgs.length ? newsGalleryHTML(imgs) : '';
+  var gal = media.length ? newsUnifiedGalleryHTML(media) : '';
   return gal + extra;
+}
+
+// شارة فيديو قابلة للنقر (تحميل كسول) داخل شريحة المعرض
+function _stuVideoPoster(url) {
+  return '<div data-url="' + esc(url) + '" onclick="stuPlayVideo(this)" ' +
+    'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000">' +
+    '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center">' +
+    '<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;color:#0F2C5C;box-shadow:0 4px 14px rgba(0,0,0,.4)">▶</div></div>' +
+    '<span style="position:absolute;bottom:8px;inset-inline-end:10px;color:#fff;font-size:11px;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:10px">🎬 فيديو</span></div>';
+}
+function stuPlayVideo(el) {
+  var u = el.getAttribute('data-url'); if (!u) return;
+  el.outerHTML = newsVideoHTML(u);
+}
+
+// معرض موحّد للصور والفيديو (يعيد استخدام galShow/galMove/galGo + CSS الحالية)
+function newsUnifiedGalleryHTML(media) {
+  if (media.length === 1 && media[0].t === 'image') {
+    return '<div class="img-wrap" onclick="openLightbox(\'' + esc(media[0].u) + '\')">' +
+           '<img src="' + esc(media[0].u) + '" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></div>';
+  }
+  var gid = 'gal' + (++_galSeq), slides = '', dots = '', multi = media.length > 1;
+  for (var i = 0; i < media.length; i++) {
+    var it = media[i], inner;
+    if (it.t === 'video') {
+      inner = _stuVideoPoster(it.u);
+    } else {
+      inner = '<img src="' + esc(it.u) + '" alt="" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" onerror="this.style.display=\'none\'">';
+    }
+    slides += '<div class="gal-slide' + (i === 0 ? ' active' : '') + '">' + inner + '</div>';
+    dots += '<span class="gal-dot' + (i === 0 ? ' active' : '') + '" onclick="galGo(\'' + gid + '\',' + i + ')"></span>';
+  }
+  return '<div class="news-gallery" id="' + gid + '" data-count="' + media.length + '" data-cur="0">' +
+           '<div class="gal-stage">' + slides + '</div>' +
+           (multi ? ('<button type="button" class="gal-nav gal-prev" onclick="galMove(\'' + gid + '\',-1)" aria-label="السابق">‹</button>' +
+                     '<button type="button" class="gal-nav gal-next" onclick="galMove(\'' + gid + '\',1)" aria-label="التالي">›</button>' +
+                     '<span class="gal-counter">1/' + media.length + '</span>' +
+                     '<div class="gal-dots">' + dots + '</div>') : '') +
+         '</div>';
 }
 
 function galShow(gid, idx) {
