@@ -12623,7 +12623,8 @@ function smm_statusBadge(s) {
 // ═══════════════════════════════════════════════════════════════════
 //  🎒 أسماء الطلاب + 🔎 بيان حالة طالب  (واجهة)
 // ═══════════════════════════════════════════════════════════════════
-var SDIR = { mode: 'teacher', students: [], schoolId: '', hasWa: false, selected: {}, page: 1, pageSize: 50, _st: null };
+var SDIR = { mode: 'teacher', students: [], schoolId: '', hasWa: false, selected: {}, page: 1, pageSize: 50, _st: null,
+  _fkey: null, _fidx: null, _optsKey: '', _gradeOpts: '', _sectionOpts: '' };
 
 function renderStudentDirectory() {
   var el = document.getElementById('dynamicContent');
@@ -12643,6 +12644,8 @@ function sdir_load() {
     SDIR.mode = r.mode; SDIR.students = r.students || []; SDIR.schoolId = r.schoolId || '';
     SDIR.hasWa = !!r.hasWa; SDIR.selected = {}; SDIR.page = 1;
     SDIR.analytics = r.analytics || null; SDIR.canEditClass = !!r.canEditClass;
+    sdir_indexStudents();          // فهرسة مُسبقة لنصّ البحث (مرّة واحدة بدل كل ضغطة)
+    SDIR._fkey = null;             // إبطال كاش الفلترة لبيانات جديدة
     if (SDIR.mode === 'manager') sdir_renderManager(); else sdir_renderTeacher();
   }, function (e) {
     var body = document.getElementById('sdir-body');
@@ -12810,21 +12813,35 @@ function sdir_renderManager() {
   sdir_renderRows();
 }
 
+// فهرسة نصّ البحث لكل طالب مرّةً واحدة (اسم+كود+جوال مُطبّعة) — يحوّل الفلترة
+// إلى فحص substring رخيص بدل إعادة تطبيع كل الطلاب عند كل ضغطة مفتاح.
+function sdir_indexStudents() {
+  var s = SDIR.students || [];
+  for (var i = 0; i < s.length; i++) {
+    s[i]._hay = _tcNorm((s[i].name || '') + ' ' + (s[i].code || '') + ' ' + (s[i].phone || ''));
+  }
+}
+
+// قائمة الفهارس المرئية — مع كاش حسب (الفصل|الشعبة|البحث): التنقّل بين الصفحات
+// لا يُعيد مسح كل الطلاب، وإنما يُعاد الحساب فقط عند تغيّر الفلتر/البحث فعلاً.
 function sdir_visibleList() {
   var fg = (document.getElementById('sdir-fg') || {}).value || '';
   var fs = (document.getElementById('sdir-fs') || {}).value || '';
   var q = _tcNorm((document.getElementById('sdir-q') || {}).value || '');
-  var arr = [];
-  for (var i = 0; i < SDIR.students.length; i++) {
-    var st = SDIR.students[i];
+  var key = fg.length + ':' + fg + '|' + fs.length + ':' + fs + '|' + q;
+  if (SDIR._fkey === key && SDIR._fidx) return SDIR._fidx;   // إصابة كاش (تنقّل صفحات)
+  var arr = [], s = SDIR.students;
+  for (var i = 0; i < s.length; i++) {
+    var st = s[i];
     if (fg && st.grade !== fg) continue;
     if (fs && st.section !== fs) continue;
     if (q) {
-      var hay = _tcNorm((st.name || '') + ' ' + (st.code || '') + ' ' + (st.phone || ''));
+      var hay = st._hay; if (hay == null) hay = st._hay = _tcNorm((st.name || '') + ' ' + (st.code || '') + ' ' + (st.phone || ''));
       if (hay.indexOf(q) < 0) continue;
     }
     arr.push(i);
   }
+  SDIR._fkey = key; SDIR._fidx = arr;
   return arr;
 }
 
@@ -12872,6 +12889,7 @@ function sdir_renderRows() {
     tb.innerHTML = '<tr><td colspan="' + colspan + '" style="text-align:center;color:#999;padding:30px">لا نتائج مطابقة</td></tr>';
   } else {
     tb.innerHTML = (SDIR.mode === 'teacher') ? sdir_rowsHtmlTeacher(pageIdxs) : sdir_rowsHtmlManager(pageIdxs);
+    if (SDIR.canEditClass) sdir_applySelectVals(tb);   // ضبط قيم القوائم المنسدلة بعد الإدراج
   }
   if (SDIR.mode !== 'teacher') sdir_updateSelCount();
   sdir_renderPager(total, pages, start, pageIdxs.length);
@@ -12912,7 +12930,7 @@ function sdir_goPage(n) {
 // بحث مُؤجَّل (debounce) — يمنع إعادة البناء عند كل حرف فلا يعلق الإدخال.
 function sdir_onSearch() {
   if (SDIR._st) clearTimeout(SDIR._st);
-  SDIR._st = setTimeout(function () { SDIR.page = 1; sdir_renderRows(); }, 180);
+  SDIR._st = setTimeout(function () { SDIR.page = 1; sdir_renderRows(); }, 130);
 }
 
 // تغيير الفصل/الشعبة يعيد للصفحة الأولى ثم يُحدّث.
@@ -12930,24 +12948,48 @@ function sdir_saveField(i, field, value) {
       else if (field === 'grade') st.grade = value;
       else if (field === 'section') st.section = value;
       else { st.password = value; st.hasHash = false; }
+      // تحديث فهرس البحث وإبطال كاش الفلترة عند تغيّر حقل يؤثّر فيهما
+      if (field === 'phone' || field === 'grade' || field === 'section') {
+        st._hay = _tcNorm((st.name || '') + ' ' + (st.code || '') + ' ' + (st.phone || ''));
+        SDIR._fkey = null;
+      }
       toast('✅ تم الحفظ', 'success');
     } else toast('❌ ' + ((r && r.error) || 'فشل الحفظ'), 'error');
   }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
 }
 
-// خلية صف/شعبة: قائمة منسدلة قابلة للتعديل (إن سُمح) وإلا نص ثابت
+// يبني سلاسل خيارات الفصل/الشعبة مرّةً واحدة (تُعاد عند تغيّر القوائم فقط) —
+// فلا نُعيد بناء كامل قائمة الخيارات لكل صف في كل عرض.
+function sdir_ensureOpts() {
+  var grades = (App.lists && App.lists.grades) || [], sections = (App.lists && App.lists.sections) || [];
+  var key = grades.length + ':' + grades.join('|') + '||' + sections.length + ':' + sections.join('|');
+  if (SDIR._optsKey === key && SDIR._gradeOpts) return;
+  function build(list) {
+    var o = '<option value="">—</option>';
+    for (var k = 0; k < list.length; k++) o += '<option value="' + escapeHtml(list[k]) + '">' + escapeHtml(list[k]) + '</option>';
+    return o;
+  }
+  SDIR._gradeOpts = build(grades); SDIR._sectionOpts = build(sections); SDIR._optsKey = key;
+}
+
+// خلية صف/شعبة: قائمة منسدلة قابلة للتعديل (إن سُمح) وإلا نص ثابت.
+// تُعيد استخدام سلاسل الخيارات المُجهَّزة؛ والقيمة المختارة تُضبط بعد الإدراج
+// عبر sdir_applySelectVals (أرخص من حقن selected لكل خيار في كل صف).
 function sdir_classCell(i, field, value) {
   value = value || '';
   if (!SDIR.canEditClass) return escapeHtml(value);
+  sdir_ensureOpts();
   var list = (field === 'grade') ? ((App.lists && App.lists.grades) || []) : ((App.lists && App.lists.sections) || []);
-  var o = '<option value="">—</option>', found = false;
-  for (var k = 0; k < list.length; k++) {
-    var v = list[k], sel = (v === value) ? ' selected' : '';
-    if (sel) found = true;
-    o += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(v) + '</option>';
-  }
-  if (value && !found) o += '<option value="' + escapeHtml(value) + '" selected>' + escapeHtml(value) + '</option>';
-  return '<select class="form-select" style="min-width:88px;padding:4px 6px" onchange="sdir_saveField(' + i + ',\'' + field + '\',this.value)">' + o + '</select>';
+  var opts = (field === 'grade') ? SDIR._gradeOpts : SDIR._sectionOpts;
+  var extra = (value && list.indexOf(value) < 0) ? ('<option value="' + escapeHtml(value) + '">' + escapeHtml(value) + '</option>') : '';
+  return '<select class="form-select" style="min-width:88px;padding:4px 6px" data-sv="' + escapeHtml(value) +
+    '" onchange="sdir_saveField(' + i + ',\'' + field + '\',this.value)">' + opts + extra + '</select>';
+}
+
+// يضبط القيمة المختارة لكل قائمة منسدلة بعد إدراج الصفوف (مرّة واحدة، سريعة).
+function sdir_applySelectVals(tb) {
+  var sels = tb.querySelectorAll('select[data-sv]');
+  for (var s = 0; s < sels.length; s++) sels[s].value = sels[s].getAttribute('data-sv');
 }
 
 function sdir_resetPw(i) {
