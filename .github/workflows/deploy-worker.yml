@@ -1,0 +1,44 @@
+name: Deploy Worker to Cloudflare
+
+# نشر الـWorker بشكل حتمي عبر wrangler بدل Cloudflare Workers Builds الهشّ
+# (الذي يفشل بزمن صفر ويحتاج إعادة تشغيل يدوية كل مرة).
+# يتطلّب سرّين في إعدادات المستودع (Settings → Secrets and variables → Actions):
+#   - CLOUDFLARE_API_TOKEN   (صلاحية: Account › Workers Scripts › Edit)
+#   - CLOUDFLARE_ACCOUNT_ID  (e08b4b9ead7a4f1e7458bded98f35dd4)
+# الإعداد يُقرأ من wrangler.jsonc (name=school-teacher-proxy، main=worker/school-app-proxy.js).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'wrangler.jsonc'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+# قراءة فقط — wrangler يصادق عبر السرّين لا عبر GITHUB_TOKEN
+permissions:
+  contents: read
+
+# منع نشرين متزامنين على نفس الـWorker (بلا إلغاء نشرٍ جارٍ)
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Deploy Worker (wrangler)
+        run: npx wrangler@latest deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
