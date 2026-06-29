@@ -262,6 +262,13 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       منصة إدارة المدارس — لوحة تحكم المدراء v1.0
     </p>
   </div>
+
+  <!-- ═══ دليل المدارس الشريكة (عام، قبل الدخول) ═══ -->
+  <div id="partners-public" style="display:none;width:100%;max-width:920px;margin:28px auto 0;padding:0 14px;">
+    <h2 style="text-align:center;color:#fff;font-size:20px;margin:0 0 4px;">🏫 مدارسنا الشريكة</h2>
+    <p style="text-align:center;color:rgba(255,255,255,.8);font-size:13px;margin:0 0 18px;">شبكة المدارس المنضمّة إلى المنصّة</p>
+    <div id="partners-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;"></div>
+  </div>
 </div>
 
 <!-- ═══ التطبيق الرئيسي ═══ -->
@@ -653,7 +660,53 @@ var _allSchools    = [];
       .withFailureHandler(function() {})
       .checkMasterSession({ token: savedToken });
   }
+
+  // دليل المدارس الشريكة (عام) — يظهر تحت نموذج الدخول
+  _loadPublicPartners();
 })();
+
+// ── دليل المدارس الشريكة العام (قبل الدخول) ───────────────────
+function _loadPublicPartners() {
+  try {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success && res.schools && res.schools.length) {
+          _renderPublicPartners(res.schools);
+        }
+      })
+      .withFailureHandler(function() {})
+      .listPartnerSchoolsPublic();
+  } catch (e) {}
+}
+
+function _renderPublicPartners(schools) {
+  var wrap = document.getElementById('partners-public');
+  var grid = document.getElementById('partners-grid');
+  if (!wrap || !grid) return;
+  var html = '';
+  for (var i = 0; i < schools.length; i++) {
+    var s = schools[i];
+    var logo = s.logo
+      ? '<img src="' + s.logo + '" alt="" style="width:54px;height:54px;object-fit:contain;border-radius:10px;background:#fff;padding:3px;">'
+      : '<div style="width:54px;height:54px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:26px;">🏫</div>';
+    var social = '';
+    if (s.whatsapp)  social += '<a href="https://wa.me/' + _waNum(s.whatsapp) + '" target="_blank" rel="noopener" title="واتساب" style="text-decoration:none;">💬</a> ';
+    if (s.facebook)  social += '<a href="' + s.facebook + '" target="_blank" rel="noopener" title="فيسبوك" style="text-decoration:none;">📘</a> ';
+    if (s.instagram) social += '<a href="' + s.instagram + '" target="_blank" rel="noopener" title="إنستغرام" style="text-decoration:none;">📸</a> ';
+    if (s.youtube)   social += '<a href="' + s.youtube + '" target="_blank" rel="noopener" title="يوتيوب" style="text-decoration:none;">▶️</a> ';
+    html += '<div style="background:rgba(255,255,255,.95);border-radius:14px;padding:14px;display:flex;gap:12px;align-items:flex-start;box-shadow:0 4px 14px rgba(0,0,0,.12);">' +
+              logo +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:700;color:#1a237e;font-size:15px;line-height:1.3;">' + s.name + '</div>' +
+                (s.address ? '<div style="color:#666;font-size:12px;margin-top:3px;">📍 ' + s.address + '</div>' : '') +
+                (s.phone   ? '<div style="color:#444;font-size:12px;margin-top:3px;">📞 ' + s.phone + '</div>' : '') +
+                (social    ? '<div style="font-size:17px;margin-top:6px;">' + social + '</div>' : '') +
+              '</div>' +
+            '</div>';
+  }
+  grid.innerHTML = html;
+  wrap.style.display = 'block';
+}
 
 // ── تسجيل الدخول ──────────────────────────────────────────────
 
