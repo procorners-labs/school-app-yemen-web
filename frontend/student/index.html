@@ -1581,7 +1581,7 @@ a { color: var(--pr); text-decoration: none; }
 <!-- ═════════════════════ شاشة تسجيل الدخول ═════════════════════ -->
 <div id="loginScreen">
   <div class="login-card">
-    <div class="login-logo">🎓</div>
+    <div class="login-logo" id="stuLoginLogo">🎓</div>
     <h1>منصة الطالب</h1>
     <div class="subtitle school-brand-name">مدارس الإبداع والتميز الدولية</div>
 
@@ -1597,7 +1597,7 @@ a { color: var(--pr); text-decoration: none; }
     </div>
     <button class="btn-primary" id="loginBtn" onclick="doLogin()">تسجيل الدخول 🚪</button>
 
-    <div style="text-align:center; margin-top:14px; font-size:11px; color:var(--muted);">
+    <div style="text-align:center; margin-top:14px; font-size:11px; color:var(--muted);" id="stuLoginContact">
       📞 775189922 · ✉️ info@ebdaa-tamayuz.edu
     </div>
 
@@ -4176,21 +4176,31 @@ function initLazyImages() {
   }
 }
 
-/* ── عرض اسم مدرسة الحساب ديناميكيًا (حسب schoolId) بدل الاسم الثابت ── */
+/* ── عرض هوية المدرسة ديناميكيًا (الاسم/الشعار/الهاتف حسب schoolId) بدل القيم الثابتة ── */
 (function () {
   if (!window.SCHOOL_ID) return;
-  function applyName(name) {
-    if (!name) return;
-    var els = document.querySelectorAll('.school-brand-name');
-    for (var i = 0; i < els.length; i++) els[i].textContent = name;
-    try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, name); } catch (e) {}
+  function applyBrand(b) {
+    if (!b) return;
+    if (b.name) {
+      var els = document.querySelectorAll('.school-brand-name');
+      for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
+      try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, b.name); } catch (e) {}
+    }
+    if (b.logo) {
+      var lg = document.getElementById('stuLoginLogo');
+      if (lg) lg.innerHTML = '<img src="' + b.logo + '" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:12px;" />';
+    }
+    if (b.phone) {
+      var ct = document.getElementById('stuLoginContact');
+      if (ct) ct.textContent = '📞 ' + b.phone;
+    }
   }
   function run() {
     try {
       google.script.run
-        .withSuccessHandler(function (res) { if (res && res.ok && res.name) applyName(res.name); })
+        .withSuccessHandler(function (res) { if (res && res.ok) applyBrand(res); })
         .withFailureHandler(function () {})
-        .getSchoolName(window.SCHOOL_ID);
+        .getStudentSchoolBrand(window.SCHOOL_ID);
     } catch (e) {}
   }
   if (document.readyState !== 'loading') run();
