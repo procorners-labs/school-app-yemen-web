@@ -1765,7 +1765,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 <div id="loginScreen">
   <div class="login-card">
     <div class="login-header">
-      <div class="login-icon-wrap">🎓</div>
+      <div class="login-icon-wrap" id="tchLoginLogo">🎓</div>
       <div class="login-school-name school-brand-name">مدارس الإبداع والتميز الدولية</div>
       <div class="login-subtitle">منصة المعلمين الإلكترونية</div>
     </div>
@@ -1832,7 +1832,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       
       <!-- ✅ زر المدرسة – تم إصلاح الوسم من </a> إلى </button> -->
       <button type="button" class="nav-brand" onclick="showSection('dashboard')" title="العودة للوحة التحكم">
-        <div class="nav-brand-icon">🏫</div>
+        <div class="nav-brand-icon" id="tchNavLogo">🏫</div>
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
           <div class="nav-brand-text school-brand-name" title="مدارس الإبداع والتميز الدولية">مدارس الإبداع والتميز الدولية</div>
           <div class="nav-brand-sub">منصة المعلمين</div>
@@ -2528,6 +2528,41 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 </div>
 <script>
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
+
+  /* هوية المدرسة ديناميكيًا (اسم/شعار حسب schoolId) — يطبّق على كل .school-brand-name
+     (تستخدمها دوال الطباعة/الشهادات/الكشوفات) والشعارات وعنوان الصفحة */
+  (function () {
+    var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
+              : (window.SCHOOL_ID || '');
+    if (!sid) return;
+    function applyBrand(b) {
+      if (!b) return;
+      if (b.name) {
+        var els = document.querySelectorAll('.school-brand-name');
+        for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
+        var smm = document.getElementById('smm-school-label');
+        if (smm) smm.textContent = b.name;
+        try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, b.name); } catch (eT) {}
+      }
+      if (b.logo) {
+        var ids = ['tchLoginLogo', 'tchNavLogo'];
+        for (var k = 0; k < ids.length; k++) {
+          var lg = document.getElementById(ids[k]);
+          if (lg) lg.innerHTML = '<img src="' + b.logo + '" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:10px;" />';
+        }
+      }
+    }
+    function run() {
+      try {
+        google.script.run
+          .withSuccessHandler(function (res) { if (res && res.ok) applyBrand(res); })
+          .withFailureHandler(function () {})
+          .getTeacherSchoolBrand(sid);
+      } catch (eR) {}
+    }
+    if (document.readyState !== 'loading') run();
+    else document.addEventListener('DOMContentLoaded', run);
+  })();
 // ══════════════════════════════════════════════════════
 // Smart Client Cache مع TTL
 // ══════════════════════════════════════════════════════
