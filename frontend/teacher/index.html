@@ -12623,7 +12623,7 @@ function smm_statusBadge(s) {
 // ═══════════════════════════════════════════════════════════════════
 //  🎒 أسماء الطلاب + 🔎 بيان حالة طالب  (واجهة)
 // ═══════════════════════════════════════════════════════════════════
-var SDIR = { mode: 'teacher', students: [], schoolId: '', hasWa: false, selected: {} };
+var SDIR = { mode: 'teacher', students: [], schoolId: '', hasWa: false, selected: {}, page: 1, pageSize: 50, _st: null };
 
 function renderStudentDirectory() {
   var el = document.getElementById('dynamicContent');
@@ -12641,7 +12641,7 @@ function sdir_load() {
     if (!body) return;
     if (!r || !r.success) { body.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
     SDIR.mode = r.mode; SDIR.students = r.students || []; SDIR.schoolId = r.schoolId || '';
-    SDIR.hasWa = !!r.hasWa; SDIR.selected = {};
+    SDIR.hasWa = !!r.hasWa; SDIR.selected = {}; SDIR.page = 1;
     SDIR.analytics = r.analytics || null; SDIR.canEditClass = !!r.canEditClass;
     if (SDIR.mode === 'manager') sdir_renderManager(); else sdir_renderTeacher();
   }, function (e) {
@@ -12665,22 +12665,22 @@ function sdir_renderTeacher() {
   if (!s.length) { body.innerHTML = '<div class="empty-state"><div class="es-icon">🎒</div><div class="es-title">لا يوجد طلاب</div></div>'; return; }
   var grades = (App.lists && App.lists.grades) || [], sections = (App.lists && App.lists.sections) || [];
   var h = '<div class="form-row mb-3">' +
-    '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sdir-fg" onchange="filterGradeCascade(\'sdir-fg\',\'sdir-fs\',\'sdir_renderRows\',\'كل الشعب\')">' + buildSelectOptions(grades, 'كل الفصول', '', true) + '</select></div>' +
-    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sdir-fs" onchange="sdir_renderRows()">' + buildSelectOptions(sections, 'كل الشعب', '', true) + '</select></div>' +
-    '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="sdir-q" placeholder="🔍 اسم / كود" oninput="sdir_renderRows()"></div>' +
+    '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sdir-fg" onchange="filterGradeCascade(\'sdir-fg\',\'sdir-fs\',\'sdir_onFilter\',\'كل الشعب\')">' + buildSelectOptions(grades, 'كل الفصول', '', true) + '</select></div>' +
+    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sdir-fs" onchange="sdir_onFilter()">' + buildSelectOptions(sections, 'كل الشعب', '', true) + '</select></div>' +
+    '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="sdir-q" autocomplete="off" placeholder="🔍 اسم / كود" oninput="sdir_onSearch()"></div>' +
     '</div>' +
     // الإجمالي الكلي لأعداد الطلاب لا يظهر للمعلم (للمدير فقط) — نعرض عدد طلاب فصوله فقط
     '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap"><span class="badge badge-info">طلاب فصولك: ' + sdir_mineCount() + '</span>' +
     '<span style="font-size:12px;color:#64748b">كلمة المرور والإرسال متاحان لطلاب فصولك فقط</span></div>';
   h += '<div class="table-wrap"><table id="sdir-table"><thead><tr><th>اسم الطالب</th><th>الفصل</th><th>الشعبة</th><th>كلمة المرور</th><th>إرسال</th><th>سلوك</th></tr></thead><tbody id="sdir-tbody"></tbody></table></div>';
+  h += '<div id="sdir-pager" style="margin-top:10px"></div>';
   body.innerHTML = h;
   sdir_renderRows();
 }
 
 // صفوف وضع المعلم (الأسماء لكل الشعب؛ كلمة المرور/الإرسال لطلابه فقط)
-function sdir_renderRowsTeacher() {
-  var idxs = sdir_visibleList();
-  var tb = document.getElementById('sdir-tbody'); if (!tb) return;
+// تبني HTML لشريحة الصفحة الحالية فقط (idxs) — يستدعيها sdir_renderRows.
+function sdir_rowsHtmlTeacher(idxs) {
   var h = '';
   for (var k = 0; k < idxs.length; k++) {
     var i = idxs[k]; var st = SDIR.students[i];
@@ -12701,8 +12701,7 @@ function sdir_renderRowsTeacher() {
       '<td>' + sdir_classCell(i, 'section', st.section) + '</td>' +
       '<td>' + pw + '</td><td>' + send + '</td><td>' + beh + '</td></tr>';
   }
-  if (!idxs.length) h = '<tr><td colspan="6" style="text-align:center;color:#999;padding:30px">لا نتائج مطابقة</td></tr>';
-  tb.innerHTML = h;
+  return h;
 }
 
 // تسجيل سلوك لطالب مباشرةً من صفحة الأسماء — يفتح مودال السلوك بالطالب مُختاراً
@@ -12793,9 +12792,9 @@ function sdir_analyticsHtml() {
 function sdir_renderManager() {
   var grades = myGrades(), sections = mySections();
   var h = sdir_analyticsHtml() + '<div class="form-row mb-3">' +
-    '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sdir-fg" onchange="filterGradeCascade(\'sdir-fg\',\'sdir-fs\',\'sdir_renderRows\',\'كل الشعب\')">' + buildSelectOptions(grades, 'كل الفصول', '', true) + '</select></div>' +
-    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sdir-fs" onchange="sdir_renderRows()">' + buildSelectOptions(sections, 'كل الشعب', '', true) + '</select></div>' +
-    '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="sdir-q" placeholder="🔍 اسم / كود / جوال" oninput="sdir_renderRows()"></div>' +
+    '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sdir-fg" onchange="filterGradeCascade(\'sdir-fg\',\'sdir-fs\',\'sdir_onFilter\',\'كل الشعب\')">' + buildSelectOptions(grades, 'كل الفصول', '', true) + '</select></div>' +
+    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sdir-fs" onchange="sdir_onFilter()">' + buildSelectOptions(sections, 'كل الشعب', '', true) + '</select></div>' +
+    '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="sdir-q" autocomplete="off" placeholder="🔍 اسم / كود / جوال" oninput="sdir_onSearch()"></div>' +
     '<div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="sdir_openAdd()">➕ إضافة طالب</button></div>' +
     '</div>';
   h += '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap">' +
@@ -12806,6 +12805,7 @@ function sdir_renderManager() {
     (SDIR.hasWa ? '<span class="badge badge-success" style="font-size:11px">واتساب تلقائي مُفعّل</span>' : '<span class="badge" style="background:#fff3cd;color:#7c5e00;font-size:11px">إرسال عبر روابط wa.me</span>') +
     '</div>';
   h += '<div class="table-wrap"><table id="sdir-table"><thead><tr><th></th><th>الاسم</th><th>الفصل</th><th>الشعبة</th><th>الجوال</th><th>كلمة المرور</th><th>الرسوم</th><th>المسدد</th><th>إرسال</th><th>سلوك</th></tr></thead><tbody id="sdir-tbody"></tbody></table></div>';
+  h += '<div id="sdir-pager" style="margin-top:10px"></div>';
   document.getElementById('sdir-body').innerHTML = h;
   sdir_renderRows();
 }
@@ -12828,11 +12828,8 @@ function sdir_visibleList() {
   return arr;
 }
 
-function sdir_renderRows() {
-  if (SDIR.mode === 'teacher') return sdir_renderRowsTeacher();
-  var idxs = sdir_visibleList();
-  var tb = document.getElementById('sdir-tbody');
-  if (!tb) return;
+// صفوف وضع المدير لشريحة الصفحة الحالية فقط (idxs)
+function sdir_rowsHtmlManager(idxs) {
   var h = '';
   for (var k = 0; k < idxs.length; k++) {
     var i = idxs[k]; var st = SDIR.students[i];
@@ -12852,15 +12849,78 @@ function sdir_renderRows() {
       '<td><button class="btn btn-sm" style="background:#4f46e5;color:#fff;white-space:nowrap" title="تسجيل سلوك لهذا الطالب" onclick="sdir_addBehavior(' + i + ')">📋 سلوك</button></td>' +
     '</tr>';
   }
-  if (!idxs.length) h = '<tr><td colspan="10" style="text-align:center;color:#999;padding:30px">لا نتائج مطابقة</td></tr>';
-  tb.innerHTML = h;
-  sdir_updateSelCount();
+  return h;
 }
+
+// ── المُحرّك الموحّد: ترقيم صفحات (50/صفحة) لكلا الوضعين ──
+// يبني شريحة الصفحة الحالية فقط فيبقى الـDOM صغيراً والبحث/التنقل سريعاً حتى
+// مع مئات الطلاب (بدل إعادة بناء كل الصفوف عند كل ضغطة مفتاح).
+function sdir_renderRows() {
+  var tb = document.getElementById('sdir-tbody');
+  if (!tb) return;
+  var idxs = sdir_visibleList();
+  var total = idxs.length;
+  var pageSize = SDIR.pageSize || 50;
+  var pages = Math.max(1, Math.ceil(total / pageSize));
+  if (!SDIR.page || SDIR.page < 1) SDIR.page = 1;
+  if (SDIR.page > pages) SDIR.page = pages;
+  var start = (SDIR.page - 1) * pageSize;
+  var pageIdxs = idxs.slice(start, start + pageSize);
+
+  var colspan = (SDIR.mode === 'teacher') ? 6 : 10;
+  if (!total) {
+    tb.innerHTML = '<tr><td colspan="' + colspan + '" style="text-align:center;color:#999;padding:30px">لا نتائج مطابقة</td></tr>';
+  } else {
+    tb.innerHTML = (SDIR.mode === 'teacher') ? sdir_rowsHtmlTeacher(pageIdxs) : sdir_rowsHtmlManager(pageIdxs);
+  }
+  if (SDIR.mode !== 'teacher') sdir_updateSelCount();
+  sdir_renderPager(total, pages, start, pageIdxs.length);
+}
+
+// شريط الترقيم: يظهر فقط عند تجاوز النتائج حجم الصفحة؛ وإلا عدّاد نتائج بسيط.
+function sdir_renderPager(total, pages, start, shown) {
+  var el = document.getElementById('sdir-pager');
+  if (!el) return;
+  var pageSize = SDIR.pageSize || 50;
+  if (total <= pageSize) {
+    el.innerHTML = total ? ('<div style="text-align:center;font-size:12px;color:#64748b">إجمالي النتائج: ' + total + '</div>') : '';
+    return;
+  }
+  var p = SDIR.page, from = start + 1, to = start + shown;
+  var btn = function (label, target, disabled, title) {
+    return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' +
+      (disabled ? 'disabled ' : '') + (title ? ('title="' + title + '" ') : '') +
+      'onclick="sdir_goPage(' + target + ')">' + label + '</button>';
+  };
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center">' +
+    btn('⏮', 1, p <= 1, 'الأولى') +
+    btn('‹ السابق', p - 1, p <= 1) +
+    '<span style="font-size:13px;color:#475569;white-space:nowrap">صفحة ' + p + ' / ' + pages +
+      ' · <span style="color:#94a3b8">' + from + '–' + to + ' من ' + total + '</span></span>' +
+    btn('التالي ›', p + 1, p >= pages) +
+    btn('⏭', pages, p >= pages, 'الأخيرة') +
+    '</div>';
+}
+
+function sdir_goPage(n) {
+  SDIR.page = n;
+  sdir_renderRows();
+  var t = document.getElementById('sdir-table');
+  if (t && t.scrollIntoView) { try { t.scrollIntoView({ block: 'nearest' }); } catch (e) { t.scrollIntoView(); } }
+}
+
+// بحث مُؤجَّل (debounce) — يمنع إعادة البناء عند كل حرف فلا يعلق الإدخال.
+function sdir_onSearch() {
+  if (SDIR._st) clearTimeout(SDIR._st);
+  SDIR._st = setTimeout(function () { SDIR.page = 1; sdir_renderRows(); }, 180);
+}
+
+// تغيير الفصل/الشعبة يعيد للصفحة الأولى ثم يُحدّث.
+function sdir_onFilter() { SDIR.page = 1; sdir_renderRows(); }
 
 function sdir_sel(i, on) { if (on) SDIR.selected[i] = 1; else delete SDIR.selected[i]; sdir_updateSelCount(); }
 function sdir_toggleAll(on) { var idxs = sdir_visibleList(); for (var k = 0; k < idxs.length; k++) { if (on) SDIR.selected[idxs[k]] = 1; else delete SDIR.selected[idxs[k]]; } sdir_renderRows(); }
 function sdir_updateSelCount() { var n = 0; for (var k in SDIR.selected) { if (SDIR.selected.hasOwnProperty(k)) n++; } var el = document.getElementById('sdir-selcount'); if (el) el.textContent = n ? ('محدد: ' + n) : ''; }
-function sdir_filter(q) { q = _tcNorm(q); var rows = document.querySelectorAll('#sdir-table tbody tr[data-name]'); for (var i = 0; i < rows.length; i++) { var nm = _tcNorm(rows[i].getAttribute('data-name') || ''); rows[i].style.display = (!q || nm.indexOf(q) >= 0) ? '' : 'none'; } }
 
 function sdir_saveField(i, field, value) {
   var st = SDIR.students[i]; if (!st) return;
