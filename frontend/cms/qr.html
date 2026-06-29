@@ -504,7 +504,7 @@ input,select,textarea{font-family:inherit;direction:rtl}
       <div class="header-logo">QR</div>
       <div>
         <div class="header-title">مدير QR Codes</div>
-        <div class="header-sub">مدارس الإبداع والتميز الدولية</div>
+        <div class="header-sub school-brand-name">مدارس الإبداع والتميز الدولية</div>
       </div>
     </div>
     <div class="header-stats">
@@ -713,6 +713,27 @@ var STATE = {
 var _SCHOOL_ID = (function() {
   var qs = new URLSearchParams(window.location.search);
   return qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
+})();
+
+/* هوية المدرسة ديناميكيًا (اسم المدرسة حسب schoolId) بدل الاسم الثابت */
+(function () {
+  if (!_SCHOOL_ID) return;
+  function applyBrand(b) {
+    if (!b || !b.name) return;
+    var els = document.querySelectorAll('.school-brand-name');
+    for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
+    try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, b.name); } catch (e) {}
+  }
+  function run() {
+    try {
+      google.script.run
+        .withSuccessHandler(function (res) { if (res && res.ok) applyBrand(res); })
+        .withFailureHandler(function () {})
+        .getCmsSchoolBrand(_SCHOOL_ID);
+    } catch (e) {}
+  }
+  if (document.readyState !== 'loading') run();
+  else document.addEventListener('DOMContentLoaded', run);
 })();
 
 /* ──────────────── Toast ──────────────── */
