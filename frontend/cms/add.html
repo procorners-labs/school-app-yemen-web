@@ -282,9 +282,55 @@
     reader.readAsDataURL(file);
   }
 
-  // ربط أحداث الرفع
-  document.getElementById('newsImage').addEventListener('change', function() { uploadFile(this, 'NEWS_IMAGES', 'newsStatus', 'newsMediaURL'); });
-  document.getElementById('imageFileInput').addEventListener('change', function() { uploadFile(this, 'IMAGE_LIBRARY', 'imageStatus', 'imageMediaURL'); });
+  // ── رفع Resumable مباشرة إلى Drive (للملفات الكبيرة: صور >5MB، فيديو >25MB) ──
+  // يبدأ جلسة عبر createDriveUploadSession ثم يرفع البايتات مباشرةً (PUT) إلى googleapis
+  // دون تمرير base64 عبر GAS، فلا يُقطع جسم الطلب. عند الاكتمال نخزّن fileId ليُسجَّل عند الإرسال.
+  var _uploaded = { news: null, image: null, video: null };
+
+  function resumableUpload(file, folderType, statusId, cb) {
+    if (!file) { setStatus(statusId, '⚠️ الرجاء اختيار ملف', 'error'); return; }
+    setStatus(statusId, '⏳ تجهيز الرفع…', 'info');
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.ok) { setStatus(statusId, '❌ ' + ((res && res.error) || 'تعذّر بدء الرفع'), 'error'); return; }
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', res.sessionUri, true);
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.upload.onprogress = function(e) {
+          if (e.lengthComputable) {
+            var p = Math.round((e.loaded / e.total) * 100);
+            setStatus(statusId, '⏳ جاري الرفع… ' + p + '%', 'info');
+          }
+        };
+        xhr.onload = function() {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            var fileId = '';
+            try { fileId = JSON.parse(xhr.responseText).id; } catch (e) {}
+            if (!fileId) { setStatus(statusId, '❌ اكتمل الرفع لكن تعذّر قراءة معرّف الملف', 'error'); return; }
+            setStatus(statusId, '✅ اكتمل الرفع — جاهز للحفظ', 'success');
+            cb(fileId);
+          } else {
+            setStatus(statusId, '❌ فشل رفع البايتات (status ' + xhr.status + ')', 'error');
+          }
+        };
+        xhr.onerror = function() { setStatus(statusId, '❌ فشل الاتصال أثناء الرفع', 'error'); };
+        xhr.send(file);
+      })
+      .withFailureHandler(function(err) { setStatus(statusId, '❌ خطأ: ' + err.message, 'error'); })
+      .createDriveUploadSession(file.name, file.type, folderType, window.SCHOOL_ID, file.size);
+  }
+
+  // ربط أحداث الرفع — الصور/الأخبار عبر Resumable؛ وسائط الجدولة تبقى على المسار القديم (ملفات صغيرة)
+  document.getElementById('newsImage').addEventListener('change', function() {
+    _uploaded.news = null;
+    var f = this.files[0];
+    if (f) resumableUpload(f, 'NEWS_IMAGES', 'newsStatus', function(id) { _uploaded.news = id; });
+  });
+  document.getElementById('imageFileInput').addEventListener('change', function() {
+    _uploaded.image = null;
+    var f = this.files[0];
+    if (f) resumableUpload(f, 'IMAGE_LIBRARY', 'imageStatus', function(id) { _uploaded.image = id; });
+  });
   document.getElementById('scheduleMediaFile').addEventListener('change', function() {
     uploadFile(this, 'PUBLISHED', 'scheduleStatus', 'scheduleMediaURLHidden');
     var urlField = document.getElementById('scheduleMediaURLHidden');
@@ -308,15 +354,27 @@
     }
     var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
     if (!title || !content) { setStatus('newsStatus', '⚠️ الرجاء ملء العنوان والنص', 'error'); return; }
+
+    function _resetNews() {
+      setStatus('newsStatus', '', 'info');
+      document.getElementById('newsTitle').value = '';
+      document.getElementById('newsContent').value = '';
+      document.getElementById('newsMediaURL').value = '';
+      document.getElementById('newsImage').value = '';
+      _uploaded.news = null;
+    }
+
+    // إن رُفعت صورة عبر Resumable → سجّلها مع الخبر (تكتب الصف + تضبط المشاركة)
+    if (_uploaded.news) {
+      google.script.run
+        .withSuccessHandler(function(msg) { setStatus('newsStatus', msg, 'success'); _resetNews(); })
+        .withFailureHandler(function(err) { setStatus('newsStatus', '❌ خطأ: ' + err.message, 'error'); })
+        .registerUploadedMedia(_uploaded.news, 'news', title, content, userName, fingerprint, window.SCHOOL_ID);
+      return;
+    }
     // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
     google.script.run
-      .withSuccessHandler(function(msg) {
-        setStatus('newsStatus', msg, 'success');
-        document.getElementById('newsTitle').value = '';
-        document.getElementById('newsContent').value = '';
-        document.getElementById('newsMediaURL').value = '';
-        document.getElementById('newsImage').value = '';
-      })
+      .withSuccessHandler(function(msg) { setStatus('newsStatus', msg, 'success'); _resetNews(); })
       .withFailureHandler(function(err) { setStatus('newsStatus', '❌ خطأ: ' + err.message, 'error'); })
       .addNews(title, content, mediaType, mediaURL, userName, fingerprint, window.SCHOOL_ID);
   }
@@ -347,19 +405,17 @@
     var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
     if (!title) { setStatus('videoStatus', '⚠️ أدخل عنوان الفيديو', 'error'); return; }
     if (!file) { setStatus('videoStatus', '⚠️ اختر ملف فيديو من جهازك', 'error'); return; }
-    setStatus('videoStatus', '⏳ جاري رفع الفيديو… قد يستغرق وقتاً حسب الحجم', 'info');
-    var reader = new FileReader();
-    reader.onload = function(ev) {
+    // رفع Resumable مباشر إلى Drive (يحلّ فشل الفيديو >25MB) ثم تسجيله في ورقة Videos
+    resumableUpload(file, 'VIDEOS', 'videoStatus', function(fileId) {
       google.script.run
         .withSuccessHandler(function(msg) {
           var ok = (('' + msg).indexOf('✅') === 0);
           setStatus('videoStatus', msg, ok ? 'success' : 'error');
-          if (ok) { document.getElementById('videoTitle').value=''; document.getElementById('videoDesc').value=''; fi.value=''; }
+          if (ok) { document.getElementById('videoTitle').value=''; document.getElementById('videoDesc').value=''; fi.value=''; _uploaded.video = null; }
         })
         .withFailureHandler(function(err) { setStatus('videoStatus', '❌ خطأ: ' + err.message, 'error'); })
-        .addVideoWithUpload(title, desc, ev.target.result, file.name, file.type, userName, fingerprint, window.SCHOOL_ID);
-    };
-    reader.readAsDataURL(file);
+        .registerUploadedMedia(fileId, 'video', title, desc, userName, fingerprint, window.SCHOOL_ID);
+    });
   }
 
   // إعدادات حسابات السوشل لكل مدرسة
@@ -456,16 +512,27 @@
     var url = document.getElementById('imageMediaURL').value;
     var userName = document.getElementById('userNameInput').value.trim() || 'مستخدم';
     if (!name) { setStatus('imageStatus', '⚠️ اسم الصورة مطلوب', 'error'); return; }
-    if (!url) { setStatus('imageStatus', '⚠️ الرجاء اختيار صورة للرفع', 'error'); return; }
+    if (!_uploaded.image && !url) { setStatus('imageStatus', '⚠️ الرجاء اختيار صورة للرفع', 'error'); return; }
+
+    function _resetImage() {
+      document.getElementById('imageName').value = '';
+      document.getElementById('imageDesc').value = '';
+      document.getElementById('imageMediaURL').value = '';
+      document.getElementById('imageFileInput').value = '';
+      _uploaded.image = null;
+    }
+
+    // إن رُفعت صورة عبر Resumable → سجّلها (تكتب صف Images + تضبط المشاركة)
+    if (_uploaded.image) {
+      google.script.run
+        .withSuccessHandler(function(msg) { setStatus('imageStatus', msg, 'success'); _resetImage(); })
+        .withFailureHandler(function(err) { setStatus('imageStatus', '❌ خطأ: ' + err.message, 'error'); })
+        .registerUploadedMedia(_uploaded.image, 'image', name, desc, userName, fingerprint, window.SCHOOL_ID);
+      return;
+    }
     // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
     google.script.run
-      .withSuccessHandler(function(msg) {
-        setStatus('imageStatus', msg, 'success');
-        document.getElementById('imageName').value = '';
-        document.getElementById('imageDesc').value = '';
-        document.getElementById('imageMediaURL').value = '';
-        document.getElementById('imageFileInput').value = '';
-      })
+      .withSuccessHandler(function(msg) { setStatus('imageStatus', msg, 'success'); _resetImage(); })
       .addImage(name, desc, url, userName, fingerprint, window.SCHOOL_ID);
   }
 
