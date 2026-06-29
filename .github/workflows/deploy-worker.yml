@@ -1,19 +1,14 @@
 name: Deploy Worker to Cloudflare
 
-# نشر الـWorker بشكل حتمي عبر wrangler بدل Cloudflare Workers Builds الهشّ
-# (الذي يفشل بزمن صفر ويحتاج إعادة تشغيل يدوية كل مرة).
-# يتطلّب سرّين في إعدادات المستودع (Settings → Secrets and variables → Actions):
-#   - CLOUDFLARE_API_TOKEN   (صلاحية: Account › Workers Scripts › Edit)
-#   - CLOUDFLARE_ACCOUNT_ID  (e08b4b9ead7a4f1e7458bded98f35dd4)
-# الإعداد يُقرأ من wrangler.jsonc (name=school-teacher-proxy، main=worker/school-app-proxy.js).
+# بديل نشر يدوي قائم على توكن لـ Cloudflare Workers Builds.
+# ملاحظة (2026-06-29): مسار النشر التلقائي الحتمي صار **Cloudflare Workers Builds**
+# بعد إصلاح سببه الجذري (إفراغ "Build command" الذي كان "npm run build" بلا package.json).
+# Workers Builds ينشر تلقائياً على كل push إلى main عبر مصادقة الحساب — بلا توكن.
+# لذا هذا الـworkflow يدوي فقط (workflow_dispatch) لتفادي نشرٍ مزدوج، ويبقى احتياطياً.
+# لتفعيله يدوياً يلزم سرّان: CLOUDFLARE_API_TOKEN (صلاحية Account › Workers Scripts › Edit)
+# و CLOUDFLARE_ACCOUNT_ID (e08b4b9ead7a4f1e7458bded98f35dd4). يقرأ الإعداد من wrangler.jsonc.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'worker/**'
-      - 'wrangler.jsonc'
-      - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
 # قراءة فقط — wrangler يصادق عبر السرّين لا عبر GITHUB_TOKEN
