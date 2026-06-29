@@ -221,6 +221,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
   .main-content{margin:0!important}
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -564,6 +565,15 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     <div class="section active" id="section-portals">
       <h3 style="margin-bottom:6px;">🚀 منصات مدرستي</h3>
       <p style="color:#64748b;margin-bottom:16px;">روابط الدخول الخاصة بمدرستك فقط — كل رابط يفتح المنصة على بيانات مدرستك.</p>
+
+      <div id="bulk-upload-panel" style="margin-bottom:20px;padding:16px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
+        <div style="font-weight:800;font-size:1.05rem;color:#0f172a;margin-bottom:4px;">📤 رفع بيانات المدرسة (ملف واحد)</div>
+        <p style="color:#64748b;font-size:13px;margin:0 0 12px;">اختر ملف Excel فيه تبويب «الطلاب» (الكود · الاسم · الفصل · الشعبة · اجمالي الرسوم) وتبويب «المعلمون» (اسم المدرس · المادة · الفصل · الشعبة). تُحدَّث بيانات مدرستك تلقائيًا حسب «الكود» دون حذف. <b>انصح بأخذ نسخة احتياطية قبل أول رفع.</b></p>
+        <input type="file" id="school-data-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="bulkUpload_onFile(event)">
+        <button onclick="bulkUpload_selectFile()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;">📁 اختيار الملف ورفعه</button>
+        <div id="upload-result-area" style="margin-top:12px;"></div>
+      </div>
+
       <div id="portals-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;"></div>
     </div>
   </div>
@@ -713,6 +723,10 @@ function _showApp() {
     if (el) el.style.display = App.isOwner ? '' : 'none';
   }
 
+  // لوحة الرفع بملف واحد لمديري المدارس فقط (المالك بلا مدرسة محدّدة)
+  var bp = document.getElementById('bulk-upload-panel');
+  if (bp) bp.style.display = App.isOwner ? 'none' : 'block';
+
   // اسم المدرسة في الشريط الجانبي (ديناميكي حسب المدرسة الداخلة)
   try {
     var _sb = document.getElementById('sb-school-name');
@@ -746,6 +760,70 @@ function _loadSchoolBrand() {
       .withFailureHandler(function() {})
       .getSchoolBrandProtected({ token: App.token, schoolId: App.isOwner ? '' : App.schoolId });
   } catch (eBrand) {}
+}
+
+// ── رفع بيانات المدرسة بملف واحد (Excel) ──────────────────────
+function bulkUpload_selectFile() {
+  var inp = document.getElementById('school-data-file-input');
+  if (inp) inp.click();
+}
+
+function bulkUpload_onFile(ev) {
+  var area = document.getElementById('upload-result-area');
+  var file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  if (typeof XLSX === 'undefined') {
+    area.innerHTML = '<div class="status-msg status-error">تعذّر تحميل مكتبة قراءة Excel. تحقّق من الاتصال وأعد المحاولة.</div>';
+    ev.target.value = ''; return;
+  }
+  area.innerHTML = '<div class="status-msg status-info">⏳ جارٍ قراءة الملف...</div>';
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      var students = bulkUpload_sheetRows(wb, ['الطلاب', 'الطلبة', 'Students']);
+      var teachers = bulkUpload_sheetRows(wb, ['المعلمون', 'المدرسين', 'المعلمين', 'Teachers']);
+      if (!students.length && !teachers.length) {
+        area.innerHTML = '<div class="status-msg status-error">لم يُعثر على تبويب «الطلاب» أو «المعلمون» في الملف.</div>';
+        return;
+      }
+      area.innerHTML = '<div class="status-msg status-info">⏳ جارٍ رفع ' + students.length + ' طالبًا و' + teachers.length + ' معلّمًا...</div>';
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.success) {
+            area.innerHTML = '<div class="status-msg status-error">❌ ' + ((res && res.error) || 'فشل الرفع') + '</div>';
+            return;
+          }
+          var msg = '✅ تم بنجاح — الطلاب: +' + res.students.added + ' جديد / ' + res.students.updated + ' محدّث · المعلّمون: +' + res.teachers.added + ' / ' + res.teachers.updated;
+          if (res.warnings && res.warnings.length) msg += '<br><small style="color:#b45309;">تنبيهات: ' + res.warnings.join(' | ') + '</small>';
+          area.innerHTML = '<div class="status-msg status-success">' + msg + '</div>';
+        })
+        .withFailureHandler(function (err) {
+          area.innerHTML = '<div class="status-msg status-error">❌ ' + (err && err.message ? err.message : 'خطأ في الاتصال') + '</div>';
+        })
+        .importSchoolWorkbook({ token: App.token, schoolId: App.isOwner ? '' : App.schoolId, students: students, teachers: teachers });
+    } catch (ex) {
+      area.innerHTML = '<div class="status-msg status-error">❌ تعذّرت قراءة الملف: ' + ex.message + '</div>';
+    }
+  };
+  reader.onerror = function () { area.innerHTML = '<div class="status-msg status-error">تعذّرت قراءة الملف.</div>'; };
+  reader.readAsArrayBuffer(file);
+  ev.target.value = '';
+}
+
+// يحوّل أول تبويب مطابق لأحد الأسماء إلى مصفوفة كائنات مفاتيحها رؤوس الأعمدة (مقصوصة)
+function bulkUpload_sheetRows(wb, names) {
+  var i, ws = null;
+  for (i = 0; i < names.length; i++) { if (wb.Sheets[names[i]]) { ws = wb.Sheets[names[i]]; break; } }
+  if (!ws) return [];
+  var arr = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+  var out = [], r, k, obj, clean;
+  for (r = 0; r < arr.length; r++) {
+    obj = arr[r]; clean = {};
+    for (k in obj) { if (obj.hasOwnProperty(k)) clean[('' + k).trim()] = ('' + obj[k]).trim(); }
+    out.push(clean);
+  }
+  return out;
 }
 
 function app_logout() {
