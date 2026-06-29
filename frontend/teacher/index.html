@@ -2354,6 +2354,25 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال تسجيل سلوك جماعي (للطلاب المحددين في صفحة الأسماء) -->
+<div class="modal-backdrop" id="bulkVioModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>📋 تسجيل سلوك جماعي</span>
+      <button class="modal-close" onclick="closeModal('bulkVioModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info mb-3" id="bulkVioCount"></div>
+      <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label><select class="form-select" id="bulkVioType"></select></div>
+      <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد (تُطبَّق على الجميع)</label><textarea class="form-control" id="bulkVioReply" placeholder="مثال: متأخر عن الطابور" rows="3"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('bulkVioModal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="sdir_bulkBehaviorSave()">💾 تسجيل للمحددين</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال تعديل مهمة -->
 <div class="modal-backdrop" id="taskEditModal">
   <div class="modal-dialog modal-lg">
@@ -12704,6 +12723,49 @@ function sdir_addBehavior(i) {
   });
 }
 
+// تسجيل سلوك جماعي للطلاب المحددين (وضع المدير) — يفتح مودالاً لاختيار نوع السلوك مرّةً
+// ويسجّله لكل المحددين في طلب واحد (addViolationsBulkProtected). مثال: «متأخر عن الطابور».
+function sdir_bulkBehavior() {
+  var rows = [];
+  for (var k in SDIR.selected) {
+    if (SDIR.selected.hasOwnProperty(k)) {
+      var st = SDIR.students[k];
+      if (st && st.rowIndex) rows.push(st.rowIndex);
+    }
+  }
+  if (!rows.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
+  SDIR._bulkRows = rows;
+  var cnt = document.getElementById('bulkVioCount');
+  if (cnt) cnt.innerHTML = '📋 سيُسجَّل السلوك لـ <strong>' + rows.length + '</strong> طالب محدّد.';
+  var list = (App.lists && App.lists.violations) ? App.lists.violations : [];
+  fillSelect('bulkVioType', list, 'اختر نوع السلوك');
+  var rep = document.getElementById('bulkVioReply'); if (rep) rep.value = '';
+  openModal('bulkVioModal');
+}
+
+function sdir_bulkBehaviorSave() {
+  var rows = SDIR._bulkRows || [];
+  if (!rows.length) { toast('لا يوجد طلاب محددون', 'warning'); return; }
+  var type = (document.getElementById('bulkVioType') || {}).value || '';
+  if (!type) { toast('اختر نوع السلوك', 'warning'); return; }
+  var reply = (document.getElementById('bulkVioReply') || {}).value || '';
+  showLoading('جاري تسجيل السلوك لـ ' + rows.length + ' طالب…');
+  callServer('addViolationsBulkProtected',
+    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName },
+    function (r) {
+      hideLoading();
+      if (r && r.success) {
+        toast(r.message || ('تم التسجيل لـ ' + (r.count || 0) + ' طالب'), 'success');
+        closeModal('bulkVioModal');
+        SDIR.selected = {}; SDIR._bulkRows = []; sdir_renderRows();
+      } else {
+        showError(r ? r.error : 'فشل التسجيل الجماعي');
+      }
+    },
+    function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); }
+  );
+}
+
 // ── وضع المدير/المحاسب/الوكيل/المشرف ──
 // رسوم بيانية بسيطة لأعداد الطلاب (للمدير/الوكيل فقط)
 function sdir_analyticsHtml() {
@@ -12739,6 +12801,7 @@ function sdir_renderManager() {
   h += '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap">' +
     '<label style="font-size:13px"><input type="checkbox" id="sdir-all" onchange="sdir_toggleAll(this.checked)"> تحديد الكل</label>' +
     '<button class="btn btn-sm btn-success" onclick="sdir_sendSelected()">📤 إرسال كلمة المرور للمحددين</button>' +
+    '<button class="btn btn-sm" style="background:#4f46e5;color:#fff" onclick="sdir_bulkBehavior()">📋 تسجيل سلوك للمحددين</button>' +
     '<span id="sdir-selcount" class="badge badge-info"></span>' +
     (SDIR.hasWa ? '<span class="badge badge-success" style="font-size:11px">واتساب تلقائي مُفعّل</span>' : '<span class="badge" style="background:#fff3cd;color:#7c5e00;font-size:11px">إرسال عبر روابط wa.me</span>') +
     '</div>';
