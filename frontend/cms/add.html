@@ -293,31 +293,56 @@
     google.script.run
       .withSuccessHandler(function(res) {
         if (!res || !res.ok) { setStatus(statusId, '❌ ' + ((res && res.error) || 'تعذّر بدء الرفع'), 'error'); return; }
-        var xhr = new XMLHttpRequest();
-        xhr.open('PUT', res.sessionUri, true);
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-        xhr.upload.onprogress = function(e) {
-          if (e.lengthComputable) {
-            var p = Math.round((e.loaded / e.total) * 100);
-            setStatus(statusId, '⏳ جاري الرفع… ' + p + '%', 'info');
-          }
-        };
-        xhr.onload = function() {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            var fileId = '';
-            try { fileId = JSON.parse(xhr.responseText).id; } catch (e) {}
-            if (!fileId) { setStatus(statusId, '❌ اكتمل الرفع لكن تعذّر قراءة معرّف الملف', 'error'); return; }
-            setStatus(statusId, '✅ اكتمل الرفع — جاهز للحفظ', 'success');
-            cb(fileId);
-          } else {
-            setStatus(statusId, '❌ فشل رفع البايتات (status ' + xhr.status + ')', 'error');
-          }
-        };
-        xhr.onerror = function() { setStatus(statusId, '❌ فشل الاتصال أثناء الرفع', 'error'); };
-        xhr.send(file);
+        // المسار الأساسي: عبر وسيط الـWorker /drive-upload (يعمل داخل اليمن — يتجاوز الحجب وCORS).
+        // fallback: إن رجع الوكيل 404 أو فشل الاتصال، تراجع تلقائياً للرفع المباشر إلى sessionUri.
+        var workerBase = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+        var proxyUrl = workerBase + '/drive-upload?sessionUri=' + encodeURIComponent(res.sessionUri);
+        _putResumableBytes(proxyUrl, res.sessionUri, file, statusId, cb, false);
       })
       .withFailureHandler(function(err) { setStatus(statusId, '❌ خطأ: ' + err.message, 'error'); })
       .createDriveUploadSession(file.name, file.type, folderType, window.SCHOOL_ID, file.size);
+  }
+
+  // يرفع بايتات الملف عبر PUT إلى url (وسيط الـWorker)، فإن فشل (404/اتصال) يتراجع
+  // مرّةً واحدةً للرفع المباشر إلى sessionUri على googleapis. يحافظ على شريط التقدّم
+  // وقراءة id عند الاكتمال ورسائل الحالة كما كانت.
+  function _putResumableBytes(url, sessionUri, file, statusId, cb, isFallback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = function(e) {
+      if (e.lengthComputable) {
+        var p = Math.round((e.loaded / e.total) * 100);
+        setStatus(statusId, (isFallback ? '⏳ رفع مباشر… ' : '⏳ جاري الرفع… ') + p + '%', 'info');
+      }
+    };
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var fileId = '';
+        try { fileId = JSON.parse(xhr.responseText).id; } catch (e) {}
+        if (!fileId) { setStatus(statusId, '❌ اكتمل الرفع لكن تعذّر قراءة معرّف الملف', 'error'); return; }
+        setStatus(statusId, '✅ اكتمل الرفع — جاهز للحفظ', 'success');
+        cb(fileId);
+        return;
+      }
+      // فشل الوكيل (مثلاً 404) → تراجع مباشر مرّة واحدة
+      if (!isFallback && url !== sessionUri) {
+        try { console.warn('drive-upload proxy status ' + xhr.status + ' — fallback إلى الرفع المباشر'); } catch (e) {}
+        _putResumableBytes(sessionUri, sessionUri, file, statusId, cb, true);
+        return;
+      }
+      setStatus(statusId, '❌ فشل رفع البايتات (status ' + xhr.status + ')', 'error');
+    };
+    xhr.onerror = function() {
+      // فشل اتصال بالوكيل → تراجع مباشر مرّة واحدة
+      if (!isFallback && url !== sessionUri) {
+        try { console.warn('drive-upload proxy فشل الاتصال — fallback إلى الرفع المباشر'); } catch (e) {}
+        _putResumableBytes(sessionUri, sessionUri, file, statusId, cb, true);
+        return;
+      }
+      setStatus(statusId, '❌ فشل الاتصال أثناء الرفع', 'error');
+    };
+    xhr.send(file);
   }
 
   // ربط أحداث الرفع — الصور/الأخبار عبر Resumable؛ وسائط الجدولة تبقى على المسار القديم (ملفات صغيرة)
