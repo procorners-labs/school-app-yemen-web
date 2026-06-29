@@ -286,8 +286,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       </div>
     </div>
     <div class="sidebar-header">
-      <h2>🏫 مدارس الإبداع</h2>
-      <p>لوحة التحكم المركزية</p>
+      <img id="sb-school-logo" alt="" style="display:none;max-width:64px;max-height:64px;border-radius:8px;margin:0 auto 6px;" />
+      <h2 id="sb-school-name">🏫 لوحة المدارس</h2>
+      <p id="sb-school-sub">لوحة التحكم المركزية</p>
     </div>
     <!-- تم تغيير التبويب النشط الافتراضي إلى portals -->
     <div class="nav-item" onclick="showSection('dashboard')" id="nav-dashboard">
@@ -712,6 +713,13 @@ function _showApp() {
     if (el) el.style.display = App.isOwner ? '' : 'none';
   }
 
+  // اسم المدرسة في الشريط الجانبي (ديناميكي حسب المدرسة الداخلة)
+  try {
+    var _sb = document.getElementById('sb-school-name');
+    if (_sb) _sb.textContent = App.isOwner ? '🏫 كل المدارس' : ('🏫 ' + (App.schoolName || 'مدرستي'));
+  } catch (eSb) {}
+  _loadSchoolBrand();
+
   // محدّد المدرسة يظهر للمالك فقط
   var sel = document.getElementById('owner-school-bar');
   if (sel) sel.style.display = App.isOwner ? 'block' : 'none';
@@ -719,6 +727,25 @@ function _showApp() {
 
   // ✅ عرض تبويب "منصاتي" أولاً بعد الدخول
   showSection('portals');
+}
+
+// يجلب هوية المدرسة (الاسم/الهاتف/الشعار) ويحقنها في الشريط الجانبي ديناميكيًا
+function _loadSchoolBrand() {
+  try {
+    if (!App.token) return;
+    google.script.run
+      .withSuccessHandler(function(b) {
+        if (!b || !b.success) return;
+        var nm = document.getElementById('sb-school-name');
+        if (nm && b.name) nm.textContent = '🏫 ' + b.name;
+        var lg = document.getElementById('sb-school-logo');
+        if (lg && b.logo) { lg.src = b.logo; lg.style.display = 'block'; }
+        var sub = document.getElementById('sb-school-sub');
+        if (sub) sub.textContent = b.phone ? ('📞 ' + b.phone) : 'لوحة التحكم المركزية';
+      })
+      .withFailureHandler(function() {})
+      .getSchoolBrandProtected({ token: App.token, schoolId: App.isOwner ? '' : App.schoolId });
+  } catch (eBrand) {}
 }
 
 function app_logout() {
