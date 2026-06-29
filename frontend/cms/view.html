@@ -472,7 +472,15 @@
         } else if (u.indexOf('youtu.be/') !== -1) {
           var id = u.split('youtu.be/')[1]; if (id) { var q = id.indexOf('?'); if (q !== -1) id = id.substring(0,q); embed = '<div class="video-wrapper"><iframe src="https://www.youtube.com/embed/' + id + '" allowfullscreen loading="lazy"></iframe></div>'; }
         } else if (u.indexOf('drive.google.com') !== -1) {
-          embed = '<div class="video-wrapper"><iframe src="' + u.replace('/view?usp=sharing','/preview') + '" allowfullscreen loading="lazy"></iframe></div>';
+          var dm = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
+          if (dm && dm[1]) {
+            // بثّ عبر وسيط الـWorker /media/drive في <video> الأصلي، وتراجع لمشغّل Drive (/preview) عند الفشل
+            var _wb = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+            embed = '<div class="video-wrapper"><video src="' + _wb + '/media/drive/' + dm[1] + '" controls playsinline preload="metadata" style="width:100%;height:100%;background:#000" ' +
+              'onerror="this.parentNode.innerHTML=\'<iframe src=&quot;https://drive.google.com/file/d/' + dm[1] + '/preview&quot; allowfullscreen loading=lazy></iframe>\'"></video></div>';
+          } else {
+            embed = '<div class="video-wrapper"><iframe src="' + u.replace('/view?usp=sharing','/preview') + '" allowfullscreen loading="lazy"></iframe></div>';
+          }
         } else if (isFacebook) {
           embed = '<div class="social-preview">' +
                     '<div class="social-icon">📘</div>' +

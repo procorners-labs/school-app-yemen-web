@@ -3047,9 +3047,11 @@ function _driveId(u) {
   return m ? m[1] : '';
 }
 
-// مصدر بثّ فيديو Drive المباشر (يُشغَّل في <video> الأصلي — يتجاوز مشغّل Drive المتعثّر)
+// مصدر بثّ فيديو Drive عبر وسيط الـWorker /media/drive (Range + video/mp4 + تجاوز فحص الفيروسات)
+// يُشغَّل في <video> الأصلي ويعمل داخل اليمن (المتصفّح يتكلّم مع Cloudflare فقط) — يتجاوز مشغّل Drive المتعثّر.
 function _drvVideoSrcStu(fileId) {
-  return 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
+  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  return base + '/media/drive/' + fileId;
 }
 // تراجع: إن فشل البثّ المباشر، نعرض مشغّل Drive (/preview) داخل نفس الإطار
 function _stuVideoFallback(videoEl, fid) {
