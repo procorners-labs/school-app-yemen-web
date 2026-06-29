@@ -1351,6 +1351,12 @@ function schools_load() {
     .getAllSchoolsProtected({ token: App.token });
 }
 
+function _waNum(p) {
+  p = ('' + (p || '')).replace(/[^0-9]/g, '');
+  if (p && p.indexOf('967') !== 0 && p.length <= 9) p = '967' + p.replace(/^0+/, '');
+  return p;
+}
+
 function _renderSchools(schools) {
   var tbody = document.getElementById('schools-tbody');
   if (!schools || schools.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#999;">لا توجد مدارس مسجلة</td></tr>'; return; }
@@ -1360,7 +1366,15 @@ function _renderSchools(schools) {
     var planBadge   = '<span class="badge badge-' + s.planType + '">' + s.planType + '</span>';
     var activeBadge = s.isActive ? '<span class="badge badge-active">✅ نشطة</span>' : '<span class="badge badge-inactive">❌ معطلة</span>';
     var expiredNote = s.isExpired ? ' <span style="color:#c62828;font-size:11px;">(منتهي)</span>' : '';
-    html += '<tr><td><strong>' + s.name + '</strong><br><small style="color:#888;">' + s.address + '</small></td>' +
+    var logoImg = s.logo ? '<img src="' + s.logo + '" alt="" style="width:34px;height:34px;object-fit:contain;border-radius:7px;vertical-align:middle;margin-left:6px;">' : '';
+    var social = '';
+    if (s.whatsapp)  social += '<a href="https://wa.me/' + _waNum(s.whatsapp) + '" target="_blank" rel="noopener" title="واتساب" style="text-decoration:none;">💬</a> ';
+    if (s.facebook)  social += '<a href="' + s.facebook + '" target="_blank" rel="noopener" title="فيسبوك" style="text-decoration:none;">📘</a> ';
+    if (s.instagram) social += '<a href="' + s.instagram + '" target="_blank" rel="noopener" title="إنستغرام" style="text-decoration:none;">📸</a> ';
+    if (s.youtube)   social += '<a href="' + s.youtube + '" target="_blank" rel="noopener" title="يوتيوب" style="text-decoration:none;">▶️</a> ';
+    var contact = (s.phone ? '<br><small style="color:#555;">📞 ' + s.phone + '</small>' : '') +
+                  (social ? '<br><span style="font-size:15px;">' + social + '</span>' : '');
+    html += '<tr><td>' + logoImg + '<strong>' + s.name + '</strong><br><small style="color:#888;">' + (s.address || '') + '</small>' + contact + '</td>' +
             '<td>' + s.adminEmail + '</td><td>' + s.subscriptionEnd + expiredNote + '</td>' +
             '<td>' + planBadge + '</td><td>' + activeBadge + '</td><td>' +
             '<div style="display:flex;gap:4px;flex-wrap:wrap;">';
