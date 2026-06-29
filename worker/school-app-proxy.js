@@ -186,7 +186,9 @@ export default {
         outHeaders.set('Content-Type', (ct && ct.indexOf('text/html') === -1) ? ct : 'video/mp4');
         outHeaders.set('Accept-Ranges', 'bytes');
         outHeaders.set('Access-Control-Allow-Origin', '*');
-        outHeaders.set('Cache-Control', 'public, max-age=3600');
+        // محتوى الفيديو ثابت لكل fileId (لا يتغيّر) → كاش طويل على حافة Cloudflare لتسريع
+        // إعادة التشغيل والتموضع (seek)؛ immutable يمنع إعادة التحقّق غير الضرورية.
+        outHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
         var cr = dResp.headers.get('Content-Range'); if (cr) outHeaders.set('Content-Range', cr);
         var cl = dResp.headers.get('Content-Length'); if (cl) outHeaders.set('Content-Length', cl);
         return new Response(dResp.body, { status: dResp.status, headers: outHeaders });
