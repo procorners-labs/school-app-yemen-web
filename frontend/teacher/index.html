@@ -186,11 +186,12 @@
 
     /* LOGIN SCREEN */
     #loginScreen {
-      min-height:100vh; display:flex; align-items:center; justify-content:center;
+      min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
       padding:20px;
       background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
       position:relative; overflow:hidden;
     }
+    #loginScreen .login-stack{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;}
     #loginScreen::before, #loginScreen::after {
       content:''; position:absolute; border-radius:50%; filter:blur(80px); opacity:.4;
     }
@@ -1763,6 +1764,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen">
+  <div class="login-stack">
   <div class="login-card">
     <div class="login-header">
       <div class="login-icon-wrap" id="tchLoginLogo">🎓</div>
@@ -1820,6 +1822,35 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
       <div class="login-footer">© 2026 جميع الحقوق محفوظة — School App Yemen</div>
     </div>
+  </div>
+
+  <!-- ═══ دليل المدارس الشريكة (عام، قبل الدخول) — مكوّن PartnerSchoolCard ═══ -->
+  <div id="partners-public" class="psd-wrap" style="display:none;">
+    <div class="psd-head">
+      <h2 class="psd-title">🏫 مدارسنا الشريكة</h2>
+      <p class="psd-sub">شبكة المدارس المنضمّة إلى المنصّة</p>
+    </div>
+    <div id="partners-grid" class="psd-grid"></div>
+  </div>
+  <style>
+    .psd-wrap{width:100%;max-width:960px;margin:28px auto 6px;padding:0 6px;box-sizing:border-box;}
+    .psd-head{text-align:center;margin-bottom:18px;}
+    .psd-title{margin:0 0 4px;font-size:21px;font-weight:800;color:#fff;letter-spacing:.2px;}
+    .psd-sub{margin:0;font-size:13px;color:rgba(255,255,255,.82);}
+    .psd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:14px;}
+    .psd-card{position:relative;background:#fff;border-radius:16px;padding:17px 15px 14px;display:flex;gap:13px;align-items:flex-start;box-shadow:0 6px 22px rgba(15,23,42,.28);border:1px solid rgba(255,255,255,.08);transition:transform .18s ease,box-shadow .18s ease;overflow:hidden;text-align:right;}
+    .psd-card::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4f46e5,#6366f1,#818cf8);}
+    .psd-card:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(79,70,229,.35);}
+    .psd-logo{width:52px;height:52px;flex:0 0 52px;border-radius:13px;object-fit:contain;background:#f1f5f9;padding:4px;box-sizing:border-box;}
+    .psd-logo-ph{display:flex;align-items:center;justify-content:center;font-size:25px;background:linear-gradient(135deg,#e0e7ff,#c7d2fe);color:#4f46e5;}
+    .psd-info{flex:1;min-width:0;}
+    .psd-name{font-weight:800;color:#312e81;font-size:15px;line-height:1.35;margin-bottom:4px;word-break:break-word;}
+    .psd-meta{color:#5f6368;font-size:12px;margin-top:2px;line-height:1.45;}
+    .psd-social{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;}
+    .psd-social a{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;text-decoration:none;background:#eef2ff;transition:background .15s,transform .15s;}
+    .psd-social a:hover{background:#e0e7ff;transform:translateY(-1px);}
+    @media(max-width:560px){.psd-grid{grid-template-columns:1fr 1fr;gap:10px;}.psd-card{padding:12px;}.psd-logo{width:42px;height:42px;flex-basis:42px;}}
+  </style>
   </div>
 </div>
 <!-- MAIN APPLICATION -->
@@ -2562,6 +2593,50 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     }
     if (document.readyState !== 'loading') run();
     else document.addEventListener('DOMContentLoaded', run);
+  })();
+
+  /* دليل المدارس الشريكة (عام، قبل الدخول) — مكوّن PartnerSchoolCard */
+  (function () {
+    function waNum(p) {
+      p = ('' + (p || '')).replace(/[^0-9]/g, '');
+      if (p && p.indexOf('967') !== 0 && p.length <= 9) p = '967' + p.replace(/^0+/, '');
+      return p;
+    }
+    function render(schools) {
+      var wrap = document.getElementById('partners-public');
+      var grid = document.getElementById('partners-grid');
+      if (!wrap || !grid) return;
+      var html = '';
+      for (var i = 0; i < schools.length; i++) {
+        var s = schools[i];
+        var logo = s.logo
+          ? '<img class="psd-logo" src="' + s.logo + '" alt="">'
+          : '<div class="psd-logo psd-logo-ph">🏫</div>';
+        var social = '';
+        if (s.whatsapp)  social += '<a href="https://wa.me/' + waNum(s.whatsapp) + '" target="_blank" rel="noopener" title="واتساب">💬</a>';
+        if (s.facebook)  social += '<a href="' + s.facebook + '" target="_blank" rel="noopener" title="فيسبوك">📘</a>';
+        if (s.instagram) social += '<a href="' + s.instagram + '" target="_blank" rel="noopener" title="إنستغرام">📸</a>';
+        if (s.youtube)   social += '<a href="' + s.youtube + '" target="_blank" rel="noopener" title="يوتيوب">▶️</a>';
+        html += '<div class="psd-card">' + logo + '<div class="psd-info">' +
+                  '<div class="psd-name">' + s.name + '</div>' +
+                  (s.address ? '<div class="psd-meta">📍 ' + s.address + '</div>' : '') +
+                  (s.phone ? '<div class="psd-meta">📞 <span dir="ltr">' + s.phone + '</span></div>' : '') +
+                  (social ? '<div class="psd-social">' + social + '</div>' : '') +
+                '</div></div>';
+      }
+      grid.innerHTML = html;
+      wrap.style.display = 'block';
+    }
+    function load() {
+      try {
+        google.script.run
+          .withSuccessHandler(function (res) { if (res && res.success && res.schools && res.schools.length) render(res.schools); })
+          .withFailureHandler(function () {})
+          .listPartnerSchoolsPublic();
+      } catch (e) {}
+    }
+    if (document.readyState !== 'loading') load();
+    else document.addEventListener('DOMContentLoaded', load);
   })();
 // ══════════════════════════════════════════════════════
 // Smart Client Cache مع TTL
