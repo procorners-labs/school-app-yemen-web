@@ -195,6 +195,76 @@ export default {
       }
     }
 
+    // ── 1هـ) وسيط رفع الملفات إلى جلسة Drive القابلة للاستئناف: /drive-upload ──
+    //   يستقبل من المتصفّح طلب PUT يحمل جسم الملف (أو شريحةً منه) مع ?sessionUri=...
+    //   ويمرّره كما هو — بثّاً، بلا تحميله كاملاً في الذاكرة — إلى جلسة Drive
+    //   resumable (uploadType=resumable). الفائدة: المتصفّح يتكلّم مع نطاق
+    //   Cloudflare فقط، فيعمل الرفع داخل اليمن (تجاوز الحجب) وبلا مشاكل CORS.
+    //   أمان (منع SSRF): نقبل فقط وجهةً نطاقها ينتهي بـ .googleapis.com عبر https.
+    if (path === '/drive-upload' || path === '/drive-upload/') {
+      // CORS: نعكس أصل الموقع (بلا اعتماد على كوكيز → آمن)، ونسمح بـ PUT وترويسات الرفع.
+      var duOrigin = request.headers.get('Origin') || '*';
+      var duCors = function (resp) {
+        resp.headers.set('Access-Control-Allow-Origin', duOrigin);
+        resp.headers.set('Access-Control-Allow-Methods', 'PUT, OPTIONS');
+        resp.headers.set('Access-Control-Allow-Headers', 'content-type, content-range, content-length');
+        resp.headers.set('Access-Control-Expose-Headers', 'Range, Location, Content-Range');
+        resp.headers.set('Access-Control-Max-Age', '86400');
+        if (duOrigin !== '*') resp.headers.set('Vary', 'Origin');
+        return resp;
+      };
+
+      // معالجة الـ preflight
+      if (request.method === 'OPTIONS') {
+        return duCors(new Response(null, { status: 204 }));
+      }
+      if (request.method !== 'PUT') {
+        return duCors(jsonResponse({ ok: false, error: 'استخدم PUT لرفع الملف' }, 405));
+      }
+
+      // التحقق الصارم من وجهة الرفع وحصرها في نطاق Google (منع SSRF)
+      var sessionUri = url.searchParams.get('sessionUri') || '';
+      if (!sessionUri) {
+        return duCors(jsonResponse({ ok: false, error: 'sessionUri مفقود' }, 400));
+      }
+      var target;
+      try {
+        target = new URL(sessionUri);
+      } catch (e) {
+        return duCors(jsonResponse({ ok: false, error: 'sessionUri غير صالح' }, 400));
+      }
+      if (target.protocol !== 'https:' ||
+          !(target.hostname === 'googleapis.com' || target.hostname.endsWith('.googleapis.com'))) {
+        return duCors(jsonResponse({ ok: false, error: 'وجهة الرفع غير مسموحة' }, 400));
+      }
+
+      // تمرير الجسم بثّاً مع الحفاظ الحرفي على ترويسات الرفع.
+      var upHeaders = new Headers();
+      var ctH = request.headers.get('Content-Type');   if (ctH) upHeaders.set('Content-Type', ctH);
+      var crH = request.headers.get('Content-Range');  if (crH) upHeaders.set('Content-Range', crH);
+      var clH = request.headers.get('Content-Length'); if (clH) upHeaders.set('Content-Length', clH);
+
+      try {
+        var upResp = await fetch(sessionUri, {
+          method: 'PUT',
+          headers: upHeaders,
+          body: request.body,
+          duplex: 'half',
+          redirect: 'manual'  // 308 (Resume Incomplete) ليست إعادة توجيه فعلية — نُمرّرها كما هي
+        });
+
+        // إعادة حالة Drive وجسمه كما هما: 308 أثناء التقطيع (مع Range)،
+        // و200/201 + JSON فيه id عند الاكتمال.
+        var duOut = new Headers();
+        var rngH = upResp.headers.get('Range');    if (rngH) duOut.set('Range', rngH);
+        var locH = upResp.headers.get('Location'); if (locH) duOut.set('Location', locH);
+        duOut.set('Content-Type', upResp.headers.get('Content-Type') || 'application/json; charset=utf-8');
+        return duCors(new Response(upResp.body, { status: upResp.status, headers: duOut }));
+      } catch (upErr) {
+        return duCors(jsonResponse({ ok: false, error: 'تعذّر رفع الملف إلى Drive: ' + String(upErr) }, 502));
+      }
+    }
+
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
     if (path === '/' || path === '') path = '/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;
