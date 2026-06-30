@@ -14363,8 +14363,10 @@ function _tfLoad(noCache){
 }
 
 function _tfRender(res){
+  window._tfRes=res;            // تخزين للفلترة العميلة
   var k=res.kpi||{}, host=document.getElementById('dynamicContent');
   var net=k.net||0, netColor=net>=0?'#1a8d5f':'#c0392b', netWord=net>=0?'فائض':'عجز';
+  var netReal=k.netReal||0, netRColor=netReal>=0?'#1a8d5f':'#c0392b', netRWord=netReal>=0?'فائض':'عجز';
   var hasData=(k.receiptsCount||0)+(k.expenseCount||0)+(k.staff||0)+(k.students||0) > 0;
 
   var h='<div id="tf-root" class="tf-wrap">';
@@ -14391,8 +14393,9 @@ function _tfRender(res){
   h+='<div class="tf-pane active" id="tf-pane-overview">';
   h+='<div class="tf-kpis">'+
      _tfKpi(_tfComma(k.income), 'إجمالي الدخل', (k.receiptsCount||0)+' سند', '#1a8d5f', true)+
-     _tfKpi(_tfComma(k.expense), 'إجمالي المصروفات', (k.expenseCount||0)+' عملية', '#c0392b', true)+
-     _tfKpi(_tfComma(net), 'الصافي ('+netWord+')', '', netColor, true)+
+     _tfKpi(_tfComma(k.expenseReal), 'المصروفات الحقيقية', (k.expenseCount||0)+' عملية · بلا توريد', '#c0392b', true)+
+     _tfKpi(_tfComma(netReal), 'الصافي الحقيقي ('+netRWord+')', '', netRColor, true)+
+     _tfKpi(_tfComma(k.supplied), 'مُسلّم للمدير (توريد)', 'تسوية الصندوق — ليس خرجًا', '#6d4caf', false)+
      _tfKpi(_tfComma(k.expected), 'الرسوم المتوقّعة', '', '#2c6fb0', false)+
      _tfKpi(_tfComma(k.collected), 'المحصّل', '', '#1a8d5f', false)+
      _tfKpi(_tfComma(k.outstanding), 'المتبقّي', '', '#d98324', false)+
@@ -14406,17 +14409,27 @@ function _tfRender(res){
      '</div></div>';
 
   // ── سندات القبض ──
-  h+='<div class="tf-pane" id="tf-pane-receipts"><div class="tf-card"><h3>أحدث السندات (آخر '+((res.recentReceipts||[]).length)+')</h3>'+
+  h+='<div class="tf-pane" id="tf-pane-receipts">'+
+     '<div class="tf-card"><h3>تصنيف الدخل (رسوم/سلف/أخرى)</h3>'+_tfBars(res.incomeByCategory,'#1a8d5f')+'</div>'+
+     '<div class="tf-card"><h3>أحدث السندات (آخر '+((res.recentReceipts||[]).length)+')</h3>'+
      _tfTable(['التاريخ','الاسم','البيان','المبلغ','الطريقة'], (res.recentReceipts||[]).map(function(r){
        return [_tfEsc(r.date), _tfEsc(r.name||r.label||'—'), _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.method||'')];
      }))+'</div></div>';
 
-  // ── المصروفات ──
-  h+='<div class="tf-pane" id="tf-pane-expenses"><div class="tf-card"><h3>أعلى المصروفات</h3>'+
-     _tfTable(['البيان','المبلغ','التاريخ'], (res.topExpenses||[]).map(function(e){
-       return [_tfEsc(e.label||'—'), '<span class="tf-amt">'+_tfComma(e.amount)+'</span>', _tfEsc(e.date||'')];
-     }))+'</div>'+
-     '<div class="tf-card"><h3>المصروفات الشهرية</h3>'+_tfBars((res.months||[]).map(function(m){return {name:m.m,value:m.expense};}),'#c0392b')+'</div></div>';
+  // ── المصروفات (تصنيف + تسوية الصندوق + فلترة) ──
+  h+='<div class="tf-pane" id="tf-pane-expenses">'+
+     '<div class="tf-card"><h3>🧮 تسوية الصندوق</h3>'+_tfReconHtml(k)+'</div>'+
+     '<div class="tf-card"><h3>تصنيف المصروفات — فلترة حسب النوع</h3>'+
+       '<div class="tf-tabs" id="tf-exp-chips">'+_tfChips()+'</div>'+
+       '<div id="tf-exp-total" style="margin:4px 2px 12px;color:#46506a;font-size:13px;"></div>'+
+       '<div id="tf-exp-table"></div></div>'+
+     '<div class="tf-grid2">'+
+       '<div class="tf-card"><h3>أعلى المصروفات الحقيقية</h3>'+
+         _tfTable(['البيان','المبلغ','التاريخ'], (res.topExpenses||[]).map(function(e){
+           return [_tfEsc(e.label||'—'), '<span class="tf-amt">'+_tfComma(e.amount)+'</span>', _tfEsc(e.date||'')];
+         }))+'</div>'+
+       '<div class="tf-card"><h3>توزّع المصروفات حسب الفئة</h3>'+_tfBars(res.expenseByCategory,'#c0392b')+'</div>'+
+     '</div></div>';
 
   // ── الرواتب ──
   h+='<div class="tf-pane" id="tf-pane-payroll"><div class="tf-card"><h3>كشف الرواتب ('+((res.payroll||[]).length)+' موظف) — إجمالي '+_tfComma(k.salaries)+' · المتبقّي '+_tfComma(k.salaryRemaining)+'</h3>'+
@@ -14438,11 +14451,57 @@ function _tfRender(res){
 
   h+='</div>';
   host.innerHTML=h;
+  _tfDrawExpTable();   // تعبئة جدول المصروفات المفلتر بعد الرسم
 }
 
 function _tfKpi(val,label,sub,color,big){
   return '<div class="tf-kpi'+(big?' big':'')+'"><div class="tf-kpi-v" style="color:'+color+';">'+val+'</div>'+
     '<div class="tf-kpi-l">'+_tfEsc(label)+'</div>'+(sub?('<div class="tf-kpi-s">'+_tfEsc(sub)+'</div>'):'')+'</div>';
+}
+
+// تسوية الصندوق: الدخل ↔ التوريد (تسليم للمدير) ↔ المصروف الحقيقي ↔ الصافي الحقيقي
+function _tfReconHtml(k){
+  var nr=k.netReal||0, nrC=nr>=0?'#1a8d5f':'#c0392b';
+  return '<div class="tf-kpis">'+
+    _tfKpi(_tfComma(k.income),'إجمالي الدخل','','#1a8d5f',false)+
+    _tfKpi(_tfComma(k.supplied),'مُسلّم للمدير (توريد)','ليس خرجًا','#6d4caf',false)+
+    _tfKpi(_tfComma(k.expenseReal),'المصروفات الحقيقية','بلا توريد','#c0392b',false)+
+    _tfKpi(_tfComma(nr),'الصافي الحقيقي',(nr>=0?'فائض':'عجز'),nrC,false)+
+    '</div>'+
+    '<div style="font-size:12px;color:#7a8794;margin-top:6px;line-height:1.7;">'+
+    'المصروفات الحقيقية = إجمالي الخارج − «التوريد». «التوريد للحساب» نقدٌ سُلِّم للمدير/أُودِع في الصندوق آخر اليوم '+
+    '(نقل عُهدة)، فلا يُحتسب خرجًا. الرواتب/الحوالات/التشغيلية = خرج حقيقي.</div>';
+}
+
+// أزرار فلترة فئات المصروفات
+function _tfChips(){
+  var cats=[['all','الكل'],['operational','تشغيلية'],['transfer','حوالات/إرجاعات'],['salary','رواتب وسحوبات'],['supply','توريد (تسليم للمدير)'],['prepaid','مدفوعات مسبقة'],['uncat','غير مصنّف']];
+  var s='';
+  for(var i=0;i<cats.length;i++){
+    s+='<button class="tf-tab'+(cats[i][0]==='all'?' active':'')+'" id="tf-chip-'+cats[i][0]+'" onclick="_tfFilterExp(\''+cats[i][0]+'\')">'+_tfEsc(cats[i][1])+'</button>';
+  }
+  return s;
+}
+
+var _tfExpFilter='all';
+function _tfFilterExp(cat){
+  _tfExpFilter=cat;
+  var chips=document.querySelectorAll('#tf-exp-chips .tf-tab');
+  for(var i=0;i<chips.length;i++) chips[i].classList.remove('active');
+  var ac=document.getElementById('tf-chip-'+cat); if(ac) ac.classList.add('active');
+  _tfDrawExpTable();
+}
+function _tfDrawExpTable(){
+  var res=window._tfRes||{}, rows=(res.expensesDetailed||[]);
+  var filt = (_tfExpFilter==='all') ? rows : rows.filter(function(r){ return r.category===_tfExpFilter; });
+  var total=0,i; for(i=0;i<filt.length;i++) total+=(filt[i].amount||0);
+  filt=filt.slice().sort(function(a,b){ return (b.amount||0)-(a.amount||0); });
+  var tbl=document.getElementById('tf-exp-table');
+  if(tbl) tbl.innerHTML=_tfTable(['التاريخ','البيان','المبلغ','الفئة'], filt.map(function(r){
+    return [_tfEsc(r.date), _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.categoryName||'')];
+  }));
+  var tot=document.getElementById('tf-exp-total');
+  if(tot) tot.innerHTML='الإجمالي المعروض: <strong>'+_tfComma(total)+'</strong> ('+filt.length+' حركة)';
 }
 
 function _tfTable(headers, rows){
