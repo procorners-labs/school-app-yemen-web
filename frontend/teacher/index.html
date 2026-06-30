@@ -2635,6 +2635,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     }
     function load() {
       try {
+        // تحسين أداء: لا تجلب دليل الشركاء إن كان المستخدم سيُسجَّل تلقائيًا (لن تظهر شاشة الدخول)
+        var s = (typeof loadSession === 'function') ? loadSession() : null;
+        var req = (window.SCHOOL_ID || '');
+        try { var q = new URLSearchParams(window.location.search); req = q.get('school') || q.get('schoolId') || req; } catch (eq) {}
+        if (s && s.token && (!req || s.schoolId === req)) return;  // جلسة صالحة لنفس المدرسة → تخطَّ
         google.script.run
           .withSuccessHandler(function (res) { if (res && res.success && res.schools && res.schools.length) render(res.schools); })
           .withFailureHandler(function () {})
