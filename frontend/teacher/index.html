@@ -14399,6 +14399,7 @@ function _tfRender(res){
      '<button class="tf-tab" id="tf-tab-stuacc" onclick="_tfTab(\'stuacc\')">🧾 محاسبة الطلاب</button>'+
      '<button class="tf-tab" id="tf-tab-families" onclick="_tfTab(\'families\')">👨‍👩‍👦 حسابات العائلات</button>'+
      '<button class="tf-tab" id="tf-tab-monthly" onclick="_tfTab(\'monthly\')">📅 التحليل الشهري</button>'+
+     '<button class="tf-tab" id="tf-tab-cashbox" onclick="_tfTab(\'cashbox\')">💵 الصندوق اليومي</button>'+
      '<button class="tf-tab" id="tf-tab-fees" onclick="_tfTab(\'fees\')">📋 جدول الرسوم</button>'+
      '<button class="tf-tab" id="tf-tab-students" onclick="_tfTab(\'students\')">🎒 رسوم الطلاب (صفوف)</button></div>';
 
@@ -14415,6 +14416,8 @@ function _tfRender(res){
      _tfKpi(_tfComma(k.outstanding), 'المتبقّي على الطلاب', (k.overdueCount||0)+' متأخّر', '#d98324', false)+
      _tfKpi(_tfComma(k.salaries), 'رواتب الموظفين', (k.staff||0)+' موظف', '#6d4caf', false)+
      _tfKpi(_tfComma(k.students), 'عدد الطلاب', '', '#334', false)+
+     _tfKpi(_tfComma(k.prevDebt), 'مديونية أعوام سابقة', (k.prevDebtCount||0)+' طالب', '#8e44ad', false)+
+     _tfKpi(_tfComma(k.discountTotal), 'إجمالي التخفيضات', (k.discountedCount||0)+' طالب', '#16a085', false)+
      '</div>';
   h+='<div class="tf-card"><h3>الدخل مقابل المصروفات (شهريًا)</h3>'+_tfChart(res.months)+'</div>';
   h+='<div class="tf-grid2">'+
@@ -14468,7 +14471,14 @@ function _tfRender(res){
          '<button class="tf-abtn" onclick="_tfExportStu()">⬇️ تصدير CSV</button>'+
        '</div>'+
        '<div id="tf-stu-total" style="margin:0 2px 10px;color:#46506a;font-size:13px;"></div>'+
-       '<div id="tf-stu-table"></div></div></div>';
+       '<div id="tf-stu-table"></div></div>'+
+     ((res.discountedStudents&&res.discountedStudents.length) ? ('<div class="tf-card"><h3>🏷️ الطلاب المسجَّلون بتخفيض ('+res.discountedStudents.length+') · إجمالي التخفيض '+_tfComma(k.discountTotal)+
+       ' <button class="tf-abtn" style="float:left" onclick="_tfExportDisc()">⬇️ تصدير CSV</button></h3>'+
+       '<div style="font-size:12px;color:#7a8794;margin-bottom:10px;line-height:1.7;">طلاب رسومهم الدراسية أقل من معيار صفّهم في جدول الرسوم (تخفيض مُشتقّ — لا عمود تخفيض صريح في الأكسس).</div>'+
+       _tfTable(['الكود','الاسم','الصف','معيار الصف','الرسوم المتّفقة','التخفيض','المدفوع','المتبقّي'], res.discountedStudents.map(function(s){
+         return [_tfEsc(s.code),_tfEsc(s.name),_tfEsc(s.grade),_tfComma(s.standard),_tfComma(s.agreed),'<span class="tf-amt" style="color:#16a085;">'+_tfComma(s.discount)+'</span>',_tfComma(s.paid),'<span class="tf-amt">'+_tfComma(s.remaining)+'</span>'];
+       }))+'</div>') : '')+
+     '</div>';
 
   // ── حسابات العائلات (الأخ الكبير يحمل حساب إخوته) ──
   h+='<div class="tf-pane" id="tf-pane-families">'+
@@ -14490,6 +14500,23 @@ function _tfRender(res){
      _tfTable(['الشهر','الدخل (محصّل)','المصروف','الصافي'], (res.months||[]).map(function(m){
        var nc=(m.net>=0)?'#1a8d5f':'#c0392b';
        return [_tfEsc(m.m), '<span class="tf-amt" style="color:#1a8d5f;">'+_tfComma(m.income)+'</span>', '<span class="tf-amt" style="color:#c0392b;">'+_tfComma(m.expense)+'</span>', '<span class="tf-amt" style="color:'+nc+';">'+_tfComma(m.net)+'</span>'];
+     }))+'</div></div>';
+
+  // ── الصندوق اليومي (يجب أن يُصفّى لـ0 آخر كل يوم بعد التوريد للمدير) ──
+  h+='<div class="tf-pane" id="tf-pane-cashbox"><div class="tf-card">'+
+     '<h3>💵 الصندوق اليومي — '+((res.dailyCashbox||[]).length)+' يوم'+((k.daysUnsettled||0)?(' · <span style="color:#c0392b;">'+k.daysUnsettled+' يوم غير مُصفّى</span>'):'')+
+     ' <button class="tf-abtn" style="float:left" onclick="_tfExportCashbox()">⬇️ تصدير CSV</button></h3>'+
+     '<div style="font-size:12px;color:#7a8794;margin-bottom:10px;line-height:1.7;">لكل يوم: المحصّل (سندات) − (المصروف الحقيقي + التوريد للمدير) = «المتبقّي بالصندوق». '+
+     'الهدف أن يكون <strong>صفرًا</strong> بعد تسليم المدير آخر الدوام؛ الأيام غير المُصفّاة (≠0) بالأحمر. «الرصيد المتراكم» = ما لم يُورَّد بعدُ تجميعيًا.</div>'+
+     _tfTable(['اليوم','المحصّل','المصروف','توريد للمدير','المتبقّي بالصندوق','الرصيد المتراكم'], (res.dailyCashbox||[]).map(function(d){
+       var lc=(Math.abs(d.leftover)>=1)?'#c0392b':'#1a8d5f';
+       var rc=(d.running>=0)?'#46506a':'#c0392b';
+       return [_tfEsc(d.date),
+         '<span class="tf-amt" style="color:#1a8d5f;">'+_tfComma(d.collected)+'</span>',
+         _tfComma(d.expenses),
+         '<span style="color:#6d4caf;">'+_tfComma(d.supplied)+'</span>',
+         '<span class="tf-amt" style="color:'+lc+';">'+_tfComma(d.leftover)+'</span>',
+         '<span style="color:'+rc+';">'+_tfComma(d.running)+'</span>'];
      }))+'</div></div>';
 
   // ── جدول الرسوم ──
@@ -14674,6 +14701,16 @@ function _tfExportFam(){
   var filt=_tfFamFiltered();
   _tfExportCsv('حسابات_العائلات.csv', ['رقم الحساب','الأخ الكبير','عدد الإخوة','الصفوف','المتوقّع','المدفوع','المتبقّي','الحالة'],
     filt.map(function(a){ return [a.account,a.holder,a.members,a.grades,a.expected,a.paid,a.remaining,a.status]; }));
+}
+function _tfExportCashbox(){
+  var res=window._tfRes||{}, d=(res.dailyCashbox||[]);
+  _tfExportCsv('الصندوق_اليومي.csv', ['اليوم','المحصّل','المصروف','توريد للمدير','المتبقّي بالصندوق','الرصيد المتراكم'],
+    d.map(function(x){ return [x.date,x.collected,x.expenses,x.supplied,x.leftover,x.running]; }));
+}
+function _tfExportDisc(){
+  var res=window._tfRes||{}, s=(res.discountedStudents||[]);
+  _tfExportCsv('الطلاب_المخفّضون.csv', ['الكود','الاسم','الصف','معيار الصف','الرسوم المتّفقة','التخفيض','المدفوع','المتبقّي'],
+    s.map(function(x){ return [x.code,x.name,x.grade,x.standard,x.agreed,x.discount,x.paid,x.remaining]; }));
 }
 </script>
 </body>
