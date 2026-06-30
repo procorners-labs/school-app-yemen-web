@@ -3068,6 +3068,12 @@ function isFullAdmin() {
   return !!(App.user && App.user.role === 'admin');
 }
 
+// عدد مشاهدات معروض مضخَّم لغير المدير (المدير يرى الحقيقي) — عرض فقط، لا يمسّ البيانات
+function _inflateViews(real) {
+  real = parseInt(real, 10) || 0;
+  return isFullAdmin() ? real : (real * 7 + 30);
+}
+
 function isDeputy() {
   return !!(App.user && App.user.role === 'deputy');
 }
@@ -8664,7 +8670,7 @@ function _buildNewsCard_Teacher(n) {
   var attachHtml = _tcNewsMediaHtml(n.attachments, n.id);
 
   // ── بيانات الإعجاب والمشاهدات ──────────────────────────
-  var views      = n.viewsCount  || 0;
+  var views      = _inflateViews(n.viewsCount || 0);
   var likes      = n.likesCount  || 0;
   var isLiked    = n.liked       || false;
   var firstLikers = n.firstLikers || [];
@@ -8841,7 +8847,7 @@ function showNewsViewers(newsId, newsTeacherName) {
     var studentViews  = r.studentViews  || [];
     var teacherLikers = r.teacherLikers || [];
     var studentLikers = r.studentLikers || [];
-    var totalViews    = r.viewsCount    || 0;
+    var totalViews    = _inflateViews(r.viewsCount || 0);
     var totalLikes    = r.likesCount    || 0;
  
     // ── مولّدات عناصر احترافية (أفتار + شارة نوع + اسم + وقت) ──
