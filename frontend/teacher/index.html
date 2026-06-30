@@ -11474,6 +11474,14 @@ function ss_styleBlock(){
 window.onload = function() {
   showLoading('جاري التحقق من الجلسة...');
   var saved = loadSession(); // يقرأ من localStorage إذا غابت sessionStorage
+  // ★ عزل المدارس: إن طُلبت مدرسة عبر الرابط (?school=) تختلف عن جلسة محفوظة لمدرسة أخرى،
+  //   أزِل الجلسة القديمة وأظهِر دخول المدرسة المطلوبة (حتى لا تظهر بيانات مدرسة سابقة).
+  var _reqSchool = (window.SCHOOL_ID || '');
+  try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || _reqSchool; } catch (eRS) {}
+  if (_reqSchool && saved && saved.schoolId && saved.schoolId !== _reqSchool) {
+    clearSession();
+    saved = null;
+  }
   if (saved && saved.token) {
     window._loginTimeout = setTimeout(function() {
       if (!App.user) { hideLoading(); showLoginScreen(); toast('تعذر الاتصال بالخادم. تأكد من الشبكة وحاول مجدداً.', 'error', 8000); }

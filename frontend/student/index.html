@@ -4139,6 +4139,14 @@ function setBadge(id, count) {
 document.addEventListener('DOMContentLoaded', function () {
   // ═══ استعادة جلسة سابقة من localStorage (تبقى بعد تحديث الصفحة) ═══
   var savedSession = lsLoadSession();
+  // ★ عزل المدارس: إن طُلبت مدرسة عبر الرابط (?school=) تختلف عن جلسة محفوظة لمدرسة أخرى،
+  //   أزِل الجلسة القديمة وأظهِر دخول المدرسة المطلوبة (حتى لا تظهر بيانات مدرسة سابقة).
+  var _reqSchool = (window.SCHOOL_ID || '');
+  try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || _reqSchool; } catch (eRS) {}
+  if (_reqSchool && savedSession && savedSession.user && savedSession.user.schoolId && savedSession.user.schoolId !== _reqSchool) {
+    try { lsClearSession(); } catch (eCS) {}
+    savedSession = null;
+  }
   if (savedSession && savedSession.user) {
     APP.user = savedSession.user;
     $('loginScreen').style.display = 'none';
