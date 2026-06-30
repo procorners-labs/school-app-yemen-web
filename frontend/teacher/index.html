@@ -9742,6 +9742,12 @@ function renderAdminStudents() {
   html += '<small style="color:var(--text-muted);">الطلاب المذكورون هنا معفيون من الحجب.</small>';
   html += '</div>';
   html += '</div>';
+  html += '<div class="form-row" style="margin-top:6px;border-top:1px dashed var(--border);padding-top:12px;">';
+  html += '<div class="form-group"><label class="form-label" style="cursor:pointer;"><input type="checkbox" id="feesVisibleChk" checked style="vertical-align:middle;margin-inline-end:6px;">💰 عرض الرسوم في منصة الطالب</label>';
+  html += '<small style="color:var(--text-muted);display:block;">عند الإيقاف لا تظهر الرسوم/المدفوع/المتبقّي لأي طالب في منصته.</small></div>';
+  html += '<div class="form-group"><label class="form-label" style="cursor:pointer;"><input type="checkbox" id="hideDiscountedChk" checked style="vertical-align:middle;margin-inline-end:6px;">🔒 حجب الطلاب المخفَّضين تلقائيًّا</label>';
+  html += '<small style="color:var(--text-muted);display:block;">الطلاب الذين رسومهم لا تطابق معيار صفّهم (تخفيض) لا تظهر رسومهم في منصتهم.</small></div>';
+  html += '</div>';
   html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
   html += '<button class="btn btn-primary" onclick="saveBlockSettings()">💾 حفظ إعدادات الحجب</button>';
   html += '<span id="blockStatsBadge" class="badge badge-info" style="font-size:0.9rem; padding:8px 16px;">📊 جاري تحميل الإحصائيات...</span>';
@@ -9820,6 +9826,10 @@ function loadBlockSettings() {
       var excText = document.getElementById('blockExceptions');
       if (pctInput) pctInput.value = pct;
       if (excText) excText.value = exceptions.join('\n');
+      var fvChk = document.getElementById('feesVisibleChk');
+      var hdChk = document.getElementById('hideDiscountedChk');
+      if (fvChk) fvChk.checked = (r.feesVisible !== false);
+      if (hdChk) hdChk.checked = (r.hideDiscounted !== false);
       if (window._allStudentsRaw && window._allStudentsRaw.length) {
         updateBlockStatsWithCurrentSettings();
       }
@@ -9858,8 +9868,12 @@ function saveBlockSettings() {
     var line = lines[i].trim();
     if (line) exceptions.push(line);
   }
+  var fvChk = document.getElementById('feesVisibleChk');
+  var hdChk = document.getElementById('hideDiscountedChk');
+  var feesVisible = fvChk ? !!fvChk.checked : true;
+  var hideDiscounted = hdChk ? !!hdChk.checked : true;
   showLoading('جاري حفظ إعدادات الحجب...');
-  callServer('saveBlockSettings', { blockPercentage: pct, exceptions: exceptions }, function(r) {
+  callServer('saveBlockSettings', { blockPercentage: pct, exceptions: exceptions, feesVisible: feesVisible, hideDiscounted: hideDiscounted }, function(r) {
     hideLoading();
     if (r && r.success) {
       toast(r.message, 'success');
