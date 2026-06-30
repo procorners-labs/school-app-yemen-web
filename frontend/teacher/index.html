@@ -1922,7 +1922,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <span class="sidebar-label">الأدوات الأكاديمية</span>
   <button class="sidebar-item" id="si-grades"     onclick="showSection('grades')">    <span class="si-icon">📊</span> الدرجات</button>
   <button class="sidebar-item" id="si-homework"   onclick="showSection('homework')">  <span class="si-icon">📝</span> الواجبات</button>
-  <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">📋</span> السجل السلوكي</button>
+  <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">📋</span> تسجيل سلوك</button>
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')" title="نشر الأخبار والإشعارات للطلاب وأولياء الأمور">      <span class="si-icon">📢</span> نشر الاخبار</button>
@@ -1988,17 +1988,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </aside>
 
     <!-- MAIN CONTENT (DYNAMIC) -->
-    <!-- شريط التعليمات التوضيحية (يُحدَّث لكل قسم عبر _injectSectionHelp) -->
+    <!-- تلميح خفيف لكل قسم (سطر واحد رمادي، بلا صندوق) — يُحدَّث عبر _injectSectionHelp -->
     <style>
-      .pg-help{background:rgba(212,165,55,.12);border:1px solid #0F2C5C;border-radius:14px;
-        padding:12px 16px;margin:14px 16px 0;position:relative;}
-      .pg-help .pg-help-t{font-weight:700;color:#0F2C5C;margin-bottom:5px;font-size:.95rem;}
-      .pg-help ul{margin:0;padding-inline-start:20px;color:#33425b;font-size:.85rem;line-height:1.8;}
-      .pg-help .pg-help-x{position:absolute;inset-inline-start:10px;top:8px;border:none;
-        background:transparent;color:#0F2C5C;cursor:pointer;font-size:.95rem;opacity:.55;}
-      .pg-help .pg-help-x:hover{opacity:1;}
+      .pg-hint{display:flex;align-items:center;gap:6px;margin:8px 16px 0;
+        color:var(--text-muted);font-size:.78rem;line-height:1.5;}
+      .pg-hint .pg-hint-x{margin-inline-start:auto;border:none;background:transparent;
+        color:var(--text-muted);cursor:pointer;font-size:.85rem;opacity:.6;flex:none;}
+      .pg-hint .pg-hint-x:hover{opacity:1;}
     </style>
-    <div id="pgHelp" class="pg-help" style="display:none;"></div>
+    <div id="pgHelp" class="pg-hint" style="display:none;"></div>
     <main class="main-content" id="dynamicContent"></main>
 
     <!-- الأقسام الثابتة (تظهر عند استدعائها عبر showSection) -->
@@ -4837,6 +4835,7 @@ var _circEditId = null;
 function _circAudienceLabel(a) {
   if (a === 'teachers') return '🧑‍🏫 المعلمون';
   if (a === 'students') return '🎒 الطلاب';
+  if (a === 'supervisors') return '🛡️ المشرفون';
   return '👥 الجميع';
 }
 
@@ -4855,6 +4854,7 @@ function _circFormHTML() {
           '<option value="both">👥 الجميع (معلمون وطلاب)</option>' +
           '<option value="teachers">🧑‍🏫 المعلمون فقط</option>' +
           '<option value="students">🎒 الطلاب فقط</option>' +
+          '<option value="supervisors">🛡️ المشرفون فقط</option>' +
         '</select></div>' +
       '<div class="form-group"><label class="form-label">مدة العرض</label>' +
         '<select class="form-select" id="circDuration">' +
@@ -4957,6 +4957,12 @@ function _circUpdateRecipients() {
   if (aud === 'both') {
     if (lbl) lbl.textContent = 'مستلمون محددون';
     wrap.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px;">يُرسل للجميع ضمن الفصل/الشعبة المحددة</div>';
+    _circSetHidden('circTeachers', ''); _circSetHidden('circStudents', '');
+    return;
+  }
+  if (aud === 'supervisors') {
+    if (lbl) lbl.textContent = 'مستلمون محددون';
+    wrap.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px;">🛡️ يُرسل لكل المشرفين (يظهر لمن دوره مشرف فقط)</div>';
     _circSetHidden('circTeachers', ''); _circSetHidden('circStudents', '');
     return;
   }
@@ -5185,7 +5191,7 @@ var SECTION_HELP = {
   news: { t:'نشر الاخبار', items:['اضغط «➕ انشر الخبر من هنا» لإضافة خبر/إشعار (نص + صور أو فيديو).','يظهر الخبر للطلاب وأولياء الأمور حسب الاستهداف الذي تختاره.','زر «📊» يعرض من شاهد الخبر ومن أعجب به.','«✏️» لتعديل خبرك و«🗑️» لحذفه.'] },
   grades: { t:'إدارة الدرجات', items:['اختر الصف ثم المادة لإدخال أو تعديل الدرجات.','تُحفظ الدرجات ويراها الطالب في منصته فورًا.'] },
   homework: { t:'الواجبات', items:['أضف واجبًا للصف/الشعبة مع تاريخ التسليم.','يظهر للطلاب في منصتهم، والأحدث في الأعلى.'] },
-  violations: { t:'السجل السلوكي', items:['سجّل سلوكًا إيجابيًا أو سلبيًا أو ملاحظة للطالب.','ابحث عن الطالب بالاسم أو الكود ثم اختر نوع السلوك.','يظهر للطالب وولي أمره في منصته.'] },
+  violations: { t:'تسجيل سلوك', items:['سجّل سلوكًا إيجابيًا أو سلبيًا أو ملاحظة للطالب.','ابحث عن الطالب بالاسم أو الكود ثم اختر نوع السلوك.','يظهر للطالب وولي أمره في منصته.'] },
   mySchedule: { t:'جدول الحصص', items:['يعرض حصصك الأسبوعية حسب الجدول المعتمد.'] },
   calendar: { t:'التقويم المدرسي', items:['المناسبات والإجازات والاختبارات على مدار العام الدراسي.'] },
   circulars: { t:'التعاميم الإدارية', items:['تعاميم الإدارة الموجّهة للمعلمين أو الطلاب.','المدير/الوكيل ينشئها ويحدّد مدّتها ومستهدفيها.'] },
@@ -5207,12 +5213,11 @@ function _injectSectionHelp(name) {
     var el = document.getElementById('pgHelp');
     if (!el) return;
     var h = SECTION_HELP[name];
-    if (!h) { el.style.display = 'none'; el.innerHTML = ''; return; }
-    var lis = '';
-    for (var i = 0; i < h.items.length; i++) lis += '<li>' + h.items[i] + '</li>';
-    el.innerHTML = '<button class="pg-help-x" title="إخفاء" onclick="this.parentNode.style.display=\'none\'">✕</button>' +
-                   '<div class="pg-help-t">📌 ' + h.t + ' — ماذا تفعل هنا؟</div><ul>' + lis + '</ul>';
-    el.style.display = 'block';
+    if (!h || !h.items || !h.items.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    // سطر تلميح خفيف واحد (أهمّ نقطة) بدل الصندوق الأصفر
+    el.innerHTML = '<span>ℹ️ ' + h.items[0] + '</span>' +
+                   '<button class="pg-hint-x" title="إخفاء" onclick="this.parentNode.style.display=\'none\'">✕</button>';
+    el.style.display = 'flex';
   } catch (e) {}
 }
 function showSection(name) {
@@ -5479,7 +5484,7 @@ function initSidebarByRole() {
 var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-grades',           label:'📊 الدرجات' },
   { key:'si-homework',         label:'📝 الواجبات' },
-  { key:'si-violations',       label:'📋 السجل السلوكي' },
+  { key:'si-violations',       label:'📋 تسجيل سلوك' },
   { key:'si-mySchedule',       label:'📅 جدول الحصص' },
   { key:'si-calendar',         label:'🗓️ التقويم المدرسي' },
   { key:'si-news',             label:'📢 نشر الاخبار' },
@@ -7931,7 +7936,7 @@ function renderViolations() {
     '<div class="section-card">' +
       '<div class="section-header">' +
         '<div class="section-header-icon" style="background:rgba(79,70,229,.1)">📋</div>' +
-        '<div class="section-header-title">السجل السلوكي</div>' +
+        '<div class="section-header-title">تسجيل سلوك</div>' +
         '<button class="btn btn-primary btn-sm" onclick="openViolationModal()">➕ تسجيل سلوك</button>' +
       '</div>' +
       '<div class="section-body">' +
