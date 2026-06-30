@@ -1947,6 +1947,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
 <div class="sidebar-section" id="adminSection" style="display:none;">
   <span class="sidebar-label">إدارة النظام</span>
+  <button class="sidebar-item" id="si-financial"       onclick="showSection('financial')" style="display:none;"><span class="si-icon">💰</span> المالية والعمليات</button>
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
   <button class="sidebar-item" id="si-supervisorPerms" onclick="showSection('supervisorPerms')" style="display:none;"><span class="si-icon">🛡️</span> ضبط صلاحيات المشرف</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
@@ -5246,6 +5247,7 @@ function showSection(name) {
     // قائمة دوال العرض الديناميكية (جميعها معرفة الآن)
     var renders = {
       dashboard: renderDashboard,
+      financial: renderFinancial,
       grades: renderGrades,
       homework: renderHomework,
       violations: renderViolations,
@@ -5369,6 +5371,9 @@ function initSidebarByRole() {
     if (adminSection) adminSection.style.display = 'block';
     if (siAdminStudents) siAdminStudents.style.display = '';
     if (spItem) spItem.style.display = (u.role === 'admin') ? '' : 'none';
+    // المالية والعمليات: للمدير فقط (الخادم يفرض role==='admin' أيضًا)
+    var siFin = document.getElementById('si-financial');
+    if (siFin) siFin.style.display = (u.role === 'admin') ? '' : 'none';
     _refreshNotesBadge();
     return;
   }
@@ -14253,6 +14258,202 @@ function sstat_print() {
       .asSendToPublishQueue(token, g.group_id, platforms, '');
   };
 })();
+</script>
+
+<!-- ═══ المالية والعمليات (لوحة المدير، عرض فقط، لكل مدرسة) ═══ -->
+<style>
+  .tf-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .tf-head h2{margin:0;font-size:19px;color:#1a237e;font-weight:800;}
+  .tf-sync{font-size:11px;color:#9aa6b2;margin-inline-start:auto;}
+  .tf-abtn{padding:7px 13px;border:1px solid #d8dee9;border-radius:9px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;color:#334;}
+  .tf-abtn:hover{background:#f3f5fa;}
+  .tf-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px;}
+  .tf-tab{padding:8px 14px;border:1px solid #d8dee9;border-radius:10px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#46506a;transition:.15s;}
+  .tf-tab.active{background:linear-gradient(135deg,#4f46e5,#3949ab);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(79,70,229,.3);}
+  .tf-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;}
+  .tf-kpi{background:#fff;border:1px solid #eef0f4;border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(15,23,42,.06);}
+  .tf-kpi.big{grid-column:span 2;}
+  .tf-kpi-v{font-size:23px;font-weight:800;letter-spacing:-.5px;}
+  .tf-kpi-l{font-size:12px;color:#7a8794;margin-top:3px;}
+  .tf-kpi-s{font-size:11px;color:#9aa6b2;margin-top:2px;}
+  .tf-pane{display:none;}
+  .tf-pane.active{display:block;}
+  .tf-card{background:#fff;border:1px solid #eef0f4;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 4px 14px rgba(15,23,42,.05);}
+  .tf-card h3{margin:0 0 12px;font-size:15px;color:#1a237e;}
+  .tf-scroll{overflow:auto;max-height:480px;border-radius:10px;border:1px solid #eef0f4;}
+  .tf-t{width:100%;border-collapse:collapse;font-size:13px;}
+  .tf-t th{background:#1a237e;color:#fff;padding:8px 10px;text-align:right;font-weight:700;position:sticky;top:0;z-index:1;}
+  .tf-t td{padding:7px 10px;border-bottom:1px solid #eef0f4;}
+  .tf-t tr:hover td{background:#f6f8fc;}
+  .tf-amt{font-weight:700;white-space:nowrap;}
+  .tf-barrow{display:flex;align-items:center;gap:8px;margin:6px 0;}
+  .tf-barlbl{flex:0 0 110px;font-size:12px;color:#445;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tf-bartrack{flex:1;background:#eef0f4;border-radius:7px;height:14px;overflow:hidden;}
+  .tf-barfill{height:100%;border-radius:7px;}
+  .tf-barval{flex:0 0 90px;text-align:left;font-size:12px;font-weight:700;}
+  .tf-empty{text-align:center;color:#8a94a3;padding:46px 16px;font-size:14px;}
+  .tf-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+</style>
+<script>
+function _tfComma(n){ n=Math.round(Number(n)||0); var neg=n<0; n=Math.abs(n); var s=''+n,out='',c=0; for(var i=s.length-1;i>=0;i--){ out=s.charAt(i)+out; if(++c%3===0&&i>0) out=','+out; } return (neg?'-':'')+out; }
+function _tfFmt(n){ n=Number(n)||0; var neg=n<0; n=Math.abs(n); var s; if(n>=1000000){ s=(n/1000000).toFixed(n>=10000000?0:1)+'م'; } else if(n>=1000){ s=(n/1000).toFixed(n>=100000?0:1)+'ك'; } else { s=''+Math.round(n); } return (neg?'-':'')+s; }
+function _tfEsc(s){ s=(s===null||s===undefined)?'':(''+s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// رسم بياني SVG للدخل/المصروف الشهري (بلا مكتبات)
+function _tfChart(months){
+  if(!months||!months.length) return '<div class="tf-empty">لا توجد حركة شهرية بعد</div>';
+  var W=820,H=280,pad=40, max=1;
+  for(var i=0;i<months.length;i++){ max=Math.max(max, months[i].income||0, months[i].expense||0); }
+  var n=months.length, slot=(W-pad*2)/n, bw=Math.min(22,(slot-10)/2);
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;min-width:520px;">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" stroke="#dfe3ea" stroke-width="1"/>';
+  for(var j=0;j<n;j++){
+    var m=months[j], cx=pad+slot*j+slot/2;
+    var ih=(H-pad*2)*((m.income||0)/max), eh=(H-pad*2)*((m.expense||0)/max);
+    svg+='<rect x="'+(cx-bw-2)+'" y="'+(H-pad-ih)+'" width="'+bw+'" height="'+ih+'" rx="3" fill="#1a8d5f"/>';
+    svg+='<rect x="'+(cx+2)+'" y="'+(H-pad-eh)+'" width="'+bw+'" height="'+eh+'" rx="3" fill="#c0392b"/>';
+    var lbl=(''+m.m).substring(5);
+    svg+='<text x="'+cx+'" y="'+(H-pad+15)+'" font-size="10" fill="#8a94a3" text-anchor="middle">'+_tfEsc(lbl)+'</text>';
+  }
+  svg+='</svg>';
+  svg+='<div style="display:flex;gap:18px;justify-content:center;margin-top:8px;font-size:12px;color:#556;">'+
+       '<span><span style="display:inline-block;width:11px;height:11px;background:#1a8d5f;border-radius:2px;margin-inline-end:5px;"></span>الدخل</span>'+
+       '<span><span style="display:inline-block;width:11px;height:11px;background:#c0392b;border-radius:2px;margin-inline-end:5px;"></span>المصروفات</span></div>';
+  return svg;
+}
+
+// أشرطة أفقية CSS لقائمة { name, value }
+function _tfBars(pairs, color){
+  if(!pairs||!pairs.length) return '<div class="tf-empty">لا توجد بيانات</div>';
+  var max=1,i; for(i=0;i<pairs.length;i++) max=Math.max(max, pairs[i].value||0);
+  var html='';
+  for(i=0;i<pairs.length;i++){
+    var p=pairs[i], pct=Math.round(((p.value||0)/max)*100);
+    html+='<div class="tf-barrow"><div class="tf-barlbl" title="'+_tfEsc(p.name)+'">'+_tfEsc(p.name)+'</div>'+
+      '<div class="tf-bartrack"><div class="tf-barfill" style="width:'+pct+'%;background:'+color+';"></div></div>'+
+      '<div class="tf-barval">'+_tfComma(p.value)+'</div></div>';
+  }
+  return html;
+}
+
+function _tfTab(name){
+  var tabs=document.querySelectorAll('#tf-root .tf-tab'); for(var i=0;i<tabs.length;i++) tabs[i].classList.remove('active');
+  var panes=document.querySelectorAll('#tf-root .tf-pane'); for(var j=0;j<panes.length;j++) panes[j].classList.remove('active');
+  var tb=document.getElementById('tf-tab-'+name); if(tb) tb.classList.add('active');
+  var pn=document.getElementById('tf-pane-'+name); if(pn) pn.classList.add('active');
+}
+
+function renderFinancial(){
+  var host=document.getElementById('dynamicContent');
+  if(!host) return;
+  host.innerHTML='<div class="tf-card" style="text-align:center;color:#667;">⏳ جارٍ تحميل البيانات المالية...</div>';
+  _tfLoad(false);
+}
+
+function _tfLoad(noCache){
+  var params = noCache ? { noCache:true } : {};
+  callServer('getSchoolFinancialReportProtected', params, function(res){
+    if(!res || !res.success){
+      var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
+      document.getElementById('dynamicContent').innerHTML='<div class="tf-card"><div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div></div>';
+      return;
+    }
+    _tfRender(res);
+  });
+}
+
+function _tfRender(res){
+  var k=res.kpi||{}, host=document.getElementById('dynamicContent');
+  var net=k.net||0, netColor=net>=0?'#1a8d5f':'#c0392b', netWord=net>=0?'فائض':'عجز';
+  var hasData=(k.receiptsCount||0)+(k.expenseCount||0)+(k.staff||0)+(k.students||0) > 0;
+
+  var h='<div id="tf-root" class="tf-wrap">';
+  h+='<div class="tf-head"><h2>💰 المالية والعمليات</h2>'+
+     '<span class="tf-sync">'+(res.lastSync?('آخر مزامنة: '+_tfEsc(res.lastSync)):('حُدِّث: '+_tfEsc(res.generated||'')))+'</span>'+
+     '<button class="tf-abtn" onclick="_tfLoad(true)">🔄 تحديث</button>'+
+     '<button class="tf-abtn" onclick="window.print()">🖨️ طباعة</button></div>';
+
+  if(!hasData){
+    h+='<div class="tf-card"><div class="tf-empty">لا توجد بيانات مالية لهذه المدرسة بعد.<br>تُعرَض البيانات تلقائيًا فور إدخالها/مزامنتها في ملف المدرسة.</div></div></div>';
+    host.innerHTML=h; return;
+  }
+
+  // التبويبات
+  h+='<div class="tf-tabs">'+
+     '<button class="tf-tab active" id="tf-tab-overview" onclick="_tfTab(\'overview\')">📊 نظرة عامة</button>'+
+     '<button class="tf-tab" id="tf-tab-receipts" onclick="_tfTab(\'receipts\')">🧾 سندات القبض</button>'+
+     '<button class="tf-tab" id="tf-tab-expenses" onclick="_tfTab(\'expenses\')">💸 المصروفات</button>'+
+     '<button class="tf-tab" id="tf-tab-payroll" onclick="_tfTab(\'payroll\')">👔 الرواتب</button>'+
+     '<button class="tf-tab" id="tf-tab-fees" onclick="_tfTab(\'fees\')">📋 جدول الرسوم</button>'+
+     '<button class="tf-tab" id="tf-tab-students" onclick="_tfTab(\'students\')">🎒 رسوم الطلاب</button></div>';
+
+  // ── نظرة عامة ──
+  h+='<div class="tf-pane active" id="tf-pane-overview">';
+  h+='<div class="tf-kpis">'+
+     _tfKpi(_tfComma(k.income), 'إجمالي الدخل', (k.receiptsCount||0)+' سند', '#1a8d5f', true)+
+     _tfKpi(_tfComma(k.expense), 'إجمالي المصروفات', (k.expenseCount||0)+' عملية', '#c0392b', true)+
+     _tfKpi(_tfComma(net), 'الصافي ('+netWord+')', '', netColor, true)+
+     _tfKpi(_tfComma(k.expected), 'الرسوم المتوقّعة', '', '#2c6fb0', false)+
+     _tfKpi(_tfComma(k.collected), 'المحصّل', '', '#1a8d5f', false)+
+     _tfKpi(_tfComma(k.outstanding), 'المتبقّي', '', '#d98324', false)+
+     _tfKpi(_tfComma(k.salaries), 'إجمالي الرواتب', (k.staff||0)+' موظف', '#6d4caf', false)+
+     _tfKpi(_tfComma(k.students), 'عدد الطلاب', '', '#334', false)+
+     '</div>';
+  h+='<div class="tf-card"><h3>الدخل مقابل المصروفات (شهريًا)</h3>'+_tfChart(res.months)+'</div>';
+  h+='<div class="tf-grid2">'+
+     '<div class="tf-card"><h3>طرق الدفع</h3>'+_tfBars(res.methods,'#1a8d5f')+'</div>'+
+     '<div class="tf-card"><h3>توزّع الطلاب حسب الصف</h3>'+_tfBars(res.byGrade,'#2c6fb0')+'</div>'+
+     '</div></div>';
+
+  // ── سندات القبض ──
+  h+='<div class="tf-pane" id="tf-pane-receipts"><div class="tf-card"><h3>أحدث السندات (آخر '+((res.recentReceipts||[]).length)+')</h3>'+
+     _tfTable(['التاريخ','الاسم','البيان','المبلغ','الطريقة'], (res.recentReceipts||[]).map(function(r){
+       return [_tfEsc(r.date), _tfEsc(r.name||r.label||'—'), _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.method||'')];
+     }))+'</div></div>';
+
+  // ── المصروفات ──
+  h+='<div class="tf-pane" id="tf-pane-expenses"><div class="tf-card"><h3>أعلى المصروفات</h3>'+
+     _tfTable(['البيان','المبلغ','التاريخ'], (res.topExpenses||[]).map(function(e){
+       return [_tfEsc(e.label||'—'), '<span class="tf-amt">'+_tfComma(e.amount)+'</span>', _tfEsc(e.date||'')];
+     }))+'</div>'+
+     '<div class="tf-card"><h3>المصروفات الشهرية</h3>'+_tfBars((res.months||[]).map(function(m){return {name:m.m,value:m.expense};}),'#c0392b')+'</div></div>';
+
+  // ── الرواتب ──
+  h+='<div class="tf-pane" id="tf-pane-payroll"><div class="tf-card"><h3>كشف الرواتب ('+((res.payroll||[]).length)+' موظف) — إجمالي '+_tfComma(k.salaries)+' · المتبقّي '+_tfComma(k.salaryRemaining)+'</h3>'+
+     _tfTable(['الموظف','الراتب','السحبيات','الخصومات','الباقي'], (res.payroll||[]).map(function(p){
+       return [_tfEsc(p.name), '<span class="tf-amt">'+_tfComma(p.salary)+'</span>', _tfComma(p.drawn), _tfComma(p.deductions), '<span class="tf-amt">'+_tfComma(p.remaining)+'</span>'];
+     }))+'</div></div>';
+
+  // ── جدول الرسوم ──
+  h+='<div class="tf-pane" id="tf-pane-fees"><div class="tf-card"><h3>جدول الرسوم حسب الصف</h3>'+
+     _tfTable(['الصف','رسوم دراسية','رسوم كتب','الإجمالي'], (res.feesSchedule||[]).map(function(f){
+       return [_tfEsc(f.grade), _tfComma(f.study), _tfComma(f.books), '<span class="tf-amt">'+_tfComma(f.total)+'</span>'];
+     }))+'</div></div>';
+
+  // ── رسوم الطلاب ──
+  h+='<div class="tf-pane" id="tf-pane-students"><div class="tf-card"><h3>رسوم الطلاب حسب الصف</h3>'+
+     _tfTable(['الصف','عدد الطلاب','المتوقّع','المسدّد','المتبقّي'], (res.studentFees||[]).map(function(s){
+       return [_tfEsc(s.grade), _tfComma(s.students), '<span class="tf-amt">'+_tfComma(s.expected)+'</span>', _tfComma(s.paid), '<span class="tf-amt">'+_tfComma(s.remaining)+'</span>'];
+     }))+'</div></div>';
+
+  h+='</div>';
+  host.innerHTML=h;
+}
+
+function _tfKpi(val,label,sub,color,big){
+  return '<div class="tf-kpi'+(big?' big':'')+'"><div class="tf-kpi-v" style="color:'+color+';">'+val+'</div>'+
+    '<div class="tf-kpi-l">'+_tfEsc(label)+'</div>'+(sub?('<div class="tf-kpi-s">'+_tfEsc(sub)+'</div>'):'')+'</div>';
+}
+
+function _tfTable(headers, rows){
+  if(!rows||!rows.length) return '<div class="tf-empty">لا توجد بيانات</div>';
+  var h='<div class="tf-scroll"><table class="tf-t"><thead><tr>';
+  for(var i=0;i<headers.length;i++) h+='<th>'+_tfEsc(headers[i])+'</th>';
+  h+='</tr></thead><tbody>';
+  for(var r=0;r<rows.length;r++){ h+='<tr>'; for(var c=0;c<rows[r].length;c++) h+='<td>'+rows[r][c]+'</td>'; h+='</tr>'; }
+  h+='</tbody></table></div>';
+  return h;
+}
 </script>
 </body>
 </html>
