@@ -14392,6 +14392,8 @@ function _tfRender(res){
      '<button class="tf-tab" id="tf-tab-expenses" onclick="_tfTab(\'expenses\')">💸 المصروفات</button>'+
      '<button class="tf-tab" id="tf-tab-payroll" onclick="_tfTab(\'payroll\')">👔 الرواتب</button>'+
      '<button class="tf-tab" id="tf-tab-stuacc" onclick="_tfTab(\'stuacc\')">🧾 محاسبة الطلاب</button>'+
+     '<button class="tf-tab" id="tf-tab-families" onclick="_tfTab(\'families\')">👨‍👩‍👦 حسابات العائلات</button>'+
+     '<button class="tf-tab" id="tf-tab-monthly" onclick="_tfTab(\'monthly\')">📅 التحليل الشهري</button>'+
      '<button class="tf-tab" id="tf-tab-fees" onclick="_tfTab(\'fees\')">📋 جدول الرسوم</button>'+
      '<button class="tf-tab" id="tf-tab-students" onclick="_tfTab(\'students\')">🎒 رسوم الطلاب (صفوف)</button></div>';
 
@@ -14463,6 +14465,28 @@ function _tfRender(res){
        '<div id="tf-stu-total" style="margin:0 2px 10px;color:#46506a;font-size:13px;"></div>'+
        '<div id="tf-stu-table"></div></div></div>';
 
+  // ── حسابات العائلات (الأخ الكبير يحمل حساب إخوته) ──
+  h+='<div class="tf-pane" id="tf-pane-families">'+
+     '<div class="tf-card"><h3>👨‍👩‍👦 حسابات العائلات — '+((res.accountAccounts||[]).length)+' حساب</h3>'+
+       '<div style="font-size:12px;color:#7a8794;margin-bottom:10px;line-height:1.7;">في نظام الأكسس تُسجَّل رسوم الإخوة تحت «الأخ الكبير» (الحساب المشترك). '+
+       'هنا تُجمَّع رسوم العائلة ومدفوعاتها معًا فيظهر المتبقّي الحقيقي للعائلة (لا يظهر الأخ الأصغر «غير مسدّد» خطأً).</div>'+
+       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'+
+         '<input id="tf-fam-q" type="text" placeholder="بحث باسم الأخ الكبير أو رقم الحساب..." oninput="_tfDrawFamTable()" style="flex:1;min-width:200px;padding:8px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
+         '<select id="tf-fam-status" onchange="_tfDrawFamTable()" style="padding:8px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
+           '<option value="">كل الحالات</option><option value="غير مسدّد">غير مسدّد</option><option value="جزئي">جزئي</option><option value="مسدّد">مسدّد</option></select>'+
+         '<button class="tf-abtn" onclick="_tfExportFam()">⬇️ تصدير CSV</button>'+
+       '</div>'+
+       '<div id="tf-fam-total" style="margin:0 2px 10px;color:#46506a;font-size:13px;"></div>'+
+       '<div id="tf-fam-table"></div></div></div>';
+
+  // ── التحليل الشهري (الدخل/المصروف/الصافي لكل شهر — نظام الأقساط) ──
+  h+='<div class="tf-pane" id="tf-pane-monthly"><div class="tf-card"><h3>📅 التحليل الشهري — العام الدراسي</h3>'+
+     '<div style="margin-bottom:14px;">'+_tfChart(res.months)+'</div>'+
+     _tfTable(['الشهر','الدخل (محصّل)','المصروف','الصافي'], (res.months||[]).map(function(m){
+       var nc=(m.net>=0)?'#1a8d5f':'#c0392b';
+       return [_tfEsc(m.m), '<span class="tf-amt" style="color:#1a8d5f;">'+_tfComma(m.income)+'</span>', '<span class="tf-amt" style="color:#c0392b;">'+_tfComma(m.expense)+'</span>', '<span class="tf-amt" style="color:'+nc+';">'+_tfComma(m.net)+'</span>'];
+     }))+'</div></div>';
+
   // ── جدول الرسوم ──
   h+='<div class="tf-pane" id="tf-pane-fees"><div class="tf-card"><h3>جدول الرسوم حسب الصف</h3>'+
      _tfTable(['الصف','رسوم دراسية','رسوم كتب','الإجمالي'], (res.feesSchedule||[]).map(function(f){
@@ -14480,6 +14504,7 @@ function _tfRender(res){
   _tfDrawExpTable();   // تعبئة جدول المصروفات المفلتر بعد الرسم
   _tfInitStuGrades();  // تعبئة قائمة الصفوف
   _tfDrawStuTable();   // تعبئة جدول محاسبة الطلاب
+  _tfDrawFamTable();   // تعبئة جدول حسابات العائلات
 }
 
 function _tfKpi(val,label,sub,color,big){
@@ -14609,6 +14634,36 @@ function _tfExportPayroll(){
   var res=window._tfRes||{}, p=(res.payroll||[]);
   _tfExportCsv('كشف_الرواتب.csv', ['الموظف','الراتب','السحبيات','الخصومات','الباقي'],
     p.map(function(x){ return [x.name,x.salary,x.drawn,x.deductions,x.remaining]; }));
+}
+
+// ── حسابات العائلات: فلترة + رسم + تصدير ──
+function _tfFamFiltered(){
+  var res=window._tfRes||{}, acc=(res.accountAccounts||[]);
+  var q=((document.getElementById('tf-fam-q')||{}).value||'').replace(/^\s+|\s+$/g,'');
+  var st=((document.getElementById('tf-fam-status')||{}).value||'');
+  return acc.filter(function(a){
+    if(st && a.status!==st) return false;
+    if(q && (''+(a.holder||'')).indexOf(q)===-1 && (''+(a.account||'')).indexOf(q)===-1) return false;
+    return true;
+  });
+}
+function _tfDrawFamTable(){
+  var filt=_tfFamFiltered(), te=0,tp=0,tr=0,i;
+  for(i=0;i<filt.length;i++){ te+=filt[i].expected||0; tp+=filt[i].paid||0; tr+=filt[i].remaining||0; }
+  var tbl=document.getElementById('tf-fam-table');
+  if(tbl) tbl.innerHTML=_tfTable(['رقم الحساب','الأخ الكبير','الإخوة','الصفوف','المتوقّع','المدفوع','المتبقّي','الحالة'], filt.map(function(a){
+    var stc=a.status==='مسدّد'?'#1a8d5f':(a.status==='غير مسدّد'?'#c0392b':(a.status==='جزئي'?'#d98324':'#888'));
+    return [_tfEsc(a.account),_tfEsc(a.holder),a.members,_tfEsc(a.grades),
+      _tfComma(a.expected),_tfComma(a.paid),'<span class="tf-amt">'+_tfComma(a.remaining)+'</span>',
+      '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(a.status)+'</span>'];
+  }));
+  var tot=document.getElementById('tf-fam-total');
+  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> حساب · المتوقّع <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
+}
+function _tfExportFam(){
+  var filt=_tfFamFiltered();
+  _tfExportCsv('حسابات_العائلات.csv', ['رقم الحساب','الأخ الكبير','عدد الإخوة','الصفوف','المتوقّع','المدفوع','المتبقّي','الحالة'],
+    filt.map(function(a){ return [a.account,a.holder,a.members,a.grades,a.expected,a.paid,a.remaining,a.status]; }));
 }
 </script>
 </body>
