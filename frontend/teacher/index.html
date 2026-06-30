@@ -14491,7 +14491,9 @@ function _tfRender(res){
            '<option value="">كل جداول الأقساط</option><option value="behind">متأخّر عن الجدول</option><option value="midrisk">مخاطر نصف العام</option><option value="yearinc">غير مكتمل آخر العام</option></select>'+
          '<input id="tf-stu-min" type="number" placeholder="متبقّي ≥" oninput="_tfDrawStuTable()" style="width:110px;padding:8px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
          '<button class="tf-abtn" onclick="_tfExportStu()">⬇️ تصدير CSV</button>'+
+         '<button class="tf-abtn" style="background:#1a237e;color:#fff;border-color:#1a237e;" onclick="_tfPrintNotices()">🖨️ إشعارات المتأخّرين</button>'+
        '</div>'+
+       '<div style="font-size:12px;color:#7a8794;margin:0 2px 8px;line-height:1.6;">💡 «إشعارات المتأخّرين» تطبع إشعار سداد لكل طالب متأخّر (متبقّي&gt;0) ضمن التصفية الحالية — بلا ذكر مبلغ، بشعار المدرسة، 4 إشعارات في ورقة A4.</div>'+
        '<div id="tf-stu-total" style="margin:0 2px 10px;color:#46506a;font-size:13px;"></div>'+
        '<div id="tf-stu-table"></div></div>'+
      ((res.discountedStudents&&res.discountedStudents.length) ? ('<div class="tf-card"><h3>🏷️ الطلاب المسجَّلون بتخفيض ('+res.discountedStudents.length+') · إجمالي التخفيض '+_tfComma(k.discountTotal)+
@@ -14680,6 +14682,7 @@ function _tfStuModal(code){
   var body='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
     '<button class="tf-abtn" style="background:#1a8d5f;color:#fff;border-color:#1a8d5f;" onclick="_tfModalClose();_tfOpForm(\'receipt\',{code:\''+scode+'\',name:\''+sname+'\'})">➕ تسجيل دفعة لهذا الطالب</button>'+
     '<button class="tf-abtn" onclick="_tfModalClose();_tfOpForm(\'fee_adjust\',{code:\''+scode+'\',name:\''+sname+'\'})">✏️ تعديل رسومه</button>'+
+    '<button class="tf-abtn" onclick="_tfPrintStatement(\''+scode+'\')">🖨️ كشف حساب</button>'+
     '</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">'+
     _tfKpi(_tfComma(s.expected),'إجمالي الرسوم','','#2c6fb0',false)+
@@ -14706,6 +14709,95 @@ function _tfModalOpen(title, bodyHtml){
   m.style.display='block';
 }
 function _tfModalClose(){ var m=document.getElementById('tf-modal'); if(m){ m.style.display='none'; m.innerHTML=''; } }
+
+// ── الطباعة: كشف حساب طالب + إشعارات أولياء الأمور (A4، 4 لكل ورقة) ──
+function _tfBrandHeader(big){
+  var r=window._tfRes||{}, b=r.brand||{};
+  var logo=b.logo?('<img class="bl" src="'+_tfEsc(b.logo)+'" alt="">'):'';
+  return '<div class="bh">'+logo+'<div class="bn"><div class="b1">'+_tfEsc(b.name||'مدرستي')+'</div>'+
+    (big&&b.phone?('<div class="bp">'+_tfEsc(b.phone)+'</div>'):'')+
+    (big&&b.address?('<div class="bp">'+_tfEsc(b.address)+'</div>'):'')+'</div></div>';
+}
+function _tfPrintWin(title, css, body){
+  var w=window.open('','_blank','width=900,height=700');
+  if(!w){ alert('فضلاً اسمح بالنوافذ المنبثقة لإتمام الطباعة.'); return; }
+  var html='<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+_tfEsc(title)+'</title><style>'+css+'</style></head><body>'+body+
+    '<scr'+'ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};</scr'+'ipt></body></html>';
+  w.document.open(); w.document.write(html); w.document.close();
+}
+function _tfStmtCss(){
+  return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;padding:14mm;color:#1a2233;}'+
+    '.bh{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1a237e;padding-bottom:10px;margin-bottom:14px;}'+
+    '.bl{height:72px;max-width:120px;object-fit:contain;}.b1{font-size:22px;font-weight:800;color:#1a237e;}.bp{font-size:12px;color:#555;}'+
+    'h2{font-size:18px;margin:6px 0 14px;}table{width:100%;border-collapse:collapse;font-size:13px;}'+
+    'th,td{border:1px solid #c7cede;padding:7px 9px;text-align:center;}th{background:#1a237e;color:#fff;}'+
+    '.info{display:flex;flex-wrap:wrap;gap:8px 26px;font-size:14px;margin-bottom:14px;}.info b{color:#1a237e;}'+
+    '.tot{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}.kp{border:1px solid #c7cede;border-radius:8px;padding:8px 14px;font-size:14px;}'+
+    '.kp b{display:block;font-size:18px;}.foot{margin-top:22px;font-size:12px;color:#667;display:flex;justify-content:space-between;}'+
+    '@page{size:A4;margin:10mm;}';
+}
+function _tfPrintStatement(code){
+  var res=window._tfRes||{}, acc=(res.studentAccounts||[]), cal=(res.calendar||{}), s=null,i;
+  for(i=0;i<acc.length;i++){ if((''+acc[i].code)===(''+code)){ s=acc[i]; break; } }
+  if(!s) return;
+  var names=(cal.names||[]), due=(cal.dueDates||[]), pbm=s.paidByMonth||[], inst=s.installment||0;
+  var rows='';
+  for(i=0;i<names.length;i++){
+    var paid=pbm[i]||0, st=(paid>=inst&&inst>0)?'مكتمل':(paid>0?'جزئي':'لم يُسدَّد');
+    rows+='<tr><td>'+(i+1)+'</td><td>'+_tfEsc(names[i])+'</td><td>'+_tfEsc(due[i]||'')+'</td><td>'+_tfComma(inst)+'</td><td>'+_tfComma(paid)+'</td><td>'+st+'</td></tr>';
+  }
+  var today=_tfTodayIso();
+  var body=_tfBrandHeader(true)+
+    '<h2>كشف حساب طالب — العام الدراسي</h2>'+
+    '<div class="info"><div><b>الطالب:</b> '+_tfEsc(s.name)+'</div><div><b>الكود:</b> '+_tfEsc(s.code)+'</div>'+
+    '<div><b>الصف:</b> '+_tfEsc(s.grade)+'</div><div><b>الشعبة:</b> '+_tfEsc(s.section||'')+'</div><div><b>التاريخ:</b> '+today+'</div></div>'+
+    '<table><thead><tr><th>#</th><th>الشهر</th><th>الاستحقاق</th><th>قسط الشهر</th><th>المدفوع</th><th>الحالة</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="tot"><div class="kp">إجمالي الرسوم<b>'+_tfComma(s.expected)+'</b></div>'+
+    '<div class="kp">المدفوع<b style="color:#1a8d5f;">'+_tfComma(s.paid)+'</b></div>'+
+    '<div class="kp">المتبقّي<b style="color:#c0392b;">'+_tfComma(s.remaining)+'</b></div>'+
+    '<div class="kp">نسبة السداد<b>'+(s.paidPct||0)+'%</b></div>'+
+    (s.prevDebt?('<div class="kp">مديونية سابقة<b style="color:#8e44ad;">'+_tfComma(s.prevDebt)+'</b></div>'):'')+'</div>'+
+    '<div class="foot"><span>توقيع المحاسب: ____________</span><span>ختم الإدارة</span></div>';
+  _tfPrintWin('كشف حساب — '+_tfEsc(s.name), _tfStmtCss(), body);
+}
+function _tfNoticesCss(){
+  return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;}'+
+    '.page{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;width:210mm;height:297mm;padding:7mm;page-break-after:always;}'+
+    '.nt{border:1.5px dashed #7a8aa8;border-radius:9px;padding:7mm;display:flex;flex-direction:column;overflow:hidden;}'+
+    '.bh{display:flex;align-items:center;gap:10px;border-bottom:2px solid #1a237e;padding-bottom:6px;margin-bottom:8px;}'+
+    '.bl{height:46px;max-width:80px;object-fit:contain;}.b1{font-size:15px;font-weight:800;color:#1a237e;}.bp{font-size:10px;color:#555;}'+
+    '.nti{font-size:11px;color:#888;display:flex;justify-content:space-between;margin-bottom:6px;}'+
+    '.ntt{font-size:16px;font-weight:800;text-align:center;color:#1a237e;margin:4px 0 8px;}'+
+    '.ntb{font-size:13px;line-height:1.9;color:#222;flex:1;}.ntb b{color:#1a237e;}'+
+    '.ntf{font-size:11px;color:#667;display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid #e3e8f0;padding-top:6px;}'+
+    '@page{size:A4;margin:0;}';
+}
+function _tfNoticeCard(s, serial, today){
+  return '<div class="nt">'+_tfBrandHeader(false).replace('class="bh"','class="bh"')+
+    '<div class="nti"><span>إشعار رقم: '+serial+'</span><span>'+today+'</span></div>'+
+    '<div class="ntt">إشعار سداد أقساط</div>'+
+    '<div class="ntb">السيد/ة وليّ أمر الطالب/ة: <b>'+_tfEsc(s.name)+'</b><br>'+
+    'الصف: <b>'+_tfEsc(s.grade)+'</b>'+(s.section?(' — الشعبة: <b>'+_tfEsc(s.section)+'</b>'):'')+' &nbsp; (كود: '+_tfEsc(s.code)+')<br><br>'+
+    'نحيطكم علمًا بوجود أقساط دراسية مستحقّة لم تُسدَّد بعد. نرجو التكرّم بمراجعة إدارة المدرسة '+
+    'لتسوية المستحقّات في أقرب فرصة ممكنة.<br><br>شاكرين لكم حُسن تعاونكم.</div>'+
+    '<div class="ntf"><span>إدارة المدرسة</span><span>التوقيع: ________</span></div></div>';
+}
+function _tfPrintNotices(){
+  var res=window._tfRes||{}, list;
+  // يحترم فلاتر «محاسبة الطلاب» إن وُجدت، ثم المتأخّرون فقط (متبقّي > 0)
+  try { list=_tfStuFiltered(); } catch(e){ list=(res.studentAccounts||[]); }
+  list=(list||[]).filter(function(s){ return (s.remaining||0)>0; }).sort(function(a,b){ return (b.remaining||0)-(a.remaining||0); });
+  if(!list.length){ alert('لا يوجد طلاب متأخّرون (بمتبقٍّ) ضمن التصفية الحالية.'); return; }
+  var today=_tfTodayIso(), body='', i;
+  for(i=0;i<list.length;i+=4){
+    body+='<div class="page">';
+    for(var j=i;j<i+4 && j<list.length;j++){ body+=_tfNoticeCard(list[j], (j+1), today); }
+    // إكمال الخلايا الفارغة في آخر ورقة للحفاظ على الشبكة 2×2
+    for(var k=list.length;k<i+4;k++){ body+='<div></div>'; }
+    body+='</div>';
+  }
+  _tfPrintWin('إشعارات أولياء الأمور ('+list.length+')', _tfNoticesCss(), body);
+}
 
 // ── أزرار العمليات: نماذج تكتب إلى Access عبر outbox ──
 function _tfTodayIso(){ var d=new Date(); function p(x){x=''+x;return x.length<2?'0'+x:x;} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
