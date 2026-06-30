@@ -14267,8 +14267,10 @@ function sstat_print() {
   .tf-sync{font-size:11px;color:#9aa6b2;margin-inline-start:auto;}
   .tf-abtn{padding:7px 13px;border:1px solid #d8dee9;border-radius:9px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;color:#334;}
   .tf-abtn:hover{background:#f3f5fa;}
-  .tf-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px;}
-  .tf-tab{padding:8px 14px;border:1px solid #d8dee9;border-radius:10px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#46506a;transition:.15s;}
+  .tf-tabs{display:flex;gap:7px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin-bottom:16px;padding-bottom:5px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scroll-snap-type:x proximity;}
+  .tf-tabs::-webkit-scrollbar{height:5px;}
+  .tf-tabs::-webkit-scrollbar-thumb{background:#c5cae9;border-radius:3px;}
+  .tf-tab{padding:9px 14px;border:1px solid #d8dee9;border-radius:10px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#46506a;transition:.15s;white-space:nowrap;flex:0 0 auto;scroll-snap-align:start;-webkit-tap-highlight-color:transparent;}
   .tf-tab.active{background:linear-gradient(135deg,#4f46e5,#3949ab);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(79,70,229,.3);}
   .tf-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;}
   .tf-kpi{background:#fff;border:1px solid #eef0f4;border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(15,23,42,.06);}
@@ -14342,10 +14344,12 @@ function _tfBars(pairs, color){
 }
 
 function _tfTab(name){
-  var tabs=document.querySelectorAll('#tf-root .tf-tab'); for(var i=0;i<tabs.length;i++) tabs[i].classList.remove('active');
-  var panes=document.querySelectorAll('#tf-root .tf-pane'); for(var j=0;j<panes.length;j++) panes[j].classList.remove('active');
+  var mt=document.getElementById('tf-maintabs');
+  var tabs=mt?mt.querySelectorAll('.tf-tab'):[]; for(var i=0;i<tabs.length;i++) tabs[i].classList.remove('active');
+  var panes=document.querySelectorAll('#tf-root > .tf-pane'); for(var j=0;j<panes.length;j++) panes[j].classList.remove('active');
   var tb=document.getElementById('tf-tab-'+name); if(tb) tb.classList.add('active');
-  var pn=document.getElementById('tf-pane-'+name); if(pn) pn.classList.add('active');
+  var pn=document.getElementById('tf-pane-'+name); if(pn){ pn.classList.add('active'); }
+  if(mt&&tb&&mt.scrollWidth>mt.clientWidth){ try{ tb.scrollIntoView({inline:'center',block:'nearest'}); }catch(e){} }
 }
 
 function renderFinancial(){
@@ -14386,7 +14390,7 @@ function _tfRender(res){
   }
 
   // التبويبات
-  h+='<div class="tf-tabs">'+
+  h+='<div class="tf-tabs" id="tf-maintabs">'+
      '<button class="tf-tab active" id="tf-tab-overview" onclick="_tfTab(\'overview\')">📊 نظرة عامة</button>'+
      '<button class="tf-tab" id="tf-tab-receipts" onclick="_tfTab(\'receipts\')">🧾 سندات القبض</button>'+
      '<button class="tf-tab" id="tf-tab-expenses" onclick="_tfTab(\'expenses\')">💸 المصروفات</button>'+
