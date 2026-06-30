@@ -67,16 +67,30 @@ export default {
         init.body = await request.text();
       }
 
-      try {
-        var gasResp = await fetch(target + url.search, init);
-        var text = await gasResp.text();
-        return withCors(new Response(text, {
-          status: gasResp.status,
-          headers: { 'Content-Type': 'application/json; charset=utf-8' }
-        }));
-      } catch (err) {
-        return jsonResponse({ ok: false, error: 'تعذّر الوصول إلى الخادم: ' + String(err) }, 502);
+      // تطبيقات GAS تُرجع أحيانًا 404 أو صفحة HTML اعتراضية بشكل متقطّع (~6%) بدل تنفيذ الدالة.
+      // نعيد المحاولة حتى 3 مرّات: نعدّ 404 (أو جسمًا HTML في طلبات POST التي تتوقّع JSON) قابلًا
+      // لإعادة المحاولة، فلا يظهر خلل GAS العابر للمستخدم كفشل. طلبات GET (مثل الصفحة) يُقبل HTML فيها.
+      var isPost = request.method !== 'GET';
+      var fullTarget = target + url.search;
+      var lastText = '', lastStatus = 502, attempt;
+      for (attempt = 0; attempt < 3; attempt++) {
+        try {
+          var gasResp = await fetch(fullTarget, init);
+          lastText = await gasResp.text();
+          lastStatus = gasResp.status;
+          var looksHtml = lastText.charAt(0) === '<';
+          var good = gasResp.status >= 200 && gasResp.status < 400 && !(isPost && looksHtml);
+          if (good) break;
+        } catch (err) {
+          lastStatus = 502;
+          lastText = JSON.stringify({ ok: false, error: 'تعذّر الوصول إلى الخادم: ' + String(err) });
+        }
+        if (attempt < 2) { await new Promise(function (r) { setTimeout(r, 200); }); }
       }
+      return withCors(new Response(lastText, {
+        status: lastStatus,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      }));
     }
 
     // ── 1ب) عرض صورة QR عبر Proxy (inline): /qr-img?url=... ──────
