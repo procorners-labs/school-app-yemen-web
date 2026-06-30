@@ -14489,7 +14489,7 @@ function _tfRender(res){
      _tfKpi(_tfComma(netReal), 'الصافي الحقيقي ('+netRWord+')', '', netRColor, true)+
      _tfKpi(_tfComma(k.supplied), 'مُسلّم للمدير (توريد)', 'تسوية الصندوق — ليس خرجًا', '#6d4caf', false)+
      _tfKpi(_tfComma(k.rent), 'إيجار المبنى', 'فهد الرقاص', '#a05a00', false)+
-     _tfKpi(_tfComma(k.expected), 'الرسوم المتوقّعة', '', '#2c6fb0', false)+
+     _tfKpi(_tfComma(k.expected), 'إجمالي الرسوم', '', '#2c6fb0', false)+
      _tfKpi(_tfComma(k.outstanding), 'المتبقّي على الطلاب', (k.overdueCount||0)+' متأخّر', '#d98324', false)+
      _tfKpi(_tfComma(k.salaries), 'رواتب الموظفين', (k.staff||0)+' موظف', '#6d4caf', false)+
      _tfKpi(_tfComma(k.students), 'عدد الطلاب', '', '#334', false)+
@@ -14551,7 +14551,7 @@ function _tfRender(res){
   // ── محاسبة الطلاب (متوقّع/مدفوع/متبقّي لكل طالب — فلترة + بحث + تصدير) ──
   h+='<div class="tf-pane" id="tf-pane-stuacc">'+
      ((res.topDebtors&&res.topDebtors.length) ? ('<div class="tf-card"><h3>🔺 أعلى المتأخّرين عن السداد ('+res.topDebtors.length+')</h3>'+
-       _tfTable(['الكود','الاسم','الصف','المتوقّع','المدفوع','المتبقّي'], res.topDebtors.map(function(s){
+       _tfTable(['الكود','الاسم','الصف','الرسوم','المدفوع','المتبقّي'], res.topDebtors.map(function(s){
          return [_tfEsc(s.code),_tfEsc(s.name),_tfEsc(s.grade),_tfComma(s.expected),_tfComma(s.paid),'<span class="tf-amt" style="color:#c0392b;">'+_tfComma(s.remaining)+'</span>'];
        }))+'</div>') : '')+
      '<div class="tf-card"><h3>🧾 محاسبة الطلاب — '+(k.students||0)+' طالب · متوقّع '+_tfComma(k.expected)+' · محصّل '+_tfComma(k.feesPaid)+' · متبقٍّ '+_tfComma(k.outstanding)+'</h3>'+
@@ -14648,7 +14648,7 @@ function _tfRender(res){
 
   // ── رسوم الطلاب ──
   h+='<div class="tf-pane" id="tf-pane-students"><div class="tf-card"><h3>رسوم الطلاب حسب الصف</h3>'+
-     _tfTable(['الصف','عدد الطلاب','المتوقّع','المسدّد','المتبقّي'], (res.studentFees||[]).map(function(s){
+     _tfTable(['الصف','عدد الطلاب','الرسوم','المسدّد','المتبقّي'], (res.studentFees||[]).map(function(s){
        return [_tfEsc(s.grade), _tfComma(s.students), '<span class="tf-amt">'+_tfComma(s.expected)+'</span>', _tfComma(s.paid), '<span class="tf-amt">'+_tfComma(s.remaining)+'</span>'];
      }))+'</div></div>';
 
@@ -15083,7 +15083,7 @@ function _tfDrawStuTable(){
   var filt=_tfStuFiltered();
   var te=0,tp=0,tr=0,i; for(i=0;i<filt.length;i++){ te+=filt[i].expected||0; tp+=filt[i].paid||0; tr+=filt[i].remaining||0; }
   var tbl=document.getElementById('tf-stu-table');
-  if(tbl) tbl.innerHTML=_tfTable(['الكود','الاسم','الصف','الشعبة','المتوقّع','المدفوع','المتبقّي','نسبة','الحالة'], filt.map(function(s){
+  if(tbl) tbl.innerHTML=_tfTable(['الكود','الاسم','الصف','الشعبة','الرسوم','المدفوع','المتبقّي','نسبة','الحالة'], filt.map(function(s){
     var stc = s.status==='مسدّد'?'#1a8d5f':(s.status==='غير مسدّد'?'#c0392b':(s.status==='جزئي'?'#d98324':'#888'));
     var pc=(s.paidPct>=100)?'#1a8d5f':(s.paidPct>=50?'#2c6fb0':'#c0392b');
     var codeCell='<a href="javascript:void(0)" onclick="_tfStuModal(\''+(''+s.code).replace(/'/g,'')+'\')" style="color:#2c6fb0;font-weight:700;text-decoration:none;">'+_tfEsc(s.code)+'</a>';
@@ -15093,7 +15093,7 @@ function _tfDrawStuTable(){
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(s.status)+'</span>'];
   }));
   var tot=document.getElementById('tf-stu-total');
-  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> طالب · المتوقّع <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
+  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> طالب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
 }
 
 // ── تصدير CSV (مع BOM لدعم العربية في Excel) ──
@@ -15108,7 +15108,7 @@ function _tfExportCsv(filename, headers, rows){
 }
 function _tfExportStu(){
   var filt=_tfStuFiltered();
-  _tfExportCsv('محاسبة_الطلاب.csv', ['الكود','الاسم','الصف','الشعبة','المتوقّع','المدفوع','المتبقّي','نسبة السداد','المستحَق حتى الآن','المتأخّر عن الجدول','الحالة'],
+  _tfExportCsv('محاسبة_الطلاب.csv', ['الكود','الاسم','الصف','الشعبة','الرسوم','المدفوع','المتبقّي','نسبة السداد','المستحَق حتى الآن','المتأخّر عن الجدول','الحالة'],
     filt.map(function(s){ return [s.code,s.name,s.grade,s.section,s.expected,s.paid,s.remaining,(s.paidPct||0)+'%',s.expectedByNow||0,s.behindSchedule||0,s.status]; }));
 }
 function _tfExportPayroll(){
@@ -15132,18 +15132,18 @@ function _tfDrawFamTable(){
   var filt=_tfFamFiltered(), te=0,tp=0,tr=0,i;
   for(i=0;i<filt.length;i++){ te+=filt[i].expected||0; tp+=filt[i].paid||0; tr+=filt[i].remaining||0; }
   var tbl=document.getElementById('tf-fam-table');
-  if(tbl) tbl.innerHTML=_tfTable(['رقم الحساب','الأخ الكبير','الإخوة','الصفوف','المتوقّع','المدفوع','المتبقّي','الحالة'], filt.map(function(a){
+  if(tbl) tbl.innerHTML=_tfTable(['رقم الحساب','الأخ الكبير','الإخوة','الصفوف','الرسوم','المدفوع','المتبقّي','الحالة'], filt.map(function(a){
     var stc=a.status==='مسدّد'?'#1a8d5f':(a.status==='غير مسدّد'?'#c0392b':(a.status==='جزئي'?'#d98324':'#888'));
     return [_tfEsc(a.account),_tfEsc(a.holder),a.members,_tfEsc(a.grades),
       _tfComma(a.expected),_tfComma(a.paid),'<span class="tf-amt">'+_tfComma(a.remaining)+'</span>',
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(a.status)+'</span>'];
   }));
   var tot=document.getElementById('tf-fam-total');
-  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> حساب · المتوقّع <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
+  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> حساب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
 }
 function _tfExportFam(){
   var filt=_tfFamFiltered();
-  _tfExportCsv('حسابات_العائلات.csv', ['رقم الحساب','الأخ الكبير','عدد الإخوة','الصفوف','المتوقّع','المدفوع','المتبقّي','الحالة'],
+  _tfExportCsv('حسابات_العائلات.csv', ['رقم الحساب','الأخ الكبير','عدد الإخوة','الصفوف','الرسوم','المدفوع','المتبقّي','الحالة'],
     filt.map(function(a){ return [a.account,a.holder,a.members,a.grades,a.expected,a.paid,a.remaining,a.status]; }));
 }
 function _tfExportCashbox(){
