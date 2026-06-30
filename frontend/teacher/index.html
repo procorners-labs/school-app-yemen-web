@@ -14293,6 +14293,11 @@ function sstat_print() {
   .tf-barval{flex:0 0 90px;text-align:left;font-size:12px;font-weight:700;}
   .tf-empty{text-align:center;color:#8a94a3;padding:46px 16px;font-size:14px;}
   .tf-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+  .tf-alerts{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;}
+  .tf-alert{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:11px;font-size:13.5px;font-weight:600;border:1px solid;}
+  .tf-al-danger{background:#fff0f0;border-color:#f3c0c0;color:#a01919;}
+  .tf-al-warn{background:#fff8ec;border-color:#f3dca0;color:#8a5a00;}
+  .tf-al-info{background:#eef4ff;border-color:#c3d4f3;color:#234a8a;}
 </style>
 <script>
 function _tfComma(n){ n=Math.round(Number(n)||0); var neg=n<0; n=Math.abs(n); var s=''+n,out='',c=0; for(var i=s.length-1;i>=0;i--){ out=s.charAt(i)+out; if(++c%3===0&&i>0) out=','+out; } return (neg?'-':'')+out; }
@@ -14392,15 +14397,16 @@ function _tfRender(res){
 
   // ── نظرة عامة ──
   h+='<div class="tf-pane active" id="tf-pane-overview">';
+  h+=_tfAlerts(res.alerts);
   h+='<div class="tf-kpis">'+
      _tfKpi(_tfComma(k.income), 'إجمالي الدخل', (k.receiptsCount||0)+' سند', '#1a8d5f', true)+
      _tfKpi(_tfComma(k.expenseReal), 'المصروفات الحقيقية', (k.expenseCount||0)+' عملية · بلا توريد', '#c0392b', true)+
      _tfKpi(_tfComma(netReal), 'الصافي الحقيقي ('+netRWord+')', '', netRColor, true)+
      _tfKpi(_tfComma(k.supplied), 'مُسلّم للمدير (توريد)', 'تسوية الصندوق — ليس خرجًا', '#6d4caf', false)+
+     _tfKpi(_tfComma(k.rent), 'إيجار المبنى', 'فهد الرقاص', '#a05a00', false)+
      _tfKpi(_tfComma(k.expected), 'الرسوم المتوقّعة', '', '#2c6fb0', false)+
-     _tfKpi(_tfComma(k.collected), 'المحصّل', '', '#1a8d5f', false)+
-     _tfKpi(_tfComma(k.outstanding), 'المتبقّي', '', '#d98324', false)+
-     _tfKpi(_tfComma(k.salaries), 'إجمالي الرواتب', (k.staff||0)+' موظف', '#6d4caf', false)+
+     _tfKpi(_tfComma(k.outstanding), 'المتبقّي على الطلاب', (k.overdueCount||0)+' متأخّر', '#d98324', false)+
+     _tfKpi(_tfComma(k.salaries), 'رواتب الموظفين', (k.staff||0)+' موظف', '#6d4caf', false)+
      _tfKpi(_tfComma(k.students), 'عدد الطلاب', '', '#334', false)+
      '</div>';
   h+='<div class="tf-card"><h3>الدخل مقابل المصروفات (شهريًا)</h3>'+_tfChart(res.months)+'</div>';
@@ -14442,6 +14448,10 @@ function _tfRender(res){
 
   // ── محاسبة الطلاب (متوقّع/مدفوع/متبقّي لكل طالب — فلترة + بحث + تصدير) ──
   h+='<div class="tf-pane" id="tf-pane-stuacc">'+
+     ((res.topDebtors&&res.topDebtors.length) ? ('<div class="tf-card"><h3>🔺 أعلى المتأخّرين عن السداد ('+res.topDebtors.length+')</h3>'+
+       _tfTable(['الكود','الاسم','الصف','المتوقّع','المدفوع','المتبقّي'], res.topDebtors.map(function(s){
+         return [_tfEsc(s.code),_tfEsc(s.name),_tfEsc(s.grade),_tfComma(s.expected),_tfComma(s.paid),'<span class="tf-amt" style="color:#c0392b;">'+_tfComma(s.remaining)+'</span>'];
+       }))+'</div>') : '')+
      '<div class="tf-card"><h3>🧾 محاسبة الطلاب — '+(k.students||0)+' طالب · متوقّع '+_tfComma(k.expected)+' · محصّل '+_tfComma(k.feesPaid)+' · متبقٍّ '+_tfComma(k.outstanding)+'</h3>'+
        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'+
          '<input id="tf-stu-q" type="text" placeholder="بحث بالاسم أو الكود..." oninput="_tfDrawStuTable()" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
@@ -14483,12 +14493,25 @@ function _tfReconHtml(k){
   return '<div class="tf-kpis">'+
     _tfKpi(_tfComma(k.income),'إجمالي الدخل','','#1a8d5f',false)+
     _tfKpi(_tfComma(k.supplied),'مُسلّم للمدير (توريد)','ليس خرجًا','#6d4caf',false)+
+    _tfKpi(_tfComma(k.rent),'إيجار المبنى','فهد الرقاص','#a05a00',false)+
     _tfKpi(_tfComma(k.expenseReal),'المصروفات الحقيقية','بلا توريد','#c0392b',false)+
     _tfKpi(_tfComma(nr),'الصافي الحقيقي',(nr>=0?'فائض':'عجز'),nrC,false)+
     '</div>'+
     '<div style="font-size:12px;color:#7a8794;margin-top:6px;line-height:1.7;">'+
     'المصروفات الحقيقية = إجمالي الخارج − «التوريد». «التوريد للحساب» نقدٌ سُلِّم للمدير/أُودِع في الصندوق آخر اليوم '+
-    '(نقل عُهدة)، فلا يُحتسب خرجًا. الرواتب/الحوالات/التشغيلية = خرج حقيقي.</div>';
+    '(نقل عُهدة)، فلا يُحتسب خرجًا. الرواتب/الحوالات/التشغيلية/الإيجار = خرج حقيقي.</div>';
+}
+
+// لوحة التنبيهات المالية للمدير (عجز/متأخرون/توريد غير مُسوّى)
+function _tfAlerts(alerts){
+  if(!alerts||!alerts.length) return '';
+  var h='<div class="tf-alerts">';
+  for(var i=0;i<alerts.length;i++){
+    var a=alerts[i], cls=a.level==='danger'?'tf-al-danger':(a.level==='warn'?'tf-al-warn':'tf-al-info');
+    h+='<div class="tf-alert '+cls+'"><span style="font-size:17px;">'+(a.icon||'🔔')+'</span>'+
+       '<span>'+_tfEsc(a.label)+': <strong>'+_tfComma(a.amount)+'</strong></span></div>';
+  }
+  return h+'</div>';
 }
 
 // أزرار فلترة فئات المصروفات
