@@ -1988,15 +1988,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </aside>
 
     <!-- MAIN CONTENT (DYNAMIC) -->
-    <!-- تلميح خفيف لكل قسم (سطر واحد رمادي، بلا صندوق) — يُحدَّث عبر _injectSectionHelp -->
-    <style>
-      .pg-hint{display:flex;align-items:center;gap:6px;margin:8px 16px 0;
-        color:var(--text-muted);font-size:.78rem;line-height:1.5;}
-      .pg-hint .pg-hint-x{margin-inline-start:auto;border:none;background:transparent;
-        color:var(--text-muted);cursor:pointer;font-size:.85rem;opacity:.6;flex:none;}
-      .pg-hint .pg-hint-x:hover{opacity:1;}
-    </style>
-    <div id="pgHelp" class="pg-hint" style="display:none;"></div>
     <main class="main-content" id="dynamicContent"></main>
 
     <!-- الأقسام الثابتة (تظهر عند استدعائها عبر showSection) -->
@@ -5191,41 +5182,6 @@ function circDelete(id) {
   });
 }
 
-// ── شرح توضيحي مركزي لكل قسم رئيسي (يُعرض في شريط #pgHelp أعلى المحتوى) ──
-var SECTION_HELP = {
-  dashboard: { t:'لوحة التحكم', items:['نظرة سريعة على آخر الأنشطة ومهامك والإشعارات.','استخدم القائمة الجانبية للتنقّل بين الصفحات.'] },
-  news: { t:'نشر الاخبار', items:['اضغط «➕ انشر الخبر من هنا» لإضافة خبر/إشعار (نص + صور أو فيديو).','يظهر الخبر للطلاب وأولياء الأمور حسب الاستهداف الذي تختاره.','زر «📊» يعرض من شاهد الخبر ومن أعجب به.','«✏️» لتعديل خبرك و«🗑️» لحذفه.'] },
-  grades: { t:'إدارة الدرجات', items:['اختر الصف ثم المادة لإدخال أو تعديل الدرجات.','تُحفظ الدرجات ويراها الطالب في منصته فورًا.'] },
-  homework: { t:'الواجبات', items:['أضف واجبًا للصف/الشعبة مع تاريخ التسليم.','يظهر للطلاب في منصتهم، والأحدث في الأعلى.'] },
-  violations: { t:'تسجيل سلوك', items:['سجّل سلوكًا إيجابيًا أو سلبيًا أو ملاحظة للطالب.','ابحث عن الطالب بالاسم أو الكود ثم اختر نوع السلوك.','يظهر للطالب وولي أمره في منصته.'] },
-  mySchedule: { t:'جدول الحصص', items:['يعرض حصصك الأسبوعية حسب الجدول المعتمد.'] },
-  calendar: { t:'التقويم المدرسي', items:['المناسبات والإجازات والاختبارات على مدار العام الدراسي.'] },
-  circulars: { t:'التعاميم الإدارية', items:['تعاميم الإدارة الموجّهة للمعلمين أو الطلاب.','المدير/الوكيل ينشئها ويحدّد مدّتها ومستهدفيها.'] },
-  contentHub: { t:'إدارة المحتوى والأنشطة', items:['ارفع محتوى تعليميًا (ملفات/فيديو/صور) لطلابك.','تظهر أنشطتك مجمّعة هنا ويراها الطلاب في منصتهم.'] },
-  reports: { t:'التقارير', items:['تقارير الدرجات والسلوك والنشاط حسب الصف/الشعبة.','يمكن تصفيتها وطباعتها.'] },
-  attendance: { t:'الغياب اليومي', items:['سجّل حضور وغياب الطلاب لكل يوم.','متاح للمدير/الوكيل/المشرف.'] },
-  'teacher-absence': { t:'غياب المعلمين', items:['تسجيل ومتابعة غياب المعلمين.','اضغط «🔄 تحديث» لإعادة جلب الملخّص.'] },
-  financial: { t:'المالية والعمليات', items:['للمدير فقط: الدخل والمصروفات والرواتب والأقساط.','«🖨️ كشف حساب» و«🖨️ إشعارات المتأخّرين» للطباعة.','الأرقام تُزامَن من برنامج Access في المدرسة.'] },
-  'teachers-mgmt': { t:'إدارة المعلمين', items:['أضف معلمًا أو عدّل بياناته وصلاحياته ودوره.'] },
-  'lists-mgmt': { t:'إدارة القوائم', items:['قوائم المواد والصفوف والشعب المستخدمة في المنصة.'] },
-  adminStudents: { t:'قائمة الطلاب', items:['عرض وإدارة بيانات الطلاب وصفوفهم وشعبهم.','«⚙️ إعدادات الحجب المالي» تتحكّم بعرض رسوم الطلاب في منصتهم.'] },
-  studentDirectory: { t:'أسماء الطلاب', items:['دليل الطلاب بالصفوف والشعب مع البحث.','«⚙️ إعدادات الحجب المالي» تتحكّم بعرض الرسوم في منصة الطالب.'] },
-  certificates: { t:'الشهادات', items:['إصدار وطباعة شهادات الطلاب حسب الصف.'] },
-  scoresheets: { t:'الكشوفات', items:['كشوف الدرجات حسب الصف والمادة للطباعة.'] },
-  profile: { t:'الصفحة الشخصية', items:['بياناتك ودورك والصفحات المتاحة لك.','يمكنك تغيير كلمة المرور من هنا.'] }
-};
-function _injectSectionHelp(name) {
-  try {
-    var el = document.getElementById('pgHelp');
-    if (!el) return;
-    var h = SECTION_HELP[name];
-    if (!h || !h.items || !h.items.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-    // سطر تلميح خفيف واحد (أهمّ نقطة) بدل الصندوق الأصفر
-    el.innerHTML = '<span>ℹ️ ' + h.items[0] + '</span>' +
-                   '<button class="pg-hint-x" title="إخفاء" onclick="this.parentNode.style.display=\'none\'">✕</button>';
-    el.style.display = 'flex';
-  } catch (e) {}
-}
 function showSection(name) {
   try {
     // التأكد من وجود العنصر الرئيسي dynamicContent
@@ -5234,8 +5190,6 @@ function showSection(name) {
       console.error('dynamicContent غير موجود');
       return;
     }
-    _injectSectionHelp(name);   // شريط التعليمات التوضيحية لكل قسم
-
     // ✅ إخفاء جميع الأقسام الثابتة دفعة واحدة (يمنع تداخل الصفحات نهائياً)
     //    كان social-section لا يُخفى هنا → يبقى ظاهراً فوق الصفحات الأخرى
     var _staticSections = document.querySelectorAll('.app-body > .section');
