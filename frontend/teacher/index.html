@@ -9713,8 +9713,11 @@ function renderAdminStudents() {
   html += '<div class="form-group"><label class="form-label" style="cursor:pointer;"><input type="checkbox" id="hideDiscountedChk" checked style="vertical-align:middle;margin-inline-end:6px;">🔒 حجب الطلاب المخفَّضين تلقائيًّا</label>';
   html += '<small style="color:var(--text-muted);display:block;">الطلاب الذين رسومهم لا تطابق معيار صفّهم (تخفيض) لا تظهر رسومهم في منصتهم.</small></div>';
   html += '</div>';
-  html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
+  html += '<div style="display:flex; gap:8px; flex-wrap:wrap;">';
   html += '<button class="btn btn-primary" onclick="saveBlockSettings()">💾 حفظ إعدادات الحجب</button>';
+  html += '<button class="btn btn-warning" onclick="sendBulkPaymentNotices()" title="إرسال إشعار سداد لكل طالب لديه رسوم متبقّية — يظهر في «ملاحظاتي» لديه">📨 إرسال إشعارات للمتأخّرين</button>';
+  html += '</div>';
   html += '<span id="blockStatsBadge" class="badge badge-info" style="font-size:0.9rem; padding:8px 16px;">📊 جاري تحميل الإحصائيات...</span>';
   html += '</div>';
   html += '</div>';
@@ -9795,8 +9798,10 @@ function loadBlockSettings() {
       var hdChk = document.getElementById('hideDiscountedChk');
       if (fvChk) fvChk.checked = (r.feesVisible !== false);
       if (hdChk) hdChk.checked = (r.hideDiscounted !== false);
+      window._feesHiddenCodes = r.feesHiddenCodes || [];
       if (window._allStudentsRaw && window._allStudentsRaw.length) {
         updateBlockStatsWithCurrentSettings();
+        applyStudentsFilters();
       }
     } else {
       console.warn('فشل تحميل إعدادات الحجب:', r);
@@ -9872,6 +9877,77 @@ function unblockStudent(studentCode) {
       });
     }
   );
+}
+
+// (ج4) إرسال إشعار سداد لطالب واحد — يُكتب في «الملاحظات» ويظهر في «ملاحظاتي» بمنصة الطالب
+function sendStudentPaymentNotice(code) {
+  if (!code) return;
+  var all = window._allStudentsRaw || [], st = null, i;
+  for (i = 0; i < all.length; i++) { if ((all[i].code || '') === code) { st = all[i]; break; } }
+  if (!st) { showError('تعذّر إيجاد بيانات الطالب'); return; }
+  confirmAction(
+    'إرسال إشعار سداد',
+    'إرسال إشعار سداد للطالب (' + (st.name || code) + ')؟ سيظهر في «ملاحظاتي» لديه.',
+    '📨',
+    function() {
+      showLoading('جاري إرسال الإشعار...');
+      callServer('sendPaymentNoticeProtected', { studentName: st.name || '', grade: st.grade || '', section: st.section || '' }, function(r) {
+        hideLoading();
+        if (r && r.success) toast(r.message || 'تم إرسال الإشعار', 'success');
+        else showError(r && r.error ? r.error : 'فشل إرسال الإشعار');
+      });
+    }
+  );
+}
+
+// (ج4) إرسال إشعارات سداد لكل المتأخّرين دفعةً (متبقّي > 0)
+function sendBulkPaymentNotices() {
+  if (!isFullAdmin()) { toast('غير مصرح لك بهذه العملية', 'error'); return; }
+  confirmAction(
+    'إرسال إشعارات للمتأخّرين',
+    'إرسال إشعار سداد لكل طالب لديه رسوم متبقّية؟ (يُتجاوز من أُرسل له إشعار اليوم)',
+    '📨',
+    function() {
+      showLoading('جاري إرسال الإشعارات...');
+      callServer('sendBulkPaymentNoticesProtected', {}, function(r) {
+        hideLoading();
+        if (r && r.success) toast(r.message || ('تم إرسال ' + (r.sent || 0) + ' إشعارًا'), 'success');
+        else showError(r && r.error ? r.error : 'فشل إرسال الإشعارات');
+      });
+    }
+  );
+}
+
+// (ج4) تبديل حجب رسوم طالب واحد عن منصته (قائمة العمود F في «الاعدادات»)
+function toggleStudentFeesHidden(code, hide) {
+  if (!code) return;
+  if (!isFullAdmin()) { toast('غير مصرح لك بهذه العملية', 'error'); return; }
+  showLoading(hide ? 'جاري حجب الرسوم...' : 'جاري إظهار الرسوم...');
+  callServer('setStudentFeesHiddenProtected', { studentCode: code, hidden: hide }, function(r) {
+    hideLoading();
+    if (r && r.success) {
+      toast(hide ? 'تم حجب الرسوم عن الطالب' : 'تم إظهار الرسوم للطالب', 'success');
+      loadBlockSettings();   // يحدّث _feesHiddenCodes ثم يعيد رسم القائمة
+    } else {
+      showError(r && r.error ? r.error : 'فشل تحديث حالة الرسوم');
+    }
+  });
+}
+
+// (ج4) طباعة كشف حساب طالب — يعيد استخدام _tfPrintStatement (يحتاج بيانات المالية _tfRes، فيُحمّلها عند اللزوم)
+function printStudentStatement(code) {
+  if (!code) return;
+  if (window._tfRes && window._tfRes.studentAccounts && window._tfRes.studentAccounts.length) {
+    _tfPrintStatement(code);
+    return;
+  }
+  showLoading('جاري تجهيز كشف الحساب...');
+  callServer('getSchoolFinancialReportProtected', {}, function(res) {
+    hideLoading();
+    if (!res || !res.success) { showError(res && res.error ? res.error : 'تعذّر تحميل بيانات المالية'); return; }
+    window._tfRes = res;
+    _tfPrintStatement(code);
+  });
 }
 
 function updateBlockStats(blockPercentage, exceptions) {
@@ -9975,9 +10051,18 @@ function renderStudentsList(list) {
           ? '<span class="badge badge-danger">🚫 محجوب</span>'
           : '<span class="badge badge-info">🟢 نشط</span>');
     
-    var actionBtn = isBlocked
-      ? '<button class="btn btn-sm btn-success" onclick="unblockStudent(\'' + (st.code || '') + '\')">🔓 إلغاء الحجب</button>'
-      : (isExempt ? '<span class="badge badge-success">مستثنى</span>' : '—');
+    var _c = (st.code || '');
+    var _fhCodes = window._feesHiddenCodes || [];
+    var feesHidden = false;
+    for (var fh = 0; fh < _fhCodes.length; fh++) { if (_fhCodes[fh] === _c) { feesHidden = true; break; } }
+    var actionBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">';
+    actionBtn += '<button class="btn btn-sm btn-secondary" title="إرسال إشعار سداد لهذا الطالب (يظهر في «ملاحظاتي» لديه)" onclick="sendStudentPaymentNotice(\'' + _c + '\')">📨</button>';
+    actionBtn += '<button class="btn btn-sm btn-secondary" title="طباعة كشف حساب الطالب" onclick="printStudentStatement(\'' + _c + '\')">🖨️</button>';
+    actionBtn += feesHidden
+      ? '<button class="btn btn-sm btn-warning" title="الرسوم محجوبة عن هذا الطالب — اضغط لإظهارها في منصته" onclick="toggleStudentFeesHidden(\'' + _c + '\', false)">👁️</button>'
+      : '<button class="btn btn-sm btn-secondary" title="الرسوم ظاهرة لهذا الطالب — اضغط لحجبها عن منصته" onclick="toggleStudentFeesHidden(\'' + _c + '\', true)">🔒</button>';
+    if (isBlocked) actionBtn += '<button class="btn btn-sm btn-success" title="إلغاء حجب الدخول لهذا الطالب" onclick="unblockStudent(\'' + _c + '\')">🔓</button>';
+    actionBtn += '</div>';
     
     var pctClass = (pct >= 80) ? 'badge-success' : ((pct >= 50) ? 'badge-warning' : 'badge-danger');
     
