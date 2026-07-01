@@ -8392,6 +8392,7 @@ function renderNews() {
   _newsCache       = [];
   loadNewsPage(true);
   if (typeof loadPublicNewsRequests === 'function') loadPublicNewsRequests();
+  if (typeof loadPublishedNewsIds === 'function') loadPublishedNewsIds(_refreshNewsCards);
   if (typeof _tcLoadSchoolLogo === 'function') _tcLoadSchoolLogo();
 }
 // ══════════════════════════════════════════════════════════════════
@@ -8517,15 +8518,19 @@ function shareNews(newsId) {
   var snippet = body.length > 500 ? (body.substring(0, 497) + '…') : body;
   var text = snippet + (owner ? '\n— ' + owner : '') + '\n' + url;
   var imgUrl = item ? _newsFirstImageUrl(item.attachments) : '';
+  var imgFileId = item ? _newsFirstImageFileId(item.attachments) : '';
+  // صور Drive تُجلب عبر وسيط الـWorker (يضبط CORS) كي يُبنى الـblob؛ lh3 يبقى للعرض فقط
+  var fetchUrl = imgFileId ? _shareImgProxy(imgFileId) : imgUrl;
 
   function _afterShare() {
     try { callServer('recordNewsShareProtected', { newsId: newsId }, function(){}, function(){}); } catch (e) {}
   }
 
   // محاولة إرسال الصورة نفسها مع النصّ (واتساب/غيره) عبر Web Share Level 2
-  if (navigator.share && imgUrl && typeof fetch === 'function' && typeof File === 'function') {
-    fetch(imgUrl).then(function (res) { return res.blob(); }).then(function (blob) {
-      var file = new File([blob], 'news.jpg', { type: (blob && blob.type) ? blob.type : 'image/jpeg' });
+  if (navigator.share && fetchUrl && typeof fetch === 'function' && typeof File === 'function') {
+    fetch(fetchUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+      var btype = (blob && blob.type && blob.type.indexOf('image/') === 0) ? blob.type : 'image/jpeg';
+      var file = new File([blob], 'news.jpg', { type: btype });
       var payload = { title: title, text: text, files: [file] };
       if (navigator.canShare && !navigator.canShare(payload)) throw new Error('files-unsupported');
       return navigator.share(payload).then(function () { _afterShare(); });
@@ -8536,6 +8541,26 @@ function shareNews(newsId) {
   } else {
     _shareTextOnly(title, text, url, _afterShare);
   }
+}
+
+// وسيط جلب صورة Drive عبر الـWorker (CORS مسموح) لبناء ملفّ المشاركة
+function _shareImgProxy(fileId) {
+  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  return base + '/media/drive/' + fileId;
+}
+
+// معرّف Drive لأول صورة في ملحقات الخبر (فارغ لو أول صورة ليست Drive)
+function _newsFirstImageFileId(raw) {
+  var urls = _newsParseMedia(raw);
+  for (var i = 0; i < urls.length; i++) {
+    var u = urls[i], low = u.toLowerCase();
+    if (low.indexOf('youtube.com') !== -1 || low.indexOf('youtu.be') !== -1 ||
+        low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low) ||
+        low.indexOf('.pdf') !== -1) continue;
+    var d = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    return (d && d[1]) ? d[1] : '';
+  }
+  return '';
 }
 
 // أول رابط صورة من ملحقات الخبر (يحوّل روابط Drive إلى thumbnail قابل للجلب)
@@ -8602,10 +8627,50 @@ function publishNewsPublic(id) {
       showLoading('جارٍ النشر…');
       callServer('publishNewsPublicProtected', { newsId: id }, function (r) {
         hideLoading();
-        if (r && r.success) { toast(r.message || 'نُشر في الصفحة العامة', 'success'); loadPublicNewsRequests(); }
-        else showError(r ? r.error : 'فشل النشر');
+        if (r && r.success) {
+          toast(r.message || 'نُشر في الصفحة العامة', 'success');
+          if (!window._pubNewsIds) window._pubNewsIds = {};
+          window._pubNewsIds[String(id)] = true;
+          loadPublicNewsRequests();
+          _refreshNewsCards();
+        } else showError(r ? r.error : 'فشل النشر');
       }, function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); });
     });
+}
+
+// إلغاء نشر خبر منشور من الصفحة العامة (متبادل مع «نشر للعامة»)
+function unpublishNewsPublic(id) {
+  confirmAction('إلغاء النشر',
+    'إلغاء نشر هذا الخبر من الصفحة الرئيسية العامة؟ يمكنك إعادة نشره لاحقًا.',
+    '🚫', function () {
+      showLoading('جارٍ إلغاء النشر…');
+      callServer('unpublishNewsPublicProtected', { newsId: id }, function (r) {
+        hideLoading();
+        if (r && r.success) {
+          if (window._pubNewsIds) delete window._pubNewsIds[String(id)];
+          toast(r.message || 'أُلغي نشر الخبر', 'success');
+          loadPublicNewsRequests();
+          _refreshNewsCards();
+        } else showError(r ? r.error : 'فشل إلغاء النشر');
+      }, function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); });
+    });
+}
+
+// تحميل معرّفات الأخبار المنشورة للعامة (لجعل الزر متبادلاً) ثم استدعاء after
+function loadPublishedNewsIds(after) {
+  if (!_newsIsOfficial()) { if (typeof after === 'function') after(); return; }
+  callServer('getPublishedNewsIdsProtected', {}, function (r) {
+    var ids = (r && r.success && r.ids) ? r.ids : [];
+    var map = {};
+    for (var i = 0; i < ids.length; i++) map[String(ids[i])] = true;
+    window._pubNewsIds = map;
+    if (typeof after === 'function') after();
+  }, function () { if (typeof after === 'function') after(); });
+}
+
+// إعادة رسم بطاقات الأخبار من الكاش (بعد تغيّر حالة النشر)
+function _refreshNewsCards() {
+  try { if (typeof renderNewsList === 'function' && typeof _newsCache !== 'undefined') renderNewsList(_newsCache || [], true); } catch (e) {}
 }
 
 // لوحة مراجعة الطلبات المعلّقة (تظهر للمسؤولين أعلى صفحة نشر الأخبار)
@@ -8934,12 +8999,17 @@ function _buildNewsCard_Teacher(n) {
         // زر المشاركة (متاح لكل المعلمين)
         '<button class="btn btn-sm btn-secondary" onclick="shareNews(\'' + n.id + '\')" title="شارك المنشور مع صوره وفيديوهاته">📤 مشاركة</button>' +
 
-        // نشر للعامة (مسؤول) / طلب نشر (صاحب الخبر)
-        (_newsIsOfficial()
-          ? '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="publishNewsPublic(\'' + n.id + '\')" title="نشر هذا الخبر في الصفحة الرئيسية العامة">🌐 نشر للعامة</button>'
-          : ((App.user && App.user.teacherName === newsOwner)
-             ? '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="requestNewsPublic(\'' + n.id + '\')" title="طلب نشر هذا الخبر في الصفحة العامة (يُرسَل للمشرف)">📣 طلب نشر للعامة</button>'
-             : '')) +
+        // نشر للعامة (مسؤول) ⇄ إلغاء النشر (إن كان منشورًا) / طلب نشر (صاحب الخبر)
+        (function () {
+          var isPub = !!(window._pubNewsIds && window._pubNewsIds[String(n.id)]);
+          if (isPub && _newsIsOfficial())
+            return '<button class="btn btn-sm" style="background:#ef4444;color:#fff" onclick="unpublishNewsPublic(\'' + n.id + '\')" title="إلغاء نشر هذا الخبر من الصفحة العامة">🚫 إلغاء النشر</button>';
+          if (_newsIsOfficial())
+            return '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="publishNewsPublic(\'' + n.id + '\')" title="نشر هذا الخبر في الصفحة الرئيسية العامة">🌐 نشر للعامة</button>';
+          if (App.user && App.user.teacherName === newsOwner)
+            return '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="requestNewsPublic(\'' + n.id + '\')" title="طلب نشر هذا الخبر في الصفحة العامة (يُرسَل للمشرف)">📣 طلب نشر للعامة</button>';
+          return '';
+        })() +
 
         // أزرار الإدارة (للمدير أو المالك)
         (isAdmin() || (App.user && App.user.teacherName === newsOwner)

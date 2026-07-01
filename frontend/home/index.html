@@ -1718,6 +1718,12 @@ function renderNews(items) {
     var it = items[k];
     if (it && ((it.media && it.media.length) || it.image)) list.push(it);
   }
+  // إزالة التكرار (نفس الخبر/الوسيط من عدّة مصادر)
+  list = _homeDedupe(list, function (n) {
+    if (n.id) return 'id:' + n.id;
+    var m = (n.media && n.media[0]) ? n.media[0].url : (n.image || '');
+    return _homeUrlKey(m);
+  });
   _homeSetCount('newsCount', list.length);
   if (!list.length) {
     g.innerHTML = '<div class="st-error"><i class="fas fa-exclamation-triangle err-ico"></i><p class="empty-msg">لا توجد أخبار حالياً</p></div>';
@@ -1811,9 +1817,43 @@ function _homeVideoEmbed(url) {
   var yt = extractYouTubeIdClient(url);
   if (yt) return '<iframe src="https://www.youtube-nocookie.com/embed/' + yt + '?autoplay=1&rel=0" style="position:absolute;inset:0;width:100%;height:100%;border:0;" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
   var d = url.match(/[?&]id=([a-zA-Z0-9_-]+)/) || url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (d) return '<iframe src="https://drive.google.com/file/d/' + d[1] + '/preview" style="position:absolute;inset:0;width:100%;height:100%;border:0;" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+  if (d) {
+    // بثّ Drive عبر وسيط الـWorker /media/drive (يعمل داخل اليمن) مع تراجع لمشغّل Drive عند التعذّر
+    return '<video src="' + _homeDrvVideoSrc(d[1]) + '" data-fid="' + d[1] + '" controls autoplay playsinline '
+         + 'onerror="_homeDrvFallback(this)" style="position:absolute;inset:0;width:100%;height:100%;background:#000;"></video>';
+  }
   if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)) return '<video src="' + esc(url) + '" controls autoplay playsinline style="position:absolute;inset:0;width:100%;height:100%;background:#000;"></video>';
   return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;">فتح الفيديو ↗</a>';
+}
+
+/* بثّ فيديو Drive عبر وسيط الـWorker (نفس أصل الصفحة عند خدمتها من الـWorker) */
+function _homeDrvVideoSrc(fileId) {
+  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  return base + '/media/drive/' + fileId;
+}
+/* تراجع: عند تعذّر بثّ الوسيط، استخدم مشغّل Drive /preview */
+function _homeDrvFallback(v) {
+  var fid = v.getAttribute('data-fid'); if (!fid) return;
+  var wrap = v.parentNode; if (!wrap) return;
+  wrap.innerHTML = '<iframe src="https://drive.google.com/file/d/' + fid + '/preview" style="position:absolute;inset:0;width:100%;height:100%;border:0;" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+}
+/* إزالة تكرار العناصر داخل قسم واحد بمفتاح (fileId/URL) */
+function _homeDedupe(list, keyFn) {
+  var seen = {}, out = [];
+  for (var i = 0; i < (list ? list.length : 0); i++) {
+    var it = list[i]; if (!it) continue;
+    var k = keyFn(it);
+    if (k && seen[k]) continue;
+    if (k) seen[k] = 1;
+    out.push(it);
+  }
+  return out;
+}
+/* مفتاح Drive fileId من رابط (أو الرابط نفسه) */
+function _homeUrlKey(u) {
+  u = String(u || '');
+  var d = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return d ? d[1] : u;
 }
 
 function _homePlayVideo(el) {
@@ -1850,6 +1890,10 @@ function _homeScrollToNews(id) {
 function renderImages(items) {
   var g = $('dynamicImagesGrid');
   if (!g) return;
+  // إزالة التكرار: نفس الصورة قد ترد من عدّة مصادر (مكتبة/أخبار المعلم)
+  items = _homeDedupe(items || [], function (n) {
+    return _homeUrlKey(n.imageURL || n.url || n.image || '');
+  });
   window._homeImg = items || [];   // للمعرض التفاعلي (Lightbox)
   _homeSetCount('imagesCount', (items && items.length) ? items.length : 0);
   if (!items || !items.length) {
@@ -1885,37 +1929,44 @@ function renderImages(items) {
 function renderVideos(items) {
   var g = $('dynamicVideoGrid');
   if (!g) return;
-  _homeSetCount('videosCount', (items && items.length) ? items.length : 0);
-  if (!items || !items.length) {
+  // إزالة التكرار: نفس ملفّ الفيديو قد يرد من عدة مصادر (مكتبة/أخبار المعلم)
+  var list = _homeDedupe(items || [], function (n) {
+    return _homeUrlKey(n.videoURL || n.url || n.videoUrl || n.embedURL || '');
+  });
+  _homeSetCount('videosCount', list.length);
+  if (!list.length) {
     g.innerHTML = '<div class="st-error"><p class="empty-msg">لا توجد فيديوهات حالياً</p></div>';
     return;
   }
   var h = '';
-  for (var i = 0; i < items.length; i++) {
-    var n = items[i];
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i];
     if (!n) continue;
     var raw = n.videoURL || n.url || n.videoUrl || n.embedURL || '';
-    var ytId = extractYouTubeIdClient(raw);
-    var media = '';
-    var action = '';
-    if (ytId) {
-      media = '<div class="yt-thumb" style="position:relative;padding-top:56.25%;background:#000;border-radius:8px;overflow:hidden;">'
-            + '<img src="https://img.youtube.com/vi/' + esc(ytId) + '/mqdefault.jpg" '
-            + 'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy" alt="' + esc(n.title || '') + '">'
-            + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">'
-            + '<a href="https://www.youtube.com/watch?v=' + esc(ytId) + '" target="_blank" rel="noopener" '
-            + 'style="width:52px;height:52px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center;">'
-            + '<i class="fas fa-play" style="color:#fff;font-size:1.2rem;margin-right:-2px;"></i></a></div>'
-            + '</div>';
-    } else if (raw) {
-      media = '<div class="cc-no-img"><i class="fas fa-video"></i></div>';
-      action = '<a href="' + esc(raw) + '" target="_blank" rel="noopener" class="vid-open"><i class="fas fa-up-right-from-square"></i> فتح الفيديو</a>';
+    if (!raw) continue;
+    var low = raw.toLowerCase();
+    var isFb = (low.indexOf('facebook.com') !== -1 || low.indexOf('fb.watch') !== -1);
+    var thumb;
+    if (isFb) {
+      // فيسبوك (ريلز/مشاركات) لا تُضمَّن بثقة داخل WebView ⇒ بطاقة بعلامة فيسبوك + مشاهدة خارجية
+      thumb = '<a href="' + esc(raw) + '" target="_blank" rel="noopener" style="position:absolute;inset:0;display:block;background:linear-gradient(135deg,#1877f2,#0b5fcc);">'
+            + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fab fa-facebook" style="font-size:46px;opacity:.92"></i></div>'
+            + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:54px;height:54px;border-radius:50%;background:rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;">▶</div></div></a>';
+    } else {
+      // YouTube/Drive/مباشر: مصغّرة + تشغيل داخلي عند الضغط (Drive عبر وسيط الـWorker)
+      var poster = _homeVideoPoster(raw) || '<div class="cc-no-img" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-video" style="font-size:40px;opacity:.8"></i></div>';
+      thumb = '<div class="hn-vid" data-vurl="' + esc(raw) + '" onclick="_homePlayVideo(this)" style="position:absolute;inset:0;cursor:pointer;background:#000;">'
+            + poster
+            + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">'
+            + '<div style="width:56px;height:56px;border-radius:50%;background:rgba(232,56,79,.92);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;">▶</div></div></div>';
     }
     h += '<article class="cc" tabindex="0">'
-       + '<div class="cc-thumb"><span class="cc-badge bg-vid"><i class="fas fa-play"></i> فيديو</span>' + media + '</div>'
+       + '<div class="cc-thumb" style="position:relative;height:200px;background:#000;overflow:hidden;">'
+       + '<span class="cc-badge bg-vid"><i class="fas fa-play"></i> ' + (isFb ? 'فيديو فيسبوك' : 'فيديو') + '</span>'
+       + thumb + '</div>'
        + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title || '') + '</h3>'
        + '<p class="cc-text">' + esc(n.description || '') + '</p></div>'
-       + (action ? '<div style="padding:8px 14px;">' + action + '</div>' : '')
+       + (isFb ? '<div style="padding:8px 14px;"><a href="' + esc(raw) + '" target="_blank" rel="noopener" class="vid-open"><i class="fab fa-facebook"></i> مشاهدة على فيسبوك</a></div>' : '')
        + '</article>';
   }
   g.innerHTML = h;

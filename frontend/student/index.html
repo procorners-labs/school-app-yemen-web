@@ -3337,18 +3337,33 @@ function nsShareNews(newsId) {
   var text = snippet + (owner ? '\n— ' + owner : '') + '\n' + url;
   var imgUrl = '';
   if (item && item.media) { for (var m = 0; m < item.media.length; m++) { if (item.media[m].isImage && item.media[m].url) { imgUrl = item.media[m].url; break; } } }
+  // صور Drive تُجلب عبر وسيط الـWorker (يضبط CORS) كي يُبنى ملفّ المشاركة داخل WebView
+  var imgFid = _nsDriveFileId(imgUrl);
+  var fetchUrl = imgFid ? _nsShareImgProxy(imgFid) : imgUrl;
 
   function _after() {
     try { google.script.run.recordStudentNewsShare({ newsId: newsId, studentId: (APP.user && APP.user.id) || '', userName: (APP.user && APP.user.name) || '', schoolId: schoolId }); } catch (e) {}
   }
-  if (navigator.share && imgUrl && typeof fetch === 'function' && typeof File === 'function') {
-    fetch(imgUrl).then(function (r) { return r.blob(); }).then(function (b) {
-      var f = new File([b], 'news.jpg', { type: (b && b.type) ? b.type : 'image/jpeg' });
+  if (navigator.share && fetchUrl && typeof fetch === 'function' && typeof File === 'function') {
+    fetch(fetchUrl).then(function (r) { return r.blob(); }).then(function (b) {
+      var bt = (b && b.type && b.type.indexOf('image/') === 0) ? b.type : 'image/jpeg';
+      var f = new File([b], 'news.jpg', { type: bt });
       var p = { title: 'خبر من ' + (owner || 'المدرسة'), text: text, files: [f] };
       if (navigator.canShare && !navigator.canShare(p)) throw new Error('nofiles');
       return navigator.share(p).then(function () { _after(); });
     })['catch'](function (err) { if (err && err.name === 'AbortError') return; _nsShareText(text, url, _after); });
   } else { _nsShareText(text, url, _after); }
+}
+// معرّف Drive من رابط صورة (فارغ لغير Drive)
+function _nsDriveFileId(u) {
+  if (!u) return '';
+  var d = String(u).match(/[?&]id=([a-zA-Z0-9_-]+)/) || String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return (d && d[1]) ? d[1] : '';
+}
+// وسيط جلب صورة Drive عبر الـWorker (CORS مسموح)
+function _nsShareImgProxy(fileId) {
+  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  return base + '/media/drive/' + fileId;
 }
 function _nsShareText(text, url, after) {
   if (navigator.share) {
