@@ -8453,6 +8453,58 @@ function loadMoreNews() {
   _newsCurrentPage++;
   loadNewsPage(false);
 }
+
+// ══════════════════════════════════════════════════════════════════
+// markNewsViewedTeacher — تسجيل مشاهدة المعلم لخبر (يُصلح «معلمون شاهدوا»)
+// مرة واحدة لكل خبر في الجلسة (مزال التكرار محليًّا)؛ الخادم يمنع التكرار الدائم.
+// ══════════════════════════════════════════════════════════════════
+function markNewsViewedTeacher(newsId) {
+  if (!newsId) return;
+  if (!window._tcViewedNews) window._tcViewedNews = {};
+  if (window._tcViewedNews[newsId]) return;
+  window._tcViewedNews[newsId] = true;
+  try {
+    callServer('recordNewsViewProtected', { newsId: newsId }, function(){}, function(){
+      // فشل عابر: اسمح بإعادة المحاولة في عرض لاحق
+      if (window._tcViewedNews) window._tcViewedNews[newsId] = false;
+    });
+  } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// shareNews — مشاركة منشور خبر عبر قائمة المشاركة الأصلية (تراجع: نسخ الرابط)
+// الرابط يفتح الخبر على الصفحة الرئيسية حيث تظهر صوره وفيديوهاته.
+// ══════════════════════════════════════════════════════════════════
+function shareNews(newsId) {
+  var item = null, list = window._newsCache || [];
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].id) === String(newsId)) { item = list[i]; break; }
+  }
+  var HOME_BASE = 'https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html';
+  var schoolId = (typeof App !== 'undefined' && App.user && App.user.schoolId) ? App.user.schoolId : '';
+  var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) +
+            (schoolId ? '&school=' + encodeURIComponent(schoolId) : '');
+  var body  = item ? String(item.news || '') : '';
+  var owner = item ? String(item.teacher || '') : '';
+  var title = 'خبر من ' + (owner || 'المدرسة');
+  var snippet = body.length > 160 ? (body.substring(0, 157) + '…') : body;
+  var text = snippet + (owner ? '\n— ' + owner : '');
+  if (navigator.share) {
+    try { navigator.share({ title: title, text: text, url: url })['catch'](function(){}); }
+    catch (e) { _shareCopyLink(url); }
+  } else {
+    _shareCopyLink(url);
+  }
+}
+function _shareCopyLink(url) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function(){
+      toast('📋 تم نسخ رابط الخبر — الصقه أينما شئت', 'success');
+    })['catch'](function(){ try { window.prompt('انسخ رابط الخبر:', url); } catch (e) {} });
+  } else {
+    try { window.prompt('انسخ رابط الخبر:', url); } catch (e) {}
+  }
+}
  
 // ══════════════════════════════════════════════════════════════════
 // renderNewsList — رسم قائمة الأخبار (ES5 كامل)
@@ -8499,8 +8551,13 @@ function renderNewsList(list, isFirst) {
       newsArea.innerHTML = html;
     }
   }
+
+  // 👁️ تسجيل مشاهدة المعلم لكل خبر معروض (يُغذّي «معلمون شاهدوا»؛ مزال التكرار داخليًّا)
+  for (var _rv = 0; _rv < list.length; _rv++) {
+    if (list[_rv] && list[_rv].id) markNewsViewedTeacher(list[_rv].id);
+  }
 }
- 
+
 // ══════════════════════════════════════════════════════════════════
 // _buildNewsCard_Teacher — بناء بطاقة خبر واحد (ES5)
 // ══════════════════════════════════════════════════════════════════
@@ -8711,12 +8768,15 @@ function _buildNewsCard_Teacher(n) {
         // مساحة مرنة
         '<span style="flex:1;"></span>' +
 
+        // زر المشاركة (متاح لكل المعلمين)
+        '<button class="btn btn-sm btn-secondary" onclick="shareNews(\'' + n.id + '\')" title="شارك المنشور مع صوره وفيديوهاته">📤 مشاركة</button>' +
+
         // أزرار الإدارة (للمدير أو المالك)
         (isAdmin() || (App.user && App.user.teacherName === newsOwner)
           ? '<div class="btn-group">' +
-              '<button class="btn btn-sm btn-warning" onclick="editNews(\'' + n.id + '\')">✏️</button>' +
-              '<button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\'' + n.id + '\')">🗑️</button>' +
-              '<button class="btn btn-sm btn-secondary" onclick="showNewsViewers(\'' + n.id + '\',\'' + newsOwner + '\')">📊</button>' +
+              '<button class="btn btn-sm btn-warning" onclick="editNews(\'' + n.id + '\')" title="تعديل الخبر">✏️</button>' +
+              '<button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\'' + n.id + '\')" title="حذف الخبر">🗑️</button>' +
+              '<button class="btn btn-sm btn-secondary" onclick="showNewsViewers(\'' + n.id + '\',\'' + newsOwner + '\')" title="إحصائيات الخبر (من شاهد ومن أعجب)">📊</button>' +
             '</div>'
           : '') +
 

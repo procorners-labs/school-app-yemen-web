@@ -1722,7 +1722,7 @@ function renderNews(items) {
     var n = items[i];
     if (!n || !n.title) continue;
     var img = n.image ? '<img src="' + esc(n.image) + '" loading="lazy" onerror="this.style.display=\'none\'" alt="' + esc(n.title) + '">' : '<div class="cc-no-img"><i class="fas fa-newspaper"></i></div>';
-    h += '<article class="cc" tabindex="0" role="article">'
+    h += '<article id="hn-' + esc(String(n.id || '')) + '" class="cc" tabindex="0" role="article">'
        + '<div class="cc-thumb"><span class="cc-badge bg-news"><i class="fas fa-newspaper"></i> خبر</span>' + img + '</div>'
        + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title) + '</h3>'
        + '<p class="cc-text">' + esc(n.content || '') + '</p>'
@@ -1731,6 +1731,19 @@ function renderNews(items) {
   }
   g.innerHTML = h || '<div class="st-error"><p class="empty-msg">لا توجد أخبار منشورة</p></div>';
   animateCards(g);
+  if (window._homeNewsDeep) _homeScrollToNews(window._homeNewsDeep);
+}
+
+/* رابط عميق ?news=<id> — تمرير/إبراز بطاقة الخبر المشارَك (صفحة هبوط زر المشاركة) */
+function _homeScrollToNews(id) {
+  var el = document.getElementById('hn-' + id);
+  if (!el) return;
+  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  catch (e) { el.scrollIntoView(); }
+  el.style.transition = 'box-shadow .3s ease';
+  el.style.boxShadow = '0 0 0 3px #f0b429, 0 10px 34px rgba(0,0,0,.18)';
+  setTimeout(function () { try { el.style.boxShadow = ''; } catch (e) {} }, 4000);
+  window._homeNewsDeep = '';   // مرة واحدة
 }
 
 /* ══════════════════════════════════════════
@@ -1750,7 +1763,7 @@ function renderImages(items) {
     var n = items[i];
     if (!n) continue;
     // normalizeGoogleDriveUrl يحول رابط Drive إلى thumbnail مباشر
-    var imgSrc = n.url || n.image || '';
+    var imgSrc = n.imageURL || n.url || n.image || '';
     if (!imgSrc) continue;
     // ألبوم متعدد الصور (مجموعة منشورة): شارة عدد + يفتح المعرض داخل المجموعة
     var galN = (n.gallery && n.gallery.length > 1) ? n.gallery.length : 0;
@@ -1783,7 +1796,7 @@ function renderVideos(items) {
   for (var i = 0; i < items.length; i++) {
     var n = items[i];
     if (!n) continue;
-    var raw = n.url || n.videoUrl || '';
+    var raw = n.videoURL || n.url || n.videoUrl || n.embedURL || '';
     var ytId = extractYouTubeIdClient(raw);
     var media = '';
     var action = '';
@@ -1952,6 +1965,8 @@ function loadSplitData(){
    INIT
 ══════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded',function(){
+  try { window._homeNewsDeep = (new URLSearchParams(location.search)).get('news') || ''; }
+  catch(e){ window._homeNewsDeep = ''; }
   loadHomeBundle();
   /* Re-observe after DOM ready */
   $$('.reveal,.reveal-l,.reveal-r,.reveal-s,.sh').forEach(function(el){
