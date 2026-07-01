@@ -940,8 +940,8 @@ a { color: var(--pr); text-decoration: none; }
 .news-card .img-wrap img {
   width: 100%;
   display: block;
-  object-fit: cover;
-  max-height: 360px;
+  object-fit: contain;
+  max-height: min(70vh, 420px);
   transition: transform var(--tr);
 }
 .news-card .img-wrap:hover img { transform: scale(1.02); }
@@ -980,8 +980,8 @@ a { color: var(--pr); text-decoration: none; }
 .news-card .gal-slide.active { display: block; }
 .news-card .gal-slide img {
   width: 100%; display: block;
-  object-fit: cover;
-  max-height: 380px;
+  object-fit: contain;
+  max-height: min(70vh, 420px);
   cursor: zoom-in;
 }
 .news-card .gal-nav {
@@ -3219,7 +3219,7 @@ function newsMediaHTML(n) {
 // شارة فيديو قابلة للنقر (تحميل كسول) + صورة مصغّرة (إطار أول) بدل الشاشة السوداء
 function _stuVideoPoster(url) {
   var did = _driveId(url), yt = _ytId(url), poster = '';
-  if (did) poster = '<img src="https://drive.google.com/thumbnail?id=' + esc(did) + '&sz=w1000" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+  if (did) poster = '<img src="https://drive.google.com/thumbnail?id=' + esc(did) + '&sz=w1000" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
   else if (yt) poster = '<img src="https://img.youtube.com/vi/' + esc(yt) + '/hqdefault.jpg" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
   return '<div data-url="' + esc(url) + '" onclick="stuPlayVideo(this)" ' +
     'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000">' +
@@ -3237,7 +3237,7 @@ function stuPlayVideo(el) {
 function newsUnifiedGalleryHTML(media) {
   if (media.length === 1 && media[0].t === 'image') {
     return '<div class="img-wrap" onclick="openLightbox(\'' + esc(media[0].u) + '\')">' +
-           '<img src="' + esc(media[0].u) + '" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></div>';
+           '<img src="' + esc(media[0].u) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\'"></div>';
   }
   var gid = 'gal' + (++_galSeq), slides = '', dots = '', multi = media.length > 1;
   for (var i = 0; i < media.length; i++) {
@@ -3245,7 +3245,7 @@ function newsUnifiedGalleryHTML(media) {
     if (it.t === 'video') {
       inner = _stuVideoPoster(it.u);
     } else {
-      inner = '<img src="' + esc(it.u) + '" alt="" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" onerror="this.style.display=\'none\'">';
+      inner = '<img src="' + esc(it.u) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onclick="openLightbox(\'' + esc(it.u) + '\')" onerror="this.style.display=\'none\'">';
     }
     slides += '<div class="gal-slide' + (i === 0 ? ' active' : '') + '">' + inner + '</div>';
     dots += '<span class="gal-dot' + (i === 0 ? ' active' : '') + '" onclick="galGo(\'' + gid + '\',' + i + ')"></span>';

@@ -2412,6 +2412,28 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال تسجيل غياب جماعي من «أسماء الطلاب» -->
+<div class="modal-backdrop" id="sdirAbsModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>📋 تسجيل غياب جماعي</span>
+      <button class="modal-close" onclick="closeModal('sdirAbsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info mb-3" id="sdirAbsCount"></div>
+      <div class="form-row">
+        <div class="form-group mb-3"><label class="form-label">الحالة</label><select class="form-select" id="sdirAbsStatus"><option value="غائب">غائب</option><option value="متأخر">متأخر</option></select></div>
+        <div class="form-group mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="sdirAbsDate"></div>
+      </div>
+      <div style="font-size:12px;color:#64748b">يُسجَّل في «الغياب اليومي»؛ تكرار نفس اليوم يُحدِّث الحالة ولا يُكرّر السجل.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('sdirAbsModal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="sdir_bulkAbsenceSave()">💾 تسجيل الغياب</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال تعديل مهمة -->
 <div class="modal-backdrop" id="taskEditModal">
   <div class="modal-dialog modal-lg">
@@ -8347,6 +8369,9 @@ function renderNews() {
       '</div>' +
     '</div>' +
 
+    // ── لوحة مراجعة طلبات النشر للعامة (للمسؤولين فقط) ──
+    '<div id="newsPublicReview" style="margin-bottom:14px"></div>' +
+
     // ── منطقة قائمة الأخبار ──
     '<div id="newsListArea">' +
       '<div class="sk-line skeleton"></div>' +
@@ -8366,6 +8391,7 @@ function renderNews() {
   _newsCurrentPage = 1;
   _newsCache       = [];
   loadNewsPage(true);
+  if (typeof loadPublicNewsRequests === 'function') loadPublicNewsRequests();
 }
 // ══════════════════════════════════════════════════════════════════
 // loadNewsPage — تحميل صفحة من الأخبار
@@ -8487,11 +8513,49 @@ function shareNews(newsId) {
   var body  = item ? String(item.news || '') : '';
   var owner = item ? String(item.teacher || '') : '';
   var title = 'خبر من ' + (owner || 'المدرسة');
-  var snippet = body.length > 160 ? (body.substring(0, 157) + '…') : body;
-  var text = snippet + (owner ? '\n— ' + owner : '');
+  var snippet = body.length > 500 ? (body.substring(0, 497) + '…') : body;
+  var text = snippet + (owner ? '\n— ' + owner : '') + '\n' + url;
+  var imgUrl = item ? _newsFirstImageUrl(item.attachments) : '';
+
+  function _afterShare() {
+    try { callServer('recordNewsShareProtected', { newsId: newsId }, function(){}, function(){}); } catch (e) {}
+  }
+
+  // محاولة إرسال الصورة نفسها مع النصّ (واتساب/غيره) عبر Web Share Level 2
+  if (navigator.share && imgUrl && typeof fetch === 'function' && typeof File === 'function') {
+    fetch(imgUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+      var file = new File([blob], 'news.jpg', { type: (blob && blob.type) ? blob.type : 'image/jpeg' });
+      var payload = { title: title, text: text, files: [file] };
+      if (navigator.canShare && !navigator.canShare(payload)) throw new Error('files-unsupported');
+      return navigator.share(payload).then(function () { _afterShare(); });
+    })['catch'](function (err) {
+      if (err && err.name === 'AbortError') return;      // ألغى المستخدم
+      _shareTextOnly(title, text, url, _afterShare);       // فشل الصورة (CORS/غير مدعوم) ⇒ نصّ+رابط
+    });
+  } else {
+    _shareTextOnly(title, text, url, _afterShare);
+  }
+}
+
+// أول رابط صورة من ملحقات الخبر (يحوّل روابط Drive إلى thumbnail قابل للجلب)
+function _newsFirstImageUrl(raw) {
+  var urls = _newsParseMedia(raw);
+  for (var i = 0; i < urls.length; i++) {
+    var u = urls[i], low = u.toLowerCase();
+    if (low.indexOf('youtube.com') !== -1 || low.indexOf('youtu.be') !== -1 ||
+        low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low) ||
+        low.indexOf('.pdf') !== -1) continue;
+    var d = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (d) return 'https://drive.google.com/thumbnail?id=' + d[1] + '&sz=w1000';
+    return u;
+  }
+  return '';
+}
+
+function _shareTextOnly(title, text, url, after) {
   if (navigator.share) {
-    try { navigator.share({ title: title, text: text, url: url })['catch'](function(){}); }
-    catch (e) { _shareCopyLink(url); }
+    navigator.share({ title: title, text: text }).then(function () { if (after) after(); })
+      ['catch'](function (err) { if (!(err && err.name === 'AbortError')) _shareCopyLink(url); });
   } else {
     _shareCopyLink(url);
   }
@@ -8504,6 +8568,83 @@ function _shareCopyLink(url) {
   } else {
     try { window.prompt('انسخ رابط الخبر:', url); } catch (e) {}
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// نشر الأخبار للصفحة الرئيسية العامة بموافقة (طلب معلم → اعتماد مسؤول)
+// ═══════════════════════════════════════════════════════════════════
+function _newsIsOfficial() {
+  try {
+    if (isAdmin()) return true;
+    if (typeof isSupervisor === 'function' && isSupervisor()) return true;
+    return !!(App.user && App.user.role === 'activities');
+  } catch (e) { return false; }
+}
+
+function requestNewsPublic(id) {
+  confirmAction('طلب نشر للعامة',
+    'سيُرسَل طلبك للمشرف للاطّلاع على هذا المنشور، وإذا وافق سيُنشر في الصفحة الرئيسية العامة والسوشل ميديا. يُشترط احتواء الخبر على صورة أو فيديو.',
+    '📣', function () {
+      showLoading('جارٍ إرسال الطلب…');
+      callServer('requestNewsPublicProtected', { newsId: id }, function (r) {
+        hideLoading();
+        if (r && r.success) toast(r.message || 'أُرسل الطلب للمراجعة', 'success');
+        else showError(r ? r.error : 'فشل الإرسال');
+      }, function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); });
+    });
+}
+
+function publishNewsPublic(id) {
+  confirmAction('نشر للعامة',
+    'نشر هذا الخبر في الصفحة الرئيسية العامة؟ يُشترط احتواؤه على صورة أو فيديو.',
+    '🌐', function () {
+      showLoading('جارٍ النشر…');
+      callServer('publishNewsPublicProtected', { newsId: id }, function (r) {
+        hideLoading();
+        if (r && r.success) { toast(r.message || 'نُشر في الصفحة العامة', 'success'); loadPublicNewsRequests(); }
+        else showError(r ? r.error : 'فشل النشر');
+      }, function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); });
+    });
+}
+
+// لوحة مراجعة الطلبات المعلّقة (تظهر للمسؤولين أعلى صفحة نشر الأخبار)
+function loadPublicNewsRequests() {
+  var box = document.getElementById('newsPublicReview');
+  if (!box) return;
+  if (!_newsIsOfficial()) { box.innerHTML = ''; return; }
+  callServer('getPublicNewsRequestsProtected', {}, function (r) {
+    var reqs = (r && r.success && r.requests) ? r.requests : [];
+    if (!reqs.length) { box.innerHTML = ''; return; }
+    var h = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px">' +
+      '<div style="font-weight:800;margin-bottom:8px;color:#0369a1">🚀 طلبات النشر للعامة (' + reqs.length + ')</div>';
+    for (var i = 0; i < reqs.length; i++) {
+      var q = reqs[i];
+      var thumb = q.thumb ? ('<img src="' + escapeHtml(q.thumb) + '" referrerpolicy="no-referrer" loading="lazy" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'">') : '';
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);flex-wrap:wrap">' +
+        thumb +
+        '<div style="flex:1;min-width:120px"><div style="font-weight:700;font-size:.86rem">' + escapeHtml(q.title || 'خبر') + '</div>' +
+        '<div style="font-size:.72rem;color:var(--text-muted)">' + escapeHtml(q.teacher || '') + ' · ' + (q.count || 0) + ' وسائط</div></div>' +
+        '<button class="btn btn-sm" style="background:#10b981;color:#fff" onclick="decideNewsPublic(\'' + q.newsId + '\',\'approve\')" title="اعتماد ونشر">🌐 اعتماد ونشر</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="decideNewsPublic(\'' + q.newsId + '\',\'reject\')" title="رفض">✖ رفض</button>' +
+        '</div>';
+    }
+    h += '</div>';
+    box.innerHTML = h;
+  }, function () { box.innerHTML = ''; });
+}
+
+function decideNewsPublic(id, decision) {
+  var isApprove = (decision === 'approve');
+  confirmAction(isApprove ? 'اعتماد ونشر' : 'رفض الطلب',
+    isApprove ? 'اعتماد هذا الخبر ونشره في الصفحة العامة؟' : 'رفض طلب نشر هذا الخبر؟',
+    isApprove ? '🌐' : '✖', function () {
+      showLoading('جارٍ التنفيذ…');
+      callServer('decideNewsPublicProtected', { newsId: id, decision: decision }, function (r) {
+        hideLoading();
+        if (r && r.success) { toast(r.message || 'تم', 'success'); loadPublicNewsRequests(); }
+        else showError(r ? r.error : 'فشل التنفيذ');
+      }, function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); });
+    });
 }
  
 // ══════════════════════════════════════════════════════════════════
@@ -8654,15 +8795,15 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
       var _zoom = '<span style="position:absolute;top:8px;right:8px;z-index:2;background:rgba(0,0,0,.45);color:#fff;font-size:.7rem;padding:3px 8px;border-radius:10px;pointer-events:none">🔍 اضغط للتكبير</span>';
       var _countBadge = (multi && s === 0) ? ('<span style="position:absolute;bottom:8px;right:8px;z-index:2;background:rgba(15,44,92,.85);color:#fff;font-size:.72rem;padding:3px 9px;border-radius:10px;pointer-events:none">🖼️ ' + items.length + ' عناصر</span>') : '';
       inner = '<div style="position:relative;display:flex;align-items:center;justify-content:center;width:100%">' +
-        '<img src="' + esc(it.u) + '" loading="lazy" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
-        'style="max-width:100%;max-height:430px;object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">' +
+        '<img src="' + esc(it.u) + '" loading="lazy" referrerpolicy="no-referrer" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
+        'style="max-width:100%;max-height:min(70vh,430px);object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">' +
         _zoom + _countBadge + '</div>';
     } else if (it.t === 'video') {
       var _vattr = (it.kind === 'drive') ? ('data-fid="' + esc(it.u) + '"') : ('data-vsrc="' + esc(it.u) + '"');
       // صورة مصغّرة للفيديو (إطار أول) بدل الشاشة السوداء
       var _vposter = '';
       if (it.kind === 'drive') {
-        _vposter = '<img src="https://drive.google.com/thumbnail?id=' + esc(it.u) + '&sz=w1000" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+        _vposter = '<img src="https://drive.google.com/thumbnail?id=' + esc(it.u) + '&sz=w1000" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
       } else if (it.kind === 'iframe') {
         var _ytm = String(it.u).match(/embed\/([a-zA-Z0-9_-]{11})/);
         if (_ytm) _vposter = '<img src="https://img.youtube.com/vi/' + _ytm[1] + '/hqdefault.jpg" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
@@ -8770,6 +8911,13 @@ function _buildNewsCard_Teacher(n) {
 
         // زر المشاركة (متاح لكل المعلمين)
         '<button class="btn btn-sm btn-secondary" onclick="shareNews(\'' + n.id + '\')" title="شارك المنشور مع صوره وفيديوهاته">📤 مشاركة</button>' +
+
+        // نشر للعامة (مسؤول) / طلب نشر (صاحب الخبر)
+        (_newsIsOfficial()
+          ? '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="publishNewsPublic(\'' + n.id + '\')" title="نشر هذا الخبر في الصفحة الرئيسية العامة">🌐 نشر للعامة</button>'
+          : ((App.user && App.user.teacherName === newsOwner)
+             ? '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="requestNewsPublic(\'' + n.id + '\')" title="طلب نشر هذا الخبر في الصفحة العامة (يُرسَل للمشرف)">📣 طلب نشر للعامة</button>'
+             : '')) +
 
         // أزرار الإدارة (للمدير أو المالك)
         (isAdmin() || (App.user && App.user.teacherName === newsOwner)
@@ -8885,6 +9033,7 @@ function showNewsViewers(newsId, newsTeacherName) {
     var studentLikers = r.studentLikers || [];
     var totalViews    = _inflateViews(r.viewsCount || 0);
     var totalLikes    = r.likesCount    || 0;
+    var totalShares   = r.sharesCount   || 0;
  
     // ── مولّدات عناصر احترافية (أفتار + شارة نوع + اسم + وقت) ──
     function _statCard(num, label, c1, c2, icon) {
@@ -8924,6 +9073,7 @@ function showNewsViewers(newsId, newsTeacherName) {
       _statCard(totalLikes, 'إجمالي الإعجابات', '#f43f5e', '#e11d48', '❤️') +
       _statCard(teacherViews.length, 'معلمون شاهدوا', '#10b981', '#059669', '👨‍🏫') +
       _statCard(studentViews.length, 'طلاب شاهدوا', '#f59e0b', '#d97706', '🎒') +
+      _statCard(totalShares, 'عدد المشاركات', '#8b5cf6', '#7c3aed', '📤') +
     '</div>';
 
     // ── قائمة المشاهدين ──────────────────────────────────────
@@ -13051,6 +13201,82 @@ function sdir_bulkBehaviorSave() {
   );
 }
 
+// ═══ تسجيل الغياب من صفحة «أسماء الطلاب» (يعيد استخدام saveAttendanceProtected) ═══
+// متاح لمن يملك الغياب فقط (مدير/وكيل/مشرف) — الخادم يفرضه، والواجهة تُخفي الأزرار.
+function _sdirCanAttendance() {
+  try { return isAdmin() || isSupervisor(); } catch (e) { return false; }
+}
+function _sdirToday() {
+  var d = new Date();
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+// غياب اليوم لطالب واحد (تأكيد مباشر) — الحالة «غائب»
+function sdir_addAbsence(i) {
+  var st = SDIR.students[i];
+  if (!st) return;
+  if (!_sdirCanAttendance()) { toast('تسجيل الغياب متاح للمدير/الوكيل/المشرف', 'warning'); return; }
+  confirmAction('تسجيل غياب', 'تسجيل غياب اليوم للطالب: ' + st.name + '؟', '📋', function () {
+    _sdirSaveAbsence([st], 'غائب', _sdirToday());
+  });
+}
+
+// غياب جماعي للطلاب المحددين — مودال لاختيار الحالة والتاريخ مرّةً
+function sdir_bulkAbsence() {
+  if (!_sdirCanAttendance()) { toast('تسجيل الغياب متاح للمدير/الوكيل/المشرف', 'warning'); return; }
+  var sts = [];
+  for (var k in SDIR.selected) {
+    if (SDIR.selected.hasOwnProperty(k)) { var st = SDIR.students[k]; if (st) sts.push(st); }
+  }
+  if (!sts.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
+  SDIR._absStudents = sts;
+  var cnt = document.getElementById('sdirAbsCount');
+  if (cnt) cnt.innerHTML = '📋 سيُسجَّل الغياب لـ <strong>' + sts.length + '</strong> طالب محدّد.';
+  var d = document.getElementById('sdirAbsDate'); if (d) d.value = _sdirToday();
+  var s = document.getElementById('sdirAbsStatus'); if (s) s.value = 'غائب';
+  openModal('sdirAbsModal');
+}
+function sdir_bulkAbsenceSave() {
+  var sts = SDIR._absStudents || [];
+  if (!sts.length) { toast('لا يوجد طلاب محددون', 'warning'); return; }
+  var status = (document.getElementById('sdirAbsStatus') || {}).value || 'غائب';
+  var date = (document.getElementById('sdirAbsDate') || {}).value || _sdirToday();
+  closeModal('sdirAbsModal');
+  _sdirSaveAbsence(sts, status, date);
+}
+
+// يجمع السجلات حسب (الصف|الشعبة) ويستدعي saveAttendanceProtected لكل مجموعة
+// (ليمرّ فحص withAuthAndClass). التكرار لليوم يُمنع خادميّاً (تحديث لا تكرار).
+function _sdirSaveAbsence(students, status, date) {
+  date = date || _sdirToday();
+  var groups = {}, keys = [];
+  for (var i = 0; i < students.length; i++) {
+    var st = students[i]; if (!st) continue;
+    var g = st.grade || '', sec = st.section || '', key = g + '|' + sec;
+    if (!groups[key]) { groups[key] = { grade: g, section: sec, records: [] }; keys.push(key); }
+    groups[key].records.push({ code: st.code, name: st.name, phone: st.phone || '', grade: g, section: sec, status: status });
+  }
+  if (!keys.length) { toast('لا يوجد طلاب', 'warning'); return; }
+  var done = 0, saved = 0, failed = 0;
+  showLoading('جاري تسجيل الغياب…');
+  function _next() {
+    if (done >= keys.length) {
+      hideLoading();
+      if (failed) toast('تم تسجيل ' + saved + ' وتعذّر ' + failed, 'warning');
+      else toast('✅ تم تسجيل غياب ' + saved + ' طالب (' + status + ' — ' + date + ')', 'success');
+      SDIR.selected = {}; SDIR._absStudents = []; sdir_renderRows();
+      return;
+    }
+    var grp = groups[keys[done]];
+    callServer('saveAttendanceProtected', { grade: grp.grade, section: grp.section, date: date, records: grp.records },
+      function (r) { if (r && r.success) saved += (r.saved || grp.records.length); else failed += grp.records.length; done++; _next(); },
+      function () { failed += grp.records.length; done++; _next(); }
+    );
+  }
+  _next();
+}
+
 // ── وضع المدير/المحاسب/الوكيل/المشرف ──
 // رسوم بيانية بسيطة لأعداد الطلاب (للمدير/الوكيل فقط)
 function sdir_analyticsHtml() {
@@ -13087,6 +13313,7 @@ function sdir_renderManager() {
     '<label style="font-size:13px"><input type="checkbox" id="sdir-all" onchange="sdir_toggleAll(this.checked)"> تحديد الكل</label>' +
     '<button class="btn btn-sm btn-success" onclick="sdir_sendSelected()">📤 إرسال كلمة المرور للمحددين</button>' +
     '<button class="btn btn-sm" style="background:#4f46e5;color:#fff" onclick="sdir_bulkBehavior()">📋 تسجيل سلوك للمحددين</button>' +
+    (_sdirCanAttendance() ? '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="sdir_bulkAbsence()">📋 تسجيل غياب للمحددين</button>' : '') +
     '<span id="sdir-selcount" class="badge badge-info"></span>' +
     (SDIR.hasWa ? '<span class="badge badge-success" style="font-size:11px">واتساب تلقائي مُفعّل</span>' : '<span class="badge" style="background:#fff3cd;color:#7c5e00;font-size:11px">إرسال عبر روابط wa.me</span>') +
     '</div>';
@@ -13146,7 +13373,8 @@ function sdir_rowsHtmlManager(idxs) {
       '<td>' + (st.fees || 0) + '</td>' +
       '<td>' + (st.paid || 0) + '</td>' +
       '<td><button class="btn btn-sm btn-success" title="إرسال لولي الأمر" onclick="sdir_sendOne(' + i + ')">📤</button></td>' +
-      '<td><button class="btn btn-sm" style="background:#4f46e5;color:#fff;white-space:nowrap" title="تسجيل سلوك لهذا الطالب" onclick="sdir_addBehavior(' + i + ')">📋 سلوك</button></td>' +
+      '<td><button class="btn btn-sm" style="background:#4f46e5;color:#fff;white-space:nowrap" title="تسجيل سلوك لهذا الطالب" onclick="sdir_addBehavior(' + i + ')">📋 سلوك</button>' +
+      (_sdirCanAttendance() ? ' <button class="btn btn-sm" style="background:#0ea5e9;color:#fff;white-space:nowrap" title="تسجيل غياب اليوم" onclick="sdir_addAbsence(' + i + ')">📋 غياب</button>' : '') + '</td>' +
     '</tr>';
   }
   return h;

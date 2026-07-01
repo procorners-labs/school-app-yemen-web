@@ -1372,7 +1372,7 @@ img,video,iframe{max-width:100%;display:block}
 <div id="homeLb" onclick="if(event.target===this)homeLbClose()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;">
   <button onclick="homeLbClose()" aria-label="إغلاق" style="position:absolute;top:16px;left:16px;background:rgba(255,255,255,.16);color:#fff;border:none;width:46px;height:46px;border-radius:50%;font-size:22px;cursor:pointer;">✕</button>
   <button onclick="homeLbNav(-1)" aria-label="السابق" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.16);color:#fff;border:none;width:50px;height:50px;border-radius:50%;font-size:26px;cursor:pointer;">‹</button>
-  <img id="homeLbImg" src="" alt="" style="max-width:90vw;max-height:80vh;border-radius:12px;box-shadow:0 14px 50px rgba(0,0,0,.55);">
+  <img id="homeLbImg" src="" alt="" referrerpolicy="no-referrer" style="max-width:90vw;max-height:80vh;border-radius:12px;box-shadow:0 14px 50px rgba(0,0,0,.55);">
   <div id="homeLbCap" style="color:#fff;margin-top:14px;font-size:16px;text-align:center;max-width:90vw;"></div>
   <button onclick="homeLbNav(1)" aria-label="التالي" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.16);color:#fff;border:none;width:50px;height:50px;border-radius:50%;font-size:26px;cursor:pointer;">›</button>
 </div>
@@ -1712,26 +1712,97 @@ function animateCards(grid){
 function renderNews(items) {
   var g = $('dynamicNewsGrid');
   if (!g) return;
-  _homeSetCount('newsCount', (items && items.length) ? items.length : 0);
-  if (!items || !items.length) {
+  // اقتصر على الأخبار ذات الوسائط (صورة/فيديو) — الخادم يرشّح، وهذا احتياط
+  var list = [];
+  for (var k = 0; k < (items ? items.length : 0); k++) {
+    var it = items[k];
+    if (it && ((it.media && it.media.length) || it.image)) list.push(it);
+  }
+  _homeSetCount('newsCount', list.length);
+  if (!list.length) {
     g.innerHTML = '<div class="st-error"><i class="fas fa-exclamation-triangle err-ico"></i><p class="empty-msg">لا توجد أخبار حالياً</p></div>';
     return;
   }
   var h = '';
-  for (var i = 0; i < items.length; i++) {
-    var n = items[i];
-    if (!n || !n.title) continue;
-    var img = n.image ? '<img src="' + esc(n.image) + '" loading="lazy" onerror="this.style.display=\'none\'" alt="' + esc(n.title) + '">' : '<div class="cc-no-img"><i class="fas fa-newspaper"></i></div>';
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i];
+    var media = (n.media && n.media.length) ? n.media : (n.image ? [{ type: 'image', url: n.image }] : []);
+    var sid = String(n.id || i).replace(/[^a-zA-Z0-9_-]/g, '');
+    var gid = 'hnm-' + sid;
     h += '<article id="hn-' + esc(String(n.id || '')) + '" class="cc" tabindex="0" role="article">'
-       + '<div class="cc-thumb"><span class="cc-badge bg-news"><i class="fas fa-newspaper"></i> خبر</span>' + img + '</div>'
-       + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title) + '</h3>'
+       + '<div class="cc-thumb hn-media" id="' + gid + '" data-cur="0" style="position:relative;height:225px;background:var(--bg2);overflow:hidden;">'
+       + '<span class="cc-badge bg-news"><i class="fas fa-newspaper"></i> خبر</span>'
+       + _homeMediaSlides(media, n.title)
+       + (media.length > 1 ? _homeGalNav(gid, media.length) : '')
+       + '</div>'
+       + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title || '') + '</h3>'
        + '<p class="cc-text">' + esc(n.content || '') + '</p>'
        + '<div class="cc-date"><i class="fas fa-calendar-alt"></i> ' + esc(n.date || '') + '</div>'
        + '</div></article>';
   }
-  g.innerHTML = h || '<div class="st-error"><p class="empty-msg">لا توجد أخبار منشورة</p></div>';
+  g.innerHTML = h;
   animateCards(g);
   if (window._homeNewsDeep) _homeScrollToNews(window._homeNewsDeep);
+}
+
+/* بناء شرائح الوسائط داخل بطاقة الخبر (الفيديو افتراضيّ أولًا) */
+function _homeMediaSlides(media, title) {
+  var s = '';
+  for (var i = 0; i < media.length; i++) {
+    var m = media[i], disp = (i === 0) ? 'block' : 'none', inner;
+    if (m.type === 'video') {
+      inner = '<div class="hn-vid" data-vurl="' + esc(m.url) + '" onclick="_homePlayVideo(this)" style="position:absolute;inset:0;cursor:pointer;background:#000;">'
+            + _homeVideoPoster(m.url)
+            + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">'
+            + '<div style="width:56px;height:56px;border-radius:50%;background:rgba(232,56,79,.92);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;">▶</div></div></div>';
+    } else {
+      inner = '<img src="' + esc(m.url) + '" alt="' + esc(title || '') + '" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
+    }
+    s += '<div class="hn-slide" style="position:absolute;inset:0;display:' + disp + ';">' + inner + '</div>';
+  }
+  return s;
+}
+
+function _homeGalNav(gid, count) {
+  return '<button type="button" onclick="_homeCardGal(\'' + gid + '\',-1)" aria-label="السابق" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:20px;">‹</button>'
+       + '<button type="button" onclick="_homeCardGal(\'' + gid + '\',1)" aria-label="التالي" style="position:absolute;top:50%;left:8px;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:20px;">›</button>'
+       + '<span id="' + gid + '-cnt" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.55);color:#fff;font-size:.7rem;padding:2px 9px;border-radius:10px;">1/' + count + '</span>';
+}
+
+function _homeVideoPoster(url) {
+  var yt = extractYouTubeIdClient(url), poster = '';
+  if (yt) {
+    poster = '<img src="https://img.youtube.com/vi/' + esc(yt) + '/hqdefault.jpg" referrerpolicy="no-referrer" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
+  } else {
+    var d = url.match(/[?&]id=([a-zA-Z0-9_-]+)/) || url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (d) poster = '<img src="https://drive.google.com/thumbnail?id=' + d[1] + '&sz=w1000" referrerpolicy="no-referrer" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
+  }
+  return poster;
+}
+
+function _homeVideoEmbed(url) {
+  var yt = extractYouTubeIdClient(url);
+  if (yt) return '<iframe src="https://www.youtube-nocookie.com/embed/' + yt + '?autoplay=1&rel=0" style="position:absolute;inset:0;width:100%;height:100%;border:0;" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+  var d = url.match(/[?&]id=([a-zA-Z0-9_-]+)/) || url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (d) return '<iframe src="https://drive.google.com/file/d/' + d[1] + '/preview" style="position:absolute;inset:0;width:100%;height:100%;border:0;" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)) return '<video src="' + esc(url) + '" controls autoplay playsinline style="position:absolute;inset:0;width:100%;height:100%;background:#000;"></video>';
+  return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;">فتح الفيديو ↗</a>';
+}
+
+function _homePlayVideo(el) {
+  var u = el.getAttribute('data-vurl'); if (!u) return;
+  el.innerHTML = _homeVideoEmbed(u);
+  el.onclick = null;
+}
+
+function _homeCardGal(gid, dir) {
+  var g = document.getElementById(gid); if (!g) return;
+  var slides = g.querySelectorAll('.hn-slide'); var n = slides.length; if (!n) return;
+  var cur = parseInt(g.getAttribute('data-cur') || '0', 10);
+  cur = (cur + dir + n) % n;
+  for (var i = 0; i < n; i++) slides[i].style.display = (i === cur) ? 'block' : 'none';
+  g.setAttribute('data-cur', String(cur));
+  var cnt = document.getElementById(gid + '-cnt'); if (cnt) cnt.textContent = (cur + 1) + '/' + n;
 }
 
 /* رابط عميق ?news=<id> — تمرير/إبراز بطاقة الخبر المشارَك (صفحة هبوط زر المشاركة) */
@@ -1773,7 +1844,7 @@ function renderImages(items) {
     h += '<article class="cc" tabindex="0">'
        + '<div class="cc-thumb">'
        + '<span class="cc-badge bg-img"><i class="fas fa-image"></i> صورة</span>' + albumBadge
-       + '<img src="' + esc(imgSrc) + '" loading="lazy" alt="' + esc(n.title || 'صورة') + '" style="cursor:zoom-in" onclick="homeLightbox(' + i + ')" onerror="this.parentNode.innerHTML=\'<div class=\\\'cc-no-img\\\'><i class=\\\"fas fa-image\\\"></i></div>\'">'
+       + '<img src="' + esc(imgSrc) + '" loading="lazy" referrerpolicy="no-referrer" alt="' + esc(n.title || 'صورة') + '" style="cursor:zoom-in" onclick="homeLightbox(' + i + ')" onerror="this.parentNode.innerHTML=\'<div class=\\\'cc-no-img\\\'><i class=\\\"fas fa-image\\\"></i></div>\'">'
        + '</div>'
        + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title || '') + '</h3></div>'
        + '</article>';
