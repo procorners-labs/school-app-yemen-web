@@ -3093,6 +3093,7 @@ function fetchNewsPage() {
 }
 
 function renderNewsList() {
+  _stuLoadLogo();   // شعار المدرسة لصور الأخبار (مرّة واحدة، يعيد الرسم عند الوصول)
   var w = $('newsList');
   var items = APP.newsState.items;
   if (!items || items.length === 0) {
@@ -3194,6 +3195,35 @@ function newsGalleryHTML(imgs) {
          '</div>';
 }
 
+// شعار المدرسة (overlay) على صور أخبار الطالب
+function _stuLogoBadge() {
+  var lg = window._stuLogo;
+  if (!lg) return '';
+  return '<img src="' + esc(lg) + '" referrerpolicy="no-referrer" alt="" onerror="this.style.display=\'none\'" style="position:absolute;bottom:8px;inset-inline-start:8px;left:8px;width:34px;height:34px;object-fit:contain;background:rgba(255,255,255,.9);border-radius:8px;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,.28);pointer-events:none;z-index:4">';
+}
+function _stuToLh3(u) {
+  if (!u) return '';
+  var d = String(u).match(/[?&]id=([a-zA-Z0-9_-]+)/) || String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return d ? ('https://lh3.googleusercontent.com/d/' + d[1] + '=w200') : u;
+}
+// جلب شعار المدرسة مرّة واحدة ثم إعادة رسم قائمة الأخبار لإظهاره
+function _stuLoadLogo() {
+  if (window._stuLogo || window._stuLogoTried) return;
+  window._stuLogoTried = true;
+  var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID || '';
+  try {
+    google.script.run
+      .withSuccessHandler(function (b) {
+        if (b && b.ok && b.logo) {
+          window._stuLogo = _stuToLh3(b.logo);
+          try { if (APP.newsState && APP.newsState.items && APP.newsState.items.length) renderNewsList(); } catch (e) {}
+        }
+      })
+      .withFailureHandler(function () {})
+      .getStudentSchoolBrand(sid);
+  } catch (e) {}
+}
+
 function newsMediaHTML(n) {
   var list = (n.media && n.media.length) ? n.media : null;
   // توافق رجعي: لو لم يصل media، ابنِ عنصراً واحداً من الحقول القديمة
@@ -3237,7 +3267,7 @@ function stuPlayVideo(el) {
 function newsUnifiedGalleryHTML(media) {
   if (media.length === 1 && media[0].t === 'image') {
     return '<div class="img-wrap" onclick="openLightbox(\'' + esc(media[0].u) + '\')">' +
-           '<img src="' + esc(media[0].u) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\'"></div>';
+           '<img src="' + esc(media[0].u) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\'">' + _stuLogoBadge() + '</div>';
   }
   var gid = 'gal' + (++_galSeq), slides = '', dots = '', multi = media.length > 1;
   for (var i = 0; i < media.length; i++) {
@@ -3245,7 +3275,7 @@ function newsUnifiedGalleryHTML(media) {
     if (it.t === 'video') {
       inner = _stuVideoPoster(it.u);
     } else {
-      inner = '<img src="' + esc(it.u) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onclick="openLightbox(\'' + esc(it.u) + '\')" onerror="this.style.display=\'none\'">';
+      inner = '<img src="' + esc(it.u) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onclick="openLightbox(\'' + esc(it.u) + '\')" onerror="this.style.display=\'none\'">' + _stuLogoBadge();
     }
     slides += '<div class="gal-slide' + (i === 0 ? ' active' : '') + '">' + inner + '</div>';
     dots += '<span class="gal-dot' + (i === 0 ? ' active' : '') + '" onclick="galGo(\'' + gid + '\',' + i + ')"></span>';
@@ -3351,8 +3381,19 @@ function nsShareNews(newsId) {
       var p = { title: 'خبر من ' + (owner || 'المدرسة'), text: text, files: [f] };
       if (navigator.canShare && !navigator.canShare(p)) throw new Error('nofiles');
       return navigator.share(p).then(function () { _after(); });
-    })['catch'](function (err) { if (err && err.name === 'AbortError') return; _nsShareText(text, url, _after); });
-  } else { _nsShareText(text, url, _after); }
+    })['catch'](function (err) { if (err && err.name === 'AbortError') return; _nsShareSheet('خبر من المدرسة', text, url, _after); });
+  } else { _nsShareSheet('خبر من المدرسة', text, url, _after); }
+}
+// معرّف Drive من رابط صورة (فارغ لغير Drive)
+function _nsDriveFileId(u) {
+  if (!u) return '';
+  var d = String(u).match(/[?&]id=([a-zA-Z0-9_-]+)/) || String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return (d && d[1]) ? d[1] : '';
+}
+// وسيط جلب صورة Drive عبر الـWorker (CORS مسموح)
+function _nsShareImgProxy(fileId) {
+  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  return base + '/media/drive/' + fileId;
 }
 // معرّف Drive من رابط صورة (فارغ لغير Drive)
 function _nsDriveFileId(u) {
@@ -3367,13 +3408,54 @@ function _nsShareImgProxy(fileId) {
 }
 function _nsShareText(text, url, after) {
   if (navigator.share) {
-    navigator.share({ title: 'خبر من المدرسة', text: text }).then(function () { if (after) after(); })['catch'](function (err) { if (!(err && err.name === 'AbortError')) _nsCopy(url); });
-  } else { _nsCopy(url); }
+    navigator.share({ title: 'خبر من المدرسة', text: text }).then(function () { if (after) after(); })['catch'](function (err) { if (!(err && err.name === 'AbortError')) _nsShareSheet('خبر من المدرسة', text, url, after); });
+  } else { _nsShareSheet('خبر من المدرسة', text, url, after); }
 }
 function _nsCopy(url) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function () { toast('📋 تم نسخ رابط الخبر', 's'); })['catch'](function () { try { window.prompt('انسخ الرابط:', url); } catch (e) {} });
   } else { try { window.prompt('انسخ الرابط:', url); } catch (e) {} }
+}
+// قائمة مشاركة داخل التطبيق (WebView بلا navigator.share): تفتح التطبيقات وتخرج
+function _nsShareSheet(title, text, url, after) {
+  var done = false;
+  function fire() { if (!done) { done = true; try { if (after) after(); } catch (e) {} } }
+  function close() { try { document.body.removeChild(ov); } catch (e) {} }
+  function openExt(u) {
+    fire();
+    try { var a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+    catch (e) { try { window.open(u, '_blank'); } catch (e2) {} }
+    close();
+  }
+  function copy() {
+    fire();
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(url).then(function(){ toast('📋 تم نسخ الرابط', 's'); })['catch'](function(){ try { window.prompt('انسخ الرابط:', url); } catch (e) {} }); }
+    else { try { window.prompt('انسخ الرابط:', url); } catch (e) {} }
+    close();
+  }
+  var wa = 'https://wa.me/?text=' + encodeURIComponent(text);
+  var fb = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url);
+  var tg = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title);
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center';
+  ov.onclick = function (e) { if (e.target === ov) close(); };
+  function tile(a, bg, ic, lbl) {
+    return '<button data-a="' + a + '" style="border:none;background:transparent;cursor:pointer;padding:0"><div style="width:52px;height:52px;border-radius:50%;background:' + bg + ';display:flex;align-items:center;justify-content:center;margin:0 auto;color:#fff;font-size:23px"><i class="' + ic + '"></i></div><div style="font-size:.72rem;margin-top:5px">' + lbl + '</div></button>';
+  }
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px 24px;box-shadow:0 -6px 24px rgba(0,0,0,.25)';
+  box.innerHTML = '<div style="text-align:center;font-weight:800;margin-bottom:14px">📤 مشاركة الخبر</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center">' +
+    tile('wa', '#25D366', 'fab fa-whatsapp', 'واتساب') +
+    tile('fb', '#1877F2', 'fab fa-facebook-f', 'فيسبوك') +
+    tile('tg', '#0088cc', 'fab fa-telegram-plane', 'تيليجرام') +
+    tile('cp', '#64748b', 'fas fa-link', 'نسخ') + '</div>';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  box.querySelector('[data-a="wa"]').onclick = function(){ openExt(wa); };
+  box.querySelector('[data-a="fb"]').onclick = function(){ openExt(fb); };
+  box.querySelector('[data-a="tg"]').onclick = function(){ openExt(tg); };
+  box.querySelector('[data-a="cp"]').onclick = function(){ copy(); };
 }
 
 function nsToggleLike(newsId, btn) {
@@ -4331,6 +4413,7 @@ function initLazyImages() {
       try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, b.name); } catch (e) {}
     }
     if (b.logo) {
+      try { window._stuLogo = _stuToLh3(b.logo); } catch (e) { window._stuLogo = b.logo; }
       var lg = document.getElementById('stuLoginLogo');
       if (lg) lg.innerHTML = '<img src="' + b.logo + '" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:12px;" />';
     }

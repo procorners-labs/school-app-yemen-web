@@ -8539,7 +8539,8 @@ function shareNews(newsId) {
       _shareTextOnly(title, text, url, _afterShare);       // فشل الصورة (CORS/غير مدعوم) ⇒ نصّ+رابط
     });
   } else {
-    _shareTextOnly(title, text, url, _afterShare);
+    // WebView (بلا navigator.share) ⇒ قائمة مشاركة تفتح التطبيقات وتخرج
+    _shareSheet(title, text, url, _afterShare);
   }
 }
 
@@ -8581,9 +8582,9 @@ function _newsFirstImageUrl(raw) {
 function _shareTextOnly(title, text, url, after) {
   if (navigator.share) {
     navigator.share({ title: title, text: text }).then(function () { if (after) after(); })
-      ['catch'](function (err) { if (!(err && err.name === 'AbortError')) _shareCopyLink(url); });
+      ['catch'](function (err) { if (!(err && err.name === 'AbortError')) _shareSheet(title, text, url, after); });
   } else {
-    _shareCopyLink(url);
+    _shareSheet(title, text, url, after);
   }
 }
 function _shareCopyLink(url) {
@@ -8594,6 +8595,50 @@ function _shareCopyLink(url) {
   } else {
     try { window.prompt('انسخ رابط الخبر:', url); } catch (e) {}
   }
+}
+
+// قائمة مشاركة داخل التطبيق (WebView بلا navigator.share): تفتح التطبيقات وتخرج من WebView
+function _shareSheet(title, text, url, after) {
+  var done = false;
+  function fire() { if (!done) { done = true; try { if (after) after(); } catch (e) {} } }
+  function close() { try { document.body.removeChild(ov); } catch (e) {} }
+  function openExt(u) {
+    fire();
+    try { var a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+    catch (e) { try { window.open(u, '_blank'); } catch (e2) {} }
+    close();
+  }
+  function copy() {
+    fire();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function(){ toast('📋 تم نسخ الرابط', 'success'); })['catch'](function(){ try { window.prompt('انسخ الرابط:', url); } catch (e) {} });
+    } else { try { window.prompt('انسخ الرابط:', url); } catch (e) {} }
+    close();
+  }
+  var wa = 'https://wa.me/?text=' + encodeURIComponent(text);
+  var fb = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url);
+  var tg = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title);
+  var tw = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text);
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center';
+  ov.onclick = function (e) { if (e.target === ov) close(); };
+  function tile(a, bg, ic, lbl) {
+    return '<button data-a="' + a + '" style="border:none;background:transparent;cursor:pointer;padding:0"><div style="width:52px;height:52px;border-radius:50%;background:' + bg + ';display:flex;align-items:center;justify-content:center;margin:0 auto;color:#fff;font-size:23px"><i class="' + ic + '"></i></div><div style="font-size:.72rem;margin-top:5px;color:var(--text,#111)">' + lbl + '</div></button>';
+  }
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--surface,#fff);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px 24px;box-shadow:0 -6px 24px rgba(0,0,0,.25)';
+  box.innerHTML = '<div style="text-align:center;font-weight:800;margin-bottom:14px;color:var(--text,#111)">📤 مشاركة الخبر</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center">' +
+    tile('wa', '#25D366', 'fab fa-whatsapp', 'واتساب') +
+    tile('fb', '#1877F2', 'fab fa-facebook-f', 'فيسبوك') +
+    tile('tg', '#0088cc', 'fab fa-telegram-plane', 'تيليجرام') +
+    tile('cp', '#64748b', 'fas fa-link', 'نسخ') + '</div>';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  box.querySelector('[data-a="wa"]').onclick = function(){ openExt(wa); };
+  box.querySelector('[data-a="fb"]').onclick = function(){ openExt(fb); };
+  box.querySelector('[data-a="tg"]').onclick = function(){ openExt(tg); };
+  box.querySelector('[data-a="cp"]').onclick = function(){ copy(); };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -12843,7 +12888,7 @@ function smm_renderDashboard(data) {
 function smm_setupSystem() {
   var statusEl = document.getElementById('smm-setup-status');
   if (statusEl) statusEl.innerHTML = '<span style="color:#0F2C5C;">⏳ جاري الإعداد…</span>';
-  callCMS('smmSetupSystem', [], function(res, err) {
+  callCMS('smmEnsureSystemForSchool', [], function(res, err) {
     if (statusEl) {
       if (res) {
         statusEl.innerHTML = '<span style="color:#1e8e3e;">✅ تم إعداد النظام بنجاح! جاري تحميل البيانات…</span>';
