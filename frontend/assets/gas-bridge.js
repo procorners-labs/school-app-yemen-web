@@ -34,9 +34,9 @@
     var xhr = new XMLHttpRequest();
     xhr.open('POST', endpoint, true);
     xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
-    // مهلة أطول لدوال رفع الملفات (قد يصل الفيديو إلى 25MB)؛ والبقية 25 ثانية.
+    // مهلة أطول لدوال رفع الملفات (قد يصل الفيديو إلى 25MB)؛ والبقية 30 ثانية (شبكات بطيئة).
     var _isUpload = /upload|media|attach/i.test(fnName);
-    xhr.timeout = _isUpload ? 180000 : 25000;
+    xhr.timeout = _isUpload ? 180000 : 30000;
 
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
@@ -77,6 +77,24 @@
   // يكشف النقل الخام لمحرّك المزامنة (offline-sync.js) لإعادة تشغيل عمليات الطابور.
   window.__gasRawCall = rawCall;
 
+  // إعادة محاولة للنقل عند أخطاء الشبكة العابرة (status 0/≥400/مهلة/رد غير صالح).
+  // ⚠️ للقراءات فقط (idempotent) — لا تُستخدم للكتابات تفاديًا للتنفيذ المزدوج.
+  // تكمّل إعادة محاولة الوسيط وطابور offline-sync؛ تقلّل ظهور «تعذر الاتصال» العابر.
+  function rawCallWithRetry(fnName, args, onSuccess, onFailure, userObject, retries) {
+    var left = (typeof retries === 'number') ? retries : 2; // محاولتان إضافيتان (3 إجمالًا)
+    var delays = [600, 1500]; // backoff تصاعدي قصير (ms)
+    function attempt(n) {
+      rawCall(fnName, args, onSuccess, function (err, uo) {
+        if (err && err.__network && n < left) {
+          setTimeout(function () { attempt(n + 1); }, delays[n] || 1500);
+        } else if (onFailure) {
+          onFailure(err, uo);
+        }
+      }, userObject);
+    }
+    attempt(0);
+  }
+
   function optimisticWrite() {
     return { success: true, queued: true, offline: true,
              message: '✅ حُفظ محلياً — سيُزامن تلقائياً عند عودة الاتصال' };
@@ -95,12 +113,12 @@
       // نتتبّع القراءة لإعادة التحقّق منها وتحديثها تلقائياً عند عودة الاتصال.
       if (OS.trackRead) OS.trackRead(app, fnName, args, schoolId);
       if (OS.isOnline()) {
-        rawCall(fnName, args, function (result, uo) {
+        rawCallWithRetry(fnName, args, function (result, uo) {
           OS.cacheRead(app, fnName, args, schoolId, result);
           if (onSuccess) onSuccess(result, uo);
         }, function (err, uo) {
           if (err && err.__network) {
-            // تعذّر الوصول: اخدم آخر نتيجة مخزّنة إن وُجدت.
+            // تعذّر الوصول (بعد إعادة المحاولة): اخدم آخر نتيجة مخزّنة إن وُجدت.
             OS.getCachedRead(app, fnName, args, schoolId).then(function (rec) {
               if (rec && typeof rec.result !== 'undefined') {
                 if (onSuccess) onSuccess(rec.result, uo);
