@@ -3219,7 +3219,7 @@ function newsMediaHTML(n) {
 // شارة فيديو قابلة للنقر (تحميل كسول) + صورة مصغّرة (إطار أول) بدل الشاشة السوداء
 function _stuVideoPoster(url) {
   var did = _driveId(url), yt = _ytId(url), poster = '';
-  if (did) poster = '<img src="https://drive.google.com/thumbnail?id=' + esc(did) + '&sz=w1000" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+  if (did) poster = '<img src="https://lh3.googleusercontent.com/d/' + esc(did) + '=w1000" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
   else if (yt) poster = '<img src="https://img.youtube.com/vi/' + esc(yt) + '/hqdefault.jpg" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
   return '<div data-url="' + esc(url) + '" onclick="stuPlayVideo(this)" ' +
     'style="position:relative;width:100%;padding-bottom:56.25%;height:0;cursor:pointer;background:#000">' +
@@ -3318,9 +3318,47 @@ function newsCardHTML(n) {
              '<span class="heart">❤️</span><span class="count">' + (n.likes || 0) + '</span>' +
            '</button>' +
            '<span class="news-stat">👁️ <span class="vc">' + ((parseInt(n.views,10)||0)*7+30) + '</span></span>' +
+           '<button class="news-share-btn" onclick="nsShareNews(\'' + esc(n.id) + '\')" title="مشاركة الخبر مع صورته" style="margin-inline-start:auto;background:#eef2ff;color:#4338ca;border:none;border-radius:20px;padding:5px 12px;font-size:.8rem;cursor:pointer">📤 مشاركة</button>' +
            '<span class="news-likers">' + likers + '</span>' +
          '</div>' +
          '</article>';
+}
+
+// مشاركة خبر من الطالب (صورة + نص) + تسجيل المشاركة
+function nsShareNews(newsId) {
+  var item = null, list = (APP.newsState && APP.newsState.items) || [];
+  for (var i = 0; i < list.length; i++) { if (String(list[i].id) === String(newsId)) { item = list[i]; break; } }
+  var HOME_BASE = 'https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html';
+  var schoolId = (APP.user && APP.user.schoolId) ? APP.user.schoolId : '';
+  var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) + (schoolId ? '&school=' + encodeURIComponent(schoolId) : '');
+  var body = item ? String(item.content || '') : '';
+  var owner = item ? String(item.teacher || '') : '';
+  var snippet = body.length > 500 ? (body.substring(0, 497) + '…') : body;
+  var text = snippet + (owner ? '\n— ' + owner : '') + '\n' + url;
+  var imgUrl = '';
+  if (item && item.media) { for (var m = 0; m < item.media.length; m++) { if (item.media[m].isImage && item.media[m].url) { imgUrl = item.media[m].url; break; } } }
+
+  function _after() {
+    try { google.script.run.recordStudentNewsShare({ newsId: newsId, studentId: (APP.user && APP.user.id) || '', userName: (APP.user && APP.user.name) || '', schoolId: schoolId }); } catch (e) {}
+  }
+  if (navigator.share && imgUrl && typeof fetch === 'function' && typeof File === 'function') {
+    fetch(imgUrl).then(function (r) { return r.blob(); }).then(function (b) {
+      var f = new File([b], 'news.jpg', { type: (b && b.type) ? b.type : 'image/jpeg' });
+      var p = { title: 'خبر من ' + (owner || 'المدرسة'), text: text, files: [f] };
+      if (navigator.canShare && !navigator.canShare(p)) throw new Error('nofiles');
+      return navigator.share(p).then(function () { _after(); });
+    })['catch'](function (err) { if (err && err.name === 'AbortError') return; _nsShareText(text, url, _after); });
+  } else { _nsShareText(text, url, _after); }
+}
+function _nsShareText(text, url, after) {
+  if (navigator.share) {
+    navigator.share({ title: 'خبر من المدرسة', text: text }).then(function () { if (after) after(); })['catch'](function (err) { if (!(err && err.name === 'AbortError')) _nsCopy(url); });
+  } else { _nsCopy(url); }
+}
+function _nsCopy(url) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function () { toast('📋 تم نسخ رابط الخبر', 's'); })['catch'](function () { try { window.prompt('انسخ الرابط:', url); } catch (e) {} });
+  } else { try { window.prompt('انسخ الرابط:', url); } catch (e) {} }
 }
 
 function nsToggleLike(newsId, btn) {

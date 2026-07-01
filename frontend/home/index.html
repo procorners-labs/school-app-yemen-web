@@ -60,9 +60,9 @@
 <meta property="og:description" content="منصة تعليمية ذكية متكاملة: الأخبار والصور والفيديوهات والإحصاءات والتواصل."/>
 <meta property="og:locale" content="ar_AR"/>
 <meta property="og:url" content="https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html"/>
-<meta property="og:image" content="https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400"/>
+<meta property="og:image" content="https://lh3.googleusercontent.com/d/12vJRrt-iUVutaLY29tE606ERqYh6Die8=w400"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:image" content="https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400"/>
+<meta name="twitter:image" content="https://lh3.googleusercontent.com/d/12vJRrt-iUVutaLY29tE606ERqYh6Die8=w400"/>
 <!-- الموقع الجغرافي (يساعد البحث المحلي) -->
 <meta name="geo.region" content="YE-SA"/>
 <meta name="geo.placename" content="صنعاء"/>
@@ -1071,7 +1071,7 @@ img,video,iframe{max-width:100%;display:block}
     <div class="hdr-inner">
       <a href="#home" class="logo-link">
         <div class="logo-ring">
-          <img src="https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w200" alt="شعار المدرسة" loading="eager">
+          <img src="https://lh3.googleusercontent.com/d/12vJRrt-iUVutaLY29tE606ERqYh6Die8=w200" alt="شعار المدرسة" loading="eager">
         </div>
         <div>
           <div class="logo-text-ar">مدارس الإبداع والتميز الدولية</div>
@@ -1146,10 +1146,10 @@ img,video,iframe{max-width:100%;display:block}
 <!-- ══════════ HERO ══════════ -->
 <section id="home" class="hero">
   <div class="hero-track" id="heroTrack">
-    <div class="h-slide on"><img src="https://drive.google.com/thumbnail?id=1zT4bdv9pv_BX1JU_WdmznqeEGMJgDOM1&sz=w1920" alt="" loading="eager"></div>
-    <div class="h-slide"><img src="https://drive.google.com/thumbnail?id=1GkAM99BYRhyqJvv5ZZuW-LCNCtUnxHFZ&sz=w1920" alt="" loading="lazy"></div>
-    <div class="h-slide"><img src="https://drive.google.com/thumbnail?id=1ig5KjZHKpevcvSIb8lY3F02Xc-dx7AwO&sz=w1920" alt="" loading="lazy"></div>
-    <div class="h-slide"><img src="https://drive.google.com/thumbnail?id=10T4oMlVnowzFzT8N2oUnm6hHjjD2JV-L&sz=w1920" alt="" loading="lazy"></div>
+    <div class="h-slide on"><img src="https://lh3.googleusercontent.com/d/1zT4bdv9pv_BX1JU_WdmznqeEGMJgDOM1=w1920" alt="" loading="eager"></div>
+    <div class="h-slide"><img src="https://lh3.googleusercontent.com/d/1GkAM99BYRhyqJvv5ZZuW-LCNCtUnxHFZ=w1920" alt="" loading="lazy"></div>
+    <div class="h-slide"><img src="https://lh3.googleusercontent.com/d/1ig5KjZHKpevcvSIb8lY3F02Xc-dx7AwO=w1920" alt="" loading="lazy"></div>
+    <div class="h-slide"><img src="https://lh3.googleusercontent.com/d/10T4oMlVnowzFzT8N2oUnm6hHjjD2JV-L=w1920" alt="" loading="lazy"></div>
   </div>
   <div class="hero-fog"></div>
   <div class="hero-mesh"></div>
@@ -1435,7 +1435,7 @@ img,video,iframe{max-width:100%;display:block}
   <div class="wrap">
     <div class="fg">
       <div>
-        <div class="fb-logo"><img src="https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w200" alt="شعار" loading="lazy"></div>
+        <div class="fb-logo"><img src="https://lh3.googleusercontent.com/d/12vJRrt-iUVutaLY29tE606ERqYh6Die8=w200" alt="شعار" loading="lazy"></div>
         <div class="fb-name">مدارس الإبداع والتميز الدولية</div>
         <p class="fb-desc">صرح تعليمي رائد يهتم ببناء جيل مبدع ومتميز أخلاقياً وعلمياً، يحمل قيم الأصالة ويواكب متطلبات العصر الحديث.</p>
         <div class="fb-soc">
@@ -1743,6 +1743,26 @@ function renderNews(items) {
   g.innerHTML = h;
   animateCards(g);
   if (window._homeNewsDeep) _homeScrollToNews(window._homeNewsDeep);
+  _homeRecordViews(list);
+}
+
+/* تسجيل مشاهدة عامّة لكل خبر معروض (مرّة/زائر عبر localStorage) — يدخل إحصائيات الخبر */
+function _homeVisitorId() {
+  try {
+    var v = localStorage.getItem('home_visitor');
+    if (!v) { v = 'v' + Date.now() + '' + Math.floor(Math.random() * 100000); localStorage.setItem('home_visitor', v); }
+    return v;
+  } catch (e) { return 'v0'; }
+}
+function _homeRecordViews(list) {
+  if (!window._pubViewed) window._pubViewed = {};
+  var vid = _homeVisitorId();
+  for (var i = 0; i < list.length; i++) {
+    var id = String(list[i].id || '');
+    if (!id || window._pubViewed[id]) continue;
+    window._pubViewed[id] = 1;
+    try { google.script.run.recordPublicNewsView(id, vid); } catch (e) {}
+  }
 }
 
 /* بناء شرائح الوسائط داخل بطاقة الخبر (الفيديو افتراضيّ أولًا) */
@@ -1756,11 +1776,18 @@ function _homeMediaSlides(media, title) {
             + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">'
             + '<div style="width:56px;height:56px;border-radius:50%;background:rgba(232,56,79,.92);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;">▶</div></div></div>';
     } else {
-      inner = '<img src="' + esc(m.url) + '" alt="' + esc(title || '') + '" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
+      inner = '<img src="' + esc(m.url) + '" alt="' + esc(title || '') + '" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">' + _homeLogoBadge();
     }
     s += '<div class="hn-slide" style="position:absolute;inset:0;display:' + disp + ';">' + inner + '</div>';
   }
   return s;
+}
+
+/* شعار المدرسة (overlay) على صور أخبار الصفحة الرئيسية */
+function _homeLogoBadge() {
+  var lg = window._homeLogo;
+  if (!lg) return '';
+  return '<img src="' + esc(lg) + '" referrerpolicy="no-referrer" alt="" onerror="this.style.display=\'none\'" style="position:absolute;bottom:8px;left:8px;width:34px;height:34px;object-fit:contain;background:rgba(255,255,255,.9);border-radius:8px;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,.28);pointer-events:none;z-index:4">';
 }
 
 function _homeGalNav(gid, count) {
@@ -1775,7 +1802,7 @@ function _homeVideoPoster(url) {
     poster = '<img src="https://img.youtube.com/vi/' + esc(yt) + '/hqdefault.jpg" referrerpolicy="no-referrer" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
   } else {
     var d = url.match(/[?&]id=([a-zA-Z0-9_-]+)/) || url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (d) poster = '<img src="https://drive.google.com/thumbnail?id=' + d[1] + '&sz=w1000" referrerpolicy="no-referrer" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
+    if (d) poster = '<img src="https://lh3.googleusercontent.com/d/' + d[1] + '=w1000" referrerpolicy="no-referrer" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\'">';
   }
   return poster;
 }
@@ -1977,6 +2004,7 @@ function loadHomeBundle(){
       .withSuccessHandler(function(data){
         if(data){
           renderStats(data.stats);
+          window._homeLogo = (data.school && (data.school.logo || data.school.logo_url)) ? (data.school.logo || data.school.logo_url) : '';
           renderNews(data.news);
           renderImages(data.images);
           renderVideos(data.videos);
@@ -2088,7 +2116,7 @@ document.addEventListener('DOMContentLoaded',function(){
     tagline: 'مدرسة أهلية رائدة في صنعاء',
     description: 'مدارس الإبداع والتميز الدولية بصنعاء — صرح تعليمي رائد يقدّم مراحل رياض الأطفال والابتدائية والمتوسطة والثانوية، بأقسام منفصلة للبنين والبنات، ضمن منصة تعليمية ذكية متكاملة تبني جيلاً مبدعاً ومتميزاً أخلاقياً وعلمياً.',
     url: 'https://school-teacher-proxy.procorners-shop.workers.dev/home/index.html',
-    logo: 'https://drive.google.com/thumbnail?id=12vJRrt-iUVutaLY29tE606ERqYh6Die8&sz=w400',
+    logo: 'https://lh3.googleusercontent.com/d/12vJRrt-iUVutaLY29tE606ERqYh6Die8=w400',
     telephone: '+967775189922',
     email: 'info@ebdaa-tamayuz.edu',
     streetAddress: 'السنينة - حي الطيران',

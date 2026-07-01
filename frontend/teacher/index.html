@@ -1943,7 +1943,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 <div class="sidebar-section" id="socialSection" style="display:none;">
   <span class="sidebar-label">📱 التسويق الاجتماعي</span>
   <button class="sidebar-item" id="si-social" onclick="showSection('social')">
-    <span class="si-icon">📲</span> لوحة التحكم الاجتماعية
+    <span class="si-icon">📲</span> السوشل ميديا والنشر
   </button>
 </div>
 
@@ -2148,7 +2148,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         لوحة التحكم الاجتماعية — مدير/وكيل/الأنشطة فقط
+         السوشل ميديا والنشر — مدير/وكيل/الأنشطة فقط
     ═══════════════════════════════════════════════════════════════ -->
     <div id="social-section" style="display:none;" class="section">
 
@@ -2157,7 +2157,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <div style="display:flex;align-items:center;gap:12px;">
           <div style="width:40px;height:40px;background:#D4A537;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📱</div>
           <div>
-            <h2 style="margin:0;font-size:17px;color:#fff;">لوحة التحكم الاجتماعية</h2>
+            <h2 style="margin:0;font-size:17px;color:#fff;">السوشل ميديا والنشر</h2>
             <div style="font-size:12px;color:rgba(255,255,255,.7);" id="smm-school-label">مدارس الإبداع والتميز الدولية</div>
           </div>
         </div>
@@ -8392,6 +8392,7 @@ function renderNews() {
   _newsCache       = [];
   loadNewsPage(true);
   if (typeof loadPublicNewsRequests === 'function') loadPublicNewsRequests();
+  if (typeof _tcLoadSchoolLogo === 'function') _tcLoadSchoolLogo();
 }
 // ══════════════════════════════════════════════════════════════════
 // loadNewsPage — تحميل صفحة من الأخبار
@@ -8546,7 +8547,7 @@ function _newsFirstImageUrl(raw) {
         low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low) ||
         low.indexOf('.pdf') !== -1) continue;
     var d = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (d) return 'https://drive.google.com/thumbnail?id=' + d[1] + '&sz=w1000';
+    if (d) return 'https://lh3.googleusercontent.com/d/' + d[1] + '=w1000';
     return u;
   }
   return '';
@@ -8757,6 +8758,27 @@ function _tcPlayVideo(el) {
   el.innerHTML = inner; el.removeAttribute('onclick'); el.style.cursor = 'default';
 }
 
+// شعار المدرسة (overlay) على صور الأخبار — يُجلب مرّة ويُكاش
+function _tcToLh3(u) {
+  var s = String(u || ''), d = s.match(/[?&]id=([a-zA-Z0-9_-]+)/) || s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return d ? ('https://lh3.googleusercontent.com/d/' + d[1] + '=w200') : s;
+}
+function _tcLoadSchoolLogo() {
+  if (window._schoolLogo || !App.user || !App.user.schoolId) return;
+  try {
+    google.script.run
+      .withSuccessHandler(function (r) { if (r && r.logo) window._schoolLogo = _tcToLh3(r.logo); })
+      .withFailureHandler(function () {})
+      .getTeacherSchoolBrand(App.user.schoolId);
+  } catch (e) {}
+}
+function _tcLogoBadge() {
+  var lg = window._schoolLogo;
+  if (!lg) return '';
+  return '<img src="' + esc(lg) + '" referrerpolicy="no-referrer" alt="" onerror="this.style.display=\'none\'" ' +
+    'style="position:absolute;bottom:8px;left:8px;width:40px;height:40px;object-fit:contain;background:rgba(255,255,255,.88);border-radius:9px;padding:3px;box-shadow:0 2px 7px rgba(0,0,0,.28);pointer-events:none;z-index:4">';
+}
+
 function _tcNewsMediaHtml(rawAttach, newsId) {
   var parts = String(rawAttach || '').split(/[\r\n]+|\s*\|\s*/);
   var items = [];
@@ -8780,7 +8802,7 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
     } else if (/\.pdf(\?|$)/.test(low)) {
       items.push({ t: 'pdf', u: (drive && drive[1]) ? ('https://drive.google.com/file/d/' + drive[1] + '/view') : u });
     } else if (drive && drive[1]) {
-      items.push({ t: 'image', u: (low.indexOf('thumbnail') !== -1) ? u : ('https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w1000') });
+      items.push({ t: 'image', u: 'https://lh3.googleusercontent.com/d/' + drive[1] + '=w1000' });
     } else {
       items.push({ t: 'image', u: u });
     }
@@ -8797,13 +8819,13 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
       inner = '<div style="position:relative;display:flex;align-items:center;justify-content:center;width:100%">' +
         '<img src="' + esc(it.u) + '" loading="lazy" referrerpolicy="no-referrer" onclick="openLightbox(\'' + esc(it.u) + '\')" ' +
         'style="max-width:100%;max-height:min(70vh,430px);object-fit:contain;cursor:zoom-in;border-radius:6px" onerror="this.style.opacity=.25">' +
-        _zoom + _countBadge + '</div>';
+        _zoom + _countBadge + _tcLogoBadge() + '</div>';
     } else if (it.t === 'video') {
       var _vattr = (it.kind === 'drive') ? ('data-fid="' + esc(it.u) + '"') : ('data-vsrc="' + esc(it.u) + '"');
       // صورة مصغّرة للفيديو (إطار أول) بدل الشاشة السوداء
       var _vposter = '';
       if (it.kind === 'drive') {
-        _vposter = '<img src="https://drive.google.com/thumbnail?id=' + esc(it.u) + '&sz=w1000" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
+        _vposter = '<img src="https://lh3.googleusercontent.com/d/' + esc(it.u) + '=w1000" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
       } else if (it.kind === 'iframe') {
         var _ytm = String(it.u).match(/embed\/([a-zA-Z0-9_-]{11})/);
         if (_ytm) _vposter = '<img src="https://img.youtube.com/vi/' + _ytm[1] + '/hqdefault.jpg" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">';
@@ -9034,6 +9056,7 @@ function showNewsViewers(newsId, newsTeacherName) {
     var totalViews    = _inflateViews(r.viewsCount || 0);
     var totalLikes    = r.likesCount    || 0;
     var totalShares   = r.sharesCount   || 0;
+    var totalPublic   = r.publicViewsCount || 0;
  
     // ── مولّدات عناصر احترافية (أفتار + شارة نوع + اسم + وقت) ──
     function _statCard(num, label, c1, c2, icon) {
@@ -9074,6 +9097,7 @@ function showNewsViewers(newsId, newsTeacherName) {
       _statCard(teacherViews.length, 'معلمون شاهدوا', '#10b981', '#059669', '👨‍🏫') +
       _statCard(studentViews.length, 'طلاب شاهدوا', '#f59e0b', '#d97706', '🎒') +
       _statCard(totalShares, 'عدد المشاركات', '#8b5cf6', '#7c3aed', '📤') +
+      _statCard(totalPublic, 'مشاهدات عامة', '#0ea5e9', '#0369a1', '🌐') +
     '</div>';
 
     // ── قائمة المشاهدين ──────────────────────────────────────
@@ -11761,6 +11785,11 @@ function _setupPullToRefreshGuard() {
   }
   document.addEventListener('touchstart', function(e) {
     if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+    // لا تُطلق سحب-التحديث إن كانت القائمة الجانبية مفتوحة أو بدأ اللمس داخلها
+    // (تمرير الدرج لأعلى/أسفل ليس تحديثًا للصفحة)
+    var _sb = document.getElementById('sidebar');
+    if (_sb && _sb.classList.contains('open')) { tracking = false; return; }
+    if (e.target && e.target.closest && e.target.closest('#sidebar, .modal-backdrop, .modal-bg')) { tracking = false; return; }
     if (atTop()) { startY = e.touches[0].clientY; tracking = true; armed = false; }
     else { tracking = false; }
   }, { passive: true });
@@ -12565,7 +12594,7 @@ function drawTerm1SummaryTable(students) {
 function _rpt_clearCache() { _RPT_CACHE = null; }
 
 // ════════════════════════════════════════════════════════════════════
-//  لوحة التحكم الاجتماعية — Social Media Control Panel
+//  السوشل ميديا والنشر — Social Media Control Panel
 //  يتصل بـ CMS عبر /gas/cms بشكل مستقل عن callServer (teacher)
 // ════════════════════════════════════════════════════════════════════
 
