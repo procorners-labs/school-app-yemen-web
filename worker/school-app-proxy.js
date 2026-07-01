@@ -42,6 +42,10 @@ function jsonResponse(obj, status) {
   }));
 }
 
+// معالج HTMLRewriter: يضبط قيمة سمة على عنصر (لحقن وسوم OG لكل خبر)
+function _AttrSet(attr, val) { this.attr = attr; this.val = val; }
+_AttrSet.prototype.element = function (el) { if (this.val) el.setAttribute(this.attr, this.val); };
+
 export default {
   async fetch(request) {
     var url = new URL(request.url);
@@ -309,6 +313,28 @@ export default {
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else {
       headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    }
+
+    // حقن وسوم OG لكل خبر (?news=<id>) كي تُظهر تطبيقات المشاركة (واتساب/فيسبوك) صورة الخبر وعنوانه
+    var _newsId = url.searchParams.get('news');
+    if (_newsId && isHtml) {
+      try {
+        var _ogRes = await fetch(GAS.home, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, url.searchParams.get('school') || ''] })
+        });
+        var _ogJson = await _ogRes.json();
+        var _og = (_ogJson && _ogJson.result) ? _ogJson.result : _ogJson;
+        if (_og && _og.ok && (_og.image || _og.title)) {
+          return new HTMLRewriter()
+            .on('meta[property="og:title"]', new _AttrSet('content', _og.title))
+            .on('meta[property="og:description"]', new _AttrSet('content', _og.description))
+            .on('meta[property="og:image"]', new _AttrSet('content', _og.image))
+            .on('meta[name="twitter:image"]', new _AttrSet('content', _og.image))
+            .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
+        }
+      } catch (_ogErr) { /* تجاهل — نُعيد الصفحة بوسوم الهوية العامة */ }
     }
 
     return new Response(ghResp.body, {
