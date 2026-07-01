@@ -1462,6 +1462,8 @@ function _renderSchools(schools) {
     else { html += '<button class="btn btn-sm btn-success" onclick="schools_setActive(\'' + s.schoolId + '\',true)">✅ تفعيل</button>'; }
     html += '<button class="btn btn-sm btn-primary" onclick="schools_renew(\'' + s.schoolId + '\')">🔄 تجديد</button>';
     html += '<button class="btn btn-sm" style="background:#0288d1;color:#fff;" onclick="schools_downloadPackage(\'' + s.schoolId + '\',this)">📥 تنزيل البرنامج</button>';
+    html += '<button class="btn btn-sm" style="background:#ff9800;color:#fff;" onclick="schools_downloadTemplate(\'' + s.schoolId + '\',this)">⬇️ قالب البيانات</button>';
+    html += '<button class="btn btn-sm" style="background:#43a047;color:#fff;" onclick="schools_importTemplate(\'' + s.schoolId + '\',this)">📤 استيراد القالب</button>';
     html += '</div></td></tr>';
   }
   tbody.innerHTML = html;
@@ -1486,6 +1488,95 @@ function schools_downloadPackage(schoolId, btn) {
       alert('خطأ: ' + (err && err.message ? err.message : err));
     })
     .generateSchoolPackageProtected({ token: App.token, schoolId: schoolId });
+}
+
+// ── قالب بيانات المدرسة (6 أوراق بأمثلة): توليد/فتح + استيراد + بذر/تنظيف ──
+function schools_downloadTemplate(schoolId, btn) {
+  var orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ تجهيز...'; }
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (!res || !res.success) { alert('تعذّر توليد القالب: ' + ((res && res.error) || 'خطأ')); return; }
+      try { window.open(res.editUrl, '_blank'); } catch (e) {}
+      _tplModal(schoolId, res);
+    })
+    .withFailureHandler(function (err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      alert('خطأ: ' + (err && err.message ? err.message : err));
+    })
+    .generateSchoolTemplateProtected({ token: App.token, schoolId: schoolId });
+}
+
+function schools_importTemplate(schoolId, btn) {
+  if (!confirm('سيُستورَد محتوى القالب إلى بيانات المدرسة (بلا حذف؛ صفوف «مثال» تُتجاهَل). متابعة؟')) return;
+  var orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ استيراد...'; }
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (!res || !res.success) { alert('تعذّر الاستيراد: ' + ((res && res.error) || 'خطأ')); return; }
+      var w = (res.warnings && res.warnings.length) ? ('\n\nتنبيهات:\n- ' + res.warnings.join('\n- ')) : '';
+      alert('تم الاستيراد ✅\n' +
+        '• طلاب: +' + res.students.added + ' / تحديث ' + res.students.updated + '\n' +
+        '• معلّمون: +' + res.teachers.added + ' / تحديث ' + res.teachers.updated + '\n' +
+        '• رسوم: +' + res.fees.added + ' / تحديث ' + res.fees.updated + '\n' +
+        '• حسابات طلاب: +' + res.studentFinance.added + ' / تحديث ' + res.studentFinance.updated + '\n' +
+        '• جدول: +' + res.schedule.added + ' / تحديث ' + res.schedule.updated + w);
+      schools_load();
+    })
+    .withFailureHandler(function (err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      alert('خطأ: ' + (err && err.message ? err.message : err));
+    })
+    .importSchoolTemplateProtected({ token: App.token, schoolId: schoolId });
+}
+
+function schools_clearExamples(schoolId) {
+  if (!confirm('حذف كل صفوف الأمثلة «مثال» من بيانات المدرسة؟')) return;
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) { alert('تعذّر: ' + ((res && res.error) || 'خطأ')); return; }
+      alert('تم حذف ' + res.removed + ' صفّ مثال ✅');
+      schools_load();
+    })
+    .withFailureHandler(function (err) { alert('خطأ: ' + (err && err.message ? err.message : err)); })
+    .clearSchoolExamplesProtected({ token: App.token, schoolId: schoolId });
+}
+
+function schools_seedDefaults(schoolId) {
+  if (!confirm('بذر البيانات الافتراضية والأمثلة (رسوم لكل صف + أدوار + مدخلات جدول)؟ لا يحذف بياناتك.')) return;
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) { alert('تعذّر: ' + ((res && res.error) || 'خطأ')); return; }
+      var sd = res.seeded || {};
+      alert('تم البذر ✅\nرسوم: ' + (sd.fees || 0) + ' · أمثلة معلّمين: ' + (sd.teacherExamples || 0) + ' · أمثلة طلاب: ' + (sd.studentExamples || 0));
+    })
+    .withFailureHandler(function (err) { alert('خطأ: ' + (err && err.message ? err.message : err)); })
+    .seedSchoolDefaultsProtected({ token: App.token, schoolId: schoolId });
+}
+
+// مودال روابط القالب (فتح/تنزيل Excel/استيراد/بذر/تنظيف)
+function _tplModal(schoolId, res) {
+  var ex = document.getElementById('tpl-modal');
+  if (ex) { try { ex.parentNode.removeChild(ex); } catch (e) {} }
+  var d = document.createElement('div');
+  d.id = 'tpl-modal';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  d.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:22px;max-width:460px;width:92%;text-align:right;">' +
+      '<h3 style="margin:0 0 10px;">📋 قالب بيانات المدرسة</h3>' +
+      '<p style="color:#555;margin:0 0 14px;line-height:1.8;">افتح القالب واملأ أوراقه ببياناتك الحقيقية ثم اضغط «استيراد بيانات القالب». الأوراق الفارغة تعمل بالإعداد الافتراضي؛ صفوف «مثال» تُتجاهَل.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        '<a href="' + res.editUrl + '" target="_blank" rel="noopener" class="btn" style="background:#1a73e8;color:#fff;text-decoration:none;text-align:center;">📝 فتح القالب للتعبئة</a>' +
+        '<a href="' + res.xlsxUrl + '" target="_blank" rel="noopener" class="btn" style="background:#0f9d58;color:#fff;text-decoration:none;text-align:center;">⬇️ تنزيل نسخة Excel</a>' +
+        '<button class="btn" style="background:#43a047;color:#fff;" onclick="document.getElementById(\'tpl-modal\').remove();schools_importTemplate(\'' + schoolId + '\',null)">📤 استيراد بيانات القالب الآن</button>' +
+        '<button class="btn" style="background:#8e24aa;color:#fff;" onclick="schools_seedDefaults(\'' + schoolId + '\')">♻️ بذر الافتراضيات (لمدرسة قائمة)</button>' +
+        '<button class="btn" style="background:#e53935;color:#fff;" onclick="schools_clearExamples(\'' + schoolId + '\')">🧹 حذف صفوف الأمثلة</button>' +
+        '<button class="btn" style="background:#777;color:#fff;" onclick="document.getElementById(\'tpl-modal\').remove()">إغلاق</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(d);
 }
 
 function schools_showAdd() { document.getElementById('add-school-modal').style.display = 'flex'; document.getElementById('add-school-status').innerHTML = ''; }
