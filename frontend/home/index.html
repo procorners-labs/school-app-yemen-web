@@ -1712,11 +1712,11 @@ function animateCards(grid){
 function renderNews(items) {
   var g = $('dynamicNewsGrid');
   if (!g) return;
-  // اقتصر على الأخبار ذات الوسائط (صورة/فيديو) — الخادم يرشّح، وهذا احتياط
+  // الأخبار ذات الوسائط + النصية المؤهَّلة (isTextCard تُعرض كبطاقة غلاف مصمّمة) — الخادم يرشّح، وهذا احتياط
   var list = [];
   for (var k = 0; k < (items ? items.length : 0); k++) {
     var it = items[k];
-    if (it && ((it.media && it.media.length) || it.image)) list.push(it);
+    if (it && ((it.media && it.media.length) || it.image || it.isTextCard)) list.push(it);
   }
   // إزالة التكرار (نفس الخبر/الوسيط من عدّة مصادر)
   list = _homeDedupe(list, function (n) {
@@ -1735,11 +1735,18 @@ function renderNews(items) {
     var media = (n.media && n.media.length) ? n.media : (n.image ? [{ type: 'image', url: n.image }] : []);
     var sid = String(n.id || i).replace(/[^a-zA-Z0-9_-]/g, '');
     var gid = 'hnm-' + sid;
+    var isText = !media.length && n.isTextCard;
+    var thumbInner;
+    if (isText) {
+      thumbInner = _homeTextCover(n);
+    } else {
+      thumbInner = '<span class="cc-badge bg-news"><i class="fas fa-newspaper"></i> خبر</span>'
+                 + _homeMediaSlides(media, n.title)
+                 + (media.length > 1 ? _homeGalNav(gid, media.length) : '');
+    }
     h += '<article id="hn-' + esc(String(n.id || '')) + '" class="cc" tabindex="0" role="article">'
        + '<div class="cc-thumb hn-media" id="' + gid + '" data-cur="0" style="position:relative;height:225px;background:var(--bg2);overflow:hidden;">'
-       + '<span class="cc-badge bg-news"><i class="fas fa-newspaper"></i> خبر</span>'
-       + _homeMediaSlides(media, n.title)
-       + (media.length > 1 ? _homeGalNav(gid, media.length) : '')
+       + thumbInner
        + '</div>'
        + '<div class="cc-body"><h3 class="cc-title">' + esc(n.title || '') + '</h3>'
        + '<p class="cc-text">' + esc(n.content || '') + '</p>'
@@ -1794,6 +1801,32 @@ function _homeLogoBadge() {
   var lg = window._homeLogo;
   if (!lg) return '';
   return '<img src="' + esc(lg) + '" referrerpolicy="no-referrer" alt="" onerror="this.style.display=\'none\'" style="position:absolute;bottom:8px;left:8px;width:34px;height:34px;object-fit:contain;background:rgba(255,255,255,.9);border-radius:8px;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,.28);pointer-events:none;z-index:4">';
+}
+
+/* أنواع الخبر النصي (تسمية/لون/أيقونة SVG) — منقولة من قالب منشورات المدرسة (_build/social) */
+var _HOME_NEWS_TYPES = {
+  news:        { l:'خبر',      c:'#185FA5', i:'M4 6h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 6l0-1M8 10h8M8 14h5' },
+  event:       { l:'فعالية',   c:'#C2410C', i:'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18' },
+  achievement: { l:'إنجاز',    c:'#3B6D11', i:'M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3' },
+  announcement:{ l:'إعلان',    c:'#6D28D9', i:'M3 11l14-7v16L3 13zM17 8a3 3 0 0 1 0 8M6 13v5' },
+  greeting:    { l:'تهنئة',    c:'#BE185D', i:'M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4.5 12 7 12 7M12 7s3-5 5.5-2.5S12 7 12 7' },
+  enrollment:  { l:'التسجيل',  c:'#0F766E', i:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6' },
+  exams:       { l:'امتحانات', c:'#9A3412', i:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13l2 2 4-4' },
+  emergency:   { l:'تنبيه',    c:'#B91C1C', i:'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01' },
+  condolence:  { l:'تعزية',    c:'#44403C', i:'M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 22l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z' }
+};
+function _homeNewsTypeMeta(t) { return _HOME_NEWS_TYPES[t] || _HOME_NEWS_TYPES.news; }
+
+/* بطاقة غلاف مصمّمة لخبر نصّي بلا وسائط: تدرّج الهوية + أيقونة النوع + العنوان + الشعار */
+function _homeTextCover(n) {
+  var t = _homeNewsTypeMeta(n.type);
+  return '<span class="cc-badge" style="background:' + t.c + ';">' + esc(t.l) + '</span>'
+       + '<div style="position:absolute;inset:0;background:linear-gradient(150deg,#0f2545,#1149a3);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px 20px;color:#fff;">'
+       + '<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:.92;margin-bottom:10px;" aria-hidden="true"><path d="' + t.i + '"/></svg>'
+       + '<div style="font-weight:800;font-size:1.05rem;line-height:1.65;max-height:5em;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.3);">' + esc(n.title || '') + '</div>'
+       + (n.date ? '<div style="margin-top:8px;font-size:.72rem;opacity:.85;"><i class="fas fa-calendar-alt"></i> ' + esc(n.date) + '</div>' : '')
+       + '</div>'
+       + _homeLogoBadge();
 }
 
 function _homeGalNav(gid, count) {
