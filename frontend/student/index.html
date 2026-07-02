@@ -4161,7 +4161,17 @@ function loadNoteTypeOptions() {
       customOpt.textContent = '✍️ اكتب ملاحظتي بنفسي';
       sel.appendChild(customOpt);
     })
-    .withFailureHandler(function () { /* تجاهل صامت */ })
+    .withFailureHandler(function () {
+      // فشل تحميل الاقتراحات لا يجوز أن يمنع الإرسال كلياً — أبقِ خيار الكتابة
+      // الحرّة متاحاً دائماً كمخرج احتياطي (القائمة ستُعاد محاولتها في الجلسة التالية).
+      var sel = $('noteTypePreset');
+      if (sel && sel.options.length <= 1) {
+        var customOpt = document.createElement('option');
+        customOpt.value = '__custom__';
+        customOpt.textContent = '✍️ اكتب ملاحظتي بنفسي';
+        sel.appendChild(customOpt);
+      }
+    })
     .getNoteTypeOptions({ schoolId: APP.user.schoolId });
 }
 
@@ -4213,11 +4223,13 @@ function submitMyNote() {
       toast('فشل الإرسال: ' + (e.message || e), 'e');
     })
     .submitNote({
+    studentId: APP.user.id,
     studentName: APP.user.name,
     studentClass: APP.user.class,
     studentSection: APP.user.section,
     teacher: teacher,
     message: msg,
+    isCustom: isCustom,
     schoolId: APP.user.schoolId
 });
 }
