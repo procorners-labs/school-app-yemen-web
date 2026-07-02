@@ -15126,6 +15126,7 @@ function _tfLoad(noCache){
 
 function _tfRender(res){
   window._tfRes=res;            // تخزين للفلترة العميلة
+  _tfExpFilter='all';           // إعادة رسم كاملة ⇒ فلتر فئة المصروفات يعود متزامناً مع شريحة «الكل» المعروضة
   var k=res.kpi||{}, host=document.getElementById('dynamicContent');
   var net=k.net||0, netColor=net>=0?'#1a8d5f':'#c0392b', netWord=net>=0?'فائض':'عجز';
   var netReal=k.netReal||0, netRColor=netReal>=0?'#1a8d5f':'#c0392b', netRWord=netReal>=0?'فائض':'عجز';
@@ -15660,12 +15661,14 @@ function _tfAlerts(alerts){
   return h+'</div>';
 }
 
-// أزرار فلترة فئات المصروفات
+// أزرار فلترة فئات المصروفات — الشريحة النشطة تُشتق من _tfExpFilter نفسه
+// (مصدر الحقيقة الوحيد) بدل قيمة 'all' ثابتة، كي لا تنحرف الحالة المرئية
+// عن حالة الفلترة الفعلية عند إعادة الرسم.
 function _tfChips(){
   var cats=[['all','الكل'],['operational','تشغيلية'],['transfer','حوالات/إرجاعات'],['salary','رواتب وسحوبات'],['supply','توريد (تسليم للمدير)'],['prepaid','مدفوعات مسبقة'],['uncat','غير مصنّف']];
   var s='';
   for(var i=0;i<cats.length;i++){
-    s+='<button class="tf-tab'+(cats[i][0]==='all'?' active':'')+'" id="tf-chip-'+cats[i][0]+'" onclick="_tfFilterExp(\''+cats[i][0]+'\')">'+_tfEsc(cats[i][1])+'</button>';
+    s+='<button class="tf-tab'+(cats[i][0]===_tfExpFilter?' active':'')+'" id="tf-chip-'+cats[i][0]+'" onclick="_tfFilterExp(\''+cats[i][0]+'\')">'+_tfEsc(cats[i][1])+'</button>';
   }
   return s;
 }
