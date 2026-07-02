@@ -8424,24 +8424,30 @@ function loadNewsPage(isFirst) {
     pageSize : _newsPageSize
   };
  
-  callServer('getAllNewsProtected', reqParams, 'news_page_' + _newsCurrentPage, 120, function(r){
+  // مفتاح الكاش يشمل الفلاتر — كان «news_page_N» فقط فيعيد نتائج فلاتر قديمة لنفس الصفحة
+  var _ck = 'news_p' + _newsCurrentPage + '_' +
+            [reqParams.grade, reqParams.section, reqParams.sortOrder, reqParams.dateFrom,
+             reqParams.dateTo, reqParams.teacher, reqParams.pageSize].join('|');
+  callServer('getAllNewsProtected', reqParams, _ck, 120, function(r){
     if (!r || !r.success) {
       if (area) area.innerHTML =
         '<div class="empty-state"><div class="es-icon">❌</div>' +
         '<div class="es-title">' + (r ? r.error : 'خطأ في التحميل') + '</div></div>';
       return;
     }
- 
+
     var items = r.news || [];
     _newsTotalCount = r.total  || 0;
     _newsHasMore    = r.hasMore || false;
- 
+
     if (isFirst) _newsCache = items;
     else {
       for (var i = 0; i < items.length; i++) _newsCache.push(items[i]);
     }
- 
-    renderNewsList(_newsCache, isFirst);
+
+    // «تحميل المزيد»: نمرّر عناصر الصفحة الجديدة فقط — تمرير الكاش كاملاً كان يُكرّر
+    // كل الأخبار السابقة عند كل إلحاق (خلل «تحميل المزيد»)
+    renderNewsList(isFirst ? _newsCache : items, isFirst);
  
     var loadMoreWrap = document.getElementById('newsLoadMoreWrap');
     if (loadMoreWrap) {
@@ -8517,31 +8523,89 @@ function shareNews(newsId) {
   var title = 'خبر من ' + (owner || 'المدرسة');
   var snippet = body.length > 500 ? (body.substring(0, 497) + '…') : body;
   var text = snippet + (owner ? '\n— ' + owner : '') + '\n' + url;
-  var imgUrl = item ? _newsFirstImageUrl(item.attachments) : '';
-  var imgFileId = item ? _newsFirstImageFileId(item.attachments) : '';
-  // صور Drive تُجلب عبر وسيط الـWorker (يضبط CORS) كي يُبنى الـblob؛ lh3 يبقى للعرض فقط
-  var fetchUrl = imgFileId ? _shareImgProxy(imgFileId) : imgUrl;
-
   function _afterShare() {
     try { callServer('recordNewsShareProtected', { newsId: newsId }, function(){}, function(){}); } catch (e) {}
   }
 
-  // محاولة إرسال الصورة نفسها مع النصّ (واتساب/غيره) عبر Web Share Level 2
-  if (navigator.share && fetchUrl && typeof fetch === 'function' && typeof File === 'function') {
-    fetch(fetchUrl).then(function (res) { return res.blob(); }).then(function (blob) {
-      var btype = (blob && blob.type && blob.type.indexOf('image/') === 0) ? blob.type : 'image/jpeg';
-      var file = new File([blob], 'news.jpg', { type: btype });
-      var payload = { title: title, text: text, files: [file] };
-      if (navigator.canShare && !navigator.canShare(payload)) throw new Error('files-unsupported');
-      return navigator.share(payload).then(function () { _afterShare(); });
-    })['catch'](function (err) {
-      if (err && err.name === 'AbortError') return;      // ألغى المستخدم
-      _shareTextOnly(title, text, url, _afterShare);       // فشل الصورة (CORS/غير مدعوم) ⇒ نصّ+رابط
-    });
-  } else {
-    // WebView (بلا navigator.share) ⇒ قائمة مشاركة تفتح التطبيقات وتخرج
+  // مشاركة الوسائط نفسها كملفات (صور/فيديو/PDF) — لا الرابط. النصّي يُحوَّل لصورة غلاف مولّدة.
+  var fileText = snippet + (owner ? '\n— ' + owner : '');   // نصّ المرافق للملفات (بلا رابط)
+  var canFiles = !!(navigator.share && typeof fetch === 'function' && typeof File === 'function');
+  if (!canFiles) {
+    // WebView بلا navigator.share ⇒ قائمة مشاركة (نص + رابط)
     _shareSheet(title, text, url, _afterShare);
+    return;
   }
+  var mediaUrls = item ? _newsParseMedia(item.attachments) : [];
+  if (!mediaUrls.length) {
+    // خبر نصّي: ولّد صورة الغلاف المصمّم وشاركها كملف
+    _tcTextCoverBlob(item, function (blob) {
+      if (blob) {
+        _shareFilesOrFallback([new File([blob], 'news-' + newsId + '.png', { type: 'image/png' })],
+                              title, fileText, text, url, _afterShare);
+      } else {
+        _shareTextOnly(title, text, url, _afterShare);
+      }
+    });
+    return;
+  }
+  _collectShareFiles(mediaUrls, function (files) {
+    if (files.length) _shareFilesOrFallback(files, title, fileText, text, url, _afterShare);
+    else _shareTextOnly(title, text, url, _afterShare);   // تعذّر الجلب (CORS/حجم) ⇒ نصّ+رابط
+  });
+}
+
+// مشاركة ملفات عبر Web Share Level 2 مع سلسلة تراجع كاملة
+function _shareFilesOrFallback(files, title, fileText, textWithUrl, url, after) {
+  var payload = { title: title, text: fileText, files: files };
+  try {
+    if (navigator.canShare && !navigator.canShare(payload)) {
+      _shareTextOnly(title, textWithUrl, url, after);
+      return;
+    }
+  } catch (e) {}
+  navigator.share(payload).then(function () { if (after) after(); })
+    ['catch'](function (err) {
+      if (err && err.name === 'AbortError') return;        // ألغى المستخدم
+      _shareTextOnly(title, textWithUrl, url, after);
+    });
+}
+
+// جلب وسائط الخبر كملفات مشاركة: Drive عبر وسيط الـWorker (CORS)؛ حدود حجم/عدد لحماية الذاكرة
+var _SHARE_MAX_FILE  = 45 * 1024 * 1024;   // 45MB لكل ملف
+var _SHARE_MAX_TOTAL = 90 * 1024 * 1024;   // 90MB إجمالاً
+var _SHARE_MAX_COUNT = 10;
+function _shareMediaKind(u) {
+  var low = String(u || '').toLowerCase();
+  if (low.indexOf('youtube.com') !== -1 || low.indexOf('youtu.be') !== -1 || low.indexOf('vimeo.com') !== -1) return 'link';
+  if (low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low)) return 'video';
+  if (/\.pdf(\?|$)/.test(low) || low.indexOf('.pdf') !== -1) return 'pdf';
+  return 'image';
+}
+function _shareMediaFetchUrl(u) {
+  var d = String(u).match(/[?&]id=([a-zA-Z0-9_-]+)/) || String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (d && d[1]) return _shareImgProxy(d[1]);   // Drive ⇒ وسيط الـWorker (يبثّ الملف الأصلي مع CORS)
+  return u;
+}
+function _collectShareFiles(urls, done) {
+  var out = [], total = 0, idx = 0;
+  function next() {
+    if (idx >= urls.length || out.length >= _SHARE_MAX_COUNT) { done(out); return; }
+    var u = urls[idx++];
+    var kind = _shareMediaKind(u);
+    if (kind === 'link') { next(); return; }               // يوتيوب/فيميو لا يُجلبان كملف
+    fetch(_shareMediaFetchUrl(u)).then(function (res) {
+      if (!res || !res.ok) throw new Error('http');
+      return res.blob();
+    }).then(function (blob) {
+      if (!blob || !blob.size || blob.size > _SHARE_MAX_FILE || (total + blob.size) > _SHARE_MAX_TOTAL) { next(); return; }
+      var mime = blob.type || (kind === 'video' ? 'video/mp4' : (kind === 'pdf' ? 'application/pdf' : 'image/jpeg'));
+      var ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '') || 'bin';
+      total += blob.size;
+      out.push(new File([blob], 'news-media-' + (out.length + 1) + '.' + ext, { type: mime }));
+      next();
+    })['catch'](function () { next(); });
+  }
+  next();
 }
 
 // وسيط جلب صورة Drive عبر الـWorker (CORS مسموح) لبناء ملفّ المشاركة
@@ -8764,7 +8828,10 @@ function decideNewsPublic(id, decision) {
 function renderNewsList(list, isFirst) {
   var newsArea = document.getElementById('newsListArea');
   if (!newsArea) return;
- 
+
+  // إلحاق صفحة بلا عناصر جديدة ⇒ لا تمسح القائمة الحالية
+  if (!isFirst && (!list || list.length === 0)) return;
+
   if (!list || list.length === 0) {
     newsArea.innerHTML =
       '<div class="empty-state">' +
@@ -8889,6 +8956,163 @@ function _tcLogoBadge() {
     'style="position:absolute;bottom:8px;left:8px;width:40px;height:40px;object-fit:contain;background:rgba(255,255,255,.88);border-radius:9px;padding:3px;box-shadow:0 2px 7px rgba(0,0,0,.28);pointer-events:none;z-index:4">';
 }
 
+/* ══════ الخبر النصّي كبطاقة غلاف مصمّمة (أنواع/تصنيف/غلاف) — منقول من _build/social ══════ */
+var _TC_NEWS_TYPES = {
+  news:        { l:'خبر',      c:'#185FA5', i:'M4 6h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 6l0-1M8 10h8M8 14h5' },
+  event:       { l:'فعالية',   c:'#C2410C', i:'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18' },
+  achievement: { l:'إنجاز',    c:'#3B6D11', i:'M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3' },
+  announcement:{ l:'إعلان',    c:'#6D28D9', i:'M3 11l14-7v16L3 13zM17 8a3 3 0 0 1 0 8M6 13v5' },
+  greeting:    { l:'تهنئة',    c:'#BE185D', i:'M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4.5 12 7 12 7M12 7s3-5 5.5-2.5S12 7 12 7' },
+  enrollment:  { l:'التسجيل',  c:'#0F766E', i:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6' },
+  exams:       { l:'امتحانات', c:'#9A3412', i:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13l2 2 4-4' },
+  emergency:   { l:'تنبيه',    c:'#B91C1C', i:'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01' },
+  condolence:  { l:'تعزية',    c:'#44403C', i:'M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 22l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z' }
+};
+var _TC_NEWS_TYPE_RULES = [
+  ['condolence',   /تعزية|ننعى|ينعى|نعى|وفاة|المغفور|بالغ الحزن|رحمه الله|إنا لله/],
+  ['greeting',     /عيد|تهنئة|تهاني|مبارك|مبروك|بمناسبة|كل عام|نهنئ/],
+  ['enrollment',   /تسجيل|التسجيل|قبول|الالتحاق|احجز|حجز مقعد/],
+  ['exams',        /امتحان|اختبار|الاختبارات|نتائج|النتائج|الدرجات|كشوف/],
+  ['achievement',  /الشكر والتقدير|شكر(اً|ًا)? من أعماق|بجزيل الشكر|بوركت جهود/],
+  ['event',        /حفل|فعالية|احتفال|مسابقة|رحلة|زيارة|معرض|بازار|تكريم/],
+  ['announcement', /دوام|إجازة|اجازة|توزيع الكتب|الكتب|تعميم|جدول|موعد|تعلن|إعلان/]
+];
+function _tcNewsCardType(text) {
+  var t = String(text || '');
+  for (var i = 0; i < _TC_NEWS_TYPE_RULES.length; i++) {
+    if (_TC_NEWS_TYPE_RULES[i][1].test(t)) return _TC_NEWS_TYPE_RULES[i][0];
+  }
+  return 'news';
+}
+function _tcNewsTypeMeta(t) { return _TC_NEWS_TYPES[t] || _TC_NEWS_TYPES.news; }
+
+/* بطاقة غلاف مصمّمة داخل بطاقة الخبر (للخبر النصّي بلا وسائط) */
+function _tcTextCover(n) {
+  var t = _tcNewsTypeMeta(_tcNewsCardType(n.news));
+  var first = String(n.news || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
+  if (first.length > 100) first = first.substring(0, 97) + '…';
+  return '<div style="position:relative;margin:0 16px 12px;min-height:240px;border-radius:12px;overflow:hidden;' +
+      'background:linear-gradient(150deg,#0f2545,#1149a3);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:26px 24px;color:#fff;">' +
+    '<span style="position:absolute;top:10px;right:10px;background:' + t.c + ';color:#fff;font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:12px;">' + t.l + '</span>' +
+    '<svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:.92;margin-bottom:10px;" aria-hidden="true"><path d="' + t.i + '"/></svg>' +
+    '<div style="font-weight:800;font-size:1.08rem;line-height:1.7;max-height:5.2em;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.3);max-width:640px;">' + esc(first) + '</div>' +
+    (n.date ? '<div style="margin-top:8px;font-size:.72rem;opacity:.85;">📅 ' + esc(formatDate(n.date)) + '</div>' : '') +
+    _tcLogoBadge() +
+  '</div>';
+}
+
+/* توليد صورة PNG للغلاف المصمّم (canvas) — تُستخدم عند مشاركة خبر نصّي كملف صورة */
+function _tcTextCoverBlob(item, cb) {
+  try {
+    var W = 1080, H = 1350;
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d');
+    var t = _tcNewsTypeMeta(_tcNewsCardType(item && item.news));
+    var schoolName = '';
+    try { var bn = document.querySelector('.school-brand-name'); schoolName = bn ? String(bn.textContent || '').trim() : ''; } catch (e0) {}
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    function wrapText(text, maxW, font) {
+      ctx.font = font;
+      var words = String(text || '').split(/\s+/), lines = [], line = '';
+      for (var i = 0; i < words.length; i++) {
+        var probe = line ? (line + ' ' + words[i]) : words[i];
+        if (ctx.measureText(probe).width > maxW && line) { lines.push(line); line = words[i]; }
+        else { line = probe; }
+      }
+      if (line) lines.push(line);
+      return lines;
+    }
+    var _painted = false;
+    function paint(logoImg) {
+      if (_painted) return; _painted = true;
+      // الخلفية
+      var g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, '#0f2545'); g.addColorStop(1, '#1149a3');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      try { ctx.direction = 'rtl'; } catch (e1) {}
+      // اسم المدرسة أعلى
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 44px Tahoma, "Segoe UI", Arial, sans-serif';
+      if (schoolName) ctx.fillText(schoolName, W / 2, 106, W - 160);
+      // البطاقة البيضاء
+      roundRect(70, 190, W - 140, H - 420, 34);
+      ctx.fillStyle = '#ffffff'; ctx.fill();
+      // شريط علوي بلون النوع + التسمية
+      ctx.fillStyle = t.c;
+      roundRect(W / 2 - 130, 240, 260, 62, 31); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 34px Tahoma, "Segoe UI", Arial, sans-serif';
+      ctx.fillText(t.l, W / 2, 273);
+      // أيقونة النوع (مسار SVG عبر Path2D)
+      try {
+        ctx.save();
+        ctx.translate(W / 2 - 60, 350); ctx.scale(5, 5);
+        ctx.strokeStyle = t.c; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.stroke(new Path2D(t.i));
+        ctx.restore();
+      } catch (e2) { try { ctx.restore(); } catch (e3) {} }
+      // العنوان (أول سطر) ملفوفاً
+      var first = String(item && item.news || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
+      var titleLines = wrapText(first, W - 300, '800 62px Tahoma, "Segoe UI", Arial, sans-serif');
+      if (titleLines.length > 6) { titleLines = titleLines.slice(0, 6); titleLines[5] += '…'; }
+      ctx.fillStyle = '#0f2545';
+      ctx.font = '800 62px Tahoma, "Segoe UI", Arial, sans-serif';
+      var ty = 560;
+      for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, ty, W - 260); ty += 92; }
+      // بقية النص (سطران)
+      var rest = String(item && item.news || '').split(/[\r\n]+/).slice(1).join(' ').replace(/\s+/g, ' ').trim();
+      if (rest) {
+        var bodyLines = wrapText(rest, W - 320, '400 36px Tahoma, "Segoe UI", Arial, sans-serif');
+        if (bodyLines.length > 3) { bodyLines = bodyLines.slice(0, 3); bodyLines[2] += '…'; }
+        ctx.fillStyle = '#475569';
+        ctx.font = '400 36px Tahoma, "Segoe UI", Arial, sans-serif';
+        for (var bi = 0; bi < bodyLines.length; bi++) { ctx.fillText(bodyLines[bi], W / 2, ty + 10, W - 300); ty += 56; }
+      }
+      // التذييل: التاريخ
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 36px Tahoma, "Segoe UI", Arial, sans-serif';
+      if (item && item.date) ctx.fillText('📅 ' + formatDate(item.date), W / 2, H - 130);
+      // الشعار (إن حُمّل بنجاح مع CORS)
+      if (logoImg) {
+        try {
+          ctx.save();
+          ctx.beginPath(); ctx.arc(W / 2, 190, 74, 0, Math.PI * 2); ctx.closePath();
+          ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.clip();
+          ctx.drawImage(logoImg, W / 2 - 62, 128, 124, 124);
+          ctx.restore();
+        } catch (e4) { try { ctx.restore(); } catch (e5) {} }
+      }
+      // canvas ملوّث (شعار بلا CORS) ⇒ toBlob يرمي تزامنياً — لا تعلّق المشاركة
+      try {
+        if (cv.toBlob) cv.toBlob(function (blob) { cb(blob || null); }, 'image/png');
+        else cb(null);
+      } catch (eBlob) { cb(null); }
+    }
+    var lg = window._schoolLogo;
+    if (lg) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = function () { paint(img); };
+      img.onerror = function () { paint(null); };
+      img.src = lg;
+      // مهلة أمان: لا ننتظر الشعار أكثر من 4 ثوانٍ
+      setTimeout(function () { if (!img.complete) { img.onload = img.onerror = null; paint(null); } }, 4000);
+    } else {
+      paint(null);
+    }
+  } catch (e) { cb(null); }
+}
+
 function _tcNewsMediaHtml(rawAttach, newsId) {
   var parts = String(rawAttach || '').split(/[\r\n]+|\s*\|\s*/);
   var items = [];
@@ -8974,6 +9198,8 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
 function _buildNewsCard_Teacher(n) {
   // [fix] يدعم عدة صور + فيديو + PDF معاً (كان يعرض أول رابط فقط)
   var attachHtml = _tcNewsMediaHtml(n.attachments, n.id);
+  // خبر نصّي بلا وسائط ⇒ بطاقة غلاف مصمّمة بهوية المدرسة (ديناميكي لكل الأنواع)
+  var isTextOnly = !attachHtml;
 
   // ── بيانات الإعجاب والمشاهدات ──────────────────────────
   var views      = _inflateViews(n.viewsCount || 0);
@@ -9013,6 +9239,9 @@ function _buildNewsCard_Teacher(n) {
           scopeLabel +
         '</span>' +
       '</div>' +
+
+      // الغلاف المصمّم (للخبر النصّي فقط) ثم النص ثم المرفق
+      (isTextOnly ? _tcTextCover(n) : '') +
 
       // النص
       '<div style="padding:0 16px 14px;font-size:.9rem;line-height:1.75;white-space:pre-wrap;word-break:break-word;">' +
