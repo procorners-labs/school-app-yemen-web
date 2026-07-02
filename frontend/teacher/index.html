@@ -1611,6 +1611,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .rpt-week-col .seg.h { background: var(--primary); }
 .rpt-week-col .seg.n { background: var(--secondary); }
 .rpt-week-col .seg.v { background: var(--danger); }
+.rpt-week-col .seg.m { background: var(--success); }
 .rpt-week-col .lbl { font-size: .68rem; color: var(--text-muted); }
 .rpt-week-legend { display: flex; gap: 12px; margin-top: 10px; font-size: .78rem; flex-wrap: wrap; justify-content: center; }
 .rpt-week-legend span { display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
@@ -2381,7 +2382,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div id="vioStep2" style="display:none">
         <div class="alert alert-info mb-3" id="vioSelectedStudent"></div>
-        <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label><select class="form-select" id="vioType"></select></div>
+        <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label>
+          <input class="form-control" id="vioType" list="vioTypeList" placeholder="اكتب نوع السلوك أو اختر من الاقتراحات...">
+          <datalist id="vioTypeList"></datalist>
+        </div>
+        <div class="form-group mb-3"><label class="form-label">القطبية (اختياري — تُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="tf-tab" id="vioPolBtnMerit" onclick="vioSetPolarity('merit')">✅ تعزيز</button>
+            <button type="button" class="tf-tab" id="vioPolBtnViolation" onclick="vioSetPolarity('violation')">⚠️ ملاحظة</button>
+          </div>
+        </div>
         <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد</label><textarea class="form-control" id="vioReply" placeholder="ملاحظات إضافية..." rows="3"></textarea></div>
         <button class="btn btn-secondary btn-sm" onclick="vioBackToSearch()">← العودة للبحث</button>
       </div>
@@ -2402,7 +2412,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </div>
     <div class="modal-body">
       <div class="alert alert-info mb-3" id="bulkVioCount"></div>
-      <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label><select class="form-select" id="bulkVioType"></select></div>
+      <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label>
+        <input class="form-control" id="bulkVioType" list="bulkVioTypeList" placeholder="اكتب نوع السلوك أو اختر من الاقتراحات...">
+        <datalist id="bulkVioTypeList"></datalist>
+      </div>
+      <div class="form-group mb-3"><label class="form-label">القطبية (اختياري — تُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="tf-tab" id="bulkVioPolBtnMerit" onclick="bulkVioSetPolarity('merit')">✅ تعزيز</button>
+          <button type="button" class="tf-tab" id="bulkVioPolBtnViolation" onclick="bulkVioSetPolarity('violation')">⚠️ ملاحظة</button>
+        </div>
+      </div>
       <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد (تُطبَّق على الجميع)</label><textarea class="form-control" id="bulkVioReply" placeholder="مثال: متأخر عن الطابور" rows="3"></textarea></div>
     </div>
     <div class="modal-footer">
@@ -3069,6 +3088,17 @@ function fillSelect(id, arr, placeholder, selectedVal, allowAll) {
   if (el) {
     el.innerHTML = buildSelectOptions(arr, placeholder, selectedVal, allowAll);
   }
+}
+
+// يعبّئ <datalist> باقتراحات — الحقل المرتبط <input list="..."> يبقى نصاً حراً دائماً.
+function fillDatalist(id, arr) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var h = '';
+  for (var i = 0; i < (arr || []).length; i++) {
+    h += '<option value="' + escapeHtml(arr[i]) + '"></option>';
+  }
+  el.innerHTML = h;
 }
 
 function isAllFilter(val) {
@@ -7921,7 +7951,11 @@ var _vioTotalPages     = 1;     // إجمالي عدد الصفحات
 
 // دالة مساعدة: تحدد لون الشارة بناءً على نوع السلوك (إيجابي/سلبي/محايد)
 //   إيجابي = أخضر · سلبي = أحمر · غير ذلك (ملاحظة/محايد) = كهرماني — لا أحمر افتراضي.
-function _vioBadgeClass(type) {
+//   polarity: قطبية صريحة اختارها المعلم ('merit'/'violation') إن وُجدت — لها الأولوية
+//   على تخمين الكلمات المفتاحية أدناه (يحترم اختيار المعلم لا يخمّنه).
+function _vioBadgeClass(type, polarity) {
+  if (polarity === 'merit') return 'badge-success';
+  if (polarity === 'violation') return 'badge-danger';
   var t = _tcNorm(type || '');
   var pos = ['تميز', 'مشاركة', 'انجاز', 'إنجاز', 'تعاون', 'مثالي', 'حضور', 'انضباط', 'ابداع', 'إبداع', 'ابتكار', 'تفوق', 'تقدير', 'اجتهاد', 'تطوع', 'مساعدة', 'احترام', 'نظافة', 'التزام', 'نشاط'];
   for (var i = 0; i < pos.length; i++) {
@@ -8065,7 +8099,7 @@ function renderViolationsPage() {
               '</td>' +
               '<td style="padding:10px;text-align:center;">' + escapeHtml(v.grade || '—') + '</td>' +
               '<td style="padding:10px;text-align:center;">' + escapeHtml(v.section || '—') + '</td>' +
-              '<td style="padding:10px;"><span class="badge ' + _vioBadgeClass(v.violation) + '">' + escapeHtml(v.violation || '—') + '</span></td>' +
+              '<td style="padding:10px;"><span class="badge ' + _vioBadgeClass(v.violation, v.polarity) + '">' + escapeHtml(v.violation || '—') + '</span></td>' +
               '<td style="padding:10px;text-align:center;font-size:.82rem;">' + formatDate(v.date) + '</td>' +
               '<td style="padding:10px;text-align:center;">' + 
                 (v.reply && v.reply.trim() ? '<span class="badge badge-success">💬 ' + escapeHtml(v.reply.substring(0,20)) + '...</span>' : '<span class="badge" style="background:#eef2ff;">—</span>') +
@@ -8118,12 +8152,23 @@ function openViolationModal() {
   document.getElementById('vioSaveBtn').style.display = 'none';
   document.getElementById('vioSearchInput').value = '';
   document.getElementById('vioStudentResults').innerHTML = '';
-  
-  // تعبئة قائمة أنواع السلوك
+
+  // تعبئة اقتراحات نوع السلوك (نص حر — القائمة اقتراح لا إلزام)
   var violationsList = (App.lists && App.lists.violations) ? App.lists.violations : [];
-  fillSelect('vioType', violationsList, 'اختر نوع السلوك');
+  fillDatalist('vioTypeList', violationsList);
+  var vioTypeEl = document.getElementById('vioType'); if (vioTypeEl) vioTypeEl.value = '';
   document.getElementById('vioReply').value = '';
+  vioSetPolarity('');
   openModal('violationModal');
+}
+
+// القطبية الصريحة التي يختارها الأستاذ لهذا التسجيل: 'merit' | 'violation' | '' (اقتراح تلقائي).
+var _vioPolarity = '';
+function vioSetPolarity(val) {
+  _vioPolarity = (_vioPolarity === val) ? '' : val;
+  var m = document.getElementById('vioPolBtnMerit'), v = document.getElementById('vioPolBtnViolation');
+  if (m) m.classList.toggle('active', _vioPolarity === 'merit');
+  if (v) v.classList.toggle('active', _vioPolarity === 'violation');
 }
 
 // --- 7. البحث عن طالب (محسّن مع تخزين مؤقت وترتيب أبجدي) ---
@@ -8247,10 +8292,10 @@ function saveViolation() {
     toast('يرجى اختيار طالب أولاً', 'warning');
     return;
   }
-  var type = document.getElementById('vioType').value;
+  var type = document.getElementById('vioType').value.trim();
   var reply = document.getElementById('vioReply').value;
   if (!type) {
-    toast('يرجى اختيار نوع السلوك', 'warning');
+    toast('يرجى كتابة نوع السلوك', 'warning');
     return;
   }
 
@@ -8259,7 +8304,8 @@ function saveViolation() {
     studentRow: s.rowIndex,
     violation: type,
     teacherName: App.user.teacherName,
-    reply: reply.trim()
+    reply: reply.trim(),
+    polarity: _vioPolarity
   }, function(r) {
     hideLoading();
     if (r && r.success) {
@@ -12715,7 +12761,7 @@ function _rpt_renderTeacher(d) {
   html += _rpt_card('📊', 'متوسط الدرجات حسب المادة',
     _rpt_barChart(d.charts.gradesBySubject, 'value', 100, 'success'));
   html += _rpt_card('📋', 'السجل السلوكي حسب الفصل',
-    _rpt_barChart(d.charts.violationsByClass, 'value', null, 'primary'));
+    _rpt_barChart(d.charts.violationsByClass, 'value', null, 'danger'));
   html += '</div>';
  
   html += _rpt_card('📈', 'نشاطي خلال 7 أيام',
@@ -12790,9 +12836,11 @@ function _rpt_weekChart(days) {
     var hH = d.total ? Math.round((d.homework   / d.total) * totalH) : 0;
     var nH = d.total ? Math.round((d.news       / d.total) * totalH) : 0;
     var vH = d.total ? Math.round((d.violations / d.total) * totalH) : 0;
+    var mH = d.total ? Math.round(((d.merits||0) / d.total) * totalH) : 0;
     html += '<div class="rpt-week-col" title="' + d.label + ': ' + d.total + ' نشاط">' +
               '<div class="stack">' +
                 (vH > 0 ? '<div class="seg v" style="height:' + vH + '%"></div>' : '') +
+                (mH > 0 ? '<div class="seg m" style="height:' + mH + '%"></div>' : '') +
                 (nH > 0 ? '<div class="seg n" style="height:' + nH + '%"></div>' : '') +
                 (hH > 0 ? '<div class="seg h" style="height:' + hH + '%"></div>' : '') +
               '</div>' +
@@ -12803,7 +12851,8 @@ function _rpt_weekChart(days) {
   html += '<div class="rpt-week-legend">' +
             '<span><span class="dot" style="background:var(--primary)"></span>واجبات</span>' +
             '<span><span class="dot" style="background:var(--secondary)"></span>أخبار</span>' +
-            '<span><span class="dot" style="background:var(--primary)"></span>سجل سلوكي</span>' +
+            '<span><span class="dot" style="background:var(--danger)"></span>مخالفات</span>' +
+            '<span><span class="dot" style="background:var(--success)"></span>تعزيزات</span>' +
           '</div>';
   return html;
 }
@@ -13549,20 +13598,31 @@ function sdir_bulkBehavior() {
   var cnt = document.getElementById('bulkVioCount');
   if (cnt) cnt.innerHTML = '📋 سيُسجَّل السلوك لـ <strong>' + rows.length + '</strong> طالب محدّد.';
   var list = (App.lists && App.lists.violations) ? App.lists.violations : [];
-  fillSelect('bulkVioType', list, 'اختر نوع السلوك');
+  fillDatalist('bulkVioTypeList', list);
+  var typeEl = document.getElementById('bulkVioType'); if (typeEl) typeEl.value = '';
   var rep = document.getElementById('bulkVioReply'); if (rep) rep.value = '';
+  bulkVioSetPolarity('');
   openModal('bulkVioModal');
+}
+
+// القطبية الصريحة للتسجيل الجماعي: 'merit' | 'violation' | '' (اقتراح تلقائي).
+var _bulkVioPolarity = '';
+function bulkVioSetPolarity(val) {
+  _bulkVioPolarity = (_bulkVioPolarity === val) ? '' : val;
+  var m = document.getElementById('bulkVioPolBtnMerit'), v = document.getElementById('bulkVioPolBtnViolation');
+  if (m) m.classList.toggle('active', _bulkVioPolarity === 'merit');
+  if (v) v.classList.toggle('active', _bulkVioPolarity === 'violation');
 }
 
 function sdir_bulkBehaviorSave() {
   var rows = SDIR._bulkRows || [];
   if (!rows.length) { toast('لا يوجد طلاب محددون', 'warning'); return; }
-  var type = (document.getElementById('bulkVioType') || {}).value || '';
-  if (!type) { toast('اختر نوع السلوك', 'warning'); return; }
+  var type = ((document.getElementById('bulkVioType') || {}).value || '').trim();
+  if (!type) { toast('اكتب نوع السلوك', 'warning'); return; }
   var reply = (document.getElementById('bulkVioReply') || {}).value || '';
   showLoading('جاري تسجيل السلوك لـ ' + rows.length + ' طالب…');
   callServer('addViolationsBulkProtected',
-    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName },
+    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: _bulkVioPolarity },
     function (r) {
       hideLoading();
       if (r && r.success) {
