@@ -3260,14 +3260,42 @@ function _stuNewsCardType(text) {
 }
 function _stuNewsTypeMeta(t) { return _STU_NEWS_TYPES[t] || _STU_NEWS_TYPES.news; }
 
-/* بطاقة غلاف مصمّمة للخبر النصّي بلا وسائط (ديناميكي لكل الأنواع) */
+/* ── لقطة تصميم الغلاف المختارة بلوحة المعلم (عمود «التصميم») ──
+   تُقرأ بأمان وتُعرض كما خُزّنت (versioning: الشكل من اللقطة لا من سجل حي).
+   غيابها = السلوك التلقائي القديم · none = نص فقط بلا غلاف. */
+var _STU_DSGN_DEFAULT_G = ['#0f2545', '#1149a3'];
+var _STU_DSGN_SIZES = { feed: '4 / 5', square: '1 / 1', story: '9 / 16' };
+function _stuNewsDesign(n) {
+  var s = n && n.design;
+  if (!s) return null;
+  var o;
+  try { o = (typeof s === 'string') ? JSON.parse(s) : s; } catch (e) { return null; }
+  if (!o || typeof o !== 'object') return null;
+  if (o.none === true) return { none: true };
+  var HEX = /^#[0-9a-fA-F]{3,8}$/, PATH = /^[MmLlHhVvCcSsQqTtAaZz0-9\s.,+-]+$/;
+  var c = String(o.c || ''), ic = String(o.i || '');
+  if (!HEX.test(c) || !ic || !PATH.test(ic)) return null;
+  var g = _STU_DSGN_DEFAULT_G;
+  if (o.g && o.g.length === 2 && HEX.test(String(o.g[0])) && HEX.test(String(o.g[1]))) {
+    g = [String(o.g[0]), String(o.g[1])];
+  }
+  return { t: String(o.t || 'news'), s: String(o.s || 'feed'),
+           l: String(o.l || '').substring(0, 30), c: c, i: ic, g: g };
+}
+
+/* بطاقة غلاف مصمّمة للخبر النصّي بلا وسائط: لقطة المعلم إن وُجدت وإلا الترشيح
+   التلقائي القديم (توافق رجعي). «بلا تصميم» الصريح ⇒ لا غلاف. */
 function _stuTextCover(n) {
-  var t = _stuNewsTypeMeta(_stuNewsCardType(n.content));
+  var d = _stuNewsDesign(n);
+  if (d && d.none) return '';
+  var t = d || _stuNewsTypeMeta(_stuNewsCardType(n.content));
+  var g = d ? d.g : _STU_DSGN_DEFAULT_G;
+  var ratio = (d && _STU_DSGN_SIZES[d.s]) ? 'aspect-ratio:' + _STU_DSGN_SIZES[d.s] + ';max-height:640px;' : '';
   var first = String(n.content || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
   if (first.length > 100) first = first.substring(0, 97) + '…';
-  return '<div style="position:relative;margin:10px 12px 4px;min-height:220px;border-radius:12px;overflow:hidden;' +
-      'background:linear-gradient(150deg,#0f2545,#1149a3);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 20px;color:#fff;">' +
-    '<span style="position:absolute;top:10px;inset-inline-start:10px;background:' + t.c + ';color:#fff;font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:12px;">' + t.l + '</span>' +
+  return '<div style="position:relative;margin:10px 12px 4px;min-height:220px;border-radius:12px;overflow:hidden;' + ratio +
+      'background:linear-gradient(150deg,' + g[0] + ',' + g[1] + ');display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 20px;color:#fff;">' +
+    '<span style="position:absolute;top:10px;inset-inline-start:10px;background:' + t.c + ';color:#fff;font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:12px;">' + esc(t.l) + '</span>' +
     '<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:.92;margin-bottom:9px;" aria-hidden="true"><path d="' + t.i + '"/></svg>' +
     '<div style="font-weight:800;font-size:1.02rem;line-height:1.7;max-height:5.1em;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.3);max-width:620px;">' + esc(first) + '</div>' +
     (n.date ? '<div style="margin-top:7px;font-size:.72rem;opacity:.85;">📅 ' + esc(fmtDate(n.date)) + '</div>' : '') +
@@ -3278,10 +3306,15 @@ function _stuTextCover(n) {
 /* توليد صورة PNG للغلاف المصمّم (canvas) — للمشاركة كملف صورة لخبر نصّي */
 function _stuTextCoverBlob(item, cb) {
   try {
-    var W = 1080, H = 1350;
+    // اللقطة المخزّنة تحدّد الهوية والمقاس؛ «بلا تصميم» ⇒ لا صورة (تراجع لمشاركة نصية)
+    var d = _stuNewsDesign(item);
+    if (d && d.none) { cb(null); return; }
+    var t = d || _stuNewsTypeMeta(_stuNewsCardType(item && item.content));
+    var _dims = { feed: [1080, 1350], square: [1080, 1080], story: [1080, 1920] };
+    var _wh = (d && _dims[d.s]) ? _dims[d.s] : _dims.feed;
+    var W = _wh[0], H = _wh[1];
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
-    var t = _stuNewsTypeMeta(_stuNewsCardType(item && item.content));
     var schoolName = '';
     try { var bn = document.querySelector('.school-brand-name'); schoolName = bn ? String(bn.textContent || '').trim() : ''; } catch (e0) {}
 
@@ -3309,7 +3342,8 @@ function _stuTextCoverBlob(item, cb) {
     function paint(logoImg) {
       if (_painted) return; _painted = true;
       var g = ctx.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, '#0f2545'); g.addColorStop(1, '#1149a3');
+      var _gg = (d && d.g) ? d.g : _STU_DSGN_DEFAULT_G;
+      g.addColorStop(0, _gg[0]); g.addColorStop(1, _gg[1]);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       try { ctx.direction = 'rtl'; } catch (e1) {}

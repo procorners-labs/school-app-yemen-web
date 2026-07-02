@@ -4565,6 +4565,8 @@ function openNewsModal(id) {
   // [3.2] إعادة تعيين محرّر الوسائط المنشورة (يُملأ عند التعديل فقط) + الملفات الجديدة
   window._newsKeepMedia = [];
   window._newsNewFiles = [];
+  window._newsEditDesign = '';   // لقطة تصميم الخبر قيد التعديل (تُملأ عند التعديل)
+  window._newsEditHadMedia = false;
   _newsRenderExistingMedia();
   _newsRenderNewFiles();
 
@@ -4588,6 +4590,8 @@ function openNewsModal(id) {
         document.getElementById('newsDate').value = n.date || todayDate();
         // [3.2] تحميل وسائط الخبر الحالية في المحرّر (حذف/ترتيب/إضافة)
         window._newsKeepMedia = _newsParseMedia(n.attachments);
+        window._newsEditDesign = n.design || '';   // اختيار مسبق بالمعرض عند إعادة النشر
+        window._newsEditHadMedia = window._newsKeepMedia.length > 0;
         _newsRenderExistingMedia();
         openModal('newsModal');
       } else {
@@ -4681,6 +4685,25 @@ function saveNews() {
 
   // لا ملفات جديدة → أرسل الروابط المُبقاة فقط (طلب صغير سريع)
   if (!files.length) {
+    // خبر نصّي بلا أي وسائط ⇒ معرض اختيار التصميم قبل تنفيذ النشر.
+    // أي تعذّر في فتح المعرض (خلل/بيئة) ⇒ تراجُع سلس لنشر نصي عادي فوراً —
+    // المعرض لا يحجب النشر أبداً (يعمل دون اتصال لأنه ردنر محلي صرف).
+    // تعديل خبر كانت له وسائط أصلاً (ولو حُذفت من المحرّر) لا يُعامل كنصّي.
+    if (!keptUrls.length && !(id && window._newsEditHadMedia)) {
+      var _dpOpened = false;
+      try {
+        _dpOpened = _dpOpen({
+          mode: 'publish', text: news, date: date,
+          design: id ? (window._newsEditDesign || '') : '',
+          onConfirm: function (designStr) {
+            var fresh = document.getElementById('newsText').value.trim() || news;
+            sendSaveNews({ id: id, grade: grade, section: section, news: fresh, date: date,
+                           attachments: '', design: designStr }, id);
+          }
+        });
+      } catch (eDp) { _dpOpened = false; }
+      if (_dpOpened) return;
+    }
     sendSaveNews({ id: id, grade: grade, section: section, news: news, date: date,
                    attachments: keptUrls.join('\n') }, id);
     return;
@@ -9016,58 +9039,123 @@ function _tcLogoBadge() {
     'style="position:absolute;bottom:8px;left:8px;width:40px;height:40px;object-fit:contain;background:rgba(255,255,255,.88);border-radius:9px;padding:3px;box-shadow:0 2px 7px rgba(0,0,0,.28);pointer-events:none;z-index:4">';
 }
 
-/* ══════ الخبر النصّي كبطاقة غلاف مصمّمة (أنواع/تصنيف/غلاف) — منقول من _build/social ══════ */
-var _TC_NEWS_TYPES = {
-  news:        { l:'خبر',      c:'#185FA5', i:'M4 6h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 6l0-1M8 10h8M8 14h5' },
-  event:       { l:'فعالية',   c:'#C2410C', i:'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18' },
-  achievement: { l:'إنجاز',    c:'#3B6D11', i:'M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3' },
-  announcement:{ l:'إعلان',    c:'#6D28D9', i:'M3 11l14-7v16L3 13zM17 8a3 3 0 0 1 0 8M6 13v5' },
-  greeting:    { l:'تهنئة',    c:'#BE185D', i:'M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4.5 12 7 12 7M12 7s3-5 5.5-2.5S12 7 12 7' },
-  enrollment:  { l:'التسجيل',  c:'#0F766E', i:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6' },
-  exams:       { l:'امتحانات', c:'#9A3412', i:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13l2 2 4-4' },
-  emergency:   { l:'تنبيه',    c:'#B91C1C', i:'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01' },
-  condolence:  { l:'تعزية',    c:'#44403C', i:'M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 22l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z' }
-};
-var _TC_NEWS_TYPE_RULES = [
-  ['condolence',   /تعزية|ننعى|ينعى|نعى|وفاة|المغفور|بالغ الحزن|رحمه الله|إنا لله/],
-  ['greeting',     /عيد|تهنئة|تهاني|مبارك|مبروك|بمناسبة|كل عام|نهنئ/],
-  ['enrollment',   /تسجيل|التسجيل|قبول|الالتحاق|احجز|حجز مقعد/],
-  ['exams',        /امتحان|اختبار|الاختبارات|نتائج|النتائج|الدرجات|كشوف/],
-  ['achievement',  /الشكر والتقدير|شكر(اً|ًا)? من أعماق|بجزيل الشكر|بوركت جهود/],
-  ['event',        /حفل|فعالية|احتفال|مسابقة|رحلة|زيارة|معرض|بازار|تكريم/],
-  ['announcement', /دوام|إجازة|اجازة|توزيع الكتب|الكتب|تعميم|جدول|موعد|تعلن|إعلان/]
+/* ══════ الخبر النصّي كبطاقة غلاف مصمّمة — سجلّ تصاميم مبني على البيانات ══════
+   كل عنصر = تصميم كامل: k مفتاح · l تسمية · c لون الشارة · g تدرّج الخلفية ·
+   i مسار أيقونة SVG · re قاعدة الترشيح التلقائي (نفس قواعد
+   _build/social/lib/news-parse.mjs والترتيب = أولوية التصنيف؛ re:null = يُختار
+   يدوياً فقط، وعنصر news الأخير هو الافتراضي).
+   إضافة تصميم عاشر مستقبلاً = إضافة عنصر واحد هنا (وفي نظيره بمنصة الطالب
+   للتوافق الرجعي فقط) — المعرض والاختيار والعرض والمشاركة تشتق كلها من السجل. */
+var _TC_DSGN_REGISTRY = [
+  { k:'condolence',  l:'تعزية',    c:'#44403C', g:['#1c1917','#57534e'], re:/تعزية|ننعى|ينعى|نعى|وفاة|المغفور|بالغ الحزن|رحمه الله|إنا لله/, i:'M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 22l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z' },
+  { k:'greeting',    l:'تهنئة',    c:'#BE185D', g:['#500724','#be185d'], re:/عيد|تهنئة|تهاني|مبارك|مبروك|بمناسبة|كل عام|نهنئ/, i:'M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4.5 12 7 12 7M12 7s3-5 5.5-2.5S12 7 12 7' },
+  { k:'enrollment',  l:'التسجيل',  c:'#0F766E', g:['#042f2e','#0f766e'], re:/تسجيل|التسجيل|قبول|الالتحاق|احجز|حجز مقعد/, i:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6' },
+  { k:'exams',       l:'امتحانات', c:'#9A3412', g:['#292524','#9a3412'], re:/امتحان|اختبار|الاختبارات|نتائج|النتائج|الدرجات|كشوف/, i:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13l2 2 4-4' },
+  { k:'achievement', l:'إنجاز',    c:'#3B6D11', g:['#1a2e05','#3f6212'], re:/الشكر والتقدير|شكر(اً|ًا)? من أعماق|بجزيل الشكر|بوركت جهود/, i:'M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3' },
+  { k:'event',       l:'فعالية',   c:'#C2410C', g:['#431407','#c2410c'], re:/حفل|فعالية|احتفال|مسابقة|رحلة|زيارة|معرض|بازار|تكريم/, i:'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18' },
+  { k:'announcement',l:'إعلان',    c:'#6D28D9', g:['#2e1065','#6d28d9'], re:/دوام|إجازة|اجازة|توزيع الكتب|الكتب|تعميم|جدول|موعد|تعلن|إعلان/, i:'M3 11l14-7v16L3 13zM17 8a3 3 0 0 1 0 8M6 13v5' },
+  { k:'emergency',   l:'تنبيه',    c:'#B91C1C', g:['#450a0a','#b91c1c'], re:null, i:'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01' },
+  { k:'news',        l:'خبر',      c:'#185FA5', g:['#0f2545','#1149a3'], re:null, i:'M4 6h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 6l0-1M8 10h8M8 14h5' }
 ];
+/* مقاسات النشر (مطابقة لمقاسات قالب _build/social): نسبة العرض + أبعاد صورة المشاركة */
+var _TC_DSGN_SIZES = [
+  { k:'feed',   l:'منشور 4:5',  w:1080, h:1350, ar:'4 / 5',  mx:'560px' },
+  { k:'square', l:'مربّع 1:1',  w:1080, h:1080, ar:'1 / 1',  mx:'480px' },
+  { k:'story',  l:'ستوري 9:16', w:1080, h:1920, ar:'9 / 16', mx:'640px' }
+];
+var _TC_DSGN_DEFAULT_G = ['#0f2545', '#1149a3'];   // تدرّج الأخبار القديمة (قبل الميزة) — ثابت
+function _tcDsgnByKey(k) {
+  for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
+    if (_TC_DSGN_REGISTRY[i].k === k) return _TC_DSGN_REGISTRY[i];
+  }
+  return _TC_DSGN_REGISTRY[_TC_DSGN_REGISTRY.length - 1];   // news الافتراضي
+}
+function _tcDsgnSize(k) {
+  for (var i = 0; i < _TC_DSGN_SIZES.length; i++) {
+    if (_TC_DSGN_SIZES[i].k === k) return _TC_DSGN_SIZES[i];
+  }
+  return _TC_DSGN_SIZES[0];
+}
 function _tcNewsCardType(text) {
   var t = String(text || '');
-  for (var i = 0; i < _TC_NEWS_TYPE_RULES.length; i++) {
-    if (_TC_NEWS_TYPE_RULES[i][1].test(t)) return _TC_NEWS_TYPE_RULES[i][0];
+  for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
+    if (_TC_DSGN_REGISTRY[i].re && _TC_DSGN_REGISTRY[i].re.test(t)) return _TC_DSGN_REGISTRY[i].k;
   }
   return 'news';
 }
-function _tcNewsTypeMeta(t) { return _TC_NEWS_TYPES[t] || _TC_NEWS_TYPES.news; }
+function _tcNewsTypeMeta(t) { return _tcDsgnByKey(t); }
+/* هوية الخبر القديم (بلا لقطة مخزّنة): نوع مُرشَّح + التدرّج القديم الثابت —
+   يحفظ شكل الأخبار المنشورة قبل الميزة كما هو تماماً. */
+function _tcLegacyMeta(text) {
+  var t = _tcNewsTypeMeta(_tcNewsCardType(text));
+  return { l: t.l, c: t.c, i: t.i, g: _TC_DSGN_DEFAULT_G };
+}
 
-/* بطاقة غلاف مصمّمة داخل بطاقة الخبر (للخبر النصّي بلا وسائط) */
-function _tcTextCover(n) {
-  var t = _tcNewsTypeMeta(_tcNewsCardType(n.news));
-  var first = String(n.news || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
-  if (first.length > 100) first = first.substring(0, 97) + '…';
-  return '<div style="position:relative;margin:0 16px 12px;min-height:240px;border-radius:12px;overflow:hidden;' +
-      'background:linear-gradient(150deg,#0f2545,#1149a3);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:26px 24px;color:#fff;">' +
-    '<span style="position:absolute;top:10px;right:10px;background:' + t.c + ';color:#fff;font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:12px;">' + t.l + '</span>' +
-    '<svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:.92;margin-bottom:10px;" aria-hidden="true"><path d="' + t.i + '"/></svg>' +
-    '<div style="font-weight:800;font-size:1.08rem;line-height:1.7;max-height:5.2em;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.3);max-width:640px;">' + esc(first) + '</div>' +
-    (n.date ? '<div style="margin-top:8px;font-size:.72rem;opacity:.85;">📅 ' + esc(formatDate(n.date)) + '</div>' : '') +
-    _tcLogoBadge() +
+/* قراءة لقطة تصميم مخزّنة (عمود «التصميم») بأمان — null عند الغياب/الخلل.
+   العرض من اللقطة لا من السجل الحي ⇒ ثبات شكل الغلاف بعد النشر حتى لو
+   تعدّل السجل المصدري لاحقاً (versioning). */
+function _tcNewsDesign(n) {
+  var s = n && n.design;
+  if (!s) return null;
+  var o;
+  try { o = (typeof s === 'string') ? JSON.parse(s) : s; } catch (e) { return null; }
+  if (!o || typeof o !== 'object') return null;
+  if (o.none === true) return { none: true };
+  var HEX = /^#[0-9a-fA-F]{3,8}$/, PATH = /^[MmLlHhVvCcSsQqTtAaZz0-9\s.,+-]+$/;
+  var c = String(o.c || ''), ic = String(o.i || '');
+  if (!HEX.test(c) || !ic || !PATH.test(ic)) return null;
+  var g = _TC_DSGN_DEFAULT_G;
+  if (o.g && o.g.length === 2 && HEX.test(String(o.g[0])) && HEX.test(String(o.g[1]))) {
+    g = [String(o.g[0]), String(o.g[1])];
+  }
+  return { t: String(o.t || 'news'), s: String(o.s || 'feed'),
+           l: String(o.l || '').substring(0, 30), c: c, i: ic, g: g };
+}
+
+/* مولّد HTML الغلاف — مصدر العرض الوحيد: بطاقة الخبر + معاينات معرض الاختيار.
+   sizeKey فارغ = بلا نسبة مفروضة (سلوك الأخبار القديمة) · compact = معاينة مصغّرة. */
+function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact) {
+  var first = String(text || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
+  var maxLen = compact ? 64 : 100;
+  if (first.length > maxLen) first = first.substring(0, maxLen - 3) + '…';
+  var ratio = '';
+  if (sizeKey) {
+    var sz = _tcDsgnSize(sizeKey);
+    ratio = 'aspect-ratio:' + sz.ar + ';max-height:' + (compact ? '210px' : sz.mx) + ';';
+  }
+  var shell = compact
+    ? 'position:relative;min-height:118px;border-radius:10px;overflow:hidden;padding:14px 10px;' + ratio
+    : 'position:relative;margin:0 16px 12px;min-height:240px;border-radius:12px;overflow:hidden;padding:26px 24px;' + ratio;
+  return '<div style="' + shell +
+      'background:linear-gradient(150deg,' + meta.g[0] + ',' + meta.g[1] + ');display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff;">' +
+    '<span style="position:absolute;top:' + (compact ? 6 : 10) + 'px;right:' + (compact ? 6 : 10) + 'px;background:' + meta.c + ';color:#fff;font-size:' + (compact ? '.58rem' : '.72rem') + ';font-weight:700;padding:' + (compact ? '2px 8px' : '3px 12px') + ';border-radius:12px;">' + esc(meta.l) + '</span>' +
+    '<svg viewBox="0 0 24 24" width="' + (compact ? 26 : 46) + '" height="' + (compact ? 26 : 46) + '" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:.92;margin-bottom:' + (compact ? 6 : 10) + 'px;" aria-hidden="true"><path d="' + meta.i + '"/></svg>' +
+    '<div style="font-weight:800;font-size:' + (compact ? '.72rem' : '1.08rem') + ';line-height:1.65;max-height:5.2em;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.3);max-width:640px;">' + esc(first) + '</div>' +
+    (dateLabel && !compact ? '<div style="margin-top:8px;font-size:.72rem;opacity:.85;">📅 ' + esc(dateLabel) + '</div>' : '') +
+    (compact ? '' : _tcLogoBadge()) +
   '</div>';
+}
+
+/* بطاقة غلاف داخل بطاقة الخبر (نصّي بلا وسائط): لقطة مخزّنة إن وُجدت،
+   وإلا الترشيح التلقائي القديم (توافق رجعي). «بلا تصميم» الصريح ⇒ لا غلاف. */
+function _tcTextCover(n) {
+  var d = _tcNewsDesign(n);
+  if (d && d.none) return '';
+  var meta = d || _tcLegacyMeta(n.news);
+  return _tcCoverHtml(n.news, n.date ? formatDate(n.date) : '', meta, d ? d.s : '', false);
 }
 
 /* توليد صورة PNG للغلاف المصمّم (canvas) — تُستخدم عند مشاركة خبر نصّي كملف صورة */
 function _tcTextCoverBlob(item, cb) {
   try {
-    var W = 1080, H = 1350;
+    // اللقطة المخزّنة تحدّد الهوية والمقاس؛ «بلا تصميم» ⇒ لا صورة (تراجع لمشاركة نصية)
+    var d = _tcNewsDesign(item);
+    if (d && d.none) { cb(null); return; }
+    var t = d || _tcLegacyMeta(item && item.news);
+    var dims = _tcDsgnSize(d ? d.s : 'feed');
+    var W = dims.w, H = dims.h;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
-    var t = _tcNewsTypeMeta(_tcNewsCardType(item && item.news));
     var schoolName = '';
     try { var bn = document.querySelector('.school-brand-name'); schoolName = bn ? String(bn.textContent || '').trim() : ''; } catch (e0) {}
 
@@ -9094,9 +9182,9 @@ function _tcTextCoverBlob(item, cb) {
     var _painted = false;
     function paint(logoImg) {
       if (_painted) return; _painted = true;
-      // الخلفية
+      // الخلفية — تدرّج التصميم المختار (أو الافتراضي القديم للأخبار بلا لقطة)
       var g = ctx.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, '#0f2545'); g.addColorStop(1, '#1149a3');
+      g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       try { ctx.direction = 'rtl'; } catch (e1) {}
@@ -9171,6 +9259,201 @@ function _tcTextCoverBlob(item, cb) {
       paint(null);
     }
   } catch (e) { cb(null); }
+}
+
+/* ══════ معرض اختيار تصميم الغلاف قبل النشر — كسول البناء + معاينة مموّجة ══════
+   لا يُبنى أي DOM/CSS لهذه الشاشة عند تحميل الصفحة (صفحة GAS مفردة مضمّنة —
+   المكافئ العملي للتحميل الكسول): البناء كله عند أول فتح فقط ثم يُعاد استخدامه.
+   المعاينات التسع تشتق من _TC_DSGN_REGISTRY عبر _tcCoverHtml نفسه (مصدر عرض واحد)،
+   وإعادة الردنر أثناء الكتابة مموّجة debounce 350ms (ضمن نطاق 300-500 المطلوب). */
+var _dpBuilt = false;
+var _dpState = null;   // { mode:'publish'|'retro', date, sel, size, manual, onConfirm }
+var _dpTimer = null;
+
+function _dpEnsureUI() {
+  if (_dpBuilt) return;
+  var st = document.createElement('style');
+  st.textContent =
+    '.dp-backdrop{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(15,23,42,.55);z-index:4000;display:none;align-items:center;justify-content:center;padding:14px;}' +
+    '.dp-dialog{background:var(--card,#fff);color:var(--text-dark,#0f172a);border-radius:14px;max-width:720px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35);}' +
+    '.dp-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-weight:800;border-bottom:1px solid var(--border,#e2e8f0);}' +
+    '.dp-x{border:0;background:none;font-size:1rem;cursor:pointer;color:inherit;}' +
+    '.dp-hint{padding:8px 16px 0;font-size:.78rem;color:var(--text-light,#64748b);line-height:1.6;}' +
+    '.dp-text{margin:10px 16px 0;padding:8px 10px;border:1px solid var(--border,#e2e8f0);border-radius:8px;font-size:.85rem;line-height:1.6;resize:vertical;min-height:52px;font-family:inherit;}' +
+    '.dp-sizes{display:flex;gap:6px;padding:10px 16px 0;flex-wrap:wrap;}' +
+    '.dp-size{border:1px solid var(--border,#e2e8f0);background:none;border-radius:16px;padding:4px 12px;font-size:.76rem;cursor:pointer;color:inherit;}' +
+    '.dp-size.on{background:var(--primary,#185fa5);color:#fff;border-color:var(--primary,#185fa5);}' +
+    '.dp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:12px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}' +
+    '.dp-card{border:2px solid transparent;border-radius:12px;padding:4px;cursor:pointer;text-align:center;}' +
+    '.dp-card.sel{border-color:var(--primary,#185fa5);background:rgba(24,95,165,.06);}' +
+    '.dp-lbl{font-size:.74rem;font-weight:700;margin-top:5px;}' +
+    '.dp-sug{display:inline-block;background:#16a34a;color:#fff;border-radius:10px;padding:1px 7px;font-size:.6rem;margin-inline-start:4px;}' +
+    '.dp-none-box{min-height:118px;border:2px dashed var(--border,#cbd5e1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.95rem;color:var(--text-light,#64748b);line-height:1.5;}' +
+    '.dp-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border,#e2e8f0);}';
+  document.head.appendChild(st);
+
+  var wrap = document.createElement('div');
+  wrap.id = 'dsgnPicker';
+  wrap.className = 'dp-backdrop';
+  wrap.innerHTML =
+    '<div class="dp-dialog" role="dialog" aria-label="اختيار تصميم الغلاف">' +
+      '<div class="dp-head"><span>🎨 اختر تصميم غلاف الخبر</span>' +
+        '<button type="button" class="dp-x" onclick="_dpCancel()">✕</button></div>' +
+      '<div class="dp-hint">معاينة حيّة من نص خبرك الفعلي. الغلاف يظهر في لوحة المعلم وبوّابة الطالب فقط — لا يظهر في الصفحة العامة.</div>' +
+      '<textarea id="dpText" class="dp-text" rows="2"></textarea>' +
+      '<div class="dp-sizes" id="dpSizes"></div>' +
+      '<div class="dp-grid" id="dpGrid"></div>' +
+      '<div class="dp-foot">' +
+        '<button type="button" class="btn btn-secondary" onclick="_dpCancel()">رجوع</button>' +
+        '<button type="button" class="btn btn-primary" id="dpConfirmBtn" onclick="_dpConfirm()">✅ تأكيد ونشر</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(wrap);
+  document.getElementById('dpText').addEventListener('input', _dpOnType);
+  _dpBuilt = true;
+}
+
+/* فتح المعرض. opts: { mode, text, date, design(لقطة حالية اختيارية), onConfirm(designStr) }
+   يعيد true عند النجاح — وأي استثناء يعالجه المستدعي بالتراجع لنشر نصي عادي. */
+function _dpOpen(opts) {
+  _dpEnsureUI();
+  var pre = null;
+  try { pre = _tcNewsDesign({ design: opts.design }); } catch (e0) {}
+  _dpState = {
+    mode      : opts.mode || 'publish',
+    date      : opts.date || '',
+    onConfirm : opts.onConfirm,
+    size      : (pre && !pre.none && pre.s) ? pre.s : 'feed',
+    sel       : pre ? (pre.none ? '__none' : pre.t) : _tcNewsCardType(opts.text),
+    manual    : !!pre     // لقطة سابقة = اختيار يدوي مثبَّت لا يتزحزح بالكتابة
+  };
+  var ta = document.getElementById('dpText');
+  ta.value = String(opts.text || '');
+  ta.readOnly = (_dpState.mode === 'retro');   // رجعياً: النص للعرض لا للتحرير
+  document.getElementById('dpConfirmBtn').textContent =
+    (_dpState.mode === 'publish') ? '✅ تأكيد ونشر' : '💾 حفظ التصميم';
+  _dpRenderSizes();
+  _dpRenderGrid();
+  document.getElementById('dsgnPicker').style.display = 'flex';
+  return true;
+}
+
+function _dpClose() {
+  if (_dpTimer) { clearTimeout(_dpTimer); _dpTimer = null; }
+  var el = document.getElementById('dsgnPicker');
+  if (el) el.style.display = 'none';
+  _dpState = null;
+}
+function _dpCancel() { _dpClose(); }
+
+/* الكتابة في المعاينة: موازنة الردنر — لا إعادة رسم إلا بعد سكون 350ms */
+function _dpOnType() {
+  if (_dpTimer) clearTimeout(_dpTimer);
+  _dpTimer = setTimeout(function () {
+    if (!_dpState) return;
+    var val = document.getElementById('dpText').value;
+    if (_dpState.mode === 'publish') {
+      var src = document.getElementById('newsText');
+      if (src) src.value = val;                  // مزامنة رجوعاً لنموذج الخبر
+    }
+    if (!_dpState.manual) _dpState.sel = _tcNewsCardType(val);
+    _dpRenderGrid();
+  }, 350);
+}
+
+function _dpSelectSize(k) {
+  if (!_dpState) return;
+  _dpState.size = k;
+  _dpRenderSizes();
+  _dpRenderGrid();
+}
+function _dpSelect(k) {
+  if (!_dpState) return;
+  _dpState.sel = k;
+  _dpState.manual = true;
+  _dpRenderGrid();
+}
+
+function _dpRenderSizes() {
+  var host = document.getElementById('dpSizes');
+  if (!host || !_dpState) return;
+  var h = '';
+  for (var i = 0; i < _TC_DSGN_SIZES.length; i++) {
+    var s = _TC_DSGN_SIZES[i];
+    h += '<button type="button" class="dp-size' + (s.k === _dpState.size ? ' on' : '') +
+         '" onclick="_dpSelectSize(\'' + s.k + '\')">' + s.l + '</button>';
+  }
+  host.innerHTML = h;
+}
+
+/* شبكة المعاينات: كل تصاميم السجل (بلا استثناء — إضافة عنصر للسجل تظهر هنا
+   تلقائياً) + خيار «بلا تصميم». المُرشَّح تلقائياً يحمل شارة «مقترح». */
+function _dpRenderGrid() {
+  var host = document.getElementById('dpGrid');
+  if (!host || !_dpState) return;
+  var text = document.getElementById('dpText').value;
+  var sug  = _tcNewsCardType(text);
+  var h = '';
+  for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
+    var m = _TC_DSGN_REGISTRY[i];
+    h += '<div class="dp-card' + (m.k === _dpState.sel ? ' sel' : '') +
+         '" onclick="_dpSelect(\'' + m.k + '\')">' +
+      _tcCoverHtml(text, '', m, _dpState.size, true) +
+      '<div class="dp-lbl">' + esc(m.l) +
+        (m.k === sug ? ' <span class="dp-sug">مقترح تلقائياً</span>' : '') + '</div>' +
+    '</div>';
+  }
+  h += '<div class="dp-card dp-none' + (_dpState.sel === '__none' ? ' sel' : '') +
+       '" onclick="_dpSelect(\'__none\')">' +
+    '<div class="dp-none-box">📄 نص فقط</div><div class="dp-lbl">بلا تصميم</div></div>';
+  host.innerHTML = h;
+}
+
+/* لقطة كاملة تُخزَّن مع الخبر (نوع/مقاس/تسمية/لون/تدرّج/أيقونة) ⇒ الشكل
+   المختار يبقى ثابتاً بعد النشر ولو تعدّل السجل المصدري لاحقاً. */
+function _dpBuildDesignStr() {
+  if (_dpState.sel === '__none') return JSON.stringify({ v: 1, none: true });
+  var m = _tcDsgnByKey(_dpState.sel);
+  return JSON.stringify({ v: 1, t: m.k, s: _dpState.size, l: m.l, c: m.c, g: m.g, i: m.i });
+}
+
+function _dpConfirm() {
+  if (!_dpState) return;
+  var cbf = _dpState.onConfirm;
+  var d = '';
+  try { d = _dpBuildDesignStr(); } catch (e) { d = ''; }
+  _dpClose();
+  if (cbf) cbf(d);
+}
+
+/* معالجة رجعية: خبر نصّي قديم بلا غلاف — نفس المعرض، والحفظ عبر
+   setNewsDesignProtected دون المساس بالنص أو الوسائط. */
+function _dpOpenRetroNews(newsId) {
+  var item = null;
+  for (var i = 0; i < (_newsCache || []).length; i++) {
+    if (String(_newsCache[i].id) === String(newsId)) { item = _newsCache[i]; break; }
+  }
+  if (!item) { toast('تعذّر إيجاد الخبر', 'error'); return; }
+  try {
+    _dpOpen({
+      mode: 'retro', text: item.news, date: item.date, design: item.design || '',
+      onConfirm: function (designStr) {
+        showLoading('جارٍ حفظ التصميم...');
+        callServer('setNewsDesignProtected', { id: newsId, design: designStr }, function (r) {
+          hideLoading();
+          if (r && r.success) {
+            item.design = (r.design !== undefined && r.design !== null) ? r.design : designStr;
+            toast('تم حفظ تصميم الغلاف', 'success');
+            renderNewsList(_newsCache, true);
+          } else {
+            showError(r ? r.error : 'تعذّر حفظ التصميم');
+          }
+        });
+      }
+    });
+  } catch (e) {
+    toast('تعذّر فتح معرض التصاميم', 'error');
+  }
 }
 
 function _tcNewsMediaHtml(rawAttach, newsId) {
@@ -9348,6 +9631,11 @@ function _buildNewsCard_Teacher(n) {
         // أزرار الإدارة (للمدير أو المالك)
         (isAdmin() || (App.user && App.user.teacherName === newsOwner)
           ? '<div class="btn-group">' +
+              // معالجة رجعية: خبر نصّي (قديم بلا لقطة أو لتغيير التصميم) — نفس معرض النشر
+              (isTextOnly
+                ? '<button class="btn btn-sm btn-secondary" onclick="_dpOpenRetroNews(\'' + n.id + '\')" title="' +
+                  (_tcNewsDesign(n) ? 'تغيير تصميم الغلاف' : 'أضف تصميماً لهذا الخبر النصّي') + '">🎨</button>'
+                : '') +
               '<button class="btn btn-sm btn-warning" onclick="editNews(\'' + n.id + '\')" title="تعديل الخبر">✏️</button>' +
               '<button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\'' + n.id + '\')" title="حذف الخبر">🗑️</button>' +
               '<button class="btn btn-sm btn-secondary" onclick="showNewsViewers(\'' + n.id + '\',\'' + newsOwner + '\')" title="إحصائيات الخبر (من شاهد ومن أعجب)">📊</button>' +
