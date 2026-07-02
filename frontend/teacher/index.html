@@ -2383,13 +2383,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div id="vioStep2" style="display:none">
         <div class="alert alert-info mb-3" id="vioSelectedStudent"></div>
         <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label>
-          <input class="form-control" id="vioType" list="vioTypeList" placeholder="اكتب نوع السلوك أو اختر من الاقتراحات...">
-          <datalist id="vioTypeList"></datalist>
+          <select class="form-select" id="vioType" onchange="vioTypeOnChange()"></select>
         </div>
-        <div class="form-group mb-3"><label class="form-label">القطبية (اختياري — تُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
-          <div style="display:flex;gap:8px;">
-            <button type="button" class="tf-tab" id="vioPolBtnMerit" onclick="vioSetPolarity('merit')">✅ تعزيز</button>
-            <button type="button" class="tf-tab" id="vioPolBtnViolation" onclick="vioSetPolarity('violation')">⚠️ ملاحظة</button>
+        <div class="form-group mb-3" id="vioCustomWrap" style="display:none">
+          <label class="form-label">اكتب نوع السلوك</label>
+          <input class="form-control" id="vioCustomText" placeholder="مثال: ساعد زميلاً متأخراً على فهم الدرس">
+          <div style="margin-top:10px;">
+            <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+            <div style="display:flex;gap:8px;">
+              <button type="button" class="tf-tab" id="vioPolBtnMerit" onclick="vioSetPolarity('merit')">✅ تعزيز</button>
+              <button type="button" class="tf-tab" id="vioPolBtnViolation" onclick="vioSetPolarity('violation')">⚠️ ملاحظة</button>
+            </div>
           </div>
         </div>
         <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد</label><textarea class="form-control" id="vioReply" placeholder="ملاحظات إضافية..." rows="3"></textarea></div>
@@ -2413,13 +2417,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <div class="modal-body">
       <div class="alert alert-info mb-3" id="bulkVioCount"></div>
       <div class="form-group mb-3"><label class="form-label">نوع السلوك <span style="color:var(--danger)">*</span></label>
-        <input class="form-control" id="bulkVioType" list="bulkVioTypeList" placeholder="اكتب نوع السلوك أو اختر من الاقتراحات...">
-        <datalist id="bulkVioTypeList"></datalist>
+        <select class="form-select" id="bulkVioType" onchange="bulkVioTypeOnChange()"></select>
       </div>
-      <div class="form-group mb-3"><label class="form-label">القطبية (اختياري — تُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="tf-tab" id="bulkVioPolBtnMerit" onclick="bulkVioSetPolarity('merit')">✅ تعزيز</button>
-          <button type="button" class="tf-tab" id="bulkVioPolBtnViolation" onclick="bulkVioSetPolarity('violation')">⚠️ ملاحظة</button>
+      <div class="form-group mb-3" id="bulkVioCustomWrap" style="display:none">
+        <label class="form-label">اكتب نوع السلوك</label>
+        <input class="form-control" id="bulkVioCustomText" placeholder="مثال: متأخر عن الطابور">
+        <div style="margin-top:10px;">
+          <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="tf-tab" id="bulkVioPolBtnMerit" onclick="bulkVioSetPolarity('merit')">✅ تعزيز</button>
+            <button type="button" class="tf-tab" id="bulkVioPolBtnViolation" onclick="bulkVioSetPolarity('violation')">⚠️ ملاحظة</button>
+          </div>
         </div>
       </div>
       <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد (تُطبَّق على الجميع)</label><textarea class="form-control" id="bulkVioReply" placeholder="مثال: متأخر عن الطابور" rows="3"></textarea></div>
@@ -3088,17 +3096,6 @@ function fillSelect(id, arr, placeholder, selectedVal, allowAll) {
   if (el) {
     el.innerHTML = buildSelectOptions(arr, placeholder, selectedVal, allowAll);
   }
-}
-
-// يعبّئ <datalist> باقتراحات — الحقل المرتبط <input list="..."> يبقى نصاً حراً دائماً.
-function fillDatalist(id, arr) {
-  var el = document.getElementById(id);
-  if (!el) return;
-  var h = '';
-  for (var i = 0; i < (arr || []).length; i++) {
-    h += '<option value="' + escapeHtml(arr[i]) + '"></option>';
-  }
-  el.innerHTML = h;
 }
 
 function isAllFilter(val) {
@@ -8153,16 +8150,29 @@ function openViolationModal() {
   document.getElementById('vioSearchInput').value = '';
   document.getElementById('vioStudentResults').innerHTML = '';
 
-  // تعبئة اقتراحات نوع السلوك (نص حر — القائمة اقتراح لا إلزام)
+  // تعبئة قائمة أنواع السلوك + خيار «اكتب بنفسك» في نهايتها
   var violationsList = (App.lists && App.lists.violations) ? App.lists.violations : [];
-  fillDatalist('vioTypeList', violationsList);
-  var vioTypeEl = document.getElementById('vioType'); if (vioTypeEl) vioTypeEl.value = '';
+  fillSelect('vioType', violationsList, 'اختر نوع السلوك');
+  var vioTypeEl = document.getElementById('vioType');
+  if (vioTypeEl) vioTypeEl.innerHTML += '<option value="__custom__">✍️ نوع آخر (اكتب بنفسك)</option>';
+  var customTextEl = document.getElementById('vioCustomText'); if (customTextEl) customTextEl.value = '';
+  var wrapEl = document.getElementById('vioCustomWrap'); if (wrapEl) wrapEl.style.display = 'none';
   document.getElementById('vioReply').value = '';
   vioSetPolarity('');
   openModal('violationModal');
 }
 
-// القطبية الصريحة التي يختارها الأستاذ لهذا التسجيل: 'merit' | 'violation' | '' (اقتراح تلقائي).
+// عند اختيار «نوع آخر (اكتب بنفسك)» يظهر حقل النص الحر + زر التصنيف؛ وإلا يختفيان
+// (النوع المختار من القائمة الجاهزة يكفي وحده، والتصنيف يُخمَّن منه تلقائياً كالسابق).
+function vioTypeOnChange() {
+  var sel = document.getElementById('vioType');
+  var isCustom = !!(sel && sel.value === '__custom__');
+  var wrapEl = document.getElementById('vioCustomWrap');
+  if (wrapEl) wrapEl.style.display = isCustom ? 'block' : 'none';
+  if (!isCustom) vioSetPolarity('');
+}
+
+// التصنيف الصريح الذي يختاره الأستاذ عند كتابة نوع السلوك بنفسه: 'merit' | 'violation' | '' (اقتراح تلقائي).
 var _vioPolarity = '';
 function vioSetPolarity(val) {
   _vioPolarity = (_vioPolarity === val) ? '' : val;
@@ -8292,10 +8302,14 @@ function saveViolation() {
     toast('يرجى اختيار طالب أولاً', 'warning');
     return;
   }
-  var type = document.getElementById('vioType').value.trim();
+  var typeSel = document.getElementById('vioType');
+  var isCustom = !!(typeSel && typeSel.value === '__custom__');
+  var type = isCustom
+    ? (document.getElementById('vioCustomText').value || '').trim()
+    : (typeSel ? typeSel.value : '');
   var reply = document.getElementById('vioReply').value;
   if (!type) {
-    toast('يرجى كتابة نوع السلوك', 'warning');
+    toast(isCustom ? 'يرجى كتابة نوع السلوك' : 'يرجى اختيار نوع السلوك', 'warning');
     return;
   }
 
@@ -8305,7 +8319,7 @@ function saveViolation() {
     violation: type,
     teacherName: App.user.teacherName,
     reply: reply.trim(),
-    polarity: _vioPolarity
+    polarity: isCustom ? _vioPolarity : ''
   }, function(r) {
     hideLoading();
     if (r && r.success) {
@@ -13598,14 +13612,26 @@ function sdir_bulkBehavior() {
   var cnt = document.getElementById('bulkVioCount');
   if (cnt) cnt.innerHTML = '📋 سيُسجَّل السلوك لـ <strong>' + rows.length + '</strong> طالب محدّد.';
   var list = (App.lists && App.lists.violations) ? App.lists.violations : [];
-  fillDatalist('bulkVioTypeList', list);
-  var typeEl = document.getElementById('bulkVioType'); if (typeEl) typeEl.value = '';
+  fillSelect('bulkVioType', list, 'اختر نوع السلوك');
+  var typeEl = document.getElementById('bulkVioType');
+  if (typeEl) typeEl.innerHTML += '<option value="__custom__">✍️ نوع آخر (اكتب بنفسك)</option>';
+  var customTextEl = document.getElementById('bulkVioCustomText'); if (customTextEl) customTextEl.value = '';
+  var wrapEl = document.getElementById('bulkVioCustomWrap'); if (wrapEl) wrapEl.style.display = 'none';
   var rep = document.getElementById('bulkVioReply'); if (rep) rep.value = '';
   bulkVioSetPolarity('');
   openModal('bulkVioModal');
 }
 
-// القطبية الصريحة للتسجيل الجماعي: 'merit' | 'violation' | '' (اقتراح تلقائي).
+// عند اختيار «نوع آخر (اكتب بنفسك)» يظهر حقل النص الحر + زر التصنيف؛ وإلا يختفيان.
+function bulkVioTypeOnChange() {
+  var sel = document.getElementById('bulkVioType');
+  var isCustom = !!(sel && sel.value === '__custom__');
+  var wrapEl = document.getElementById('bulkVioCustomWrap');
+  if (wrapEl) wrapEl.style.display = isCustom ? 'block' : 'none';
+  if (!isCustom) bulkVioSetPolarity('');
+}
+
+// التصنيف الصريح للتسجيل الجماعي: 'merit' | 'violation' | '' (اقتراح تلقائي).
 var _bulkVioPolarity = '';
 function bulkVioSetPolarity(val) {
   _bulkVioPolarity = (_bulkVioPolarity === val) ? '' : val;
@@ -13617,12 +13643,16 @@ function bulkVioSetPolarity(val) {
 function sdir_bulkBehaviorSave() {
   var rows = SDIR._bulkRows || [];
   if (!rows.length) { toast('لا يوجد طلاب محددون', 'warning'); return; }
-  var type = ((document.getElementById('bulkVioType') || {}).value || '').trim();
-  if (!type) { toast('اكتب نوع السلوك', 'warning'); return; }
+  var typeSel = document.getElementById('bulkVioType');
+  var isCustom = !!(typeSel && typeSel.value === '__custom__');
+  var type = isCustom
+    ? (document.getElementById('bulkVioCustomText').value || '').trim()
+    : (typeSel ? typeSel.value : '');
+  if (!type) { toast(isCustom ? 'اكتب نوع السلوك' : 'اختر نوع السلوك', 'warning'); return; }
   var reply = (document.getElementById('bulkVioReply') || {}).value || '';
   showLoading('جاري تسجيل السلوك لـ ' + rows.length + ' طالب…');
   callServer('addViolationsBulkProtected',
-    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: _bulkVioPolarity },
+    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: isCustom ? _bulkVioPolarity : '' },
     function (r) {
       hideLoading();
       if (r && r.success) {
