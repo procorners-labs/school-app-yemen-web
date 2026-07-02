@@ -1891,7 +1891,10 @@ a { color: var(--pr); text-decoration: none; }
           <select id="noteTeacher">
             <option value="">— اختر المعلم —</option>
           </select>
-          <textarea id="noteMsg" placeholder="اكتب ملاحظتك هنا (5 أحرف على الأقل)..."></textarea>
+          <select id="noteTypePreset" onchange="noteTypeOnChange()">
+            <option value="">— اختر نوع الملاحظة —</option>
+          </select>
+          <textarea id="noteMsg" placeholder="اكتب ملاحظتك هنا (5 أحرف على الأقل)..." style="display:none;"></textarea>
           <button class="btn-primary" id="noteSendBtn" onclick="submitMyNote()">إرسال الملاحظة ✉️</button>
         </div>
 
@@ -2404,8 +2407,9 @@ function initApp() {
   loadQuickStats();
   loadHomeToday();   // جدول اليوم + الساعة اللحظية
 
-  // تحميل قائمة المعلمين (للملاحظات) في الخلفية
+  // تحميل قائمة المعلمين وأنواع الملاحظات (للملاحظات) في الخلفية
   loadTeachersList();
+  loadNoteTypeOptions();
 
   // Badges تلقائية
   loadNotificationBadges();
@@ -4140,13 +4144,46 @@ function loadTeachersList() {
     .getTeachersForClass({ className: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId });
 }
 
+function loadNoteTypeOptions() {
+  google.script.run
+    .withSuccessHandler(function (list) {
+      APP.noteTypeOptions = list || [];
+      var sel = $('noteTypePreset');
+      sel.innerHTML = '<option value="">— اختر نوع الملاحظة —</option>';
+      for (var i = 0; i < APP.noteTypeOptions.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = APP.noteTypeOptions[i];
+        opt.textContent = APP.noteTypeOptions[i];
+        sel.appendChild(opt);
+      }
+      var customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = '✍️ اكتب ملاحظتي بنفسي';
+      sel.appendChild(customOpt);
+    })
+    .withFailureHandler(function () { /* تجاهل صامت */ })
+    .getNoteTypeOptions({ schoolId: APP.user.schoolId });
+}
+
+// عند اختيار «اكتب ملاحظتي بنفسي» يظهر حقل النص الحر؛ اختيار نوع جاهز يُخفيه
+// (النوع المختار من القائمة يُرسَل كما هو نصّاً للملاحظة).
+function noteTypeOnChange() {
+  var sel = $('noteTypePreset');
+  var isCustom = !!(sel && sel.value === '__custom__');
+  $('noteMsg').style.display = isCustom ? 'block' : 'none';
+  if (!isCustom) $('noteMsg').value = '';
+}
+
 function submitMyNote() {
   var teacher = $('noteTeacher').value;
-  var msg = $('noteMsg').value.trim();
+  var typeSel = $('noteTypePreset');
+  var isCustom = !!(typeSel && typeSel.value === '__custom__');
+  var msg = isCustom ? $('noteMsg').value.trim() : (typeSel ? typeSel.value : '');
   var btn = $('noteSendBtn');
 
   if (!teacher) { toast('يرجى اختيار المعلم', 'w'); return; }
-  if (msg.length < 5) { toast('الرسالة قصيرة جداً (5 أحرف على الأقل)', 'w'); return; }
+  if (!typeSel.value) { toast('يرجى اختيار نوع الملاحظة', 'w'); return; }
+  if (isCustom && msg.length < 5) { toast('الرسالة قصيرة جداً (5 أحرف على الأقل)', 'w'); return; }
 
   btn.disabled = true;
   btn.textContent = 'جارٍ الإرسال...';
@@ -4160,7 +4197,9 @@ function submitMyNote() {
 
       if (r && r.ok) {
         $('noteMsg').value = '';
+        $('noteMsg').style.display = 'none';
         $('noteTeacher').value = '';
+        $('noteTypePreset').value = '';
         toast(r.message || 'تم الإرسال بنجاح', 's');
         loadNotes(true);
       } else {
