@@ -2913,7 +2913,7 @@ var V3_CONFIG = { enabled: false, features: {}, labels: {} };
  * @param {Function} callback — تُستدعى بعد نجاح التحميل (أو الفشل مع fallback)
  */
 function loadSchemaConfig(callback) {
-  callServer('getSchemaConfig', {}, function(res) {
+  callServer('getSchemaConfig', {}, 'schema_config', 600, function(res) {
     if (res && res.success) {
       ALL_MONTHS   = res.orderedMonths || ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
       TERM_MONTHS  = res.termMonths   || ['نصف العام','نهاية العام'];
@@ -3547,6 +3547,41 @@ function filterGradeCascade(gradeId, sectionId, applyFnName, allLabel) {
   if (applyFnName && typeof window[applyFnName] === 'function') window[applyFnName]();
 }
 
+// ── حفظ/استعادة اختيارات الفلاتر لكل قسم (localStorage، مفصولة لكل مدرسة ومستخدم) ──
+// تجعل الفلاتر «تتذكّر» آخر اختيار عند العودة للقسم أو إعادة فتح المنصة.
+function _fltKey(page) {
+  var who = (typeof App !== 'undefined' && App.user && App.user.teacherName) ? App.user.teacherName : '';
+  return 'tcflt_' + (window.SCHOOL_ID || '') + '_' + who + '_' + page;
+}
+function _fltSave(page, ids) {
+  try {
+    var o = {};
+    for (var i = 0; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (el) o[ids[i]] = el.value || '';
+    }
+    localStorage.setItem(_fltKey(page), JSON.stringify(o));
+  } catch (e) {}
+}
+function _fltRestore(page, ids) {
+  try {
+    var raw = localStorage.getItem(_fltKey(page));
+    if (!raw) return false;
+    var o = JSON.parse(raw) || {};
+    var any = false;
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i], el = document.getElementById(id);
+      if (!el || typeof o[id] !== 'string' || o[id] === '' || el.value === o[id]) continue;
+      el.value = o[id];
+      // قيمة select لم تعد ضمن الخيارات (تغيّرت القوائم): تُتجاهل بصمت
+      if (el.tagName === 'SELECT' && el.value !== o[id]) continue;
+      any = true;
+    }
+    return any;
+  } catch (e) { return false; }
+}
+function _fltClear(page) { try { localStorage.removeItem(_fltKey(page)); } catch (e) {} }
+
 function escapeHtml(str) {
   if (str === undefined || str === null) return '';
   return String(str)
@@ -4004,13 +4039,19 @@ function bootApp() {
     cachedLists = null;
   }
 
-  // دالة مساعدة: تُستدعى بعد جلب القوائم لتحميل Schema ثم عرض Dashboard
+  // Schema والقوائم يُجلبان بالتوازي — كانا متسلسلَين (قوائم ثم Schema) فيتضاعف
+  // زمن أول عرض على الشبكات البطيئة. العرض ينتظر اكتمالهما معاً.
+  var _bootSchemaDone = false, _bootListsDone = false, _bootShown = false;
+  var _bootTryShow = function() {
+    if (_bootShown || !_bootSchemaDone || !_bootListsDone) return;
+    _bootShown = true;
+    // 🔖 استعادة آخر قسم زاره المستخدم بدل العودة القسرية للرئيسية
+    showSection(_savedSectionOrDashboard());
+  };
+  loadSchemaConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
   var afterLists = function() {
-    // ⭐ Patch #4: تحميل تكوين نظام الدرجات من الخادم
-    loadSchemaConfig(function() {
-      // 🔖 استعادة آخر قسم زاره المستخدم بدل العودة القسرية للرئيسية
-      showSection(_savedSectionOrDashboard());
-    });
+    _bootListsDone = true;
+    _bootTryShow();
   };
 
   if (cachedLists && cachedLists.grades && cachedLists.grades.length) {
@@ -4036,12 +4077,10 @@ function bootApp() {
   // تهيئة القائمة الجانبية حسب الدور
   initSidebarByRole();
 
-  // ⭐ v3: تحميل إعدادات v3 من الخادم
-  google.script.run
-    .withSuccessHandler(function(cfg) {
-      if (cfg) V3_CONFIG = cfg;
-    })
-    .getV3Config();
+  // ⭐ v3: تحميل إعدادات v3 من الخادم (بكاش ومعالج فشل — فشله كان صامتاً بلا معالج)
+  callServer('getV3Config', {}, 'v3_config', 600, function(cfg) {
+    if (cfg && cfg.success !== false) V3_CONFIG = cfg;
+  }, function() { /* تعذّر الجلب: نُبقي افتراضات V3_CONFIG */ });
 }
 
 
@@ -7917,6 +7956,10 @@ function renderHomework() {
   '</div>';
 
   document.getElementById('dynamicContent').innerHTML = html;
+  // استعادة آخر فلاتر استخدمها المستخدم (محفوظة محلياً) قبل أول تحميل
+  if (_fltRestore('hw', ['hwFilterSubject', 'hwFilterGrade', 'hwFilterSection', 'hwSortOrder', 'hwDateFrom', 'hwDateTo', 'hwSearchInput'])) {
+    hwFilterCascade('grade');
+  }
   loadHomework();
 }
 
@@ -7976,6 +8019,7 @@ function hwFilterCascade(which) {
 }
 
 function applyHomeworkFilters() {
+  _fltSave('hw', ['hwFilterSubject', 'hwFilterGrade', 'hwFilterSection', 'hwSortOrder', 'hwDateFrom', 'hwDateTo', 'hwSearchInput']);
   var g        = (document.getElementById('hwFilterGrade')   || {}).value || '';
   var sec      = (document.getElementById('hwFilterSection') || {}).value || '';
   var subj     = (document.getElementById('hwFilterSubject') || {}).value || '';
@@ -8204,6 +8248,10 @@ function renderViolations() {
         '</div>' +
       '</div>' +
     '</div>';
+  // استعادة آخر فلاتر مستخدمة قبل أول تحميل (تُحفظ محلياً)
+  if (_fltRestore('vio', ['vioFilterGrade', 'vioFilterSection', 'vioSort', 'vioFilterSearch'])) {
+    filterGradeCascade('vioFilterGrade', 'vioFilterSection', null);
+  }
   loadViolations();
 }
 
@@ -8224,16 +8272,22 @@ function loadViolations() {
 
 // --- 3. فلترة المخالفات (محلياً) وتحديث الصفحة الأولى ---
 function filterViolations() {
+  _fltSave('vio', ['vioFilterGrade', 'vioFilterSection', 'vioSort', 'vioFilterSearch']);
   var gradeF   = (document.getElementById('vioFilterGrade') || {}).value || '';
   var sectionF = (document.getElementById('vioFilterSection') || {}).value || '';
   var sortF    = (document.getElementById('vioSort') || {}).value || 'newest';
   var searchQ  = _tcNorm((document.getElementById('vioFilterSearch') || {}).value || '');
 
+  // مقارنة مُطبَّعة للفصل/الشعبة (كان البحث مُطبَّعاً والفصل/الشعبة مقارنة حرفية —
+  // فتفشل المطابقة عند فروق همزة/مسافة بين القوائم وبيانات السجل)
+  var gradeN   = isAllFilter(gradeF)   ? '' : _tcNorm(gradeF);
+  var sectionN = isAllFilter(sectionF) ? '' : _tcNorm(sectionF);
+
   var list = [];
   for (var i = 0; i < _allViolations.length; i++) {
     var v = _allViolations[i];
-    if (!isAllFilter(gradeF) && v.grade !== gradeF) continue;
-    if (!isAllFilter(sectionF) && v.section !== sectionF) continue;
+    if (gradeN && _tcNorm(v.grade) !== gradeN) continue;
+    if (sectionN && _tcNorm(v.section) !== sectionN) continue;
     if (searchQ) {
       var hay = _tcNorm((v.name || '') + ' ' + (v.code || '') + ' ' + (v.violation || ''));
       if (hay.indexOf(searchQ) === -1) continue;
@@ -8620,7 +8674,7 @@ function renderNews() {
         '<div class="form-group flex-1">' +
           '<label class="form-label">اسم المعلم</label>' +
           '<input type="text" class="form-control" id="nfTeacher" ' +
-            'placeholder="🔍 اكتب اسم المعلم..." oninput="applyNewsFilters()">' +
+            'placeholder="🔍 اكتب اسم المعلم..." oninput="debounceNewsFilters()">' +
         '</div>' +
 
         // زر إعادة ضبط
@@ -8648,6 +8702,11 @@ function renderNews() {
     '</div></div>';
 
   document.getElementById('dynamicContent').innerHTML = html;
+
+  // استعادة آخر فلاتر مستخدمة (محفوظة محلياً) قبل أول جلب — فيأتي الطلب الأول مفلتراً
+  if (_fltRestore('news', ['nfGrade', 'nfSection', 'nfSort', 'nfDateFrom', 'nfDateTo', 'nfTeacher'])) {
+    filterGradeCascade('nfGrade', 'nfSection', null);
+  }
 
   // تحميل أول دفعة
   _newsCurrentPage = 1;
@@ -8685,6 +8744,7 @@ function loadNewsPage(isFirst) {
     page     : _newsCurrentPage,
     pageSize : _newsPageSize
   };
+  _fltSave('news', ['nfGrade', 'nfSection', 'nfSort', 'nfDateFrom', 'nfDateTo', 'nfTeacher']);
  
   // مفتاح الكاش يشمل الفلاتر — كان «news_page_N» فقط فيعيد نتائج فلاتر قديمة لنفس الصفحة
   var _ck = 'news_p' + _newsCurrentPage + '_' +
@@ -8726,6 +8786,13 @@ function applyNewsFilters() {
   _newsCache       = [];
   loadNewsPage(true);
 }
+
+// debounce لحقل «اسم المعلم» — كان oninput يستدعي الخادم عند كل حرف يُكتب
+var _nfDebounceTimer = null;
+function debounceNewsFilters() {
+  if (_nfDebounceTimer) clearTimeout(_nfDebounceTimer);
+  _nfDebounceTimer = setTimeout(function() { applyNewsFilters(); }, 450);
+}
  
 // ══════════════════════════════════════════════════════════════════
 // resetNewsFilters — إعادة ضبط الفلاتر
@@ -8736,6 +8803,7 @@ function resetNewsFilters() {
     var el = document.getElementById(ids[i]);
     if (el) el.value = '';
   }
+  _fltClear('news');
   var sortEl = document.getElementById('nfSort');
   if (sortEl) sortEl.value = 'newest';
   applyNewsFilters();
@@ -10600,9 +10668,9 @@ function editNews(id) { openNewsModal(id); }
 function deleteNewsItem(id) { confirmAction('حذف الخبر', 'هل تريد حذف هذا الخبر؟', '🗑️', function() { showLoading(); callServer('deleteNewsProtected', { id: id }, function(r) { hideLoading(); if (r.success) { toast(r.message, 'success'); applyNewsFilters(); } else showError(r.error); }); }); }
 
 // ==================== NOTES ====================
-function renderNotes() { var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(139,92,246,.1)">💬</div><div class="section-header-title">ملاحظات أولياء الأمور</div><span class="badge badge-info" style="margin-right: 12px;">المرسلة من منصة الطلاب</span></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="notesFilterGrade" onchange="loadParentNotesForUI()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="notesFilterSection" onchange="loadParentNotesForUI()">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div><div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="notesSearch" placeholder="🔍 اسم الطالب..." oninput="filterParentNotes()"></div></div><div id="notesListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; loadParentNotesForUI(); }
+function renderNotes() { var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(139,92,246,.1)">💬</div><div class="section-header-title">ملاحظات أولياء الأمور</div><span class="badge badge-info" style="margin-right: 12px;">المرسلة من منصة الطلاب</span></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="notesFilterGrade" onchange="applyParentNotesFilters()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="notesFilterSection" onchange="applyParentNotesFilters()">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div><div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="notesSearch" placeholder="🔍 اسم الطالب..." oninput="filterParentNotes()"></div></div><div id="notesListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; _fltRestore('notes', ['notesFilterGrade', 'notesFilterSection', 'notesSearch']); loadParentNotesForUI(); }
 function loadParentNotesForUI() { showLoading('جاري تحميل الملاحظات...'); callServer('getParentNotesProtected', {}, 'parent_notes', 120, function(r) { hideLoading(); if (r.success) { _allParentNotes = r.notes || []; applyParentNotesFilters(); } else showError(r.error); }); }
-function applyParentNotesFilters() { var gEl = document.getElementById('notesFilterGrade'); var sEl = document.getElementById('notesFilterSection'); var qEl = document.getElementById('notesSearch'); var g = gEl ? gEl.value : ''; var sec = sEl ? sEl.value : ''; var q = _tcNorm(qEl ? qEl.value : ''); var filtered = []; for (var i = 0; i < _allParentNotes.length; i++) { var n = _allParentNotes[i]; if (!isAllFilter(g) && n.grade !== g) continue;
+function applyParentNotesFilters() { _fltSave('notes', ['notesFilterGrade', 'notesFilterSection', 'notesSearch']); var gEl = document.getElementById('notesFilterGrade'); var sEl = document.getElementById('notesFilterSection'); var qEl = document.getElementById('notesSearch'); var g = gEl ? gEl.value : ''; var sec = sEl ? sEl.value : ''; var q = _tcNorm(qEl ? qEl.value : ''); var filtered = []; for (var i = 0; i < _allParentNotes.length; i++) { var n = _allParentNotes[i]; if (!isAllFilter(g) && n.grade !== g) continue;
 if (!isAllFilter(sec) && n.section !== sec) continue; if (q) { var hay = _tcNorm((n.studentName || '') + ' ' + (n.teacher || '') + ' ' + (n.message || '')); if (hay.indexOf(q) === -1) continue; } filtered.push(n); } filtered.sort(_tcByNewest); renderParentNotesList(filtered); }
 function filterParentNotes() { applyParentNotesFilters(); }
 // حذف ملاحظات أولياء الأمور مقصور على المدير/الوكيل/المشرف — يطابق فحص الخادم
@@ -10698,6 +10766,17 @@ function _schedDistinctTeachers() {
   return out;
 }
 
+// قيم مميزة لأي حقل من صفوف الجدول المحمَّل (لخيارات فلتر مطابقة للبيانات الفعلية)
+function _schedDistinctVals(field) {
+  var seen = {}, out = [], rows = _cachedSchedule || [];
+  for (var i = 0; i < rows.length; i++) {
+    var v = _schedNorm(rows[i][field]);
+    if (v && !seen[v]) { seen[v] = 1; out.push(v); }
+  }
+  out.sort(function(a, b) { return a.localeCompare(b, 'ar'); });
+  return out;
+}
+
 function _schedDistinctSubjects() {
   var seen = {}, out = [], rows = _cachedSchedule || [];
   for (var i = 0; i < rows.length; i++) {
@@ -10732,8 +10811,12 @@ function _schedBuildFilterBar() {
     h += '<div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="schedTeacherFilter" onchange="_schedApply()"><option value="">كل المعلمين</option>';
     for (var ti = 0; ti < ts.length; ti++) h += '<option value="' + escapeHtml(ts[ti]) + '">' + escapeHtml(ts[ti]) + '</option>';
     h += '</select></div>';
-    h += '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="schedGradeFilter" onchange="_schedApply()">' + buildSelectOptions(App.lists.grades || [], 'الكل', '', true) + '</select></div>';
-    h += '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="schedSectionFilter" onchange="_schedApply()">' + buildSelectOptions(App.lists.sections || [], 'الكل', '', true) + '</select></div>';
+    // خيارات الفصل/الشعبة من صفوف الجدول الفعلية (لا من القوائم العامة) — فلا تظهر
+    // خيارات لا تُرجِع أي نتيجة؛ مع تراجُع للقوائم العامة إن كان الجدول فارغاً
+    var _sgGrades = _schedDistinctVals('grade');
+    var _sgSections = _schedDistinctVals('section');
+    h += '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="schedGradeFilter" onchange="_schedApply()">' + buildSelectOptions(_sgGrades.length ? _sgGrades : (App.lists.grades || []), 'الكل', '', true) + '</select></div>';
+    h += '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="schedSectionFilter" onchange="_schedApply()">' + buildSelectOptions(_sgSections.length ? _sgSections : (App.lists.sections || []), 'الكل', '', true) + '</select></div>';
   }
   // اليوم
   h += '<div class="form-group"><label class="form-label">اليوم</label><select class="form-select" id="schedDayFilter" onchange="_schedApply()"><option value="">كل الأيام</option>';
@@ -10792,8 +10875,8 @@ function _schedFilterRows() {
     var r = rows[i];
     if (f.subj && _schedNorm(r.subject) !== _schedNorm(f.subj)) continue;
     if (f.teacher && _schedNorm(r.teacher) !== _schedNorm(f.teacher)) continue;
-    if (f.grade && f.grade !== 'الكل' && r.grade !== f.grade) continue;
-    if (f.section && f.section !== 'الكل' && r.section !== f.section) continue;
+    if (f.grade && f.grade !== 'الكل' && _schedNorm(r.grade) !== _schedNorm(f.grade)) continue;
+    if (f.section && f.section !== 'الكل' && _schedNorm(r.section) !== _schedNorm(f.section)) continue;
     if (f.day && r.day !== f.day) continue;
     if (f.q) {
       var hay = ((r.teacher || '') + ' ' + (r.subject || '') + ' ' + (r.grade || '') + ' ' + (r.section || '') + ' ' + (r.room || '')).toLowerCase();
@@ -11463,6 +11546,10 @@ function renderAdminStudents() {
   html += '</div>';
   
   document.getElementById('dynamicContent').innerHTML = html;
+  // استعادة آخر فلاتر مستخدمة قبل أول تحميل (تُحفظ محلياً)
+  if (_fltRestore('stud', ['studFilterGrade', 'studFilterSection', 'studSearch'])) {
+    filterGradeCascade('studFilterGrade', 'studFilterSection', null);
+  }
   loadBlockSettings();
   loadStudentsList();
 }
@@ -11663,6 +11750,7 @@ function updateBlockStats() {
 
 function applyStudentsFilters() {
   if (!window._allStudentsRaw) return;
+  _fltSave('stud', ['studFilterGrade', 'studFilterSection', 'studSearch']);
   var gradeEl = document.getElementById('studFilterGrade');
   var sectionEl = document.getElementById('studFilterSection');
   var searchEl = document.getElementById('studSearch');
@@ -11671,14 +11759,15 @@ function applyStudentsFilters() {
   var search = searchEl ? searchEl.value : '';
   grade = (grade || '').trim();
   section = (section || '').trim();
-  search = (search || '').trim().toLowerCase();
-  
+  // بحث عربي مُطبَّع (تشكيل/همزات/تاء مربوطة) بدل toLowerCase وحدها
+  search = _tcNorm(search);
+
   var filtered = [];
   for (var i = 0; i < window._allStudentsRaw.length; i++) {
     var s = window._allStudentsRaw[i];
-    if (grade && grade !== 'الكل' && s.grade !== grade) continue;
-    if (section && section !== 'الكل' && s.section !== section) continue;
-    if (search && (s.name || '').toLowerCase().indexOf(search) === -1) continue;
+    if (!isAllFilter(grade) && s.grade !== grade) continue;
+    if (!isAllFilter(section) && s.section !== section) continue;
+    if (search && _tcNorm(s.name).indexOf(search) === -1) continue;
     filtered.push(s);
   }
   window._filteredStudents = filtered;
@@ -11931,6 +12020,12 @@ function att_onGradeChange() {
   var sections = getMySectionsForGradeSubject('', grade);
   for (var i=0; i<sections.length; i++) { var opt = document.createElement('option'); opt.value = sections[i]; opt.textContent = sections[i]; secSelect.appendChild(opt); }
   if (App.user.isAdmin) { var allOpt = document.createElement('option'); allOpt.value = 'جميع الشعب'; allOpt.textContent = '📚 جميع الشعب'; secSelect.insertBefore(allOpt, secSelect.children[1]); }
+  // كانت القائمة تبقى فارغة بصمت إن لم تكن للمستخدم شعب في هذا الفصل
+  if (!sections.length && !App.user.isAdmin) {
+    att_setStatus('⚠️ لا توجد شعب مسندة إليك في هذا الفصل', '#ff9800');
+  } else {
+    att_setStatus('', '');
+  }
 }
 function att_loadStudents() {
   var grade = document.getElementById('att-grade').value;
@@ -11941,11 +12036,17 @@ function att_loadStudents() {
   _attGrade = grade; _attSection = section; _attDate = date;
   att_setStatus('⏳ جارٍ تحميل قائمة الطلاب...', '#1a237e');
   document.getElementById('att-container').innerHTML = '<p style="text-align:center;padding:30px;color:#999;">⏳ جارٍ التحميل...</p>';
+  // عند الفشل تُفرَّغ منطقة التحميل أيضاً — كان مؤشر «جارٍ التحميل» يبقى معلّقاً تحت رسالة الخطأ
+  var _attFail = function(msg) {
+    att_setStatus('❌ ' + msg, '#c62828');
+    var c = document.getElementById('att-container');
+    if (c) c.innerHTML = '<p style="text-align:center;padding:30px;color:#c62828;">تعذّر تحميل القائمة — تحقق من الاتصال ثم أعد المحاولة</p>';
+  };
   google.script.run.withSuccessHandler(function(res) {
-    if (!res || !res.success) { att_setStatus('❌ ' + (res ? res.error : 'خطأ في الاتصال'), '#c62828'); return; }
+    if (!res || !res.success) { _attFail(res ? res.error : 'خطأ في الاتصال'); return; }
     _attStudents = res.students || [];
     att_renderTable(_attStudents, res.date, res.totalCount); att_setStatus('', '');
-  }).withFailureHandler(function(err) { att_setStatus('❌ خطأ: ' + err.message, '#c62828'); }).getAttendanceListProtected({ token: App.user.token, grade: grade, section: section, date: date });
+  }).withFailureHandler(function(err) { _attFail('خطأ: ' + err.message); }).getAttendanceListProtected({ token: App.user.token, grade: grade, section: section, date: date });
 }
 function att_renderTable(students, date, total) {
   var container = document.getElementById('att-container');
@@ -12255,7 +12356,8 @@ function att_filterStudents(q){
 }
 var _attAllStudents=[]; // كل أسماء الطلاب من ورقة «الطلاب» (للاقتراحات)
 function att_loadAllStudentNames(){
-  callServer('getStudentNamesProtected', {}, function(res){ if(res&&res.success&&res.students) _attAllStudents=res.students; }, function(){});
+  // بكاش 10 دقائق + توحيد الطلبات المتزامنة — كانت تُجلب من الخادم عند كل فتح لقسم الحضور
+  callServer('getStudentNamesProtected', {}, 'student_names', 600, function(res){ if(res&&res.success&&res.students) _attAllStudents=res.students; }, function(){});
 }
 function _attStudentNames(){
   if(_attAllStudents&&_attAllStudents.length) return _attAllStudents;          // كل الطلاب من الشيت

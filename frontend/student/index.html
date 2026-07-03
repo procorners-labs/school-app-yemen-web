@@ -2041,20 +2041,39 @@ function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback)
   if (cacheKey) {
     var cached = ClientCache.get(cacheKey);
     if (cached) { callback(cached); return; }
-    if (_pendingCalls[cacheKey]) { return; }
-    _pendingCalls[cacheKey] = true;
+    // طلب مطابق جارٍ: نضمّ الـcallback لطابور الانتظار بدل إهماله — الإهمال كان
+    // يترك الشاشة الثانية على «جارٍ التحميل» للأبد (سبب هياكل عالقة على الشبكات البطيئة)
+    if (_pendingCalls[cacheKey]) {
+      _pendingCalls[cacheKey].push({ cb: callback, eb: errorCallback });
+      return;
+    }
+    _pendingCalls[cacheKey] = [{ cb: callback, eb: errorCallback }];
   }
   google.script.run
     .withSuccessHandler(function(result) {
       if (cacheKey && result && result.success !== false) {
         ClientCache.set(cacheKey, result, ttl);
       }
-      delete _pendingCalls[cacheKey];
-      callback(result);
+      if (cacheKey) {
+        var q = _pendingCalls[cacheKey] || [];
+        delete _pendingCalls[cacheKey];
+        for (var i = 0; i < q.length; i++) {
+          try { q[i].cb(result); } catch (e) {}
+        }
+      } else {
+        callback(result);
+      }
     })
     .withFailureHandler(function(err) {
-      delete _pendingCalls[cacheKey];
-      if (errorCallback) errorCallback(err);
+      if (cacheKey) {
+        var q = _pendingCalls[cacheKey] || [];
+        delete _pendingCalls[cacheKey];
+        for (var j = 0; j < q.length; j++) {
+          if (q[j].eb) { try { q[j].eb(err); } catch (e) {} }
+        }
+      } else if (errorCallback) {
+        errorCallback(err);
+      }
     })
     [fnName](params);
 }
@@ -4517,16 +4536,26 @@ function _startHomeClock() {
 function loadHomeToday() {
   _startHomeClock();
   if (!$('homeTodayBody')) return;
+  // الإعدادات وبيانات الجدول تُجلبان بالتوازي (كانتا متسلسلتين فيتضاعف زمن أول عرض)
+  // والعرض ينتظر اكتمالهما لأن renderHomeToday يعتمد على تواقيت الإعدادات
+  var cfgDone = false, schedDone = false, schedRes = null, schedFailed = false;
+  function finish() {
+    if (!cfgDone || !schedDone) return;
+    if (schedFailed) {
+      var b = $('homeTodayBody');
+      if (b) b.innerHTML = '<div class="ht-banner info">📅 تعذّر تحميل الجدول.</div>';
+      return;
+    }
+    renderHomeToday(schedRes);
+  }
   callServerSmart('getScheduleSettings', { schoolId: APP.user.schoolId }, 'sched_settings', 600,
-    function (cfg) { _applySchedSettings(cfg); _fetchTodaySchedule(); },
-    function () { _fetchTodaySchedule(); });
-}
-function _fetchTodaySchedule() {
+    function (cfg) { _applySchedSettings(cfg); cfgDone = true; finish(); },
+    function () { cfgDone = true; finish(); });
   callServerSmart('getSchedule',
     { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
     'schedule_' + APP.user.class + '_' + APP.user.section, 600,
-    function (r) { renderHomeToday(r); },
-    function () { var b = $('homeTodayBody'); if (b) b.innerHTML = '<div class="ht-banner info">📅 تعذّر تحميل الجدول.</div>'; });
+    function (r) { schedRes = r; schedDone = true; finish(); },
+    function () { schedFailed = true; schedDone = true; finish(); });
 }
 
 // تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد).
@@ -4606,37 +4635,38 @@ function loadSchedule(force) {
   var w = $('schedWrap');
   w.innerHTML = loaderHTML('جارٍ تحميل الجدول...');
 
-  // اجلب إعدادات التواقيت أولاً (مخزّنة 10د) ثم بيانات الجدول
+  // إعدادات التواقيت وبيانات الجدول بالتوازي (كان الجلب متسلسلاً: إعدادات ثم بيانات)،
+  // والعرض بعد اكتمالهما لأن renderSchedule يعتمد على التواقيت
+  var cfgDone = false, dataDone = false, dataRes = null, dataErr = null;
+  function finish() {
+    if (!cfgDone || !dataDone) return;
+    if (dataErr !== null) {
+      w.innerHTML = errHTML('فشل تحميل الجدول: ' + dataErr);
+      return;
+    }
+    APP.loaded.schedule = true;
+    renderSchedule(dataRes);
+  }
   callServerSmart(
     'getScheduleSettings',
     { schoolId: APP.user.schoolId },
     'sched_settings',
     600,
-    function (cfg) { _applySchedSettings(cfg); _loadScheduleData(force); },
-    function ()    { _loadScheduleData(force); }   // عند الفشل: نُكمل بالافتراضات
+    function (cfg) { _applySchedSettings(cfg); cfgDone = true; finish(); },
+    function ()    { cfgDone = true; finish(); }   // عند الفشل: نُكمل بالافتراضات
   );
-}
-
-function _loadScheduleData(force) {
-  var w = $('schedWrap');
   if (!force) {
     var c = ssGet('schedule');
-    if (c) { APP.loaded.schedule = true; renderSchedule(c); return; }
+    if (c) { dataRes = c; dataDone = true; finish(); return; }
   }
-
   callServerSmart(
-  'getSchedule',
-  { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-  'schedule_' + APP.user.class + '_' + APP.user.section,
-  600,
-  function (r) {
-    APP.loaded.schedule = true;
-    renderSchedule(r);
-  },
-  function (e) {
-    w.innerHTML = errHTML('فشل تحميل الجدول: ' + (e.message || e));
-  }
-);
+    'getSchedule',
+    { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+    'schedule_' + APP.user.class + '_' + APP.user.section,
+    600,
+    function (r) { dataRes = r; dataDone = true; finish(); },
+    function (e) { dataErr = (e && e.message) || e; dataDone = true; finish(); }
+  );
 }
 function renderSchedule(r) {
   var w = $('schedWrap');
@@ -5143,8 +5173,13 @@ function changeMyPassword() {
 // ═══════════════════════════════════════════════════════════
 // 17. شارات الإشعارات (Badges)
 // ═══════════════════════════════════════════════════════════
+var _badgeInFlight = false;
 function loadNotificationBadges() {
   if (!APP.user || !APP.user.id) return;
+  // حارس طلب واحد: الاستطلاع الدوري (كل 90ث) كان قد يتراكب مع طلب سابق لم يكتمل
+  // بعدُ على الشبكات البطيئة (المهلة مع إعادة المحاولة قد تتجاوز الفاصل الزمني)
+  if (_badgeInFlight) return;
+  _badgeInFlight = true;
 
   // تاريخ آخر دخول مخزّن في sessionStorage
   var lastLogin = ssGet('lastLogin');
@@ -5154,6 +5189,7 @@ function loadNotificationBadges() {
 
   google.script.run
     .withSuccessHandler(function (r) {
+      _badgeInFlight = false;
       if (!r || !r.ok || !r.badge) return;
       var b = r.badge;
       setBadge('badge-news', b.news);
@@ -5161,7 +5197,7 @@ function loadNotificationBadges() {
       setBadge('badge-notes', b.notes);
       setBadge('badge-homework', b.homework);
     })
-    .withFailureHandler(function () { /* صامت */ })
+    .withFailureHandler(function () { _badgeInFlight = false; /* صامت */ })
     .getStudentNotificationBadge(
     APP.user.id, APP.user.name,
     APP.user.class, APP.user.section,
