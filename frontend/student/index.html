@@ -2216,32 +2216,104 @@ function openModal(id) {
 function closeModal(id) { $(id).classList.remove('show'); }
 
 /**
- * كاشف سحب-التحديث: عند السحب لأسفل من أعلى الصفحة يعرض نافذة تأكيد
- * بدل إعادة التحميل الفورية. ES5 · بلا preventDefault (لا يكسر التمرير).
+ * كاشف سحب-التحديث v2: تمييز دائم بين «الرجوع لأعلى» و«سحب-التحديث».
+ * القاعدة المعمارية (لا تُخالَف): أي لمسة يوجد بين هدفها والمستند سلفٌ قابل
+ * للتمرير (overflow-y:auto/scroll بمحتوى فائض — المودالات أو أي حاوية
+ * مستقبلية) لا تُتتبَّع إطلاقاً — الكشف عام عبر scrollableAncestor فلا يحتاج
+ * استثناءً يدوياً لكل حاوية جديدة.
+ * الإيماءة الشرعية: بدء اللمس والمستند عند القمة + أول حركة لأسفل (غير أفقية)
+ * + مسافة ≥ 110px، مع مؤشر مرئي #ptrIndicator («اسحب للأسفل للتحديث» →
+ * «أفلت للتحديث») ومودال تأكيد أخير قبل إعادة التحميل.
+ * ES5 · المستمعون passive حصراً (بلا preventDefault — لا يكسر التمرير)،
+ * والاعتماد على overscroll-behavior-y:contain في html,body لتعطيل PTR الأصلي.
  */
 function _setupPullToRefreshGuardStu() {
   if (window._ptrGuardStuDone) return;
   window._ptrGuardStuDone = true;
-  var startY = 0, tracking = false, armed = false;
+  var startY = 0, startX = 0, tracking = false, armed = false, dirLocked = false;
+  var ARM_AT = 110, DISARM_AT = 90, LOCK_AT = 12;
+  var ind = null, indIcon = null, indTxt = null;
   function atTop() {
     var y = window.pageYOffset || document.documentElement.scrollTop || 0;
-    return y <= 0;
+    return y <= 0; // iOS rubber-band يعطي قيماً سالبة — تُعامل كأعلى الصفحة
   }
+  // الحارس العام الدائم: أي سلف قابل للتمرير (غير المستند) = ليس سحب-تحديث
+  function scrollableAncestor(node) {
+    var el = node;
+    while (el && el !== document.body && el !== document.documentElement) {
+      if (el.nodeType === 1 && (el.scrollHeight - el.clientHeight) > 1) {
+        var oy = '';
+        try { oy = window.getComputedStyle(el).overflowY || ''; } catch (err) {}
+        if (oy === 'auto' || oy === 'scroll') return el;
+      }
+      el = el.parentNode;
+    }
+    return null;
+  }
+  function ensureInd() {
+    if (ind) return;
+    var st = document.createElement('style');
+    st.textContent =
+      '#ptrIndicator{position:fixed;top:0;left:50%;z-index:12000;pointer-events:none;' +
+        'transform:translateX(-50%) translateY(-64px);opacity:0;direction:rtl;' +
+        'display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;' +
+        'background:rgba(255,255,255,.97);border:1px solid #e2e8f0;box-shadow:0 6px 20px rgba(0,0,0,.18);' +
+        'font-size:13px;font-weight:700;color:#475569;will-change:transform,opacity;' +
+        'transition:opacity .15s ease}' +
+      '#ptrIndicator.ptr-on{opacity:1}' +
+      '#ptrIndicator .ptr-ic{display:inline-block;font-size:16px;will-change:transform}' +
+      '#ptrIndicator.ptr-on.ptr-armed{background:#059669;border-color:#059669;color:#fff}';
+    document.head.appendChild(st);
+    ind = document.createElement('div');
+    ind.id = 'ptrIndicator';
+    ind.innerHTML = '<span class="ptr-ic">⟳</span><span class="ptr-tx">اسحب للأسفل للتحديث</span>';
+    document.body.appendChild(ind);
+    indIcon = ind.querySelector('.ptr-ic');
+    indTxt = ind.querySelector('.ptr-tx');
+  }
+  function indShow(dy) {
+    ensureInd();
+    var pull = Math.min(dy * 0.4, 72); // مقاومة مطاطية
+    ind.className = 'ptr-on' + (armed ? ' ptr-armed' : '');
+    ind.style.transform = 'translateX(-50%) translateY(' + (pull - 52) + 'px)';
+    if (indIcon) indIcon.style.transform = 'rotate(' + Math.min(dy * 1.6, 360) + 'deg)';
+    if (indTxt) indTxt.textContent = armed ? 'أفلت للتحديث' : 'اسحب للأسفل للتحديث';
+  }
+  function indHide() {
+    if (!ind) return;
+    ind.className = '';
+    ind.style.transform = 'translateX(-50%) translateY(-64px)';
+  }
+  function cancelPtr() { tracking = false; armed = false; dirLocked = false; indHide(); }
   document.addEventListener('touchstart', function (e) {
-    if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
-    if (atTop()) { startY = e.touches[0].clientY; tracking = true; armed = false; }
-    else { tracking = false; }
+    if (!e.touches || e.touches.length !== 1) { cancelPtr(); return; }
+    // حزام أمان صريح: المودالات وعارض الصور (حتى غير الفائضة محتوىً)
+    if (e.target && e.target.closest && e.target.closest('.modal-bg, .lightbox')) { cancelPtr(); return; }
+    if (scrollableAncestor(e.target)) { cancelPtr(); return; }
+    if (!atTop()) { cancelPtr(); return; }
+    startY = e.touches[0].clientY; startX = e.touches[0].clientX;
+    tracking = true; armed = false; dirLocked = false;
   }, { passive: true });
   document.addEventListener('touchmove', function (e) {
     if (!tracking || !e.touches || e.touches.length !== 1) return;
     var dy = e.touches[0].clientY - startY;
-    if (dy > 110 && atTop()) { armed = true; }
-    else if (dy < 10) { armed = false; }
+    var dx = e.touches[0].clientX - startX;
+    if (!dirLocked) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < LOCK_AT) return; // لم يتحدد الاتجاه بعد
+      if (Math.abs(dx) > Math.abs(dy) || dy < 0) { cancelPtr(); return; } // أفقي أو لأعلى = ليس سحب-تحديث
+      dirLocked = true;
+    }
+    if (!atTop()) { cancelPtr(); return; } // المستند تحرّك فعلاً = تمرير حقيقي
+    if (dy >= ARM_AT) { armed = true; }
+    else if (dy < DISARM_AT) { armed = false; }
+    indShow(dy);
   }, { passive: true });
   document.addEventListener('touchend', function () {
-    if (tracking && armed) { openModal('refreshModal'); }
-    tracking = false; armed = false;
+    var fire = tracking && armed;
+    cancelPtr();
+    if (fire) { openModal('refreshModal'); }
   }, { passive: true });
+  document.addEventListener('touchcancel', function () { cancelPtr(); }, { passive: true });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2285,6 +2357,40 @@ function ssClearAll() {
     for (i = 0; i < toRemove.length; i++) sessionStorage.removeItem(toRemove[i]);
   } catch (e) {}
 }
+
+// ── حفظ/استعادة اختيارات الفلاتر (localStorage — تبقى بعد إغلاق التطبيق) ──
+// نظير _fltKey/_fltSave/_fltRestore/_fltClear في لوحة المعلم، بمفتاح يفصل
+// المدرسة والطالب (الإخوة المتشاركون جهازاً لا تتداخل فلاترهم).
+// الاستعادة لا تُطلق أحداث change — استدعِ دالة التطبيق صراحةً بعدها.
+function _fltKeyStu(page) {
+  var who = (APP && APP.user && APP.user.id) ? APP.user.id : '';
+  var sch = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID || '';
+  return 'stflt_' + sch + '_' + who + '_' + page;
+}
+function _fltSaveStu(page, ids) {
+  try {
+    var o = {};
+    for (var i = 0; i < ids.length; i++) { var el = $(ids[i]); if (el) o[ids[i]] = el.value || ''; }
+    localStorage.setItem(_fltKeyStu(page), JSON.stringify(o));
+  } catch (e) {}
+}
+function _fltRestoreStu(page, ids) {
+  try {
+    var raw = localStorage.getItem(_fltKeyStu(page));
+    if (!raw) return false;
+    var o = JSON.parse(raw) || {}, any = false;
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i], el = $(id);
+      if (!el || typeof o[id] !== 'string' || o[id] === '' || el.value === o[id]) continue;
+      el.value = o[id];
+      // قيمة select لم تعد ضمن الخيارات — تُتجاهَل بصمت
+      if (el.tagName === 'SELECT' && el.value !== o[id]) continue;
+      any = true;
+    }
+    return any;
+  } catch (e) { return false; }
+}
+function _fltClearStu(page) { try { localStorage.removeItem(_fltKeyStu(page)); } catch (e) {} }
 
 // ═══════════════════════════════════════════════════════════
 // 3. تسجيل الدخول والخروج
@@ -3065,6 +3171,8 @@ function renderHomework(data) {
 function loadNews() {
   APP.loaded.news = true;
   loadCirculars();
+  // استعادة فلاتر الأخبار المحفوظة قبل أول تحميل (fetchNewsPage يقرأ القيم مباشرة)
+  _fltRestoreStu('news', ['nsSort', 'nsFrom', 'nsTo']);
   resetNewsAndLoad();
 }
 
@@ -3114,6 +3222,7 @@ function renderCirculars(items) {
 }
 
 function resetNewsAndLoad() {
+  _fltSaveStu('news', ['nsSort', 'nsFrom', 'nsTo']); // القمع الوحيد لكل تغيير فلتر
   APP.newsState.items = [];
   APP.newsState.page = 1;
   APP.newsState.hasMore = false;
@@ -3132,6 +3241,7 @@ function resetNewsAndLoad() {
 }
 
 function clearNewsFilters() {
+  _fltClearStu('news');
   var nsSort = $('nsSort');
   if (nsSort) nsSort.value = 'newest';
   var nsFrom = $('nsFrom');
