@@ -2388,12 +2388,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <div class="form-group mb-3" id="vioCustomWrap" style="display:none">
           <label class="form-label">اكتب نوع السلوك</label>
           <input class="form-control" id="vioCustomText" placeholder="مثال: ساعد زميلاً متأخراً على فهم الدرس">
-          <div style="margin-top:10px;">
-            <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
-            <div style="display:flex;gap:8px;">
-              <button type="button" class="tf-tab" id="vioPolBtnMerit" onclick="vioSetPolarity('merit')">✅ تعزيز</button>
-              <button type="button" class="tf-tab" id="vioPolBtnViolation" onclick="vioSetPolarity('violation')">⚠️ ملاحظة</button>
-            </div>
+        </div>
+        <div class="form-group mb-3" id="vioPolarityWrap" style="display:none">
+          <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="tf-tab" id="vioPolBtnMerit" onclick="vioSetPolarity('merit')">✅ تعزيز</button>
+            <button type="button" class="tf-tab" id="vioPolBtnViolation" onclick="vioSetPolarity('violation')">⚠️ ملاحظة</button>
           </div>
         </div>
         <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد</label><textarea class="form-control" id="vioReply" placeholder="ملاحظات إضافية..." rows="3"></textarea></div>
@@ -2422,12 +2422,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div class="form-group mb-3" id="bulkVioCustomWrap" style="display:none">
         <label class="form-label">اكتب نوع السلوك</label>
         <input class="form-control" id="bulkVioCustomText" placeholder="مثال: متأخر عن الطابور">
-        <div style="margin-top:10px;">
-          <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
-          <div style="display:flex;gap:8px;">
-            <button type="button" class="tf-tab" id="bulkVioPolBtnMerit" onclick="bulkVioSetPolarity('merit')">✅ تعزيز</button>
-            <button type="button" class="tf-tab" id="bulkVioPolBtnViolation" onclick="bulkVioSetPolarity('violation')">⚠️ ملاحظة</button>
-          </div>
+      </div>
+      <div class="form-group mb-3" id="bulkVioPolarityWrap" style="display:none">
+        <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="tf-tab" id="bulkVioPolBtnMerit" onclick="bulkVioSetPolarity('merit')">✅ تعزيز</button>
+          <button type="button" class="tf-tab" id="bulkVioPolBtnViolation" onclick="bulkVioSetPolarity('violation')">⚠️ ملاحظة</button>
         </div>
       </div>
       <div class="form-group mb-3"><label class="form-label">ملاحظة / الرد (تُطبَّق على الجميع)</label><textarea class="form-control" id="bulkVioReply" placeholder="مثال: متأخر عن الطابور" rows="3"></textarea></div>
@@ -8180,19 +8180,23 @@ function openViolationModal() {
   if (vioTypeEl) vioTypeEl.innerHTML += '<option value="__custom__">✍️ نوع آخر (اكتب بنفسك)</option>';
   var customTextEl = document.getElementById('vioCustomText'); if (customTextEl) customTextEl.value = '';
   var wrapEl = document.getElementById('vioCustomWrap'); if (wrapEl) wrapEl.style.display = 'none';
+  var polWrapEl = document.getElementById('vioPolarityWrap'); if (polWrapEl) polWrapEl.style.display = 'none';
   document.getElementById('vioReply').value = '';
   vioSetPolarity('');
   openModal('violationModal');
 }
 
-// عند اختيار «نوع آخر (اكتب بنفسك)» يظهر حقل النص الحر + زر التصنيف؛ وإلا يختفيان
-// (النوع المختار من القائمة الجاهزة يكفي وحده، والتصنيف يُخمَّن منه تلقائياً كالسابق).
+// حقل النص الحر يظهر فقط عند «نوع آخر (اكتب بنفسك)»؛ أما زر التصنيف فيظهر عند
+// اختيار أي نوع (جاهز أو حر) — قابل للتصحيح يدوياً في الحالتين، لا الحرّ فقط.
 function vioTypeOnChange() {
   var sel = document.getElementById('vioType');
+  var hasType = !!(sel && sel.value);
   var isCustom = !!(sel && sel.value === '__custom__');
   var wrapEl = document.getElementById('vioCustomWrap');
   if (wrapEl) wrapEl.style.display = isCustom ? 'block' : 'none';
-  if (!isCustom) vioSetPolarity('');
+  var polWrapEl = document.getElementById('vioPolarityWrap');
+  if (polWrapEl) polWrapEl.style.display = hasType ? 'block' : 'none';
+  if (!hasType) vioSetPolarity('');
 }
 
 // التصنيف الصريح الذي يختاره الأستاذ عند كتابة نوع السلوك بنفسه: 'merit' | 'violation' | '' (اقتراح تلقائي).
@@ -8342,7 +8346,7 @@ function saveViolation() {
     violation: type,
     teacherName: App.user.teacherName,
     reply: reply.trim(),
-    polarity: isCustom ? _vioPolarity : ''
+    polarity: _vioPolarity
   }, function(r) {
     hideLoading();
     if (r && r.success) {
@@ -14329,6 +14333,7 @@ function sdir_bulkBehavior() {
   if (typeEl) typeEl.innerHTML += '<option value="__custom__">✍️ نوع آخر (اكتب بنفسك)</option>';
   var customTextEl = document.getElementById('bulkVioCustomText'); if (customTextEl) customTextEl.value = '';
   var wrapEl = document.getElementById('bulkVioCustomWrap'); if (wrapEl) wrapEl.style.display = 'none';
+  var polWrapEl = document.getElementById('bulkVioPolarityWrap'); if (polWrapEl) polWrapEl.style.display = 'none';
   var rep = document.getElementById('bulkVioReply'); if (rep) rep.value = '';
   bulkVioSetPolarity('');
   openModal('bulkVioModal');
@@ -14337,10 +14342,13 @@ function sdir_bulkBehavior() {
 // عند اختيار «نوع آخر (اكتب بنفسك)» يظهر حقل النص الحر + زر التصنيف؛ وإلا يختفيان.
 function bulkVioTypeOnChange() {
   var sel = document.getElementById('bulkVioType');
+  var hasType = !!(sel && sel.value);
   var isCustom = !!(sel && sel.value === '__custom__');
   var wrapEl = document.getElementById('bulkVioCustomWrap');
   if (wrapEl) wrapEl.style.display = isCustom ? 'block' : 'none';
-  if (!isCustom) bulkVioSetPolarity('');
+  var polWrapEl = document.getElementById('bulkVioPolarityWrap');
+  if (polWrapEl) polWrapEl.style.display = hasType ? 'block' : 'none';
+  if (!hasType) bulkVioSetPolarity('');
 }
 
 // التصنيف الصريح للتسجيل الجماعي: 'merit' | 'violation' | '' (اقتراح تلقائي).
@@ -14364,7 +14372,7 @@ function sdir_bulkBehaviorSave() {
   var reply = (document.getElementById('bulkVioReply') || {}).value || '';
   showLoading('جاري تسجيل السلوك لـ ' + rows.length + ' طالب…');
   callServer('addViolationsBulkProtected',
-    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: isCustom ? _bulkVioPolarity : '' },
+    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: _bulkVioPolarity },
     function (r) {
       hideLoading();
       if (r && r.success) {
