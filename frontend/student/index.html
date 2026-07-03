@@ -1894,7 +1894,8 @@ a { color: var(--pr); text-decoration: none; }
           <select id="noteTypePreset" onchange="noteTypeOnChange()">
             <option value="">— اختر نوع الملاحظة —</option>
           </select>
-          <textarea id="noteMsg" placeholder="اكتب ملاحظتك هنا (5 أحرف على الأقل)..." style="display:none;"></textarea>
+          <textarea id="noteMsg" placeholder="اكتب ملاحظتك هنا (5 أحرف على الأقل)..." style="display:none;" maxlength="500" oninput="updateNoteCharCount()"></textarea>
+          <div id="noteCharCount" style="display:none;font-size:.75rem;color:var(--text-light,#64748b);text-align:left;margin-top:-6px;margin-bottom:4px;"></div>
           <button class="btn-primary" id="noteSendBtn" onclick="submitMyNote()">إرسال الملاحظة ✉️</button>
         </div>
 
@@ -2008,6 +2009,9 @@ var ClientCache = {
       if (Date.now() > obj.e) { sessionStorage.removeItem(this._prefix + key); return null; }
       return obj.d;
     } catch (e) { return null; }
+  },
+  remove: function(key) {
+    try { sessionStorage.removeItem(this._prefix + key); } catch (e) {}
   }
 };
 
@@ -4610,7 +4614,21 @@ function noteTypeOnChange() {
   var sel = $('noteTypePreset');
   var isCustom = !!(sel && sel.value === '__custom__');
   $('noteMsg').style.display = isCustom ? 'block' : 'none';
+  var cc = $('noteCharCount');
+  if (cc) cc.style.display = isCustom ? 'block' : 'none';
   if (!isCustom) $('noteMsg').value = '';
+  updateNoteCharCount();
+}
+
+// عدّاد أحرف الرسالة الحرّة (يوضّح الحد الأدنى 5 والحد الأقصى 500)
+function updateNoteCharCount() {
+  var cc = $('noteCharCount');
+  var ta = $('noteMsg');
+  if (!cc || !ta) return;
+  var len = (ta.value || '').length;
+  if (len === 0) { cc.textContent = '٠ / 500 حرف — خمسة أحرف على الأقل'; cc.style.color = ''; }
+  else if (len < 5) { cc.textContent = len + ' / 500 حرف — أكمل ' + (5 - len) + ' أحرف على الأقل'; cc.style.color = '#b45309'; }
+  else { cc.textContent = len + ' / 500 حرف'; cc.style.color = ''; }
 }
 
 function submitMyNote() {
@@ -4637,10 +4655,15 @@ function submitMyNote() {
       if (r && r.ok) {
         $('noteMsg').value = '';
         $('noteMsg').style.display = 'none';
+        var ccEl = $('noteCharCount');
+        if (ccEl) ccEl.style.display = 'none';
         $('noteTeacher').value = '';
         $('noteTypePreset').value = '';
-        toast(r.message || 'تم الإرسال بنجاح', 's');
+        toast(r.message || 'تم الإرسال بنجاح — ستصل رسالتك للمعلم', 's');
         loadNotes(true);
+      } else if (r && r.duplicate) {
+        // رسالة مكررة لنفس المعلم: توضيح ودّي (ليست خطأ تقنياً)
+        toast(r.error || 'تم استلام رسالتك سابقاً — لا حاجة لإعادة الإرسال', 'w');
       } else {
         toast((r && r.error) || 'تعذّر الإرسال', 'e');
       }
@@ -4666,6 +4689,9 @@ function submitMyNote() {
 function loadNotes(force) {
   var w = $('notesHistory');
   w.innerHTML = loaderHTML('جارٍ تحميل الملاحظات...');
+
+  // force=true (بعد إرسال ناجح مثلاً): تجاوز الكاش لتظهر الرسالة الجديدة فوراً
+  if (force) ClientCache.remove('notes_' + APP.user.id);
 
   callServerSmart(
     'getStudentNotes',
