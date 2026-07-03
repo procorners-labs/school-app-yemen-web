@@ -1,17 +1,10 @@
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
-<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->
+<!-- ▼▼ حُقِن آلياً: إثبات ملكية Search Console + robots ▼▼ -->
 <meta name="google-site-verification" content="fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc" />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-06QS5PMS6F"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-06QS5PMS6F');
-</script>
-<!-- ▲▲ نهاية وسم Google ▲▲ -->
+<!-- ▲▲ نهاية وسوم Google ▲▲ -->
 <!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
 <link rel="manifest" href="/manifest.webmanifest">
 <script>
@@ -1968,7 +1961,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
   <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
-  <button class="sidebar-item" id="si-visitorAnalytics" onclick="showSection('visitorAnalytics')"><span class="si-icon">📈</span> تحليلات الزوار</button>
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
@@ -5569,7 +5561,6 @@ function showSection(name) {
       calendar: renderCalendar,
       supervisorPerms: renderSupervisorPerms,
       circulars: renderCirculars,
-      visitorAnalytics: renderVisitorAnalytics,
       profile: renderProfile
     };
 
@@ -5748,11 +5739,10 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-myTasks',          label:'✅ مهامي' },
   { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام' },
   { key:'si-studentDirectory', label:'🎒 أسماء الطلاب' },
-  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' },
-  { key:'si-visitorAnalytics', label:'📈 تحليلات الزوار' }
+  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' }
 ];
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
-function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminTeachers','si-adminStudents','si-visitorAnalytics']; }
+function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminTeachers','si-adminStudents']; }
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
 function _applySupervisorPagePerms(u){
@@ -13528,108 +13518,6 @@ function loadReports(force) {
   }, function(err) {
     bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
   });
-}
-
-// ════════════════════════════════════════════════════════
-// VISITOR ANALYTICS SECTION — تحليلات الزوار (للمدير فقط)
-// ════════════════════════════════════════════════════════
-
-function renderVisitorAnalytics() {
-  var html = '' +
-    '<div class="rpt-wrap" id="vaRoot">' +
-      '<div class="rpt-scope-bar">' +
-        '<div class="ico">📈</div>' +
-        '<div style="flex:1">' +
-          '<div class="lbl">تحليلات الزوار</div>' +
-          '<div class="sub" id="vaScopeLabel">بيانات Google Analytics 4 + Search Console — محدَّثة كل ٣٠ دقيقة تقريباً</div>' +
-        '</div>' +
-        '<button class="refresh-btn" onclick="loadVisitorAnalytics(true)">🔄 تحديث</button>' +
-      '</div>' +
-      '<div id="vaBody">' +
-        '<div class="rpt-card">' +
-          '<div class="sk-line skeleton"></div>' +
-          '<div class="sk-line skeleton w75"></div>' +
-          '<div class="sk-line skeleton w50"></div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  document.getElementById('dynamicContent').innerHTML = html;
-  loadVisitorAnalytics(false);
-}
-
-function loadVisitorAnalytics(force) {
-  var bodyEl = document.getElementById('vaBody');
-  if (!bodyEl) return;
-
-  // لا كاش داخل المتصفح هنا عمداً — الخادم يحتفظ بكاش 30 دقيقة (سريع عند الإصابة)
-  // وهو المصدر الوحيد لحداثة البيانات كي لا تتعارض طبقتا الكاش.
-  bodyEl.innerHTML =
-    '<div class="rpt-card">' +
-      '<div class="sk-line skeleton"></div>' +
-      '<div class="sk-line skeleton w75"></div>' +
-      '<div class="sk-line skeleton w50"></div>' +
-    '</div>';
-
-  callServer('getVisitorAnalyticsProtected', { force: !!force }, function(r) {
-    if (!r || !r.success) {
-      bodyEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التحليلات: ' +
-        ((r && r.error) || 'خطأ غير معروف') + '</div>';
-      return;
-    }
-    _renderVisitorAnalyticsBody(r.data);
-  }, function(err) {
-    bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
-  });
-}
-
-function _renderVisitorAnalyticsBody(d) {
-  var lblEl = document.getElementById('vaScopeLabel');
-  if (lblEl) lblEl.textContent = 'بيانات Google Analytics 4 + Search Console — محدَّثة كل ٣٠ دقيقة تقريباً' +
-    (d.fromCache ? ' • (من الذاكرة المؤقتة)' : '');
-
-  var s = d.summary || {};
-  var statsHtml =
-    _rpt_stat('👥', s.users7d, 'زوار نشطون (٧ أيام)', 'rgba(79,70,229,.12)') +
-    _rpt_stat('👁️', s.views7d, 'مشاهدات (٧ أيام)', 'rgba(6,182,212,.12)') +
-    _rpt_stat('🔗', s.sessions7d, 'جلسات (٧ أيام)', 'rgba(16,185,129,.12)') +
-    _rpt_stat('⏱️', s.avgDuration7d ? (s.avgDuration7d + ' ث') : '--', 'متوسط مدة الجلسة', 'rgba(245,158,11,.12)');
-
-  var html = '<div class="rpt-stats">' + statsHtml + '</div>';
-  html += _rpt_card('📈', 'اتجاه الزيارات (آخر 30 يوماً)', _va_trendChart(d.trend));
-  html += '<div class="rpt-grid-2">' +
-    _rpt_card('📄', 'أكثر الصفحات زيارة', _rpt_topList(d.topPages, 'label', 'value', 'مشاهدة')) +
-    _rpt_card('🔀', 'مصادر الزيارات', _rpt_barChart(d.sources, 'value')) +
-  '</div>';
-  html += _rpt_card('🔍', 'أكثر كلمات البحث (Search Console)', _rpt_topList(d.topQueries, 'label', 'clicks', 'نقرة', function(item) {
-    return 'ظهور: ' + item.impressions + ' • CTR: ' + item.ctr + '% • الترتيب: ' + item.position;
-  }));
-
-  document.getElementById('vaBody').innerHTML = html;
-}
-
-// رسم بياني SVG بسيط لاتجاه يومي (خط واحد، بلا مكتبات) — مبني على نمط _tfChart
-function _va_trendChart(days) {
-  if (!days || !days.length) return '<div class="rpt-empty">لا توجد بيانات بعد</div>';
-  var W = 820, H = 220, pad = 30, max = 1, i;
-  for (i = 0; i < days.length; i++) if ((days[i].value || 0) > max) max = days[i].value;
-  var n = days.length, slot = (W - pad * 2) / Math.max(1, n - 1);
-
-  var pts = '';
-  for (i = 0; i < n; i++) {
-    var x = pad + slot * i;
-    var y = H - pad - (H - pad * 2) * ((days[i].value || 0) / max);
-    pts += x + ',' + y + ' ';
-  }
-
-  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;min-width:520px;">';
-  svg += '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '" stroke="#dfe3ea" stroke-width="1"/>';
-  svg += '<polyline points="' + pts + '" fill="none" stroke="var(--primary,#1a8d5f)" stroke-width="2.5"/>';
-  for (i = 0; i < n; i += Math.ceil(n / 8) || 1) {
-    var lx = pad + slot * i;
-    svg += '<text x="' + lx + '" y="' + (H - pad + 15) + '" font-size="10" fill="#8a94a3" text-anchor="middle">' + _tfEsc(days[i].label) + '</text>';
-  }
-  svg += '</svg>';
-  return svg;
 }
 
 // زر المشاركة التفاعلي — يبني ملخصاً نصياً للتقرير المعروض ويشاركه
