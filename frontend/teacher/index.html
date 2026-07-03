@@ -1685,6 +1685,14 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   top: 2px;
   left: 4px;
 }
+/* م1 — شرائح إظهار/إخفاء المواد والشعب في شاشة الدرجات */
+#gradesVisChips { background:var(--surface-alt, #f8fafc); border:1px solid var(--border, #e2e8f0); border-radius:var(--radius-md, 10px); padding:10px 12px; }
+.gv-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.gv-row + .gv-row { margin-top:8px; }
+.gv-label { font-size:.78rem; font-weight:700; color:var(--text-light, #64748b); margin-inline-start:2px; }
+.gv-chip { border:1px solid var(--primary, #4f46e5); background:#eef2ff; color:var(--primary, #4f46e5); border-radius:999px; padding:5px 12px; font-size:.8rem; font-weight:600; cursor:pointer; min-height:32px; transition:background .15s, opacity .15s, transform .1s; }
+.gv-chip:active { transform:scale(.96); }
+.gv-chip.gv-off { border-color:#cbd5e1; background:#f1f5f9; color:#94a3b8; text-decoration:line-through; }
 .grade-input[readonly], .grade-input[disabled] {
   background: #f9fafb !important;
   color: #6b7280 !important;
@@ -3253,6 +3261,146 @@ function subjectsForGrade(grade) {
     return ordered;
   }
   return all; // تراجع آمن: لا ربط للصف ⇒ القائمة الكاملة (سلوك غير أسوأ من الحالي)
+}
+
+// ══════════════════════════════════════════════════════
+//  شاشة الدرجات فقط: فلترة المواد/الشعب (م1)
+//  - المواد غير المُقيَّمة والمقرر لكل صف يأتيان من الخادم عبر getLists
+//    (nonGradedSubjects / curriculumByGrade — المصدر الموحّد TeacherCore).
+//  - تفضيل الإظهار/الإخفاء لكل معلم محفوظ محلياً (localStorage) ويطبَّق فوراً.
+//  ملاحظة: لا تُستخدم هذه الفلاتر خارج شاشة الدرجات (الواجبات وغيرها تعرض كل المواد).
+// ══════════════════════════════════════════════════════
+function _isNonGradedSubjClient(subj) {
+  var m = App.lists && App.lists.nonGradedSubjects;
+  return !!(m && subj && m[subj]);
+}
+
+function gradesVisPrefKey() {
+  var sch = (window.SCHOOL_ID || (App.user && App.user.schoolId) || 'default');
+  var uid = (App.user && (App.user.id || App.user.name)) || 'me';
+  return 'gradesVis_' + sch + '_' + uid;
+}
+function loadGradesVisPref() {
+  try {
+    var raw = localStorage.getItem(gradesVisPrefKey());
+    if (raw) { var p = JSON.parse(raw); if (p && typeof p === 'object') return { hiddenSubjects: p.hiddenSubjects || {}, hiddenSections: p.hiddenSections || {} }; }
+  } catch (e) {}
+  return { hiddenSubjects: {}, hiddenSections: {} };
+}
+function saveGradesVisPref(pref) {
+  try { localStorage.setItem(gradesVisPrefKey(), JSON.stringify(pref)); } catch (e) {}
+}
+
+// كل المواد القابلة للرصد لهذا الصف (قبل تفضيل الإخفاء): مواد المعلم/الصف
+// ناقص غير المُقيَّمة، مقاطعةً مع مقرر الصف إن كان معرَّفاً في المرجع.
+function gradableSubjectsForGrade(grade) {
+  var subs = subjectsForGrade(grade) || [];
+  var out = [];
+  var curric = (grade && App.lists && App.lists.curriculumByGrade) ? App.lists.curriculumByGrade[grade] : null;
+  for (var i = 0; i < subs.length; i++) {
+    var sj = subs[i];
+    if (!sj || sj === 'جميع المواد') continue;
+    if (_isNonGradedSubjClient(sj)) continue;
+    if (curric && curric.length && curric.indexOf(sj) === -1) continue;
+    out.push(sj);
+  }
+  // تراجع آمن: إن أفرغت الفلترة القائمة كلياً (بيانات ناقصة) نعود لقائمة الصف
+  // بلا مقرر، مع إبقاء استبعاد غير المُقيَّمة (الحجب الخادمي يظل الحكم النهائي).
+  if (!out.length) {
+    for (var j = 0; j < subs.length; j++) {
+      if (subs[j] && subs[j] !== 'جميع المواد' && !_isNonGradedSubjClient(subs[j])) out.push(subs[j]);
+    }
+  }
+  return out;
+}
+
+// المواد الظاهرة فعلاً (بعد تفضيل الإخفاء) — حارس ضد إخفاء الكل.
+function gradesVisibleSubjects(grade) {
+  var base = gradableSubjectsForGrade(grade);
+  var pref = loadGradesVisPref();
+  var out = [];
+  for (var i = 0; i < base.length; i++) { if (!pref.hiddenSubjects[base[i]]) out.push(base[i]); }
+  return out.length ? out : base;
+}
+
+// الشعب الظاهرة فعلاً لهذا الصف/المادة (بعد تفضيل الإخفاء؛ خيار «جميع الشعب» يبقى).
+function gradesVisibleSections(subject, grade) {
+  var base = getMySectionsForGradeSubjectWithAll(subject, grade) || [];
+  var pref = loadGradesVisPref();
+  var out = [];
+  for (var i = 0; i < base.length; i++) {
+    if (base[i] === 'جميع الشعب' || !pref.hiddenSections[base[i]]) out.push(base[i]);
+  }
+  var real = 0;
+  for (var k = 0; k < out.length; k++) { if (out[k] !== 'جميع الشعب') real++; }
+  return real ? out : base;
+}
+
+function toggleGradesVisSubject(subj) {
+  var pref = loadGradesVisPref();
+  if (pref.hiddenSubjects[subj]) delete pref.hiddenSubjects[subj];
+  else pref.hiddenSubjects[subj] = true;
+  saveGradesVisPref(pref);
+  gradesOnGradeChange(); // يعيد ملء القوائم فوراً وفق التفضيل الجديد
+  renderGradesVisChips();
+}
+function toggleGradesVisSection(sec) {
+  var pref = loadGradesVisPref();
+  if (pref.hiddenSections[sec]) delete pref.hiddenSections[sec];
+  else pref.hiddenSections[sec] = true;
+  saveGradesVisPref(pref);
+  gradesUpdateSectionSelect();
+  renderGradesVisChips();
+}
+
+// ملء قائمة الشعب في شاشة الدرجات (بديل cascadeUpdateSections الخاص بالشاشة —
+// يطبق تفضيل الإخفاء ويحافظ على الاختيار الحالي إن بقي صالحاً).
+function gradesUpdateSectionSelect() {
+  var subjEl = document.getElementById('gradeSubject');
+  var gradeEl = document.getElementById('gradeGrade');
+  var secEl = document.getElementById('gradeSection');
+  if (!secEl) return;
+  var secs = gradesVisibleSections(subjEl ? subjEl.value : '', gradeEl ? gradeEl.value : '');
+  var keep = secEl.value || '';
+  secEl.innerHTML = buildSelectOptions(secs, 'اختر الشعبة', '', false);
+  if (keep && secs.indexOf(keep) !== -1) secEl.value = keep;
+}
+
+// شرائح التحكم بالإظهار/الإخفاء أعلى جدول الدرجات — نقرة واحدة تُخفي/تُظهر
+// مادة أو شعبة فوراً (التفضيل محفوظ محلياً لكل معلم على هذا الجهاز).
+function renderGradesVisChips() {
+  var box = document.getElementById('gradesVisChips');
+  if (!box) return;
+  var gradeEl = document.getElementById('gradeGrade');
+  var grade = gradeEl ? gradeEl.value : '';
+  var pref = loadGradesVisPref();
+  var subs = gradableSubjectsForGrade(grade);
+  var secs = getMySectionsForGradeSubject((document.getElementById('gradeSubject') || {}).value || '', grade) || [];
+  var html = '';
+  // إفلات آمن لاسم المادة/الشعبة داخل onclick (اقتباس مفرد ومزدوج وخط مائل)
+  function gvEsc(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  }
+  function chip(label, hidden, onclick) {
+    return '<button type="button" class="gv-chip' + (hidden ? ' gv-off' : '') + '" onclick="' + onclick + '">' +
+           (hidden ? '🚫 ' : '✓ ') + escapeHtml(label) + '</button>';
+  }
+  if (subs.length > 1) {
+    html += '<div class="gv-row"><span class="gv-label">المواد المعروضة:</span>';
+    for (var i = 0; i < subs.length; i++) {
+      html += chip(subs[i], !!pref.hiddenSubjects[subs[i]], "toggleGradesVisSubject('" + gvEsc(subs[i]) + "')");
+    }
+    html += '</div>';
+  }
+  if (secs.length > 1) {
+    html += '<div class="gv-row"><span class="gv-label">الشعب المعروضة:</span>';
+    for (var k = 0; k < secs.length; k++) {
+      html += chip(secs[k], !!pref.hiddenSections[secs[k]], "toggleGradesVisSection('" + gvEsc(secs[k]) + "')");
+    }
+    html += '</div>';
+  }
+  box.innerHTML = html;
+  box.style.display = html ? 'block' : 'none';
 }
 
 // ── تتالي الصف (+ المادة اختيارياً) → الشعبة ─────────────────────
@@ -7107,7 +7255,7 @@ function _renderCalWidget(r) {
 }
 
 // ==================== GRADES ====================
-function renderGrades() { var grades = myGrades(); var sections = mySections(); var subjects = mySubjects(); var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(79,70,229,.12)">📊</div><div class="section-header-title">إدارة الدرجات</div><div id="gradesHeaderBtns" class="btn-group" style="display:none"><button class="btn btn-sm btn-success" onclick="saveAllGrades()">💾 حفظ الكل</button><button class="btn btn-sm btn-secondary" onclick="exportGrades()">📤 تصدير</button><button class="btn btn-sm btn-warning" onclick="importGradesPrompt()">📥 استيراد</button><button class="btn btn-sm btn-secondary" onclick="clearAllGrades()">🗑️ مسح</button></div></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الشهر</label><select class="form-select" id="gradeMonth" onchange="onGradeFilterChange()"><option value="">اختر الشهر</option>' + ALL_MONTHS.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('') + '</select></div><div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="gradeSubject" onchange="onGradeFilterChange(); cascadeUpdateGrades(\'gradeSubject\',\'gradeGrade\',\'gradeSection\');">' + buildSelectOptions(subjects, 'اختر المادة', isAdmin() ? '' : pickDefault(subjects)) + '</select></div><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="gradeGrade" onchange="gradesOnGradeChange();">' + buildSelectOptions(grades, 'اختر الفصل', isAdmin() ? '' : pickDefault(grades)) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="gradeSection" onchange="onGradeFilterChange()">' + buildSelectOptions(getMySectionsForGradeSubjectWithAll(isAdmin() ? '' : pickDefault(subjects), myGrade()), 'اختر الشعبة', isAdmin() ? '' : pickDefault(sections)) + '</select></div><div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="loadStudentsGrades()">🔍 عرض</button></div></div><div id="termMonthNotice" class="alert alert-info mb-3 hidden">📌 شهر نهائي — <b>الأعمال المستمرة</b> (تحسب تلقائياً من الشهور السابقة /20) + <b>درجة الاختبار</b> (يدخلها المعلم /30) = <b>المحصلة</b> (تظهر تلقائياً /50)</div><div id="importArea" class="hidden mb-3"><div class="file-drop-zone" onclick="document.getElementById(\'gradesImportFile\').click()">📥 انقر أو اسحب ملف Excel للاستيراد</div><input type="file" id="gradesImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="doImportGrades(this)"></div><div id="gradesStudentsArea" style="display:none"><div class="d-flex align-center gap-2 mb-3"><span id="gradesInfoBadge" class="badge badge-info"></span><div class="flex-1"></div><input type="text" class="form-control" style="max-width:200px" placeholder="🔍 بحث باسم الطالب..." oninput="filterGradesTable(this.value)"></div><div class="table-wrap"><table id="gradesTable"><thead id="gradesTableHead"></thead><tbody id="gradesTableBody"></tbody></table></div><div class="mt-3 text-center"><span id="gradesSaveStatus" class="badge badge-success hidden">كل شيء محفوظ ✅</span></div></div><div id="gradesEmpty" class="empty-state"><div class="es-icon">📊</div><div class="es-title">اختر الفلاتر واضغط "عرض"</div><div class="es-sub">اختر الشهر والمادة والفصل والشعبة لعرض الطلاب</div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; }
+function renderGrades() { var grades = myGrades(); var sections = mySections(); var initGrade = isAdmin() ? '' : pickDefault(grades); var subjects = gradesVisibleSubjects(initGrade); var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(79,70,229,.12)">📊</div><div class="section-header-title">إدارة الدرجات</div><div id="gradesHeaderBtns" class="btn-group" style="display:none"><button class="btn btn-sm btn-success" onclick="saveAllGrades()">💾 حفظ الكل</button><button class="btn btn-sm btn-secondary" onclick="exportGrades()">📤 تصدير</button><button class="btn btn-sm btn-warning" onclick="importGradesPrompt()">📥 استيراد</button><button class="btn btn-sm btn-secondary" onclick="clearAllGrades()">🗑️ مسح</button></div></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الشهر</label><select class="form-select" id="gradeMonth" onchange="onGradeFilterChange()"><option value="">اختر الشهر</option>' + ALL_MONTHS.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('') + '</select></div><div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="gradeSubject" onchange="onGradeFilterChange(); cascadeUpdateGrades(\'gradeSubject\',\'gradeGrade\',\'gradeSection\'); gradesUpdateSectionSelect(); renderGradesVisChips();">' + buildSelectOptions(subjects, 'اختر المادة', isAdmin() ? '' : pickDefault(subjects)) + '</select></div><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="gradeGrade" onchange="gradesOnGradeChange();">' + buildSelectOptions(grades, 'اختر الفصل', isAdmin() ? '' : pickDefault(grades)) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="gradeSection" onchange="onGradeFilterChange()">' + buildSelectOptions(gradesVisibleSections(isAdmin() ? '' : pickDefault(subjects), myGrade()), 'اختر الشعبة', isAdmin() ? '' : pickDefault(sections)) + '</select></div><div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="loadStudentsGrades()">🔍 عرض</button></div></div><div id="gradesVisChips" class="mb-3" style="display:none"></div><div id="termMonthNotice" class="alert alert-info mb-3 hidden">📌 شهر نهائي — <b>الأعمال المستمرة</b> (تحسب تلقائياً من الشهور السابقة /20) + <b>درجة الاختبار</b> (يدخلها المعلم /30) = <b>المحصلة</b> (تظهر تلقائياً /50)</div><div id="importArea" class="hidden mb-3"><div class="file-drop-zone" onclick="document.getElementById(\'gradesImportFile\').click()">📥 انقر أو اسحب ملف Excel للاستيراد</div><input type="file" id="gradesImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="doImportGrades(this)"></div><div id="gradesStudentsArea" style="display:none"><div class="d-flex align-center gap-2 mb-3"><span id="gradesInfoBadge" class="badge badge-info"></span><div class="flex-1"></div><input type="text" class="form-control" style="max-width:200px" placeholder="🔍 بحث باسم الطالب..." oninput="filterGradesTable(this.value)"></div><div class="table-wrap"><table id="gradesTable"><thead id="gradesTableHead"></thead><tbody id="gradesTableBody"></tbody></table></div><div class="mt-3 text-center"><span id="gradesSaveStatus" class="badge badge-success hidden">كل شيء محفوظ ✅</span></div></div><div id="gradesEmpty" class="empty-state"><div class="es-icon">📊</div><div class="es-title">اختر الفلاتر واضغط "عرض"</div><div class="es-sub">اختر الشهر والمادة والفصل والشعبة لعرض الطلاب</div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; renderGradesVisChips(); }
 function onGradeFilterChange() { var m = document.getElementById('gradeMonth'); var mVal = m ? m.value : ''; var notice = document.getElementById('termMonthNotice'); if (notice) { if (TERM_MONTHS.indexOf(mVal) !== -1) notice.classList.remove('hidden'); else notice.classList.add('hidden'); } }
 // عند اختيار الفصل في «إدارة الدرجات»: قصر قائمة المواد على «المواد المقررة لهذا
 // الصف» (ديناميكياً) مع الإبقاء على المادة المختارة إن كانت ضمنها، ثم تحديث الشعب.
@@ -7115,8 +7263,9 @@ function gradesOnGradeChange() {
   var gradeEl = document.getElementById('gradeGrade');
   var subjEl  = document.getElementById('gradeSubject');
   var grade   = gradeEl ? gradeEl.value : '';
-  if (subjEl && grade) {
-    var subs = (typeof subjectsForGrade === 'function') ? subjectsForGrade(grade) : null;
+  if (subjEl) {
+    // (م1) شاشة الدرجات تعرض فقط المواد القابلة للرصد لهذا الصف بعد تفضيل الإخفاء
+    var subs = gradesVisibleSubjects(grade);
     if (subs && subs.length) {
       var keep = subjEl.value;
       var sel  = (keep && subs.indexOf(keep) !== -1) ? keep : (isAdmin() ? '' : pickDefault(subs));
@@ -7124,7 +7273,8 @@ function gradesOnGradeChange() {
     }
   }
   onGradeFilterChange();
-  cascadeUpdateSections('gradeSubject', 'gradeGrade', 'gradeSection');
+  gradesUpdateSectionSelect();
+  renderGradesVisChips();
 }
 function loadStudentsGrades() {
   var m   = (document.getElementById('gradeMonth')   || {}).value;
@@ -7137,6 +7287,23 @@ function loadStudentsGrades() {
   if (!sub) { toast('يرجى اختيار المادة', 'warning'); return; }
   if (!g)   { toast('يرجى اختيار الفصل', 'warning');  return; }
   if (!sec) { toast('يرجى اختيار الشعبة', 'warning'); return; }
+
+  // (م1) مادة غير مُقيَّمة بدرجات: لا تحميل ولا حقول إدخال — بطاقة توضيح فقط
+  // (الخادم يرفضها أيضاً في saveGradesProtected/autoSaveSingleGradeProtected)
+  if (_isNonGradedSubjClient(sub)) {
+    var ngEmpty = document.getElementById('gradesEmpty');
+    var ngArea  = document.getElementById('gradesStudentsArea');
+    var ngBtns  = document.getElementById('gradesHeaderBtns');
+    if (ngArea) ngArea.style.display = 'none';
+    if (ngBtns) ngBtns.style.display = 'none';
+    if (ngEmpty) {
+      ngEmpty.style.display = 'block';
+      ngEmpty.innerHTML = '<div class="es-icon">ℹ️</div>' +
+        '<div class="es-title">مادة غير مُقيَّمة بدرجات</div>' +
+        '<div class="es-sub">«' + escapeHtml(sub) + '» مادة أنشطة/خدمية لا يُرصد لها في كشف الدرجات</div>';
+    }
+    return;
+  }
 
   // حفظ الحالة
   GS.month       = m;
@@ -13824,10 +13991,15 @@ function _rpt_recentActivities(items) {
  * v3.1 — عرض نصف العام كقراءة فقط عند اختيار نهاية العام
  */
 function renderTerm1SummaryInTerm2() {
-  if (!V3_CONFIG.enabled || !V3_CONFIG.features.showTerm1InTerm2) return;
+  // (م1) يظهر افتراضياً — العلم showTerm1InTerm2 أصبح مفتاح إطفاء فقط (opt-out)
+  if (V3_CONFIG && V3_CONFIG.features && V3_CONFIG.features.showTerm1InTerm2 === false) return;
 
+  // يظهر في كل أشهر الفصل الثاني (ما بعد «نصف العام» في ترتيب الأشهر) لا في نهاية العام فقط
   var currentMonth = document.getElementById('gradeMonth').value;
-  if (currentMonth !== 'نهاية العام') {
+  var midIdx = ALL_MONTHS.indexOf('نصف العام');
+  var curIdx = ALL_MONTHS.indexOf(currentMonth);
+  var inTerm2 = (midIdx !== -1 && curIdx > midIdx);
+  if (!inTerm2) {
     var existing = document.getElementById('term1Summary');
     if (existing) existing.remove();
     return;
