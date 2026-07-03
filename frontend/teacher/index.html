@@ -1968,7 +1968,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
   <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
-  <!-- تحليلات الزوار: أُخفيت مؤقتاً احترازياً (خلل تفويض OAuth حيّ متكرر يشتبه بتأثيره على ميزات أخرى) — الكود سليم في VisitorAnalytics.js، إعادة الزر هنا كافية للتفعيل بعد حلّ التفويض -->
+  <button class="sidebar-item" id="si-visitorAnalytics" onclick="showSection('visitorAnalytics')"><span class="si-icon">📈</span> تحليلات الزوار</button>
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
@@ -5530,6 +5530,7 @@ function showSection(name) {
       calendar: renderCalendar,
       supervisorPerms: renderSupervisorPerms,
       circulars: renderCirculars,
+      visitorAnalytics: renderVisitorAnalytics,
       profile: renderProfile
     };
 
@@ -5708,10 +5709,11 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-myTasks',          label:'✅ مهامي' },
   { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام' },
   { key:'si-studentDirectory', label:'🎒 أسماء الطلاب' },
-  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' }
+  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' },
+  { key:'si-visitorAnalytics', label:'📈 تحليلات الزوار' }
 ];
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
-function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminTeachers','si-adminStudents']; }
+function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminTeachers','si-adminStudents','si-visitorAnalytics']; }
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
 function _applySupervisorPagePerms(u){
@@ -14003,7 +14005,7 @@ function _rpt_barChart(items, valueField, maxOverride, colorClass) {
     var pct = Math.round((items[j][valueField] / max) * 100);
     if (pct < 3 && items[j][valueField] > 0) pct = 3;
     html += '<div class="rpt-bar">' +
-              '<div class="name">' + (items[j].label || '') + '</div>' +
+              '<div class="name">' + _tfEsc(items[j].label || '') + '</div>' +
               '<div class="track">' +
                 '<div class="fill ' + (colorClass || '') + '" style="width:' + pct + '%">' +
                   (pct > 12 ? items[j][valueField] : '') +
@@ -14058,10 +14060,10 @@ function _rpt_topList(items, nameField, valueField, valueLabel, subFn) {
     html += '<div class="rpt-list-item">' +
               '<div class="rank ' + rankClass + '">' + (i + 1) + '</div>' +
               '<div class="body">' +
-                '<div class="ttl">' + (items[i][nameField] || '') + '</div>' +
-                (sub ? '<div class="meta">' + sub + '</div>' : '') +
+                '<div class="ttl">' + _tfEsc(items[i][nameField] || '') + '</div>' +
+                (sub ? '<div class="meta">' + _tfEsc(sub) + '</div>' : '') +
               '</div>' +
-              '<div class="badge">' + items[i][valueField] + ' ' + valueLabel + '</div>' +
+              '<div class="badge">' + _tfEsc(items[i][valueField]) + ' ' + valueLabel + '</div>' +
             '</div>';
   }
   html += '</div>';
