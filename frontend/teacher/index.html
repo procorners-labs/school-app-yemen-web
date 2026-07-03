@@ -9119,11 +9119,15 @@ function _tcNewsDesign(n) {
   }
   // v2 (إضافي فقط، لا يكسر لقطات v1 القديمة): مرحلة دراسية لحزمة الموتيفات —
   // whitelist صارم، أي قيمة غير معروفة تُسقَط بصمت فيستنتجها المستدعي حيّاً.
-  var STAGE_RX = /^(early|middle|secondary|all)$/;
-  var st = String(o.st || '');
+  var STAGE_RX = /^(early|middle|secondary|all|auto)$/;
+  var DECOR_RX = /^(minimal|balanced|bold)$/;
+  var GENDER_RX = /^(boys|girls|neutral)$/;
+  var st = String(o.st || ''), dc = String(o.dc || ''), gn = String(o.gn || '');
   return { t: String(o.t || 'news'), s: String(o.s || 'feed'),
            l: String(o.l || '').substring(0, 30), c: c, i: ic, g: g,
-           st: STAGE_RX.test(st) ? st : '' };
+           st: STAGE_RX.test(st) ? st : '',
+           dc: DECOR_RX.test(dc) ? dc : '',
+           gn: GENDER_RX.test(gn) ? gn : '' };
 }
 
 /* ══════ نظام الغلاف الغني — موتيفات مبعثرة + إطار (مقتبس حرفياً من
@@ -9187,11 +9191,29 @@ var _TC_TYPE_ACCENTS = {
   event:       ['s-burst']
 };
 var _TC_STAGE_MOTIF_SIZE = { early: 1.18, middle: 1.0, secondary: 0.8, all: 0.95 };
-/* عدد الموتيفات لكل مرحلة (نسخة معتدلة واحدة — decor غير قابل للاختيار هنا عمداً
-   تفادياً لتوسيع واجهة المعرض بأدوات لم يطلبها المستخدم). */
+/* عدد الموتيفات لكل مرحلة (احتياط توافق رجعي: يُستخدَم للّقطات القديمة بلا حقل dc
+   — v1 ولقطات v2 من PR#137 — كي تبقى بشكلها تماماً). */
 var _TC_STAGE_COUNT = { early: 9, middle: 7, secondary: 5, all: 6 };
+/* كثافة الزخرفة (decor) لكل مرحلة — مطابقة حرفياً لـ COUNT في القالب
+   excellence-post-system.html؛ تُستخدَم فقط عند وجود حقل dc في اللقطة (الجديدة). */
+var _TC_DECOR_COUNT = {
+  minimal:  { early: 6,  middle: 5,  secondary: 4, all: 4 },
+  balanced: { early: 11, middle: 9,  secondary: 6, all: 7 },
+  bold:     { early: 19, middle: 15, secondary: 9, all: 12 }
+};
 /* لوحة ألوان الموتيفات: أبيض شفاف + ذهبي — يحقّق "معين ذهبي/دوائر شفافة" */
 var _TC_MOTIF_PAL = ['rgba(255,255,255,.9)', '#FFCE3D', 'rgba(255,255,255,.55)'];
+/* لوحات الموتيفات حسب الهوية اللونية (gender): تُلوّن الموتيفات فقط (لا الخلفية).
+   neutral مطابقة تماماً لـ _TC_MOTIF_PAL ⇒ غياب gn أو gn='neutral' = الشكل القديم بلا تغيّر. */
+var _TC_GENDER_PAL = {
+  neutral: ['rgba(255,255,255,.9)', '#FFCE3D', 'rgba(255,255,255,.55)'],
+  boys:    ['rgba(255,255,255,.9)', '#8FD0FF', 'rgba(180,214,255,.55)'],
+  girls:   ['rgba(255,255,255,.9)', '#FFB3D1', 'rgba(255,199,224,.55)']
+};
+/* خيارات أزرار المعرض (segmented) — نفس نمط _TC_DSGN_SIZES. */
+var _TC_DECOR_OPTS  = [{ k: 'minimal', l: 'خفيف' }, { k: 'balanced', l: 'متوازن' }, { k: 'bold', l: 'غني' }];
+var _TC_STAGE_OPTS  = [{ k: 'auto', l: 'تلقائي' }, { k: 'early', l: 'ابتدائي' }, { k: 'middle', l: 'متوسط' }, { k: 'secondary', l: 'ثانوي' }, { k: 'all', l: 'الكل' }];
+var _TC_GENDER_OPTS = [{ k: 'boys', l: 'بنين' }, { k: 'girls', l: 'بنات' }, { k: 'neutral', l: 'محايد' }];
 
 /* نقاط تموضع الموتيفات حول الإطار — مطابقة حرفياً لـ frameSlots() في القالب */
 function _tcFrameSlots(W, H, ft, fs, fb, k) {
@@ -9243,10 +9265,14 @@ function _tcStageFromGrade(g) {
 }
 
 /* إطار SVG مبعثر (نسخة DOM) — يبني <use> لكل موتيف في المكان المحسوب */
-function _tcBuildFrameSvg(type, stage, W, H, ft, fs, fb) {
+function _tcBuildFrameSvg(type, stage, decor, gender, W, H, ft, fs, fb) {
   _tcEnsureSymbols();
   var pool = _tcMotifPool(type, stage);
-  var n = Math.max(2, _TC_STAGE_COUNT[stage] || _TC_STAGE_COUNT.all);
+  /* decor موجود ⇒ عدد من _TC_DECOR_COUNT؛ غائب ⇒ العدد القديم (توافق رجعي). */
+  var cnt = decor ? (_TC_DECOR_COUNT[decor] || _TC_DECOR_COUNT.balanced) : null;
+  var n = Math.max(2, (cnt && cnt[stage]) || _TC_STAGE_COUNT[stage] || _TC_STAGE_COUNT.all);
+  /* gender موجود ⇒ لوحة الفئة؛ غائب ⇒ اللوحة القديمة (neutral مطابِقة). */
+  var pal = gender ? (_TC_GENDER_PAL[gender] || _TC_GENDER_PAL.neutral) : _TC_MOTIF_PAL;
   var sizeMul = _TC_STAGE_MOTIF_SIZE[stage] || 1;
   var slots = _tcFrameSlots(W, H, ft, fs, fb, n);
   var uses = '';
@@ -9255,7 +9281,7 @@ function _tcBuildFrameSvg(type, stage, W, H, ft, fs, fb) {
     var sym = pool[i % pool.length];
     if (type === 'emergency')  sym = 's-tri';
     if (type === 'condolence') sym = 's-leaf';
-    var col = _TC_MOTIF_PAL[i % _TC_MOTIF_PAL.length];
+    var col = pal[i % pal.length];
     var w = sl.s * sizeMul, h = w * (_TC_SHAPE_ASPECT[sym] || 1);
     var rot = sl.r + ((i * 37) % 15) - 7;
     uses += '<use href="#' + sym + '" x="' + (sl.x - w / 2).toFixed(0) + '" y="' + (sl.y - h / 2).toFixed(0) +
@@ -9402,7 +9428,7 @@ function _tcDrawMotif(ctx, id, x, y, w, h, rotDeg, color) {
 /* مولّد HTML الغلاف — مصدر العرض الوحيد: بطاقة الخبر + معاينات معرض الاختيار.
    sizeKey فارغ = بلا نسبة مفروضة (سلوك الأخبار القديمة) · compact = معاينة مصغّرة ·
    stage تحدّد حزمة الموتيفات (اختياري، افتراضي 'all' إن كانت غير معروفة). */
-function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage) {
+function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gender) {
   var lines = String(text || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
   var first = lines[0] || '';
   var rest = lines.slice(1).join(' ');
@@ -9430,7 +9456,7 @@ function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage) {
   var logoUrl = window._schoolLogo || '';
   var initials = schoolName ? schoolName.trim().charAt(0) : 'م';
 
-  var frameSvg = _tcBuildFrameSvg(typeKey, st, W, H, ft, fs, fb);
+  var frameSvg = _tcBuildFrameSvg(typeKey, st, decor, gender, W, H, ft, fs, fb);
 
   var logoSize = compact ? 20 : 44;
   var logoHtml = '<div style="width:' + logoSize + 'px;height:' + logoSize + 'px;border-radius:50%;flex:none;' +
@@ -9482,8 +9508,11 @@ function _tcTextCover(n) {
   var d = _tcNewsDesign(n);
   if (d && d.none) return '';
   var meta = d || _tcLegacyMeta(n.news);
-  var stage = (d && d.st) || _tcStageFromGrade(n && n.grade);
-  return _tcCoverHtml(n.news, n.date ? formatDate(n.date) : '', meta, d ? d.s : '', false, stage);
+  /* st='auto' أو غائب ⇒ استنتاج حيّ من فصل الخبر (توافق مع سلوك اللقطة). */
+  var stage = (d && d.st && d.st !== 'auto') ? d.st : (_tcStageFromGrade(n && n.grade) || 'all');
+  var decor = (d && d.dc) || '';
+  var gender = (d && d.gn) || '';
+  return _tcCoverHtml(n.news, n.date ? formatDate(n.date) : '', meta, d ? d.s : '', false, stage, decor, gender);
 }
 
 /* توليد صورة PNG للغلاف المصمّم (canvas) — تُستخدم عند مشاركة خبر نصّي كملف صورة.
@@ -9496,7 +9525,11 @@ function _tcTextCoverBlob(item, cb) {
     var t = d || _tcLegacyMeta(item && item.news);
     var dims = _tcDsgnSize(d ? d.s : 'feed');
     var W = dims.w, H = dims.h, ft = dims.ft, fs = dims.fs, fb = dims.fb;
-    var stage = (d && d.st) || _tcStageFromGrade(item && item.grade) || 'all';
+    var stage = (d && d.st && d.st !== 'auto') ? d.st : (_tcStageFromGrade(item && item.grade) || 'all');
+    var decor = (d && d.dc) || '';
+    var gender = (d && d.gn) || '';
+    var pal = gender ? (_TC_GENDER_PAL[gender] || _TC_GENDER_PAL.neutral) : _TC_MOTIF_PAL;
+    var dcnt = decor ? (_TC_DECOR_COUNT[decor] || _TC_DECOR_COUNT.balanced) : null;
     var typeKey = t.k || t.t || 'news';
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
@@ -9532,7 +9565,7 @@ function _tcTextCoverBlob(item, cb) {
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
       // موتيفات مبعثرة خلف النافذة (نفس منطق frameSlots/buildFrame — نسخة canvas)
-      var mCount = Math.max(2, _TC_STAGE_COUNT[stage] || _TC_STAGE_COUNT.all);
+      var mCount = Math.max(2, (dcnt && dcnt[stage]) || _TC_STAGE_COUNT[stage] || _TC_STAGE_COUNT.all);
       var sizeMul = _TC_STAGE_MOTIF_SIZE[stage] || 1;
       var pool = _tcMotifPool(typeKey, stage);
       var slots = _tcFrameSlots(W, H, ft, fs, fb, mCount);
@@ -9542,7 +9575,7 @@ function _tcTextCoverBlob(item, cb) {
         var sym = pool[mi % pool.length];
         if (typeKey === 'emergency')  sym = 's-tri';
         if (typeKey === 'condolence') sym = 's-leaf';
-        var col = _TC_MOTIF_PAL[mi % _TC_MOTIF_PAL.length];
+        var col = pal[mi % pal.length];
         var mw = sl.s * sizeMul, mh = mw * (_TC_SHAPE_ASPECT[sym] || 1);
         var mrot = sl.r + ((mi * 37) % 15) - 7;
         _tcDrawMotif(ctx, sym, sl.x, sl.y, mw, mh, mrot, col);
@@ -9698,6 +9731,9 @@ function _dpEnsureUI() {
       '<div class="dp-hint">معاينة حيّة من نص خبرك الفعلي. الغلاف يظهر في لوحة المعلم وبوّابة الطالب فقط — لا يظهر في الصفحة العامة.</div>' +
       '<textarea id="dpText" class="dp-text" rows="2"></textarea>' +
       '<div class="dp-sizes" id="dpSizes"></div>' +
+      '<div class="dp-hint">كثافة الزخرفة</div><div class="dp-sizes" id="dpDecor"></div>' +
+      '<div class="dp-hint">المرحلة</div><div class="dp-sizes" id="dpStage"></div>' +
+      '<div class="dp-hint">الهوية اللونية</div><div class="dp-sizes" id="dpGender"></div>' +
       '<div class="dp-grid" id="dpGrid"></div>' +
       '<div class="dp-foot">' +
         '<button type="button" class="btn btn-secondary" onclick="_dpCancel()">رجوع</button>' +
@@ -9721,6 +9757,9 @@ function _dpOpen(opts) {
     grade     : opts.grade || '',
     onConfirm : opts.onConfirm,
     size      : (pre && !pre.none && pre.s) ? pre.s : 'feed',
+    decor     : (pre && !pre.none && pre.dc) ? pre.dc : 'balanced',
+    stage     : (pre && !pre.none && pre.st) ? pre.st : 'auto',
+    gender    : (pre && !pre.none && pre.gn) ? pre.gn : 'neutral',
     sel       : pre ? (pre.none ? '__none' : pre.t) : _tcNewsCardType(opts.text),
     manual    : !!pre     // لقطة سابقة = اختيار يدوي مثبَّت لا يتزحزح بالكتابة
   };
@@ -9730,6 +9769,9 @@ function _dpOpen(opts) {
   document.getElementById('dpConfirmBtn').textContent =
     (_dpState.mode === 'publish') ? '✅ تأكيد ونشر' : '💾 حفظ التصميم';
   _dpRenderSizes();
+  _dpRenderDecor();
+  _dpRenderStage();
+  _dpRenderGender();
   _dpRenderGrid();
   document.getElementById('dsgnPicker').style.display = 'flex';
   return true;
@@ -9783,6 +9825,27 @@ function _dpRenderSizes() {
   host.innerHTML = h;
 }
 
+/* عرض صف أزرار segmented عام — يطابق نمط _dpRenderSizes حرفياً
+   (نفس فئة dp-size/on ونفس نمط onclick). */
+function _dpRenderSeg(hostId, opts, curKey, fnName) {
+  var host = document.getElementById(hostId);
+  if (!host || !_dpState) return;
+  var h = '';
+  for (var i = 0; i < opts.length; i++) {
+    var o = opts[i];
+    h += '<button type="button" class="dp-size' + (o.k === curKey ? ' on' : '') +
+         '" onclick="' + fnName + '(\'' + o.k + '\')">' + o.l + '</button>';
+  }
+  host.innerHTML = h;
+}
+function _dpRenderDecor()  { _dpRenderSeg('dpDecor',  _TC_DECOR_OPTS,  _dpState.decor,  '_dpSelectDecor'); }
+function _dpRenderStage()  { _dpRenderSeg('dpStage',  _TC_STAGE_OPTS,  _dpState.stage,  '_dpSelectStage'); }
+function _dpRenderGender() { _dpRenderSeg('dpGender', _TC_GENDER_OPTS, _dpState.gender, '_dpSelectGender'); }
+/* معالجات الاختيار — نفس منطق _dpSelectSize: يضبط الحقل، يعيد رندر صفّه ثم الشبكة. */
+function _dpSelectDecor(k)  { if (!_dpState) return; _dpState.decor  = k; _dpRenderDecor();  _dpRenderGrid(); }
+function _dpSelectStage(k)  { if (!_dpState) return; _dpState.stage  = k; _dpRenderStage();  _dpRenderGrid(); }
+function _dpSelectGender(k) { if (!_dpState) return; _dpState.gender = k; _dpRenderGender(); _dpRenderGrid(); }
+
 /* شبكة المعاينات: كل تصاميم السجل (بلا استثناء — إضافة عنصر للسجل تظهر هنا
    تلقائياً) + خيار «بلا تصميم». المُرشَّح تلقائياً يحمل شارة «مقترح». */
 function _dpRenderGrid() {
@@ -9790,13 +9853,14 @@ function _dpRenderGrid() {
   if (!host || !_dpState) return;
   var text = document.getElementById('dpText').value;
   var sug  = _tcNewsCardType(text);
-  var stage = _tcStageFromGrade(_dpState.grade);
+  var decor = _dpState.decor, gender = _dpState.gender;
+  var stage = (_dpState.stage && _dpState.stage !== 'auto') ? _dpState.stage : (_tcStageFromGrade(_dpState.grade) || 'all');
   var h = '';
   for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
     var m = _TC_DSGN_REGISTRY[i];
     h += '<div class="dp-card' + (m.k === _dpState.sel ? ' sel' : '') +
          '" onclick="_dpSelect(\'' + m.k + '\')">' +
-      _tcCoverHtml(text, '', m, _dpState.size, true, stage) +
+      _tcCoverHtml(text, '', m, _dpState.size, true, stage, decor, gender) +
       '<div class="dp-lbl">' + esc(m.l) +
         (m.k === sug ? ' <span class="dp-sug">مقترح تلقائياً</span>' : '') + '</div>' +
     '</div>';
@@ -9815,8 +9879,10 @@ function _dpRenderGrid() {
 function _dpBuildDesignStr() {
   if (_dpState.sel === '__none') return JSON.stringify({ v: 1, none: true });
   var m = _tcDsgnByKey(_dpState.sel);
-  var stage = _tcStageFromGrade(_dpState.grade) || 'all';
-  return JSON.stringify({ v: 2, t: m.k, s: _dpState.size, l: m.l, c: m.c, g: m.g, i: m.i, st: stage });
+  // st يُخزَّن كاختيار المعلم الخام (قد يكون 'auto') — القرّاء يفكّون auto حيّاً.
+  // الحقول الثلاثة تُضاف تراكمياً إلى v2 (لا رفع إصدار)؛ اللقطات القديمة لا تمرّ هنا.
+  return JSON.stringify({ v: 2, t: m.k, s: _dpState.size, l: m.l, c: m.c, g: m.g, i: m.i,
+    st: _dpState.stage, dc: _dpState.decor, gn: _dpState.gender });
 }
 
 function _dpConfirm() {

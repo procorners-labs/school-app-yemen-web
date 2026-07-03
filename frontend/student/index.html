@@ -3287,11 +3287,15 @@ function _stuNewsDesign(n) {
   }
   // v2 (إضافي فقط، لا يكسر لقطات v1 القديمة): مرحلة دراسية لحزمة الموتيفات —
   // whitelist صارم، أي قيمة غير معروفة تُسقَط بصمت فيستنتجها المستدعي حيّاً.
-  var STAGE_RX = /^(early|middle|secondary|all)$/;
-  var st = String(o.st || '');
+  var STAGE_RX = /^(early|middle|secondary|all|auto)$/;
+  var DECOR_RX = /^(minimal|balanced|bold)$/;
+  var GENDER_RX = /^(boys|girls|neutral)$/;
+  var st = String(o.st || ''), dc = String(o.dc || ''), gn = String(o.gn || '');
   return { t: String(o.t || 'news'), s: String(o.s || 'feed'),
            l: String(o.l || '').substring(0, 30), c: c, i: ic, g: g,
-           st: STAGE_RX.test(st) ? st : '' };
+           st: STAGE_RX.test(st) ? st : '',
+           dc: DECOR_RX.test(dc) ? dc : '',
+           gn: GENDER_RX.test(gn) ? gn : '' };
 }
 
 /* ══════ نظام الغلاف الغني — نسخة منصّة الطالب (عرض فقط، بلا معرض اختيار) ══════
@@ -3348,8 +3352,21 @@ var _STU_TYPE_ACCENTS = {
   event:       ['s-burst']
 };
 var _STU_STAGE_MOTIF_SIZE = { early: 1.18, middle: 1.0, secondary: 0.8, all: 0.95 };
+/* احتياط توافق رجعي: يُستخدَم للّقطات بلا حقل dc (v1 وv2 من PR#137) كي تبقى بشكلها. */
 var _STU_STAGE_COUNT = { early: 9, middle: 7, secondary: 5, all: 6 };
+/* كثافة الزخرفة (decor) — مطابقة لـ COUNT في القالب؛ تُستخدَم عند وجود dc فقط. */
+var _STU_DECOR_COUNT = {
+  minimal:  { early: 6,  middle: 5,  secondary: 4, all: 4 },
+  balanced: { early: 11, middle: 9,  secondary: 6, all: 7 },
+  bold:     { early: 19, middle: 15, secondary: 9, all: 12 }
+};
 var _STU_MOTIF_PAL = ['rgba(255,255,255,.9)', '#FFCE3D', 'rgba(255,255,255,.55)'];
+/* لوحات الموتيفات حسب الفئة (gender) — تُلوّن الموتيفات فقط؛ neutral مطابِقة للقديمة. */
+var _STU_GENDER_PAL = {
+  neutral: ['rgba(255,255,255,.9)', '#FFCE3D', 'rgba(255,255,255,.55)'],
+  boys:    ['rgba(255,255,255,.9)', '#8FD0FF', 'rgba(180,214,255,.55)'],
+  girls:   ['rgba(255,255,255,.9)', '#FFB3D1', 'rgba(255,199,224,.55)']
+};
 
 function _stuFrameSlots(W, H, ft, fs, fb, k) {
   var midH = H - ft - fb;
@@ -3394,10 +3411,14 @@ function _stuStageFromGrade(g) {
   }
   return '';
 }
-function _stuBuildFrameSvg(type, stage, W, H, ft, fs, fb) {
+function _stuBuildFrameSvg(type, stage, decor, gender, W, H, ft, fs, fb) {
   _stuEnsureSymbols();
   var pool = _stuMotifPool(type, stage);
-  var n = Math.max(2, _STU_STAGE_COUNT[stage] || _STU_STAGE_COUNT.all);
+  /* decor موجود ⇒ عدد من _STU_DECOR_COUNT؛ غائب ⇒ العدد القديم (توافق رجعي). */
+  var cnt = decor ? (_STU_DECOR_COUNT[decor] || _STU_DECOR_COUNT.balanced) : null;
+  var n = Math.max(2, (cnt && cnt[stage]) || _STU_STAGE_COUNT[stage] || _STU_STAGE_COUNT.all);
+  /* gender موجود ⇒ لوحة الفئة؛ غائب ⇒ اللوحة القديمة (neutral مطابِقة). */
+  var pal = gender ? (_STU_GENDER_PAL[gender] || _STU_GENDER_PAL.neutral) : _STU_MOTIF_PAL;
   var sizeMul = _STU_STAGE_MOTIF_SIZE[stage] || 1;
   var slots = _stuFrameSlots(W, H, ft, fs, fb, n);
   var uses = '';
@@ -3406,7 +3427,7 @@ function _stuBuildFrameSvg(type, stage, W, H, ft, fs, fb) {
     var sym = pool[i % pool.length];
     if (type === 'emergency')  sym = 's-tri';
     if (type === 'condolence') sym = 's-leaf';
-    var col = _STU_MOTIF_PAL[i % _STU_MOTIF_PAL.length];
+    var col = pal[i % pal.length];
     var w = sl.s * sizeMul, h = w * (_STU_SHAPE_ASPECT[sym] || 1);
     var rot = sl.r + ((i * 37) % 15) - 7;
     uses += '<use href="#' + sym + '" x="' + (sl.x - w / 2).toFixed(0) + '" y="' + (sl.y - h / 2).toFixed(0) +
@@ -3553,7 +3574,10 @@ function _stuTextCover(n) {
   var typeKey = d ? d.t : _stuNewsCardType(n.content);
   var t = d || _stuNewsTypeMeta(typeKey);
   var g = d ? d.g : _STU_DSGN_DEFAULT_G;
-  var stage = (d && d.st) || _stuStageFromGrade(n && n.grade) || 'all';
+  // st='auto' أو غائب ⇒ استنتاج حيّ من فصل الخبر (مطابق لجانب المعلم).
+  var stage = (d && d.st && d.st !== 'auto') ? d.st : (_stuStageFromGrade(n && n.grade) || 'all');
+  var decor = (d && d.dc) || '';
+  var gender = (d && d.gn) || '';
   var sz = _STU_DSGN_SIZES[(d && d.s) || 'feed'] || _STU_DSGN_SIZES.feed;
   var W = sz.w, H = sz.h, ft = sz.ft, fs = sz.fs, fb = sz.fb;
   // نسبة الأبعاد مفروضة دائماً (بخلاف السلوك السابق) — الأشرطة العلوية/السفلية
@@ -3572,7 +3596,7 @@ function _stuTextCover(n) {
   var logoUrl = window._stuLogo || '';
   var initials = schoolName ? schoolName.trim().charAt(0) : 'م';
 
-  var frameSvg = _stuBuildFrameSvg(typeKey, stage, W, H, ft, fs, fb);
+  var frameSvg = _stuBuildFrameSvg(typeKey, stage, decor, gender, W, H, ft, fs, fb);
 
   var logoHtml = '<div style="width:44px;height:44px;border-radius:50%;flex:none;' +
     'background:#fff;color:' + t.c + ';display:flex;align-items:center;justify-content:center;' +
@@ -3621,7 +3645,11 @@ function _stuTextCoverBlob(item, cb) {
     var t = d || _stuNewsTypeMeta(typeKey);
     var sz = _STU_DSGN_SIZES[(d && d.s) || 'feed'] || _STU_DSGN_SIZES.feed;
     var W = sz.w, H = sz.h, ft = sz.ft, fs = sz.fs, fb = sz.fb;
-    var stage = (d && d.st) || _stuStageFromGrade(item && item.grade) || 'all';
+    var stage = (d && d.st && d.st !== 'auto') ? d.st : (_stuStageFromGrade(item && item.grade) || 'all');
+    var decor = (d && d.dc) || '';
+    var gender = (d && d.gn) || '';
+    var pal = gender ? (_STU_GENDER_PAL[gender] || _STU_GENDER_PAL.neutral) : _STU_MOTIF_PAL;
+    var dcnt = decor ? (_STU_DECOR_COUNT[decor] || _STU_DECOR_COUNT.balanced) : null;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
     var schoolName = '';
@@ -3656,7 +3684,7 @@ function _stuTextCoverBlob(item, cb) {
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
       // موتيفات مبعثرة خلف النافذة (نفس منطق frameSlots/buildFrame — نسخة canvas)
-      var mCount = Math.max(2, _STU_STAGE_COUNT[stage] || _STU_STAGE_COUNT.all);
+      var mCount = Math.max(2, (dcnt && dcnt[stage]) || _STU_STAGE_COUNT[stage] || _STU_STAGE_COUNT.all);
       var sizeMul = _STU_STAGE_MOTIF_SIZE[stage] || 1;
       var pool = _stuMotifPool(typeKey, stage);
       var slots = _stuFrameSlots(W, H, ft, fs, fb, mCount);
@@ -3666,7 +3694,7 @@ function _stuTextCoverBlob(item, cb) {
         var sym = pool[mi % pool.length];
         if (typeKey === 'emergency')  sym = 's-tri';
         if (typeKey === 'condolence') sym = 's-leaf';
-        var col = _STU_MOTIF_PAL[mi % _STU_MOTIF_PAL.length];
+        var col = pal[mi % pal.length];
         var mw = sl.s * sizeMul, mh = mw * (_STU_SHAPE_ASPECT[sym] || 1);
         var mrot = sl.r + ((mi * 37) % 15) - 7;
         _stuDrawMotif(ctx, sym, sl.x, sl.y, mw, mh, mrot, col);
