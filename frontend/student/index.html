@@ -3216,22 +3216,55 @@ function _stuToLh3(u) {
   var d = String(u).match(/[?&]id=([a-zA-Z0-9_-]+)/) || String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
   return d ? ('https://lh3.googleusercontent.com/d/' + d[1] + '=w200') : u;
 }
-// جلب شعار المدرسة مرّة واحدة ثم إعادة رسم قائمة الأخبار لإظهاره
-function _stuLoadLogo() {
-  if (window._stuLogo || window._stuLogoTried) return;
-  window._stuLogoTried = true;
+/* ضمان الشعار: طابور انتظار موحّد — أي مستدعٍ (عرض/مشاركة/شرائح) ينتظر الجلبة
+   الجارية نفسها بدل الاعتماد على توقيت نداء واحد قد يفشل؛ الفشل عابر (يُفرَّغ
+   الطابور بقيمة فارغة) ويُسمح بمحاولة جديدة عند الاستدعاء التالي. */
+var _stuLogoPending = null;
+function _stuEnsureLogo(cb) {
+  cb = cb || function () {};
+  if (window._stuLogo) { cb(window._stuLogo); return; }
   var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID || '';
+  if (!sid) { cb(''); return; }
+  if (_stuLogoPending) { _stuLogoPending.push(cb); return; }
+  _stuLogoPending = [cb];
+  function flush(u) {
+    var q = _stuLogoPending || [];
+    _stuLogoPending = null;
+    for (var i = 0; i < q.length; i++) { try { q[i](u); } catch (e) {} }
+  }
   try {
     google.script.run
       .withSuccessHandler(function (b) {
-        if (b && b.ok && b.logo) {
-          window._stuLogo = _stuToLh3(b.logo);
-          try { if (APP.newsState && APP.newsState.items && APP.newsState.items.length) renderNewsList(); } catch (e) {}
-        }
+        if (b && b.ok && b.logo) window._stuLogo = _stuToLh3(b.logo);
+        flush(window._stuLogo || '');
       })
-      .withFailureHandler(function () {})
+      .withFailureHandler(function () { flush(''); })
       .getStudentSchoolBrand(sid);
-  } catch (e) {}
+  } catch (e) { flush(''); }
+}
+/* الشعار كصورة محمَّلة فعلاً — تُحمَّل مرّة وتُكاش ثم تُرسَم في كل الشرائح
+   (لا جلب لكل شريحة)؛ مهلة أمان 4 ثوانٍ ثم تراجع للحرف الأول بالحلقة الذهبية. */
+var _stuLogoImgCache = null;
+function _stuLogoImage(cb) {
+  if (_stuLogoImgCache) { cb(_stuLogoImgCache); return; }
+  _stuEnsureLogo(function (u) {
+    if (!u) { cb(null); return; }
+    var img = new Image(), done = false;
+    img.crossOrigin = 'anonymous';
+    img.onload  = function () { if (!done) { done = true; _stuLogoImgCache = img; cb(img); } };
+    img.onerror = function () { if (!done) { done = true; cb(null); } };
+    img.src = u;
+    setTimeout(function () { if (!done) { done = true; img.onload = img.onerror = null; cb(null); } }, 4000);
+  });
+}
+// جلب شعار المدرسة ثم إعادة رسم قائمة الأخبار لإظهاره في الأغلفة
+function _stuLoadLogo() {
+  var had = !!window._stuLogo;
+  _stuEnsureLogo(function (u) {
+    if (u && !had) {
+      try { if (APP.newsState && APP.newsState.items && APP.newsState.items.length) renderNewsList(); } catch (e) {}
+    }
+  });
 }
 
 /* ══════ الخبر النصّي كبطاقة غلاف مصمّمة (أنواع/تصنيف/غلاف) — منقول من _build/social ══════ */
@@ -3638,8 +3671,14 @@ function _stuTextCover(n) {
   '</div>';
 }
 
-/* توليد صورة PNG للغلاف المصمّم (canvas) — للمشاركة كملف صورة لخبر نصّي.
-   نفس التصميم الغني المعروض في العرض (إطار مبعثر + نافذة بيضاء + شريطا العلوي/السفلي). */
+/* توليد صور PNG للغلاف المصمّم (canvas) — للمشاركة كملفات صور لخبر نصّي.
+   نفس التصميم الغني المعروض في العرض (إطار مبعثر + نافذة بيضاء + شريطا العلوي/السفلي).
+   cb(مصفوفة Blob مرتّبة | null): النص الطويل يُقسَّم على شرائح بدل بتره — مطابق
+   حرفياً لقرارات _tcTextCoverBlob في لوحة المعلم (تصغير الخط حتى الحد الأدنى
+   قبل شريحة إضافية · هدف ≤5 شرائح · سقف صارم 10 = حد ملفات المشاركة). */
+var _STU_COVER_MAX_SLIDES  = 5;
+var _STU_COVER_HARD_MAX    = 10;
+var _STU_COVER_MIN_BODY_PX = 26;
 function _stuTextCoverBlob(item, cb) {
   try {
     // اللقطة المخزّنة تحدّد الهوية والمقاس؛ «بلا تصميم» ⇒ لا صورة (تراجع لمشاركة نصية)
@@ -3654,6 +3693,7 @@ function _stuTextCoverBlob(item, cb) {
     var gender = (d && d.gn) || '';
     var pal = gender ? (_STU_GENDER_PAL[gender] || _STU_GENDER_PAL.neutral) : _STU_MOTIF_PAL;
     var dcnt = decor ? (_STU_DECOR_COUNT[decor] || _STU_DECOR_COUNT.balanced) : null;
+    var FONT = 'Tahoma, "Segoe UI", Arial, sans-serif';
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
     var schoolName = '';
@@ -3680,9 +3720,68 @@ function _stuTextCoverBlob(item, cb) {
       return lines;
     }
     var _gg = (d && d.g) ? d.g : _STU_DSGN_DEFAULT_G;
-    var _painted = false;
-    function paint(logoImg) {
-      if (_painted) return; _painted = true;
+
+    var winX = fs, winY = ft, winW = W - fs * 2, winH = H - ft - fb;
+    // العنوان (أول سطر) + بقية النص كاملة — بلا أي بتر (التقسيم بديل القصّ)
+    var contentLines = String(item && item.content || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
+    var first = contentLines[0] || '';
+    var rest = contentLines.slice(1).join(' ');
+    var totalLen = (first + rest).length;
+    var titleFontPx = totalLen <= 40 ? 72 : (totalLen <= 90 ? 60 : 50);
+    var bodyFontPx = totalLen <= 90 ? 34 : 30;
+    var titleLines = wrapText(first, winW - 120, '800 ' + titleFontPx + 'px ' + FONT);
+    if (titleLines.length > 6) {
+      // عنوان استثنائي الطول: تبقى 6 أسطر عنواناً والفائض يتقدّم المتن (لا قصّ)
+      rest = titleLines.slice(6).join(' ') + (rest ? ' ' + rest : '');
+      titleLines = titleLines.slice(0, 6);
+    }
+    var titleLH = titleFontPx * 1.3, blockGap = 28, PAD = 70;
+    var availH = winH - PAD * 2;
+
+    // حساب سعة الشرائح عند حجم خط متن معيّن (الشريحة 1 ينقصها ارتفاع العنوان)
+    function layoutAt(px) {
+      var lh = px * 1.55;
+      var lines = rest ? wrapText(rest, winW - 140, '400 ' + px + 'px ' + FONT) : [];
+      var titleH = titleLines.length * titleLH;
+      var cap1 = Math.max(0, Math.floor((availH - titleH - (lines.length ? blockGap : 0)) / lh));
+      var capN = Math.max(1, Math.floor(availH / lh));
+      var n = 1;
+      if (lines.length > cap1) n = 1 + Math.ceil((lines.length - cap1) / capN);
+      return { lines: lines, cap1: cap1, capN: capN, n: n, lh: lh, px: px };
+    }
+    // تصغير تدريجي ضمن الحدود قبل أي شريحة إضافية فوق الهدف
+    var ly = layoutAt(bodyFontPx);
+    while (ly.n > _STU_COVER_MAX_SLIDES && ly.px > _STU_COVER_MIN_BODY_PX) {
+      ly = layoutAt(Math.max(_STU_COVER_MIN_BODY_PX, ly.px - 2));
+    }
+    var nSlides = Math.min(ly.n, _STU_COVER_HARD_MAX);
+    var bodyLH = ly.lh; bodyFontPx = ly.px;
+
+    // توزيع الأسطر على الشرائح بتوازن (كل شريحة «مليانة» بنسبة متقاربة)
+    var chunks = [], pos = 0;
+    if (nSlides === 1) {
+      chunks.push(ly.lines);
+      pos = ly.lines.length;
+    } else {
+      var totalCap = ly.cap1 + (nSlides - 1) * ly.capN;
+      var take1 = Math.min(ly.cap1, Math.ceil(ly.lines.length * ly.cap1 / totalCap));
+      chunks.push(ly.lines.slice(0, take1));
+      pos = take1;
+      for (var si = 1; si < nSlides; si++) {
+        var want = Math.ceil((ly.lines.length - pos) / (nSlides - si));
+        var take = Math.min(ly.capN, want);
+        chunks.push(ly.lines.slice(pos, pos + take));
+        pos += take;
+      }
+      if (pos < ly.lines.length && chunks[nSlides - 1].length) {
+        // بلغنا السقف الصارم (~11 ألف حرف بمقاس feed) — ختم بعلامة … ظاهرة.
+        // لا فقدان معلومات فعلي: نص الخبر الكامل يرافق المشاركة كنصّ على كل حال.
+        chunks[nSlides - 1][chunks[nSlides - 1].length - 1] += ' …';
+        try { console.warn('_stuTextCoverBlob: نص يتجاوز سقف ' + _STU_COVER_HARD_MAX + ' شرائح — قُلّم ' + (ly.lines.length - pos) + ' سطراً من الصور (النص الكامل في نص المشاركة)'); } catch (eW) {}
+      }
+    }
+
+    function paintSlide(logoImg, idx) {
       var g = ctx.createLinearGradient(0, 0, W, H);
       g.addColorStop(0, _gg[0]); g.addColorStop(1, _gg[1]);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -3706,7 +3805,6 @@ function _stuTextCoverBlob(item, cb) {
       ctx.globalAlpha = 1;
 
       // النافذة البيضاء المركزية
-      var winX = fs, winY = ft, winW = W - fs * 2, winH = H - ft - fb;
       roundRect(winX, winY, winW, winH, 28);
       ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 40; ctx.fill();
       ctx.shadowBlur = 0;
@@ -3714,29 +3812,22 @@ function _stuTextCoverBlob(item, cb) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       try { ctx.direction = 'rtl'; } catch (e1) {}
 
-      // العنوان (أول سطر) + بقية النص — ممركزان رأسياً معاً. النص القصير يكبر
-      // تلقائياً ليملأ النافذة (بدل فراغ أبيض فارغ)، بروح fitText() في القالب.
-      var contentLines = String(item && item.content || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
-      var first = contentLines[0] || '';
-      var rest = contentLines.slice(1).join(' ');
-      var totalLen = (first + rest).length;
-      var titleFontPx = totalLen <= 40 ? 72 : (totalLen <= 90 ? 60 : 50);
-      var bodyFontPx = totalLen <= 90 ? 34 : 30;
-      var titleLines = wrapText(first, winW - 120, '800 ' + titleFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif');
-      if (titleLines.length > 5) { titleLines = titleLines.slice(0, 5); titleLines[4] += '…'; }
-      var bodyLines = rest ? wrapText(rest, winW - 140, '400 ' + bodyFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif') : [];
-      if (bodyLines.length > 6) { bodyLines = bodyLines.slice(0, 6); bodyLines[5] += '…'; }
-      var titleLH = titleFontPx * 1.3, bodyLH = bodyFontPx * 1.55, blockGap = 28;
-      var totalH = titleLines.length * titleLH + (bodyLines.length ? (blockGap + bodyLines.length * bodyLH) : 0);
+      // نص الشريحة: العنوان على الأولى فقط + نصيبها من المتن — ممركزة رأسياً
+      var chunk = chunks[idx] || [];
+      var isFirstSlide = (idx === 0);
+      var tH = isFirstSlide ? titleLines.length * titleLH : 0;
+      var totalH = tH + (tH && chunk.length ? blockGap : 0) + chunk.length * bodyLH;
       var cy = winY + winH / 2 - totalH / 2;
-      ctx.fillStyle = '#0f2545';
-      ctx.font = '800 ' + titleFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif';
-      for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, cy + titleLH / 2, winW - 100); cy += titleLH; }
-      if (bodyLines.length) {
-        cy += blockGap;
+      if (isFirstSlide) {
+        ctx.fillStyle = '#0f2545';
+        ctx.font = '800 ' + titleFontPx + 'px ' + FONT;
+        for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, cy + titleLH / 2, winW - 100); cy += titleLH; }
+        if (chunk.length) cy += blockGap;
+      }
+      if (chunk.length) {
         ctx.fillStyle = '#475569';
-        ctx.font = '400 ' + bodyFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif';
-        for (var bi = 0; bi < bodyLines.length; bi++) { ctx.fillText(bodyLines[bi], W / 2, cy + bodyLH / 2, winW - 120); cy += bodyLH; }
+        ctx.font = '400 ' + bodyFontPx + 'px ' + FONT;
+        for (var bi = 0; bi < chunk.length; bi++) { ctx.fillText(chunk[bi], W / 2, cy + bodyLH / 2, winW - 120); cy += bodyLH; }
       }
 
       // الشريط العلوي: شعار دائري بحلقة ذهبية + اسم المدرسة + كبسولة النوع
@@ -3751,19 +3842,20 @@ function _stuTextCoverBlob(item, cb) {
           ctx.restore();
         } catch (e4) { try { ctx.restore(); } catch (e5) {} }
       } else {
+        // احتياط موسوم دائماً: الحرف الأول من اسم المدرسة داخل الحلقة الذهبية
         ctx.beginPath(); ctx.arc(logoCx, logoCy, logoR, 0, Math.PI * 2);
         ctx.fillStyle = '#fff'; ctx.fill();
         ctx.lineWidth = 5; ctx.strokeStyle = '#FFCE3D'; ctx.stroke();
-        ctx.fillStyle = t.c; ctx.font = '800 34px Tahoma, "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = t.c; ctx.font = '800 34px ' + FONT;
         ctx.fillText(schoolName ? schoolName.charAt(0) : 'م', logoCx, logoCy + 2);
       }
       if (schoolName) {
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'start';
-        ctx.font = '800 34px Tahoma, "Segoe UI", Arial, sans-serif';
+        ctx.font = '800 34px ' + FONT;
         ctx.fillText(schoolName, logoCx + logoR + 22, logoCy, W - fs * 2 - logoR * 2 - 260);
         ctx.textAlign = 'center';
       }
-      ctx.font = '700 30px Tahoma, "Segoe UI", Arial, sans-serif';
+      ctx.font = '700 30px ' + FONT;
       var pillW = Math.max(150, ctx.measureText(t.l).width + 90), pillH = 60;
       var pillX = W - fs - pillW, pillY = ft / 2 - pillH / 2;
       roundRect(pillX, pillY, pillW, pillH, pillH / 2);
@@ -3779,34 +3871,46 @@ function _stuTextCoverBlob(item, cb) {
         ctx.restore();
       } catch (e2) { try { ctx.restore(); } catch (e3) {} }
 
-      if (item && item.date) {
+      // الشريط السفلي: كبسولة التاريخ (الشريحة الأولى) + مؤشر «n/N» عند التعدّد
+      if (isFirstSlide && item && item.date) {
         var chipY = H - fb / 2;
         var dl = '📅 ' + fmtDate(item.date);
-        ctx.font = '700 30px Tahoma, "Segoe UI", Arial, sans-serif';
+        ctx.font = '700 30px ' + FONT;
         var cw = ctx.measureText(dl).width + 70;
         roundRect(fs, chipY - 30, cw, 60, 30);
         ctx.fillStyle = 'rgba(6,20,40,.4)'; ctx.fill();
         ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
         ctx.fillText(dl, fs + cw / 2, chipY + 2);
       }
+      if (nSlides > 1) {
+        var pgl = (idx + 1) + ' / ' + nSlides;
+        ctx.font = '700 30px ' + FONT;
+        var pw = ctx.measureText(pgl).width + 70;
+        var py = H - fb / 2;
+        roundRect(W - fs - pw, py - 30, pw, 60, 30);
+        ctx.fillStyle = 'rgba(6,20,40,.4)'; ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+        ctx.fillText(pgl, W - fs - pw / 2, py + 2);
+      }
+    }
 
+    // توليد الشرائح تسلسلياً على نفس الـcanvas (إعادة الرسم بعد التقاط toBlob للشريحة السابقة)
+    var out = [];
+    function makeSlide(logoImg, idx) {
+      paintSlide(logoImg, idx);
       // canvas ملوّث (شعار بلا CORS) ⇒ toBlob يرمي تزامنياً — لا تعلّق المشاركة
       try {
-        if (cv.toBlob) cv.toBlob(function (blob) { cb(blob || null); }, 'image/png');
-        else cb(null);
+        if (!cv.toBlob) { cb(null); return; }
+        cv.toBlob(function (blob) {
+          if (!blob) { cb(null); return; }
+          out.push(blob);
+          if (idx + 1 < nSlides) makeSlide(logoImg, idx + 1);
+          else cb(out);
+        }, 'image/png');
       } catch (eBlob) { cb(null); }
     }
-    var lg = window._stuLogo;
-    if (lg) {
-      var img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload  = function () { paint(img); };
-      img.onerror = function () { paint(null); };
-      img.src = lg;
-      setTimeout(function () { if (!img.complete) { img.onload = img.onerror = null; paint(null); } }, 4000);
-    } else {
-      paint(null);
-    }
+    // الشعار يُحمَّل مرّة (كاش) وتنتظره كل الشرائح فعلياً قبل الرسم — لا سباق تحميل
+    _stuLogoImage(function (logoImg) { makeSlide(logoImg, 0); });
   } catch (e) { cb(null); }
 }
 
@@ -3952,9 +4056,9 @@ function nsShareNews(newsId) {
   var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) + (schoolId ? '&school=' + encodeURIComponent(schoolId) : '');
   var body = item ? String(item.content || '') : '';
   var owner = item ? String(item.teacher || '') : '';
-  var snippet = body.length > 500 ? (body.substring(0, 497) + '…') : body;
-  var text = snippet + (owner ? '\n— ' + owner : '') + '\n' + url;
-  var fileText = snippet + (owner ? '\n— ' + owner : '');   // نصّ مرافق للملفات (بلا رابط)
+  // النص كاملاً بلا بتر — التطبيقات المستقبلة تتعامل مع النص الطويل بنفسها
+  var text = body + (owner ? '\n— ' + owner : '') + '\n' + url;
+  var fileText = body + (owner ? '\n— ' + owner : '');   // نصّ مرافق للملفات (بلا رابط)
   var title = 'خبر من ' + (owner || 'المدرسة');
 
   function _after() {
@@ -3968,9 +4072,17 @@ function nsShareNews(newsId) {
   var mediaList = (item && item.media && item.media.length) ? item.media
                 : ((item && item.hasAttach && item.attachments) ? [{ url: item.attachments, isImage: item.isImage, isVideo: item.isVideo, isPdf: item.isPdf }] : []);
   if (!mediaList.length) {
-    _stuTextCoverBlob(item, function (blob) {
-      if (blob) _nsShareFilesOrFallback([new File([blob], 'news-' + newsId + '.png', { type: 'image/png' })], title, fileText, text, url, _after);
-      else _nsShareText(text, url, _after);
+    // خبر نصّي: ولّد شرائح الغلاف المصمّم (كاروسيل مرتّب) وشاركها كملفات
+    _stuTextCoverBlob(item, function (blobs) {
+      if (blobs && blobs.length) {
+        var files = [];
+        for (var fi = 0; fi < blobs.length; fi++) {
+          files.push(new File([blobs[fi]], 'news-' + newsId + '-' + (fi + 1) + '.png', { type: 'image/png' }));
+        }
+        _nsShareFilesOrFallback(files, title, fileText, text, url, _after);
+      } else {
+        _nsShareText(text, url, _after);
+      }
     });
     return;
   }
