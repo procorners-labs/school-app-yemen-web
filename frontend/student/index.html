@@ -3262,9 +3262,15 @@ function _stuNewsTypeMeta(t) { return _STU_NEWS_TYPES[t] || _STU_NEWS_TYPES.news
 
 /* ── لقطة تصميم الغلاف المختارة بلوحة المعلم (عمود «التصميم») ──
    تُقرأ بأمان وتُعرض كما خُزّنت (versioning: الشكل من اللقطة لا من سجل حي).
-   غيابها = السلوك التلقائي القديم · none = نص فقط بلا غلاف. */
+   غيابها = السلوك التلقائي القديم · none = نص فقط بلا غلاف.
+   ft/fs/fb = سماكة نطاقات الإطار (أعلى/جانب/أسفل) — مطابقة حرفياً لأبعاد
+   excellence-post-system.html لكل مقاس (نفس _TC_DSGN_SIZES في لوحة المعلم). */
 var _STU_DSGN_DEFAULT_G = ['#0f2545', '#1149a3'];
-var _STU_DSGN_SIZES = { feed: '4 / 5', square: '1 / 1', story: '9 / 16' };
+var _STU_DSGN_SIZES = {
+  feed:   { ar: '4 / 5',  w: 1080, h: 1350, ft: 170, fs: 112, fb: 132 },
+  square: { ar: '1 / 1',  w: 1080, h: 1080, ft: 152, fs: 98,  fb: 116 },
+  story:  { ar: '9 / 16', w: 1080, h: 1920, ft: 196, fs: 124, fb: 156 }
+};
 function _stuNewsDesign(n) {
   var s = n && n.design;
   if (!s) return null;
@@ -3279,40 +3285,331 @@ function _stuNewsDesign(n) {
   if (o.g && o.g.length === 2 && HEX.test(String(o.g[0])) && HEX.test(String(o.g[1]))) {
     g = [String(o.g[0]), String(o.g[1])];
   }
+  // v2 (إضافي فقط، لا يكسر لقطات v1 القديمة): مرحلة دراسية لحزمة الموتيفات —
+  // whitelist صارم، أي قيمة غير معروفة تُسقَط بصمت فيستنتجها المستدعي حيّاً.
+  var STAGE_RX = /^(early|middle|secondary|all)$/;
+  var st = String(o.st || '');
   return { t: String(o.t || 'news'), s: String(o.s || 'feed'),
-           l: String(o.l || '').substring(0, 30), c: c, i: ic, g: g };
+           l: String(o.l || '').substring(0, 30), c: c, i: ic, g: g,
+           st: STAGE_RX.test(st) ? st : '' };
+}
+
+/* ══════ نظام الغلاف الغني — نسخة منصّة الطالب (عرض فقط، بلا معرض اختيار) ══════
+   منقولة حرفياً من نفس مكتبة الموتيفات في لوحة المعلم (_build/social/templates/
+   excellence-post-system.html: SHAPES/STAGES/ACCENTS/frameSlots/buildFrame) —
+   لا معرض هنا عمداً (نفس التصميم المخزّن من المعلم فقط، عرض لا اختيار). */
+var _stuSymBuilt = false;
+var _STU_SYM_DEFS =
+  '<symbol id="s-star" viewBox="0 0 100 100"><path fill="currentColor" d="M50 3 62 37 98 38 69 60 80 96 50 74 20 96 31 60 2 38 38 37Z"/></symbol>' +
+  '<symbol id="s-spark" viewBox="0 0 100 100"><path fill="currentColor" d="M50 2C53 32 68 47 98 50 68 53 53 68 50 98 47 68 32 53 2 50 32 47 47 32 50 2Z"/></symbol>' +
+  '<symbol id="s-blob" viewBox="0 0 100 100"><path fill="currentColor" d="M53 5c19-3 37 9 41 28 4 19-7 35-23 44-17 9-41 8-54-7C5 61 5 38 17 24 27 13 39 8 53 5Z"/></symbol>' +
+  '<symbol id="s-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="10"/></symbol>' +
+  '<symbol id="s-dot" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="currentColor"/></symbol>' +
+  '<symbol id="s-tri" viewBox="0 0 100 100"><path fill="currentColor" d="M50 8 92 88H8Z"/></symbol>' +
+  '<symbol id="s-diamond" viewBox="0 0 100 100"><path fill="currentColor" d="M50 6 94 50 50 94 6 50Z"/></symbol>' +
+  '<symbol id="s-leaf" viewBox="0 0 100 100"><path fill="currentColor" d="M86 14C48 18 20 42 16 86c40-4 66-30 70-72Z"/></symbol>' +
+  '<symbol id="s-book" viewBox="0 0 100 100"><g fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"><path d="M50 26C40 18 24 16 12 18v56c12-2 28 0 38 8 10-8 26-10 38-8V18c-12-2-28 0-38 8Z"/><path d="M50 26v56"/></g></symbol>' +
+  '<symbol id="s-pencil" viewBox="0 0 100 100"><g transform="rotate(45 50 50)"><rect x="42" y="14" width="16" height="54" rx="3" fill="currentColor"/><path d="M42 68h16l-8 16Z" fill="currentColor"/><rect x="42" y="14" width="16" height="11" rx="3" fill="currentColor" opacity=".55"/></g></symbol>' +
+  '<symbol id="s-ruler" viewBox="0 0 100 100"><g transform="rotate(-30 50 50)"><rect x="14" y="40" width="72" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="5"/><path d="M27 40v9M39 40v13M51 40v9M63 40v13M75 40v9" stroke="currentColor" stroke-width="4"/></g></symbol>' +
+  '<symbol id="s-trophy" viewBox="0 0 100 100"><g fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"><path d="M32 16h36v14a18 18 0 0 1-36 0Z"/><path d="M32 20H20v4a12 12 0 0 0 12 12M68 20h12v4a12 12 0 0 1-12 12"/><path d="M50 48v14M38 78h24M44 62h12l3 16H41Z"/></g></symbol>' +
+  '<symbol id="s-moon" viewBox="0 0 100 100"><path fill="currentColor" d="M68 8a44 44 0 1 0 0 84A34 34 0 1 1 68 8Z"/></symbol>' +
+  '<symbol id="s-sun" viewBox="0 0 100 100"><circle cx="50" cy="50" r="20" fill="currentColor"/><g stroke="currentColor" stroke-width="7" stroke-linecap="round"><path d="M50 8v14M50 78v14M8 50h14M78 50h14M20 20l10 10M70 70l10 10M80 20 70 30M30 70 20 80"/></g></symbol>' +
+  '<symbol id="s-balloon" viewBox="0 0 100 100"><ellipse cx="50" cy="36" rx="25" ry="31" fill="currentColor"/><path d="M50 67l-6 8h12z" fill="currentColor"/><path d="M50 75c-6 8 6 12-2 21" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></symbol>' +
+  '<symbol id="s-smile" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" stroke-width="8"/><circle cx="36" cy="42" r="5.5" fill="currentColor"/><circle cx="64" cy="42" r="5.5" fill="currentColor"/><path d="M32 60a20 20 0 0 0 36 0" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></symbol>' +
+  '<symbol id="s-rainbow" viewBox="0 0 100 56"><g fill="none" stroke="currentColor" stroke-linecap="round"><path stroke-width="8" d="M6 52a44 44 0 0 1 88 0"/><path stroke-width="8" opacity=".62" d="M20 52a30 30 0 0 1 60 0"/><path stroke-width="8" opacity=".34" d="M34 52a16 16 0 0 1 32 0"/></g></symbol>' +
+  '<symbol id="s-rocket" viewBox="0 0 100 100"><g fill="none" stroke="currentColor" stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round" transform="rotate(42 50 50)"><path d="M50 8c9 9 13 23 13 36v16H37V44c0-13 4-27 13-36Z"/><circle cx="50" cy="38" r="7"/><path d="M37 52l-9 12h9M63 52l9 12h-9M44 68c0 6 2 10 6 14 4-4 6-8 6-14"/></g></symbol>' +
+  '<symbol id="s-medal" viewBox="0 0 100 100"><g fill="currentColor"><path d="M34 4h13l-7 30H28Z" opacity=".7"/><path d="M66 4H53l7 30h12Z" opacity=".7"/><circle cx="50" cy="62" r="30" fill="none" stroke="currentColor" stroke-width="7"/><path d="M50 46l5 10 11 2-8 8 2 11-10-5-10 5 2-11-8-8 11-2Z"/></g></symbol>' +
+  '<symbol id="s-burst" viewBox="0 0 100 100"><path fill="currentColor" d="M50 2 57.3 32.4 83.9 16.1 67.6 42.7 98 50 67.6 57.3 83.9 83.9 57.3 67.6 50 98 42.7 67.6 16.1 83.9 32.4 57.3 2 50 32.4 42.7 16.1 16.1 42.7 32.4Z"/></symbol>' +
+  '<symbol id="s-branch" viewBox="0 0 100 100"><g fill="currentColor"><path d="M50 96C46 66 46 34 54 6" fill="none" stroke="currentColor" stroke-width="4"/><ellipse cx="38" cy="78" rx="13" ry="6" transform="rotate(-32 38 78)"/><ellipse cx="62" cy="66" rx="13" ry="6" transform="rotate(28 62 66)"/><ellipse cx="36" cy="52" rx="13" ry="6" transform="rotate(-30 36 52)"/><ellipse cx="62" cy="40" rx="13" ry="6" transform="rotate(30 62 40)"/><ellipse cx="40" cy="26" rx="12" ry="5.5" transform="rotate(-28 40 26)"/></g></symbol>' +
+  '<symbol id="s-line" viewBox="0 0 120 20"><g stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round"><path d="M4 10h44M72 10h44"/></g><path d="M52 10l8-6 8 6-8 6z" fill="currentColor"/></symbol>' +
+  '<symbol id="s-lantern" viewBox="0 0 64 100"><g fill="none" stroke="currentColor" stroke-width="4.5" stroke-linejoin="round"><path d="M32 0v8"/><path d="M20 14h24l-3-6H23Z" fill="currentColor" stroke="none"/><rect x="14" y="18" width="36" height="56" rx="12"/><path d="M32 18v56M23 24v44M41 24v44"/><path d="M23 80h18l-3 11H26Z" fill="currentColor" stroke="none"/></g></symbol>';
+
+function _stuEnsureSymbols() {
+  if (_stuSymBuilt) return;
+  var host = document.createElement('div');
+  host.style.position = 'absolute'; host.style.width = '0'; host.style.height = '0'; host.style.overflow = 'hidden';
+  host.innerHTML = '<svg width="0" height="0" aria-hidden="true"><defs>' + _STU_SYM_DEFS + '</defs></svg>';
+  document.body.appendChild(host);
+  _stuSymBuilt = true;
+}
+
+var _STU_SHAPE_ASPECT = { 's-line': 0.17, 's-lantern': 1.56, 's-rainbow': 0.56 };
+var _STU_STAGE_SHAPES = {
+  early:     ['s-sun', 's-balloon', 's-star', 's-smile', 's-rainbow', 's-pencil', 's-spark', 's-dot'],
+  middle:    ['s-rocket', 's-medal', 's-burst', 's-book', 's-ring', 's-spark', 's-tri'],
+  secondary: ['s-branch', 's-line', 's-ring', 's-spark', 's-diamond'],
+  all:       ['s-blob', 's-ring', 's-spark', 's-dot', 's-diamond']
+};
+var _STU_TYPE_ACCENTS = {
+  exams:       ['s-book', 's-pencil', 's-ruler'],
+  achievement: ['s-medal', 's-trophy', 's-star', 's-branch'],
+  greeting:    ['s-moon', 's-lantern', 's-star'],
+  enrollment:  ['s-book'],
+  event:       ['s-burst']
+};
+var _STU_STAGE_MOTIF_SIZE = { early: 1.18, middle: 1.0, secondary: 0.8, all: 0.95 };
+var _STU_STAGE_COUNT = { early: 9, middle: 7, secondary: 5, all: 6 };
+var _STU_MOTIF_PAL = ['rgba(255,255,255,.9)', '#FFCE3D', 'rgba(255,255,255,.55)'];
+
+function _stuFrameSlots(W, H, ft, fs, fb, k) {
+  var midH = H - ft - fb;
+  var L = fs * 0.5, R = W - fs * 0.5;
+  var SL = [
+    { x: fs * 0.54,     y: ft * 0.56,       s: 150, r: -14 },
+    { x: W - fs * 0.54, y: ft * 0.56,       s: 138, r: 12 },
+    { x: fs * 0.54,     y: H - fb * 0.52,   s: 136, r: 16 },
+    { x: W - fs * 0.54, y: H - fb * 0.52,   s: 150, r: -10 },
+    { x: L, y: ft + midH * 0.5,   s: 96, r: -8 },
+    { x: R, y: ft + midH * 0.5,   s: 96, r: 10 },
+    { x: W * 0.5,  y: H - fb * 0.48, s: 64, r: 0 },
+    { x: L, y: ft + midH * 0.25,  s: 76, r: 18 },
+    { x: R, y: ft + midH * 0.25,  s: 76, r: -16 },
+    { x: L, y: ft + midH * 0.75,  s: 76, r: -20 },
+    { x: R, y: ft + midH * 0.75,  s: 76, r: 14 }
+  ];
+  return SL.slice(0, Math.min(k, SL.length));
+}
+function _stuMotifPool(type, stage) {
+  var accents = _STU_TYPE_ACCENTS[type] || [];
+  return accents.concat(_STU_STAGE_SHAPES[stage] || _STU_STAGE_SHAPES.all);
+}
+/* اشتقاق المرحلة الدراسية من نص الفصل — مطابقة لـ_tcStageFromGrade في لوحة
+   المعلم. فارغ/غير محدَّد ⇒ '' فيستخدم المستدعي 'all' افتراضياً. */
+function _stuStageFromGrade(g) {
+  var t = String(g || '');
+  if (!t) return '';
+  if (/تمهيدي|تمهيدى|روضة|روضه|KG/i.test(t)) return 'early';
+  if (/ثانوي|ثانوى/.test(t)) return 'secondary';
+  if (/متوسط/.test(t)) return 'middle';
+  var ORD = ['أول', 'ثاني', 'ثالث', 'رابع', 'خامس', 'سادس', 'سابع', 'ثامن', 'تاسع'];
+  for (var i = 0; i < ORD.length; i++) {
+    if (t.indexOf(ORD[i]) !== -1) {
+      var n = i + 1;
+      if (n <= 3) return 'early';
+      if (n <= 9) return 'middle';
+      return 'secondary';
+    }
+  }
+  return '';
+}
+function _stuBuildFrameSvg(type, stage, W, H, ft, fs, fb) {
+  _stuEnsureSymbols();
+  var pool = _stuMotifPool(type, stage);
+  var n = Math.max(2, _STU_STAGE_COUNT[stage] || _STU_STAGE_COUNT.all);
+  var sizeMul = _STU_STAGE_MOTIF_SIZE[stage] || 1;
+  var slots = _stuFrameSlots(W, H, ft, fs, fb, n);
+  var uses = '';
+  for (var i = 0; i < slots.length; i++) {
+    var sl = slots[i];
+    var sym = pool[i % pool.length];
+    if (type === 'emergency')  sym = 's-tri';
+    if (type === 'condolence') sym = 's-leaf';
+    var col = _STU_MOTIF_PAL[i % _STU_MOTIF_PAL.length];
+    var w = sl.s * sizeMul, h = w * (_STU_SHAPE_ASPECT[sym] || 1);
+    var rot = sl.r + ((i * 37) % 15) - 7;
+    uses += '<use href="#' + sym + '" x="' + (sl.x - w / 2).toFixed(0) + '" y="' + (sl.y - h / 2).toFixed(0) +
+      '" width="' + w.toFixed(0) + '" height="' + h.toFixed(0) + '" transform="rotate(' + rot.toFixed(0) + ' ' +
+      sl.x.toFixed(0) + ' ' + sl.y.toFixed(0) + ')" style="color:' + col + '"/>';
+  }
+  var op = (type === 'condolence') ? .45 : .9;
+  return '<svg class="stu-frame-scatter" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid slice" ' +
+    'style="position:absolute;inset:0;width:100%;height:100%;opacity:' + op + ';pointer-events:none;" aria-hidden="true">' + uses + '</svg>';
+}
+
+var _STU_SHAPE_OPS = {
+  's-star':    { p: [{ d: 'M50 3 62 37 98 38 69 60 80 96 50 74 20 96 31 60 2 38 38 37Z', fill: 1 }] },
+  's-spark':   { p: [{ d: 'M50 2C53 32 68 47 98 50 68 53 53 68 50 98 47 68 32 53 2 50 32 47 47 32 50 2Z', fill: 1 }] },
+  's-blob':    { p: [{ d: 'M53 5c19-3 37 9 41 28 4 19-7 35-23 44-17 9-41 8-54-7C5 61 5 38 17 24 27 13 39 8 53 5Z', fill: 1 }] },
+  's-ring':    { p: [{ cx: 50, cy: 50, r: 42, stroke: 1, sw: 10 }] },
+  's-dot':     { p: [{ cx: 50, cy: 50, r: 42, fill: 1 }] },
+  's-tri':     { p: [{ d: 'M50 8 92 88H8Z', fill: 1 }] },
+  's-diamond': { p: [{ d: 'M50 6 94 50 50 94 6 50Z', fill: 1 }] },
+  's-leaf':    { p: [{ d: 'M86 14C48 18 20 42 16 86c40-4 66-30 70-72Z', fill: 1 }] },
+  's-moon':    { p: [{ d: 'M68 8a44 44 0 1 0 0 84A34 34 0 1 1 68 8Z', fill: 1 }] },
+  's-burst':   { p: [{ d: 'M50 2 57.3 32.4 83.9 16.1 67.6 42.7 98 50 67.6 57.3 83.9 83.9 57.3 67.6 50 98 42.7 67.6 16.1 83.9 32.4 57.3 2 50 32.4 42.7 16.1 16.1 42.7 32.4Z', fill: 1 }] },
+  's-book':    { p: [
+    { d: 'M50 26C40 18 24 16 12 18v56c12-2 28 0 38 8 10-8 26-10 38-8V18c-12-2-28 0-38 8Z', stroke: 1, sw: 6, join: 'round' },
+    { d: 'M50 26v56', stroke: 1, sw: 6, join: 'round' }
+  ] },
+  's-trophy':  { p: [
+    { d: 'M32 16h36v14a18 18 0 0 1-36 0Z', stroke: 1, sw: 6, join: 'round' },
+    { d: 'M32 20H20v4a12 12 0 0 0 12 12M68 20h12v4a12 12 0 0 1-12 12', stroke: 1, sw: 6, join: 'round' },
+    { d: 'M50 48v14M38 78h24M44 62h12l3 16H41Z', stroke: 1, sw: 6, join: 'round' }
+  ] },
+  's-sun':     { p: [
+    { cx: 50, cy: 50, r: 20, fill: 1 },
+    { d: 'M50 8v14M50 78v14M8 50h14M78 50h14M20 20l10 10M70 70l10 10M80 20 70 30M30 70 20 80', stroke: 1, sw: 7, cap: 'round' }
+  ] },
+  's-balloon': { p: [
+    { cx: 50, cy: 36, rx: 25, ry: 31, ellipse: 1, fill: 1 },
+    { d: 'M50 67l-6 8h12z', fill: 1 },
+    { d: 'M50 75c-6 8 6 12-2 21', stroke: 1, sw: 4, cap: 'round' }
+  ] },
+  's-smile':   { p: [
+    { cx: 50, cy: 50, r: 40, stroke: 1, sw: 8 },
+    { cx: 36, cy: 42, r: 5.5, fill: 1 },
+    { cx: 64, cy: 42, r: 5.5, fill: 1 },
+    { d: 'M32 60a20 20 0 0 0 36 0', stroke: 1, sw: 7, cap: 'round' }
+  ] },
+  's-rainbow': { p: [
+    { d: 'M6 52a44 44 0 0 1 88 0', stroke: 1, sw: 8, cap: 'round' },
+    { d: 'M20 52a30 30 0 0 1 60 0', stroke: 1, sw: 8, cap: 'round', op: .62 },
+    { d: 'M34 52a16 16 0 0 1 32 0', stroke: 1, sw: 8, cap: 'round', op: .34 }
+  ], vb: [100, 56] },
+  's-pencil':  { rot: 45, p: [
+    { rx0: 42, ry0: 14, rw: 16, rh: 54, rr: 3, fill: 1 },
+    { d: 'M42 68h16l-8 16Z', fill: 1 },
+    { rx0: 42, ry0: 14, rw: 16, rh: 11, rr: 3, fill: 1, op: .55 }
+  ] },
+  's-ruler':   { rot: -30, p: [
+    { rx0: 14, ry0: 40, rw: 72, rh: 22, rr: 3, stroke: 1, sw: 5 },
+    { d: 'M27 40v9M39 40v13M51 40v9M63 40v13M75 40v9', stroke: 1, sw: 4 }
+  ] },
+  's-rocket':  { rot: 42, p: [
+    { d: 'M50 8c9 9 13 23 13 36v16H37V44c0-13 4-27 13-36Z', stroke: 1, sw: 5.5, join: 'round', cap: 'round' },
+    { cx: 50, cy: 38, r: 7, stroke: 1, sw: 5.5 },
+    { d: 'M37 52l-9 12h9M63 52l9 12h-9M44 68c0 6 2 10 6 14 4-4 6-8 6-14', stroke: 1, sw: 5.5, join: 'round', cap: 'round' }
+  ] },
+  's-medal':   { p: [
+    { d: 'M34 4h13l-7 30H28Z', fill: 1, op: .7 },
+    { d: 'M66 4H53l7 30h12Z', fill: 1, op: .7 },
+    { cx: 50, cy: 62, r: 30, stroke: 1, sw: 7 },
+    { d: 'M50 46l5 10 11 2-8 8 2 11-10-5-10 5 2-11-8-8 11-2Z', fill: 1 }
+  ] },
+  's-branch':  { p: [
+    { d: 'M50 96C46 66 46 34 54 6', stroke: 1, sw: 4 },
+    { cx: 38, cy: 78, rx: 13, ry: 6, ellipse: 1, fill: 1, prot: -32 },
+    { cx: 62, cy: 66, rx: 13, ry: 6, ellipse: 1, fill: 1, prot: 28 },
+    { cx: 36, cy: 52, rx: 13, ry: 6, ellipse: 1, fill: 1, prot: -30 },
+    { cx: 62, cy: 40, rx: 13, ry: 6, ellipse: 1, fill: 1, prot: 30 },
+    { cx: 40, cy: 26, rx: 12, ry: 5.5, ellipse: 1, fill: 1, prot: -28 }
+  ] },
+  's-line':    { p: [
+    { d: 'M4 10h44M72 10h44', stroke: 1, sw: 3, cap: 'round' },
+    { d: 'M52 10l8-6 8 6-8 6z', fill: 1 }
+  ], vb: [120, 20] },
+  's-lantern': { p: [
+    { d: 'M32 0v8', stroke: 1, sw: 4.5 },
+    { d: 'M20 14h24l-3-6H23Z', fill: 1 },
+    { rx0: 14, ry0: 18, rw: 36, rh: 56, rr: 12, stroke: 1, sw: 4.5 },
+    { d: 'M32 18v56M23 24v44M41 24v44', stroke: 1, sw: 4.5 },
+    { d: 'M23 80h18l-3 11H26Z', fill: 1 }
+  ], vb: [64, 100] }
+};
+
+function _stuDrawMotif(ctx, id, x, y, w, h, rotDeg, color) {
+  var def = _STU_SHAPE_OPS[id];
+  if (!def) return;
+  var vb = def.vb || [100, 100];
+  ctx.save();
+  try {
+    ctx.translate(x, y);
+    ctx.rotate(rotDeg * Math.PI / 180);
+    ctx.scale(w / vb[0], h / vb[1]);
+    if (def.rot) { ctx.translate(vb[0] / 2, vb[1] / 2); ctx.rotate(def.rot * Math.PI / 180); ctx.translate(-vb[0] / 2, -vb[1] / 2); }
+    for (var i = 0; i < def.p.length; i++) {
+      var part = def.p[i];
+      ctx.save();
+      if (part.prot) { ctx.translate(part.cx, part.cy); ctx.rotate(part.prot * Math.PI / 180); ctx.translate(-part.cx, -part.cy); }
+      ctx.globalAlpha = (part.op != null ? part.op : 1);
+      ctx.fillStyle = color; ctx.strokeStyle = color;
+      ctx.lineJoin = part.join || 'miter'; ctx.lineCap = part.cap || 'butt';
+      ctx.lineWidth = part.sw || 1;
+      if (part.d) {
+        var path = new Path2D(part.d);
+        if (part.fill) ctx.fill(path);
+        if (part.stroke) ctx.stroke(path);
+      } else if (part.ellipse) {
+        ctx.beginPath(); ctx.ellipse(part.cx, part.cy, part.rx, part.ry, 0, 0, Math.PI * 2);
+        if (part.fill) ctx.fill(); if (part.stroke) ctx.stroke();
+      } else if (part.rx0 != null) {
+        ctx.beginPath();
+        var rx = part.rx0, ry = part.ry0, rw = part.rw, rh = part.rh, rr = part.rr;
+        ctx.moveTo(rx + rr, ry);
+        ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, rr);
+        ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, rr);
+        ctx.arcTo(rx, ry + rh, rx, ry, rr);
+        ctx.arcTo(rx, ry, rx + rw, ry, rr);
+        ctx.closePath();
+        if (part.fill) ctx.fill(); if (part.stroke) ctx.stroke();
+      } else if (part.cx != null) {
+        ctx.beginPath(); ctx.arc(part.cx, part.cy, part.r, 0, Math.PI * 2);
+        if (part.fill) ctx.fill(); if (part.stroke) ctx.stroke();
+      }
+      ctx.restore();
+    }
+  } catch (eShape) { /* موتيف واحد فشل لا يوقف رسم بقية الغلاف */ }
+  ctx.restore();
 }
 
 /* بطاقة غلاف مصمّمة للخبر النصّي بلا وسائط: لقطة المعلم إن وُجدت وإلا الترشيح
-   التلقائي القديم (توافق رجعي). «بلا تصميم» الصريح ⇒ لا غلاف. */
+   التلقائي القديم (توافق رجعي). «بلا تصميم» الصريح ⇒ لا غلاف. عرض فقط — بلا
+   معرض اختيار (المرحلة من اللقطة v2 إن وُجدت، وإلا استنتاج حيّ من فصل الخبر). */
 function _stuTextCover(n) {
   var d = _stuNewsDesign(n);
   if (d && d.none) return '';
-  var t = d || _stuNewsTypeMeta(_stuNewsCardType(n.content));
+  var typeKey = d ? d.t : _stuNewsCardType(n.content);
+  var t = d || _stuNewsTypeMeta(typeKey);
   var g = d ? d.g : _STU_DSGN_DEFAULT_G;
-  var ratio = (d && _STU_DSGN_SIZES[d.s]) ? 'aspect-ratio:' + _STU_DSGN_SIZES[d.s] + ';max-height:640px;' : '';
+  var stage = (d && d.st) || _stuStageFromGrade(n && n.grade) || 'all';
+  var sz = _STU_DSGN_SIZES[(d && d.s) || 'feed'] || _STU_DSGN_SIZES.feed;
+  var W = sz.w, H = sz.h, ft = sz.ft, fs = sz.fs, fb = sz.fb;
+  // نسبة الأبعاد مفروضة دائماً (بخلاف السلوك السابق) — الأشرطة العلوية/السفلية
+  // تُموضَع بنسبة مئوية من الارتفاع، وهذا يتطلّب ارتفاعاً محدَّداً للحاوية بمعيار
+  // CSS؛ فرضها عالمياً يمنع انهيارها للأخبار القديمة جداً (بلا لقطة تصميم إطلاقاً).
+  var ratio = 'aspect-ratio:' + sz.ar + ';max-height:640px;';
+  var topPct = (ft / H * 100), botPct = (fb / H * 100), sidePct = (fs / W * 100);
   var first = String(n.content || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
-  if (first.length > 100) first = first.substring(0, 97) + '…';
-  return '<div style="position:relative;margin:10px 12px 4px;min-height:220px;border-radius:12px;overflow:hidden;' + ratio +
-      'background:linear-gradient(150deg,' + g[0] + ',' + g[1] + ');display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 20px;color:#fff;">' +
-    '<span style="position:absolute;top:10px;inset-inline-start:10px;background:' + t.c + ';color:#fff;font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:12px;">' + esc(t.l) + '</span>' +
-    '<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:.92;margin-bottom:9px;" aria-hidden="true"><path d="' + t.i + '"/></svg>' +
-    '<div style="font-weight:800;font-size:1.02rem;line-height:1.7;max-height:5.1em;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.3);max-width:620px;">' + esc(first) + '</div>' +
-    (n.date ? '<div style="margin-top:7px;font-size:.72rem;opacity:.85;">📅 ' + esc(fmtDate(n.date)) + '</div>' : '') +
-    _stuLogoBadge() +
+  if (first.length > 90) first = first.substring(0, 87) + '…';
+
+  var schoolName = '';
+  try { var bn = document.querySelector('.school-brand-name'); schoolName = bn ? String(bn.textContent || '').trim() : ''; } catch (e0) {}
+  var logoUrl = window._stuLogo || '';
+  var initials = schoolName ? schoolName.trim().charAt(0) : 'م';
+
+  var frameSvg = _stuBuildFrameSvg(typeKey, stage, W, H, ft, fs, fb);
+
+  var logoHtml = '<div style="width:44px;height:44px;border-radius:50%;flex:none;' +
+    'background:#fff;color:' + t.c + ';display:flex;align-items:center;justify-content:center;' +
+    'font-weight:800;font-size:1rem;overflow:hidden;box-shadow:0 0 0 2px #FFCE3D,0 2px 8px rgba(0,0,0,.3);">' +
+    (logoUrl ? '<img src="' + esc(logoUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;" referrerpolicy="no-referrer">' : esc(initials)) +
+    '</div>';
+  var pillHtml = '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;color:' + t.c + ';' +
+    'padding:5px 14px;border-radius:999px;font-size:.7rem;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.22);white-space:nowrap;flex:none;">' +
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + t.i + '"/></svg>' +
+    esc(t.l) + '</span>';
+  var topbar = '<div style="position:absolute;top:0;left:0;right:0;height:' + topPct + '%;display:flex;align-items:center;justify-content:space-between;padding:0 ' + sidePct + '%;z-index:3;">' +
+    '<div style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;">' + logoHtml +
+    '<span style="color:#fff;font-weight:800;font-size:.66rem;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(schoolName) + '</span></div>' +
+    pillHtml +
+  '</div>';
+  var windowHtml = '<div style="position:absolute;top:' + topPct + '%;bottom:' + botPct + '%;left:' + sidePct + '%;right:' + sidePct + '%;' +
+    'background:#fff;border-radius:12px;display:flex;align-items:center;justify-content:center;text-align:center;' +
+    'padding:14px 18px;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2;">' +
+    '<div style="font-weight:800;color:#0f2545;font-size:1rem;line-height:1.5;max-height:5.5em;overflow:hidden;">' + esc(first) + '</div>' +
+  '</div>';
+  var dateChip = n.date ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:700;padding:4px 12px;border-radius:999px;">📅 ' + esc(fmtDate(n.date)) + '</span>') : '';
+  var nameChip = schoolName ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:600;padding:4px 12px;border-radius:999px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(schoolName) + '</span>') : '';
+  var botbar = (!dateChip && !nameChip) ? '' : ('<div style="position:absolute;bottom:0;left:0;right:0;height:' + botPct + '%;display:flex;align-items:center;justify-content:' + (dateChip && nameChip ? 'space-between' : 'center') + ';padding:0 ' + sidePct + '%;z-index:3;">' + dateChip + nameChip + '</div>');
+
+  return '<div style="position:relative;margin:10px 12px 4px;min-height:220px;border-radius:14px;overflow:hidden;' + ratio +
+      'background:linear-gradient(150deg,' + g[0] + ',' + g[1] + ');">' +
+    frameSvg + topbar + windowHtml + botbar +
   '</div>';
 }
 
-/* توليد صورة PNG للغلاف المصمّم (canvas) — للمشاركة كملف صورة لخبر نصّي */
+/* توليد صورة PNG للغلاف المصمّم (canvas) — للمشاركة كملف صورة لخبر نصّي.
+   نفس التصميم الغني المعروض في العرض (إطار مبعثر + نافذة بيضاء + شريطا العلوي/السفلي). */
 function _stuTextCoverBlob(item, cb) {
   try {
     // اللقطة المخزّنة تحدّد الهوية والمقاس؛ «بلا تصميم» ⇒ لا صورة (تراجع لمشاركة نصية)
     var d = _stuNewsDesign(item);
     if (d && d.none) { cb(null); return; }
-    var t = d || _stuNewsTypeMeta(_stuNewsCardType(item && item.content));
-    var _dims = { feed: [1080, 1350], square: [1080, 1080], story: [1080, 1920] };
-    var _wh = (d && _dims[d.s]) ? _dims[d.s] : _dims.feed;
-    var W = _wh[0], H = _wh[1];
+    var typeKey = d ? d.t : _stuNewsCardType(item && item.content);
+    var t = d || _stuNewsTypeMeta(typeKey);
+    var sz = _STU_DSGN_SIZES[(d && d.s) || 'feed'] || _STU_DSGN_SIZES.feed;
+    var W = sz.w, H = sz.h, ft = sz.ft, fs = sz.fs, fb = sz.fb;
+    var stage = (d && d.st) || _stuStageFromGrade(item && item.grade) || 'all';
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
     var schoolName = '';
@@ -3338,59 +3635,101 @@ function _stuTextCoverBlob(item, cb) {
       if (line) lines.push(line);
       return lines;
     }
+    var _gg = (d && d.g) ? d.g : _STU_DSGN_DEFAULT_G;
     var _painted = false;
     function paint(logoImg) {
       if (_painted) return; _painted = true;
       var g = ctx.createLinearGradient(0, 0, W, H);
-      var _gg = (d && d.g) ? d.g : _STU_DSGN_DEFAULT_G;
       g.addColorStop(0, _gg[0]); g.addColorStop(1, _gg[1]);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+      // موتيفات مبعثرة خلف النافذة (نفس منطق frameSlots/buildFrame — نسخة canvas)
+      var mCount = Math.max(2, _STU_STAGE_COUNT[stage] || _STU_STAGE_COUNT.all);
+      var sizeMul = _STU_STAGE_MOTIF_SIZE[stage] || 1;
+      var pool = _stuMotifPool(typeKey, stage);
+      var slots = _stuFrameSlots(W, H, ft, fs, fb, mCount);
+      ctx.globalAlpha = (typeKey === 'condolence') ? .45 : .9;
+      for (var mi = 0; mi < slots.length; mi++) {
+        var sl = slots[mi];
+        var sym = pool[mi % pool.length];
+        if (typeKey === 'emergency')  sym = 's-tri';
+        if (typeKey === 'condolence') sym = 's-leaf';
+        var col = _STU_MOTIF_PAL[mi % _STU_MOTIF_PAL.length];
+        var mw = sl.s * sizeMul, mh = mw * (_STU_SHAPE_ASPECT[sym] || 1);
+        var mrot = sl.r + ((mi * 37) % 15) - 7;
+        _stuDrawMotif(ctx, sym, sl.x, sl.y, mw, mh, mrot, col);
+      }
+      ctx.globalAlpha = 1;
+
+      // النافذة البيضاء المركزية
+      var winX = fs, winY = ft, winW = W - fs * 2, winH = H - ft - fb;
+      roundRect(winX, winY, winW, winH, 28);
+      ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 40; ctx.fill();
+      ctx.shadowBlur = 0;
+
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       try { ctx.direction = 'rtl'; } catch (e1) {}
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 44px Tahoma, "Segoe UI", Arial, sans-serif';
-      if (schoolName) ctx.fillText(schoolName, W / 2, 106, W - 160);
-      roundRect(70, 190, W - 140, H - 420, 34);
-      ctx.fillStyle = '#ffffff'; ctx.fill();
-      ctx.fillStyle = t.c;
-      roundRect(W / 2 - 130, 240, 260, 62, 31); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 34px Tahoma, "Segoe UI", Arial, sans-serif';
-      ctx.fillText(t.l, W / 2, 273);
-      try {
-        ctx.save();
-        ctx.translate(W / 2 - 60, 350); ctx.scale(5, 5);
-        ctx.strokeStyle = t.c; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.stroke(new Path2D(t.i));
-        ctx.restore();
-      } catch (e2) { try { ctx.restore(); } catch (e3) {} }
+
       var first = String(item && item.content || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
-      var titleLines = wrapText(first, W - 300, '800 62px Tahoma, "Segoe UI", Arial, sans-serif');
+      var titleLines = wrapText(first, winW - 120, '800 56px Tahoma, "Segoe UI", Arial, sans-serif');
       if (titleLines.length > 6) { titleLines = titleLines.slice(0, 6); titleLines[5] += '…'; }
       ctx.fillStyle = '#0f2545';
-      ctx.font = '800 62px Tahoma, "Segoe UI", Arial, sans-serif';
-      var ty = 560;
-      for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, ty, W - 260); ty += 92; }
-      var rest = String(item && item.content || '').split(/[\r\n]+/).slice(1).join(' ').replace(/\s+/g, ' ').trim();
-      if (rest) {
-        var bodyLines = wrapText(rest, W - 320, '400 36px Tahoma, "Segoe UI", Arial, sans-serif');
-        if (bodyLines.length > 3) { bodyLines = bodyLines.slice(0, 3); bodyLines[2] += '…'; }
-        ctx.fillStyle = '#475569';
-        ctx.font = '400 36px Tahoma, "Segoe UI", Arial, sans-serif';
-        for (var bi = 0; bi < bodyLines.length; bi++) { ctx.fillText(bodyLines[bi], W / 2, ty + 10, W - 300); ty += 56; }
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 36px Tahoma, "Segoe UI", Arial, sans-serif';
-      if (item && item.date) ctx.fillText('📅 ' + fmtDate(item.date), W / 2, H - 130);
+      ctx.font = '800 56px Tahoma, "Segoe UI", Arial, sans-serif';
+      var totalH = titleLines.length * 78;
+      var ty = winY + winH / 2 - totalH / 2 + 39;
+      for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, ty, winW - 100); ty += 78; }
+
+      // الشريط العلوي: شعار دائري بحلقة ذهبية + اسم المدرسة + كبسولة النوع
+      var logoR = 40, logoCx = fs + logoR, logoCy = ft / 2;
       if (logoImg) {
         try {
           ctx.save();
-          ctx.beginPath(); ctx.arc(W / 2, 190, 74, 0, Math.PI * 2); ctx.closePath();
-          ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.clip();
-          ctx.drawImage(logoImg, W / 2 - 62, 128, 124, 124);
+          ctx.beginPath(); ctx.arc(logoCx, logoCy, logoR, 0, Math.PI * 2); ctx.closePath();
+          ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.save(); ctx.clip(); ctx.drawImage(logoImg, logoCx - logoR, logoCy - logoR, logoR * 2, logoR * 2); ctx.restore();
+          ctx.lineWidth = 5; ctx.strokeStyle = '#FFCE3D'; ctx.stroke();
           ctx.restore();
         } catch (e4) { try { ctx.restore(); } catch (e5) {} }
+      } else {
+        ctx.beginPath(); ctx.arc(logoCx, logoCy, logoR, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.lineWidth = 5; ctx.strokeStyle = '#FFCE3D'; ctx.stroke();
+        ctx.fillStyle = t.c; ctx.font = '800 34px Tahoma, "Segoe UI", Arial, sans-serif';
+        ctx.fillText(schoolName ? schoolName.charAt(0) : 'م', logoCx, logoCy + 2);
       }
+      if (schoolName) {
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'start';
+        ctx.font = '800 34px Tahoma, "Segoe UI", Arial, sans-serif';
+        ctx.fillText(schoolName, logoCx + logoR + 22, logoCy, W - fs * 2 - logoR * 2 - 260);
+        ctx.textAlign = 'center';
+      }
+      ctx.font = '700 30px Tahoma, "Segoe UI", Arial, sans-serif';
+      var pillW = Math.max(150, ctx.measureText(t.l).width + 90), pillH = 60;
+      var pillX = W - fs - pillW, pillY = ft / 2 - pillH / 2;
+      roundRect(pillX, pillY, pillW, pillH, pillH / 2);
+      ctx.fillStyle = '#ffffff'; ctx.fill();
+      ctx.fillStyle = t.c;
+      ctx.textAlign = 'center';
+      ctx.fillText(t.l, pillX + pillW / 2 + 20, pillY + pillH / 2 + 2);
+      try {
+        ctx.save();
+        ctx.translate(pillX + 26, pillY + pillH / 2 - 13); ctx.scale(1.1, 1.1);
+        ctx.strokeStyle = t.c; ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.stroke(new Path2D(t.i));
+        ctx.restore();
+      } catch (e2) { try { ctx.restore(); } catch (e3) {} }
+
+      if (item && item.date) {
+        var chipY = H - fb / 2;
+        var dl = '📅 ' + fmtDate(item.date);
+        ctx.font = '700 30px Tahoma, "Segoe UI", Arial, sans-serif';
+        var cw = ctx.measureText(dl).width + 70;
+        roundRect(fs, chipY - 30, cw, 60, 30);
+        ctx.fillStyle = 'rgba(6,20,40,.4)'; ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+        ctx.fillText(dl, fs + cw / 2, chipY + 2);
+      }
+
       // canvas ملوّث (شعار بلا CORS) ⇒ toBlob يرمي تزامنياً — لا تعلّق المشاركة
       try {
         if (cv.toBlob) cv.toBlob(function (blob) { cb(blob || null); }, 'image/png');
