@@ -1960,7 +1960,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
   <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
-  <button class="sidebar-item" id="si-visitorAnalytics" onclick="showSection('visitorAnalytics')"><span class="si-icon">📈</span> تحليلات الزوار</button>
+  <!-- تحليلات الزوار: أُخفيت مؤقتاً احترازياً (خلل تفويض OAuth حيّ متكرر يشتبه بتأثيره على ميزات أخرى) — الكود سليم في VisitorAnalytics.js، إعادة الزر هنا كافية للتفعيل بعد حلّ التفويض -->
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
@@ -5376,7 +5376,6 @@ function showSection(name) {
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
       scoresheets: renderScoreSheets,
-      visitorAnalytics: renderVisitorAnalytics,
       calendar: renderCalendar,
       supervisorPerms: renderSupervisorPerms,
       circulars: renderCirculars,
@@ -13076,8 +13075,6 @@ function loadReports(force) {
 // VISITOR ANALYTICS SECTION — تحليلات الزوار (للمدير فقط)
 // ════════════════════════════════════════════════════════
 
-var _VA_CACHE = null; // cache بسيط داخل المتصفح
-
 function renderVisitorAnalytics() {
   var html = '' +
     '<div class="rpt-wrap" id="vaRoot">' +
@@ -13105,11 +13102,8 @@ function loadVisitorAnalytics(force) {
   var bodyEl = document.getElementById('vaBody');
   if (!bodyEl) return;
 
-  if (!force && _VA_CACHE) {
-    _renderVisitorAnalyticsBody(_VA_CACHE);
-    return;
-  }
-
+  // لا كاش داخل المتصفح هنا عمداً — الخادم يحتفظ بكاش 30 دقيقة (سريع عند الإصابة)
+  // وهو المصدر الوحيد لحداثة البيانات كي لا تتعارض طبقتا الكاش.
   bodyEl.innerHTML =
     '<div class="rpt-card">' +
       '<div class="sk-line skeleton"></div>' +
@@ -13123,7 +13117,6 @@ function loadVisitorAnalytics(force) {
         ((r && r.error) || 'خطأ غير معروف') + '</div>';
       return;
     }
-    _VA_CACHE = r.data;
     _renderVisitorAnalyticsBody(r.data);
   }, function(err) {
     bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
