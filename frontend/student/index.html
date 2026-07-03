@@ -2395,11 +2395,46 @@ function _fltClearStu(page) { try { localStorage.removeItem(_fltKeyStu(page)); }
 // ═══════════════════════════════════════════════════════════
 // 3. تسجيل الدخول والخروج
 // ═══════════════════════════════════════════════════════════
+var _stuLoginLocked = false;
+var _stuLockTimer   = null;
+
+// قفل مؤقت ذاتي الفكّ عند حظر الخادم (rateLimited): عدّاد تنازلي ثم فتح تلقائي
+function _stuStartLockCountdown(sec) {
+  var remaining = Math.max(1, parseInt(sec, 10) || 900);
+  _stuLoginLocked = true;
+  var btn = $('loginBtn');
+  var errEl = $('loginErr');
+  if (btn) btn.disabled = true;
+  clearInterval(_stuLockTimer);
+  function _tick() {
+    if (remaining <= 0) {
+      clearInterval(_stuLockTimer);
+      _stuLoginLocked = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'تسجيل الدخول 🚪'; }
+      if (errEl) errEl.style.display = 'none';
+      return;
+    }
+    var mm = Math.floor(remaining / 60);
+    var ss = remaining % 60;
+    var t = mm + ':' + (ss < 10 ? '0' : '') + ss;
+    if (errEl) {
+      errEl.textContent = 'تم تجاوز عدد المحاولات — يُفتح الدخول تلقائياً بعد ' + t;
+      errEl.style.display = 'block';
+    }
+    if (btn) btn.textContent = '⏳ ' + t;
+    remaining--;
+  }
+  _tick();
+  _stuLockTimer = setInterval(_tick, 1000);
+}
+
 function doLogin() {
   var u = $('username').value;
   var p = $('password').value;
   var btn = $('loginBtn');
   var errEl = $('loginErr');
+
+  if (_stuLoginLocked) return;
 
   errEl.style.display = 'none';
 
@@ -2434,7 +2469,16 @@ function doLogin() {
       }
 
       if (!r.ok) {
-        errEl.textContent = r.error || 'فشل تسجيل الدخول';
+        // حظر من الخادم: عدّاد تنازلي يفكّ نفسه تلقائياً
+        if (r.rateLimited) {
+          _stuStartLockCountdown(r.retryAfterSec || 900);
+          return;
+        }
+        var m = r.error || 'فشل تسجيل الدخول';
+        if (typeof r.attemptsLeft === 'number') {
+          m += ' (' + r.attemptsLeft + ' محاولة متبقية)';
+        }
+        errEl.textContent = m;
         errEl.style.display = 'block';
         return;
       }

@@ -1787,7 +1787,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <button class="input-toggle" onclick="togglePasswordVisibility()" id="togglePwdBtn">👁️</button>
       </div>
       <div id="loginRateInfo" style="text-align:center;color:rgba(255,255,255,.5);font-size:.78rem;margin-top:-8px;margin-bottom:10px;display:none;">
-        المحاولات المتبقية: <span id="attemptsLeft">5</span>
+        المحاولات المتبقية: <span id="attemptsLeft">25</span>
       </div>
       <button class="btn-login" id="loginBtn" onclick="doLogin()">🚪 دخول إلى المنصة</button>
       <div class="login-error" id="loginError"></div>
@@ -3768,6 +3768,39 @@ function clearSession() {
 var _loginAttempts = 0;
 var _loginLocked   = false;
 var _LOGIN_TIMEOUT = 20000;
+var _LOGIN_MAX     = 25;      // يطابق MAX_LOGIN_ATTEMPTS في الخادم
+var _loginLockTimer = null;
+
+// قفل مؤقت ذاتي الفكّ: عدّاد تنازلي مرئي ثم إعادة تفعيل تلقائية
+function _startLoginLockCountdown(sec) {
+  var remaining = Math.max(1, parseInt(sec, 10) || 900);
+  _loginLocked = true;
+  var btn = document.getElementById('loginBtn');
+  if (btn) btn.disabled = true;
+  clearInterval(_loginLockTimer);
+  function _tick() {
+    if (remaining <= 0) {
+      clearInterval(_loginLockTimer);
+      _loginLocked = false;
+      _loginAttempts = 0;
+      if (btn) { btn.disabled = false; btn.textContent = '🚪 دخول إلى المنصة'; }
+      hideLoginError();
+      var ri0 = document.getElementById('loginRateInfo');
+      if (ri0) ri0.style.display = 'none';
+      return;
+    }
+    var mm = Math.floor(remaining / 60);
+    var ss = remaining % 60;
+    var txt = 'تم تجاوز عدد المحاولات — يُفتح الدخول تلقائياً بعد ' +
+              mm + ':' + (ss < 10 ? '0' : '') + ss;
+    var el = document.getElementById('loginError');
+    if (el) { el.textContent = txt; el.classList.add('show'); }
+    if (btn) btn.textContent = '⏳ ' + mm + ':' + (ss < 10 ? '0' : '') + ss;
+    remaining--;
+  }
+  _tick();
+  _loginLockTimer = setInterval(_tick, 1000);
+}
 
 function getClientId() {
   var id = '';
@@ -3808,7 +3841,7 @@ function hideLoginError() {
 
 function doLogin() {
   if (_loginLocked) {
-    shakeLoginError('تم تجاوز عدد المحاولات. انتظر 15 دقيقة أو تواصل مع المسؤول.');
+    shakeLoginError('تم تجاوز عدد المحاولات — انتظر انتهاء العدّاد وسيُفتح الدخول تلقائياً.');
     return;
   }
   var username = (document.getElementById('loginUsername').value || '').trim();
@@ -3841,6 +3874,7 @@ function doLogin() {
       if (r && r.success) {
         _loginAttempts = 0;
         _loginLocked = false;
+        clearInterval(_loginLockTimer);
         App.user = {
           token       : r.token,
           teacherName : r.teacherName || '',
@@ -3863,18 +3897,21 @@ function doLogin() {
         bootApp();
       } else {
         _loginAttempts++;
-        var left = Math.max(0, 5 - _loginAttempts);
-        var errMsg = (r && r.error) ? r.error : 'اسم المستخدم أو كلمة المرور غير صحيحة';
-        if (left > 0) {
-          errMsg += ' (' + left + ' محاولات متبقية)';
-        } else {
-          _loginLocked = true;
-          errMsg += ' | تم قفل الدخول مؤقتاً. حاول لاحقاً.';
+        // القفل من الخادم فقط (rateLimited) — لا قفل مستقل في الواجهة
+        if (r && r.rateLimited) {
+          _startLoginLockCountdown(r.retryAfterSec || 900);
+          return;
         }
+        // العدّاد المتبقي الحقيقي يأتي من الخادم؛ العدّاد المحلي احتياط فقط
+        var left = (r && typeof r.attemptsLeft === 'number')
+                   ? r.attemptsLeft
+                   : Math.max(0, _LOGIN_MAX - _loginAttempts);
+        var errMsg = (r && r.error) ? r.error : 'اسم المستخدم أو كلمة المرور غير صحيحة';
+        errMsg += ' (' + left + ' محاولة متبقية)';
         shakeLoginError(errMsg);
         var ri = document.getElementById('loginRateInfo');
         if (ri) {
-          if (left <= 3) ri.style.display = 'block';
+          if (left <= 10) ri.style.display = 'block';
           else ri.style.display = 'none';
         }
         var al = document.getElementById('attemptsLeft');
