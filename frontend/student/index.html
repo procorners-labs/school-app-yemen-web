@@ -4443,6 +4443,19 @@ function _fetchTodaySchedule() {
     function (r) { renderHomeToday(r); },
     function () { var b = $('homeTodayBody'); if (b) b.innerHTML = '<div class="ht-banner info">📅 تعذّر تحميل الجدول.</div>'; });
 }
+
+// تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد).
+// مشترك بين renderHomeToday و renderSchedule (كان مكرَّراً حرفياً في كليهما).
+function normDay(d) {
+  var x = String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا');
+  var map = {
+    'السبت': 'السبت', 'الاحد': 'الأحد', 'الأحد': 'الأحد',
+    'الاثنين': 'الاثنين', 'الإثنين': 'الاثنين',
+    'الثلاثاء': 'الثلاثاء', 'الاربعاء': 'الأربعاء', 'الأربعاء': 'الأربعاء',
+    'الخميس': 'الخميس'
+  };
+  return map[x] || d;
+}
 function renderHomeToday(r) {
   var body = $('homeTodayBody'); if (!body) return;
   APP._todaySched = r;
@@ -4456,7 +4469,6 @@ function renderHomeToday(r) {
   }
   if (!r || !r.ok || !r.schedule) { body.innerHTML = '<div class="ht-banner info">📅 لم يُرفع جدولك بعد.</div>'; return; }
 
-  function normDay(d) { var x = String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا'); var map = { 'السبت':'السبت','الاحد':'الأحد','الأحد':'الأحد','الاثنين':'الاثنين','الإثنين':'الاثنين','الثلاثاء':'الثلاثاء','الاربعاء':'الأربعاء','الأربعاء':'الأربعاء','الخميس':'الخميس' }; return map[x] || d; }
   var st = _schedPeriodTimes();
   var byPeriod = {};
   for (var i = 0; i < r.schedule.length; i++) { var s = r.schedule[i]; if (normDay(s.day) === todayName) byPeriod[parseInt(s.period, 10)] = s; }
@@ -4569,18 +4581,6 @@ function renderSchedule(r) {
   // أيام الدراسة: السبت → الأربعاء (نظام اليمن)
   var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
   var periods = (window.SCHED_TIMES_CFG && window.SCHED_TIMES_CFG.periodsCount) || 7;
-
-  // تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد)
-  function normDay(d) {
-    var x = String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا');
-    var map = {
-      'السبت': 'السبت', 'الاحد': 'الأحد', 'الأحد': 'الأحد',
-      'الاثنين': 'الاثنين', 'الإثنين': 'الاثنين',
-      'الثلاثاء': 'الثلاثاء', 'الاربعاء': 'الأربعاء', 'الأربعاء': 'الأربعاء',
-      'الخميس': 'الخميس'
-    };
-    return map[x] || d;
-  }
 
   // بناء شبكة [day][period]
   var grid = {};
