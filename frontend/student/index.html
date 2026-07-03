@@ -1738,6 +1738,15 @@ a { color: var(--pr); text-decoration: none; }
 
       <div class="q-grid" id="quickStats"></div>
 
+      <!-- 📜 التعاميم الإدارية (تظهر فقط عند وجود تعاميم موجَّهة للطالب) -->
+      <div class="card" id="homeCircCard" style="display:none;">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">📜</span> التعاميم الإدارية</div>
+          <button class="refresh-btn" onclick="loadHomeCirculars(true)" title="تحديث">🔄</button>
+        </div>
+        <div id="homeCircList"></div>
+      </div>
+
       <div class="card">
         <div class="card-h">
           <div class="ttl"><span class="ic">📢</span> آخر الإشعارات</div>
@@ -1887,16 +1896,13 @@ a { color: var(--pr); text-decoration: none; }
         </div>
 
         <div class="note-form">
-          <div style="font-weight:600; margin-bottom:8px; font-size:13px; color:var(--muted);">إرسال ملاحظة جديدة</div>
+          <div style="font-weight:600; margin-bottom:8px; font-size:13px; color:var(--muted);">✍️ رسالة من ولي الأمر إلى المعلم</div>
           <select id="noteTeacher">
             <option value="">— اختر المعلم —</option>
           </select>
-          <select id="noteTypePreset" onchange="noteTypeOnChange()">
-            <option value="">— اختر نوع الملاحظة —</option>
-          </select>
-          <textarea id="noteMsg" placeholder="اكتب ملاحظتك هنا (5 أحرف على الأقل)..." style="display:none;" maxlength="500" oninput="updateNoteCharCount()"></textarea>
-          <div id="noteCharCount" style="display:none;font-size:.75rem;color:var(--text-light,#64748b);text-align:left;margin-top:-6px;margin-bottom:4px;"></div>
-          <button class="btn-primary" id="noteSendBtn" onclick="submitMyNote()">إرسال الملاحظة ✉️</button>
+          <textarea id="noteMsg" placeholder="اكتب رسالتك للمعلم هنا (5 أحرف على الأقل)..." maxlength="500" oninput="updateNoteCharCount()"></textarea>
+          <div id="noteCharCount" style="font-size:.75rem;color:var(--text-light,#64748b);text-align:left;margin-top:-6px;margin-bottom:4px;"></div>
+          <button class="btn-primary" id="noteSendBtn" onclick="submitMyNote()">إرسال الرسالة ✉️</button>
         </div>
 
         <div style="font-weight:600; font-size:14px; color:var(--muted); margin:12px 0 8px;">ملاحظاتي السابقة</div>
@@ -1954,6 +1960,20 @@ a { color: var(--pr); text-decoration: none; }
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('pwModal')">إلغاء</button>
       <button class="btn-ok" id="pwSaveBtn" onclick="changeMyPassword()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- نافذة تأكيد تسجيل الخروج -->
+<div class="modal-bg" id="logoutModal">
+  <div class="modal">
+    <h3>🚪 تسجيل الخروج</h3>
+    <p style="margin:6px 0 10px;line-height:1.7;">هل أنت متأكد من رغبتك في تسجيل الخروج من حسابك؟<br>
+      <span style="font-size:12px;color:var(--muted,#64748b)">ستحتاج إلى إدخال بياناتك مجدداً عند العودة.</span>
+    </p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('logoutModal')">البقاء</button>
+      <button class="btn-ok" style="background:#dc2626;" onclick="confirmLogout()">تسجيل الخروج 🚪</button>
     </div>
   </div>
 </div>
@@ -2326,7 +2346,11 @@ function doLogin() {
     .loginStudent(u, p, getClientId(), schoolId); // ✅ تمرير schoolId للخادم
 }
 function doLogout() {
-  if (!confirm('هل تريد تسجيل الخروج؟')) return;
+  openModal('logoutModal');
+}
+
+function confirmLogout() {
+  closeModal('logoutModal');
   ssClearAll();
   lsClearSession(); // مسح الجلسة المحفوظة في localStorage
   if (APP.badgeInterval) {
@@ -2409,11 +2433,11 @@ function initApp() {
   // تحميل أولي للرئيسية
   loadHomeNews();
   loadQuickStats();
+  loadHomeCirculars();   // التعاميم الإدارية الموجَّهة للطالب
   loadHomeToday();   // جدول اليوم + الساعة اللحظية
 
-  // تحميل قائمة المعلمين وأنواع الملاحظات (للملاحظات) في الخلفية
+  // تحميل قائمة معلمي صف الطالب (لصفحة ملاحظاتي) في الخلفية
   loadTeachersList();
-  loadNoteTypeOptions();
 
   // Badges تلقائية
   loadNotificationBadges();
@@ -2530,34 +2554,94 @@ function renderHomeNews(news) {
   w.innerHTML = h;
 }
 
+// ── التعاميم الإدارية في الرئيسية ──
+// نفس مصدر ومفتاح كاش تعاميم صفحة الأخبار (استدعاء واحد يخدم الاثنين)،
+// تُعرض أحدث 3 تعاميم وتُخفى البطاقة كلياً عند عدم وجود تعاميم.
+function loadHomeCirculars(force) {
+  if (!APP.user) return;
+  var cKey = 'circ_' + APP.user.class + '_' + APP.user.section + '_' + APP.user.id;
+  if (force) ClientCache.remove(cKey);
+  callServerSmart(
+    'getStudentCircularsFiltered',
+    { klass: APP.user.class, section: APP.user.section,
+      studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId },
+    cKey,
+    120,
+    function (r) { renderHomeCirculars((r && r.success) ? (r.circulars || []) : []); },
+    function () { renderHomeCirculars([]); }
+  );
+}
+
+function renderHomeCirculars(items) {
+  var card = $('homeCircCard');
+  var list = $('homeCircList');
+  if (!card || !list) return;
+  if (!items || !items.length) { card.style.display = 'none'; list.innerHTML = ''; return; }
+
+  var max = Math.min(items.length, 3);
+  var h = '';
+  for (var i = 0; i < max; i++) {
+    var c = items[i];
+    var scope = '';
+    if (c.grade && c.grade !== 'الجميع') scope = esc(c.grade);
+    if (c.section && c.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(c.section);
+    h += '<div class="circ-item">' +
+           (c.title ? '<div class="circ-title">📌 ' + esc(c.title) + '</div>' : '') +
+           '<div class="circ-body">' + nl2br(c.body) + '</div>' +
+           '<div class="circ-meta">' +
+             (c.author ? '<span>✍️ ' + esc(c.author) + '</span>' : '') +
+             (c.date ? '<span>📅 ' + esc(fmtDate(c.date)) + '</span>' : '') +
+             (scope ? '<span class="circ-scope">' + scope + '</span>' : '') +
+           '</div>' +
+         '</div>';
+  }
+  if (items.length > max) {
+    h += '<div style="text-align:center;margin-top:8px;">' +
+         '<button class="refresh-btn" onclick="goTabByName(\'news\')">عرض كل التعاميم (' + items.length + ') ⬅</button>' +
+         '</div>';
+  }
+  list.innerHTML = h;
+  card.style.display = 'block';
+}
+
+function _quickStatsPlaceholder() {
+  return '<div class="q-stat g" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">—</div><div class="lbl">معدلي</div></div></div>' +
+         '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">—</div><div class="lbl">واجبات</div></div></div>' +
+         '<div class="q-stat w" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">—</div><div class="lbl">سلوكيات</div></div></div>' +
+         '<div class="q-stat r" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">—</div><div class="lbl">حضوري</div></div></div>';
+}
+
 function loadQuickStats() {
-  // إحصائيات سريعة من بيانات أساسية (تُحمَّل من تقارير)
+  // إحصائيات سريعة — نفس مصدر تبويب «تقاريري» وبنفس مفتاح الكاش
+  // (استدعاء خادم واحد يخدم الرئيسية والتقارير معاً، ويعمل مع تراجع الكاش دون اتصال)
   var w = $('quickStats');
-  google.script.run
-    .withSuccessHandler(function (r) {
-      if (!r || !r.ok || !r.data) {
-        w.innerHTML =
-          '<div class="q-stat g" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">—</div><div class="lbl">معدلي</div></div></div>' +
-          '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">—</div><div class="lbl">واجبات</div></div></div>' +
-          '<div class="q-stat w" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">—</div><div class="lbl">سلوكيات</div></div></div>' +
-          '<div class="q-stat r" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">—</div><div class="lbl">حضوري</div></div></div>';
-        return;
-      }
+  callServerSmart(
+    'getStudentReports',
+    { studentId: APP.user.id, schoolId: APP.user.schoolId },
+    'reports_' + APP.user.id,
+    180,
+    function (r) {
+      if (!r || !r.ok || !r.data) { w.innerHTML = _quickStatsPlaceholder(); return; }
       var s = r.data.summary || {};
       var avg = s.overallAvg || 0;
       var avgCls = avg >= 80 ? 'g' : (avg >= 60 ? 'w' : 'r');
       var attRate = (s.attendanceRate !== undefined) ? s.attendanceRate : 100;
       var attCls  = attRate >= 90 ? 'g' : (attRate >= 75 ? 'w' : 'r');
+      // السلوكيات = تعزيزات ⭐ + ملاحظات ⚠️ — نفس إجمالي تبويب «السلوكيات»
+      var merits = Number(s.meritsCount || 0);
+      var vios   = Number(s.violationsCount || 0);
+      var behTotal = merits + vios;
+      var behCls = vios > 0 ? 'w' : 'g';
       w.innerHTML =
         '<div class="q-stat ' + avgCls + '" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">' + esc(avg) + '%</div><div class="lbl">المعدل العام</div></div></div>' +
         '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">' + esc(s.homeworkAssigned || 0) + '</div><div class="lbl">واجبات</div></div></div>' +
-        '<div class="q-stat w" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">' + esc(s.violationsCount || 0) + '</div><div class="lbl">سلوكيات</div></div></div>' +
+        '<div class="q-stat ' + behCls + '" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">' + esc(behTotal) + '</div><div class="lbl">سلوكيات ⭐' + esc(merits) + ' · ⚠️' + esc(vios) + '</div></div></div>' +
         '<div class="q-stat ' + attCls + '" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">' + esc(attRate) + '%</div><div class="lbl">نسبة الحضور</div></div></div>';
-    })
-    .withFailureHandler(function () {
-      w.innerHTML = '';
-    })
-    .getStudentReports(APP.user.id, APP.user.schoolId);
+    },
+    function () {
+      w.innerHTML = _quickStatsPlaceholder();
+    }
+  );
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3055,8 +3139,11 @@ function fetchNewsPage() {
   if (APP.newsState.loading) return;
   APP.newsState.loading = true;
 
-  var moreBtn = $('newsMore');
-  if (APP.newsState.page > 1) {
+  // الحاوية newsMore للإظهار/الإخفاء، والزر newsMoreBtn للنص والتعطيل —
+  // الكتابة على الحاوية كانت تمسح الزر نفسه فيتعطّل «تحميل المزيد» بعد أول نقرة.
+  var moreWrap = $('newsMore');
+  var moreBtn  = $('newsMoreBtn');
+  if (APP.newsState.page > 1 && moreBtn) {
     moreBtn.disabled = true;
     moreBtn.textContent = 'جارٍ التحميل...';
   }
@@ -3082,8 +3169,7 @@ function fetchNewsPage() {
   120,
   function (r) {
     APP.newsState.loading = false;
-    moreBtn.disabled = false;
-    moreBtn.textContent = 'تحميل المزيد ⬇';
+    if (moreBtn) { moreBtn.disabled = false; moreBtn.textContent = 'تحميل المزيد ⬇'; }
     if (!r || !r.success) {
       $('newsList').innerHTML = errHTML((r && r.error) ? r.error : 'تعذر تحميل الأخبار');
       return;
@@ -3091,12 +3177,11 @@ function fetchNewsPage() {
     for (var i = 0; i < r.news.length; i++) APP.newsState.items.push(r.news[i]);
     APP.newsState.hasMore = r.hasMore;
     renderNewsList();
-    moreBtn.style.display = r.hasMore ? 'block' : 'none';
+    if (moreWrap) moreWrap.style.display = r.hasMore ? 'block' : 'none';
   },
   function (e) {
     APP.newsState.loading = false;
-    moreBtn.disabled = false;
-    moreBtn.textContent = 'تحميل المزيد ⬇';
+    if (moreBtn) { moreBtn.disabled = false; moreBtn.textContent = 'تحميل المزيد ⬇'; }
     $('newsList').innerHTML = errHTML('فشل الاتصال: ' + (e.message || e));
   }
 );
@@ -4689,49 +4774,6 @@ function loadTeachersList() {
     .getTeachersForClass({ className: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId });
 }
 
-function loadNoteTypeOptions() {
-  google.script.run
-    .withSuccessHandler(function (list) {
-      APP.noteTypeOptions = list || [];
-      var sel = $('noteTypePreset');
-      sel.innerHTML = '<option value="">— اختر نوع الملاحظة —</option>';
-      for (var i = 0; i < APP.noteTypeOptions.length; i++) {
-        var opt = document.createElement('option');
-        opt.value = APP.noteTypeOptions[i];
-        opt.textContent = APP.noteTypeOptions[i];
-        sel.appendChild(opt);
-      }
-      var customOpt = document.createElement('option');
-      customOpt.value = '__custom__';
-      customOpt.textContent = '✍️ اكتب ملاحظتي بنفسي';
-      sel.appendChild(customOpt);
-    })
-    .withFailureHandler(function () {
-      // فشل تحميل الاقتراحات لا يجوز أن يمنع الإرسال كلياً — أبقِ خيار الكتابة
-      // الحرّة متاحاً دائماً كمخرج احتياطي (القائمة ستُعاد محاولتها في الجلسة التالية).
-      var sel = $('noteTypePreset');
-      if (sel && sel.options.length <= 1) {
-        var customOpt = document.createElement('option');
-        customOpt.value = '__custom__';
-        customOpt.textContent = '✍️ اكتب ملاحظتي بنفسي';
-        sel.appendChild(customOpt);
-      }
-    })
-    .getNoteTypeOptions({ schoolId: APP.user.schoolId });
-}
-
-// عند اختيار «اكتب ملاحظتي بنفسي» يظهر حقل النص الحر؛ اختيار نوع جاهز يُخفيه
-// (النوع المختار من القائمة يُرسَل كما هو نصّاً للملاحظة).
-function noteTypeOnChange() {
-  var sel = $('noteTypePreset');
-  var isCustom = !!(sel && sel.value === '__custom__');
-  $('noteMsg').style.display = isCustom ? 'block' : 'none';
-  var cc = $('noteCharCount');
-  if (cc) cc.style.display = isCustom ? 'block' : 'none';
-  if (!isCustom) $('noteMsg').value = '';
-  updateNoteCharCount();
-}
-
 // عدّاد أحرف الرسالة الحرّة (يوضّح الحد الأدنى 5 والحد الأقصى 500)
 function updateNoteCharCount() {
   var cc = $('noteCharCount');
@@ -4743,16 +4785,30 @@ function updateNoteCharCount() {
   else { cc.textContent = len + ' / 500 حرف'; cc.style.color = ''; }
 }
 
+// مقارنة مطبَّعة للرسائل (توحيد المسافات) لكشف التكرار محلياً قبل الإرسال
+function _noteMsgNorm(s) {
+  return (s || '').toString().replace(/\s+/g, ' ').trim();
+}
+
 function submitMyNote() {
   var teacher = $('noteTeacher').value;
-  var typeSel = $('noteTypePreset');
-  var isCustom = !!(typeSel && typeSel.value === '__custom__');
-  var msg = isCustom ? $('noteMsg').value.trim() : (typeSel ? typeSel.value : '');
+  var msg = $('noteMsg').value.trim();
   var btn = $('noteSendBtn');
 
   if (!teacher) { toast('يرجى اختيار المعلم', 'w'); return; }
-  if (!typeSel.value) { toast('يرجى اختيار نوع الملاحظة', 'w'); return; }
-  if (isCustom && msg.length < 5) { toast('الرسالة قصيرة جداً (5 أحرف على الأقل)', 'w'); return; }
+  if (msg.length < 5) { toast('الرسالة قصيرة جداً (5 أحرف على الأقل)', 'w'); return; }
+
+  // منع تكرار نفس الرسالة لنفس المعلم — فحص محلي فوري على الملاحظات المحمَّلة
+  // (الخادم يتحقق أيضاً من سجلّ الورقة، فهذا توفير لرحلة شبكة ورسالة أوضح).
+  var hist = APP.notesData || [];
+  var msgN = _noteMsgNorm(msg);
+  for (var hi = 0; hi < hist.length; hi++) {
+    if (_noteMsgNorm(hist[hi].teacher) === _noteMsgNorm(teacher) &&
+        _noteMsgNorm(hist[hi].message) === msgN) {
+      toast('سبق أن أرسلت هذه الرسالة نفسها لهذا المعلم — لا حاجة لإعادة الإرسال', 'w');
+      return;
+    }
+  }
 
   btn.disabled = true;
   btn.textContent = 'جارٍ الإرسال...';
@@ -4766,11 +4822,8 @@ function submitMyNote() {
 
       if (r && r.ok) {
         $('noteMsg').value = '';
-        $('noteMsg').style.display = 'none';
-        var ccEl = $('noteCharCount');
-        if (ccEl) ccEl.style.display = 'none';
         $('noteTeacher').value = '';
-        $('noteTypePreset').value = '';
+        updateNoteCharCount();
         toast(r.message || 'تم الإرسال بنجاح — ستصل رسالتك للمعلم', 's');
         loadNotes(true);
       } else if (r && r.duplicate) {
@@ -4793,7 +4846,7 @@ function submitMyNote() {
     studentSection: APP.user.section,
     teacher: teacher,
     message: msg,
-    isCustom: isCustom,
+    isCustom: true,   // الرسالة دائماً بصياغة ولي الأمر (أُلغيت الأنواع الجاهزة)
     schoolId: APP.user.schoolId
 });
 }
@@ -4812,8 +4865,10 @@ function loadNotes(force) {
     120,
     function (r) {
       APP.loaded.notes = true;
+      // تُحفَظ للفحص المحلي لمنع تكرار نفس الرسالة قبل الإرسال
+      APP.notesData = (r && r.ok && r.notes) ? r.notes : [];
       if (!r || !r.ok || !r.notes || r.notes.length === 0) {
-        w.innerHTML = emptyHTML('📭', 'لا توجد ملاحظات سابقة', 'يمكنك إرسال ملاحظة جديدة من الأعلى');
+        w.innerHTML = emptyHTML('📭', 'لا توجد رسائل سابقة', 'يمكنك إرسال رسالة جديدة للمعلم من الأعلى');
         return;
       }
       var h = '';
