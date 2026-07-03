@@ -9219,7 +9219,9 @@ function _tcStageFromGrade(g) {
   var t = String(g || '');
   if (!t) return '';
   if (/تمهيدي|تمهيدى|روضة|روضه|KG/i.test(t)) return 'early';
-  if (/ثانوي|ثانوى/.test(t)) return 'secondary';
+  // "ثانوي" (لاحقة) أو "العاشر"/"الحادي عشر"/"الثاني عشر"... (ترقيم مطلق 10-12،
+  // اصطلاح بعض المدارس بدل "الأول/الثاني/الثالث ثانوي" النسبي) — كلاهما ثانوي.
+  if (/ثانوي|ثانوى/.test(t) || t.indexOf('عاشر') !== -1 || t.indexOf('عشر') !== -1) return 'secondary';
   if (/متوسط/.test(t)) return 'middle';
   var ORD = ['أول', 'ثاني', 'ثالث', 'رابع', 'خامس', 'سادس', 'سابع', 'ثامن', 'تاسع'];
   for (var i = 0; i < ORD.length; i++) {
@@ -9394,9 +9396,13 @@ function _tcDrawMotif(ctx, id, x, y, w, h, rotDeg, color) {
    sizeKey فارغ = بلا نسبة مفروضة (سلوك الأخبار القديمة) · compact = معاينة مصغّرة ·
    stage تحدّد حزمة الموتيفات (اختياري، افتراضي 'all' إن كانت غير معروفة). */
 function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage) {
-  var first = String(text || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
+  var lines = String(text || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
+  var first = lines[0] || '';
+  var rest = lines.slice(1).join(' ');
   var maxLen = compact ? 56 : 90;
   if (first.length > maxLen) first = first.substring(0, maxLen - 3) + '…';
+  var maxRestLen = compact ? 0 : 240;
+  if (rest.length > maxRestLen) rest = rest.substring(0, maxRestLen - 1) + '…';
   var st = (stage === 'early' || stage === 'middle' || stage === 'secondary' || stage === 'all') ? stage : 'all';
   var typeKey = meta.k || meta.t || 'news';
   var sz = _tcDsgnSize(sizeKey || 'feed');
@@ -9439,10 +9445,17 @@ function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage) {
     pillHtml +
   '</div>';
 
+  // النافذة: عنوان (أول سطر) + بقية النص إن وُجدت — النص القصير يكبر تلقائياً
+  // ليملأ النافذة (بدل فراغ أبيض فارغ)، بروح fitText() في القالب المرجعي.
+  var totalLen = (first + rest).length;
+  var titleSize = compact ? '.7rem' : (totalLen <= 40 ? '1.55rem' : (totalLen <= 90 ? '1.15rem' : '1rem'));
+  var bodySize = compact ? '.6rem' : (totalLen <= 90 ? '.92rem' : '.8rem');
+  var titleHtml = '<div style="font-weight:800;color:#0f2545;font-size:' + titleSize + ';line-height:1.45;max-height:' + (compact ? '4.4em' : '3.5em') + ';overflow:hidden;">' + esc(first) + '</div>';
+  var bodyHtml = (rest && !compact) ? ('<div style="margin-top:10px;font-weight:400;color:#475569;font-size:' + bodySize + ';line-height:1.7;max-height:7.5em;overflow:hidden;">' + esc(rest) + '</div>') : '';
   var windowHtml = '<div style="position:absolute;top:' + topPct + '%;bottom:' + botPct + '%;left:' + sidePct + '%;right:' + sidePct + '%;' +
-    'background:#fff;border-radius:' + (compact ? 8 : 12) + 'px;display:flex;align-items:center;justify-content:center;text-align:center;' +
-    'padding:' + (compact ? '6px 8px' : '14px 18px') + ';box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2;">' +
-    '<div style="font-weight:800;color:#0f2545;font-size:' + (compact ? '.68rem' : '1rem') + ';line-height:1.5;max-height:5.5em;overflow:hidden;">' + esc(first) + '</div>' +
+    'background:#fff;border-radius:' + (compact ? 8 : 12) + 'px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;' +
+    'padding:' + (compact ? '8px 10px' : '22px 26px') + ';box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2;">' +
+    titleHtml + bodyHtml +
   '</div>';
 
   var dateChip = dateLabel ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:700;padding:4px 12px;border-radius:999px;">📅 ' + esc(dateLabel) + '</span>') : '';
@@ -9538,15 +9551,30 @@ function _tcTextCoverBlob(item, cb) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       try { ctx.direction = 'rtl'; } catch (e1) {}
 
-      // العنوان (أول سطر) ملفوفاً — داخل النافذة البيضاء، ممركز رأسياً
-      var first = String(item && item.news || '').split(/[\r\n]+/)[0].replace(/\s+/g, ' ').trim();
-      var titleLines = wrapText(first, winW - 120, '800 56px Tahoma, "Segoe UI", Arial, sans-serif');
-      if (titleLines.length > 6) { titleLines = titleLines.slice(0, 6); titleLines[5] += '…'; }
+      // العنوان (أول سطر) + بقية النص — ممركزان رأسياً معاً. النص القصير يكبر
+      // تلقائياً ليملأ النافذة (بدل فراغ أبيض فارغ)، بروح fitText() في القالب.
+      var newsLines = String(item && item.news || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
+      var first = newsLines[0] || '';
+      var rest = newsLines.slice(1).join(' ');
+      var totalLen = (first + rest).length;
+      var titleFontPx = totalLen <= 40 ? 72 : (totalLen <= 90 ? 60 : 50);
+      var bodyFontPx = totalLen <= 90 ? 34 : 30;
+      var titleLines = wrapText(first, winW - 120, '800 ' + titleFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif');
+      if (titleLines.length > 5) { titleLines = titleLines.slice(0, 5); titleLines[4] += '…'; }
+      var bodyLines = rest ? wrapText(rest, winW - 140, '400 ' + bodyFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif') : [];
+      if (bodyLines.length > 6) { bodyLines = bodyLines.slice(0, 6); bodyLines[5] += '…'; }
+      var titleLH = titleFontPx * 1.3, bodyLH = bodyFontPx * 1.55, blockGap = 28;
+      var totalH = titleLines.length * titleLH + (bodyLines.length ? (blockGap + bodyLines.length * bodyLH) : 0);
+      var cy = winY + winH / 2 - totalH / 2;
       ctx.fillStyle = '#0f2545';
-      ctx.font = '800 56px Tahoma, "Segoe UI", Arial, sans-serif';
-      var totalH = titleLines.length * 78;
-      var ty = winY + winH / 2 - totalH / 2 + 39;
-      for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, ty, winW - 100); ty += 78; }
+      ctx.font = '800 ' + titleFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif';
+      for (var li = 0; li < titleLines.length; li++) { ctx.fillText(titleLines[li], W / 2, cy + titleLH / 2, winW - 100); cy += titleLH; }
+      if (bodyLines.length) {
+        cy += blockGap;
+        ctx.fillStyle = '#475569';
+        ctx.font = '400 ' + bodyFontPx + 'px Tahoma, "Segoe UI", Arial, sans-serif';
+        for (var bi = 0; bi < bodyLines.length; bi++) { ctx.fillText(bodyLines[bi], W / 2, cy + bodyLH / 2, winW - 120); cy += bodyLH; }
+      }
 
       // الشريط العلوي: شعار دائري بحلقة ذهبية + اسم المدرسة + كبسولة النوع
       var logoR = 40, logoCx = fs + logoR, logoCy = ft / 2;
