@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<!-- ▼▼ حُقِن آلياً: إثبات ملكية Search Console + robots ▼▼ -->
+<meta name="google-site-verification" content="fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+<!-- ▲▲ نهاية وسوم Google ▲▲ -->
+<!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
+<link rel="manifest" href="/manifest.webmanifest">
+<script>
+  (function(){
+    var qs = new URLSearchParams(window.location.search);
+    window.GAS_ENDPOINT = '/gas/home-all-school';
+    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
+  })();
+</script>
+<!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
+<script src="../assets/offline-db.js"></script>
+<script src="../assets/offline-sync.js"></script>
+<script src="../assets/gas-bridge.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function(){});
+    });
+  }
+</script>
+<!-- حارس الإقلاع: إن تجمّدت الشبكة ولم يكتمل التحميل خلال 15s، أظهِر زرّ
+     إعادة المحاولة بدل شاشة بيضاء لا نهائية (بلا أي اعتماد خارجي).
+     يُحتسب اكتمال DOM (وليس load الكامل) نجاحاً — الصور البطيئة تؤخّر load
+     على شبكات 2G/3G فكان الإنذار يظهر فوق تطبيقٍ يعمل («الشبكة محجوبة» الكاذبة). -->
+<script>
+  (function(){
+    var SHOWN=false;
+    function dismiss(){clearTimeout(TID);var x=document.getElementById("__bootfail");if(x)x.parentNode.removeChild(x);}
+    var TID=setTimeout(function(){
+      if(SHOWN||!document.body||document.getElementById("__bootfail"))return;
+      if(document.readyState!=="loading")return;
+      SHOWN=true;
+      var d=document.createElement("div");d.id="__bootfail";
+      d.setAttribute("style","position:fixed;inset:0;z-index:2147483647;background:#0b1930;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,system-ui,sans-serif;text-align:center;padding:24px");
+      d.innerHTML='<div style="font-size:46px">📡</div><div style="font-size:18px;font-weight:700;margin:12px 0">تعذّر تحميل التطبيق</div><div style="opacity:.85;max-width:330px;line-height:1.8">يبدو أن الاتصال بطيء أو محجوب على هذه الشبكة. جرّب إعادة المحاولة أو شبكة أخرى.</div><button onclick="location.reload()" style="margin-top:18px;background:#1a5ec7;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:15px;cursor:pointer">🔄 إعادة المحاولة</button>';
+      document.body.appendChild(d);
+    },15000);
+    document.addEventListener("DOMContentLoaded",dismiss);
+    window.addEventListener("load",dismiss);
+  })();
+</script>
+<!-- ▲▲ نهاية الحقن ▲▲ -->
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>منصّة مدارس الإبداع والتميّز الدولية — بوّابة المدارس</title>
+  <meta name="description" content="البوّابة الرسمية لمنصّة إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <style>
+    :root{
+      --brand:#0d6efd; --brand2:#6610f2; --ink:#1a2233; --muted:#667085;
+      --bg:#f6f8fc; --card:#ffffff; --line:#e6eaf2; --ok:#0f9d58; --shadow:0 8px 30px rgba(20,40,80,.08);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Cairo","Segoe UI",Tahoma,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    img{max-width:100%;display:block}
+    .wrap{max-width:1160px;margin:0 auto;padding:0 18px}
+    .btn{display:inline-block;border:none;cursor:pointer;border-radius:12px;padding:11px 18px;font-weight:700;font-size:15px;font-family:inherit;transition:.15s}
+    .btn-primary{background:var(--brand);color:#fff}
+    .btn-primary:hover{background:#0b5ed7}
+    .btn-ghost{background:#eef2ff;color:var(--brand)}
+    .btn-ok{background:var(--ok);color:#fff}
+    .btn-sm{padding:8px 12px;font-size:13.5px;border-radius:10px}
+
+    /* Hero */
+    header.hero{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:64px 0 72px;position:relative;overflow:hidden}
+    header.hero::after{content:"";position:absolute;inset:auto -60px -80px auto;width:320px;height:320px;background:rgba(255,255,255,.08);border-radius:50%}
+    .hero h1{font-size:clamp(26px,4vw,44px);margin:0 0 12px;font-weight:800}
+    .hero p{font-size:clamp(15px,2.2vw,19px);opacity:.95;margin:0 0 24px;max-width:680px}
+    .hero .cta{display:flex;gap:12px;flex-wrap:wrap}
+    .hero .btn-primary{background:#fff;color:var(--brand)}
+    .hero .btn-ghost{background:rgba(255,255,255,.16);color:#fff}
+
+    /* Sections */
+    section{padding:52px 0}
+    .sec-head{text-align:center;margin-bottom:34px}
+    .sec-head h2{font-size:clamp(22px,3vw,32px);margin:0 0 8px;font-weight:800}
+    .sec-head p{color:var(--muted);margin:0;font-size:16px}
+
+    /* Features */
+    .grid{display:grid;gap:18px}
+    .features{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+    .feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}
+    .feature .ico{font-size:30px;margin-bottom:10px}
+    .feature h3{margin:0 0 6px;font-size:18px}
+    .feature p{margin:0;color:var(--muted);font-size:14.5px}
+
+    /* Partners */
+    .partners{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+    .school{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
+    .school .top{display:flex;align-items:center;gap:14px}
+    .school .logo{width:64px;height:64px;border-radius:14px;object-fit:cover;background:#eef2ff;flex:0 0 auto}
+    .school .logo.ph{display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--brand)}
+    .school h3{margin:0;font-size:19px}
+    .school .addr{color:var(--muted);font-size:13.5px;margin-top:2px}
+    .school .meta{display:flex;flex-wrap:wrap;gap:8px;font-size:13.5px;color:var(--muted)}
+    .school .meta a{color:var(--brand)}
+    .school .social{display:flex;gap:10px;font-size:19px}
+    .school .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
+    .badge-default{display:inline-block;background:#e7f7ee;color:var(--ok);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700}
+
+    /* School view */
+    #schoolView{display:none}
+    .school-banner{background:linear-gradient(135deg,#0d6efd0d,#6610f21a);border:1px solid var(--line);border-radius:var(--radius);padding:24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;box-shadow:var(--shadow)}
+    .school-banner .logo{width:84px;height:84px;border-radius:18px;object-fit:cover;background:#eef2ff}
+    .school-banner h2{margin:0 0 4px}
+    .school-banner .sb-meta{color:var(--muted);font-size:14.5px}
+    .school-banner .sb-actions{margin-inline-start:auto;display:flex;gap:10px;flex-wrap:wrap}
+
+    .news{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-top:22px}
+    .ncard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+    .ncard .media{aspect-ratio:16/10;background:#0b1220;position:relative}
+    .ncard .media img{width:100%;height:100%;object-fit:cover}
+    .ncard .media .count{position:absolute;inset-block-start:8px;inset-inline-start:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:999px;padding:3px 9px;font-size:12px}
+    .ncard .body{padding:16px;display:flex;flex-direction:column;gap:6px}
+    .ncard h4{margin:0;font-size:17px}
+    .ncard .txt{color:#39435a;font-size:14px;white-space:pre-line;max-height:8.4em;overflow:hidden}
+    .ncard .foot{color:var(--muted);font-size:12.5px;margin-top:auto;padding-top:6px;border-top:1px dashed var(--line);display:flex;justify-content:space-between}
+    .ncard.text-card .body{background:linear-gradient(135deg,#0d6efd08,#6610f210)}
+    .ncard.text-card h4{color:var(--brand)}
+
+    .state{text-align:center;color:var(--muted);padding:34px 0;font-size:15px}
+    footer{background:#0f1830;color:#c7d2e6;padding:34px 0;text-align:center;font-size:14px}
+    footer a{color:#9ec1ff}
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="wrap">
+      <h1>منصّة مدارس الإبداع والتميّز الدولية</h1>
+      <p>نظام متكامل لإدارة المدارس: منصّات للمعلمين والطلاب، وإدارة محتوى وأخبار، وجداول ذكية، ومالية وتقارير — يعمل حتى دون اتصال. اكتشف مدارسنا الشريكة واختر مدرستك.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#partners">استعرض المدارس</a>
+        <a class="btn btn-ghost" href="#features">مميّزات المنصّة</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- عرض المدرسة المختارة (يظهر عند اختيار مدرسة افتراضية) -->
+  <section id="schoolView" class="wrap" style="padding-top:38px">
+    <div id="schoolBanner"></div>
+    <div class="sec-head" style="margin:34px 0 0"><h2>أخبار المدرسة</h2><p>آخر الأخبار والفعاليات المنشورة</p></div>
+    <div id="schoolNews" class="grid news"></div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>لماذا منصّتنا؟</h2>
+        <p>منظومة واحدة تربط كل أطراف العملية التعليمية</p>
+      </div>
+      <div class="grid features">
+        <div class="feature"><div class="ico">👨‍🏫</div><h3>منصّة المعلمين</h3><p>الدرجات والحضور والواجبات والسلوك والتقارير والشهادات — لكل معلّم بصلاحياته.</p></div>
+        <div class="feature"><div class="ico">🎓</div><h3>منصّة الطلاب</h3><p>متابعة الدرجات والواجبات والأخبار والجدول والتعاميم من مكان واحد.</p></div>
+        <div class="feature"><div class="ico">🗂️</div><h3>إدارة المحتوى</h3><p>أخبار وفعاليات ووسائط بنظام حالات (مسودة → معتمد → منشور) واحترافية نشر.</p></div>
+        <div class="feature"><div class="ico">📅</div><h3>الجدول الذكي</h3><p>توليد ونشر الجداول تلقائيًّا مع احترام الإدخال اليدوي وتوزيع الحصص.</p></div>
+        <div class="feature"><div class="ico">💰</div><h3>المالية والعمليات</h3><p>رسوم الطلاب والسندات والمصروفات ورواتب الموظفين وتقارير مالية دقيقة.</p></div>
+        <div class="feature"><div class="ico">📊</div><h3>الحضور والتقارير</h3><p>تسجيل الحضور وإحصاءات دقيقة وتقارير حسب الصف والشعبة قابلة للطباعة.</p></div>
+        <div class="feature"><div class="ico">📱</div><h3>يعمل دون اتصال</h3><p>تطبيق ويب تقدّمي (PWA) يُثبَّت على الهاتف ويعمل عند ضعف الشبكة.</p></div>
+        <div class="feature"><div class="ico">🏫</div><h3>متعدّد المدارس</h3><p>كل مدرسة بهويتها وبياناتها المعزولة تمامًا ضمن منصّة واحدة موحّدة.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="partners" style="background:#eef2fb">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>مدارسنا الشريكة</h2>
+        <p>اختر مدرستك لتعتمدها كمدرستك الافتراضية وتطّلع على أخبارها</p>
+      </div>
+      <div id="partnersGrid" class="grid partners"></div>
+      <div id="partnersState" class="state">جارٍ تحميل المدارس…</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <div>منصّة مدارس الإبداع والتميّز الدولية &copy; <span id="yr"></span></div>
+      <div style="margin-top:6px;opacity:.8">نظام إدارة مدرسي متكامل — اليمن</div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      'use strict';
+      var HAS_DEFAULT_KEY = 'has_default_school';
+
+      // ── مساعدات ──
+      function $(id) { return document.getElementById(id); }
+      function esc(s) {
+        s = (s === null || s === undefined) ? '' : String(s);
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+      function attr(s) { return esc(s); }
+      // يقبل فقط روابط http(s) — يمنع حقن مخطّط javascript: في href (بيانات المدرسة يحرّرها المدير)
+      function safeUrl(u) {
+        u = (u === null || u === undefined) ? '' : String(u);
+        return /^https?:\/\//i.test(u) ? u : '';
+      }
+      function qparam(name) {
+        var m = new RegExp('[?&]' + name + '=([^&]+)').exec(location.search);
+        return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+      }
+      function callServer(fn, args, onOk, onErr) {
+        try {
+          google.script.run
+            .withSuccessHandler(function (r) { onOk(r); })
+            .withFailureHandler(function (e) { if (onErr) onErr(e); })[fn].apply(null, args || []);
+        } catch (ex) { if (onErr) onErr(ex); }
+      }
+
+      // ── دليل الشركاء ──
+      function loadPartners() {
+        callServer('listPartnerSchoolsPublic', [], function (res) {
+          if (!res || !res.success || !res.schools || !res.schools.length) {
+            $('partnersState').textContent = 'لا توجد مدارس متاحة حاليًّا.';
+            return;
+          }
+          $('partnersState').style.display = 'none';
+          renderPartners(res.schools);
+        }, function () {
+          $('partnersState').textContent = 'تعذّر تحميل المدارس. حاول لاحقًا.';
+        });
+      }
+
+      function socialHtml(s) {
+        var out = '';
+        var wa = String(s.whatsapp || '').replace(/[^0-9]/g, '');
+        if (wa) { out += '<a href="https://wa.me/' + attr(wa) + '" target="_blank" rel="noopener" title="واتساب">🟢</a>'; }
+        var fb = safeUrl(s.facebook); if (fb) { out += '<a href="' + attr(fb) + '" target="_blank" rel="noopener" title="فيسبوك">📘</a>'; }
+        var ig = safeUrl(s.instagram); if (ig) { out += '<a href="' + attr(ig) + '" target="_blank" rel="noopener" title="إنستغرام">📷</a>'; }
+        var yt = safeUrl(s.youtube); if (yt) { out += '<a href="' + attr(yt) + '" target="_blank" rel="noopener" title="يوتيوب">▶️</a>'; }
+        return out ? '<div class="social">' + out + '</div>' : '';
+      }
+
+      function renderPartners(schools) {
+        var def = getDefault();
+        var html = '';
+        for (var i = 0; i < schools.length; i++) {
+          var s = schools[i];
+          var logo = s.logo
+            ? '<img class="logo" src="' + attr(s.logo) + '" alt="' + attr(s.name) + '" loading="lazy" onerror="this.outerHTML=\'<div class=\\\'logo ph\\\'>🏫</div>\'">'
+            : '<div class="logo ph">🏫</div>';
+          var isDef = (def && def === s.schoolId);
+          html += '<div class="school">'
+            +   '<div class="top">' + logo
+            +     '<div><h3>' + esc(s.name) + '</h3>'
+            +       (s.address ? '<div class="addr">📍 ' + esc(s.address) + '</div>' : '')
+            +       (isDef ? '<span class="badge-default">مدرستك الافتراضية</span>' : '')
+            +     '</div>'
+            +   '</div>'
+            +   '<div class="meta">'
+            +     (s.phone ? '<span>📞 <a href="tel:' + attr(s.phone) + '">' + esc(s.phone) + '</a></span>' : '')
+            +   '</div>'
+            +   socialHtml(s)
+            +   '<div class="actions">'
+            +     '<button class="btn btn-ok btn-sm" data-choose="' + attr(s.schoolId) + '" data-name="' + attr(s.name) + '">اعتمدها كمدرستي</button>'
+            +     '<a class="btn btn-ghost btn-sm" href="/teacher/index.html?school=' + encodeURIComponent(s.schoolId) + '">دخول المعلمين</a>'
+            +     '<a class="btn btn-ghost btn-sm" href="/student/index.html?school=' + encodeURIComponent(s.schoolId) + '">دخول الطلاب</a>'
+            +   '</div>'
+            + '</div>';
+        }
+        $('partnersGrid').innerHTML = html;
+        var btns = $('partnersGrid').querySelectorAll('[data-choose]');
+        for (var b = 0; b < btns.length; b++) {
+          btns[b].addEventListener('click', function () {
+            chooseSchool(this.getAttribute('data-choose'), this.getAttribute('data-name'));
+          });
+        }
+      }
+
+      // ── الافتراضي (localStorage) ──
+      function getDefault() {
+        try { return localStorage.getItem(HAS_DEFAULT_KEY) || ''; } catch (e) { return ''; }
+      }
+      function setDefault(id) {
+        try { localStorage.setItem(HAS_DEFAULT_KEY, id); } catch (e) {}
+      }
+      function clearDefault() {
+        try { localStorage.removeItem(HAS_DEFAULT_KEY); } catch (e) {}
+        $('schoolView').style.display = 'none';
+        loadPartners();
+        location.hash = '#partners';
+      }
+      function chooseSchool(id, name) {
+        if (!id) return;
+        setDefault(id);
+        loadSchoolView(id);
+        renderPartners_refresh();
+      }
+      function renderPartners_refresh() { loadPartners(); }
+
+      // ── عرض المدرسة المختارة ──
+      function loadSchoolView(id) {
+        $('schoolView').style.display = 'block';
+        $('schoolBanner').innerHTML = '<div class="state">جارٍ تحميل بيانات المدرسة…</div>';
+        $('schoolNews').innerHTML = '';
+        callServer('getSchoolPublicData', [id], function (res) {
+          if (!res || !res.success) {
+            $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>';
+            return;
+          }
+          renderBanner(res.brand);
+          renderNews(res.news || []);
+          try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+        }, function () {
+          $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>';
+        });
+      }
+
+      function renderBanner(b) {
+        b = b || {};
+        var logo = b.logo
+          ? '<img class="logo" src="' + attr(b.logo) + '" alt="' + attr(b.name) + '" onerror="this.style.display=\'none\'">'
+          : '';
+        var meta = '';
+        if (b.address) meta += '📍 ' + esc(b.address) + '  ';
+        if (b.phone) meta += '📞 ' + esc(b.phone);
+        $('schoolBanner').innerHTML =
+          '<div class="school-banner">' + logo
+          + '<div><h2>' + esc(b.name || 'المدرسة') + '</h2>'
+          +   (meta ? '<div class="sb-meta">' + meta + '</div>' : '')
+          + '</div>'
+          + '<div class="sb-actions">'
+          +   '<a class="btn btn-primary btn-sm" href="/teacher/index.html?school=' + encodeURIComponent(b.schoolId) + '">دخول المعلمين</a>'
+          +   '<a class="btn btn-ghost btn-sm" href="/student/index.html?school=' + encodeURIComponent(b.schoolId) + '">دخول الطلاب</a>'
+          +   '<button class="btn btn-ghost btn-sm" id="btnChange">تغيير المدرسة</button>'
+          + '</div></div>';
+        var bc = $('btnChange');
+        if (bc) bc.addEventListener('click', clearDefault);
+      }
+
+      function renderNews(news) {
+        if (!news || !news.length) {
+          $('schoolNews').innerHTML = '<div class="state">لا توجد أخبار منشورة حاليًّا لهذه المدرسة.</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < news.length; i++) {
+          var n = news[i];
+          var isText = n.isTextCard && !n.image;
+          var media = '';
+          if (!isText && n.image) {
+            var cnt = (n.gallery && n.gallery.length > 1) ? '<span class="count">🖼️ ' + n.gallery.length + '</span>' : '';
+            media = '<div class="media">' + cnt
+                  + '<img src="' + attr(n.image) + '" alt="' + attr(n.title) + '" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></div>';
+          } else if (!isText && n.videos && n.videos.length) {
+            media = '<div class="media"><div class="count">🎬 فيديو</div></div>';
+          }
+          html += '<div class="ncard' + (isText ? ' text-card' : '') + '">' + media
+            +   '<div class="body">'
+            +     '<h4>' + esc(n.title || 'خبر') + '</h4>'
+            +     (n.content ? '<div class="txt">' + esc(n.content) + '</div>' : '')
+            +     '<div class="foot"><span>' + esc(n.author || '') + '</span><span>' + esc(n.date || '') + '</span></div>'
+            +   '</div>'
+            + '</div>';
+        }
+        $('schoolNews').innerHTML = html;
+      }
+
+      // ── الإقلاع ──
+      function boot() {
+        try { $('yr').textContent = String(new Date().getFullYear()); } catch (e) {}
+        loadPartners();
+        var deep = qparam('school') || qparam('schoolId');
+        var def = getDefault();
+        var initial = deep || def;
+        if (initial) { if (deep) setDefault(deep); loadSchoolView(initial); }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+      } else { boot(); }
+    })();
+  </script>
+</body>
+</html>
