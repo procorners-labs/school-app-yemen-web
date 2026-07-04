@@ -26,19 +26,24 @@
   }
 </script>
 <!-- حارس الإقلاع: إن تجمّدت الشبكة ولم يكتمل التحميل خلال 15s، أظهِر زرّ
-     إعادة المحاولة بدل شاشة بيضاء لا نهائية (بلا أي اعتماد خارجي). -->
+     إعادة المحاولة بدل شاشة بيضاء لا نهائية (بلا أي اعتماد خارجي).
+     يُحتسب اكتمال DOM (وليس load الكامل) نجاحاً — الصور البطيئة تؤخّر load
+     على شبكات 2G/3G فكان الإنذار يظهر فوق تطبيقٍ يعمل («الشبكة محجوبة» الكاذبة). -->
 <script>
   (function(){
     var SHOWN=false;
+    function dismiss(){clearTimeout(TID);var x=document.getElementById("__bootfail");if(x)x.parentNode.removeChild(x);}
     var TID=setTimeout(function(){
       if(SHOWN||!document.body||document.getElementById("__bootfail"))return;
+      if(document.readyState!=="loading")return;
       SHOWN=true;
       var d=document.createElement("div");d.id="__bootfail";
       d.setAttribute("style","position:fixed;inset:0;z-index:2147483647;background:#0b1930;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,system-ui,sans-serif;text-align:center;padding:24px");
       d.innerHTML='<div style="font-size:46px">📡</div><div style="font-size:18px;font-weight:700;margin:12px 0">تعذّر تحميل التطبيق</div><div style="opacity:.85;max-width:330px;line-height:1.8">يبدو أن الاتصال بطيء أو محجوب على هذه الشبكة. جرّب إعادة المحاولة أو شبكة أخرى.</div><button onclick="location.reload()" style="margin-top:18px;background:#1a5ec7;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:15px;cursor:pointer">🔄 إعادة المحاولة</button>';
       document.body.appendChild(d);
     },15000);
-    window.addEventListener("load",function(){clearTimeout(TID);var x=document.getElementById("__bootfail");if(x)x.parentNode.removeChild(x);});
+    document.addEventListener("DOMContentLoaded",dismiss);
+    window.addEventListener("load",dismiss);
   })();
 </script>
 <!-- ▲▲ نهاية الحقن ▲▲ -->
