@@ -202,10 +202,14 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
       function attr(s) { return esc(s); }
-      // يقبل فقط روابط http(s) — يمنع حقن مخطّط javascript: في href (بيانات المدرسة يحرّرها المدير)
+      // يؤمّن رابط href: يقبل http(s)، ويرفض أي مخطّط آخر (javascript:/data:…)،
+      // ويُضيف https:// للنطاق المجرّد (بيانات السوشل في الشيت مخزّنة بلا مخطّط مثل facebook.com/x)
       function safeUrl(u) {
-        u = (u === null || u === undefined) ? '' : String(u);
-        return /^https?:\/\//i.test(u) ? u : '';
+        u = (u === null || u === undefined) ? '' : String(u).trim();
+        if (!u) return '';
+        if (/^https?:\/\//i.test(u)) return u;          // مخطّط آمن أصلاً
+        if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';  // مخطّط آخر صريح (javascript:/data:/tel:…) → يُرفَض
+        return 'https://' + u;                           // نطاق/مسار مجرّد → أضِف https
       }
       function qparam(name) {
         var m = new RegExp('[?&]' + name + '=([^&]+)').exec(location.search);
