@@ -2652,8 +2652,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         try {
           var wa = document.getElementById('att-wa-template');
           if (wa && wa.value && wa.value.indexOf('مدارس الإبداع والتميز الدولية') !== -1) {
-            var v = wa.value.replace(/مدارس الإبداع والتميز الدولية/g, b.name);
-            if (b.phone) v = v.replace(/775189922/g, b.phone);
+            // دوال استبدال (لا سلاسل) كي لا يُفسَّر «$» في الاسم/الهاتف؛ والهاتف
+            // يُستبدَل دائماً كي لا يبقى رقم الإبداع 775189922 لمدرسة بلا هاتف.
+            var _bn = b.name, _bp = b.phone || '';
+            var v = wa.value.replace(/مدارس الإبداع والتميز الدولية/g, function () { return _bn; });
+            v = v.replace(/775189922/g, function () { return _bp; });
             wa.value = v;
           }
         } catch (eW) {}
@@ -15643,7 +15646,7 @@ function sstat_generate() {
 function sstat_renderReport(r) {
   var st = r.student || {};
   var h = '<div id="sstat-print" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
-  var _sstatSchool = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim() || 'إدارة المدرسة';
+  var _sstatSchool = escapeHtml(((document.querySelector('.school-brand-name') || {}).textContent || '').trim() || 'إدارة المدرسة');
   h += '<div style="text-align:center;border-bottom:2px solid #0F2C5C;padding-bottom:12px;margin-bottom:16px">' +
        '<div style="font-size:20px;font-weight:800;color:#0F2C5C">بيان حالة الطالب</div>' +
        '<div style="color:#64748b;font-size:13px">' + _sstatSchool + '</div></div>';
