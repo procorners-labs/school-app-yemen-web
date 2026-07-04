@@ -64,10 +64,10 @@
 /* ───── متغيرات الألوان والقياسات ───── */
 :root {
   /* ألوان رئيسية */
-  --pr      : #1e40af;   /* أزرق رئيسي */
-  --pr-d    : #1e3a8a;
-  --pr-l    : #3b82f6;
-  --pr-bg   : #eff6ff;
+  --pr      : #0F5C8C;   /* أزرق إتقان الأساسي */
+  --pr-d    : #0A4266;
+  --pr-l    : #4E97C4;
+  --pr-bg   : #eaf2f8;
 
   /* ألوان دلالية */
   --ok      : #16a34a;
@@ -5507,8 +5507,36 @@ function initLazyImages() {
       if (ct) ct.textContent = '';
     } catch (eN) {}
   })();
+  // ── حقن ثيم المدرسة: لون أساسي واحد → مشتقّات عبر متغيّرات CSS (م1) ──
+  function _thHex2(v) { v = v.toString(16); return v.length === 1 ? '0' + v : v; }
+  function _thClamp(v) { v = Math.round(v); return v < 0 ? 0 : (v > 255 ? 255 : v); }
+  function _thParse(h) {
+    h = (h || '').toString().replace('#', '').trim();
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
+    return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
+  }
+  function _thShade(rgb, pct) {
+    function f(c) { return pct < 0 ? c * (1 + pct) : c + (255 - c) * pct; }
+    return '#' + _thHex2(_thClamp(f(rgb[0]))) + _thHex2(_thClamp(f(rgb[1]))) + _thHex2(_thClamp(f(rgb[2])));
+  }
+  function applyTheme(color) {
+    var rgb = _thParse(color);
+    if (!rgb) return;
+    try {
+      var s = document.documentElement.style;
+      s.setProperty('--pr', '#' + _thHex2(rgb[0]) + _thHex2(rgb[1]) + _thHex2(rgb[2]));
+      s.setProperty('--pr-d', _thShade(rgb, -0.30));
+      s.setProperty('--pr-l', _thShade(rgb, 0.38));
+      s.setProperty('--pr-bg', _thShade(rgb, 0.90));
+    } catch (eTh) {}
+  }
   function applyBrand(b) {
     if (!b) return;
+    if (b.color) {
+      applyTheme(b.color);
+      try { if (window.localStorage) localStorage.setItem('stTheme_' + window.SCHOOL_ID, b.color); } catch (eLS) {}
+    }
     if (b.name) {
       var els = document.querySelectorAll('.school-brand-name');
       for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
@@ -5524,6 +5552,8 @@ function initLazyImages() {
       if (ct) ct.textContent = '📞 ' + b.phone;
     }
   }
+  // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
+  try { var _stLastColor = (window.localStorage) ? localStorage.getItem('stTheme_' + window.SCHOOL_ID) : null; if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
   function run() {
     try {
       google.script.run

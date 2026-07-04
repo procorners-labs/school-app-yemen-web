@@ -91,10 +91,10 @@
        DESIGN TOKENS & CSS VARIABLES
     ═══════════════════════════════════════════════════ */
     :root {
-      --primary:        #4f46e5;
-      --primary-dark:   #3730a3;
-      --primary-light:  #818cf8;
-      --primary-glow:   rgba(79,70,229,0.18);
+      --primary:        #0F5C8C;
+      --primary-dark:   #0A4266;
+      --primary-light:  #4E97C4;
+      --primary-glow:   rgba(15,92,140,0.18);
       --secondary:      #06b6d4;
       --success:        #10b981;
       --warning:        #f59e0b;
@@ -2639,8 +2639,36 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         if (smm) smm.textContent = 'المدرسة';
       } catch (eN) {}
     })();
+    // ── حقن ثيم المدرسة: لون أساسي واحد → مشتقّات عبر متغيّرات CSS (م1) ──
+    function _thHex2(v) { v = v.toString(16); return v.length === 1 ? '0' + v : v; }
+    function _thClamp(v) { v = Math.round(v); return v < 0 ? 0 : (v > 255 ? 255 : v); }
+    function _thParse(h) {
+      h = (h || '').toString().replace('#', '').trim();
+      if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+      if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
+      return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
+    }
+    function _thShade(rgb, pct) {
+      function f(c) { return pct < 0 ? c * (1 + pct) : c + (255 - c) * pct; }
+      return '#' + _thHex2(_thClamp(f(rgb[0]))) + _thHex2(_thClamp(f(rgb[1]))) + _thHex2(_thClamp(f(rgb[2])));
+    }
+    function applyTheme(color) {
+      var rgb = _thParse(color);
+      if (!rgb) return;
+      try {
+        var s = document.documentElement.style;
+        s.setProperty('--primary', '#' + _thHex2(rgb[0]) + _thHex2(rgb[1]) + _thHex2(rgb[2]));
+        s.setProperty('--primary-dark', _thShade(rgb, -0.30));
+        s.setProperty('--primary-light', _thShade(rgb, 0.38));
+        s.setProperty('--primary-glow', 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.18)');
+      } catch (eTh) {}
+    }
     function applyBrand(b) {
       if (!b) return;
+      if (b.color) {
+        applyTheme(b.color);
+        try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {}
+      }
       if (b.name) {
         var els = document.querySelectorAll('.school-brand-name');
         for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
@@ -2672,6 +2700,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         }
       }
     }
+    // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
+    try { var _tcLastColor = (window.localStorage) ? localStorage.getItem('tcTheme_' + sid) : null; if (_tcLastColor) applyTheme(_tcLastColor); } catch (eLR) {}
     function run() {
       try {
         google.script.run
@@ -12877,7 +12907,7 @@ function _downloadText(filename, text, mime){
 // ════════════════════════════════════════════════════════
 var CERT = { struct: null, data: null, selected: '' };
 
-function cert_schoolName(){ var el=document.querySelector('.school-brand-name'); return (el && (el.textContent||'').trim()) || 'مدرسة الإبداع والتميز الدولية'; }
+function cert_schoolName(){ var el=document.querySelector('.school-brand-name'); return (el && (el.textContent||'').trim()) || 'المدرسة'; }
 function cert_hijriDate(){
   try { return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura',{day:'numeric',month:'long',year:'numeric'}).format(new Date()) + ' هـ'; }
   catch(e){ try { return new Date().toLocaleDateString('ar'); } catch(_){ return ''; } }
