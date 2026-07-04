@@ -1819,7 +1819,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <summary>🆘 تحتاج مساعدة؟ نسيت كلمة المرور؟</summary>
         <div class="login-help-body">
           إذا لم تستطع تسجيل الدخول، أو نسيت كلمة المرور، أو لديك أي استفسار —
-          تواصل مع الدعم الفني (IT) لمنصة <b>مدارس الإبداع والتميز الدولية</b>:
+          تواصل مع الدعم الفني (IT) لمنصة <b class="school-brand-name">مدارس الإبداع والتميز الدولية</b>:
           <a class="login-wa-btn"
              href="https://wa.me/967778505751?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%AD%D8%AA%D8%A7%D8%AC%20%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A9%20%D9%81%D9%8A%20%D8%A7%D9%84%D8%AF%D8%AE%D9%88%D9%84%20%D8%A5%D9%84%D9%89%20%D9%85%D9%86%D8%B5%D8%A9%20%D8%A7%D9%84%D9%85%D8%B9%D9%84%D9%85%D9%8A%D9%86"
              target="_blank" rel="noopener">
@@ -2629,6 +2629,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
               : (window.SCHOOL_ID || '');
     if (!sid) return;
+    // مدرسة محددة (ليست الإبداع الافتراضية): حيِّد الاسم الثابت فوراً قبل وصول النداء
+    // غير المتزامن كي لا يومض «مدارس الإبداع» على شبكة بطيئة قبل جلب الاسم الحقيقي.
+    (function neutralize() {
+      try {
+        var els = document.querySelectorAll('.school-brand-name');
+        for (var i = 0; i < els.length; i++) els[i].textContent = 'المدرسة';
+        var smm = document.getElementById('smm-school-label');
+        if (smm) smm.textContent = 'المدرسة';
+      } catch (eN) {}
+    })();
     function applyBrand(b) {
       if (!b) return;
       if (b.name) {
@@ -2637,6 +2647,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         var smm = document.getElementById('smm-school-label');
         if (smm) smm.textContent = b.name;
         try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?/g, b.name); } catch (eT) {}
+        // قالب واتساب لأولياء الأمور: بدّل هوية الإبداع الثابتة (اسم/هاتف) بهوية المدرسة الفعلية،
+        // فقط إن كان القالب لا يزال بالقيمة الافتراضية (كي لا نطمس تعديل المستخدم).
+        try {
+          var wa = document.getElementById('att-wa-template');
+          if (wa && wa.value && wa.value.indexOf('مدارس الإبداع والتميز الدولية') !== -1) {
+            var v = wa.value.replace(/مدارس الإبداع والتميز الدولية/g, b.name);
+            if (b.phone) v = v.replace(/775189922/g, b.phone);
+            wa.value = v;
+          }
+        } catch (eW) {}
       }
       if (b.logo) {
         // نفس الجلبة تغذّي شعار أغلفة الأخبار مبكراً — كان يُجلب فقط عند فتح
@@ -15623,9 +15643,10 @@ function sstat_generate() {
 function sstat_renderReport(r) {
   var st = r.student || {};
   var h = '<div id="sstat-print" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
+  var _sstatSchool = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim() || 'إدارة المدرسة';
   h += '<div style="text-align:center;border-bottom:2px solid #0F2C5C;padding-bottom:12px;margin-bottom:16px">' +
        '<div style="font-size:20px;font-weight:800;color:#0F2C5C">بيان حالة الطالب</div>' +
-       '<div style="color:#64748b;font-size:13px">مدارس الإبداع والتميز الدولية</div></div>';
+       '<div style="color:#64748b;font-size:13px">' + _sstatSchool + '</div></div>';
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">' +
        sstat_kv('الاسم', st.name) + sstat_kv('الكود', st.code) + sstat_kv('الفصل', st.grade) +
        sstat_kv('الشعبة', st.section) + sstat_kv('الجوال', st.phone) + '</div>';
