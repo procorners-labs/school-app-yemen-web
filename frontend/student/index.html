@@ -1734,6 +1734,10 @@ a { color: var(--pr); text-decoration: none; }
         </div>
       </div>
 
+      <div class="card-h" style="padding:0 4px 0 2px;margin-bottom:2px;">
+        <div class="ttl"><span class="ic">⚡</span> نظرة سريعة</div>
+        <button class="refresh-btn" id="qstatsRefreshBtn" onclick="refreshQuickStats()" title="تحديث">🔄</button>
+      </div>
       <div class="q-grid" id="quickStats"></div>
 
       <!-- 📜 التعاميم الإدارية (تظهر فقط عند وجود تعاميم موجَّهة للطالب) -->
@@ -2669,6 +2673,16 @@ function goTab(tab, btn) {
       case 'reports':    loadReports();    break;
       case 'attendance': loadAttendance(); break;
     }
+  } else {
+    // (م3) البيانات سريعة التغيّر تُعاد جلبها تلقائياً عند العودة للتبويب
+    // بعد مرور دقيقة — فلا تبقى الشاشة على لقطة قديمة دون تدخّل يدوي.
+    var lastTs = _tabLoadedAt[tab] || 0;
+    if (Date.now() - lastTs > 60000) {
+      if (tab === 'violations') loadViolations(true);
+    }
+  }
+  if (tab === 'home' && (Date.now() - (_tabLoadedAt.home || 0) > 60000)) {
+    loadQuickStats(true);
   }
 }
 
@@ -2686,6 +2700,8 @@ function loadHomeNews(force) {
     var c = ssGet('homeNews');
     if (c) { renderHomeNews(c); return; }
   }
+  // (م3) زر 🔄: تجاوز كاش callServerSmart أيضاً لتصل أحدث الإشعارات فعلاً
+  if (force) ClientCache.remove('home_news_' + APP.user.class + '_' + APP.user.section);
   w.innerHTML = loaderHTML('جارٍ تحميل الإشعارات...');
 
   callServerSmart(
@@ -2778,16 +2794,23 @@ function _quickStatsPlaceholder() {
          '<div class="q-stat r" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">—</div><div class="lbl">حضوري</div></div></div>';
 }
 
-function loadQuickStats() {
+// (م3) طابع آخر تحميل لكل تبويب سريع التغيّر — يُستخدم لإعادة الجلب عند العودة
+var _tabLoadedAt = {};
+
+function loadQuickStats(force) {
   // إحصائيات سريعة — نفس مصدر تبويب «تقاريري» وبنفس مفتاح الكاش
   // (استدعاء خادم واحد يخدم الرئيسية والتقارير معاً، ويعمل مع تراجع الكاش دون اتصال)
   var w = $('quickStats');
+  if (force) ClientCache.remove('reports_' + APP.user.id);
   callServerSmart(
     'getStudentReports',
     { studentId: APP.user.id, schoolId: APP.user.schoolId },
     'reports_' + APP.user.id,
     180,
     function (r) {
+      _tabLoadedAt.home = Date.now();
+      var rb = $('qstatsRefreshBtn');
+      if (rb) rb.disabled = false;
       if (!r || !r.ok || !r.data) { w.innerHTML = _quickStatsPlaceholder(); return; }
       var s = r.data.summary || {};
       var avg = s.overallAvg || 0;
@@ -2806,9 +2829,18 @@ function loadQuickStats() {
         '<div class="q-stat ' + attCls + '" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">' + esc(attRate) + '%</div><div class="lbl">نسبة الحضور</div></div></div>';
     },
     function () {
+      var rb2 = $('qstatsRefreshBtn');
+      if (rb2) rb2.disabled = false;
       w.innerHTML = _quickStatsPlaceholder();
     }
   );
+}
+
+// (م3) تحديث «نظرة سريعة» يدوياً — يُبطل الكاش المشترك ويعيد الجلب فوراً
+function refreshQuickStats() {
+  var rb = $('qstatsRefreshBtn');
+  if (rb) rb.disabled = true;
+  loadQuickStats(true);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4540,6 +4572,9 @@ function loadViolations(force) {
     if (c) { APP.loaded.violations = true; renderViolations(c); return; }
   }
 
+  // (م3) force=true (زر 🔄 أو العودة للتبويب): تجاوز كاش callServerSmart فعلياً
+  if (force) ClientCache.remove('violations_' + APP.user.id);
+
   callServerSmart(
   'getViolations',
   { studentId: APP.user.id, schoolId: APP.user.schoolId,
@@ -4548,6 +4583,7 @@ function loadViolations(force) {
   60,
   function (data) {
     APP.loaded.violations = true;
+    _tabLoadedAt.violations = Date.now();
     renderViolations(data);
   },
   function (e) {
