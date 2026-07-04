@@ -15045,9 +15045,10 @@ function vio_bulkCardHtml() {
       '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap">' +
         '<label style="font-size:13px"><input type="checkbox" id="vioBulkAll" onchange="vio_bulkToggleAll(this.checked)"> تحديد الكل (طلابي)</label>' +
         '<button class="btn btn-sm" style="background:#4f46e5;color:#fff" onclick="vio_bulkBehavior()">📋 تسجيل سلوك للمحددين</button>' +
+        '<button class="btn btn-sm btn-secondary" onclick="openViolationModal()" title="تسجيل سلوك لطالب واحد بالبحث بالاسم">➕ تسجيل سلوك لطالب</button>' +
         '<span id="vioBulkSelCount" class="badge badge-info"></span>' +
       '</div>' +
-      '<div class="table-wrap"><table id="vioBulkTable"><thead><tr><th></th><th>الاسم</th><th>الفصل</th><th>الشعبة</th></tr></thead><tbody id="vioBulkTbody"></tbody></table></div>' +
+      '<div class="table-wrap"><table id="vioBulkTable"><thead><tr><th></th><th>الاسم</th><th>الفصل</th><th>الشعبة</th><th>سلوك</th></tr></thead><tbody id="vioBulkTbody"></tbody></table></div>' +
       '<div id="vioBulkPager" style="margin-top:10px"></div>' +
     '</div>' +
   '</div>';
@@ -15056,10 +15057,10 @@ function vio_bulkCardHtml() {
 // تحميل طلاب المعلم مرّةً — يعيد استخدام getStudentsDirectoryProtected ويصفّي على mine.
 function vio_bulkLoad() {
   var tb = document.getElementById('vioBulkTbody');
-  if (tb) tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:20px">…جاري تحميل الطلاب</td></tr>';
+  if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px">…جاري تحميل الطلاب</td></tr>';
   callServer('getStudentsDirectoryProtected', {}, function (r) {
     tb = document.getElementById('vioBulkTbody');
-    if (!(r && r.success)) { if (tb) tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#c00;padding:20px">' + ((r && r.error) || 'تعذّر تحميل الطلاب') + '</td></tr>'; return; }
+    if (!(r && r.success)) { if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#c00;padding:20px">' + ((r && r.error) || 'تعذّر تحميل الطلاب') + '</td></tr>'; return; }
     var all = r.students || [], mine = [];
     for (var i = 0; i < all.length; i++) {
       var st = all[i];
@@ -15070,7 +15071,24 @@ function vio_bulkLoad() {
     vio_bulkRenderRows();
   }, function (e) {
     tb = document.getElementById('vioBulkTbody');
-    if (tb) tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#c00;padding:20px">❌ ' + escapeHtml(e.message || String(e)) + '</td></tr>';
+    if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#c00;padding:20px">❌ ' + escapeHtml(e.message || String(e)) + '</td></tr>';
+  });
+}
+
+// تسجيل سلوك لطالب واحد من جدول التبويب الجماعي — يفتح مودال السلوك المفرد بالطالب
+// مُختاراً (يتجاوز خطوة البحث). يعيد استخدام openViolationModal + selectVioStudent
+// القائمتين (نفس نمط sdir_addBehavior في صفحة «أسماء الطلاب» — لا تكرار منطق).
+function vio_addBehavior(i) {
+  var st = VIO.students[i];
+  if (!st) return;
+  if (typeof openViolationModal !== 'function' || typeof window.selectVioStudent !== 'function') {
+    toast('تسجيل السلوك غير متاح حالياً', 'warning');
+    return;
+  }
+  openViolationModal();
+  window.selectVioStudent({
+    name: st.name, grade: st.grade, section: st.section,
+    code: st.code, phone: st.phone || '', rowIndex: st.rowIndex
   });
 }
 
@@ -15108,7 +15126,7 @@ function vio_bulkRenderRows() {
   var start = (VIO.page - 1) * pageSize;
   var pageIdxs = idxs.slice(start, start + pageSize);
   if (!total) {
-    tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px">لا نتائج مطابقة</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:24px">لا نتائج مطابقة</td></tr>';
   } else {
     var h = '';
     for (var k = 0; k < pageIdxs.length; k++) {
@@ -15119,6 +15137,7 @@ function vio_bulkRenderRows() {
         '<td>' + escapeHtml(st.name) + '</td>' +
         '<td>' + escapeHtml(st.grade || '—') + '</td>' +
         '<td>' + escapeHtml(st.section || '—') + '</td>' +
+        '<td><button class="btn btn-sm" style="background:#4f46e5;color:#fff;white-space:nowrap" title="تسجيل سلوك لهذا الطالب" onclick="vio_addBehavior(' + i + ')">📋 سلوك</button></td>' +
       '</tr>';
     }
     tb.innerHTML = h;
