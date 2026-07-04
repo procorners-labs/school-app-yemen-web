@@ -16782,10 +16782,12 @@ function _tfRecFiltered(){
 }
 function _tfDrawRecTable(){
   var filt=_tfRecFiltered(), total=0,i; for(i=0;i<filt.length;i++) total+=(filt[i].amount||0);
+  window._tfRecView=filt;
   var tbl=document.getElementById('tf-rec-table');
-  if(tbl) tbl.innerHTML=_tfTable(['التاريخ','الاسم','البيان','المبلغ','الطريقة'], filt.map(function(r){
+  if(tbl) tbl.innerHTML=_tfTable(['التاريخ','الاسم','البيان','المبلغ','الطريقة','سند'], filt.map(function(r,ix){
     var pend=r.pending?' <span style="color:#d98324;font-size:11px;">⏳ قيد المزامنة</span>':'';
-    return [_tfEsc(r.date), _tfEsc(r.name||r.label||'—')+pend, _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.method||'')];
+    var pbtn='<button class="tf-abtn" style="padding:3px 10px;font-size:12px;" title="طباعة سند قبض" onclick="_tfPrintVoucherRow(\'rec\','+ix+')">🖨️</button>';
+    return [_tfEsc(r.date), _tfEsc(r.name||r.label||'—')+pend, _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.method||''), pbtn];
   }));
   var tot=document.getElementById('tf-rec-total');
   if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> سند · الإجمالي <strong>'+_tfComma(total)+'</strong>';
@@ -16934,6 +16936,92 @@ function _tfPrintStatement(code){
     '<div class="foot"><span>توقيع المحاسب: ____________</span><span>ختم الإدارة</span></div>';
   _tfPrintWin('كشف حساب — '+_tfEsc(s.name), _tfStmtCss(), body);
 }
+
+// ── سند A5 (قبض/صرف/توريد) بالشعار — طباعة من القوائم وبعد تسجيل عملية ──
+function _tfTafqit(n){
+  n=Math.round(Math.abs(Number(n)||0));
+  if(n===0) return 'صفر ريال يمني';
+  var ones=['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة','عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
+  var tens=['','عشرة','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
+  var hunds=['','مائة','مائتان','ثلاثمائة','أربعمائة','خمسمائة','ستمائة','سبعمائة','ثمانمائة','تسعمائة'];
+  function u1000(x){
+    var p=[],h=Math.floor(x/100),r=x%100;
+    if(h) p.push(hunds[h]);
+    if(r){ if(r<20) p.push(ones[r]); else { var o=r%10,t=Math.floor(r/10); p.push(o?(ones[o]+' و'+tens[t]):tens[t]); } }
+    return p.join(' و');
+  }
+  function scale(x,sing,dual,plur){
+    if(x===0) return '';
+    if(x===1) return sing;
+    if(x===2) return dual;
+    if(x>=3&&x<=10) return u1000(x)+' '+plur;
+    return u1000(x)+' '+sing;
+  }
+  var parts=[], mil=Math.floor(n/1000000), th=Math.floor((n%1000000)/1000), rest=n%1000;
+  var s1=scale(mil,'مليون','مليونان','ملايين'); if(s1) parts.push(s1);
+  var s2=scale(th,'ألف','ألفان','آلاف'); if(s2) parts.push(s2);
+  if(rest) parts.push(u1000(rest));
+  return parts.join(' و')+' ريال يمني';
+}
+function _tfVoucherCss(){
+  return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}'+
+    'body{margin:0;padding:6mm;color:#1a2233;font-size:13px;}'+
+    '.bh{display:flex;align-items:center;gap:12px;border-bottom:3px solid #1a237e;padding-bottom:8px;margin-bottom:10px;}'+
+    '.bl{height:58px;max-width:100px;object-fit:contain;}.b1{font-size:19px;font-weight:800;color:#1a237e;}.bp{font-size:11px;color:#555;}'+
+    '.vt{display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px;}'+
+    '.vt h2{margin:0;font-size:20px;padding:6px 24px;border:2px solid;border-radius:10px;}'+
+    '.vm{font-size:13px;color:#46506a;text-align:left;line-height:1.9;}'+
+    '.rw{display:flex;gap:8px;margin:8px 0;align-items:flex-end;font-size:14px;}'+
+    '.rw b{white-space:nowrap;color:#1a237e;}'+
+    '.fl{flex:1;border-bottom:1px dotted #8a93a6;padding:0 6px 2px;min-height:19px;}'+
+    '.amt{display:flex;gap:10px;margin:12px 0;align-items:stretch;}'+
+    '.ab{border:2px solid #1a237e;border-radius:10px;padding:8px 18px;font-size:20px;font-weight:800;white-space:nowrap;display:flex;align-items:center;}'+
+    '.aw{flex:1;border:1px solid #c7cede;border-radius:10px;padding:8px 12px;display:flex;align-items:center;font-size:14px;}'+
+    '.sg{display:flex;justify-content:space-between;margin-top:28px;font-size:13px;}'+
+    '.sg span{width:30%;text-align:center;border-top:1px solid #8a93a6;padding-top:6px;color:#46506a;}'+
+    '.ft{margin-top:14px;font-size:10px;color:#889;display:flex;justify-content:space-between;}'+
+    '@page{size:A5 landscape;margin:7mm;}@media print{body{padding:0;}}';
+}
+function _tfVoucherHtml(kind, d){
+  var meta={receipt:{t:'سند قبض',c:'#1a8d5f'},expense:{t:'سند صرف',c:'#c0392b'},supply:{t:'سند توريد',c:'#6d4caf'}};
+  var m=meta[kind]||meta.receipt;
+  var num=(d.id!==undefined&&d.id!==null&&(''+d.id).replace(/^\s+|\s+$/g,'')!=='')?_tfEsc(d.id):'<span style="color:#d98324;">قيد المزامنة</span>';
+  var who=kind==='receipt'?'استلمنا من السيد/ة':(kind==='supply'?'سُلِّم إلى':'يُصرف إلى / البيان');
+  var whoVal=kind==='receipt'?(d.name||''):(kind==='supply'?'مدير المدرسة':(d.staff||d.label||''));
+  var about=kind==='receipt'?(d.label||'رسوم دراسية'):(kind==='supply'?(d.note||d.label||'توريد نقد الصندوق للمدير'):(d.details||d.label||''));
+  var h=_tfBrandHeader(true)+
+    '<div class="vt"><h2 style="color:'+m.c+';border-color:'+m.c+';">'+m.t+'</h2>'+
+    '<div class="vm">رقم السند: <b>'+num+'</b><br>التاريخ: <b>'+_tfEsc(d.date||_tfTodayIso())+'</b></div></div>'+
+    '<div class="rw"><b>'+who+':</b><span class="fl">'+_tfEsc(whoVal)+(d.code?(' <span style="color:#667;font-size:12px;">(كود: '+_tfEsc(d.code)+')</span>'):'')+'</span></div>'+
+    '<div class="amt"><div class="ab" style="color:'+m.c+';border-color:'+m.c+';">'+_tfComma(d.amount||0)+' ريال</div>'+
+    '<div class="aw">فقط '+_tfEsc(_tfTafqit(d.amount||0))+' لا غير</div></div>'+
+    '<div class="rw"><b>وذلك عن:</b><span class="fl">'+_tfEsc(about)+'</span></div>';
+  var pay=[];
+  if(d.method) pay.push('طريقة الدفع: <b>'+_tfEsc(d.method)+'</b>');
+  if(d.broker) pay.push('الوسيط: <b>'+_tfEsc(d.broker)+'</b>');
+  if(d.ref) pay.push('رقم الحوالة: <b>'+_tfEsc(d.ref)+'</b>');
+  if(pay.length) h+='<div class="rw"><span>'+pay.join(' &nbsp;·&nbsp; ')+'</span></div>';
+  h+='<div class="sg"><span>المستلم</span><span>المحاسب</span><span>مدير المدرسة</span></div>'+
+    '<div class="ft"><span>'+_tfEsc((window._tfRes&&window._tfRes.brand&&window._tfRes.brand.name)||'')+'</span><span>طُبع في: '+_tfEsc(_tfTodayIso())+'</span></div>';
+  return h;
+}
+function _tfPrintVoucher(kind, d){
+  var titles={receipt:'سند قبض',expense:'سند صرف',supply:'سند توريد'};
+  _tfPrintWin(titles[kind]||'سند', _tfVoucherCss(), _tfVoucherHtml(kind, d));
+}
+function _tfPrintVoucherRow(src, idx){
+  var arr=(src==='rec')?(window._tfRecView||[]):(window._tfExpView||[]);
+  var r=arr[idx]; if(!r) return;
+  if(src==='rec') _tfPrintVoucher('receipt', r);
+  else _tfPrintVoucher(r.category==='supply'?'supply':'expense', r);
+}
+function _tfPrintLastOp(){
+  var op=window._tfLastOp; if(!op) return;
+  var p=op.payload||{};
+  _tfPrintVoucher(op.type==='receipt'?'receipt':(op.type==='supply'?'supply':'expense'),
+    { id:'', code:p.code||'', name:p.name||'', amount:Number(p.amount)||0, method:p.method||'', date:p.date||'', label:p.label||'', note:p.note||'' });
+}
+
 function _tfNoticesCss(){
   return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;}'+
     '.page{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;width:210mm;height:297mm;padding:7mm;page-break-after:always;}'+
@@ -17022,7 +17110,7 @@ function _tfOpForm(type, prefill){
       '<div style="font-size:12px;color:#7a8794;margin-top:6px;line-height:1.6;">تُحدِّث «الرسوم الدراسية» للطالب في برنامج Access.</div>';
   } else { return; }
   body+='<div id="tfop-status" style="margin-top:12px;font-size:13px;min-height:18px;"></div>'+
-    '<div style="margin-top:10px;display:flex;gap:8px;">'+
+    '<div id="tfop-btns" style="margin-top:10px;display:flex;gap:8px;">'+
     '<button class="tf-abtn" style="background:#1a8d5f;color:#fff;border-color:#1a8d5f;" onclick="_tfOpSubmit(\''+type+'\')">💾 حفظ العملية</button>'+
     '<button class="tf-abtn" onclick="_tfModalClose()">إلغاء</button></div>'+
     '<div style="font-size:11px;color:#9aa3b2;margin-top:10px;line-height:1.6;">تُسجَّل العملية فورًا وتظهر «⏳ قيد المزامنة»، ثم تصل برنامج Access تلقائيًا خلال دقيقة عبر أداة المزامنة على جهاز المدرسة.</div>';
@@ -17040,8 +17128,18 @@ function _tfOpSubmit(type){
   if(st) st.innerHTML='<span style="color:#667;">⏳ جارٍ الحفظ...</span>';
   callServer('addFinancialOperationProtected', {type:type, payload:payload}, function(res){
     if(!res||!res.success){ if(st) st.innerHTML='<span style="color:#c0392b;font-weight:700;">⚠️ '+_tfEsc((res&&res.error)||'تعذّر الحفظ')+'</span>'; return; }
-    if(st) st.innerHTML='<span style="color:#1a8d5f;font-weight:700;">✅ سُجّلت العملية — ستظهر في برنامج Access خلال دقيقة.</span>';
-    setTimeout(function(){ _tfModalClose(); _tfLoad(true); }, 1300);
+    if(type==='fee_adjust'){
+      if(st) st.innerHTML='<span style="color:#1a8d5f;font-weight:700;">✅ سُجّلت العملية — ستظهر في برنامج Access خلال دقيقة.</span>';
+      setTimeout(function(){ _tfModalClose(); _tfLoad(true); }, 1300);
+      return;
+    }
+    // قبض/صرف/توريد: نعرض زر طباعة السند بدل الإغلاق الآلي (الطباعة من حمولة العملية المُدخلة فورًا)
+    window._tfLastOp={type:type, payload:payload};
+    var bts=document.getElementById('tfop-btns'); if(bts) bts.style.display='none';
+    if(st) st.innerHTML='<span style="color:#1a8d5f;font-weight:700;">✅ سُجّلت العملية — ستصل برنامج Access خلال دقيقة.</span>'+
+      '<div style="margin-top:10px;display:flex;gap:8px;">'+
+      '<button class="tf-abtn" style="background:#2c6fb0;color:#fff;border-color:#2c6fb0;" onclick="_tfPrintLastOp()">🖨️ طباعة السند</button>'+
+      '<button class="tf-abtn" onclick="_tfModalClose();_tfLoad(true);">إغلاق</button></div>';
   }, function(err){ if(st) st.innerHTML='<span style="color:#c0392b;font-weight:700;">⚠️ '+_tfEsc((err&&err.message)||'خطأ بالاتصال')+'</span>'; });
 }
 
@@ -17132,9 +17230,11 @@ function _tfDrawExpTable(){
   var filt=_tfExpFiltered();
   var total=0,i; for(i=0;i<filt.length;i++) total+=(filt[i].amount||0);
   filt=filt.slice().sort(function(a,b){ return (b.amount||0)-(a.amount||0); });
+  window._tfExpView=filt;
   var tbl=document.getElementById('tf-exp-table');
-  if(tbl) tbl.innerHTML=_tfTable(['التاريخ','البيان','المبلغ','الفئة'], filt.map(function(r){
-    return [_tfEsc(r.date), _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.categoryName||'')];
+  if(tbl) tbl.innerHTML=_tfTable(['التاريخ','البيان','المبلغ','الفئة','سند'], filt.map(function(r,ix){
+    var pbtn='<button class="tf-abtn" style="padding:3px 10px;font-size:12px;" title="طباعة سند" onclick="_tfPrintVoucherRow(\'exp\','+ix+')">🖨️</button>';
+    return [_tfEsc(r.date), _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.categoryName||''), pbtn];
   }));
   var tot=document.getElementById('tf-exp-total');
   if(tot) tot.innerHTML='الإجمالي المعروض: <strong>'+_tfComma(total)+'</strong> ('+filt.length+' حركة)';
