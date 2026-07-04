@@ -8239,7 +8239,8 @@ function _vioBadgeClass(type, polarity) {
 
 // --- 1. عرض الصفحة الأساسية (لا يتغير) ---
 function renderViolations() {
-  document.getElementById('dynamicContent').innerHTML = 
+  document.getElementById('dynamicContent').innerHTML =
+    vio_bulkCardHtml() +
     '<div class="section-card">' +
       '<div class="section-header">' +
         '<div class="section-header-icon" style="background:rgba(79,70,229,.1)">📋</div>' +
@@ -8285,6 +8286,7 @@ function renderViolations() {
     filterGradeCascade('vioFilterGrade', 'vioFilterSection', null);
   }
   loadViolations();
+  vio_bulkLoad();
 }
 
 // --- 2. تحميل المخالفات من الخادم (مع كاش الخادم) ---
@@ -14934,6 +14936,14 @@ function sdir_bulkBehavior() {
     }
   }
   if (!rows.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
+  _bulkVioOnSaved = null;   // مصدر الفتح = صفحة الأسماء (لا هوك تحديث إضافي)
+  _bulkVioPrepModal(rows);
+}
+
+// تجهيز مودال السلوك الجماعي (العدّاد + قائمة الأنواع + تصفير الحقول) وفتحه —
+// مشترك بين مصدرَي الفتح: صفحة «أسماء الطلاب» وتبويب «تسجيل سلوك». يضع الأسطر في
+// SDIR._bulkRows الذي تقرؤه دالة الحفظ الموحّدة sdir_bulkBehaviorSave (لا تكرار للنداء الخادمي).
+function _bulkVioPrepModal(rows) {
   SDIR._bulkRows = rows;
   var cnt = document.getElementById('bulkVioCount');
   if (cnt) cnt.innerHTML = '📋 سيُسجَّل السلوك لـ <strong>' + rows.length + '</strong> طالب محدّد.';
@@ -14990,12 +15000,176 @@ function sdir_bulkBehaviorSave() {
         toast(r.message || ('تم التسجيل لـ ' + (r.count || 0) + ' طالب'), 'success');
         closeModal('bulkVioModal');
         SDIR.selected = {}; SDIR._bulkRows = []; sdir_renderRows();
+        // هوك اختياري لتحديث مصدر الفتح (تبويب «تسجيل سلوك») بعد الحفظ — يُفرَّغ فور تنفيذه
+        if (typeof _bulkVioOnSaved === 'function') { var _cb = _bulkVioOnSaved; _bulkVioOnSaved = null; _cb(); }
       } else {
         showError(r ? r.error : 'فشل التسجيل الجماعي');
       }
     },
     function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); }
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// التسجيل الجماعي للسلوك داخل تبويب «تسجيل سلوك» (لكل معلم، لطلابه فقط)
+// ═══════════════════════════════════════════════════════════════════════════
+// يعرض أسماء طلاب المعلم (mine) بمربعات اختيار + فلتر فصل/شعبة + بحث، ويسجّل سلوكاً
+// واحداً للمحدَّدين دفعةً واحدة عبر إعادة استخدام المودال الجماعي القائم (bulkVioModal)
+// ودالة الحفظ الموحّدة sdir_bulkBehaviorSave (addViolationsBulkProtected). لا يكرّر منطق
+// النداء الخادمي. المصدر «السلوكيات» في ملف المعلم يظهر تلقائياً بمنصة الطالب عبر Tenant.
+var VIO = { students: [], selected: {}, page: 1, pageSize: 50, loaded: false, _fkey: null, _fidx: null, _st: null };
+var _bulkVioOnSaved = null;   // هوك يُنفَّذ مرّة بعد نجاح الحفظ الجماعي (يُحدِّث مصدر الفتح)
+
+// بطاقة الواجهة الجماعية — تُدرَج أعلى سجلّ السلوكيات داخل renderViolations.
+function vio_bulkCardHtml() {
+  return '<div class="section-card" style="margin-bottom:14px">' +
+    '<div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(79,70,229,.1)">📋</div>' +
+      '<div class="section-header-title">تسجيل سلوك جماعي</div>' +
+    '</div>' +
+    '<div class="section-body">' +
+      '<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#3730a3;line-height:1.9">' +
+        '<strong>طريقة الاستخدام:</strong> ' +
+        '<span style="white-space:nowrap">1️⃣ اختر الطلاب (✔)</span> · ' +
+        '<span style="white-space:nowrap">2️⃣ اضغط «📋 تسجيل سلوك للمحددين»</span> · ' +
+        '<span style="white-space:nowrap">3️⃣ اختر نوع السلوك واحفظ</span>' +
+      '</div>' +
+      '<div class="form-row" style="margin-bottom:10px">' +
+        '<div class="form-group"><label class="form-label">الفصل</label>' +
+          '<select class="form-select" id="vioBulkGrade" onchange="filterGradeCascade(\'vioBulkGrade\',\'vioBulkSection\',\'vio_bulkOnFilter\',\'كل الشعب\')">' + buildSelectOptions(myGrades(), 'كل الفصول', '', true) + '</select></div>' +
+        '<div class="form-group"><label class="form-label">الشعبة</label>' +
+          '<select class="form-select" id="vioBulkSection" onchange="vio_bulkOnFilter()">' + buildSelectOptions(mySections(), 'كل الشعب', '', true) + '</select></div>' +
+        '<div class="form-group flex-1"><label class="form-label">بحث</label>' +
+          '<input type="text" class="form-control" id="vioBulkSearch" autocomplete="off" placeholder="🔍 اسم أو كود الطالب" oninput="vio_bulkOnSearch()"></div>' +
+      '</div>' +
+      '<div class="d-flex align-center gap-2 mb-2" style="flex-wrap:wrap">' +
+        '<label style="font-size:13px"><input type="checkbox" id="vioBulkAll" onchange="vio_bulkToggleAll(this.checked)"> تحديد الكل (طلابي)</label>' +
+        '<button class="btn btn-sm" style="background:#4f46e5;color:#fff" onclick="vio_bulkBehavior()">📋 تسجيل سلوك للمحددين</button>' +
+        '<span id="vioBulkSelCount" class="badge badge-info"></span>' +
+      '</div>' +
+      '<div class="table-wrap"><table id="vioBulkTable"><thead><tr><th></th><th>الاسم</th><th>الفصل</th><th>الشعبة</th></tr></thead><tbody id="vioBulkTbody"></tbody></table></div>' +
+      '<div id="vioBulkPager" style="margin-top:10px"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// تحميل طلاب المعلم مرّةً — يعيد استخدام getStudentsDirectoryProtected ويصفّي على mine.
+function vio_bulkLoad() {
+  var tb = document.getElementById('vioBulkTbody');
+  if (tb) tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:20px">…جاري تحميل الطلاب</td></tr>';
+  callServer('getStudentsDirectoryProtected', {}, function (r) {
+    tb = document.getElementById('vioBulkTbody');
+    if (!(r && r.success)) { if (tb) tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#c00;padding:20px">' + ((r && r.error) || 'تعذّر تحميل الطلاب') + '</td></tr>'; return; }
+    var all = r.students || [], mine = [];
+    for (var i = 0; i < all.length; i++) {
+      var st = all[i];
+      if (st && st.mine && st.rowIndex) { st._hay = _tcNorm((st.name || '') + ' ' + (st.code || '')); mine.push(st); }
+    }
+    VIO.students = mine; VIO.selected = {}; VIO.page = 1; VIO._fkey = null; VIO._fidx = null; VIO.loaded = true;
+    var a = document.getElementById('vioBulkAll'); if (a) a.checked = false;
+    vio_bulkRenderRows();
+  }, function (e) {
+    tb = document.getElementById('vioBulkTbody');
+    if (tb) tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#c00;padding:20px">❌ ' + escapeHtml(e.message || String(e)) + '</td></tr>';
+  });
+}
+
+// قائمة الفهارس المرئية (فلتر فصل/شعبة + بحث) مع كاش حسب المفتاح — مطابقة مُطبَّعة.
+function vio_bulkVisible() {
+  var fg = (document.getElementById('vioBulkGrade') || {}).value || '';
+  var fs = (document.getElementById('vioBulkSection') || {}).value || '';
+  var q = _tcNorm((document.getElementById('vioBulkSearch') || {}).value || '');
+  var fgN = isAllFilter(fg) ? '' : _tcNorm(fg);
+  var fsN = isAllFilter(fs) ? '' : _tcNorm(fs);
+  var key = fgN + '|' + fsN + '|' + q;
+  if (VIO._fkey === key && VIO._fidx) return VIO._fidx;
+  var arr = [], s = VIO.students;
+  for (var i = 0; i < s.length; i++) {
+    var st = s[i];
+    if (fgN && _tcNorm(st.grade) !== fgN) continue;
+    if (fsN && _tcNorm(st.section) !== fsN) continue;
+    if (q && (st._hay || '').indexOf(q) < 0) continue;
+    arr.push(i);
+  }
+  VIO._fkey = key; VIO._fidx = arr;
+  return arr;
+}
+
+// بناء صفوف الصفحة الحالية فقط (ترقيم 50/صفحة) — يبقى الـDOM صغيراً حتى مع مئات الطلاب.
+function vio_bulkRenderRows() {
+  var tb = document.getElementById('vioBulkTbody');
+  if (!tb) return;
+  var idxs = vio_bulkVisible();
+  var total = idxs.length;
+  var pageSize = VIO.pageSize || 50;
+  var pages = Math.max(1, Math.ceil(total / pageSize));
+  if (!VIO.page || VIO.page < 1) VIO.page = 1;
+  if (VIO.page > pages) VIO.page = pages;
+  var start = (VIO.page - 1) * pageSize;
+  var pageIdxs = idxs.slice(start, start + pageSize);
+  if (!total) {
+    tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px">لا نتائج مطابقة</td></tr>';
+  } else {
+    var h = '';
+    for (var k = 0; k < pageIdxs.length; k++) {
+      var i = pageIdxs[k]; var st = VIO.students[i];
+      var checked = VIO.selected[i] ? 'checked' : '';
+      h += '<tr>' +
+        '<td><input type="checkbox" ' + checked + ' onchange="vio_bulkSel(' + i + ',this.checked)"></td>' +
+        '<td>' + escapeHtml(st.name) + '</td>' +
+        '<td>' + escapeHtml(st.grade || '—') + '</td>' +
+        '<td>' + escapeHtml(st.section || '—') + '</td>' +
+      '</tr>';
+    }
+    tb.innerHTML = h;
+  }
+  vio_bulkUpdateCount();
+  vio_bulkRenderPager(total, pages, start, pageIdxs.length);
+}
+
+function vio_bulkRenderPager(total, pages, start, shown) {
+  var el = document.getElementById('vioBulkPager');
+  if (!el) return;
+  var pageSize = VIO.pageSize || 50;
+  if (total <= pageSize) { el.innerHTML = total ? ('<div style="text-align:center;font-size:12px;color:#64748b">إجمالي طلابك: ' + total + '</div>') : ''; return; }
+  var p = VIO.page, from = start + 1, to = start + shown;
+  var btn = function (label, target, disabled, title) {
+    return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' +
+      (disabled ? 'disabled ' : '') + (title ? ('title="' + title + '" ') : '') +
+      'onclick="vio_bulkGoPage(' + target + ')">' + label + '</button>';
+  };
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center">' +
+    btn('⏮', 1, p <= 1, 'الأولى') + btn('‹ السابق', p - 1, p <= 1) +
+    '<span style="font-size:13px;color:#475569;white-space:nowrap">صفحة ' + p + ' / ' + pages +
+      ' · <span style="color:#94a3b8">' + from + '–' + to + ' من ' + total + '</span></span>' +
+    btn('التالي ›', p + 1, p >= pages) + btn('⏭', pages, p >= pages, 'الأخيرة') + '</div>';
+}
+
+function vio_bulkGoPage(n) { VIO.page = n; vio_bulkRenderRows(); }
+function vio_bulkOnSearch() { if (VIO._st) clearTimeout(VIO._st); VIO._st = setTimeout(function () { VIO.page = 1; vio_bulkRenderRows(); }, 130); }
+function vio_bulkOnFilter() { VIO.page = 1; vio_bulkRenderRows(); }
+function vio_bulkSel(i, on) { if (on) VIO.selected[i] = 1; else delete VIO.selected[i]; vio_bulkUpdateCount(); }
+function vio_bulkToggleAll(on) { var idxs = vio_bulkVisible(); for (var k = 0; k < idxs.length; k++) { if (on) VIO.selected[idxs[k]] = 1; else delete VIO.selected[idxs[k]]; } vio_bulkRenderRows(); }
+function vio_bulkUpdateCount() { var n = 0; for (var k in VIO.selected) { if (VIO.selected.hasOwnProperty(k)) n++; } var el = document.getElementById('vioBulkSelCount'); if (el) el.textContent = n ? ('محدد: ' + n) : ''; }
+
+// فتح المودال الجماعي للطلاب المحدَّدين في تبويب «تسجيل سلوك» — يعيد استخدام
+// _bulkVioPrepModal (المودال) و sdir_bulkBehaviorSave (الحفظ)، ويسجّل هوكاً لتحديث
+// القائمة بعد النجاح (مسح التحديد + إعادة الرسم).
+function vio_bulkBehavior() {
+  var rows = [];
+  for (var k in VIO.selected) {
+    if (VIO.selected.hasOwnProperty(k)) {
+      var st = VIO.students[k];
+      if (st && st.rowIndex) rows.push(st.rowIndex);
+    }
+  }
+  if (!rows.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
+  _bulkVioOnSaved = function () {
+    VIO.selected = {};
+    var a = document.getElementById('vioBulkAll'); if (a) a.checked = false;
+    vio_bulkRenderRows();
+  };
+  _bulkVioPrepModal(rows);
 }
 
 // ═══ تسجيل الغياب من صفحة «أسماء الطلاب» (يعيد استخدام saveAttendanceProtected) ═══
