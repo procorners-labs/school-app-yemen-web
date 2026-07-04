@@ -208,6 +208,7 @@
         u = (u === null || u === undefined) ? '' : String(u).trim();
         if (!u) return '';
         if (/^https?:\/\//i.test(u)) return u;          // مخطّط آمن أصلاً
+        if (/^\/\//.test(u)) return 'https:' + u;        // بروتوكولي-نسبي //host → https://host
         if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';  // مخطّط آخر صريح (javascript:/data:/tel:…) → يُرفَض
         return 'https://' + u;                           // نطاق/مسار مجرّد → أضِف https
       }
@@ -224,14 +225,16 @@
       }
 
       // ── دليل الشركاء ──
+      var _partners = null;   // مخبّأ العميل لقائمة الشركاء (تفادي طلب شبكي متكرّر)
       function loadPartners() {
         callServer('listPartnerSchoolsPublic', [], function (res) {
           if (!res || !res.success || !res.schools || !res.schools.length) {
             $('partnersState').textContent = 'لا توجد مدارس متاحة حاليًّا.';
             return;
           }
+          _partners = res.schools;
           $('partnersState').style.display = 'none';
-          renderPartners(res.schools);
+          renderPartners(_partners);
         }, function () {
           $('partnersState').textContent = 'تعذّر تحميل المدارس. حاول لاحقًا.';
         });
@@ -293,16 +296,16 @@
       function clearDefault() {
         try { localStorage.removeItem(HAS_DEFAULT_KEY); } catch (e) {}
         $('schoolView').style.display = 'none';
-        loadPartners();
+        if (_partners) renderPartners(_partners); else loadPartners();
         location.hash = '#partners';
       }
       function chooseSchool(id, name) {
         if (!id) return;
         setDefault(id);
         loadSchoolView(id);
-        renderPartners_refresh();
+        // إعادة رسم الشارة من المخبّأ المحلي — بلا طلب شبكي جديد
+        if (_partners) renderPartners(_partners); else loadPartners();
       }
-      function renderPartners_refresh() { loadPartners(); }
 
       // ── عرض المدرسة المختارة ──
       function loadSchoolView(id) {
