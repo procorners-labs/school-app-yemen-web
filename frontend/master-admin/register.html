@@ -311,7 +311,7 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
           <input type="email" id="f-semail" placeholder="school@example.com">
         </div>
         <div class="fld" id="fld-invite" style="display:none;">
-          <label>مفتاح الدعوة <span class="req">*</span></label>
+          <label>مفتاح الدعوة <span class="req" id="inv-star">*</span></label>
           <input type="text" id="f-invite" placeholder="أدخل مفتاح الدعوة">
           <div class="fld-hint">التسجيل مقيَّد بدعوة — أدخل المفتاح للمتابعة</div>
         </div>
@@ -725,7 +725,8 @@ function _setWa(id, href) {
 
 // يطبّق الإعدادات الواردة من الخادم (أو افتراضياً عند الفشل).
 function _applyConfig(cfg) {
-  if (!cfg || !cfg.success) {
+  var failed = (!cfg || !cfg.success);
+  if (failed) {
     cfg = {
       trialDays: 30, supportWhatsapp: '967775189922', inviteRequired: false,
       plans: [
@@ -752,8 +753,19 @@ function _applyConfig(cfg) {
          encodeURIComponent('تم تسجيل مدرستي - أحتاج مساعدة في التفعيل'));
   _setWa('wa-error',   'https://wa.me/' + wa);
 
+  // إظهار حقل مفتاح الدعوة:
+  //  - نجاح الإعدادات: يظهر فقط إن كان التسجيل مقيَّداً بدعوة (inviteRequired).
+  //  - فشل جلب الإعدادات: أظهِره اختيارياً (كالسلوك قبل م٢) كي لا يُحبَس المدعوّ الشرعي
+  //    بلا وسيلة لإدخال المفتاح؛ الخادم يبقى المرجع في فرض المفتاح عند الإنشاء.
   var fi = document.getElementById('fld-invite');
-  if (fi) fi.style.display = cfg.inviteRequired ? 'flex' : 'none';
+  if (fi) fi.style.display = (failed || cfg.inviteRequired) ? 'flex' : 'none';
+  var optional = failed && !cfg.inviteRequired;
+  var star = document.getElementById('inv-star');
+  if (star) star.style.display = optional ? 'none' : '';
+  var hint = fi ? fi.querySelector('.fld-hint') : null;
+  if (hint) hint.textContent = optional
+    ? 'اختياري — أدخله فقط إن كان تسجيل مدرستك يتطلّب مفتاح دعوة'
+    : 'التسجيل مقيَّد بدعوة — أدخل المفتاح للمتابعة';
 }
 
 function _loadRegisterConfig() {
