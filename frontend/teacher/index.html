@@ -5752,14 +5752,37 @@ function initSidebarByRole() {
 
   var spItem = document.getElementById('si-supervisorPerms');
 
-  // المدير الكامل والمحاسب: يرى كل شيء (صفحة ضبط الصلاحيات للمدير فقط)
-  if (u.role === 'admin' || u.role === 'accountant') {
+  // المحاسب: شريط مركّز على المالية والعمليات اليومية — بلا «لوحة التحكم»/تحليلات عامة ولا صفحات أكاديمية.
+  //   يرى فقط: المالية والعمليات · قائمة الطلاب · أسماء الطلاب · بيان حالة طالب · المهام · الملف الشخصي.
+  if (u.role === 'accountant') {
+    var accAllow = {
+      'si-financial': 1, 'si-adminStudents': 1, 'si-studentDirectory': 1,
+      'si-studentStatus': 1, 'si-tasksMgmt': 1, 'si-myTasks': 1, 'si-profile': 1
+    };
+    var accSecs = document.querySelectorAll('.sidebar-section');
+    for (var acx = 0; acx < accSecs.length; acx++) {
+      var accItems = accSecs[acx].querySelectorAll('.sidebar-item');
+      var accAny = false;
+      for (var aci = 0; aci < accItems.length; aci++) {
+        var accOk = !!accAllow[accItems[aci].id];
+        accItems[aci].style.display = accOk ? '' : 'none';
+        if (accOk) accAny = true;
+      }
+      accSecs[acx].style.display = accAny ? '' : 'none';
+    }
+    if (socialSection) socialSection.style.display = 'none';
+    _refreshNotesBadge();
+    try { showSection('financial'); } catch (eAcc) {}
+    return;
+  }
+
+  // المدير الكامل: يرى كل شيء (صفحة ضبط الصلاحيات للمدير)
+  if (u.role === 'admin') {
     if (adminSection) adminSection.style.display = 'block';
     if (siAdminStudents) siAdminStudents.style.display = '';
-    if (spItem) spItem.style.display = (u.role === 'admin') ? '' : 'none';
-    // المالية والعمليات: للمدير والمحاسب (الخادم يفرض admin||accountant أيضًا عبر _tfinCanFinance)
+    if (spItem) spItem.style.display = '';
     var siFin = document.getElementById('si-financial');
-    if (siFin) siFin.style.display = (u.role === 'admin' || u.role === 'accountant') ? '' : 'none';
+    if (siFin) siFin.style.display = '';
     _refreshNotesBadge();
     return;
   }
@@ -16771,6 +16794,19 @@ function _tfTab(name){
   if(mt&&tb&&mt.scrollWidth>mt.clientWidth){ try{ tb.scrollIntoView({inline:'center',block:'nearest'}); }catch(e){} }
 }
 
+// زر «تحديث»: يطلب مزامنة فورية من برنامج Access (علم يلتقطه access-sync.ps1 خلال دقيقة)
+// ثم يعيد قراءة الشيت فورًا. الويب لا يقرأ Access مباشرة.
+function _tfSyncNow(){
+  try { toast('⏳ جارٍ طلب المزامنة من برنامج Access...', 'info', 2500); } catch(e){}
+  callServer('requestFinancialSyncProtected', {}, function(res){
+    try {
+      if(res && res.success) toast('✅ طُلبت المزامنة — ستظهر أحدث بيانات Access خلال دقيقة.', 'success', 4000);
+      else toast('تعذّر طلب المزامنة — إعادة قراءة البيانات الحالية.', 'warning', 3500);
+    } catch(e){}
+    _tfLoad(true);
+  }, function(){ _tfLoad(true); });
+}
+
 function renderFinancial(){
   var host=document.getElementById('dynamicContent');
   if(!host) return;
@@ -16804,7 +16840,7 @@ function _tfRender(res){
      '<button class="tf-abtn" style="background:#1a8d5f;color:#fff;border-color:#1a8d5f;" onclick="_tfOpForm(\'receipt\')">➕ تسجيل دفعة</button>'+
      '<button class="tf-abtn" onclick="_tfOpForm(\'expense\')">➖ إضافة مصروف</button>'+
      '<button class="tf-abtn" onclick="_tfOpForm(\'supply\')">📤 توريد للمدير</button>'+
-     '<button class="tf-abtn" onclick="_tfLoad(true)">🔄 تحديث</button>'+
+     '<button class="tf-abtn" onclick="_tfSyncNow()">🔄 تحديث</button>'+
      '<button class="tf-abtn" onclick="window.print()">🖨️ طباعة</button></div>';
 
   if(!hasData){
@@ -17006,6 +17042,20 @@ function _tfRender(res){
   _tfDrawFamTable();   // تعبئة جدول حسابات العائلات
   _tfDrawInstLists();  // تعبئة قوائم متابعة الأقساط
   _tfDrawRecTable();   // تعبئة جدول السندات المفلتر
+  _tfApplyRoleView();  // عرض المحاسب: إخفاء تبويبي التحليل وتفعيل تبويب تشغيلي
+}
+
+// عرض المحاسب داخل صفحة المالية: يُخفي تبويبَي التحليل «📊 نظرة عامة» و«📅 التحليل الشهري»
+// ويُفعّل تبويباً تشغيلياً (الصندوق اليومي) بدل النظرة العامة. لبقية الأدوار: لا تغيير.
+function _tfApplyRoleView(){
+  var u=App.user||{};
+  if(u.role!=='accountant') return;
+  var hide=['overview','monthly'];
+  for(var i=0;i<hide.length;i++){
+    var tb=document.getElementById('tf-tab-'+hide[i]); if(tb) tb.style.display='none';
+    var pn=document.getElementById('tf-pane-'+hide[i]); if(pn){ pn.style.display='none'; pn.classList.remove('active'); }
+  }
+  _tfTab('cashbox');   // تبويب تشغيلي افتراضي للمحاسب
 }
 // ── السندات: فلترة + رسم + تصدير ──
 function _tfRecFiltered(){
