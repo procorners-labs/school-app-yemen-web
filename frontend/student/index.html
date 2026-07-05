@@ -212,6 +212,26 @@ a { color: var(--pr); text-decoration: none; }
   background: #fff;
   box-shadow: 0 0 0 3px var(--pr-bg);
 }
+/* زر إظهار/إخفاء كلمة المرور (RTL: الزر على اليسار كي لا يتداخل مع النص) */
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-left: 46px; }
+.pw-toggle {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  padding: 6px;
+  border-radius: 8px;
+  opacity: .7;
+  transition: opacity var(--tr-s), background var(--tr-s);
+}
+.pw-toggle:hover { opacity: 1; background: var(--pr-bg); }
+.pw-toggle:focus-visible { outline: 2px solid var(--pr); outline-offset: 1px; }
 .btn-primary {
   width: 100%;
   padding: 12px;
@@ -1593,7 +1613,10 @@ a { color: var(--pr); text-decoration: none; }
     </div>
     <div class="field">
       <label>كلمة المرور</label>
-      <input type="password" id="password" autocomplete="current-password" placeholder="كلمة المرور">
+      <div class="pw-wrap">
+        <input type="password" id="password" autocomplete="current-password" placeholder="كلمة المرور">
+        <button type="button" class="pw-toggle" id="stuPwToggle" onclick="stuTogglePw()" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁️</button>
+      </div>
     </div>
     <button class="btn-primary" id="loginBtn" onclick="doLogin()">تسجيل الدخول 🚪</button>
 
@@ -2435,6 +2458,20 @@ function _stuStartLockCountdown(sec) {
   }
   _tick();
   _stuLockTimer = setInterval(_tick, 1000);
+}
+
+// إظهار/إخفاء كلمة المرور في لوحة الدخول
+function stuTogglePw() {
+  var inp = document.getElementById('password');
+  var btn = document.getElementById('stuPwToggle');
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    if (btn) { btn.textContent = '🙈'; btn.setAttribute('aria-label', 'إخفاء كلمة المرور'); btn.setAttribute('title', 'إخفاء كلمة المرور'); }
+  } else {
+    inp.type = 'password';
+    if (btn) { btn.textContent = '👁️'; btn.setAttribute('aria-label', 'إظهار كلمة المرور'); btn.setAttribute('title', 'إظهار كلمة المرور'); }
+  }
 }
 
 function doLogin() {
