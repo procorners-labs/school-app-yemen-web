@@ -3818,7 +3818,7 @@ function loadSession() {
 }
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
-  try { sessionStorage.removeItem('teacherLists_v1'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v2'); } catch(e) {}
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
 }
 
@@ -4068,6 +4068,12 @@ function showLoginScreen() {
   var mainDiv  = document.getElementById('mainApp');
   if (loginDiv) loginDiv.style.display = 'flex';
   if (mainDiv)  mainDiv.style.display = 'none';
+  // رفع أي طبقة حاجبة قد تبقى بعد الخروج/انتهاء الجلسة (كان الأوفرلاي
+  // z-index:9999 يبتلع الكتابة/النقر لأن مسار الخروج لا يستدعي hideLoading).
+  try { hideLoading(); } catch (e) {}
+  try { closeAllModals(); } catch (e) {}
+  try { closeSidebar(); } catch (e) {}          // يستعيد body/documentElement overflow أيضاً
+  if (document.body) document.body.style.overflow = '';   // تحصين إضافي
   var usernameField = document.getElementById('loginUsername');
   var passwordField = document.getElementById('loginPassword');
   if (usernameField) usernameField.value = '';
@@ -4115,7 +4121,7 @@ function bootApp() {
   // ── تحميل القوائم + تحميل Schema ──
   var cachedLists = null;
   try {
-    var raw = sessionStorage.getItem('teacherLists_v1');
+    var raw = sessionStorage.getItem('teacherLists_v2');
     if (raw) {
       var parsed = JSON.parse(raw);
       if (parsed._ts && (Date.now() - parsed._ts) < 30 * 60 * 1000) {
@@ -4184,9 +4190,11 @@ function _fetchListsFromServer(callback) {
         sections       : r.sections   || [],
         violations     : r.violations || [],
         subjectsByGrade: r.subjectsByGrade || {},
+        nonGradedSubjects: r.nonGradedSubjects || {},
+        curriculumByGrade: r.curriculumByGrade || {},
         _ts            : Date.now()
       };
-      try { sessionStorage.setItem('teacherLists_v1', JSON.stringify(App.lists)); } catch(e) {}
+      try { sessionStorage.setItem('teacherLists_v2', JSON.stringify(App.lists)); } catch(e) {}
       if (callback) callback(true);
     } else {
       console.warn('getListsDataProtected returned success=false');
@@ -12928,7 +12936,7 @@ function _downloadText(filename, text, mime){
 //  🏅 CERTIFICATES — نظام طباعة الشهادات (مدير/وكيل/محاسب)
 //  عرض فقط: يقرأ getCertificatesDataProtected ويبني شهادات قابلة للطباعة.
 // ════════════════════════════════════════════════════════
-var CERT = { struct: null, data: null, selected: '' };
+var CERT = { struct: null, data: null, selected: '', query: '', _st: null };
 
 function cert_schoolName(){ var el=document.querySelector('.school-brand-name'); return (el && (el.textContent||'').trim()) || 'المدرسة'; }
 function cert_hijriDate(){
@@ -13010,18 +13018,43 @@ function cert_loadData(){
 
 function cert_renderToolbar(){
   var tb=document.getElementById('cert-toolbar'); if(!tb||!CERT.data) return;
+  // إعادة بناء كاملة = حالة نظيفة: لا بحث نشط ولا مؤقّت معلّق (الحقل يظهر فارغاً).
+  CERT.query=''; if(CERT._st){ clearTimeout(CERT._st); CERT._st=null; }
   var students=CERT.data.students||[];
   var opts='<option value="">— كل الطلاب —</option>';
   for(var i=0;i<students.length;i++) opts+='<option value="'+escapeHtml(students[i].code)+'">'+escapeHtml(students[i].name)+'</option>';
   tb.style.display='flex';
   tb.innerHTML=
+    '<div class="form-group" style="margin:0;min-width:220px"><label class="form-label">بحث فوري (الاسم أو الكود)</label><div class="search-wrap"><input type="text" class="form-control" id="cert-search" autocomplete="off" placeholder="🔍 ابحث بالاسم أو الكود..." oninput="cert_onSearch(this.value)"><span class="search-icon">🔍</span></div></div>' +
     '<div class="form-group" style="margin:0;min-width:220px"><label class="form-label">طالب محدّد (اختياري)</label><select class="form-select" id="cert-student" onchange="cert_pickStudent(this.value)">'+opts+'</select></div>' +
     '<button class="btn btn-secondary btn-sm" onclick="cert_print()">🖨️ طباعة المعروض</button>' +
-    '<button class="btn btn-primary btn-sm" onclick="cert_printAll()">🖨️ طباعة الكل ('+students.length+') · شهادتان/A4</button>' +
+    '<button class="btn btn-primary btn-sm" onclick="cert_printAll()">🖨️ طباعة الكل (<span id="cert-allcount">'+students.length+'</span>) · شهادتان/A4</button>' +
     '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="cert_pdf()">⬇️ تحميل PDF</button>';
 }
-function cert_pickStudent(code){ CERT.selected=code||''; cert_renderPreview(); }
-function cert_printAll(){ CERT.selected=''; var s=document.getElementById('cert-student'); if(s) s.value=''; cert_renderPreview(); setTimeout(cert_print, 60); }
+// الطلاب المعروضون فعلياً بعد المنسدلة + البحث الفوري (فلترة محلية بحتة).
+function cert_visibleStudents(){
+  var students=(CERT.data&&CERT.data.students)||[];
+  if(CERT.selected){ students=students.filter(function(s){ return s.code===CERT.selected; }); }
+  if(CERT.query){ students=students.filter(function(s){
+    return _tcNorm(s.name).indexOf(CERT.query)!==-1 || _tcNorm(s.code).indexOf(CERT.query)!==-1;
+  }); }
+  return students;
+}
+function cert_updateCount(){
+  var el=document.getElementById('cert-allcount');
+  if(el) el.textContent=cert_visibleStudents().length;
+}
+// بحث فوري محلي (لا نداء خادم) — debounce على نمط كائن الحالة القائم.
+function cert_onSearch(v){
+  if(CERT._st) clearTimeout(CERT._st);
+  CERT._st=setTimeout(function(){
+    CERT.query=_tcNorm(v);
+    cert_updateCount();
+    cert_renderPreview();
+  }, 200);
+}
+function cert_pickStudent(code){ CERT.selected=code||''; cert_updateCount(); cert_renderPreview(); }
+function cert_printAll(){ CERT.selected=''; var s=document.getElementById('cert-student'); if(s) s.value=''; cert_updateCount(); cert_renderPreview(); setTimeout(cert_print, 60); }
 
 // طباعة الشهادات المعروضة (الكل أو طالب محدّد) في نافذة مستقلّة — شهادتان لكل
 // صفحة A4 — مع شريط إغلاق ودعم زر رجوع أندرويد. الطباعة هنا = «حفظ كـ PDF».
@@ -13049,8 +13082,7 @@ function cert_pdf(){ toast('في نافذة الطباعة اختر «حفظ ك�
 
 function cert_renderPreview(){
   var area=document.getElementById('certPrintArea'); if(!area||!CERT.data) return;
-  var students=CERT.data.students||[];
-  if(CERT.selected){ students=students.filter(function(s){return s.code===CERT.selected;}); }
+  var students=cert_visibleStudents();
   if(!students.length){ area.innerHTML='<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا يوجد طلاب لعرضهم</div></div>'; return; }
   var html='';
   for(var i=0;i<students.length;i++){ html+=cert_certHtml(students[i]); }
