@@ -41,7 +41,7 @@
       d.setAttribute("style","position:fixed;inset:0;z-index:2147483647;background:#0b1930;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,system-ui,sans-serif;text-align:center;padding:24px");
       d.innerHTML='<div style="font-size:46px">📡</div><div style="font-size:18px;font-weight:700;margin:12px 0">تعذّر تحميل التطبيق</div><div style="opacity:.85;max-width:330px;line-height:1.8">يبدو أن الاتصال بطيء أو محجوب على هذه الشبكة. جرّب إعادة المحاولة أو شبكة أخرى.</div><button onclick="location.reload()" style="margin-top:18px;background:#1a5ec7;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:15px;cursor:pointer">🔄 إعادة المحاولة</button>';
       document.body.appendChild(d);
-    },15000);
+    },25000);
     document.addEventListener("DOMContentLoaded",dismiss);
     window.addEventListener("load",dismiss);
   })();
@@ -5695,8 +5695,10 @@ function showSection(name) {
     updateActiveSidebarItem(name);
     closeSidebar();
   } catch (err) {
+    // خطأ برمجي في عرض القسم — ليس مشكلة شبكة. رسالة محايدة لا تتّهم الاتصال
+    //   (كان النص السابق «تعذر تحميل الصفحة» يوحي بعطل شبكة كاذب).
     console.error('خطأ في showSection:', err);
-    toast('عذراً، تعذر تحميل الصفحة: ' + (err.message || err), 'error', 6000);
+    toast('تعذّر عرض هذا القسم. جرّب تحديث الصفحة.', 'error', 6000);
     var dynamicEl = document.getElementById('dynamicContent');
     if (dynamicEl) {
       dynamicEl.innerHTML = 
@@ -13674,12 +13676,21 @@ window.onload = function() {
     saved = null;
   }
   if (saved && saved.token) {
-    window._loginTimeout = setTimeout(function() {
-      if (!App.user) { hideLoading(); showLoginScreen(); toast('تعذر الاتصال بالخادم. تأكد من الشبكة وحاول مجدداً.', 'error', 8000); }
+    // على cold-start لـ GAS/شبكة بطيئة يواصل الجسر إعادة المحاولة (checkSession = قراءة:
+    //   3 محاولات × 30s ≈ 90s). لا نطرد المستخدم عند 12s — كان ذلك سباقاً يُظهر «تعذّر
+    //   الاتصال» كاذباً بينما الطلب ما زال جارياً. بدلاً منه: مؤشّر غير حاجب يطمئن ثم
+    //   ننتظر معالج النجاح/الفشل الحقيقي. الطرد الفعلي عبر withFailureHandler فقط.
+    window._loginSlowTimer = setTimeout(function() {
+      if (!App.user) { try { showLoading('الاتصال بطيء… نُعيد المحاولة تلقائياً'); } catch (e) {} }
     }, 12000);
+    // شبكة أمان أخيرة: تعمل فقط إن تجمّد النداء ولم يُستدعَ أي معالج إطلاقاً (نادر جداً)،
+    //   بعد تجاوز أسوأ زمن إعادة محاولة للجسر — كي لا تُطرد جلسة سليمة قيد المحاولة.
+    window._loginTimeout = setTimeout(function() {
+      if (!App.user) { hideLoading(); showLoginScreen(); toast('تعذّر الاتصال بالخادم. حاول مجدداً.', 'error', 8000); }
+    }, 120000);
     google.script.run
       .withSuccessHandler(function(r) {
-        clearTimeout(window._loginTimeout);
+        clearTimeout(window._loginTimeout); clearTimeout(window._loginSlowTimer);
         if (r && r.valid) {
           App.user = {
             token       : r.token       || saved.token,
@@ -13709,7 +13720,7 @@ window.onload = function() {
         }
       })
       .withFailureHandler(function(err) {
-        clearTimeout(window._loginTimeout);
+        clearTimeout(window._loginTimeout); clearTimeout(window._loginSlowTimer);
         console.error(err);
         clearSession();
         hideLoading();
