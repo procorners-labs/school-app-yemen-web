@@ -3289,9 +3289,12 @@ function getMyGradesForSubject(subject) {
 // من بيانات النظام، مع تراجع آمن للقائمة الكاملة إن لم يوجد ربط للصف.
 function subjectsForGrade(grade) {
   var all = (App.lists && App.lists.subjects) ? App.lists.subjects.slice() : [];
-  if (!grade || grade === 'جميع الفصول' || grade === 'الكل') return all;
+  var noGrade = (!grade || grade === 'جميع الفصول' || grade === 'الكل');
 
-  // معلم عادي: المواد التي يدرّسها فعلاً لهذا الصف من تكليفاته
+  // معلم عادي: يُقيَّد بمواده هو **دائماً** — حتى بلا صف محدد (بلا صف ⇒ اتحاد مواده
+  //   عبر كل صفوفه، لا مواد الصف/المدرسة كاملة). كان الفرع «بلا صف ⇒ الكل» أعلى
+  //   يُنفَّذ قبل هذا الفحص فيسرّب مواد معلّمين آخرين في قائمة «اختر المادة» عند
+  //   التحميل الأول لمعلّم له أكثر من صف (initGrade='').
   if (App.user && !isAdmin()) {
     var asg = _myAssignments();
     if (asg) {
@@ -3299,7 +3302,7 @@ function subjectsForGrade(grade) {
       for (var i = 0; i < asg.length; i++) {
         var grs = asg[i].grades || [];
         for (var k = 0; k < grs.length; k++) {
-          if (grs[k].grade === grade || grs[k].grade === 'جميع الفصول') {
+          if (noGrade || grs[k].grade === grade || grs[k].grade === 'جميع الفصول') {
             var sj = asg[i].subject;
             if (sj && sj !== 'جميع المواد' && !seen[sj]) { seen[sj] = true; out.push(sj); }
           }
@@ -3311,7 +3314,10 @@ function subjectsForGrade(grade) {
     return (ms && ms.length) ? ms : all;
   }
 
-  // مدير/مشرف يرى الكل: خريطة المقرر لكل صف (مرتّبة حسب ترتيب القائمة الكاملة)
+  // مدير/مشرف يرى الكل
+  if (noGrade) return all;
+
+  // خريطة المقرر لكل صف (مرتّبة حسب ترتيب القائمة الكاملة)
   var map = (App.lists && App.lists.subjectsByGrade) ? App.lists.subjectsByGrade : null;
   if (map && map[grade] && map[grade].length) {
     var gset = map[grade], ordered = [];
