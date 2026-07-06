@@ -12,6 +12,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Scope & Authorization
+
+STRICT SCOPE RULE: only implement exactly what is authorized. Do not add extra phases or features without explicit approval — ask before expanding scope.
+
+---
+
 ## ما يُعدَّل هنا وما لا يُعدَّل
 
 | الملف/المجلد | الحكم | السبب |
@@ -83,6 +89,18 @@ push to school-app-yemen-gas/main
 ```bash
 node --check worker/school-app-proxy.js
 ```
+
+---
+
+## Deployment Workflow
+
+After implementing a Worker change: run `node --check worker/school-app-proxy.js`, open a PR, merge, then live-verify via the Worker health endpoint (Cloudflare Workers Builds auto-deploys on push to `main`) before reporting done. Any GAS-side change must be deployed separately via clasp from `SchoolApp-gas` — merging here never deploys backend logic.
+
+---
+
+## Codebase Conventions
+
+Before editing, confirm you're editing `worker/school-app-proxy.js` (the real source) and not `frontend/` (generated output — overwritten by the next CI run from `SchoolApp-gas`).
 
 ---
 
