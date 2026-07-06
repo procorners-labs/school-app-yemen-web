@@ -77,20 +77,31 @@ export default {
       // لإعادة المحاولة، فلا يظهر خلل GAS العابر للمستخدم كفشل. طلبات GET (مثل الصفحة) يُقبل HTML فيها.
       var isPost = request.method !== 'GET';
       var fullTarget = target + url.search;
-      var lastText = '', lastStatus = 502, attempt;
-      for (attempt = 0; attempt < 3; attempt++) {
+      var lastText = '', lastStatus = 502, attempt, good = false;
+      // فواصل تصاعدية (كانت ثابتة 200ms) — تمتصّ اعتراض/برود GAS المتقطّع (~6%) قبل
+      // إرجاع HTML للجسر. 4 محاولات ضمن حدود CF subrequests.
+      var delays = [250, 600, 1200];
+      for (attempt = 0; attempt < 4; attempt++) {
         try {
           var gasResp = await fetch(fullTarget, init);
           lastText = await gasResp.text();
           lastStatus = gasResp.status;
           var looksHtml = lastText.charAt(0) === '<';
-          var good = gasResp.status >= 200 && gasResp.status < 400 && !(isPost && looksHtml);
+          good = gasResp.status >= 200 && gasResp.status < 400 && !(isPost && looksHtml);
           if (good) break;
         } catch (err) {
           lastStatus = 502;
           lastText = JSON.stringify({ ok: false, error: 'تعذّر الوصول إلى الخادم: ' + String(err) });
         }
-        if (attempt < 2) { await new Promise(function (r) { setTimeout(r, 200); }); }
+        if (attempt < 3) { await new Promise(function (r) { setTimeout(r, delays[attempt]); }); }
+      }
+      // عند استنفاد المحاولات لطلب JSON (POST) باستجابة غير صالحة (HTML/4xx):
+      // أعِد JSON خطأ واضح بدل تمرير HTML يفشل JSON.parse في الجسر (netError مضلِّل «رد غير صالح»).
+      if (!good && isPost) {
+        var looksJson = lastText.charAt(0) === '{' || lastText.charAt(0) === '[';
+        if (!looksJson) {
+          return jsonResponse({ ok: false, error: 'تعذّر تنفيذ الطلب حالياً (اعتراض مؤقّت من الخادم). حاول مجدداً بعد لحظات.' }, 503);
+        }
       }
       return withCors(new Response(lastText, {
         status: lastStatus,
