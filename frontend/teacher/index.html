@@ -16901,14 +16901,21 @@ function _tfTab(name){
 // زر «تحديث»: يطلب مزامنة فورية من برنامج Access (علم يلتقطه access-sync.ps1 خلال دقيقة)
 // ثم يعيد قراءة الشيت فورًا. الويب لا يقرأ Access مباشرة.
 function _tfSyncNow(){
+  var btn=document.getElementById('tf-syncbtn');
+  var prevHtml=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ جارٍ التحديث...'; }
   try { toast('⏳ جارٍ طلب المزامنة من برنامج Access...', 'info', 2500); } catch(e){}
   callServer('requestFinancialSyncProtected', {}, function(res){
     try {
       if(res && res.success) toast('✅ طُلبت المزامنة — ستظهر أحدث بيانات Access خلال دقيقة.', 'success', 4000);
       else toast('تعذّر طلب المزامنة — إعادة قراءة البيانات الحالية.', 'warning', 3500);
     } catch(e){}
+    if(btn){ btn.disabled=false; btn.innerHTML=prevHtml; }
     _tfLoad(true);
-  }, function(){ _tfLoad(true); });
+  }, function(){
+    if(btn){ btn.disabled=false; btn.innerHTML=prevHtml; }
+    _tfLoad(true);
+  });
 }
 
 function renderFinancial(){
@@ -16939,13 +16946,15 @@ function _tfRender(res){
   var hasData=(k.receiptsCount||0)+(k.expenseCount||0)+(k.staff||0)+(k.students||0) > 0;
 
   var h='<div id="tf-root" class="tf-wrap">';
-  h+='<div class="tf-head"><h2>💰 المالية والعمليات</h2>'+
+  h+='<div class="tf-head">'+_tfBrandHeader(false)+'<h2>💰 المالية والعمليات</h2>'+
      '<span class="tf-sync">'+(res.lastSync?('آخر مزامنة: '+_tfEsc(res.lastSync)):('حُدِّث: '+_tfEsc(res.generated||'')))+'</span>'+
      '<button class="tf-abtn" style="background:#1a8d5f;color:#fff;border-color:#1a8d5f;" onclick="_tfOpForm(\'receipt\')">➕ تسجيل دفعة</button>'+
      '<button class="tf-abtn" onclick="_tfOpForm(\'expense\')">➖ إضافة مصروف</button>'+
      '<button class="tf-abtn" onclick="_tfOpForm(\'supply\')">📤 توريد للمدير</button>'+
-     '<button class="tf-abtn" onclick="_tfSyncNow()">🔄 تحديث</button>'+
-     '<button class="tf-abtn" onclick="window.print()">🖨️ طباعة</button></div>';
+     '<button id="tf-syncbtn" class="tf-abtn" onclick="_tfSyncNow()">🔄 تحديث</button>'+
+     '<button class="tf-abtn" onclick="window.print()">🖨️ طباعة</button>'+
+     '<span id="tf-sync-note" style="flex-basis:100%;font-size:11px;color:#9aa3b2;">قد تستغرق المزامنة الكاملة مع Access حتى دقيقة واحدة.</span>'+
+     '</div>';
 
   if(!hasData){
     h+='<div class="tf-card"><div class="tf-empty">لا توجد بيانات مالية لهذه المدرسة بعد.<br>تُعرَض البيانات تلقائيًا فور إدخالها/مزامنتها في ملف المدرسة.</div></div></div>';
@@ -16990,7 +16999,7 @@ function _tfRender(res){
 
   // ── سندات القبض ──
   h+='<div class="tf-pane" id="tf-pane-receipts">'+
-     '<div class="tf-card"><h3>تصنيف الدخل (رسوم/سلف/أخرى)</h3>'+_tfBars(res.incomeByCategory,'#1a8d5f')+'</div>'+
+     '<div class="tf-card" id="tf-card-incomecat"><h3>تصنيف الدخل (رسوم/سلف/أخرى)</h3>'+_tfBars(res.incomeByCategory,'#1a8d5f')+'</div>'+
      '<div class="tf-card"><h3>أحدث السندات (آخر '+((res.recentReceipts||[]).length)+')'+
        ' <button class="tf-abtn" style="float:left" onclick="_tfExportRec()">⬇️ تصدير CSV</button></h3>'+
        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 2px 10px;">'+
@@ -17005,7 +17014,7 @@ function _tfRender(res){
 
   // ── المصروفات (تصنيف + تسوية الصندوق + فلترة) ──
   h+='<div class="tf-pane" id="tf-pane-expenses">'+
-     '<div class="tf-card"><h3>🧮 تسوية الصندوق</h3>'+_tfReconHtml(k)+'</div>'+
+     '<div class="tf-card" id="tf-card-recon"><h3>🧮 تسوية الصندوق</h3>'+_tfReconHtml(k)+'</div>'+
      '<div class="tf-card"><h3>تصنيف المصروفات — فلترة حسب النوع</h3>'+
        '<div class="tf-tabs" id="tf-exp-chips">'+_tfChips()+'</div>'+
        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 2px 10px;">'+
@@ -17154,10 +17163,14 @@ function _tfRender(res){
 function _tfApplyRoleView(){
   var u=App.user||{};
   if(u.role!=='accountant') return;
-  var hide=['overview','monthly'];
+  var hide=['overview','monthly','students'];
   for(var i=0;i<hide.length;i++){
     var tb=document.getElementById('tf-tab-'+hide[i]); if(tb) tb.style.display='none';
     var pn=document.getElementById('tf-pane-'+hide[i]); if(pn){ pn.style.display='none'; pn.classList.remove('active'); }
+  }
+  var hideEls=['tf-card-incomecat','tf-card-recon'];
+  for(var j=0;j<hideEls.length;j++){
+    var el=document.getElementById(hideEls[j]); if(el) el.style.display='none';
   }
   _tfTab('cashbox');   // تبويب تشغيلي افتراضي للمحاسب
 }
@@ -17472,6 +17485,26 @@ function _tfOpFillName(){
   var c=((document.getElementById('tfop-code')||{}).value||''); var n=document.getElementById('tfop-name');
   for(var i=0;i<acc.length;i++){ if((''+acc[i].code)===(''+c)){ if(n) n.value=acc[i].name; break; } }
 }
+function _tfOpStudentNames(){
+  var res=window._tfRes||{}, acc=(res.studentAccounts||[]), arr=[];
+  for(var i=0;i<acc.length;i++) arr.push(acc[i].name);
+  return arr;
+}
+function _tfOpSearchStudent(v){ _acRender('tfop-stu-ac', _tfOpStudentNames(), v, '_tfOpPickStudent'); }
+function _tfOpPickStudent(name){
+  var res=window._tfRes||{}, acc=(res.studentAccounts||[]);
+  var codeEl=document.getElementById('tfop-code'), nameEl=document.getElementById('tfop-name');
+  for(var i=0;i<acc.length;i++){ if((''+acc[i].name)===(''+name)){ if(codeEl) codeEl.value=acc[i].code; break; } }
+  if(nameEl) nameEl.value=name;
+  _acHideNow('tfop-stu-ac');
+}
+var TFOP_LABEL_SUGGESTIONS=['رسوم دراسية','قسط شهري','رسوم كتب','توريد للحساب'];
+function _tfOpSearchLabel(v){ _acRender('tfop-label-ac', TFOP_LABEL_SUGGESTIONS, v, '_tfOpPickLabel'); }
+function _tfOpPickLabel(v){ var el=document.getElementById('tfop-label'); if(el) el.value=v; _acHideNow('tfop-label-ac'); }
+function _tfOpToggleTransfer(){
+  var m=document.getElementById('tfop-method'), w=document.getElementById('tfop-transfer-wrap');
+  if(w) w.style.display=(m&&m.value==='تحويل')?'block':'none';
+}
 function _tfFld(id,label,attrs){
   return '<label style="display:block;margin:9px 0 3px;font-size:13px;color:#46506a;">'+label+'</label>'+
     '<input id="'+id+'" '+attrs+' style="width:100%;padding:9px 11px;border:1px solid #d8dee9;border-radius:9px;font-size:14px;box-sizing:border-box;">';
@@ -17481,14 +17514,22 @@ function _tfOpForm(type, prefill){
   var title='', body='';
   if(type==='receipt'){
     title='➕ تسجيل دفعة/قسط';
-    body=_tfStuDatalist()+
-      _tfFld('tfop-code','كود الطالب','list="tfop-stulist" value="'+_tfEsc(prefill.code||'')+'" oninput="_tfOpFillName()"')+
-      _tfFld('tfop-name','اسم الطالب','value="'+_tfEsc(prefill.name||'')+'"')+
+    body='<input type="hidden" id="tfop-code" value="'+_tfEsc(prefill.code||'')+'">'+
+      _tfFld('tfop-name','اسم الطالب','value="'+_tfEsc(prefill.name||'')+'" oninput="_tfOpSearchStudent(this.value)" onblur="_acHide(\'tfop-stu-ac\')" autocomplete="off"')+
+      '<div id="tfop-stu-ac" class="ac-box" style="position:relative;"></div>'+
       _tfFld('tfop-amount','المبلغ (ريال)','type="number" inputmode="numeric" placeholder="0"')+
       '<label style="display:block;margin:9px 0 3px;font-size:13px;color:#46506a;">طريقة الدفع</label>'+
-      '<select id="tfop-method" style="width:100%;padding:9px 11px;border:1px solid #d8dee9;border-radius:9px;font-size:14px;box-sizing:border-box;"><option>نقد</option><option>تحويل</option><option>شيك</option></select>'+
+      '<select id="tfop-method" onchange="_tfOpToggleTransfer()" style="width:100%;padding:9px 11px;border:1px solid #d8dee9;border-radius:9px;font-size:14px;box-sizing:border-box;"><option>نقد</option><option>تحويل</option><option>شيك</option></select>'+
+      '<div id="tfop-transfer-wrap" style="display:none;">'+
+        '<label style="display:block;margin:9px 0 3px;font-size:13px;color:#46506a;">جهة التحويل</label>'+
+        '<select id="tfop-transferDest" style="width:100%;padding:9px 11px;border:1px solid #d8dee9;border-radius:9px;font-size:14px;box-sizing:border-box;">'+
+          '<option>جيب</option><option>تحويل بنك الكريمي</option><option>جوالي</option><option>كاك بنك</option><option>فلوسك</option>'+
+        '</select>'+
+        _tfFld('tfop-transferNo','رقم الحوالة/المرجع','placeholder="اختياري"')+
+      '</div>'+
       _tfFld('tfop-date','تاريخ السند','type="date" value="'+_tfTodayIso()+'"')+
-      _tfFld('tfop-label','البيان','value="رسوم دراسية"');
+      _tfFld('tfop-label','البيان','value="رسوم دراسية" oninput="_tfOpSearchLabel(this.value)" onblur="_acHide(\'tfop-label-ac\')" autocomplete="off"')+
+      '<div id="tfop-label-ac" class="ac-box" style="position:relative;"></div>';
   } else if(type==='expense'){
     title='➖ إضافة مصروف';
     body=_tfFld('tfop-amount','المبلغ المسحوب (ريال)','type="number" inputmode="numeric" placeholder="0"')+
@@ -17518,7 +17559,10 @@ function _tfOpForm(type, prefill){
 function _tfOpSubmit(type){
   function v(id){ var e=document.getElementById(id); return e?(''+e.value).replace(/^\s+|\s+$/g,''):''; }
   var payload={};
-  if(type==='receipt') payload={code:v('tfop-code'),name:v('tfop-name'),amount:v('tfop-amount'),method:v('tfop-method'),date:v('tfop-date'),label:v('tfop-label')};
+  if(type==='receipt'){
+    payload={code:v('tfop-code'),name:v('tfop-name'),amount:v('tfop-amount'),method:v('tfop-method'),date:v('tfop-date'),label:v('tfop-label')};
+    if(payload.method==='تحويل'){ payload.transferDest=v('tfop-transferDest'); payload.transferNo=v('tfop-transferNo'); }
+  }
   else if(type==='expense') payload={amount:v('tfop-amount'),label:v('tfop-label'),date:v('tfop-date')};
   else if(type==='supply') payload={amount:v('tfop-amount'),date:v('tfop-date'),note:v('tfop-note')};
   else if(type==='fee_adjust') payload={code:v('tfop-code'),name:v('tfop-name'),newFee:v('tfop-newfee')};
