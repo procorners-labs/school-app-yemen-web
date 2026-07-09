@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # school-app-yemen-web — منصة مدارس الإبداع والتميز الدولية
 
-> هذا الـrepo (**عام**) يحتوي فقط: `frontend/` + `worker/`
+> هذا الـrepo (**عام**) يحتوي: `frontend/` + `worker/` + `media/`
 > كود GAS المصدري والأدوات موجودة في `C:\Users\osama\SchoolApp-gas` (مستودع **خاص**).
-> آخر تحديث: 2026-06-19
+> آخر تحديث: 2026-07-09
 
 ---
 
@@ -18,15 +18,22 @@ STRICT SCOPE RULE: only implement exactly what is authorized. Do not add extra p
 
 ---
 
+## Workflow Modes
+
+PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory updates ONLY. Do NOT write or edit production code until explicitly authorized. This complements the scope rule above — planning sessions output a plan/prompt, not a diff.
+
+---
+
 ## ما يُعدَّل هنا وما لا يُعدَّل
 
 | الملف/المجلد | الحكم | السبب |
 |---|---|---|
 | `worker/school-app-proxy.js` | ✅ عدِّل هنا | الـWorker خاص بهذا الـrepo |
 | `wrangler.jsonc` | ✅ عدِّل هنا | إعداد Cloudflare Worker |
+| `media/covers/` | ✅ يُكتَب هنا (غير كود) | أغلفة الأخبار النصية المُستضافة علناً (يكتب رابطها CMS عبر `_build/social/` من مستودع gas) |
 | `frontend/` | ❌ لا تعدِّل | يُبنى تلقائياً من gas repo عبر CI |
 
-**أي تعديل في GAS (teacher/student/home/cms/schedule/master-admin) → اذهب إلى `C:\Users\osama\SchoolApp-gas`.**
+**أي تعديل في GAS (teacher/student/home/home-all-school/cms/schedule/master-admin) → اذهب إلى `C:\Users\osama\SchoolApp-gas`.**
 
 ---
 
@@ -36,8 +43,8 @@ STRICT SCOPE RULE: only implement exactly what is authorized. Do not add extra p
 - ID: `10Zk0vwjrHagydYlU0kyjB6X9uoyVCN6sl5nSet1_c7w`
 - أعمدة مفتاحية: school_id(0)، teacher_file_id(4)، student_file_id(5)، cms_file_id(6)، schedule_file_id(7)، subscription_end(9)، is_active(10).
 
-**طبقة الخلفية:** 6 مشاريع GAS (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية)
-- `home · teacher · student · cms · schedule · master-admin`
+**طبقة الخلفية:** 7 مشاريع GAS (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية)
+- `home · home-all-school · teacher · student · cms · schedule · master-admin`
 - كل مشروع: `doGet` (HTML) + `doPost` عبر `ApiEndpoint.js` (JSON API).
 - النشر: Execute as **Me** · Access **Anyone** — **لا تغيير Deployment IDs أبداً**.
 
@@ -54,7 +61,7 @@ STRICT SCOPE RULE: only implement exactly what is authorized. Do not add extra p
 
 | المسار | الوظيفة |
 |---|---|
-| `/gas/<app>` | يمرّر POST/GET إلى GAS `/exec` المقابل (home/teacher/student/cms/schedule/master-admin) |
+| `/gas/<app>` | يمرّر POST/GET إلى GAS `/exec` المقابل (home/home-all-school/teacher/student/cms/schedule/master-admin) |
 | `/qr-img?url=...` | Proxy لصور QR من `api.qrserver.com` (fallback عند الحجب) |
 | `/qr-download?url=&name=` | تحميل QR كـ attachment |
 | `/oauth` | إعادة توجيه OAuth من فيسبوك/إنستغرام → GAS CMS |
@@ -95,6 +102,16 @@ node --check worker/school-app-proxy.js
 ## Deployment Workflow
 
 After implementing a Worker change: run `node --check worker/school-app-proxy.js`, open a PR, merge, then live-verify via the Worker health endpoint (Cloudflare Workers Builds auto-deploys on push to `main`) before reporting done. Any GAS-side change must be deployed separately via clasp from `SchoolApp-gas` — merging here never deploys backend logic.
+
+Verification checklist:
+- After a live check that doesn't show the expected result, rule out Cloudflare edge cache / browser cache before assuming the deploy failed — fetch fresh (cache-busting query param or hard refresh) before concluding.
+- Confirm which side actually needs redeploying: a Worker-only change needs this repo's `main` to build; a GAS backend change needs `SchoolApp-gas` clasp deploy — merging a PR here never triggers that.
+
+---
+
+## Environment & Constraints
+
+Environment notes: this repo is a Cloudflare Worker + generated static frontend (no GAS/ES5 code lives here — see Scope table above). Prefer terminal-only workflows (`wrangler`, `gh`, `node --check`); avoid browser automation unless explicitly requested.
 
 ---
 
