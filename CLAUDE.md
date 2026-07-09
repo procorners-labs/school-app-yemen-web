@@ -43,8 +43,9 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 - ID: `10Zk0vwjrHagydYlU0kyjB6X9uoyVCN6sl5nSet1_c7w`
 - أعمدة مفتاحية: school_id(0)، teacher_file_id(4)، student_file_id(5)، cms_file_id(6)، schedule_file_id(7)، subscription_end(9)، is_active(10).
 
-**طبقة الخلفية:** 7 مشاريع GAS (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية)
+**طبقة الخلفية:** 7 مشاريع GAS كاملة (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية) + نقطة توجيه ثامنة
 - `home · home-all-school · teacher · student · cms · schedule · master-admin`
+- + `pricing` — مشروع GAS مستقلّ ثامن يُخدَّم عبر مسار `/pricing` في الـWorker (صفحة تسعيرة فقط، لا `doPost`/API كامل مثل السبعة الرئيسية).
 - كل مشروع: `doGet` (HTML) + `doPost` عبر `ApiEndpoint.js` (JSON API).
 - النشر: Execute as **Me** · Access **Anyone** — **لا تغيير Deployment IDs أبداً**.
 
@@ -66,9 +67,16 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 | `/qr-download?url=&name=` | تحميل QR كـ attachment |
 | `/oauth` | إعادة توجيه OAuth من فيسبوك/إنستغرام → GAS CMS |
 | `/pricing` | عرض HTML صفحة التسعيرة من GAS منفصل |
-| `/*` | يخدم الصفحات من GitHub Pages (`procorners-labs.github.io/school-app-yemen-web`) |
+| `/media/drive/<fileId>` | بثّ فيديو Google Drive كـ `video/mp4` مع دعم Range requests (بثّ مباشر بلا تخزين، يتجاوز فحص الفيروسات لملفات Drive الكبيرة) |
+| `/drive-upload` | وسيط رفع resumable إلى جلسة Drive (PUT مباشر)، مع تحقّق SSRF مقيَّد بنطاق `*.googleapis.com` فقط |
+| `/*` | يخدم الصفحات من GitHub Pages (`procorners-labs.github.io/school-app-yemen-web`) — يحقن أيضاً وسوم OG لكل خبر عبر `?news=<id>` |
 
-عند إضافة مسار جديد: أضفه قبل قسم «خدمة الموقع الثابت» (السطر 164+).
+عند إضافة مسار جديد: أضفه قبل قسم «خدمة الموقع الثابت» (ابحث عن العنوان — لا تعتمد رقم سطر ثابت، الملف ينمو).
+
+**إعادة المحاولة عند استجابة GAS متقطّعة:** GAS يُرجع أحياناً 404/HTML اعتراضي بدل تنفيذ الدالة
+(~6% من الطلبات). `/gas/<app>` يعيد المحاولة تلقائياً حتى 4 مرّات بفواصل تصاعدية `[250,600,1200]ms`
+(طلبات POST فقط؛ GET يقبل HTML طبيعياً)، ويرجع JSON خطأ صالح (503) لا HTML خام عند استنفاد المحاولات
+— يهبط معدّل الفشل الظاهر للمستخدم من ~6% إلى ~0.02%.
 
 **Deployment IDs الثابتة في الـWorker (لا تغيّرها):**
 ```
@@ -83,7 +91,7 @@ teacher:  AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArv
 **gas repo → web repo (تلقائي):**
 ```
 push to school-app-yemen-gas/main
-  → CI: build-frontend.js → test-offline.js (15 test) → gen-endpoints.js --check
+  → CI: build-frontend.js → test-offline.js (24 test) → gen-endpoints.js --check
   → rsync frontend/ → school-app-yemen-web/main
   → GitHub Pages يُحدَّث + Worker يُنشر تلقائياً (Cloudflare Workers Builds)
 ```
