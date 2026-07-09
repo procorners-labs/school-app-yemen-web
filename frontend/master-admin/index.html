@@ -570,15 +570,8 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     <!-- ═══ الإعدادات ═══ -->
     <div id="section-settings" class="section">
       <div class="section-title">⚙️ الإعدادات المركزية</div>
-      <div class="panel">
-        <div class="panel-title">💰 إعدادات الحجب المالي</div>
-        <div class="form-row">
-          <div class="form-col"><label>نسبة الحجب (%)</label><input type="number" id="setting-block-pct" placeholder="مثال: 10" min="0" max="100" step="1" style="width:180px;"></div>
-          <div class="form-col" style="justify-content:flex-end;"><button class="btn btn-primary" onclick="settings_saveBlockPct()">💾 حفظ</button></div>
-        </div>
-        <p style="font-size:12px;color:#888;margin-top:4px;">⚠️ سيُطبَّق فوراً على منصة الطالب عند حفظ هذا الإعداد.</p>
-        <div id="setting-block-status" style="margin-top:8px;"></div>
-      </div>
+      <!-- إعداد "نسبة الحجب" المركزي المنفصل حُذف 2026-07-09 — مصدر الحقيقة الوحيد الآن هو
+           إعداد الحجب المالي في لوحة المعلّم (teacher/CLAUDE.md البند 9). -->
       <div class="panel">
         <div class="panel-title">⚙️ جميع الإعدادات</div>
         <div id="all-settings-container"></div>
@@ -1658,17 +1651,7 @@ function audit_filter() {
 }
 
 // ── الإعدادات ─────────────────────────────────────────────────
-
-function settings_saveBlockPct() {
-  var val = document.getElementById('setting-block-pct').value;
-  var status = document.getElementById('setting-block-status');
-  if (!val) { status.innerHTML = '<div class="status-msg status-error">أدخل قيمة صحيحة</div>'; return; }
-  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ الحفظ وتطبيق التغيير...</div>';
-  google.script.run
-    .withSuccessHandler(function(res) { status.innerHTML = res && res.success ? '<div class="status-msg status-success">✅ ' + res.message + '</div>' : '<div class="status-msg status-error">❌ ' + (res ? res.error : 'خطأ') + '</div>'; })
-    .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
-    .saveMasterSettingProtected({ token: App.token, key: 'block_percentage', value: val });
-}
+// (إعداد "نسبة الحجب" المركزي المنفصل حُذف 2026-07-09 — راجع MasterAdmin.html القسم أعلاه)
 
 function settings_loadAll() {
   google.script.run
@@ -1682,9 +1665,6 @@ function settings_loadAll() {
         html += '<tr><td><code>' + s.key + '</code></td><td><strong>' + s.value + '</strong></td><td style="color:#888;">' + s.description + '</td><td style="font-size:11px;color:#aaa;">' + s.lastModified + '</td><td style="font-size:12px;">' + s.modifiedBy + '</td></tr>';
       }
       el.innerHTML = html + '</tbody></table>';
-      for (var j = 0; j < settings.length; j++) {
-        if (settings[j].key === 'block_percentage') { var bpEl = document.getElementById('setting-block-pct'); if (bpEl) bpEl.value = settings[j].value; break; }
-      }
     })
     .withFailureHandler(function() {})
     .getAllSettingsProtected({ token: App.token });
