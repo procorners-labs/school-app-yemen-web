@@ -55,6 +55,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>منصة الطالب — مدرستي</title>
 
+<script>
+(function () {
+  try {
+    var v = window.localStorage ? localStorage.getItem('stThemeMode_v1') : null;
+    if (!v) v = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', v);
+  } catch (e) {}
+})();
+</script>
+
 <!-- ════════════════════════════════════════════════════════════
      CSS — منصة الطالب
      - متغيرات موحّدة، تصميم متجاوب، دعم RTL، رسوم متحركة خفيفة
@@ -68,6 +78,7 @@
   --pr-d    : #0A4266;
   --pr-l    : #4E97C4;
   --pr-bg   : #eaf2f8;
+  --pr-glow : rgba(15,92,140,.35);
 
   /* ألوان دلالية */
   --ok      : #16a34a;
@@ -108,6 +119,19 @@
   --tr      : .25s cubic-bezier(.4,0,.2,1);
   --tr-s    : .15s ease;
   --tr-l    : .5s cubic-bezier(.4,0,.2,1);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f172a; --bg-2: #0a1120; --card: #1e293b;
+  --txt: #f1f5f9; --muted: #94a3b8; --soft: #64748b; --bdr: #334155; --bdr-2: #475569;
+}
+:root[data-theme="pro"] {
+  --bg: #060a14; --bg-2: #040710; --card: #0d1424;
+  --txt: #f8fafc; --muted: #a5b4cb; --soft: #64748b; --bdr: var(--pr-glow); --bdr-2: var(--pr-glow);
+}
+:root[data-theme="pro"] .tab-btn.active {
+  box-shadow: 0 0 0 1px var(--pr-glow), 0 6px 20px var(--pr-glow);
+  background-image: linear-gradient(135deg, var(--pr), var(--pr-d));
 }
 
 /* ───── إعادة تهيئة عامة ───── */
@@ -339,6 +363,33 @@ a { color: var(--pr); text-decoration: none; }
 }
 .nav-btn:hover { background: rgba(255,255,255,.25); }
 .nav-btn:active { transform: scale(.92); }
+
+/* THEME TOGGLE — تبديل وضع العرض (نهاري/ليلي/احترافي) */
+.thm-wrap { position: relative; flex-shrink: 0; }
+.thm-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  font-size: 17px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--tr-s), transform var(--tr-s);
+}
+.thm-btn:hover { background: rgba(255,255,255,.25); }
+.thm-btn:active { transform: scale(.92); }
+.thm-menu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 60;
+  background: var(--card); border: 1px solid var(--bdr); border-radius: var(--rad);
+  box-shadow: var(--sh-3); padding: 6px; min-width: 140px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.thm-item {
+  background: none; border: none; border-radius: var(--rad-s); padding: 8px 10px;
+  font-size: .85rem; color: var(--txt); text-align: right; cursor: pointer;
+  transition: background var(--tr-s);
+}
+.thm-item:hover { background: var(--pr-bg); }
+.thm-item.active { background: var(--pr-bg); color: var(--pr); font-weight: 600; }
 
 /* ── شريط التبويبات ── */
 .tabs-bar {
@@ -1575,6 +1626,10 @@ a { color: var(--pr); text-decoration: none; }
    Print (للتقارير)
 ═══════════════════════════════════════════════ */
 @media print {
+  :root, :root[data-theme="dark"], :root[data-theme="pro"] {
+    --bg: #f8fafc; --bg-2: #f1f5f9; --card: #ffffff;
+    --txt: #0f172a; --muted: #64748b; --soft: #94a3b8; --bdr: #e2e8f0; --bdr-2: #cbd5e1;
+  }
   .navbar, .tabs-bar, .refresh-btn, .news-filters, .modal-bg { display: none !important; }
   body { background: #fff; }
   .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
@@ -1714,6 +1769,14 @@ a { color: var(--pr); text-decoration: none; }
       </div>
     </div>
     <div class="nav-actions">
+      <div class="thm-wrap" id="thmWrap">
+        <button type="button" class="thm-btn" id="thmBtn" title="وضع العرض" onclick="thmToggleMenu(event); return false;">🌙</button>
+        <div class="thm-menu" id="thmMenu" style="display:none;">
+          <button type="button" class="thm-item" data-mode="light" onclick="thmPick('light')">☀️ نهاري</button>
+          <button type="button" class="thm-item" data-mode="dark"  onclick="thmPick('dark')">🌙 ليلي</button>
+          <button type="button" class="thm-item" data-mode="pro"   onclick="thmPick('pro')">💎 احترافي</button>
+        </div>
+      </div>
       <button class="nav-btn" title="تغيير كلمة المرور" onclick="openModal('pwModal')">🔑</button>
       <button class="nav-btn" title="تسجيل الخروج" onclick="doLogout()">🚪</button>
     </div>
@@ -5630,6 +5693,7 @@ function initLazyImages() {
       s.setProperty('--pr-d', _thShade(rgb, -0.30));
       s.setProperty('--pr-l', _thShade(rgb, 0.38));
       s.setProperty('--pr-bg', _thShade(rgb, 0.90));
+      s.setProperty('--pr-glow', 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.35)');
     } catch (eTh) {}
   }
   function applyBrand(b) {
@@ -5699,6 +5763,48 @@ function initLazyImages() {
   }
   if (document.readyState !== 'loading') run();
   else document.addEventListener('DOMContentLoaded', run);
+})();
+
+/* تبديل وضع العرض (نهاري/ليلي/احترافي) */
+(function () {
+  var THM_KEY = 'stThemeMode_v1';
+  function thmGetSaved() {
+    try { return window.localStorage ? localStorage.getItem(THM_KEY) : null; } catch (e) { return null; }
+  }
+  function thmIcon(mode) {
+    if (mode === 'dark') return '🌙';
+    if (mode === 'pro') return '💎';
+    return '☀️';
+  }
+  function applyThemeMode(mode) {
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'pro') mode = 'light';
+    try { document.documentElement.setAttribute('data-theme', mode); } catch (e) {}
+    try { if (window.localStorage) localStorage.setItem(THM_KEY, mode); } catch (e) {}
+    var btn = document.getElementById('thmBtn');
+    if (btn) btn.textContent = thmIcon(mode);
+    var items = document.querySelectorAll('.thm-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].className = 'thm-item' + (items[i].getAttribute('data-mode') === mode ? ' active' : '');
+    }
+  }
+  function thmToggleMenu(ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    var m = document.getElementById('thmMenu');
+    if (m) m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
+  }
+  function thmPick(mode) {
+    applyThemeMode(mode);
+    var m = document.getElementById('thmMenu');
+    if (m) m.style.display = 'none';
+  }
+  document.addEventListener('click', function (ev) {
+    var wrap = document.getElementById('thmWrap');
+    var m = document.getElementById('thmMenu');
+    if (m && wrap && !wrap.contains(ev.target)) m.style.display = 'none';
+  });
+  applyThemeMode(thmGetSaved() || document.documentElement.getAttribute('data-theme') || 'light');
+  window.thmToggleMenu = thmToggleMenu;
+  window.thmPick = thmPick;
 })();
 </script>
 
