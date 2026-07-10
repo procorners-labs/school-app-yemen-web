@@ -1051,13 +1051,13 @@ img,video,iframe{max-width:100%;display:block}
     <div class="topbar-inner">
       <div class="tb-contacts">
         <span><i class="fas fa-map-marker-alt"></i> اليمن – صنعاء – السنينة - حي الطيران</span>
-        <span><i class="fas fa-phone-alt"></i> 775189922</span>
-        <span><i class="fab fa-whatsapp"></i> 775189922</span>
+        <span><i class="fas fa-phone-alt"></i> <span id="tbPhone">775189922</span></span>
+        <span><i class="fab fa-whatsapp"></i> <span id="tbWa">775189922</span></span>
       </div>
       <div class="tb-socials">
-        <a href="https://www.facebook.com/abdaawatmuaz.school" target="_blank" rel="noopener" aria-label="فيسبوك"><i class="fab fa-facebook-f"></i></a>
-        <a href="https://www.instagram.com/ebdaa.2026" target="_blank" rel="noopener" aria-label="إنستغرام"><i class="fab fa-instagram"></i></a>
-        <a href="https://youtube.com/@ebda3tamayz_school" target="_blank" rel="noopener" aria-label="يوتيوب"><i class="fab fa-youtube"></i></a>
+        <a id="tbFb" href="https://www.facebook.com/abdaawatmuaz.school" target="_blank" rel="noopener" aria-label="فيسبوك"><i class="fab fa-facebook-f"></i></a>
+        <a id="tbIg" href="https://www.instagram.com/albdaawatmuazschool" target="_blank" rel="noopener" aria-label="إنستغرام"><i class="fab fa-instagram"></i></a>
+        <a id="tbYt" href="https://youtube.com/@albdaawatmuazschool" target="_blank" rel="noopener" aria-label="يوتيوب"><i class="fab fa-youtube"></i></a>
       </div>
     </div>
   </div>
@@ -1437,9 +1437,9 @@ img,video,iframe{max-width:100%;display:block}
         <div class="fb-name">مدارس الإبداع والتميز الدولية</div>
         <p class="fb-desc">صرح تعليمي رائد يهتم ببناء جيل مبدع ومتميز أخلاقياً وعلمياً، يحمل قيم الأصالة ويواكب متطلبات العصر الحديث.</p>
         <div class="fb-soc">
-          <a href="https://www.facebook.com/abdaawatmuaz.school" target="_blank" rel="noopener" aria-label="فيسبوك"><i class="fab fa-facebook-f"></i></a>
-          <a href="https://www.instagram.com/ebdaa.2026" target="_blank" rel="noopener" aria-label="إنستغرام"><i class="fab fa-instagram"></i></a>
-          <a href="https://youtube.com/@ebda3tamayz_school" target="_blank" rel="noopener" aria-label="يوتيوب"><i class="fab fa-youtube"></i></a>
+          <a id="ftFb" href="https://www.facebook.com/abdaawatmuaz.school" target="_blank" rel="noopener" aria-label="فيسبوك"><i class="fab fa-facebook-f"></i></a>
+          <a id="ftIg" href="https://www.instagram.com/albdaawatmuazschool" target="_blank" rel="noopener" aria-label="إنستغرام"><i class="fab fa-instagram"></i></a>
+          <a id="ftYt" href="https://youtube.com/@albdaawatmuazschool" target="_blank" rel="noopener" aria-label="يوتيوب"><i class="fab fa-youtube"></i></a>
         </div>
       </div>
       <div class="fc">
@@ -1458,8 +1458,8 @@ img,video,iframe{max-width:100%;display:block}
         <h4>تواصل معنا</h4>
         <div class="fc-contact">
           <span><i class="fas fa-map-marker-alt"></i>  اليمن – صنعاء – السنينة - حي الطيران</span>
-          <span><i class="fas fa-phone-alt"></i> 775189922</span>
-          <span><i class="fab fa-whatsapp"></i> 775189922</span>
+          <span><i class="fas fa-phone-alt"></i> <span id="fcPhone">775189922</span></span>
+          <span><i class="fab fa-whatsapp"></i> <span id="fcWa">775189922</span></span>
           <span><i class="far fa-envelope"></i> info@ebdaa-tamayuz.edu</span>
         </div>
       </div>
@@ -2102,6 +2102,14 @@ function loadHomeBundle(){
             if(sc.lat) merged.latitude = sc.lat;
             if(sc.lng) merged.longitude = sc.lng;
             if(sc.map_url) merged.hasMap = sc.map_url;
+            // سوشل ميديا: ابنِ sameAs من الأعمدة الفعلية إن وُجدت قيمة واحدة على الأقل،
+            // وإلا اترك مصفوفة SCHOOL_PROFILE الافتراضية كاحتياط لصفوف بلا هذه الأعمدة بعد.
+            if(sc.facebook || sc.instagram || sc.youtube){
+              merged.sameAs = [];
+              if(sc.facebook)  merged.sameAs.push(sc.facebook);
+              if(sc.instagram) merged.sameAs.push(sc.instagram);
+              if(sc.youtube)   merged.sameAs.push(sc.youtube);
+            }
             window.applySchoolSeo(merged);
           }
         } else {
@@ -2209,10 +2217,14 @@ document.addEventListener('DOMContentLoaded',function(){
     latitude: 15.3533474,
     longitude: 44.163141,
     hasMap: 'https://www.google.com/maps/search/?api=1&query=15.3533474,44.163141',
+    whatsapp: '775189922',
+    facebook: 'https://www.facebook.com/abdaawatmuaz.school',
+    instagram: 'https://www.instagram.com/albdaawatmuazschool',
+    youtube: 'https://youtube.com/@albdaawatmuazschool',
     sameAs: [
       'https://www.facebook.com/abdaawatmuaz.school',
-      'https://www.instagram.com/ebdaa.2026',
-      'https://youtube.com/@ebda3tamayz_school'
+      'https://www.instagram.com/albdaawatmuazschool',
+      'https://youtube.com/@albdaawatmuazschool'
     ]
   };
 
@@ -2229,8 +2241,45 @@ document.addEventListener('DOMContentLoaded',function(){
     el.setAttribute('content', value);
   }
 
+  // يحوّل نطاقاً مجرّداً (مثل facebook.com/x) إلى https://facebook.com/x بأمان، ويرفض
+  // مخطّطات خطرة (javascript:/data:/…). نفس نمط safeUrl في home-all-school/Index.html.
+  function safeUrl(u){
+    u = (u === null || u === undefined) ? '' : String(u).trim();
+    if(!u) return '';
+    if(/^https?:\/\//i.test(u)) return u;
+    if(/^\/\//.test(u)) return 'https:' + u;
+    if(/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';
+    return 'https://' + u;
+  }
+
+  function setLink(id, rawUrl){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var url = safeUrl(rawUrl);
+    if(url){ el.href = url; el.style.display = ''; }
+    else { el.style.display = 'none'; }
+  }
+
+  function setText(id, value){
+    var el = document.getElementById(id);
+    if(el) el.textContent = value || '';
+  }
+
+  function applyContacts(p){
+    var waDisplay = (p.whatsapp || '').replace(/^\+?967/, '');
+    setText('tbPhone', p.phoneDisplay);
+    setText('fcPhone', p.phoneDisplay);
+    setText('tbWa', waDisplay);
+    setText('fcWa', waDisplay);
+    setLink('tbFb', p.facebook); setLink('ftFb', p.facebook);
+    setLink('tbIg', p.instagram); setLink('ftIg', p.instagram);
+    setLink('tbYt', p.youtube); setLink('ftYt', p.youtube);
+  }
+
   function applySeo(p){
     if(!p || !p.name) return;
+    p.phoneDisplay = (p.telephone || '').replace(/^\+967/, '');
+    applyContacts(p);
     document.title = p.name + (p.tagline ? ' — ' + p.tagline : '');
     setMeta('meta[name="description"]', p.description);
     setMeta('meta[property="og:title"]', p.name);
