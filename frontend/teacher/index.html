@@ -2671,6 +2671,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     }
     function applyBrand(b) {
       if (!b) return;
+      window._schoolBrand = b;
       if (b.color) {
         applyTheme(b.color);
         try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {}
@@ -9911,11 +9912,32 @@ function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gen
   var titleSize = compact ? '.7rem' : (totalLen <= 40 ? '1.55rem' : (totalLen <= 90 ? '1.15rem' : '1rem'));
   var bodySize = compact ? '.6rem' : (totalLen <= 90 ? '.92rem' : '.8rem');
   var titleHtml = '<div style="font-weight:800;color:#0f2545;font-size:' + titleSize + ';line-height:1.45;max-height:' + (compact ? '4.4em' : '3.5em') + ';overflow:hidden;">' + esc(first) + '</div>';
-  var bodyHtml = (rest && !compact) ? ('<div style="margin-top:10px;font-weight:400;color:#475569;font-size:' + bodySize + ';line-height:1.7;max-height:7.5em;overflow:hidden;">' + esc(rest) + '</div>') : '';
+  // تذييل هوية المدرسة الكامل (هاتف/عنوان/سوشل ميديا) — الحقول التسعة كاملة هنا فقط
+  // (غلاف الأخبار يُنشَر علناً)، داخل بطاقة النص البيضاء المحمية أصلاً بـoverflow:hidden
+  // كي لا يكسر تخطيط الأشرطة المضبوطة بالنسبة المئوية أعلى/أسفل الصورة. مساحة المتن
+  // تُقلَّص قليلاً عند وجود تذييل كي لا يُقصَّه overflow:hidden صامتاً (نظير حجز
+  // footerReserve في مسار Canvas أدناه).
+  var _tcBrand = window._schoolBrand || {};
+  var _tcContactBits = [];
+  if (_tcBrand.phone) _tcContactBits.push(esc(_tcBrand.phone));
+  if (_tcBrand.address) _tcContactBits.push(esc(_tcBrand.address));
+  var _tcSocialBits = [];
+  if (_tcBrand.whatsapp) _tcSocialBits.push('💬');
+  if (_tcBrand.facebook) _tcSocialBits.push('📘');
+  if (_tcBrand.instagram) _tcSocialBits.push('📸');
+  if (_tcBrand.youtube) _tcSocialBits.push('▶️');
+  var _tcHasFooterHtml = !compact && (_tcContactBits.length || _tcSocialBits.length);
+  var bodyHtml = (rest && !compact) ? ('<div style="margin-top:10px;font-weight:400;color:#475569;font-size:' + bodySize + ';line-height:1.7;max-height:' + (_tcHasFooterHtml ? '6em' : '7.5em') + ';overflow:hidden;">' + esc(rest) + '</div>') : '';
+  var footerHtml = _tcHasFooterHtml
+    ? ('<div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0;font-size:.6rem;color:#64748b;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;">' +
+        (_tcContactBits.length ? ('<span>' + _tcContactBits.join(' · ') + '</span>') : '') +
+        (_tcSocialBits.length ? ('<span style="font-size:.72rem;">' + _tcSocialBits.join(' ') + '</span>') : '') +
+      '</div>')
+    : '';
   var windowHtml = '<div style="position:absolute;top:' + topPct + '%;bottom:' + botPct + '%;left:' + sidePct + '%;right:' + sidePct + '%;' +
     'background:#fff;border-radius:' + (compact ? 8 : 12) + 'px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;' +
     'padding:' + (compact ? '8px 10px' : '22px 26px') + ';box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2;">' +
-    titleHtml + bodyHtml +
+    titleHtml + bodyHtml + footerHtml +
   '</div>';
 
   var dateChip = dateLabel ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:700;padding:4px 12px;border-radius:999px;">📅 ' + esc(dateLabel) + '</span>') : '';
@@ -10011,12 +10033,30 @@ function _tcTextCoverBlob(item, cb) {
     var titleLH = titleFontPx * 1.3, blockGap = 28, PAD = 70;
     var availH = winH - PAD * 2;
 
-    // حساب سعة الشرائح عند حجم خط متن معيّن (الشريحة 1 ينقصها ارتفاع العنوان)
+    // تذييل هوية المدرسة الكامل (هاتف/عنوان/سوشل ميديا) على الشريحة الأولى فقط —
+    // مساحته محجوزة دائماً في حساب السعة (بصرف النظر عن توفّر البيانات فعلياً) كي لا
+    // يعتمد ترقيم الشرائح على اكتمال بيانات المدرسة (سلوك تقسيم متّسق لكل المدارس).
+    var _tcBrand = window._schoolBrand || {};
+    var _tcContactBits = [];
+    if (_tcBrand.phone) _tcContactBits.push(_tcBrand.phone);
+    if (_tcBrand.address) _tcContactBits.push(_tcBrand.address);
+    var _tcContactLine = _tcContactBits.join(' · ');
+    var _tcSocialBits = [];
+    if (_tcBrand.whatsapp) _tcSocialBits.push('💬');
+    if (_tcBrand.facebook) _tcSocialBits.push('📘');
+    if (_tcBrand.instagram) _tcSocialBits.push('📸');
+    if (_tcBrand.youtube) _tcSocialBits.push('▶️');
+    var _tcSocialLine = _tcSocialBits.join('   ');
+    var _tcHasFooter = !!(_tcContactLine || _tcSocialLine);
+    var footerFontPx = 22, footerLH = footerFontPx * 1.5, footerGap = 18;
+    var footerReserve = footerGap + footerLH;
+
+    // حساب سعة الشرائح عند حجم خط متن معيّن (الشريحة 1 ينقصها ارتفاع العنوان + التذييل)
     function layoutAt(px) {
       var lh = px * 1.55;
       var lines = rest ? wrapText(rest, winW - 140, '400 ' + px + 'px ' + FONT) : [];
       var titleH = titleLines.length * titleLH;
-      var cap1 = Math.max(0, Math.floor((availH - titleH - (lines.length ? blockGap : 0)) / lh));
+      var cap1 = Math.max(0, Math.floor((availH - titleH - (lines.length ? blockGap : 0) - footerReserve) / lh));
       var capN = Math.max(1, Math.floor(availH / lh));
       var n = 1;
       if (lines.length > cap1) n = 1 + Math.ceil((lines.length - cap1) / capN);
@@ -10086,11 +10126,13 @@ function _tcTextCoverBlob(item, cb) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       try { ctx.direction = 'rtl'; } catch (e1) {}
 
-      // نص الشريحة: العنوان على الأولى فقط + نصيبها من المتن — ممركزة رأسياً
+      // نص الشريحة: العنوان على الأولى فقط + نصيبها من المتن + تذييل الهوية — ممركزة رأسياً
       var chunk = chunks[idx] || [];
       var isFirstSlide = (idx === 0);
       var tH = isFirstSlide ? titleLines.length * titleLH : 0;
-      var totalH = tH + (tH && chunk.length ? blockGap : 0) + chunk.length * bodyLH;
+      var showFooter = isFirstSlide && _tcHasFooter;
+      var footerH = showFooter ? footerReserve : 0;
+      var totalH = tH + (tH && chunk.length ? blockGap : 0) + chunk.length * bodyLH + footerH;
       var cy = winY + winH / 2 - totalH / 2;
       if (isFirstSlide) {
         ctx.fillStyle = '#0f2545';
@@ -10102,6 +10144,17 @@ function _tcTextCoverBlob(item, cb) {
         ctx.fillStyle = '#475569';
         ctx.font = '400 ' + bodyFontPx + 'px ' + FONT;
         for (var bi = 0; bi < chunk.length; bi++) { ctx.fillText(chunk[bi], W / 2, cy + bodyLH / 2, winW - 120); cy += bodyLH; }
+      }
+      if (showFooter) {
+        cy += footerGap;
+        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(winX + 60, cy); ctx.lineTo(winX + winW - 60, cy); ctx.stroke();
+        var footerParts = [];
+        if (_tcContactLine) footerParts.push(_tcContactLine);
+        if (_tcSocialLine) footerParts.push(_tcSocialLine);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '400 ' + footerFontPx + 'px ' + FONT;
+        ctx.fillText(footerParts.join('   '), W / 2, cy + footerLH / 2 + 6, winW - 100);
       }
 
       // الشريط العلوي: شعار دائري بحلقة ذهبية + اسم المدرسة + كبسولة النوع
@@ -11203,7 +11256,9 @@ function _schedPrintWindow(bodyHtml, title, page) {
     '.sPTbd{margin-top:54px;}' +
     '@media print{.sPT{display:none!important}.sPTbd{margin-top:0!important}}';
   var css = 'body{font-family:"Tahoma","Segoe UI",sans-serif;direction:rtl;padding:6mm;color:#111}' +
-    'h2{text-align:center;margin:0 0 4px;font-size:18px}' +
+    '.sched-head{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 4px}' +
+    '.sched-head img{height:34px;max-width:64px;object-fit:contain}' +
+    'h2{text-align:center;margin:0;font-size:18px}' +
     'h4{text-align:center;margin:0 0 12px;color:#555;font-weight:500;font-size:13px}' +
     'table{width:100%;border-collapse:collapse;font-size:12px}' +
     'th,td{border:1px solid #444;padding:5px;text-align:center;vertical-align:top}' +
@@ -11276,7 +11331,8 @@ function _schedPrintGrid(page) {
   if (f.grade && f.grade !== 'الكل') subt.push('الفصل: ' + f.grade);
   if (f.section && f.section !== 'الكل') subt.push('الشعبة: ' + f.section);
   if (f.day) subt.push('اليوم: ' + f.day);
-  var body = '<div class="sched-page"><h2>' + escapeHtml(sn || 'جدول الحصص') + '</h2><h4>جدول الحصص' + (subt.length ? (' — ' + escapeHtml(subt.join(' · '))) : '') + '</h4>' + _schedPrintGridTable(rows) + '</div>';
+  var _schedLogo = window._schoolLogo ? ('<img src="' + escapeHtml(window._schoolLogo) + '" alt="" />') : '';
+  var body = '<div class="sched-page"><div class="sched-head">' + _schedLogo + '<h2>' + escapeHtml(sn || 'جدول الحصص') + '</h2></div><h4>جدول الحصص' + (subt.length ? (' — ' + escapeHtml(subt.join(' · '))) : '') + '</h4>' + _schedPrintGridTable(rows) + '</div>';
   _schedPrintWindow(body, 'جدول الحصص', page);
 }
 
@@ -13049,6 +13105,19 @@ function _downloadText(filename, text, mime){
 var CERT = { struct: null, data: null, selected: '', query: '', _st: null };
 
 function cert_schoolName(){ var el=document.querySelector('.school-brand-name'); return (el && (el.textContent||'').trim()) || 'المدرسة'; }
+// سطر اتصال هوية المدرسة (هاتف/عنوان) للمستندات الموجَّهة لأولياء الأمور — شرطي لكل حقل.
+function _extDocContactLine(){
+  var b=window._schoolBrand||{}, parts=[];
+  if(b.phone) parts.push(escapeHtml(b.phone));
+  if(b.address) parts.push(escapeHtml(b.address));
+  return parts.join(' · ');
+}
+// لون هوية المدرسة (تحقّق hex) — لحقن :root{--primary:...} في نوافذ طباعة منفصلة (document.write)
+// حيث لا تُورَث متغيّرات CSS من الصفحة الأصل تلقائياً.
+function _extDocBrandColor(){
+  var c=((window._schoolBrand||{}).color||'').toString().replace(/^\s+|\s+$/g,'');
+  return /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '';
+}
 function cert_hijriDate(){
   try { return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura',{day:'numeric',month:'long',year:'numeric'}).format(new Date()) + ' هـ'; }
   catch(e){ try { return new Date().toLocaleDateString('ar'); } catch(_){ return ''; } }
@@ -13217,15 +13286,19 @@ function cert_certHtml(stu){
   }
   var resClass = stu.result==='ناجح' ? 'ok' : (stu.result==='راسب' ? 'no' : 'rev');
   var sn=cert_schoolName();
+  var _brand=window._schoolBrand||{};
+  var crestHtml=_brand.logo?('<img src="'+escapeHtml(_brand.logo)+'" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:50%;" />'):'🎓';
+  var contactLine=_extDocContactLine();
   return ''+
   '<div class="cert">' +
     '<div class="cert-watermark">'+escapeHtml(sn)+'</div>' +
     '<div class="cert-head">' +
-      '<div class="cert-crest">🎓</div>' +
+      '<div class="cert-crest">'+crestHtml+'</div>' +
       '<div class="cert-htext">' +
         '<div class="cert-school">'+escapeHtml(sn)+'</div>' +
         '<div class="cert-title">شهادة درجات الطالب</div>' +
         '<div class="cert-sub">'+escapeHtml(month)+' · '+escapeHtml(stu.grade||'')+(stu.section?(' / '+escapeHtml(stu.section)):'')+'</div>' +
+        (contactLine?('<div class="cert-contact">'+contactLine+'</div>'):'') +
       '</div>' +
     '</div>' +
     '<div class="cert-info">' +
@@ -13265,6 +13338,7 @@ function cert_cssRules(){
   '.cert-school{font-size:17px;font-weight:800;letter-spacing:.2px}' +
   '.cert-title{font-size:13px;font-weight:700;color:var(--cv-gold2);margin-top:1px}' +
   '.cert-sub{font-size:11px;opacity:.92;margin-top:1px}' +
+  '.cert-contact{font-size:10px;opacity:.85;margin-top:2px}' +
   '.cert-info{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:7px 12px;font-size:12.5px;margin:12px 14px 8px;padding:10px 12px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px}' +
   '.cert-info>div{display:flex;flex-direction:column}' +
   '.cert-info span{color:#64748b;font-size:10px}' +
@@ -13459,7 +13533,12 @@ function ss_pdf(){ toast('في نافذة الطباعة اختر «حفظ كـ 
 
 // CSS نافذة طباعة الكشف (مستقلّ، يُلغي اللصق اللاصق والتمرير ويصغّر الخط للطباعة).
 function ss_winCss(){
-  return '#ssReport{--ssn:#0F2C5C}' +
+  var _bc=_extDocBrandColor();
+  return (_bc?(':root{--primary:'+_bc+';}'):'') +
+  '#ssReport{--ssn:var(--primary,#0F2C5C)}' +
+  '.ss-brand-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}' +
+  '.ss-brand-name{font-size:16px;font-weight:800;color:var(--ssn)}' +
+  '.ss-brand-contact{font-size:11px;color:#64748b;margin-top:2px}' +
   '.ss-info-card{background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:10px 12px;margin:10px 0}' +
   '.ss-card-title{font-weight:800;color:var(--ssn);font-size:13px;margin-bottom:8px}' +
   '.ss-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;font-size:12px}' +
@@ -13475,7 +13554,7 @@ function ss_winCss(){
   '.ss-table td.nm,.ss-table th.nm{text-align:right;min-width:120px;font-weight:600;color:var(--ssn)}' +
   '.ss-table td.avg,.ss-table th.avg{background:#eef4ff;font-weight:800}' +
   '.ss-table tbody tr:nth-child(even){background:#f8fafc}' +
-  '.ss-table tfoot .ss-grand td{background:#0F2C5C;color:#fff;font-weight:800}.ss-table tfoot .ss-grand td.tot{background:#11407a}' +
+  '.ss-table tfoot .ss-grand td{background:var(--ssn);color:#fff;font-weight:800}.ss-table tfoot .ss-grand td.tot{background:#11407a}' +
   '.ss-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.ss-stat{background:#fff;border:1px solid #e2e8f0;border-top:3px solid var(--c);border-radius:10px;padding:9px 6px;text-align:center}.ss-stat-v{font-size:16px;font-weight:800;color:var(--c)}.ss-stat-l{font-size:10px;color:#64748b;margin-top:2px}' +
   '*{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
   '.ss-info-card,.ss-legend,.ss-stats{page-break-inside:avoid}';
@@ -13514,6 +13593,13 @@ function ss_renderReport(){
 
   var nowStr=''; try{ nowStr=new Date().toLocaleString('ar'); }catch(e){ nowStr=cert_hijriDate(); }
 
+  // رأس هوية المدرسة (شعار حقيقي + اسم + هاتف/عنوان شرطيان) — مستند موجَّه لأولياء الأمور
+  var _brand=window._schoolBrand||{};
+  var ssLogo=_brand.logo?('<img src="'+escapeHtml(_brand.logo)+'" alt="" style="height:38px;max-width:70px;object-fit:contain;" />'):'';
+  var ssContact=_extDocContactLine();
+  var ssHead='<div class="ss-brand-head">'+ssLogo+'<div><div class="ss-brand-name">'+escapeHtml(cert_schoolName())+'</div>'+
+    (ssContact?('<div class="ss-brand-contact">'+ssContact+'</div>'):'')+'</div></div>';
+
   // بطاقة معلومات التقرير
   var info='<div class="ss-info-card"><div class="ss-card-title">📄 معلومات التقرير</div><div class="ss-info-grid">' +
     '<div><span>الفترة</span><b>'+escapeHtml(d.month||'')+'</b></div>' +
@@ -13535,7 +13621,7 @@ function ss_renderReport(){
     '<span style="--c:#0891b2">جيد (65-79)</span><span style="--c:#ca8a04">مقبول (50-64)</span>' +
     '<span style="--c:#ea580c">ضعيف (35-49)</span><span style="--c:#dc2626">ضعيف جداً (<35)</span></div>';
 
-  area.innerHTML = info + subjList + legend + ss_tableHtml(students,subjects,tpl) + ss_statsHtml(students);
+  area.innerHTML = ssHead + info + subjList + legend + ss_tableHtml(students,subjects,tpl) + ss_statsHtml(students);
 }
 
 function ss_tableHtml(students,subjects,tpl){
@@ -13606,7 +13692,10 @@ function ss_statsHtml(students){
 
 function ss_styleBlock(){
   return '<style id="ss-style">' +
-  '#ssReport{--ssn:#0F2C5C}' +
+  '#ssReport{--ssn:var(--primary,#0F2C5C)}' +
+  '.ss-brand-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}' +
+  '.ss-brand-name{font-size:16px;font-weight:800;color:var(--ssn)}' +
+  '.ss-brand-contact{font-size:11px;color:#64748b;margin-top:2px}' +
   '.ss-info-card{background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:10px 12px;margin:12px 0}' +
   '.ss-card-title{font-weight:800;color:var(--ssn);font-size:13px;margin-bottom:8px}' +
   '.ss-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px;font-size:12.5px}' +
@@ -14081,11 +14170,12 @@ function rep_printAllTeacherActivity() {
     rows += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(t.name) + '</td><td>' + escapeHtml(t.subject || '') + '</td><td>' + t.homework + '</td><td>' + t.news + '</td><td>' + t.violations + '</td><td>' + t.total + '</td><td>' + (t.last || '') + '</td></tr>';
   }
   var sn = ((document.querySelector('.school-brand-name') || {}).textContent) || '';
+  var _repLogo = window._schoolLogo ? ('<img src="' + escapeHtml(window._schoolLogo) + '" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />') : '';
   var head = '<p style="text-align:center">إجمالي المعلمين: ' + (s.totalTeachers || list.length) +
     ' · نشطون: ' + (s.activeTeachers || 0) + ' · بلا نشاط: ' + (s.inactiveTeachers || 0) +
     ' · متوسط النشاط/معلم: ' + (s.avgPerTeacher || 0) + '</p>';
   var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -14184,8 +14274,9 @@ function rep_printTasks() {
     rows += '<tr><td>' + t.teacher + '</td><td>' + t.total + '</td><td>' + t.done + '</td><td>' + t.confirmed + '</td><td>' + t.late + '</td><td>' + t.missed + '</td><td>' + t.commitment + '%</td><td>' + t.totalFee + '</td><td>' + t.totalDeduction + '</td><td>' + t.net + '</td></tr>';
   }
   var sn = ((document.querySelector('.school-brand-name') || {}).textContent) || '';
+  var _repLogo = window._schoolLogo ? ('<img src="' + escapeHtml(window._schoolLogo) + '" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />') : '';
   var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير أداء المهام</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>تقرير أداء المهام والإشراف — ' + sn + '</h2><table><thead><tr><th>المعلم</th><th>الإجمالي</th><th>منفّذ</th><th>مؤكّد</th><th>متأخر</th><th>لم يُنفّذ</th><th>الالتزام</th><th>الرسوم</th><th>الخصومات</th><th>الصافي</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير أداء المهام</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير أداء المهام والإشراف — ' + sn + '</h2><table><thead><tr><th>المعلم</th><th>الإجمالي</th><th>منفّذ</th><th>مؤكّد</th><th>متأخر</th><th>لم يُنفّذ</th><th>الالتزام</th><th>الرسوم</th><th>الخصومات</th><th>الصافي</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -14214,8 +14305,9 @@ function rep_printTeacherAbsence(){
   var list=window._repTabs||[]; var rows='';
   for(var i=0;i<list.length;i++){ var t=list[i]; rows+='<tr><td>'+t.teacher+'</td><td>'+t.totalPeriods+'</td><td>'+t.absentDays+'</td><td>'+t.absentPeriods+'</td><td>'+t.excused+'</td><td>'+t.unexcused+'</td><td>'+t.tasked+'</td></tr>'; }
   var sn=((document.querySelector('.school-brand-name')||{}).textContent)||'';
+  var _repLogo=window._schoolLogo?('<img src="'+escapeHtml(window._schoolLogo)+'" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />'):'';
   var w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة للطباعة','warning'); return; }
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>'+_repLogo+'تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -15853,9 +15945,15 @@ function sstat_renderReport(r) {
   var st = r.student || {};
   var h = '<div id="sstat-print" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
   var _sstatSchool = escapeHtml(((document.querySelector('.school-brand-name') || {}).textContent || '').trim() || 'إدارة المدرسة');
-  h += '<div style="text-align:center;border-bottom:2px solid #0F2C5C;padding-bottom:12px;margin-bottom:16px">' +
-       '<div style="font-size:20px;font-weight:800;color:#0F2C5C">بيان حالة الطالب</div>' +
-       '<div style="color:#64748b;font-size:13px">' + _sstatSchool + '</div></div>';
+  var _sstatBrand = window._schoolBrand || {};
+  var _sstatLogo = _sstatBrand.logo ? ('<img src="' + escapeHtml(_sstatBrand.logo) + '" alt="" style="height:40px;max-width:80px;object-fit:contain;margin-bottom:6px;" />') : '';
+  var _sstatContact = _extDocContactLine();
+  h += '<div style="text-align:center;border-bottom:2px solid var(--primary,#0F2C5C);padding-bottom:12px;margin-bottom:16px">' +
+       _sstatLogo +
+       '<div style="font-size:20px;font-weight:800;color:var(--primary,#0F2C5C)">بيان حالة الطالب</div>' +
+       '<div style="color:#64748b;font-size:13px">' + _sstatSchool + '</div>' +
+       (_sstatContact ? ('<div style="color:#94a3b8;font-size:11px;margin-top:2px">' + _sstatContact + '</div>') : '') +
+       '</div>';
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">' +
        sstat_kv('الاسم', st.name) + sstat_kv('الكود', st.code) + sstat_kv('الفصل', st.grade) +
        sstat_kv('الشعبة', st.section) + sstat_kv('الجوال', st.phone) + '</div>';
@@ -15870,8 +15968,8 @@ function sstat_renderReport(r) {
   h += '<div style="margin-top:12px;text-align:left"><button class="btn btn-secondary" onclick="sstat_print()">🖨️ طباعة</button></div>';
   return h;
 }
-function sstat_kv(k, v) { return '<div style="background:#f8fafc;border-radius:8px;padding:8px 12px"><div style="font-size:11px;color:#94a3b8">' + k + '</div><div style="font-weight:700;color:#0F2C5C">' + escapeHtml('' + ((v == null || v === '') ? '—' : v)) + '</div></div>'; }
-function sstat_card(title, inner) { return '<div style="border:1px solid #eef2f7;border-radius:10px;margin-bottom:12px;overflow:hidden"><div style="background:#0F2C5C;color:#fff;padding:8px 14px;font-weight:700;font-size:14px">' + title + '</div><div style="padding:12px">' + inner + '</div></div>'; }
+function sstat_kv(k, v) { return '<div style="background:#f8fafc;border-radius:8px;padding:8px 12px"><div style="font-size:11px;color:#94a3b8">' + k + '</div><div style="font-weight:700;color:var(--primary,#0F2C5C)">' + escapeHtml('' + ((v == null || v === '') ? '—' : v)) + '</div></div>'; }
+function sstat_card(title, inner) { return '<div style="border:1px solid #eef2f7;border-radius:10px;margin-bottom:12px;overflow:hidden"><div style="background:var(--primary,#0F2C5C);color:#fff;padding:8px 14px;font-weight:700;font-size:14px">' + title + '</div><div style="padding:12px">' + inner + '</div></div>'; }
 function sstat_list(arr, keys, labels) {
   if (!arr || !arr.length) return '<div style="color:#94a3b8;font-size:13px">لا توجد بيانات</div>';
   var h = '<div class="table-wrap"><table><thead><tr>';
@@ -15891,8 +15989,9 @@ function sstat_grades(arr) {
 function sstat_print() {
   var c = document.getElementById('sstat-print'); if (!c) return;
   var w = window.open('', '_blank');
+  var _bc = _extDocBrandColor();
   w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>بيان حالة الطالب</title>' +
-    '<style>body{font-family:Tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #ccc;padding:6px;font-size:13px;text-align:right}th{background:#0F2C5C;color:#fff}</style>' +
+    '<style>' + (_bc?(':root{--primary:'+_bc+';}'):'') + 'body{font-family:Tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #ccc;padding:6px;font-size:13px;text-align:right}th{background:var(--primary,#0F2C5C);color:#fff}</style>' +
     '</head><body>' + c.innerHTML + '</body></html>');
   w.document.close(); w.focus(); w.print();
 }
