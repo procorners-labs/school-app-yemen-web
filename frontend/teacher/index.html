@@ -17299,6 +17299,12 @@ function _tfModalOpen(title, bodyHtml){
 function _tfModalClose(){ var m=document.getElementById('tf-modal'); if(m){ m.style.display='none'; m.innerHTML=''; } }
 
 // ── الطباعة: كشف حساب طالب + إشعارات أولياء الأمور (A4، 4 لكل ورقة) ──
+function _tfBrandColor(){
+  var r=window._tfRes||{}, b=r.brand||{};
+  var c=(b.color||'').toString().replace(/^\s+|\s+$/g,'');
+  if(!/^#[0-9a-fA-F]{3,8}$/.test(c)) return '';
+  return c;
+}
 function _tfBrandHeader(big){
   var r=window._tfRes||{}, b=r.brand||{};
   var logo=b.logo?('<img class="bl" src="'+_tfEsc(b.logo)+'" alt="">'):'';
@@ -17314,12 +17320,14 @@ function _tfPrintWin(title, css, body){
   w.document.open(); w.document.write(html); w.document.close();
 }
 function _tfStmtCss(){
-  return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;padding:14mm;color:#1a2233;}'+
-    '.bh{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1a237e;padding-bottom:10px;margin-bottom:14px;}'+
-    '.bl{height:72px;max-width:120px;object-fit:contain;}.b1{font-size:22px;font-weight:800;color:#1a237e;}.bp{font-size:12px;color:#555;}'+
+  var bc=_tfBrandColor();
+  return (bc?(':root{--brand:'+bc+';}'):'')+
+    '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;padding:14mm;color:#1a2233;}'+
+    '.bh{display:flex;align-items:center;gap:14px;border-bottom:3px solid var(--brand,#1a237e);padding-bottom:10px;margin-bottom:14px;}'+
+    '.bl{height:72px;max-width:120px;object-fit:contain;}.b1{font-size:22px;font-weight:800;color:var(--brand,#1a237e);}.bp{font-size:12px;color:#555;}'+
     'h2{font-size:18px;margin:6px 0 14px;}table{width:100%;border-collapse:collapse;font-size:13px;}'+
-    'th,td{border:1px solid #c7cede;padding:7px 9px;text-align:center;}th{background:#1a237e;color:#fff;}'+
-    '.info{display:flex;flex-wrap:wrap;gap:8px 26px;font-size:14px;margin-bottom:14px;}.info b{color:#1a237e;}'+
+    'th,td{border:1px solid #c7cede;padding:7px 9px;text-align:center;}th{background:var(--brand,#1a237e);color:#fff;}'+
+    '.info{display:flex;flex-wrap:wrap;gap:8px 26px;font-size:14px;margin-bottom:14px;}.info b{color:var(--brand,#1a237e);}'+
     '.tot{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}.kp{border:1px solid #c7cede;border-radius:8px;padding:8px 14px;font-size:14px;}'+
     '.kp b{display:block;font-size:18px;}.foot{margin-top:22px;font-size:12px;color:#667;display:flex;justify-content:space-between;}'+
     '@page{size:A4;margin:10mm;}';
@@ -17376,15 +17384,17 @@ function _tfTafqit(n){
   return parts.join(' و')+' ريال يمني';
 }
 function _tfVoucherCss(){
-  return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}'+
+  var bc=_tfBrandColor();
+  return (bc?(':root{--brand:'+bc+';}'):'')+
+    '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}'+
     'body{margin:0;padding:6mm;color:#1a2233;font-size:13px;}'+
-    '.bh{display:flex;align-items:center;gap:12px;border-bottom:3px solid #1a237e;padding-bottom:8px;margin-bottom:10px;}'+
-    '.bl{height:58px;max-width:100px;object-fit:contain;}.b1{font-size:19px;font-weight:800;color:#1a237e;}.bp{font-size:11px;color:#555;}'+
+    '.bh{display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--brand,#1a237e);padding-bottom:8px;margin-bottom:10px;}'+
+    '.bl{height:58px;max-width:100px;object-fit:contain;}.b1{font-size:19px;font-weight:800;color:var(--brand,#1a237e);}.bp{font-size:11px;color:#555;}'+
     '.vt{display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px;}'+
     '.vt h2{margin:0;font-size:20px;padding:6px 24px;border:2px solid;border-radius:10px;}'+
     '.vm{font-size:13px;color:#46506a;text-align:left;line-height:1.9;}'+
     '.rw{display:flex;gap:8px;margin:8px 0;align-items:flex-end;font-size:14px;}'+
-    '.rw b{white-space:nowrap;color:#1a237e;}'+
+    '.rw b{white-space:nowrap;color:var(--brand,#1a237e);}'+
     '.fl{flex:1;border-bottom:1px dotted #8a93a6;padding:0 6px 2px;min-height:19px;}'+
     '.amt{display:flex;gap:10px;margin:12px 0;align-items:stretch;}'+
     '.ab{border:2px solid #1a237e;border-radius:10px;padding:8px 18px;font-size:20px;font-weight:800;white-space:nowrap;display:flex;align-items:center;}'+
@@ -17435,14 +17445,16 @@ function _tfPrintLastOp(){
 }
 
 function _tfNoticesCss(){
-  return '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;}'+
+  var bc=_tfBrandColor();
+  return (bc?(':root{--brand:'+bc+';}'):'')+
+    '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;}'+
     '.page{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;width:210mm;height:297mm;padding:7mm;page-break-after:always;}'+
     '.nt{border:1.5px dashed #7a8aa8;border-radius:9px;padding:7mm;display:flex;flex-direction:column;overflow:hidden;}'+
-    '.bh{display:flex;align-items:center;gap:10px;border-bottom:2px solid #1a237e;padding-bottom:6px;margin-bottom:8px;}'+
-    '.bl{height:46px;max-width:80px;object-fit:contain;}.b1{font-size:15px;font-weight:800;color:#1a237e;}.bp{font-size:10px;color:#555;}'+
+    '.bh{display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--brand,#1a237e);padding-bottom:6px;margin-bottom:8px;}'+
+    '.bl{height:46px;max-width:80px;object-fit:contain;}.b1{font-size:15px;font-weight:800;color:var(--brand,#1a237e);}.bp{font-size:10px;color:#555;}'+
     '.nti{font-size:11px;color:#888;display:flex;justify-content:space-between;margin-bottom:6px;}'+
-    '.ntt{font-size:16px;font-weight:800;text-align:center;color:#1a237e;margin:4px 0 8px;}'+
-    '.ntb{font-size:13px;line-height:1.9;color:#222;flex:1;}.ntb b{color:#1a237e;}'+
+    '.ntt{font-size:16px;font-weight:800;text-align:center;color:var(--brand,#1a237e);margin:4px 0 8px;}'+
+    '.ntb{font-size:13px;line-height:1.9;color:#222;flex:1;}.ntb b{color:var(--brand,#1a237e);}'+
     '.ntf{font-size:11px;color:#667;display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid #e3e8f0;padding-top:6px;}'+
     '@page{size:A4;margin:0;}';
 }
