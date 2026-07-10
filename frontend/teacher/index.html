@@ -16958,6 +16958,13 @@ function sstat_print() {
 <style>
   .tf-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
   .tf-head h2{margin:0;font-size:19px;color:#1a237e;font-weight:800;}
+  .bh{display:flex;align-items:center;gap:10px;}
+  .bn{display:flex;flex-direction:column;}
+  .bl{height:40px;max-width:70px;object-fit:contain;}
+  .b1{font-size:15px;font-weight:800;color:var(--brand,#1a237e);}
+  .bp{font-size:11px;color:#555;}
+  .bs{display:flex;gap:8px;margin-top:2px;}
+  .bs a{font-size:15px;text-decoration:none;}
   .tf-sync{font-size:11px;color:#9aa6b2;margin-inline-start:auto;}
   .tf-abtn{padding:7px 13px;border:1px solid #d8dee9;border-radius:9px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;color:#334;}
   .tf-abtn:hover{background:#f3f5fa;}
@@ -16998,7 +17005,7 @@ function sstat_print() {
 <script>
 function _tfComma(n){ n=Math.round(Number(n)||0); var neg=n<0; n=Math.abs(n); var s=''+n,out='',c=0; for(var i=s.length-1;i>=0;i--){ out=s.charAt(i)+out; if(++c%3===0&&i>0) out=','+out; } return (neg?'-':'')+out; }
 function _tfFmt(n){ n=Number(n)||0; var neg=n<0; n=Math.abs(n); var s; if(n>=1000000){ s=(n/1000000).toFixed(n>=10000000?0:1)+'م'; } else if(n>=1000){ s=(n/1000).toFixed(n>=100000?0:1)+'ك'; } else { s=''+Math.round(n); } return (neg?'-':'')+s; }
-function _tfEsc(s){ s=(s===null||s===undefined)?'':(''+s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _tfEsc(s){ s=(s===null||s===undefined)?'':(''+s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // رسم بياني SVG للدخل/المصروف الشهري (بلا مكتبات)
 function _tfChart(months){
@@ -17087,6 +17094,7 @@ function _tfLoad(noCache){
 
 function _tfRender(res){
   window._tfRes=res;            // تخزين للفلترة العميلة
+  try{ document.documentElement.style.setProperty('--brand', _tfBrandColor()||'#1a237e'); }catch(eBc){}
   _tfExpFilter='all';           // إعادة رسم كاملة ⇒ فلتر فئة المصروفات يعود متزامناً مع شريحة «الكل» المعروضة
   var k=res.kpi||{}, host=document.getElementById('dynamicContent');
   var _tfRecDrs=_dateRangeShortcuts('tf-rec-from','tf-rec-to',_tfDrawRecTable);
@@ -17459,12 +17467,23 @@ function _tfBrandColor(){
   if(!/^#[0-9a-fA-F]{3,8}$/.test(c)) return '';
   return c;
 }
+function _tfWaNum(p){
+  p=(''+(p||'')).replace(/[^0-9]/g,'');
+  if(p&&p.indexOf('967')!==0&&p.length<=9) p='967'+p.replace(/^0+/,'');
+  return p;
+}
 function _tfBrandHeader(big){
   var r=window._tfRes||{}, b=r.brand||{};
   var logo=b.logo?('<img class="bl" src="'+_tfEsc(b.logo)+'" alt="">'):'';
+  var soc='';
+  if(b.whatsapp) soc+='<a href="https://wa.me/'+_tfWaNum(b.whatsapp)+'" target="_blank" rel="noopener" title="واتساب">💬</a>';
+  if(b.facebook) soc+='<a href="'+_tfEsc(b.facebook)+'" target="_blank" rel="noopener" title="فيسبوك">📘</a>';
+  if(b.instagram) soc+='<a href="'+_tfEsc(b.instagram)+'" target="_blank" rel="noopener" title="إنستغرام">📸</a>';
+  if(b.youtube) soc+='<a href="'+_tfEsc(b.youtube)+'" target="_blank" rel="noopener" title="يوتيوب">▶️</a>';
   return '<div class="bh">'+logo+'<div class="bn"><div class="b1">'+_tfEsc(b.name||'مدرستي')+'</div>'+
     (big&&b.phone?('<div class="bp">'+_tfEsc(b.phone)+'</div>'):'')+
-    (big&&b.address?('<div class="bp">'+_tfEsc(b.address)+'</div>'):'')+'</div></div>';
+    (big&&b.address?('<div class="bp">'+_tfEsc(b.address)+'</div>'):'')+
+    (soc?('<div class="bs">'+soc+'</div>'):'')+'</div></div>';
 }
 function _tfPrintWin(title, css, body){
   var w=window.open('','_blank','width=900,height=700');
@@ -17479,6 +17498,7 @@ function _tfStmtCss(){
     '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}body{margin:0;padding:14mm;color:#1a2233;}'+
     '.bh{display:flex;align-items:center;gap:14px;border-bottom:3px solid var(--brand,#1a237e);padding-bottom:10px;margin-bottom:14px;}'+
     '.bl{height:72px;max-width:120px;object-fit:contain;}.b1{font-size:22px;font-weight:800;color:var(--brand,#1a237e);}.bp{font-size:12px;color:#555;}'+
+    '.bs{display:flex;gap:8px;margin-top:4px;}.bs a{font-size:18px;text-decoration:none;}'+
     'h2{font-size:18px;margin:6px 0 14px;}table{width:100%;border-collapse:collapse;font-size:13px;}'+
     'th,td{border:1px solid #c7cede;padding:7px 9px;text-align:center;}th{background:var(--brand,#1a237e);color:#fff;}'+
     '.info{display:flex;flex-wrap:wrap;gap:8px 26px;font-size:14px;margin-bottom:14px;}.info b{color:var(--brand,#1a237e);}'+
@@ -17544,6 +17564,7 @@ function _tfVoucherCss(){
     'body{margin:0;padding:6mm;color:#1a2233;font-size:13px;}'+
     '.bh{display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--brand,#1a237e);padding-bottom:8px;margin-bottom:10px;}'+
     '.bl{height:58px;max-width:100px;object-fit:contain;}.b1{font-size:19px;font-weight:800;color:var(--brand,#1a237e);}.bp{font-size:11px;color:#555;}'+
+    '.bs{display:flex;gap:6px;margin-top:3px;}.bs a{font-size:15px;text-decoration:none;}'+
     '.vt{display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px;}'+
     '.vt h2{margin:0;font-size:20px;padding:6px 24px;border:2px solid;border-radius:10px;}'+
     '.vm{font-size:13px;color:#46506a;text-align:left;line-height:1.9;}'+
@@ -17606,6 +17627,7 @@ function _tfNoticesCss(){
     '.nt{border:1.5px dashed #7a8aa8;border-radius:9px;padding:7mm;display:flex;flex-direction:column;overflow:hidden;}'+
     '.bh{display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--brand,#1a237e);padding-bottom:6px;margin-bottom:8px;}'+
     '.bl{height:46px;max-width:80px;object-fit:contain;}.b1{font-size:15px;font-weight:800;color:var(--brand,#1a237e);}.bp{font-size:10px;color:#555;}'+
+    '.bs{display:flex;gap:5px;margin-top:2px;}.bs a{font-size:12px;text-decoration:none;}'+
     '.nti{font-size:11px;color:#888;display:flex;justify-content:space-between;margin-bottom:6px;}'+
     '.ntt{font-size:16px;font-weight:800;text-align:center;color:var(--brand,#1a237e);margin:4px 0 8px;}'+
     '.ntb{font-size:13px;line-height:1.9;color:#222;flex:1;}.ntb b{color:var(--brand,#1a237e);}'+
