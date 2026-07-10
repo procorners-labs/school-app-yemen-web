@@ -8016,6 +8016,7 @@ var _hwSortOrder     = 'newest'; // 'newest' أو 'oldest'
 
 function renderHomework() {
   var subjectOptions = buildSelectOptions(mySubjects(), 'كل المواد', '', true);
+  var _hwDrs = _dateRangeShortcuts('hwDateFrom', 'hwDateTo', applyHomeworkFilters);
 
   var html = '<div class="section-card">' +
     '<div class="section-header">' +
@@ -8066,6 +8067,7 @@ function renderHomework() {
             '<label class="form-label">إلى تاريخ</label>' +
             '<input type="date" class="form-control" id="hwDateTo" onchange="applyHomeworkFilters()">' +
           '</div>' +
+          _hwDrs.html +
           '<div class="form-group flex-1">' +
             '<label class="form-label">بحث</label>' +
             '<input type="text" class="form-control" id="hwSearchInput" ' +
@@ -8093,6 +8095,7 @@ function renderHomework() {
   '</div>';
 
   document.getElementById('dynamicContent').innerHTML = html;
+  _hwDrs.wire();
   // استعادة آخر فلاتر استخدمها المستخدم (محفوظة محلياً) قبل أول تحميل
   if (_fltRestore('hw', ['hwFilterSubject', 'hwFilterGrade', 'hwFilterSection', 'hwSortOrder', 'hwDateFrom', 'hwDateTo', 'hwSearchInput'])) {
     hwFilterCascade('grade');
@@ -8750,6 +8753,7 @@ function deleteViolationItem(rowIndex) {
 // ==================== NEWS ====================
 function renderNews() {
   var u = App.user;
+  var _nfDrs = _dateRangeShortcuts('nfDateFrom', 'nfDateTo', applyNewsFilters);
 
   var html =
     '<div class="section-card">' +
@@ -8808,6 +8812,8 @@ function renderNews() {
           '<input type="date" class="form-control" id="nfDateTo" onchange="applyNewsFilters()">' +
         '</div>' +
 
+        _nfDrs.html +
+
         // بحث بالمعلم
         '<div class="form-group flex-1">' +
           '<label class="form-label">اسم المعلم</label>' +
@@ -8840,6 +8846,7 @@ function renderNews() {
     '</div></div>';
 
   document.getElementById('dynamicContent').innerHTML = html;
+  _nfDrs.wire();
 
   // استعادة آخر فلاتر مستخدمة (محفوظة محلياً) قبل أول جلب — فيأتي الطلب الأول مفلتراً
   if (_fltRestore('news', ['nfGrade', 'nfSection', 'nfSort', 'nfDateFrom', 'nfDateTo', 'nfTeacher'])) {
@@ -12633,6 +12640,48 @@ function _acRender(boxId, names, q, pickFn){
 }
 function _acHideNow(id){ var b=document.getElementById(id); if(b){ b.style.display='none'; b.innerHTML=''; } }
 function _acHide(id){ setTimeout(function(){ _acHideNow(id); }, 200); }
+// صفّ أزرار اختصار لنطاق تاريخ (اليوم/آخر 7 أيام/هذا الأسبوع/هذا الشهر) يضبط حقلي
+// from/to الحاليين (type="date") ثم يستدعي onApply() صراحة (تعيين .value لا يُطلق change تلقائياً).
+function _dateRangeShortcuts(fromId, toId, onApply) {
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function setRange(fromD, toD) {
+    var fEl = document.getElementById(fromId), tEl = document.getElementById(toId);
+    if (fEl) fEl.value = iso(fromD);
+    if (tEl) tEl.value = iso(toD);
+    if (typeof onApply === 'function') onApply();
+  }
+  var wrapId = 'drs-wrap-' + fromId;
+  var ranges = [
+    { label: 'اليوم', fn: function () { var t = new Date(); return [t, t]; } },
+    { label: 'آخر 7 أيام', fn: function () { var t = new Date(); var f = new Date(t); f.setDate(f.getDate() - 6); return [f, t]; } },
+    { label: 'هذا الأسبوع', fn: function () { var t = new Date(); var f = new Date(t); f.setDate(f.getDate() - t.getDay()); return [f, t]; } },
+    { label: 'هذا الشهر', fn: function () { var t = new Date(); var f = new Date(t.getFullYear(), t.getMonth(), 1); return [f, t]; } }
+  ];
+  var html = '<div id="' + wrapId + '" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;">';
+  for (var i = 0; i < ranges.length; i++) {
+    html += '<button type="button" data-drs-idx="' + i + '" ' +
+      'style="padding:4px 10px;border:1px solid #d8dee9;border-radius:7px;background:#f4f6fb;color:#46506a;font-size:12px;cursor:pointer;">' +
+      ranges[i].label + '</button>';
+  }
+  html += '</div>';
+  return {
+    html: html,
+    wire: function () {
+      var wrap = document.getElementById(wrapId);
+      if (!wrap) return;
+      var btns = wrap.querySelectorAll('button');
+      for (var j = 0; j < btns.length; j++) {
+        (function (idx) {
+          btns[idx].onclick = function () {
+            var r = ranges[idx].fn();
+            setRange(r[0], r[1]);
+          };
+        })(j);
+      }
+    }
+  };
+}
 function _tabs_opts(arr, ph){ var o='<option value="">'+(ph||'— اختر —')+'</option>'; arr=arr||[]; for(var i=0;i<arr.length;i++) o+='<option value="'+arr[i]+'">'+arr[i]+'</option>'; return o; }
 // تملأ القوائم من جدول الأستاذ (إن مُرّر) وإلا من قوائم النظام App.lists
 function tabs_fillLists(grades, sections, subjects){
@@ -16941,6 +16990,8 @@ function _tfRender(res){
   window._tfRes=res;            // تخزين للفلترة العميلة
   _tfExpFilter='all';           // إعادة رسم كاملة ⇒ فلتر فئة المصروفات يعود متزامناً مع شريحة «الكل» المعروضة
   var k=res.kpi||{}, host=document.getElementById('dynamicContent');
+  var _tfRecDrs=_dateRangeShortcuts('tf-rec-from','tf-rec-to',_tfDrawRecTable);
+  var _tfExpDrs=_dateRangeShortcuts('tf-exp-from','tf-exp-to',_tfDrawExpTable);
   var net=k.net||0, netColor=net>=0?'#1a8d5f':'#c0392b', netWord=net>=0?'فائض':'عجز';
   var netReal=k.netReal||0, netRColor=netReal>=0?'#1a8d5f':'#c0392b', netRWord=netReal>=0?'فائض':'عجز';
   var hasData=(k.receiptsCount||0)+(k.expenseCount||0)+(k.staff||0)+(k.students||0) > 0;
@@ -17008,6 +17059,7 @@ function _tfRender(res){
          '<label style="font-size:12px;color:#7a8794;">من <input id="tf-rec-from" type="date" onchange="_tfDrawRecTable()" style="padding:6px 8px;border:1px solid #d8dee9;border-radius:8px;font-size:12px;"></label>'+
          '<label style="font-size:12px;color:#7a8794;">إلى <input id="tf-rec-to" type="date" onchange="_tfDrawRecTable()" style="padding:6px 8px;border:1px solid #d8dee9;border-radius:8px;font-size:12px;"></label>'+
          '<input id="tf-rec-min" type="number" placeholder="مبلغ ≥" oninput="_tfDrawRecTable()" style="width:100px;padding:7px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
+         _tfRecDrs.html+
        '</div>'+
        '<div id="tf-rec-total" style="margin:0 2px 10px;color:#46506a;font-size:13px;"></div>'+
        '<div id="tf-rec-table"></div></div></div>';
@@ -17024,6 +17076,7 @@ function _tfRender(res){
          '<input id="tf-exp-min" type="number" placeholder="مبلغ ≥" oninput="_tfDrawExpTable()" style="width:100px;padding:7px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
          '<input id="tf-exp-max" type="number" placeholder="مبلغ ≤" oninput="_tfDrawExpTable()" style="width:100px;padding:7px 10px;border:1px solid #d8dee9;border-radius:9px;font-size:13px;">'+
          '<button class="tf-abtn" onclick="_tfExportExp()">⬇️ تصدير CSV</button>'+
+         _tfExpDrs.html+
        '</div>'+
        '<div id="tf-exp-total" style="margin:4px 2px 12px;color:#46506a;font-size:13px;"></div>'+
        '<div id="tf-exp-table"></div></div>'+
@@ -17149,6 +17202,8 @@ function _tfRender(res){
 
   h+='</div>';
   host.innerHTML=h;
+  _tfRecDrs.wire();
+  _tfExpDrs.wire();
   _tfDrawExpTable();   // تعبئة جدول المصروفات المفلتر بعد الرسم
   _tfInitStuGrades();  // تعبئة قائمة الصفوف
   _tfDrawStuTable();   // تعبئة جدول محاسبة الطلاب
