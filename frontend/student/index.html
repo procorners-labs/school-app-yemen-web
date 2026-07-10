@@ -5660,9 +5660,10 @@ function initLazyImages() {
     if (soc) {
       var socHtml = '';
       if (b.whatsapp)  socHtml += '<a href="https://wa.me/' + _stWaNum(b.whatsapp) + '" target="_blank" rel="noopener" title="واتساب">💬</a>';
-      if (b.facebook)  socHtml += '<a href="' + _stAttrEsc(b.facebook) + '" target="_blank" rel="noopener" title="فيسبوك">📘</a>';
-      if (b.instagram) socHtml += '<a href="' + _stAttrEsc(b.instagram) + '" target="_blank" rel="noopener" title="إنستغرام">📸</a>';
-      if (b.youtube)   socHtml += '<a href="' + _stAttrEsc(b.youtube) + '" target="_blank" rel="noopener" title="يوتيوب">▶️</a>';
+      var _stFb = _stSafeUrl(b.facebook), _stIg = _stSafeUrl(b.instagram), _stYt = _stSafeUrl(b.youtube);
+      if (_stFb) socHtml += '<a href="' + _stAttrEsc(_stFb) + '" target="_blank" rel="noopener" title="فيسبوك">📘</a>';
+      if (_stIg) socHtml += '<a href="' + _stAttrEsc(_stIg) + '" target="_blank" rel="noopener" title="إنستغرام">📸</a>';
+      if (_stYt) socHtml += '<a href="' + _stAttrEsc(_stYt) + '" target="_blank" rel="noopener" title="يوتيوب">▶️</a>';
       soc.innerHTML = socHtml;
     }
   }
@@ -5674,6 +5675,17 @@ function initLazyImages() {
   function _stAttrEsc(s) {
     s = (s === null || s === undefined) ? '' : ('' + s);
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  // أعمدة Schools تخزّن روابط سوشل بلا بروتوكول (مثل facebook.com/x) — بلا هذا التطبيع
+  // يصبح href نسبياً فيفتح رابطاً داخلياً مكسوراً بدل الموقع الفعلي. نفس نمط
+  // safeUrl المُثبَت في home/Index.html وhome-all-school/Index.html.
+  function _stSafeUrl(u) {
+    u = (u === null || u === undefined) ? '' : String(u).trim();
+    if (!u) return '';
+    if (/^https?:\/\//i.test(u)) return u;
+    if (/^\/\//.test(u)) return 'https:' + u;
+    if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';
+    return 'https://' + u;
   }
   // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
   try { var _stLastColor = (window.localStorage) ? localStorage.getItem('stTheme_' + window.SCHOOL_ID) : null; if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
