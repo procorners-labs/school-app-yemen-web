@@ -5589,16 +5589,27 @@ function initLazyImages() {
 (function () {
   // window.SCHOOL_ID فارغ = رابط بلا معرّف مدرسة: getStudentSchoolBrand('') تحلّه ديناميكياً
   // لصفّ المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
-  // حيِّد الاسم/الهاتف الثابتين فوراً قبل وصول النداء غير المتزامن كي لا يومض «مدارس
-  // الإبداع» وهاتفها على شبكة بطيئة.
-  (function neutralize() {
-    try {
-      var els = document.querySelectorAll('.school-brand-name');
-      for (var i = 0; i < els.length; i++) els[i].textContent = 'المدرسة';
-      var ct = document.getElementById('stuLoginContact');
-      if (ct) ct.textContent = '';
-    } catch (eN) {}
-  })();
+  var _stBrandCacheKey = 'stBrand_' + (window.SCHOOL_ID || '');
+  var _stCachedBrand = null;
+  try {
+    var _stbRaw = window.localStorage && localStorage.getItem(_stBrandCacheKey);
+    if (_stbRaw) _stCachedBrand = JSON.parse(_stbRaw);
+  } catch (eCB) {}
+  if (_stCachedBrand) {
+    // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
+    applyBrand(_stCachedBrand);
+  } else {
+    // لا كاش بعد (أول زيارة): حيِّد الاسم/الهاتف الثابتين فوراً قبل وصول النداء غير
+    // المتزامن كي لا يومض «مدارس الإبداع» وهاتفها على شبكة بطيئة.
+    (function neutralize() {
+      try {
+        var els = document.querySelectorAll('.school-brand-name');
+        for (var i = 0; i < els.length; i++) els[i].textContent = 'المدرسة';
+        var ct = document.getElementById('stuLoginContact');
+        if (ct) ct.textContent = '';
+      } catch (eN) {}
+    })();
+  }
   // ── حقن ثيم المدرسة: لون أساسي واحد → مشتقّات عبر متغيّرات CSS (م1) ──
   function _thHex2(v) { v = v.toString(16); return v.length === 1 ? '0' + v : v; }
   function _thClamp(v) { v = Math.round(v); return v < 0 ? 0 : (v > 255 ? 255 : v); }
@@ -5625,6 +5636,8 @@ function initLazyImages() {
   }
   function applyBrand(b) {
     if (!b) return;
+    // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة.
+    try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify(b)); } catch (eCS) {}
     if (b.color) {
       applyTheme(b.color);
       try { if (window.localStorage) localStorage.setItem('stTheme_' + window.SCHOOL_ID, b.color); } catch (eLS) {}

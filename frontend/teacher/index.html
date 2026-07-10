@@ -2636,16 +2636,27 @@ input, select, textarea, .form-control, .form-select, .grade-input {
               : (window.SCHOOL_ID || '');
     // sid فارغ = رابط بلا معرّف مدرسة: getTeacherSchoolBrand('') تحلّه ديناميكياً لصفّ
     // المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
-    // حيِّد الاسم الثابت فوراً قبل وصول النداء
-    // غير المتزامن كي لا يومض «مدارس الإبداع» على شبكة بطيئة قبل جلب الاسم الحقيقي.
-    (function neutralize() {
-      try {
-        var els = document.querySelectorAll('.school-brand-name');
-        for (var i = 0; i < els.length; i++) els[i].textContent = 'المدرسة';
-        var smm = document.getElementById('smm-school-label');
-        if (smm) smm.textContent = 'المدرسة';
-      } catch (eN) {}
-    })();
+    var _tcBrandCacheKey = 'tcBrand_' + sid;
+    var _tcCachedBrand = null;
+    try {
+      var _tcbRaw = window.localStorage && localStorage.getItem(_tcBrandCacheKey);
+      if (_tcbRaw) _tcCachedBrand = JSON.parse(_tcbRaw);
+    } catch (eCB) {}
+    if (_tcCachedBrand) {
+      // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
+      applyBrand(_tcCachedBrand);
+    } else {
+      // لا كاش بعد (أول زيارة): حيِّد الاسم الثابت فوراً قبل وصول النداء غير المتزامن
+      // كي لا يومض «مدارس الإبداع» على شبكة بطيئة قبل جلب الاسم الحقيقي.
+      (function neutralize() {
+        try {
+          var els = document.querySelectorAll('.school-brand-name');
+          for (var i = 0; i < els.length; i++) els[i].textContent = 'المدرسة';
+          var smm = document.getElementById('smm-school-label');
+          if (smm) smm.textContent = 'المدرسة';
+        } catch (eN) {}
+      })();
+    }
     // ── حقن ثيم المدرسة: لون أساسي واحد → مشتقّات عبر متغيّرات CSS (م1) ──
     function _thHex2(v) { v = v.toString(16); return v.length === 1 ? '0' + v : v; }
     function _thClamp(v) { v = Math.round(v); return v < 0 ? 0 : (v > 255 ? 255 : v); }
@@ -2673,6 +2684,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     function applyBrand(b) {
       if (!b) return;
       window._schoolBrand = b;
+      // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة.
+      try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify(b)); } catch (eCS) {}
       if (b.color) {
         applyTheme(b.color);
         try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {}
