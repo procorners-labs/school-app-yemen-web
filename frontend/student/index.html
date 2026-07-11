@@ -1796,6 +1796,7 @@ a { color: var(--pr); text-decoration: none; }
       <button class="tab-btn"        data-tab="news"        onclick="goTab('news', this)"><span class="ic">📢</span><span>الأخبار</span><span class="badge" id="badge-news"></span></button>
       <button class="tab-btn"        data-tab="violations"  onclick="goTab('violations', this)"><span class="ic">⚠️</span><span>السلوكيات</span><span class="badge" id="badge-violations"></span></button>
       <button class="tab-btn"        data-tab="schedule"    onclick="goTab('schedule', this)"><span class="ic">📅</span><span>الجدول</span></button>
+      <button class="tab-btn"        data-tab="examSchedule" onclick="goTab('examSchedule', this)"><span class="ic">🗓️</span><span>جدول الاختبارات</span></button>
       <button class="tab-btn"        data-tab="notes"       onclick="goTab('notes', this)"><span class="ic">✉️</span><span>ملاحظاتي</span><span class="badge" id="badge-notes"></span></button>
       <button class="tab-btn"        data-tab="reports"     onclick="goTab('reports', this)"><span class="ic">📈</span><span>تقاريري</span></button>
       <button class="tab-btn"        data-tab="attendance"  onclick="goTab('attendance', this)"><span class="ic">📋</span><span>الغياب</span></button>
@@ -1974,6 +1975,19 @@ a { color: var(--pr); text-decoration: none; }
           <button class="refresh-btn" onclick="loadSchedule(true)">🔄</button>
         </div>
         <div id="schedWrap">
+          <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 🗓️ جدول الاختبارات -->
+    <section data-section="examSchedule" style="display:none;">
+      <div class="card">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">🗓️</span> جدول الاختبارات</div>
+          <button class="refresh-btn" onclick="loadExamSchedule(true)">🔄</button>
+        </div>
+        <div id="examSchedWrap">
           <div class="loader"><div class="ring"></div><div class="txt">انقر التبويب لبدء التحميل</div></div>
         </div>
       </div>
@@ -2816,6 +2830,7 @@ function goTab(tab, btn) {
       case 'news':       loadNews();       break;
       case 'violations': loadViolations(); break;
       case 'schedule':   loadSchedule();   break;
+      case 'examSchedule': loadExamSchedule(); break;
       case 'notes':      loadNotes();      break;
       case 'reports':    loadReports();    break;
       case 'attendance': loadAttendance(); break;
@@ -5229,6 +5244,50 @@ function submitMyNote() {
     isCustom: true,   // الرسالة دائماً بصياغة ولي الأمر (أُلغيت الأنواع الجاهزة)
     schoolId: APP.user.schoolId
 });
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🗓️ جدول الاختبارات — كل الشهور المتوفرة لصف الطالب معاً في نفس التبويب (لا تبويب لكل شهر)
+// ═══════════════════════════════════════════════════════════
+function loadExamSchedule(force) {
+  var w = $('examSchedWrap');
+  w.innerHTML = loaderHTML('جارٍ تحميل جدول الاختبارات...');
+  callServerSmart(
+    'getStudentExamSchedule',
+    { klass: APP.user.class, schoolId: APP.user.schoolId },
+    'examSchedule_' + APP.user.class,
+    600,
+    function (r) {
+      APP.loaded.examSchedule = true;
+      renderExamSchedule(r);
+    },
+    function (e) { w.innerHTML = errHTML('فشل تحميل جدول الاختبارات: ' + ((e && e.message) || e)); }
+  );
+}
+
+function renderExamSchedule(r) {
+  var w = $('examSchedWrap');
+  if (!r || !r.ok || !r.months || r.months.length === 0) {
+    w.innerHTML = emptyHTML('🗓️', 'لا يوجد جدول اختبارات بعد', 'سيظهر فور إضافته من قِبل الإدارة');
+    return;
+  }
+  var h = '';
+  for (var m = 0; m < r.months.length; m++) {
+    var mo = r.months[m];
+    h += '<div style="margin-bottom:18px;">' +
+         '<div style="font-weight:800;font-size:15px;margin-bottom:8px;border-bottom:2px solid var(--brand,#0F2C5C);padding-bottom:4px;">' + esc(mo.month) + '</div>' +
+         '<table style="width:100%;border-collapse:collapse;font-size:13px;"><tbody>';
+    for (var d = 0; d < mo.days.length; d++) {
+      var day = mo.days[d];
+      var names = [];
+      for (var s = 0; s < day.subjects.length; s++) names.push(day.subjects[s].name);
+      h += '<tr style="border-bottom:1px solid var(--border,#e2e8f0);">' +
+           '<td style="padding:8px;white-space:nowrap;color:var(--muted,#64748b);font-weight:600;">' + esc(day.date || ('اليوم ' + day.dayIndex)) + '</td>' +
+           '<td style="padding:8px;">' + esc(names.join('، ')) + '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  w.innerHTML = h;
 }
 
 function loadNotes(force) {
