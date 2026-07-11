@@ -258,6 +258,11 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
         ➕ تسجيل مدرسة جديدة
       </a>
     </div>
+    <div style="text-align:center;margin-top:14px;">
+      <a id="back-link" href="/home-all-school/index.html#partners" style="color:#888;font-size:13px;text-decoration:none;">
+        ← العودة
+      </a>
+    </div>
     <p style="text-align:center;font-size:11px;color:#bbb;margin-top:16px;">
       منصة إدارة المدارس — لوحة تحكم المدراء v1.0
     </p>
@@ -1870,6 +1875,20 @@ function goToRegister() {
     }
   }).getMasterAppUrl();
 }
+// ✅ رابط العودة الديناميكي (returnTo) — افتراضياً home-all-school#partners
+(function () {
+  var link = document.getElementById('back-link');
+  if (!link) return;
+  var raw = new URLSearchParams(location.search).get('returnTo');
+  if (!raw) return;
+  // حارس أمان: نقارن الأصل (origin) الفعلي بعد التحليل، لا مطابقة نصّية —
+  // يرفض تلقائياً //evil.com و/\evil.com (يُطبَّع للمخططات الخاصة) وjavascript:/data:
+  var resolved;
+  try { resolved = new URL(raw, location.origin); } catch (e) { return; }
+  if (resolved.origin === location.origin) {
+    link.href = resolved.pathname + resolved.search + resolved.hash;
+  }
+})();
 </script>
 </body>
 </html>
