@@ -5813,13 +5813,15 @@ function showSection(name) {
     toast('تعذّر عرض هذا القسم. جرّب تحديث الصفحة.', 'error', 6000);
     var dynamicEl = document.getElementById('dynamicContent');
     if (dynamicEl) {
-      dynamicEl.innerHTML = 
+      dynamicEl.innerHTML =
         '<div class="empty-state">' +
           '<div class="es-icon">⚠️</div>' +
           '<div class="es-title">حدث خطأ في تحميل الصفحة</div>' +
           '<div class="es-sub">الرجاء تحديث الصفحة أو المحاولة لاحقاً</div>' +
         '</div>';
     }
+    updateActiveSidebarItem(name);
+    closeSidebar();
   }
 }
 
@@ -6376,7 +6378,10 @@ function loadDashboardStats(data) {
 //  📅 جدول اليوم اللحظي + ⚙️ إعدادات الجدول
 // ════════════════════════════════════════════════════════════════════
 var TS = { data: null, timer: null, clockOffset: 0, collapsed: false };
-try { TS.collapsed = (localStorage.getItem('ts_collapsed') === '1'); } catch (e) {}
+try {
+  var _tsRawCollapsed = localStorage.getItem('ts_collapsed');
+  TS.collapsed = (_tsRawCollapsed === null) ? true : (_tsRawCollapsed === '1');
+} catch (e) {}
 
 // لون ثابت مشتق من اسم المادة (HSL)
 function _subjColor(name) {
