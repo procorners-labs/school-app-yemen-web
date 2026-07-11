@@ -6285,33 +6285,16 @@ function ec_loadCommittees() {
 
 // دفعة لجان افتراضية أولية (تظهر فقط حين تكون القائمة فارغة تماماً) — نقطة انطلاق سريعة
 // بدل إدخال كل لجنة يدوياً من الصفر؛ التعديل/الحذف/الإضافة اليدوية تبقى متاحة بعدها كما هي.
-// لجان افتراضية بحسب الشُعب/الصفوف الحقيقية لهذه المدرسة (لا 5 لجان عامة) — لجنة واحدة لكل
-// صف كبير (الخامس-ثالث ثانوي، الصفوف المؤهَّلة لتوزيع اللجان الحقيقي بالمرحلة 4) بسعة تُقترَح
-// = عدد طلاب ذلك الصف فعلياً (مجموع كل شُعبه) — نقطة انطلاق واقعية، قابلة للتعديل فوراً.
+// لجان بحسب الصفوف/الشُعب الحقيقية لهذه المدرسة (لا 5 لجان عامة) — منفَّذة خادمياً بالكامل
+// (seedDefaultCommitteesProtected) بفهرسة منهج صحيحة وidempotent، بدل تسلسل استدعاءات عميل هشّ.
 function ec_seedDefaultCommittees() {
-  function proceedWithStudents() {
-    var counts = {}, order = [];
-    var list = _ecStudents || [];
-    for (var i = 0; i < list.length; i++) {
-      var s = list[i];
-      if (_ecGradeSortIndex(s.grade) < 5) continue; // يستثني KG2-الرابع (لجانهم = الفصل نفسه بالمرحلة 3)
-      if (!counts[s.grade]) { counts[s.grade] = 0; order.push(s.grade); }
-      counts[s.grade]++;
-    }
-    if (!order.length) { toast('لا يوجد طلاب في الصفوف الكبيرة (الخامس فما فوق) في ورقة الطلاب', 'warning'); return; }
-    if (!confirm('سيتم إنشاء ' + order.length + ' لجنة، لجنة واحدة لكل صف كبير بسعة = عدد طلابه الفعلي (قابلة للتعديل فوراً) — متابعة؟')) return;
-    var idx = 0;
-    function next() {
-      if (idx >= order.length) { ec_loadCommittees(); return; }
-      var grade = order[idx++];
-      callServer('saveExamCommitteeProtected', { committeeName: 'لجنة ' + grade, capacity: counts[grade], notes: '' }, function () { next(); }, function () { next(); });
-    }
-    next();
-  }
-  if (_ecStudents) { proceedWithStudents(); return; }
-  callServer('getExamStudentsProtected', {}, function (res) {
-    _ecStudents = (res && res.success) ? res.students : [];
-    proceedWithStudents();
+  if (!confirm('سيتم إنشاء لجنة واحدة لكل صف كبير (الخامس فما فوق) بسعة = عدد طلابه الفعلي (قابلة للتعديل فوراً) — متابعة؟')) return;
+  callServer('seedDefaultCommitteesProtected', {}, function (res) {
+    if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'فشل التنفيذ'), 'error'); return; }
+    var msg = '✅ أُنشئت ' + res.created.length + ' لجنة';
+    if (res.skipped && res.skipped.length) msg += ' (تخطّي ' + res.skipped.length + ' موجودة مسبقاً بنفس الاسم)';
+    toast(msg, 'success');
+    ec_loadCommittees();
   }, function (err) { toast('❌ ' + err.message, 'error'); });
 }
 
@@ -6323,7 +6306,7 @@ function ec_renderCommittees() {
           '</div>';
   if (!list.length) {
     h += '<div class="empty-state"><div class="es-icon">🏫</div><div class="es-title">لا توجد لجان بعد</div>' +
-         '<button onclick="ec_seedDefaultCommittees()" style="margin-top:10px;background:#455a64;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">⚡ توليد لجان افتراضية (5 لجان × 20 مقعداً)</button>' +
+         '<button onclick="ec_seedDefaultCommittees()" style="margin-top:10px;background:#455a64;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">⚡ توليد لجان بحسب الصفوف الحقيقية</button>' +
          '</div>';
   } else {
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">' +
@@ -6746,30 +6729,37 @@ function ec_printSeatCards(students) {
     for (var c = 0; c < chunk.length; c++) {
       var s = chunk[c];
       cardsHtml += '<div class="card">' +
-        logoHtml +
-        '<div class="card-head">' + _tfEsc(d.schoolName || '') + '</div>' +
-        '<div class="card-sub">' + _tfEsc(d.examType || '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
-        '<div class="card-name">' + _tfEsc(s.name) + '</div>' +
-        '<div class="card-grade">' + _tfEsc(s.grade) + (s.section ? ' - ' + _tfEsc(s.section) : '') + '</div>' +
-        '<div class="card-seat">رقم الجلوس: ' + _tfEsc(s.seatNumber || '—') + '</div>' +
-        '<div class="card-comm">اللجنة: ' + _tfEsc(s.committeeName || '—') + '</div>' +
+        '<div class="card-top">' + logoHtml +
+          '<div class="card-head">' + _tfEsc(d.schoolName || '') + '</div>' +
+          '<div class="card-sub">' + _tfEsc(d.examType || '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="card-name">' + _tfEsc(s.name) + '</div>' +
+          '<div class="card-grade">' + _tfEsc(s.grade) + (s.section ? ' - ' + _tfEsc(s.section) : '') + '</div>' +
+          '<div class="card-seat-box"><span class="card-seat-label">رقم الجلوس</span><span class="card-seat">' + _tfEsc(s.seatNumber || '—') + '</span></div>' +
+          '<div class="card-comm">اللجنة: ' + _tfEsc(s.committeeName || '—') + '</div>' +
+        '</div>' +
         '</div>';
     }
     for (var f = chunk.length; f < perPage; f++) cardsHtml += '<div class="card card-empty"></div>';
     pagesHtml += '<div class="page"><div class="cardgrid">' + cardsHtml + '</div></div>';
   }
   var brandColor = _ecBrandColor();
-  var css = '@page{size:A4;margin:8mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
+  var css = '@page{size:A4;margin:8mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;background:#fff;}' +
     '.page{page-break-after:always;} .page:last-child{page-break-after:auto;}' +
-    '.cardgrid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,1fr);gap:5mm;height:277mm;box-sizing:border-box;}' +
-    '.card{border:2px solid ' + brandColor + ';border-radius:8px;padding:8px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-sizing:border-box;}' +
-    '.card-empty{border:2px dashed #cbd5e1;}' +
-    '.card-head{font-weight:700;font-size:13px;}' +
-    '.card-sub{font-size:11px;color:#475569;margin-bottom:6px;}' +
-    '.card-name{font-weight:700;font-size:15px;margin-bottom:4px;}' +
-    '.card-grade{font-size:12px;margin-bottom:4px;}' +
-    '.card-seat{font-size:16px;font-weight:800;color:' + brandColor + ';}' +
-    '.card-comm{font-size:12px;margin-top:2px;}';
+    '.cardgrid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,1fr);gap:4mm;height:277mm;box-sizing:border-box;}' +
+    '.card{border:1px solid ' + brandColor + '33;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,0.08);}' +
+    '.card-empty{border:1.5px dashed #cbd5e1;box-shadow:none;}' +
+    '.card-top{background:linear-gradient(135deg,' + brandColor + ',' + brandColor + 'cc);color:#fff;padding:6px 8px 5px;text-align:center;}' +
+    '.card-head{font-weight:700;font-size:12.5px;line-height:1.3;}' +
+    '.card-sub{font-size:10px;opacity:.92;margin-top:1px;}' +
+    '.card-body{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6px 8px;gap:3px;}' +
+    '.card-name{font-weight:700;font-size:15px;color:#1e293b;}' +
+    '.card-grade{font-size:11.5px;color:#64748b;}' +
+    '.card-seat-box{display:flex;align-items:baseline;gap:6px;background:' + brandColor + '14;border-radius:8px;padding:4px 14px;margin-top:2px;}' +
+    '.card-seat-label{font-size:10px;color:#64748b;}' +
+    '.card-seat{font-size:19px;font-weight:800;color:' + brandColor + ';}' +
+    '.card-comm{font-size:11px;color:#475569;margin-top:2px;}';
   _tfPrintWin('بطاقات أرقام الجلوس', css, pagesHtml);
 }
 
@@ -7016,8 +7006,11 @@ function ec_gradesPrint() {
   var titleMap = { young: 'رصد الدرجات للصغار', secretEntry: 'الرصد بالرقم السري', secretView: 'كشف الأرقام السرية', nameEntry: 'الرصد بالاسم', nameView: 'كشف بالاسم' };
   var title = (titleMap[_ecGradeMode] || 'رصد الدرجات') + ' — ' + (d.grade || '') + (d.section ? ' - ' + d.section : '') + (d.subject ? ' — ' + d.subject : '');
   var css = '@page{size:A4;margin:10mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
-            'h3{margin:0 0 10px;font-size:15px;} table{width:100%;border-collapse:collapse;font-size:12px;}' +
-            'th,td{border:1px solid #333;padding:5px 7px;text-align:center;} th{background:#1a237e;color:#fff;}';
+            'h3{margin:0 0 12px;font-size:16px;font-weight:700;border-bottom:2px solid #1a237e;padding-bottom:8px;}' +
+            'table{width:100%;border-collapse:collapse;font-size:12px;border:1px solid #cbd5e1;}' +
+            'th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:center;}' +
+            'th{background:#1a237e;color:#fff;font-weight:600;}' +
+            'tbody tr:nth-child(even) td{background:#f8fafc;}';
   var body = '<h3>' + _tfEsc(title) + '</h3>' + table.outerHTML;
   _tfPrintWin(title, css, body);
 }
@@ -7064,15 +7057,19 @@ function ec_printCommitteeRoster(committeeName) {
   var rows = '';
   for (var s = 0; s < committee.students.length; s++) {
     var st = committee.students[s];
-    rows += '<tr><td>' + (s + 1) + '</td><td>' + _tfEsc(st.name) + '</td><td>' + _tfEsc(st.grade) + (st.section ? ' - ' + _tfEsc(st.section) : '') + '</td><td>' + _tfEsc(st.seatNumber) + '</td></tr>';
+    rows += '<tr' + (s % 2 ? ' class="alt"' : '') + '><td>' + (s + 1) + '</td><td class="name">' + _tfEsc(st.name) + '</td><td>' + _tfEsc(st.grade) + (st.section ? ' - ' + _tfEsc(st.section) : '') + '</td><td class="seat">' + _tfEsc(st.seatNumber) + '</td></tr>';
   }
   var brandColor = _ecBrandColor();
   var css = '@page{size:A4;margin:12mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;text-align:center;}' +
-            'table{width:100%;border-collapse:collapse;font-size:13px;text-align:right;} th,td{border:1px solid #333;padding:6px 8px;text-align:center;}' +
-            'th{background:' + brandColor + ';color:#fff;} h2{margin:0 0 4px;} .meta{font-size:12px;color:#475569;margin-bottom:14px;}';
-  var body = _ecBrandLogoHtml(50) +
+            '.header{background:linear-gradient(135deg,' + brandColor + ',' + brandColor + 'cc);color:#fff;border-radius:12px;padding:14px 10px 12px;margin-bottom:16px;}' +
+            'table{width:100%;border-collapse:collapse;font-size:13px;text-align:right;border:1px solid ' + brandColor + '33;border-radius:8px;overflow:hidden;}' +
+            'th,td{padding:8px 10px;text-align:center;border-bottom:1px solid #e5e7eb;} tr.alt td{background:' + brandColor + '0d;}' +
+            'th{background:' + brandColor + ';color:#fff;font-weight:600;} td.name{text-align:right;font-weight:600;} td.seat{font-weight:800;color:' + brandColor + ';}' +
+            'h2{margin:0;font-size:19px;} .meta{font-size:12px;opacity:.92;margin-top:4px;}';
+  var body = '<div class="header">' + _ecBrandLogoHtml(46) +
              '<h2>لجنة: ' + _tfEsc(committee.committeeName) + '</h2>' +
              '<div class="meta">' + _tfEsc(d.schoolName || '') + (d.examType ? ' — ' + _tfEsc(d.examType) : '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
+             '</div>' +
              '<table><thead><tr><th>#</th><th>الاسم</th><th>الفصل</th><th>رقم الجلوس</th></tr></thead><tbody>' + rows + '</tbody></table>';
   _tfPrintWin('لجنة ' + committee.committeeName, css, body);
 }
