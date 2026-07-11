@@ -1768,6 +1768,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .ec-tab:hover { background:rgba(15,44,92,.05);color:#0F2C5C; }
 .ec-tab.active { color:#0F2C5C;border-bottom-color:#D4A537;background:#fff; }
 .ec-pane { background:#f8fafc;border-radius:0 0 12px 12px;color:#1e293b; }
+.ec-gmode { padding:9px 14px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit; }
+.ec-gmode.active { background:#1a237e;color:#fff;border-color:#1a237e; }
 .smm-stat-chip {
   display:flex;flex-direction:column;align-items:center;
   background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;
@@ -6144,7 +6146,7 @@ function _spvSave(){
 // المرحلة 0+1: تبويب البيانات الأساسية + إدارة اللجان + إدارة الطلاب.
 // كل البيانات في ملف منصة المدرسين نفسه (أوراق الكنترول_البيانات/اللجان/الطلاب)،
 // عبر getExam*/saveExam*/deleteExam*Protected في teacher/ExamControl.js.
-var _ecData = null, _ecCommittees = null, _ecStudents = null;
+var _ecData = null, _ecCommittees = null, _ecStudents = null, _ecGrades = null;
 var _ecCommitteeEditId = '', _ecStudentEditCode = '';
 
 function renderExamControl() {
@@ -6163,10 +6165,18 @@ function renderExamControl() {
       '<button class="ec-tab active" id="ec-tab-data" onclick="ec_setTab(\'data\')">📋 البيانات الأساسية</button>' +
       '<button class="ec-tab" id="ec-tab-committees" onclick="ec_setTab(\'committees\')">🏫 اللجان</button>' +
       '<button class="ec-tab" id="ec-tab-students" onclick="ec_setTab(\'students\')">🎒 الطلاب</button>' +
+      '<button class="ec-tab" id="ec-tab-distribute" onclick="ec_setTab(\'distribute\')">🎯 توزيع اللجان</button>' +
+      '<button class="ec-tab" id="ec-tab-seatcards" onclick="ec_setTab(\'seatcards\')">🪑 طباعة أرقام الجلوس</button>' +
+      '<button class="ec-tab" id="ec-tab-grades" onclick="ec_setTab(\'grades\')">📊 رصد الدرجات</button>' +
+      '<button class="ec-tab" id="ec-tab-roster" onclick="ec_setTab(\'roster\')">📜 عرض اللجان وطباعتها</button>' +
     '</div>' +
     '<div id="ec-pane-data" class="ec-pane" style="padding:18px;"></div>' +
     '<div id="ec-pane-committees" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-students" class="ec-pane" style="display:none;padding:18px;"></div>' +
+    '<div id="ec-pane-distribute" class="ec-pane" style="display:none;padding:18px;"></div>' +
+    '<div id="ec-pane-seatcards" class="ec-pane" style="display:none;padding:18px;"></div>' +
+    '<div id="ec-pane-grades" class="ec-pane" style="display:none;padding:18px;"></div>' +
+    '<div id="ec-pane-roster" class="ec-pane" style="display:none;padding:18px;"></div>' +
     _ecCommitteeModalHtml() + _ecGenderModalHtml();
   ec_setTab('data');
 }
@@ -6176,7 +6186,7 @@ function ec_setTab(name) {
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
   var activeBtn = document.getElementById('ec-tab-' + name);
   if (activeBtn) activeBtn.classList.add('active');
-  var names = ['data', 'committees', 'students'];
+  var names = ['data', 'committees', 'students', 'distribute', 'seatcards', 'grades', 'roster'];
   for (var p = 0; p < names.length; p++) {
     var el = document.getElementById('ec-pane-' + names[p]);
     if (el) el.style.display = (names[p] === name) ? 'block' : 'none';
@@ -6184,6 +6194,10 @@ function ec_setTab(name) {
   if (name === 'data') ec_loadData();
   else if (name === 'committees') ec_loadCommittees();
   else if (name === 'students') ec_loadStudents();
+  else if (name === 'distribute') ec_renderDistributePane();
+  else if (name === 'seatcards') ec_loadSeatCardsPane();
+  else if (name === 'grades') ec_renderGradesPane();
+  else if (name === 'roster') ec_loadRoster();
 }
 
 // ── البيانات الأساسية ──
@@ -6212,10 +6226,15 @@ function _ecExamTypeOptionsHtml(selected) {
 function ec_renderDataPane() {
   var el = document.getElementById('ec-pane-data'); if (!el) return;
   var d = _ecData || {};
+  // اسم المدرسة يُعبَّأ ديناميكياً من سجل المدرسة الفعلي (نفس المتغيّر الذي يعتمده الشريط الجانبي
+  // وشاشة الدخول) إن لم يكن قد حُفِظ سابقاً — يبقى قابلاً للتعديل، لا حقلاً مقفلاً.
+  var dynamicSchoolName = (window._schoolBrand && window._schoolBrand.name) || '';
+  var schoolNameValue = d.schoolName || dynamicSchoolName;
   el.innerHTML =
     '<div style="max-width:480px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;">' +
     '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">اسم المدرسة</label>' +
-    '<input id="ec-d-schoolName" type="text" value="' + escapeHtml(d.schoolName || '') + '" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<input id="ec-d-schoolName" type="text" value="' + escapeHtml(schoolNameValue) + '" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    (!d.schoolName && dynamicSchoolName ? '<div style="font-size:11px;color:#64748b;margin:-8px 0 12px;">✓ عُبِّئ تلقائياً من بيانات المدرسة المسجَّلة بالنظام — عدِّله إن لزم</div>' : '') +
     '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">نوع الاختبار (فترة الدرجات)</label>' +
     '<select id="ec-d-examType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
       _ecExamTypeOptionsHtml(d.examType || 'نهاية العام') +
@@ -6253,6 +6272,20 @@ function ec_loadCommittees() {
   }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
 }
 
+// دفعة لجان افتراضية أولية (تظهر فقط حين تكون القائمة فارغة تماماً) — نقطة انطلاق سريعة
+// بدل إدخال كل لجنة يدوياً من الصفر؛ التعديل/الحذف/الإضافة اليدوية تبقى متاحة بعدها كما هي.
+function ec_seedDefaultCommittees() {
+  if (!confirm('سيتم إنشاء 5 لجان افتراضية (اللجنة 1..5، سعة 20 لكل واحدة) يمكن تعديل أسمائها وسعاتها لاحقاً — متابعة؟')) return;
+  var names = ['اللجنة الأولى', 'اللجنة الثانية', 'اللجنة الثالثة', 'اللجنة الرابعة', 'اللجنة الخامسة'];
+  var idx = 0;
+  function next() {
+    if (idx >= names.length) { ec_loadCommittees(); return; }
+    var name = names[idx++];
+    callServer('saveExamCommitteeProtected', { committeeName: name, capacity: 20, notes: '' }, function () { next(); }, function () { next(); });
+  }
+  next();
+}
+
 function ec_renderCommittees() {
   var el = document.getElementById('ec-pane-committees'); if (!el) return;
   var list = _ecCommittees || [];
@@ -6260,7 +6293,9 @@ function ec_renderCommittees() {
           '<button onclick="ec_showCommitteeModal()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">➕ إضافة لجنة</button>' +
           '</div>';
   if (!list.length) {
-    h += '<div class="empty-state"><div class="es-icon">🏫</div><div class="es-title">لا توجد لجان بعد</div></div>';
+    h += '<div class="empty-state"><div class="es-icon">🏫</div><div class="es-title">لا توجد لجان بعد</div>' +
+         '<button onclick="ec_seedDefaultCommittees()" style="margin-top:10px;background:#455a64;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">⚡ توليد لجان افتراضية (5 لجان × 20 مقعداً)</button>' +
+         '</div>';
   } else {
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">' +
          '<thead><tr style="background:#1a237e;color:#fff;"><th style="padding:9px 8px;text-align:right;">اسم اللجنة</th><th style="padding:9px 8px;text-align:center;">السعة</th><th style="padding:9px 8px;text-align:right;">ملاحظات</th><th style="padding:9px 8px;text-align:center;">إجراءات</th></tr></thead><tbody>';
@@ -6334,9 +6369,16 @@ function ec_loadStudents() {
 function ec_renderStudents() {
   var el = document.getElementById('ec-pane-students'); if (!el) return;
   var list = _ecStudents || [];
-  var h = '<div style="margin-bottom:12px;font-size:13px;">العدد: ' + list.length +
-          ' <span style="color:#64748b;">— الاسم/الصف/الشعبة من ورقة «الطلاب» الحقيقية؛ ' +
-          'الجنس هنا يُضبط لحاجة توزيع اللجان لاحقاً.</span></div>';
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">' +
+          '<span style="font-size:13px;">العدد: ' + list.length + '</span>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button onclick="ec_exportStudents()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;">📤 تصدير Excel</button>' +
+            '<label style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;">📥 استيراد الجنس (Excel)' +
+              '<input type="file" accept=".xlsx,.xls,.csv" onchange="ec_importGendersFile(this)" style="display:none;">' +
+            '</label>' +
+          '</div></div>' +
+          '<div style="margin-bottom:12px;font-size:12px;color:#64748b;">الاسم/الصف/الشعبة من ورقة «الطلاب» الحقيقية؛ ' +
+          'الاستيراد/التصدير هنا يخصّان عمود "الجنس" فقط (اللازم لتوزيع اللجان لاحقاً) — عمودان فقط: الكود والجنس.</div>';
   if (!list.length) {
     h += '<div class="empty-state"><div class="es-icon">🎒</div><div class="es-title">لا يوجد طلاب في ورقة «الطلاب» بعد</div></div>';
   } else {
@@ -6380,6 +6422,470 @@ function ec_saveGender() {
     ec_closeGenderModal();
     ec_loadStudents();
   }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+// تصدير القائمة الحالية (المحمَّلة أصلاً في الذاكرة — بلا نداء خادم إضافي) إلى Excel.
+function ec_exportStudents() {
+  var list = _ecStudents || [];
+  if (!list.length) { toast('لا يوجد طلاب لتصديرهم', 'warning'); return; }
+  var aoa = [['الكود', 'الاسم', 'الصف', 'الشعبة', 'الجنس', 'رقم الجلوس', 'الرقم السري', 'لجنة الاختبار']];
+  for (var i = 0; i < list.length; i++) {
+    var s = list[i];
+    aoa.push([s.code, s.name, s.grade, s.section, (s.gender === 'M' ? 'ذكر' : (s.gender === 'F' ? 'أنثى' : '')),
+              s.seatNumber, s.secretNumber, s.committeeName]);
+  }
+  _tcExportAoa(aoa, 'طلاب_الكنترول.xlsx', 'الطلاب');
+}
+
+// استيراد عمود "الجنس" فقط من ملف يحتوي عمودَي الكود/الجنس على الأقل (بأي ترتيب أعمدة،
+// مطابقة بالاسم من صف الرأس الأول) — لا يمسّ الاسم/الصف/الشعبة.
+function ec_importGendersFile(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  _tcReadImportFile(file, function (aoa) {
+    input.value = '';
+    if (!aoa || aoa.length < 2) { toast('الملف فارغ أو غير صالح', 'error'); return; }
+    var header = aoa[0], codeCol = -1, genderCol = -1;
+    for (var c = 0; c < header.length; c++) {
+      var h = String(header[c] || '').trim();
+      if (codeCol === -1 && (h === 'الكود' || h.toLowerCase() === 'code')) codeCol = c;
+      if (genderCol === -1 && (h === 'الجنس' || h.toLowerCase() === 'gender')) genderCol = c;
+    }
+    if (codeCol === -1 || genderCol === -1) {
+      toast('يجب أن يحتوي الملف على عمودَي "الكود" و"الجنس" (نفس تسمية ملف التصدير)', 'error');
+      return;
+    }
+    var rows = [];
+    for (var r = 1; r < aoa.length; r++) {
+      var row = aoa[r]; if (!row) continue;
+      var code = String(row[codeCol] || '').trim();
+      if (!code) continue;
+      rows.push({ code: code, gender: String(row[genderCol] || '').trim() });
+    }
+    if (!rows.length) { toast('لا توجد صفوف صالحة في الملف', 'warning'); return; }
+    showLoading('جارٍ استيراد الجنس لـ' + rows.length + ' طالباً...');
+    callServer('importExamStudentGendersProtected', { rows: rows }, function (res) {
+      hideLoading();
+      if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'خطأ'), 'error'); return; }
+      toast('✅ تحديث ' + res.updated + ' | غير موجود ' + res.notFound + ' | قيمة غير صالحة ' + res.invalid, 'success');
+      ec_loadStudents();
+    }, function (err) { hideLoading(); toast('❌ ' + err.message, 'error'); });
+  });
+}
+
+// ── توزيع اللجان (المرحلتان 3+4) — يكتبان على أعمدة رقم الجلوس/الرقم السري/لجنة الاختبار
+// في ورقة «الطلاب» الحقيقية مباشرة؛ عملية على بيانات حقيقية فتُسبَق بتأكيد صريح دوماً. ──
+function ec_renderDistributePane() {
+  var el = document.getElementById('ec-pane-distribute'); if (!el) return;
+  el.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:820px;">' +
+      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">' +
+        '<h4 style="margin:0 0 6px;">🧒 توزيع الطلاب الصغار</h4>' +
+        '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">KG2 حتى الرابع — كل فصل (صف+شعبة) يصبح لجنته الخاصة، ترقيم جلوس متسلسل من 1.</p>' +
+        '<button onclick="ec_runDistributeYoung()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:9px 16px;cursor:pointer;font-weight:700;">🚀 توزيع الآن</button>' +
+        '<div id="ec-dist-young-status" style="margin-top:10px;font-size:13px;"></div>' +
+      '</div>' +
+      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">' +
+        '<h4 style="margin:0 0 6px;">🧑‍🎓 توزيع الطلاب الكبار</h4>' +
+        '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">الخامس حتى ثالث ثانوي — على لجان تبويب "اللجان" حسب السعة (ذكور ثم إناث، بلا خلط)، يتطلّب تحديد جنس كل طالب من تبويب الطلاب.</p>' +
+        '<button onclick="ec_runDistributeLarge()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:9px 16px;cursor:pointer;font-weight:700;">🚀 توزيع الآن</button>' +
+        '<div id="ec-dist-large-status" style="margin-top:10px;font-size:13px;"></div>' +
+      '</div>' +
+    '</div>';
+}
+
+function ec_runDistributeYoung() {
+  if (!confirm('سيُعاد توزيع كل طلاب الصفوف الصغيرة (KG2 - الرابع) على أرقام الجلوس واللجان — هل تريد المتابعة؟')) return;
+  var st = document.getElementById('ec-dist-young-status'); if (st) st.innerHTML = '⏳ جارٍ التوزيع...';
+  callServer('distributeYoungStudentsProtected', {}, function(res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+    if (st) st.innerHTML = '<span style="color:#2e7d32;">✅ تم توزيع ' + res.distributed + ' طالباً</span>';
+  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+function ec_runDistributeLarge() {
+  if (!confirm('سيُعاد توزيع كل طلاب الصفوف الكبيرة (الخامس - ثالث ثانوي) على اللجان — هل تريد المتابعة؟')) return;
+  var st = document.getElementById('ec-dist-large-status'); if (st) st.innerHTML = '⏳ جارٍ التوزيع...';
+  callServer('distributeLargeStudentsProtected', {}, function(res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+    var msg = '✅ تم توزيع ' + res.distributed + ' طالباً';
+    if (res.noGenderCount) msg += ' | ⚠️ ' + res.noGenderCount + ' طالباً بلا جنس محدَّد (لم يُوزَّعوا)';
+    if (res.unassignedNoCapacity) msg += ' | ⚠️ ' + res.unassignedNoCapacity + ' طالباً بلا سعة لجان كافية';
+    if (st) st.innerHTML = '<span style="color:#2e7d32;">' + msg + '</span>';
+  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+// ── طباعة أرقام الجلوس (المرحلة 5): اختيار فصل → بطاقات، 10 لكل A4 ──
+var _ecClasses = null;
+
+function ec_loadSeatCardsPane() {
+  var el = document.getElementById('ec-pane-seatcards'); if (!el) return;
+  el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  callServer('getExamClassListProtected', {}, function(res) {
+    if (!res || !res.success) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
+    _ecClasses = res.classes || [];
+    ec_renderSeatCardsPane();
+  }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
+}
+
+function ec_renderSeatCardsPane() {
+  var el = document.getElementById('ec-pane-seatcards'); if (!el) return;
+  var classes = _ecClasses || [];
+  if (!classes.length) {
+    el.innerHTML = '<div class="empty-state"><div class="es-icon">🪑</div><div class="es-title">لا توجد فصول في ورقة الطلاب</div></div>';
+    return;
+  }
+  var opts = '';
+  for (var i = 0; i < classes.length; i++) {
+    var c = classes[i];
+    var label = c.section ? (c.grade + ' - ' + c.section) : c.grade;
+    opts += '<option value="' + i + '">' + escapeHtml(label) + '</option>';
+  }
+  el.innerHTML =
+    '<div style="max-width:420px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;">' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">اختر الفصل</label>' +
+    '<select id="ec-sc-class" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:14px;box-sizing:border-box;">' + opts + '</select>' +
+    '<button onclick="ec_printSeatCardsForClass()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:10px 22px;cursor:pointer;font-weight:700;">🖨️ طباعة بطاقات الجلوس</button>' +
+    '<div id="ec-sc-status" style="margin-top:10px;font-size:13px;"></div>' +
+    '</div>';
+}
+
+function ec_printSeatCardsForClass() {
+  var sel = document.getElementById('ec-sc-class'); if (!sel) return;
+  var c = (_ecClasses || [])[Number(sel.value)]; if (!c) return;
+  var st = document.getElementById('ec-sc-status'); if (st) st.innerHTML = '⏳ جارٍ التحضير...';
+  callServer('getExamStudentsByClassProtected', { grade: c.grade, section: c.section }, function(res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+    if (!res.students.length) { if (st) st.innerHTML = '<span style="color:#c62828;">لا يوجد طلاب في هذا الفصل</span>'; return; }
+    if (st) st.innerHTML = '';
+    ec_printSeatCards(res.students);
+  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+function ec_printSeatCards(students) {
+  var d = _ecData || {};
+  var perPage = 10;
+  var pagesHtml = '';
+  for (var p = 0; p < students.length; p += perPage) {
+    var chunk = students.slice(p, p + perPage);
+    var cardsHtml = '';
+    for (var c = 0; c < chunk.length; c++) {
+      var s = chunk[c];
+      cardsHtml += '<div class="card">' +
+        '<div class="card-head">' + _tfEsc(d.schoolName || '') + '</div>' +
+        '<div class="card-sub">' + _tfEsc(d.examType || '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
+        '<div class="card-name">' + _tfEsc(s.name) + '</div>' +
+        '<div class="card-grade">' + _tfEsc(s.grade) + (s.section ? ' - ' + _tfEsc(s.section) : '') + '</div>' +
+        '<div class="card-seat">رقم الجلوس: ' + _tfEsc(s.seatNumber || '—') + '</div>' +
+        '<div class="card-comm">اللجنة: ' + _tfEsc(s.committeeName || '—') + '</div>' +
+        '</div>';
+    }
+    for (var f = chunk.length; f < perPage; f++) cardsHtml += '<div class="card card-empty"></div>';
+    pagesHtml += '<div class="page"><div class="cardgrid">' + cardsHtml + '</div></div>';
+  }
+  var css = '@page{size:A4;margin:8mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
+    '.page{page-break-after:always;} .page:last-child{page-break-after:auto;}' +
+    '.cardgrid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,1fr);gap:5mm;height:277mm;box-sizing:border-box;}' +
+    '.card{border:2px solid #1a237e;border-radius:8px;padding:8px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-sizing:border-box;}' +
+    '.card-empty{border:2px dashed #cbd5e1;}' +
+    '.card-head{font-weight:700;font-size:13px;}' +
+    '.card-sub{font-size:11px;color:#475569;margin-bottom:6px;}' +
+    '.card-name{font-weight:700;font-size:15px;margin-bottom:4px;}' +
+    '.card-grade{font-size:12px;margin-bottom:4px;}' +
+    '.card-seat{font-size:16px;font-weight:800;color:#1a237e;}' +
+    '.card-comm{font-size:12px;margin-top:2px;}';
+  _tfPrintWin('بطاقات أرقام الجلوس', css, pagesHtml);
+}
+
+// ── رصد الدرجات (المرحلة 6) — 5 شاشات فوق نفس نظام الدرجات الحقيقي («النصفي»، شهر
+// "نوع الاختبار" المحفوظ بالبيانات الأساسية، حقل "النهائي" عبر gradeType='exam_score').
+// admin/deputy يتجاوزان قيد نطاق المعلّم في withAuthAndClass تلقائياً — فتعمل دوال الدرجات
+// الموجودة أصلاً (getStudentsProtected/autoSaveSingleGradeProtected) لأي صف/مادة من هنا
+// بلا أي كود خلفي جديد للدرجات نفسها. ──
+var _ecGradeMode = 'young';
+var _ecGradesData = null; // آخر نتيجة getStudentsProtected محمَّلة
+
+function _ecNumberToArabicWords(n) {
+  n = Math.round(Number(n) || 0);
+  if (n < 0 || n > 100) return String(n);
+  if (n === 100) return 'مئة';
+  if (n === 0) return 'صفر';
+  var ones  = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة'];
+  var teens = ['عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
+  var tens  = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
+  if (n < 10) return ones[n];
+  if (n < 20) return teens[n - 10];
+  var t = Math.floor(n / 10), o = n % 10;
+  return o === 0 ? tens[t] : (ones[o] + ' و' + tens[t]);
+}
+
+function ec_renderGradesPane() {
+  var el = document.getElementById('ec-pane-grades'); if (!el) return;
+  el.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<button class="ec-gmode active" id="ec-gm-young" onclick="ec_setGradeMode(\'young\')">🧒 للصغار</button>' +
+      '<button class="ec-gmode" id="ec-gm-secretEntry" onclick="ec_setGradeMode(\'secretEntry\')">🔒 بالرقم السري (إدخال)</button>' +
+      '<button class="ec-gmode" id="ec-gm-secretView" onclick="ec_setGradeMode(\'secretView\')">🔒 بالرقم السري (كشف)</button>' +
+      '<button class="ec-gmode" id="ec-gm-nameEntry" onclick="ec_setGradeMode(\'nameEntry\')">📝 بالاسم (إدخال)</button>' +
+      '<button class="ec-gmode" id="ec-gm-nameView" onclick="ec_setGradeMode(\'nameView\')">📝 بالاسم (كشف)</button>' +
+    '</div>' +
+    '<div id="ec-grades-body"></div>';
+  ec_setGradeMode('young');
+}
+
+function ec_setGradeMode(mode) {
+  _ecGradeMode = mode;
+  var modes = ['young', 'secretEntry', 'secretView', 'nameEntry', 'nameView'];
+  for (var i = 0; i < modes.length; i++) {
+    var b = document.getElementById('ec-gm-' + modes[i]);
+    if (b) b.classList.toggle('active', modes[i] === mode);
+  }
+  ec_ensureGradesLoaded(function () { ec_ensureClassesLoaded(function () { ec_renderGradesControls(); }); });
+}
+
+function ec_ensureGradesLoaded(cb) {
+  if (_ecGrades) { cb(); return; }
+  callServer('getExamGradeListProtected', {}, function (res) {
+    _ecGrades = (res && res.success) ? res.grades : [];
+    cb();
+  }, function () { _ecGrades = []; cb(); });
+}
+
+function ec_ensureClassesLoaded(cb) {
+  if (_ecClasses) { cb(); return; }
+  callServer('getExamClassListProtected', {}, function (res) {
+    _ecClasses = (res && res.success) ? res.classes : [];
+    cb();
+  }, function () { _ecClasses = []; cb(); });
+}
+
+// قائمة الصفوف المتاحة حسب الوضع: للصغار KG2-الرابع فقط، والباقي كل الصفوف الـ13.
+function _ecGradesForMode(mode) {
+  var all = _ecGrades || [];
+  return mode === 'young' ? all.slice(0, 5) : all;
+}
+
+// شعب الصف من _ecClasses (يُحمَّل مرة عبر تبويب طباعة أرقام الجلوس أو هنا مباشرة)
+function _ecSectionsForGrade(grade) {
+  var out = [''];
+  var classes = _ecClasses || [];
+  for (var i = 0; i < classes.length; i++) {
+    if (classes[i].grade === grade && classes[i].section && out.indexOf(classes[i].section) === -1) out.push(classes[i].section);
+  }
+  return out;
+}
+
+function ec_renderGradesControls() {
+  var body = document.getElementById('ec-grades-body'); if (!body) return;
+  var mode = _ecGradeMode;
+  var grades = _ecGradesForMode(mode);
+  var needsSection = (mode === 'young' || mode === 'secretEntry' || mode === 'secretView');
+  var gradeOpts = '';
+  for (var i = 0; i < grades.length; i++) gradeOpts += '<option value="' + escapeHtml(grades[i]) + '">' + escapeHtml(grades[i]) + '</option>';
+
+  var h = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">' +
+    '<div><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">الصف</label>' +
+    '<select id="ec-g-grade" onchange="ec_gradesOnGradeChange()" style="padding:8px;border:1px solid #ddd;border-radius:8px;">' + gradeOpts + '</select></div>';
+  if (needsSection) {
+    h += '<div><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">الشعبة</label>' +
+      '<select id="ec-g-section" style="padding:8px;border:1px solid #ddd;border-radius:8px;"></select></div>';
+  }
+  h += '<div><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">المادة</label>' +
+    '<select id="ec-g-subject" style="padding:8px;border:1px solid #ddd;border-radius:8px;min-width:140px;"></select></div>' +
+    '<button onclick="ec_gradesLoad()" style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:700;">📄 عرض</button>' +
+    '<button onclick="ec_gradesPrint()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;">🖨️ طباعة</button>' +
+    '</div><div id="ec-grades-table"></div>';
+  body.innerHTML = h;
+  ec_gradesOnGradeChange();
+}
+
+function ec_gradesOnGradeChange() {
+  var grade = (document.getElementById('ec-g-grade') || {}).value || '';
+  var secSel = document.getElementById('ec-g-section');
+  if (secSel) {
+    var secs = _ecSectionsForGrade(grade);
+    var h = '';
+    for (var i = 0; i < secs.length; i++) h += '<option value="' + escapeHtml(secs[i]) + '">' + (secs[i] ? escapeHtml(secs[i]) : 'كل الشعب') + '</option>';
+    secSel.innerHTML = h;
+  }
+  var subjSel = document.getElementById('ec-g-subject');
+  if (subjSel) {
+    var subs = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
+    var sh = '';
+    for (var s = 0; s < subs.length; s++) sh += '<option value="' + escapeHtml(subs[s]) + '">' + escapeHtml(subs[s]) + '</option>';
+    subjSel.innerHTML = sh;
+  }
+}
+
+function ec_gradesLoad() {
+  var grade   = (document.getElementById('ec-g-grade') || {}).value || '';
+  var secSel  = document.getElementById('ec-g-section');
+  var section = secSel ? secSel.value : '';
+  var subject = (document.getElementById('ec-g-subject') || {}).value || '';
+  var month   = (_ecData && _ecData.examType) || 'نهاية العام';
+  var table = document.getElementById('ec-grades-table');
+  if (!grade || !subject) { if (table) table.innerHTML = '<p style="color:#c62828;">اختر الصف والمادة أولاً</p>'; return; }
+  if (table) table.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  // ورقة "النصفي" (الدرجات) لا تحمل رقم الجلوس/الرقم السري — هما فقط في ورقة "الطلاب"
+  // (أعمدة الكنترول)، فنجلب المصدرين معاً وندمجهما بمطابقة الكود.
+  var gradesRes = null, rosterRes = null, pending = 2;
+  function done() {
+    if (!gradesRes || !gradesRes.success) { if (table) table.innerHTML = '<p style="color:#c62828;">❌ ' + (gradesRes ? gradesRes.error : 'تعذّر تحميل الدرجات') + '</p>'; return; }
+    var rosterByCode = {};
+    if (rosterRes && rosterRes.success) {
+      for (var i = 0; i < rosterRes.students.length; i++) rosterByCode[rosterRes.students[i].code] = rosterRes.students[i];
+    }
+    var students = gradesRes.students || [];
+    for (var j = 0; j < students.length; j++) {
+      var r = rosterByCode[students[j].code];
+      students[j].seatNumber    = r ? r.seatNumber    : '';
+      students[j].secretNumber  = r ? r.secretNumber  : '';
+    }
+    _ecGradesData = { grade: grade, section: section, subject: subject, month: month, students: students };
+    ec_gradesRenderTable();
+  }
+  callServer('getStudentsProtected', { grade: grade, section: section, month: month, subject: subject }, function (res) {
+    gradesRes = res; if (--pending === 0) done();
+  }, function (err) { gradesRes = { success: false, error: err.message }; if (--pending === 0) done(); });
+  callServer('getExamStudentsByClassProtected', { grade: grade, section: section }, function (res) {
+    rosterRes = res; if (--pending === 0) done();
+  }, function () { rosterRes = null; if (--pending === 0) done(); });
+}
+
+function _ecGradeValueOf(stu) { var v = stu.ye_final; return (v === '' || v === null || v === undefined) ? '' : Number(v); }
+
+function ec_gradesRenderTable() {
+  var table = document.getElementById('ec-grades-table'); if (!table) return;
+  var d = _ecGradesData; if (!d) return;
+  var mode = _ecGradeMode;
+  var students = d.students.slice();
+
+  if (mode === 'secretEntry' || mode === 'secretView') {
+    students.sort(function (a, b) { return (parseInt(a.secretNumber, 10) || 0) - (parseInt(b.secretNumber, 10) || 0); });
+  } else if (mode === 'nameView') {
+    students.sort(function (a, b) { return (parseInt(a.seatNumber, 10) || 0) - (parseInt(b.seatNumber, 10) || 0); });
+  } else {
+    students.sort(function (a, b) { return a.name.localeCompare(b.name, 'ar'); });
+  }
+
+  var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;" id="ec-grades-real-table">' +
+          '<thead><tr style="background:#1a237e;color:#fff;">';
+  if (mode === 'young' || mode === 'nameEntry') {
+    h += '<th style="padding:8px;">الصف</th><th style="padding:8px;">الاسم</th><th style="padding:8px;">رقم الجلوس</th><th style="padding:8px;">الرقم السري</th><th style="padding:8px;">الدرجة</th>';
+  } else if (mode === 'secretEntry') {
+    h += '<th style="padding:8px;">الرقم السري</th><th style="padding:8px;">الدرجة</th>';
+  } else if (mode === 'secretView') {
+    h += '<th style="padding:8px;">الرقم السري</th><th style="padding:8px;">الدرجة رقماً</th><th style="padding:8px;">الدرجة كتابةً</th>';
+  } else if (mode === 'nameView') {
+    h += '<th style="padding:8px;">رقم الجلوس</th><th style="padding:8px;">الاسم</th><th style="padding:8px;">الدرجة</th>';
+  }
+  h += '</tr></thead><tbody>';
+
+  for (var i = 0; i < students.length; i++) {
+    var s = students[i];
+    var val = _ecGradeValueOf(s);
+    var display = (val === '' || val === 0) ? '' : val;
+    h += '<tr style="border-bottom:1px solid #e8eef7;">';
+    if (mode === 'young' || mode === 'nameEntry') {
+      h += '<td style="padding:8px;text-align:center;">' + escapeHtml(s.grade) + '</td>' +
+           '<td style="padding:8px;">' + escapeHtml(s.name) + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + escapeHtml(s.seatNumber || '') + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + escapeHtml(s.secretNumber || '') + '</td>' +
+           '<td style="padding:8px;text-align:center;"><input type="number" min="0" max="30" value="' + display + '" onchange="ec_gradesSaveCell(this,\'' + s.code + '\')" style="width:64px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;"></td>';
+    } else if (mode === 'secretEntry') {
+      h += '<td style="padding:8px;text-align:center;">' + escapeHtml(s.secretNumber || '') + '</td>' +
+           '<td style="padding:8px;text-align:center;"><input type="number" min="0" max="30" value="' + display + '" onchange="ec_gradesSaveCell(this,\'' + s.code + '\')" style="width:64px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;"></td>';
+    } else if (mode === 'secretView') {
+      h += '<td style="padding:8px;text-align:center;">' + escapeHtml(s.secretNumber || '') + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + display + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + (display === '' ? '' : _ecNumberToArabicWords(display)) + '</td>';
+    } else if (mode === 'nameView') {
+      h += '<td style="padding:8px;text-align:center;">' + escapeHtml(s.seatNumber || '') + '</td>' +
+           '<td style="padding:8px;">' + escapeHtml(s.name) + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + display + '</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table></div>';
+  table.innerHTML = h;
+}
+
+function ec_gradesSaveCell(input, code) {
+  var d = _ecGradesData; if (!d) return;
+  var value = input.value === '' ? 0 : Number(input.value);
+  callServer('autoSaveSingleGradeProtected', {
+    grade: d.grade, section: d.section, month: d.month, subject: d.subject,
+    studentCode: code, gradeType: 'exam_score', value: value
+  }, function (res) {
+    if (!res || !res.success) toast('❌ ' + (res ? res.error : 'تعذّر الحفظ'), 'error');
+  }, function (err) { toast('❌ ' + err.message, 'error'); });
+}
+
+// طباعة الوضع الحالي: A4 واحدة، بلا مقدّمة رأس الصفحة، خطوط شبكة واضحة.
+function ec_gradesPrint() {
+  var table = document.getElementById('ec-grades-real-table');
+  if (!table) { toast('اعرض البيانات أولاً', 'warning'); return; }
+  var d = _ecGradesData || {};
+  var titleMap = { young: 'رصد الدرجات للصغار', secretEntry: 'الرصد بالرقم السري', secretView: 'كشف الأرقام السرية', nameEntry: 'الرصد بالاسم', nameView: 'كشف بالاسم' };
+  var title = (titleMap[_ecGradeMode] || 'رصد الدرجات') + ' — ' + (d.grade || '') + (d.section ? ' - ' + d.section : '') + (d.subject ? ' — ' + d.subject : '');
+  var css = '@page{size:A4;margin:10mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
+            'h3{margin:0 0 10px;font-size:15px;} table{width:100%;border-collapse:collapse;font-size:12px;}' +
+            'th,td{border:1px solid #333;padding:5px 7px;text-align:center;} th{background:#1a237e;color:#fff;}';
+  var body = '<h3>' + _tfEsc(title) + '</h3>' + table.outerHTML;
+  _tfPrintWin(title, css, body);
+}
+
+// ── عرض اللجان وطباعتها (مشترك للمرحلتين 3/4 وللمرحلة 7 — نفس البيانات، بلا الرقم السري) ──
+var _ecRosterCommittees = null;
+
+function ec_loadRoster() {
+  var el = document.getElementById('ec-pane-roster'); if (!el) return;
+  el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  callServer('getExamCommitteeRosterProtected', {}, function(res) {
+    if (!res || !res.success) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
+    _ecRosterCommittees = res.committees || [];
+    ec_renderRoster();
+  }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
+}
+
+function ec_renderRoster() {
+  var el = document.getElementById('ec-pane-roster'); if (!el) return;
+  var list = _ecRosterCommittees || [];
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state"><div class="es-icon">📜</div><div class="es-title">لا توجد لجان مُوزَّعة بعد</div><div class="es-sub">شغّل "توزيع اللجان" أولاً</div></div>';
+    return;
+  }
+  var h = '<div style="display:flex;flex-wrap:wrap;gap:10px;">';
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    h += '<button onclick="ec_printCommitteeRoster(\'' + escapeHtml(c.committeeName).replace(/'/g, "\\'") + '\')" style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px 18px;cursor:pointer;text-align:right;min-width:160px;color:#1e293b;">' +
+         '<div style="font-weight:700;">🏫 ' + escapeHtml(c.committeeName) + '</div>' +
+         '<div style="font-size:12px;color:#64748b;margin-top:4px;">' + c.students.length + ' طالباً — اضغط للطباعة</div>' +
+         '</button>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function ec_printCommitteeRoster(committeeName) {
+  var committee = null;
+  for (var i = 0; i < (_ecRosterCommittees || []).length; i++) {
+    if (_ecRosterCommittees[i].committeeName === committeeName) { committee = _ecRosterCommittees[i]; break; }
+  }
+  if (!committee) return;
+  var d = _ecData || {};
+  var rows = '';
+  for (var s = 0; s < committee.students.length; s++) {
+    var st = committee.students[s];
+    rows += '<tr><td>' + (s + 1) + '</td><td>' + _tfEsc(st.name) + '</td><td>' + _tfEsc(st.grade) + (st.section ? ' - ' + _tfEsc(st.section) : '') + '</td><td>' + _tfEsc(st.seatNumber) + '</td></tr>';
+  }
+  var css = '@page{size:A4;margin:12mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;}' +
+            'table{width:100%;border-collapse:collapse;font-size:13px;} th,td{border:1px solid #333;padding:6px 8px;text-align:center;}' +
+            'th{background:#1a237e;color:#fff;} h2{margin:0 0 4px;} .meta{font-size:12px;color:#475569;margin-bottom:14px;}';
+  var body = '<h2>لجنة: ' + _tfEsc(committee.committeeName) + '</h2>' +
+             '<div class="meta">' + _tfEsc(d.schoolName || '') + (d.examType ? ' — ' + _tfEsc(d.examType) : '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
+             '<table><thead><tr><th>#</th><th>الاسم</th><th>الفصل</th><th>رقم الجلوس</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  _tfPrintWin('لجنة ' + committee.committeeName, css, body);
 }
 
 // ── مودالات (لجنة/جنس الطالب) — بطاقة بيضاء ثابتة، لذا لون النص ثابت غامق دوماً ──
