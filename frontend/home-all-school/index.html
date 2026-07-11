@@ -65,24 +65,45 @@
     img{max-width:100%;display:block}
     .wrap{max-width:1160px;margin:0 auto;padding:0 18px}
 
-    /* حركة/كشف عند التمرير (مستنسخة من home/Index.html للاتساق البصري بين التطبيقين العامّين) */
+    /* هوية حركية سينمائية خاصة بـ home-all-school — «شبكة المدارس المتصلة» (مصمَّمة خصيصاً لهذا
+       التطبيق، متمايزة عن مكتبة home/Index.html). Timeline:
+         0.05s–0.85s : كشف العنوان بستارة تُفتح من اليمين إلى اليسار (clip-path، تناسب RTL)
+         0.40s–1.10s : انزلاق الفقرة من الأسفل
+         0.62s/0.74s/0.86s : ظهور أزرار CTA الثلاثة فردياً بارتداد خفيف (overshoot)
+         مستمر (loop) : شبكة نقاط تنجرف قطرياً (42s) + فقاعتان ضبابيتان بمسارين مختلفين (9s/11s)
+                        + تدرّج الخلفية (14s، كما كان) — كلّها transform/opacity/background-position فقط
+         عند التمرير  : بطاقات المميزات/المدارس/الأخبار تدخل بتأثير "focus pull" (ضبابية تتّضح + تكبير خفيف)
+       @media(prefers-reduced-motion:reduce) أدناه يُسقِط كل ما سبق فوراً لحالته النهائية الثابتة
+       (animation/transition-duration:.01ms على * — يُنهي كل حركة هنا خلال إطار واحد تقريباً). */
     @keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
-    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
-    .reveal{opacity:0;transform:translateY(36px);transition:opacity var(--t3) var(--ease-out),transform var(--t3) var(--ease-out)}
-    .reveal.in{opacity:1;transform:none}
-    .reveal-l{opacity:0;transform:translateX(36px);transition:opacity var(--t3) var(--ease-out),transform var(--t3) var(--ease-out)}
-    .reveal-l.in{opacity:1;transform:none}
-    .reveal-r{opacity:0;transform:translateX(-36px);transition:opacity var(--t3) var(--ease-out),transform var(--t3) var(--ease-out)}
-    .reveal-r.in{opacity:1;transform:none}
-    .reveal-s{opacity:0;transform:scale(.92);transition:opacity var(--t3) var(--ease-out),transform var(--t3) var(--ease-out)}
-    .reveal-s.in{opacity:1;transform:none}
+    @keyframes netDrift{0%{background-position:0 0}100%{background-position:-120px -60px}}
+    @keyframes blobDriftA{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(28px,-22px) scale(1.08)}50%{transform:translate(-8px,-40px) scale(.96)}75%{transform:translate(-32px,-6px) scale(1.04)}}
+    @keyframes blobDriftB{0%,100%{transform:translate(0,0) scale(1)}30%{transform:translate(-24px,20px) scale(1.06)}60%{transform:translate(16px,36px) scale(.94)}}
+    @keyframes heroTitleReveal{to{clip-path:inset(0 0 0 0)}}
+    @keyframes fadeUpIn{to{opacity:1;transform:none}}
+    @keyframes ctaPop{to{opacity:1;transform:none}}
+
+    .hero-net{position:absolute;inset:-20px;background-image:radial-gradient(rgba(255,255,255,.16) 1.5px,transparent 1.5px);background-size:26px 26px;animation:netDrift 42s linear infinite;opacity:.5;pointer-events:none;will-change:background-position}
+    .hero-blob{position:absolute;border-radius:50%;background:rgba(255,255,255,.14);filter:blur(28px);pointer-events:none;will-change:transform}
+    .hero-blob-a{width:260px;height:260px;inset-block-start:-60px;inset-inline-end:-40px;animation:blobDriftA 9s ease-in-out infinite}
+    .hero-blob-b{width:200px;height:200px;inset-block-end:-70px;inset-inline-start:6%;animation:blobDriftB 11s ease-in-out infinite}
+
+    .hero-title{clip-path:inset(0 0 0 100%);animation:heroTitleReveal .8s var(--ease-out) .05s forwards}
+    .hero-sub{opacity:0;transform:translateY(20px);animation:fadeUpIn .7s var(--ease-out) .4s forwards}
+    .cta-pop{opacity:0;transform:translateY(14px) scale(.85);animation:ctaPop .6s cubic-bezier(.34,1.56,.64,1) forwards}
+    .cta-pop:nth-child(1){animation-delay:.62s}
+    .cta-pop:nth-child(2){animation-delay:.74s}
+    .cta-pop:nth-child(3){animation-delay:.86s}
+
+    .reveal-s{opacity:0;transform:scale(.9);filter:blur(6px);transition:opacity var(--t3) var(--ease-out),transform var(--t3) var(--ease-out),filter var(--t3) var(--ease-out)}
+    .reveal-s.in{opacity:1;transform:none;filter:blur(0)}
     /* بطاقات مُنشأة ديناميكياً بعد استجابة الخادم (شركاء/أخبار) — كلاس لا inline-style، كي يبقى
        hover قادراً على الفوز على transform النهائي (نفس حيلة ترتيب المصدر المستخدمة مع .feature أعلاه):
        يجب أن تسبق هذه القاعدة .school:hover/.ncard:hover في المصدر. */
-    .card-reveal{opacity:0;transform:translateY(28px);transition:opacity .5s var(--ease-out),transform .5s var(--ease-out)}
-    .card-reveal.in{opacity:1;transform:none}
+    .card-reveal{opacity:0;transform:translateY(28px) scale(.96);filter:blur(5px);transition:opacity .5s var(--ease-out),transform .5s var(--ease-out),filter .5s var(--ease-out)}
+    .card-reveal.in{opacity:1;transform:none;filter:blur(0)}
     @media(prefers-reduced-motion:reduce){
-      *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+      *{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
     }
     .btn{display:inline-block;border:none;cursor:pointer;border-radius:12px;padding:11px 18px;font-weight:700;font-size:15px;font-family:inherit;transition:.15s}
     .btn-primary{background:var(--brand);color:#fff}
@@ -94,7 +115,6 @@
     /* Hero */
     header.hero{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:64px 0 72px;position:relative;overflow:hidden}
     header.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(120deg,var(--brand),#1b7ab8,var(--brand2),var(--brand));background-size:300% 300%;animation:gradShift 14s ease-in-out infinite;opacity:.55;will-change:background-position}
-    header.hero::after{content:"";position:absolute;inset:auto -60px -80px auto;width:320px;height:320px;background:rgba(255,255,255,.08);border-radius:50%;animation:float 7s ease-in-out infinite;will-change:transform}
     header.hero .wrap{position:relative;z-index:1}
     .hero h1{font-size:clamp(26px,4vw,44px);margin:0 0 12px;font-weight:800}
     .hero p{font-size:clamp(15px,2.2vw,19px);opacity:.95;margin:0 0 24px;max-width:680px}
@@ -111,7 +131,7 @@
     /* Features */
     .grid{display:grid;gap:18px}
     .features{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
-    .feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);transition:opacity var(--t3) var(--ease-out),transform var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
+    .feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);transition:opacity var(--t3) var(--ease-out),filter var(--t3) var(--ease-out),transform var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
     .feature:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(20,40,80,.14);border-color:var(--brand)}
     .feature .ico{font-size:30px;margin-bottom:10px}
     .feature h3{margin:0 0 6px;font-size:18px}
@@ -128,7 +148,7 @@
 
     /* Partners */
     .partners{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
-    .school{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;transition:transform var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
+    .school{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;transition:opacity var(--t2) var(--ease-out),transform var(--t2) var(--ease-out),filter var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
     .school:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(20,40,80,.16);border-color:var(--brand)}
     .school .top{display:flex;align-items:center;gap:14px}
     .school .logo{width:64px;height:64px;border-radius:14px;object-fit:cover;background:#eef2ff;flex:0 0 auto}
@@ -157,7 +177,7 @@
     #schoolView .sb-actions .btn-ghost{background:rgba(255,255,255,.18);color:var(--sv-on-primary,#fff)}
 
     .news{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-top:22px}
-    .ncard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;transition:transform var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out)}
+    .ncard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;transition:opacity var(--t2) var(--ease-out),transform var(--t2) var(--ease-out),filter var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out)}
     .ncard:hover{transform:translateY(-5px);box-shadow:0 14px 34px rgba(20,40,80,.14)}
     .ncard .media{aspect-ratio:16/10;background:#0b1220;position:relative}
     .ncard .media img{width:100%;height:100%;object-fit:cover}
@@ -177,13 +197,16 @@
 <body>
 
   <header class="hero">
+    <div class="hero-net" aria-hidden="true"></div>
+    <div class="hero-blob hero-blob-a" aria-hidden="true"></div>
+    <div class="hero-blob hero-blob-b" aria-hidden="true"></div>
     <div class="wrap">
-      <h1 class="reveal">منصّة سكولز اليمن</h1>
-      <p class="reveal">نظام متكامل لإدارة المدارس: منصّات للمعلمين والطلاب، وإدارة محتوى وأخبار، وجداول ذكية، ومالية وتقارير — يعمل حتى دون اتصال. اكتشف مدارسنا الشريكة واختر مدرستك.</p>
-      <div class="cta reveal">
-        <a class="btn btn-primary" href="/master-admin/register.html">🏫 سجّل مدرستك</a>
-        <a class="btn btn-ghost" href="#partners">استعرض المدارس</a>
-        <a class="btn btn-ghost" href="#features">مميّزات المنصّة</a>
+      <h1 class="hero-title">منصّة سكولز اليمن</h1>
+      <p class="hero-sub">نظام متكامل لإدارة المدارس: منصّات للمعلمين والطلاب، وإدارة محتوى وأخبار، وجداول ذكية، ومالية وتقارير — يعمل حتى دون اتصال. اكتشف مدارسنا الشريكة واختر مدرستك.</p>
+      <div class="cta">
+        <a class="btn btn-primary cta-pop" href="/master-admin/register.html">🏫 سجّل مدرستك</a>
+        <a class="btn btn-ghost cta-pop" href="#partners">استعرض المدارس</a>
+        <a class="btn btn-ghost cta-pop" href="#features">مميّزات المنصّة</a>
       </div>
     </div>
   </header>
@@ -495,7 +518,7 @@
         animateCards($('schoolNews'));
       }
 
-      // ── كشف عناصر المميزات عند التمرير (الـHero يُفعَّل فوراً في boot، لأنه أعلى الصفحة دوماً) ──
+      // ── كشف عناصر المميزات عند التمرير (حركة الـHero نفسها CSS-only تلقائية — لا علاقة لهذه الدالة بها) ──
       function initScrollReveal() {
         var els = document.querySelectorAll('.reveal-s');
         try {
@@ -514,9 +537,8 @@
       // ── الإقلاع ──
       function boot() {
         try { $('yr').textContent = String(new Date().getFullYear()); } catch (e) {}
-        // عناصر الـHero مرئية فوراً (أعلى الصفحة) — تُفعَّل مباشرة بلا انتظار تمرير
-        var heroReveal = document.querySelectorAll('header.hero .reveal');
-        for (var h = 0; h < heroReveal.length; h++) heroReveal[h].classList.add('in');
+        // عناصر الـHero (hero-title/hero-sub/cta-pop) تُشغَّل تلقائياً عبر CSS keyframes بلا JS —
+        // تعمل حتى لو تأخّر تحميل السكربت، وتبقى "autoplay" حقيقية بلا اعتماد على مراقب التمرير.
         initScrollReveal();
         loadPartners();
         var deep = qparam('school') || qparam('schoolId');
