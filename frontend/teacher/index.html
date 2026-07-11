@@ -10896,6 +10896,8 @@ function renderNewsList(list, isFirst) {
   for (var _rv = 0; _rv < list.length; _rv++) {
     if (list[_rv] && list[_rv].id) markNewsViewedTeacher(list[_rv].id);
   }
+
+  try { _tcWireCoverScale(); } catch (eCv) {}
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -11396,25 +11398,25 @@ function _tcDrawMotif(ctx, id, x, y, w, h, rotDeg, color) {
 }
 
 /* مولّد HTML الغلاف — مصدر العرض الوحيد: بطاقة الخبر + معاينات معرض الاختيار.
-   sizeKey فارغ = بلا نسبة مفروضة (سلوك الأخبار القديمة) · compact = معاينة مصغّرة ·
-   stage تحدّد حزمة الموتيفات (اختياري، افتراضي 'all' إن كانت غير معروفة). */
-function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gender) {
-  var lines = String(text || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
-  var first = lines[0] || '';
-  var rest = lines.slice(1).join(' ');
-  var maxLen = compact ? 56 : 90;
-  if (first.length > maxLen) first = first.substring(0, maxLen - 3) + '…';
-  var maxRestLen = compact ? 0 : 240;
-  if (rest.length > maxRestLen) rest = rest.substring(0, maxRestLen - 1) + '…';
+   sizeKey فارغ = بلا نسبة مفروضة (سلوك الأخبار القديمة) · compact = معاينة مصغّرة (عنوان فقط) ·
+   stage تحدّد حزمة الموتيفات (اختياري، افتراضي 'all' إن كانت غير معروفة) · gid معرّف فريد
+   لهذه النسخة (لتفعيل التنقّل بين الشرائح عبر _tcCvShow/_tcCvMove حين توجد عدّة شرائح).
+   القياس/التقسيم عبر _tcComputeCoverSlides — نفس القرار المستخدَم فعلاً في تصدير PNG
+   (_tcTextCoverBlob)، فلا قصّ بالحرف ولا تخمين لحجم الخط: النافذة تُبنى ببكسل التصميم
+   الحقيقي (نفس إحداثيات W×H) ثم تُصغَّر بصرياً بـtransform:scale محسوبة بعد الإدراج في DOM
+   (_tcWireCoverScale) — أزرار التنقّل أشقاء للطبقة المُصغَّرة كي لا تتقلّص مساحة اللمس. */
+function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gender, gid) {
   var st = (stage === 'early' || stage === 'middle' || stage === 'secondary' || stage === 'all') ? stage : 'all';
   var typeKey = meta.k || meta.t || 'news';
-  var sz = _tcDsgnSize(sizeKey || 'feed');
-  var W = sz.w, H = sz.h, ft = sz.ft, fs = sz.fs, fb = sz.fb;
+  var cs = _tcComputeCoverSlides(text, sizeKey);
+  var dims = cs.dims;
+  var W = dims.w, H = dims.h, ft = dims.ft, fs = dims.fs, fb = dims.fb;
+  gid = gid || ('tc-cv-' + Math.floor(Math.random() * 1e9));
   // نسبة الأبعاد مفروضة دائماً الآن (بخلاف السلوك السابق قبل هذه الميزة) — الأشرطة
   // العلوية/السفلية تُموضَع بنسبة مئوية من الارتفاع، وهذا يتطلّب ارتفاعاً محدَّداً
   // للحاوية (min-height وحده لا يكفي بمعيار CSS)؛ فرضها عالمياً يمنع انهيار الأشرطة
   // للأخبار القديمة جداً (المنشورة قبل ميزة اختيار التصميم أصلاً، بلا لقطة إطلاقاً).
-  var ratio = 'aspect-ratio:' + sz.ar + ';max-height:' + (compact ? '210px' : sz.mx) + ';';
+  var ratio = 'aspect-ratio:' + dims.ar + ';max-height:' + (compact ? '210px' : dims.mx) + ';';
   var topPct = (ft / H * 100), botPct = (fb / H * 100), sidePct = (fs / W * 100);
   var radius = compact ? 10 : 14;
   var shell = compact
@@ -11448,39 +11450,41 @@ function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gen
     pillHtml +
   '</div>';
 
-  // النافذة: عنوان (أول سطر) + بقية النص إن وُجدت — النص القصير يكبر تلقائياً
-  // ليملأ النافذة (بدل فراغ أبيض فارغ)، بروح fitText() في القالب المرجعي.
-  var totalLen = (first + rest).length;
-  var titleSize = compact ? '.7rem' : (totalLen <= 40 ? '1.55rem' : (totalLen <= 90 ? '1.15rem' : '1rem'));
-  var bodySize = compact ? '.6rem' : (totalLen <= 90 ? '.92rem' : '.8rem');
-  var titleHtml = '<div style="font-weight:800;color:#1e293b;font-size:' + titleSize + ';line-height:1.45;max-height:' + (compact ? '4.4em' : '3.5em') + ';overflow:hidden;">' + esc(first) + '</div>';
-  // تذييل هوية المدرسة الكامل (هاتف/عنوان/سوشل ميديا) — الحقول التسعة كاملة هنا فقط
-  // (غلاف الأخبار يُنشَر علناً)، داخل بطاقة النص البيضاء المحمية أصلاً بـoverflow:hidden
-  // كي لا يكسر تخطيط الأشرطة المضبوطة بالنسبة المئوية أعلى/أسفل الصورة. مساحة المتن
-  // تُقلَّص قليلاً عند وجود تذييل كي لا يُقصَّه overflow:hidden صامتاً (نظير حجز
-  // footerReserve في مسار Canvas أدناه).
-  var _tcBrand = window._schoolBrand || {};
-  var _tcContactBits = [];
-  if (_tcBrand.phone) _tcContactBits.push(esc(_tcBrand.phone));
-  if (_tcBrand.address) _tcContactBits.push(esc(_tcBrand.address));
-  var _tcSocialBits = [];
-  if (_tcBrand.whatsapp) _tcSocialBits.push('💬');
-  if (_tcBrand.facebook) _tcSocialBits.push('📘');
-  if (_tcBrand.instagram) _tcSocialBits.push('📸');
-  if (_tcBrand.youtube) _tcSocialBits.push('▶️');
-  var _tcHasFooterHtml = !compact && (_tcContactBits.length || _tcSocialBits.length);
-  var bodyHtml = (rest && !compact) ? ('<div style="margin-top:10px;font-weight:400;color:#475569;font-size:' + bodySize + ';line-height:1.7;max-height:' + (_tcHasFooterHtml ? '6em' : '7.5em') + ';overflow:hidden;">' + esc(rest) + '</div>') : '';
-  var footerHtml = _tcHasFooterHtml
-    ? ('<div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0;font-size:.6rem;color:#64748b;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;">' +
-        (_tcContactBits.length ? ('<span>' + _tcContactBits.join(' · ') + '</span>') : '') +
-        (_tcSocialBits.length ? ('<span style="font-size:.72rem;">' + _tcSocialBits.join(' ') + '</span>') : '') +
-      '</div>')
+  // النافذة: صفحة واحدة لكل شريحة، مبنيّة بأبعاد بكسل التصميم الحقيقية (winW×winH — نفس
+  // إحداثيات _tcComputeCoverSlides)، فتُصغَّر بصرياً بعد الإدراج لتلائم عرض المعاينة الفعلي
+  // (_tcWireCoverScale) — لا قصّ بالحرف ولا max-height/overflow:hidden تعسّفي بعد الآن.
+  var winX = fs, winY = ft, winW = W - fs * 2, winH = H - ft - fb;
+  var winPad = compact ? 24 : 60;
+  var nS = compact ? 1 : cs.nSlides;
+  var slidesHtml = '';
+  for (var six = 0; six < nS; six++) {
+    var sl = cs.slides[six] || { titleLines: [], bodyLines: [] };
+    var tLines = (six === 0) ? sl.titleLines : [];
+    var bLines = compact ? [] : sl.bodyLines;
+    var showFooter = !compact && six === 0 && cs.hasFooter;
+    var slideTitleHtml = tLines.length ? ('<div style="font-weight:800;color:#1e293b;font-size:' + cs.titleFontPx + 'px;line-height:' + cs.titleLH + 'px;">' +
+      tLines.map(function (s) { return esc(s); }).join('<br>') + '</div>') : '';
+    var slideBodyHtml = bLines.length ? ('<div style="margin-top:' + cs.blockGap + 'px;font-weight:400;color:#475569;font-size:' + cs.bodyFontPx + 'px;line-height:' + cs.bodyLH + 'px;">' +
+      bLines.map(function (s) { return esc(s); }).join('<br>') + '</div>') : '';
+    var slideFooterHtml = showFooter ? ('<div style="margin-top:' + cs.footerGap + 'px;padding-top:10px;border-top:2px solid #e2e8f0;font-size:' + cs.footerFontPx + 'px;line-height:' + cs.footerLH + 'px;color:#64748b;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">' +
+        (cs.contactLine ? ('<span>' + esc(cs.contactLine) + '</span>') : '') +
+        (cs.socialLine ? ('<span>' + esc(cs.socialLine) + '</span>') : '') +
+      '</div>') : '';
+    slidesHtml += '<div class="tc-cv-slide" data-slide="' + six + '" style="position:absolute;top:0;left:0;width:' + winW + 'px;height:' + winH + 'px;transform-origin:top left;box-sizing:border-box;padding:' + winPad + 'px;display:' + (six === 0 ? 'flex' : 'none') + ';flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;">' +
+      slideTitleHtml + slideBodyHtml + slideFooterHtml +
+    '</div>';
+  }
+  var navHtml = (!compact && nS > 1) ?
+    ('<div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:8px;background:rgba(15,23,42,.55);border-radius:999px;padding:4px 10px;">' +
+      '<button type="button" onclick="event.stopPropagation();_tcCvMove(\'' + gid + '\',-1)" style="background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;padding:2px 6px;line-height:1;">‹</button>' +
+      '<span id="' + gid + '-c" style="color:#fff;font-size:.7rem;font-weight:700;min-width:34px;text-align:center;">1 / ' + nS + '</span>' +
+      '<button type="button" onclick="event.stopPropagation();_tcCvMove(\'' + gid + '\',1)" style="background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;padding:2px 6px;line-height:1;">›</button>' +
+    '</div>')
     : '';
-  var windowHtml = '<div style="position:absolute;top:' + topPct + '%;bottom:' + botPct + '%;left:' + sidePct + '%;right:' + sidePct + '%;' +
-    'background:#fff;border-radius:' + (compact ? 8 : 12) + 'px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;' +
-    'padding:' + (compact ? '8px 10px' : '22px 26px') + ';box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2;">' +
-    titleHtml + bodyHtml + footerHtml +
-  '</div>';
+  var windowHtml = '<div class="tc-cv-window" id="' + gid + '" data-cur="0" data-cv-w="' + winW + '" style="position:absolute;top:' + topPct + '%;bottom:' + botPct + '%;left:' + sidePct + '%;right:' + sidePct + '%;' +
+    'background:#fff;border-radius:' + (compact ? 8 : 12) + 'px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2;">' +
+    slidesHtml +
+  '</div>' + navHtml;
 
   var dateChip = dateLabel ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:700;padding:4px 12px;border-radius:999px;">📅 ' + esc(dateLabel) + '</span>') : '';
   var nameChip = schoolName ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:600;padding:4px 12px;border-radius:999px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(schoolName) + '</span>') : '';
@@ -11490,6 +11494,46 @@ function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gen
       'background:linear-gradient(150deg,' + meta.g[0] + ',' + meta.g[1] + ');">' +
     frameSvg + topbar + windowHtml + botbar +
   '</div>';
+}
+
+/* تصغير بصري لنوافذ الغلاف بعد الإدراج في DOM: كل نافذة تُبنى ببكسل التصميم الحقيقي
+   (data-cv-w) ثم تُصغَّر بـtransform:scale لملاءمة عرضها الفعلي على الشاشة — يُستدعى بعد كل
+   renderNewsList/_dpRenderGrid. idempotent (يتجاهل النوافذ المُوصَّلة مسبقاً). */
+function _tcWireCoverScale() {
+  var wins = document.querySelectorAll('.tc-cv-window[data-cv-w]:not([data-cv-wired])');
+  for (var i = 0; i < wins.length; i++) {
+    (function (win) {
+      win.setAttribute('data-cv-wired', '1');
+      function apply() {
+        var w = parseFloat(win.getAttribute('data-cv-w')) || 1;
+        var rectW = win.getBoundingClientRect().width;
+        if (!rectW) return;
+        var scale = rectW / w;
+        var slides = win.querySelectorAll('.tc-cv-slide');
+        for (var j = 0; j < slides.length; j++) slides[j].style.transform = 'scale(' + scale + ')';
+      }
+      apply();
+      if ('ResizeObserver' in window) { new ResizeObserver(apply).observe(win); }
+      else { window.addEventListener('resize', apply); }
+    })(wins[i]);
+  }
+}
+/* تنقّل بين شرائح معاينة الغلاف — نفس آلية _tcGalShow/_tcGalMove (معرض وسائط الخبر)،
+   gid فريد لكل نسخة (بطاقة قائمة أو مصغّرة معرض تصميم) فلا تشترك أي نسختين حالة الفهرس. */
+function _tcCvShow(gid, idx) {
+  var g = document.getElementById(gid); if (!g) return;
+  var slides = g.querySelectorAll('.tc-cv-slide');
+  var cnt = slides.length; if (!cnt) return;
+  if (idx < 0) idx = 0; if (idx >= cnt) idx = cnt - 1;
+  for (var i = 0; i < cnt; i++) slides[i].style.display = (i === idx) ? 'flex' : 'none';
+  g.setAttribute('data-cur', idx);
+  var c = document.getElementById(gid + '-c'); if (c) c.textContent = (idx + 1) + ' / ' + cnt;
+}
+function _tcCvMove(gid, dir) {
+  var g = document.getElementById(gid); if (!g) return;
+  var cnt = g.querySelectorAll('.tc-cv-slide').length; if (!cnt) return;
+  var cur = parseInt(g.getAttribute('data-cur') || '0', 10);
+  _tcCvShow(gid, (((cur + dir) % cnt) + cnt) % cnt);
 }
 
 /* بطاقة غلاف داخل بطاقة الخبر (نصّي بلا وسائط): لقطة مخزّنة إن وُجدت،
@@ -11503,7 +11547,7 @@ function _tcTextCover(n) {
   var stage = (d && d.st && d.st !== 'auto') ? d.st : (_tcStageFromGrade(n && n.grade) || 'all');
   var decor = (d && d.dc) || '';
   var gender = (d && d.gn) || '';
-  return _tcCoverHtml(n.news, n.date ? formatDate(n.date) : '', meta, d ? d.s : '', false, stage, decor, gender);
+  return _tcCoverHtml(n.news, n.date ? formatDate(n.date) : '', meta, d ? d.s : '', false, stage, decor, gender, 'tc-cv-' + n.id);
 }
 
 /* توليد صور PNG للغلاف المصمّم (canvas) — تُستخدم عند مشاركة خبر نصّي كملفات صور.
@@ -11517,14 +11561,135 @@ function _tcTextCover(n) {
 var _TC_COVER_MAX_SLIDES  = 5;
 var _TC_COVER_HARD_MAX    = 10;
 var _TC_COVER_MIN_BODY_PX = 26;
+
+/* دالة قياس/تقسيم نقية — مصدر القرار الوحيد المشترك بين معاينة الغلاف (_tcCoverHtml)
+   وتصدير صوره (_tcTextCoverBlob): تحلّ الأبعاد عبر _tcDsgnSize، تلفّ النص فعلياً عبر
+   canvas measureText، تُصغّر الخط تكرارياً، وتوزّع الأسطر على الشرائح — بلا أي رسم/أثر
+   جانبي، فهي آمنة للاستدعاء من مسار HTML كما من مسار الـcanvas. */
+var _tcMeasureCanvas = null;
+function _tcMeasureCtx() {
+  if (!_tcMeasureCanvas) { _tcMeasureCanvas = document.createElement('canvas'); _tcMeasureCanvas.width = 10; _tcMeasureCanvas.height = 10; }
+  return _tcMeasureCanvas.getContext('2d');
+}
+function _tcComputeCoverSlides(text, sizeKey) {
+  var dims = _tcDsgnSize(sizeKey || 'feed');
+  var W = dims.w, H = dims.h, ft = dims.ft, fs = dims.fs, fb = dims.fb;
+  var FONT = 'Tahoma, "Segoe UI", Arial, sans-serif';
+  var ctx = _tcMeasureCtx();
+
+  function wrapText(t, maxW, font) {
+    ctx.font = font;
+    var words = String(t || '').split(/\s+/), lines = [], line = '';
+    for (var i = 0; i < words.length; i++) {
+      var probe = line ? (line + ' ' + words[i]) : words[i];
+      if (ctx.measureText(probe).width > maxW && line) { lines.push(line); line = words[i]; }
+      else { line = probe; }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  var winX = fs, winY = ft, winW = W - fs * 2, winH = H - ft - fb;
+  // العنوان (أول سطر) + بقية النص كاملة — بلا أي بتر (التقسيم بديل القصّ)
+  var newsLines = String(text || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
+  var first = newsLines[0] || '';
+  var rest = newsLines.slice(1).join(' ');
+  var totalLen = (first + rest).length;
+  var titleFontPx = totalLen <= 40 ? 72 : (totalLen <= 90 ? 60 : 50);
+  var bodyFontPx = totalLen <= 90 ? 34 : 30;
+  var titleLines = wrapText(first, winW - 120, '800 ' + titleFontPx + 'px ' + FONT);
+  if (titleLines.length > 6) {
+    // عنوان استثنائي الطول: تبقى 6 أسطر عنواناً والفائض يتقدّم المتن (لا قصّ)
+    rest = titleLines.slice(6).join(' ') + (rest ? ' ' + rest : '');
+    titleLines = titleLines.slice(0, 6);
+  }
+  var titleLH = titleFontPx * 1.3, blockGap = 28, PAD = 70;
+  var availH = winH - PAD * 2;
+
+  // تذييل هوية المدرسة الكامل (هاتف/عنوان/سوشل ميديا) على الشريحة الأولى فقط —
+  // مساحته محجوزة دائماً في حساب السعة (بصرف النظر عن توفّر البيانات فعلياً) كي لا
+  // يعتمد ترقيم الشرائح على اكتمال بيانات المدرسة (سلوك تقسيم متّسق لكل المدارس).
+  var _tcBrand = window._schoolBrand || {};
+  var _tcContactBits = [];
+  if (_tcBrand.phone) _tcContactBits.push(_tcBrand.phone);
+  if (_tcBrand.address) _tcContactBits.push(_tcBrand.address);
+  var _tcContactLine = _tcContactBits.join(' · ');
+  var _tcSocialBits = [];
+  if (_tcBrand.whatsapp) _tcSocialBits.push('💬');
+  if (_tcBrand.facebook) _tcSocialBits.push('📘');
+  if (_tcBrand.instagram) _tcSocialBits.push('📸');
+  if (_tcBrand.youtube) _tcSocialBits.push('▶️');
+  var _tcSocialLine = _tcSocialBits.join('   ');
+  var hasFooter = !!(_tcContactLine || _tcSocialLine);
+  var footerFontPx = 22, footerLH = footerFontPx * 1.5, footerGap = 18;
+  var footerReserve = footerGap + footerLH;
+
+  // حساب سعة الشرائح عند حجم خط متن معيّن (الشريحة 1 ينقصها ارتفاع العنوان + التذييل)
+  function layoutAt(px) {
+    var lh = px * 1.55;
+    var lines = rest ? wrapText(rest, winW - 140, '400 ' + px + 'px ' + FONT) : [];
+    var titleH = titleLines.length * titleLH;
+    var cap1 = Math.max(0, Math.floor((availH - titleH - (lines.length ? blockGap : 0) - footerReserve) / lh));
+    var capN = Math.max(1, Math.floor(availH / lh));
+    var n = 1;
+    if (lines.length > cap1) n = 1 + Math.ceil((lines.length - cap1) / capN);
+    return { lines: lines, cap1: cap1, capN: capN, n: n, lh: lh, px: px };
+  }
+  // تصغير تدريجي ضمن الحدود قبل أي شريحة إضافية فوق الهدف
+  var ly = layoutAt(bodyFontPx);
+  while (ly.n > _TC_COVER_MAX_SLIDES && ly.px > _TC_COVER_MIN_BODY_PX) {
+    ly = layoutAt(Math.max(_TC_COVER_MIN_BODY_PX, ly.px - 2));
+  }
+  var nSlides = Math.min(ly.n, _TC_COVER_HARD_MAX);
+  var bodyLH = ly.lh; bodyFontPx = ly.px;
+
+  // توزيع الأسطر على الشرائح بتوازن (كل شريحة «مليانة» بنسبة متقاربة)
+  var chunks = [], pos = 0;
+  if (nSlides === 1) {
+    chunks.push(ly.lines);
+    pos = ly.lines.length;
+  } else {
+    var totalCap = ly.cap1 + (nSlides - 1) * ly.capN;
+    var take1 = Math.min(ly.cap1, Math.ceil(ly.lines.length * ly.cap1 / totalCap));
+    chunks.push(ly.lines.slice(0, take1));
+    pos = take1;
+    for (var si = 1; si < nSlides; si++) {
+      var want = Math.ceil((ly.lines.length - pos) / (nSlides - si));
+      var take = Math.min(ly.capN, want);
+      chunks.push(ly.lines.slice(pos, pos + take));
+      pos += take;
+    }
+    if (pos < ly.lines.length && chunks[nSlides - 1].length) {
+      // بلغنا السقف الصارم (~11 ألف حرف بمقاس feed) — ختم بعلامة … ظاهرة.
+      // لا فقدان معلومات فعلي: نص الخبر الكامل يرافق المشاركة كنصّ على كل حال.
+      chunks[nSlides - 1][chunks[nSlides - 1].length - 1] += ' …';
+      try { console.warn('_tcComputeCoverSlides: نص يتجاوز سقف ' + _TC_COVER_HARD_MAX + ' شرائح — قُلّم ' + (ly.lines.length - pos) + ' سطراً (النص الكامل في نص المشاركة)'); } catch (eW) {}
+    }
+  }
+
+  var slides = [];
+  for (var si2 = 0; si2 < nSlides; si2++) {
+    slides.push({ titleLines: si2 === 0 ? titleLines : [], bodyLines: chunks[si2] || [] });
+  }
+
+  return {
+    dims: dims,
+    titleFontPx: titleFontPx, bodyFontPx: bodyFontPx,
+    titleLH: titleLH, bodyLH: bodyLH, blockGap: blockGap,
+    hasFooter: hasFooter, footerReserve: footerReserve,
+    footerGap: footerGap, footerLH: footerLH, footerFontPx: footerFontPx,
+    contactLine: _tcContactLine, socialLine: _tcSocialLine,
+    nSlides: nSlides,
+    slides: slides
+  };
+}
+
 function _tcTextCoverBlob(item, cb) {
   try {
     // اللقطة المخزّنة تحدّد الهوية والمقاس؛ «بلا تصميم» ⇒ لا صورة (تراجع لمشاركة نصية)
     var d = _tcNewsDesign(item);
     if (d && d.none) { cb(null); return; }
     var t = d || _tcLegacyMeta(item && item.news);
-    var dims = _tcDsgnSize(d ? d.s : 'feed');
-    var W = dims.w, H = dims.h, ft = dims.ft, fs = dims.fs, fb = dims.fb;
     var stage = (d && d.st && d.st !== 'auto') ? d.st : (_tcStageFromGrade(item && item.grade) || 'all');
     var decor = (d && d.dc) || '';
     var gender = (d && d.gn) || '';
@@ -11532,6 +11697,11 @@ function _tcTextCoverBlob(item, cb) {
     var dcnt = decor ? (_TC_DECOR_COUNT[decor] || _TC_DECOR_COUNT.balanced) : null;
     var typeKey = t.k || t.t || 'news';
     var FONT = 'Tahoma, "Segoe UI", Arial, sans-serif';
+
+    // القياس/التقسيم عبر الدالة النقية المشتركة مع معاينة _tcCoverHtml — نفس القرار بالضبط
+    var cs = _tcComputeCoverSlides(item && item.news, d ? d.s : 'feed');
+    var dims = cs.dims;
+    var W = dims.w, H = dims.h, ft = dims.ft, fs = dims.fs, fb = dims.fb;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var ctx = cv.getContext('2d');
     var schoolName = '';
@@ -11546,95 +11716,17 @@ function _tcTextCoverBlob(item, cb) {
       ctx.arcTo(x, y, x + w, y, r);
       ctx.closePath();
     }
-    function wrapText(text, maxW, font) {
-      ctx.font = font;
-      var words = String(text || '').split(/\s+/), lines = [], line = '';
-      for (var i = 0; i < words.length; i++) {
-        var probe = line ? (line + ' ' + words[i]) : words[i];
-        if (ctx.measureText(probe).width > maxW && line) { lines.push(line); line = words[i]; }
-        else { line = probe; }
-      }
-      if (line) lines.push(line);
-      return lines;
-    }
 
     var winX = fs, winY = ft, winW = W - fs * 2, winH = H - ft - fb;
-    // العنوان (أول سطر) + بقية النص كاملة — بلا أي بتر (التقسيم بديل القصّ)
-    var newsLines = String(item && item.news || '').split(/[\r\n]+/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s; });
-    var first = newsLines[0] || '';
-    var rest = newsLines.slice(1).join(' ');
-    var totalLen = (first + rest).length;
-    var titleFontPx = totalLen <= 40 ? 72 : (totalLen <= 90 ? 60 : 50);
-    var bodyFontPx = totalLen <= 90 ? 34 : 30;
-    var titleLines = wrapText(first, winW - 120, '800 ' + titleFontPx + 'px ' + FONT);
-    if (titleLines.length > 6) {
-      // عنوان استثنائي الطول: تبقى 6 أسطر عنواناً والفائض يتقدّم المتن (لا قصّ)
-      rest = titleLines.slice(6).join(' ') + (rest ? ' ' + rest : '');
-      titleLines = titleLines.slice(0, 6);
-    }
-    var titleLH = titleFontPx * 1.3, blockGap = 28, PAD = 70;
-    var availH = winH - PAD * 2;
-
-    // تذييل هوية المدرسة الكامل (هاتف/عنوان/سوشل ميديا) على الشريحة الأولى فقط —
-    // مساحته محجوزة دائماً في حساب السعة (بصرف النظر عن توفّر البيانات فعلياً) كي لا
-    // يعتمد ترقيم الشرائح على اكتمال بيانات المدرسة (سلوك تقسيم متّسق لكل المدارس).
-    var _tcBrand = window._schoolBrand || {};
-    var _tcContactBits = [];
-    if (_tcBrand.phone) _tcContactBits.push(_tcBrand.phone);
-    if (_tcBrand.address) _tcContactBits.push(_tcBrand.address);
-    var _tcContactLine = _tcContactBits.join(' · ');
-    var _tcSocialBits = [];
-    if (_tcBrand.whatsapp) _tcSocialBits.push('💬');
-    if (_tcBrand.facebook) _tcSocialBits.push('📘');
-    if (_tcBrand.instagram) _tcSocialBits.push('📸');
-    if (_tcBrand.youtube) _tcSocialBits.push('▶️');
-    var _tcSocialLine = _tcSocialBits.join('   ');
-    var _tcHasFooter = !!(_tcContactLine || _tcSocialLine);
-    var footerFontPx = 22, footerLH = footerFontPx * 1.5, footerGap = 18;
-    var footerReserve = footerGap + footerLH;
-
-    // حساب سعة الشرائح عند حجم خط متن معيّن (الشريحة 1 ينقصها ارتفاع العنوان + التذييل)
-    function layoutAt(px) {
-      var lh = px * 1.55;
-      var lines = rest ? wrapText(rest, winW - 140, '400 ' + px + 'px ' + FONT) : [];
-      var titleH = titleLines.length * titleLH;
-      var cap1 = Math.max(0, Math.floor((availH - titleH - (lines.length ? blockGap : 0) - footerReserve) / lh));
-      var capN = Math.max(1, Math.floor(availH / lh));
-      var n = 1;
-      if (lines.length > cap1) n = 1 + Math.ceil((lines.length - cap1) / capN);
-      return { lines: lines, cap1: cap1, capN: capN, n: n, lh: lh, px: px };
-    }
-    // تصغير تدريجي ضمن الحدود قبل أي شريحة إضافية فوق الهدف
-    var ly = layoutAt(bodyFontPx);
-    while (ly.n > _TC_COVER_MAX_SLIDES && ly.px > _TC_COVER_MIN_BODY_PX) {
-      ly = layoutAt(Math.max(_TC_COVER_MIN_BODY_PX, ly.px - 2));
-    }
-    var nSlides = Math.min(ly.n, _TC_COVER_HARD_MAX);
-    var bodyLH = ly.lh; bodyFontPx = ly.px;
-
-    // توزيع الأسطر على الشرائح بتوازن (كل شريحة «مليانة» بنسبة متقاربة)
-    var chunks = [], pos = 0;
-    if (nSlides === 1) {
-      chunks.push(ly.lines);
-      pos = ly.lines.length;
-    } else {
-      var totalCap = ly.cap1 + (nSlides - 1) * ly.capN;
-      var take1 = Math.min(ly.cap1, Math.ceil(ly.lines.length * ly.cap1 / totalCap));
-      chunks.push(ly.lines.slice(0, take1));
-      pos = take1;
-      for (var si = 1; si < nSlides; si++) {
-        var want = Math.ceil((ly.lines.length - pos) / (nSlides - si));
-        var take = Math.min(ly.capN, want);
-        chunks.push(ly.lines.slice(pos, pos + take));
-        pos += take;
-      }
-      if (pos < ly.lines.length && chunks[nSlides - 1].length) {
-        // بلغنا السقف الصارم (~11 ألف حرف بمقاس feed) — ختم بعلامة … ظاهرة.
-        // لا فقدان معلومات فعلي: نص الخبر الكامل يرافق المشاركة كنصّ على كل حال.
-        chunks[nSlides - 1][chunks[nSlides - 1].length - 1] += ' …';
-        try { console.warn('_tcTextCoverBlob: نص يتجاوز سقف ' + _TC_COVER_HARD_MAX + ' شرائح — قُلّم ' + (ly.lines.length - pos) + ' سطراً من الصور (النص الكامل في نص المشاركة)'); } catch (eW) {}
-      }
-    }
+    var titleLines = (cs.slides[0] && cs.slides[0].titleLines) || [];
+    var titleFontPx = cs.titleFontPx, bodyFontPx = cs.bodyFontPx;
+    var titleLH = cs.titleLH, bodyLH = cs.bodyLH, blockGap = cs.blockGap;
+    var _tcHasFooter = cs.hasFooter, footerReserve = cs.footerReserve;
+    var footerGap = cs.footerGap, footerLH = cs.footerLH, footerFontPx = cs.footerFontPx;
+    var _tcContactLine = cs.contactLine, _tcSocialLine = cs.socialLine;
+    var nSlides = cs.nSlides;
+    var chunks = [];
+    for (var ci = 0; ci < cs.slides.length; ci++) chunks.push(cs.slides[ci].bodyLines);
 
     function paintSlide(logoImg, idx) {
       // الخلفية — تدرّج التصميم المختار (أو الافتراضي القديم للأخبار بلا لقطة)
@@ -11959,7 +12051,7 @@ function _dpRenderGrid() {
     var m = _TC_DSGN_REGISTRY[i];
     h += '<div class="dp-card' + (m.k === _dpState.sel ? ' sel' : '') +
          '" onclick="_dpSelect(\'' + m.k + '\')">' +
-      _tcCoverHtml(text, '', m, _dpState.size, true, stage, decor, gender) +
+      _tcCoverHtml(text, '', m, _dpState.size, true, stage, decor, gender, 'tc-cv-dp-' + m.k) +
       '<div class="dp-lbl">' + esc(m.l) +
         (m.k === sug ? ' <span class="dp-sug">مقترح تلقائياً</span>' : '') + '</div>' +
     '</div>';
@@ -11968,6 +12060,7 @@ function _dpRenderGrid() {
        '" onclick="_dpSelect(\'__none\')">' +
     '<div class="dp-none-box">📄 نص فقط</div><div class="dp-lbl">بلا تصميم</div></div>';
   host.innerHTML = h;
+  try { _tcWireCoverScale(); } catch (eCv) {}
 }
 
 /* لقطة كاملة تُخزَّن مع الخبر (نوع/مقاس/تسمية/لون/تدرّج/أيقونة/مرحلة) ⇒ الشكل
