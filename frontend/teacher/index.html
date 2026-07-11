@@ -1770,6 +1770,26 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .ec-pane { background:#f8fafc;border-radius:0 0 12px 12px;color:#1e293b; }
 .ec-gmode { padding:9px 14px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit; }
 .ec-gmode.active { background:#1a237e;color:#fff;border-color:#1a237e; }
+
+/* جدول الاختبارات — أكورديون شهر←صف (نفس مبدأ .login-help القابل للطي، بألوان الكنترول الفاتحة) */
+.ec-tt-month { margin-bottom:10px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;overflow:hidden; }
+.ec-tt-month > summary { list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:800;color:#1a237e;font-size:14px;user-select:none; }
+.ec-tt-month > summary::-webkit-details-marker { display:none; }
+.ec-tt-month > summary::before { content:'▶';font-size:11px;color:#D4A537;transition:transform .2s ease;flex:0 0 auto; }
+.ec-tt-month[open] > summary::before { transform:rotate(90deg); }
+.ec-tt-month[open] > summary { border-bottom:1px solid #e2e8f0;background:#f8fafc; }
+.ec-tt-month-title { flex:0 0 auto; }
+.ec-tt-month-body { padding:12px 16px;background:#fbfcfe; }
+.ec-tt-badge { background:#f0f4f8;color:#455a64;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;white-space:nowrap; }
+.ec-tt-badge-ok { background:#e8f5e9;color:#2e7d32; }
+.ec-tt-print-btn { margin-inline-start:auto;background:#455a64;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:700;white-space:nowrap;font-family:inherit; }
+.ec-tt-grade { margin-bottom:8px;border:1px solid #e8eef7;border-radius:9px;background:#fff;overflow:hidden; }
+.ec-tt-grade > summary { list-style:none;cursor:pointer;padding:9px 14px;display:flex;align-items:center;gap:10px;font-weight:700;color:#1e293b;font-size:13px;user-select:none; }
+.ec-tt-grade > summary::-webkit-details-marker { display:none; }
+.ec-tt-grade > summary::before { content:'▶';font-size:10px;color:#9aa5b1;transition:transform .2s ease;flex:0 0 auto; }
+.ec-tt-grade[open] > summary::before { transform:rotate(90deg); }
+.ec-tt-grade-body { padding:12px 14px;border-top:1px solid #e8eef7; }
+.ec-tt-toolbar { display:flex;justify-content:flex-end;margin-bottom:8px; }
 .smm-stat-chip {
   display:flex;flex-direction:column;align-items:center;
   background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;
@@ -6165,33 +6185,33 @@ function renderExamControl() {
       '<summary style="cursor:pointer;font-weight:700;">❓ كيفية الاستخدام (اضغط للفتح)</summary>' +
       '<ol style="margin:10px 0 0;padding-inline-start:20px;font-size:13px;line-height:1.9;">' +
         '<li><b>البيانات الأساسية:</b> اسم المدرسة (يُعبَّأ تلقائياً) ونوع الاختبار والعام الدراسي.</li>' +
+        '<li><b>جدول الاختبارات:</b> افتح أي شهر لترى كل الصفوف، ثم افتح صفاً واسحب كل مادة إلى يوم اختبارها وحدِّد تاريخ اليوم الأول (تُحسَب بقية الأيام تلقائياً) — يظهر فوراً للطلاب، وله زرّا طباعة (صف/شهر كامل).</li>' +
         '<li><b>اللجان:</b> أضِف لجانك يدوياً أو بزر "لجان افتراضية" (مبنية على صفوفك الكبيرة الفعلية).</li>' +
         '<li><b>الطلاب:</b> يعرض ورقة «الطلاب» الحقيقية مباشرة؛ عيِّن الجنس (يدوياً أو تلقائياً)، دقِّق البيانات، واحجب المتأخرين عن السداد إن لزم — كل ذلك قبل التوزيع.</li>' +
         '<li><b>توزيع اللجان:</b> وزِّع الصغار (KG2-الرابع) ثم الكبار (الخامس فما فوق) — الترتيب لا يهمّ (كلاهما مستقلّ وآمن لإعادة التشغيل).</li>' +
         '<li><b>طباعة أرقام الجلوس:</b> اختر فصلاً واطبع بطاقات الجلوس (10 بطاقات/ورقة).</li>' +
         '<li><b>رصد الدرجات:</b> اختر الوضع المناسب (للصغار/بالرقم السري/بالاسم) ثم الصف والمادة.</li>' +
         '<li><b>عرض اللجان وطباعتها:</b> بعد التوزيع، اختر لجنة واطبع كشفها.</li>' +
-        '<li><b>جدول الاختبارات:</b> اختر الشهر والصف، ثم اسحب كل مادة إلى يوم اختبارها وحدِّد تاريخه — يظهر فوراً للطلاب.</li>' +
       '</ol></details>' +
     '<div style="background:#f0f4f8;border-bottom:2px solid #e2e8f0;border-radius:10px 10px 0 0;display:flex;overflow-x:auto;">' +
       '<button class="ec-tab active" id="ec-tab-data" onclick="ec_setTab(\'data\')">📋 البيانات الأساسية</button>' +
+      '<button class="ec-tab" id="ec-tab-timetable" onclick="ec_setTab(\'timetable\')">🗓️ جدول الاختبارات</button>' +
       '<button class="ec-tab" id="ec-tab-committees" onclick="ec_setTab(\'committees\')">🏫 اللجان</button>' +
       '<button class="ec-tab" id="ec-tab-students" onclick="ec_setTab(\'students\')">🎒 الطلاب</button>' +
       '<button class="ec-tab" id="ec-tab-distribute" onclick="ec_setTab(\'distribute\')">🎯 توزيع اللجان</button>' +
       '<button class="ec-tab" id="ec-tab-seatcards" onclick="ec_setTab(\'seatcards\')">🪑 طباعة أرقام الجلوس</button>' +
       '<button class="ec-tab" id="ec-tab-grades" onclick="ec_setTab(\'grades\')">📊 رصد الدرجات</button>' +
       '<button class="ec-tab" id="ec-tab-roster" onclick="ec_setTab(\'roster\')">📜 عرض اللجان وطباعتها</button>' +
-      '<button class="ec-tab" id="ec-tab-timetable" onclick="ec_setTab(\'timetable\')">🗓️ جدول الاختبارات</button>' +
     '</div>' +
     '<div id="ec-pane-data" class="ec-pane" style="padding:18px;"></div>' +
+    '<div id="ec-pane-timetable" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-committees" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-students" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-distribute" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-seatcards" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-grades" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-roster" class="ec-pane" style="display:none;padding:18px;"></div>' +
-    '<div id="ec-pane-timetable" class="ec-pane" style="display:none;padding:18px;"></div>' +
-    _ecCommitteeModalHtml() + _ecGenderModalHtml() + _ecDataIssuesModalHtml() + _ecPaymentBlockModalHtml() + _ecScheduleOverviewModalHtml();
+    _ecCommitteeModalHtml() + _ecGenderModalHtml() + _ecDataIssuesModalHtml() + _ecPaymentBlockModalHtml();
   ec_setTab('data');
 }
 
@@ -6200,7 +6220,7 @@ function ec_setTab(name) {
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
   var activeBtn = document.getElementById('ec-tab-' + name);
   if (activeBtn) activeBtn.classList.add('active');
-  var names = ['data', 'committees', 'students', 'distribute', 'seatcards', 'grades', 'roster', 'timetable'];
+  var names = ['data', 'timetable', 'committees', 'students', 'distribute', 'seatcards', 'grades', 'roster'];
   for (var p = 0; p < names.length; p++) {
     var el = document.getElementById('ec-pane-' + names[p]);
     if (el) el.style.display = (names[p] === name) ? 'block' : 'none';
@@ -7078,136 +7098,186 @@ function ec_printCommitteeRoster(committeeName) {
   _tfPrintWin('لجنة ' + committee.committeeName, css, body);
 }
 
-// ── جدول الاختبارات — سحب-وإفلات لتوزيع مواد الصف (من App.lists.curriculumByGrade الجاهزة
-//    أصلاً، بلا إعداد يدوي) على أيام/تواريخ حقيقية لكل شهر اختبار. لوحة أعمدة (يوم = عمود)
-//    ببطاقات مواد قابلة للسحب بأحداث Pointer (تعمل بالماوس واللمس معاً — لا مكتبة sortable
-//    ولا HTML5 dragstart/drop التقليدية، لأن الأخيرة لا تعمل باللمس والمشروع PWA يُستخدَم على
-//    الجوال/التابلت فعلياً). حفظ فوري (تأخير 600ms) بعد كل إفلات/تعديل تاريخ — بلا زر "حفظ" ──
-var _ecScheduleMonth = '';
-var _ecScheduleGrade = '';
-var _ecScheduleDays = [];        // [{dayIndex, date, subjects:[{name, order}]}]
-var _ecScheduleUnscheduled = []; // [اسم مادة, ...]
-var _ecTTDragEl = null, _ecTTDragSubject = '', _ecTTDragFromCol = '';
-var _ecTTSaveTimer = null;
+// ── جدول الاختبارات — صفحة واحدة: أكورديون شهر ← صف (كل الأشهر الستة وكل الصفوف الثلاثة عشر
+//    جاهزة/قابلة للفتح دوماً، لا اختيار يُخفي البقية). لوحة السحب الفعلية لكل صف+شهر تُجلَب/تُبنى
+//    فقط عند فتح بطاقة ذلك الصف لأول مرة (lazy) — تفادياً لرسم 13×6=78 لوحة دفعة واحدة. حالة كل
+//    لوحة مفتاحها 'الصف|الشهر' (لا متغيّرين عامّين وحيدين) كي تتعايش عدّة لوحات مفتوحة معاً بلا
+//    تداخل. مواد الصف من App.lists.curriculumByGrade الجاهزة أصلاً — بلا إعداد يدوي. سحب-وإفلات
+//    بأحداث Pointer (تعمل بالماوس واللمس معاً، بلا مكتبة sortable). حفظ فوري (تأخير 600ms) لكل
+//    لوحة مستقلاً — بلا زر "حفظ". تحديد تاريخ أي يوم يُعبّئ تلقائياً تواريخ الأيام التالية في نفس
+//    اللوحة (أقرب أيام دوام متتالية، تخطّي الخميس/الجمعة). زرّا طباعة بهوية المدرسة (شعار/اسم/عام
+//    دراسي) لكل صف ولكل شهر كامل ──
+var _ecScheduleOverview = null;  // {months:[{month, grades:[{grade, days:[...]}]}]} — لقطة شارات فقط
+var _ecScheduleBoards = {};      // مفتاحه 'الصف|الشهر' -> {days:[{dayIndex,date,subjects:[{name,order}]}], unscheduled:[...]}
+var _ecTTDragEl = null, _ecTTDragSubject = '', _ecTTDragFromKey = '', _ecTTDragFromCol = '';
+var _ecTTSaveTimers = {}; // مفتاحه 'الصف|الشهر' -> معرّف setTimeout (تأخير مستقلّ لكل لوحة)
 
 function ec_renderTimetablePane() {
-  if (!_ecScheduleMonth) _ecScheduleMonth = EC_EXAM_TYPES[EC_EXAM_TYPES.length - 1];
-  if (!_ecScheduleGrade) {
-    ec_ensureGradesLoaded(function () {
-      _ecScheduleGrade = (_ecGrades && _ecGrades[0]) || '';
-      ec_timetableRenderShell();
+  var el = document.getElementById('ec-pane-timetable'); if (!el) return;
+  el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  ec_ensureGradesLoaded(function () {
+    callServer('getSchoolExamScheduleOverviewProtected', {}, function (res) {
+      _ecScheduleOverview = (res && res.success) ? res : { success: true, months: [] };
+      ec_timetableRenderPage();
+    }, function () {
+      _ecScheduleOverview = { success: true, months: [] };
+      ec_timetableRenderPage();
     });
-  } else {
-    ec_timetableRenderShell();
-  }
+  });
 }
 
-function ec_timetableRenderShell() {
+function _ecScheduleOverviewGradesFor(month) {
+  var months = (_ecScheduleOverview && _ecScheduleOverview.months) || [];
+  for (var i = 0; i < months.length; i++) {
+    if (months[i].month === month) return months[i].grades || [];
+  }
+  return [];
+}
+
+function ec_timetableRenderPage() {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
   var grades = _ecGrades || [];
-  var monthChips = '';
-  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
-    var m = EC_EXAM_TYPES[i];
-    monthChips += '<button class="ec-gmode' + (m === _ecScheduleMonth ? ' active' : '') + '" onclick="ec_timetableSetMonth(\'' + escapeHtml(m) + '\')">' + escapeHtml(m) + '</button>';
+  var h = '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">افتح أي شهر لترى كل الصفوف، ثم افتح صفاً لتوزيع مواده بالسحب. حدِّد تاريخ اليوم الأول فقط — بقية أيام ذلك الصف تُحسَب تلقائياً (تتخطّى الخميس/الجمعة).</p>';
+  for (var m = 0; m < EC_EXAM_TYPES.length; m++) {
+    var month = EC_EXAM_TYPES[m];
+    var monthGrades = _ecScheduleOverviewGradesFor(month);
+    var countsByGrade = {};
+    for (var mg = 0; mg < monthGrades.length; mg++) {
+      var cnt = 0;
+      for (var dd = 0; dd < monthGrades[mg].days.length; dd++) cnt += monthGrades[mg].days[dd].subjects.length;
+      countsByGrade[monthGrades[mg].grade] = cnt;
+    }
+    h += '<details class="ec-tt-month">' +
+      '<summary><span class="ec-tt-month-title">' + escapeHtml(month) + '</span>' +
+      '<span class="ec-tt-badge' + (monthGrades.length ? ' ec-tt-badge-ok' : '') + '">' + monthGrades.length + ' صف مُجدوَل</span>' +
+      '<button type="button" class="ec-tt-print-btn" onclick="ec_printMonthSchedule(event,\'' + escapeHtml(month) + '\')">🖨️ طباعة الجدول الكامل لهذا الشهر</button>' +
+      '</summary><div class="ec-tt-month-body">';
+    for (var g = 0; g < grades.length; g++) {
+      var grade = grades[g];
+      var key = grade + '|' + month;
+      var count = countsByGrade[grade] || 0;
+      h += '<details class="ec-tt-grade" data-key="' + escapeHtml(key) + '" ontoggle="ec_timetableGradeToggle(this)">' +
+        '<summary><span>' + escapeHtml(grade) + '</span>' +
+        '<span class="ec-tt-badge' + (count ? ' ec-tt-badge-ok' : '') + '">' + count + ' مادة مُجدوَلة</span>' +
+        '</summary><div class="ec-tt-grade-body"></div></details>';
+    }
+    h += '</div></details>';
   }
-  var gradeOpts = '';
-  for (var g = 0; g < grades.length; g++) {
-    gradeOpts += '<option value="' + escapeHtml(grades[g]) + '"' + (grades[g] === _ecScheduleGrade ? ' selected' : '') + '>' + escapeHtml(grades[g]) + '</option>';
-  }
-  el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + monthChips + '</div>' +
-      '<button onclick="ec_showScheduleOverview()" style="background:#455a64;color:#fff;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;font-weight:700;white-space:nowrap;">👁️ عرض الجدول الكامل</button>' +
-    '</div>' +
-    '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">الصف</label>' +
-    '<select id="ec-tt-grade" onchange="ec_timetableSetGrade(this.value)" style="padding:8px;border:1px solid #ddd;border-radius:8px;min-width:160px;">' + gradeOpts + '</select></div>' +
-    '<p style="font-size:12px;color:#64748b;margin:0 0 10px;">اسحب بطاقة المادة إلى عمود اليوم المناسب، وحدِّد تاريخ كل يوم — يُحفَظ تلقائياً.</p>' +
-    '<div id="ec-tt-board"></div>';
-  ec_timetableLoad();
+  el.innerHTML = h;
 }
 
-function ec_timetableSetMonth(m) {
-  _ecScheduleMonth = m;
-  ec_timetableRenderShell();
-}
-
-function ec_timetableSetGrade(g) {
-  _ecScheduleGrade = g;
-  ec_timetableLoad();
-}
-
-function ec_timetableLoad() {
-  var board = document.getElementById('ec-tt-board');
-  if (!_ecScheduleGrade) { if (board) board.innerHTML = ''; return; }
-  if (board) board.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
-  callServer('getExamScheduleProtected', { grade: _ecScheduleGrade, month: _ecScheduleMonth }, function (res) {
-    if (!res || !res.success) { if (board) board.innerHTML = '<p style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
-    _ecScheduleDays = res.days || [];
-    ec_timetableComputeUnscheduled();
-    ec_timetableRenderBoard();
-  }, function (err) { if (board) board.innerHTML = '<p style="color:#c62828;">❌ ' + err.message + '</p>'; });
+function ec_timetableGradeToggle(detailsEl) {
+  if (!detailsEl.open || detailsEl.getAttribute('data-loaded') === '1') return;
+  detailsEl.setAttribute('data-loaded', '1');
+  var key = detailsEl.getAttribute('data-key');
+  var parts = key.split('|'), grade = parts[0], month = parts[1];
+  var body = detailsEl.querySelector('.ec-tt-grade-body');
+  if (body) body.innerHTML = '<p style="text-align:center;color:#999;padding:14px;">⏳ جارٍ التحميل...</p>';
+  callServer('getExamScheduleProtected', { grade: grade, month: month }, function (res) {
+    if (!res || !res.success) {
+      detailsEl.removeAttribute('data-loaded'); // فشل الجلب — يُعاد المحاولة عند إغلاق/فتح البطاقة مجدداً
+      if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</p>';
+      return;
+    }
+    _ecScheduleBoards[key] = { days: res.days || [], unscheduled: [] };
+    ec_timetableComputeUnscheduled(key, grade);
+    ec_timetableRenderBoard(key, body);
+  }, function (err) {
+    detailsEl.removeAttribute('data-loaded');
+    if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + err.message + '</p>';
+  });
 }
 
 // مواد الصف الكاملة تأتي من App.lists.curriculumByGrade (محمَّلة أصلاً لكل الواجهة — نفس
 // المصدر الذي يستخدمه تبويب "رصد الدرجات" في ec_gradesOnGradeChange) — بلا استدعاء خادم إضافي
 // وبلا أي إعداد يدوي لقائمة المواد.
-function ec_timetableComputeUnscheduled() {
-  var all = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[_ecScheduleGrade]) || [];
+function ec_timetableComputeUnscheduled(key, grade) {
+  var board = _ecScheduleBoards[key]; if (!board) return;
+  var all = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
   var scheduled = {};
-  for (var d = 0; d < _ecScheduleDays.length; d++) {
-    var subs = _ecScheduleDays[d].subjects || [];
+  for (var d = 0; d < board.days.length; d++) {
+    var subs = board.days[d].subjects || [];
     for (var s = 0; s < subs.length; s++) scheduled[subs[s].name] = true;
   }
-  _ecScheduleUnscheduled = [];
+  board.unscheduled = [];
   for (var i = 0; i < all.length; i++) {
-    if (!scheduled[all[i]]) _ecScheduleUnscheduled.push(all[i]);
+    if (!scheduled[all[i]]) board.unscheduled.push(all[i]);
   }
 }
 
-function ec_timetableRenderBoard() {
-  var board = document.getElementById('ec-tt-board'); if (!board) return;
-  var days = _ecScheduleDays.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
-  var h = '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;">';
+function ec_timetableRenderBoard(key, containerEl) {
+  var board = _ecScheduleBoards[key]; if (!board || !containerEl) return;
+  var parts = key.split('|'), grade = parts[0];
+  var days = board.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+
+  var h = '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + escapeHtml(key).replace(/'/g, "\\'") + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button></div>' +
+          '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;">';
 
   var unschedSubs = [];
-  for (var u = 0; u < _ecScheduleUnscheduled.length; u++) unschedSubs.push({ name: _ecScheduleUnscheduled[u] });
-  h += ec_timetableColumnHtml('unsched', '📦 غير مُجدوَلة', '', unschedSubs, true);
+  for (var u = 0; u < board.unscheduled.length; u++) unschedSubs.push({ name: board.unscheduled[u] });
+  h += ec_timetableColumnHtml(key, 'unsched', '📦 غير مُجدوَلة', '', unschedSubs, true);
 
   for (var i = 0; i < days.length; i++) {
-    h += ec_timetableColumnHtml('day-' + days[i].dayIndex, 'اليوم ' + days[i].dayIndex, days[i].date, days[i].subjects, false);
+    h += ec_timetableColumnHtml(key, 'day-' + days[i].dayIndex, 'اليوم ' + days[i].dayIndex, days[i].date, days[i].subjects, false);
   }
   var nextDayIndex = days.length ? (days[days.length - 1].dayIndex + 1) : 1;
-  h += ec_timetableColumnHtml('day-' + nextDayIndex, '➕ اليوم ' + nextDayIndex, '', [], false);
+  h += ec_timetableColumnHtml(key, 'day-' + nextDayIndex, '➕ اليوم ' + nextDayIndex, '', [], false);
 
   h += '</div>';
-  board.innerHTML = h;
-  ec_timetableBindDrag();
+  containerEl.innerHTML = h;
+  ec_timetableBindDrag(containerEl);
+
+  // تحديث شارة عدد المواد المُجدوَلة في ملخّص بطاقة الصف مباشرة (بلا إعادة جلب overview كاملة)
+  var gradeDetails = containerEl.closest('.ec-tt-grade');
+  var count = 0;
+  for (var bd = 0; bd < board.days.length; bd++) count += board.days[bd].subjects.length;
+  if (gradeDetails) {
+    var badge = gradeDetails.querySelector('summary .ec-tt-badge');
+    if (badge) {
+      badge.textContent = count + ' مادة مُجدوَلة';
+      badge.classList.toggle('ec-tt-badge-ok', count > 0);
+    }
+  }
+  // شارة "X صف مُجدوَل" في ملخّص الشهر الأب — firstElementChild لأن <summary> دوماً أول ابن مباشر
+  // لـ<details> (بناء الـHTML يضمن ذلك)، فتفادينا مطابقة querySelector العامة لبطاقات صفوف أخرى
+  // متداخلة داخل نفس الشهر.
+  var monthDetails = containerEl.closest('.ec-tt-month');
+  if (monthDetails && monthDetails.firstElementChild) {
+    var monthBadge = monthDetails.firstElementChild.querySelector('.ec-tt-badge');
+    if (monthBadge && count > 0 && !monthBadge.classList.contains('ec-tt-badge-ok')) {
+      // أول مادة تُجدوَل لأي صف بهذا الشهر خلال هذه الجلسة — لا نعرف العدد الدقيق بلا overview
+      // كاملة، لكن نُحدِّث الأيقونة على الأقل لتعكس أن الشهر لم يعد فارغاً.
+      monthBadge.classList.add('ec-tt-badge-ok');
+    }
+  }
 }
 
-function ec_timetableColumnHtml(colId, title, date, subjects, isUnsched) {
+function ec_timetableColumnHtml(key, colId, title, date, subjects, isUnsched) {
   var dateInput = isUnsched ? '' :
-    '<input type="date" value="' + escapeHtml(date || '') + '" onchange="ec_timetableSetDate(\'' + colId + '\', this.value)" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;margin-top:6px;font-size:12px;box-sizing:border-box;">';
+    '<input type="date" value="' + escapeHtml(date || '') + '" onchange="ec_timetableSetDate(\'' + escapeHtml(key).replace(/'/g, "\\'") + '\', \'' + colId + '\', this.value, this)" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;margin-top:6px;font-size:12px;box-sizing:border-box;">';
   var cards = '';
   for (var i = 0; i < subjects.length; i++) {
     cards += '<div class="ec-tt-card" data-subject="' + escapeHtml(subjects[i].name) + '" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:grab;font-size:13px;font-weight:600;touch-action:none;user-select:none;">' + escapeHtml(subjects[i].name) + '</div>';
   }
-  return '<div class="ec-tt-col" data-col="' + colId + '" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;min-width:170px;flex:0 0 170px;">' +
+  return '<div class="ec-tt-col" data-key="' + escapeHtml(key) + '" data-col="' + colId + '" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;min-width:170px;flex:0 0 170px;">' +
     '<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1a237e;">' + escapeHtml(title) + '</div>' +
     dateInput +
     '<div class="ec-tt-cards" style="margin-top:8px;min-height:40px;">' + cards + '</div>' +
     '</div>';
 }
 
-function ec_timetableBindDrag() {
-  var cards = document.querySelectorAll('#ec-tt-board .ec-tt-card');
+function ec_timetableBindDrag(containerEl) {
+  var cards = containerEl.querySelectorAll('.ec-tt-card');
   for (var i = 0; i < cards.length; i++) cards[i].addEventListener('pointerdown', ec_timetableDragStart);
 }
 
 function ec_timetableDragStart(ev) {
   ev.preventDefault();
   var card = ev.currentTarget;
+  var col = card.closest('.ec-tt-col');
   _ecTTDragSubject = card.getAttribute('data-subject');
-  _ecTTDragFromCol = card.parentNode.parentNode.getAttribute('data-col');
+  _ecTTDragFromCol = col.getAttribute('data-col');
+  _ecTTDragFromKey = col.getAttribute('data-key');
   _ecTTDragEl = card.cloneNode(true);
   _ecTTDragEl.style.position = 'fixed';
   _ecTTDragEl.style.zIndex = '99999';
@@ -7227,11 +7297,11 @@ function ec_timetableDragMove(ev) {
   if (!_ecTTDragEl) return;
   _ecTTDragEl.style.left = (ev.clientX - _ecTTDragEl.offsetWidth / 2) + 'px';
   _ecTTDragEl.style.top = (ev.clientY - 20) + 'px';
-  var cols = document.querySelectorAll('#ec-tt-board .ec-tt-col');
+  var cols = document.querySelectorAll('.ec-tt-col');
   for (var i = 0; i < cols.length; i++) cols[i].style.outline = '';
   var under = document.elementFromPoint(ev.clientX, ev.clientY);
   var col = under && under.closest ? under.closest('.ec-tt-col') : null;
-  if (col) col.style.outline = '2px dashed #1a237e';
+  if (col && col.getAttribute('data-key') === _ecTTDragFromKey) col.style.outline = '2px dashed #1a237e';
 }
 
 function ec_timetableDragEnd(ev) {
@@ -7240,120 +7310,179 @@ function ec_timetableDragEnd(ev) {
   var draggedCard = document.querySelector('.ec-tt-card[data-dragging="1"]');
   if (draggedCard) { draggedCard.style.opacity = ''; draggedCard.removeAttribute('data-dragging'); }
   if (_ecTTDragEl) { document.body.removeChild(_ecTTDragEl); _ecTTDragEl = null; }
-  var cols = document.querySelectorAll('#ec-tt-board .ec-tt-col');
+  var cols = document.querySelectorAll('.ec-tt-col');
   for (var i = 0; i < cols.length; i++) cols[i].style.outline = '';
   var under = document.elementFromPoint(ev.clientX, ev.clientY);
   var col = under && under.closest ? under.closest('.ec-tt-col') : null;
   if (!col) return;
+  var toKey = col.getAttribute('data-key');
+  if (toKey !== _ecTTDragFromKey) return; // لا سحب بين لوحتَي صف/شهر مختلفتين
   var toColId = col.getAttribute('data-col');
   if (toColId === _ecTTDragFromCol) return;
-  ec_timetableMoveSubject(_ecTTDragSubject, _ecTTDragFromCol, toColId);
+  var containerEl = col.closest('.ec-tt-grade-body');
+  ec_timetableMoveSubject(_ecTTDragFromKey, _ecTTDragSubject, _ecTTDragFromCol, toColId, containerEl);
 }
 
-function ec_timetableMoveSubject(subject, fromCol, toCol) {
+function ec_timetableMoveSubject(key, subject, fromCol, toCol, containerEl) {
+  var board = _ecScheduleBoards[key]; if (!board) return;
   if (fromCol === 'unsched') {
-    _ecScheduleUnscheduled = _ecScheduleUnscheduled.filter(function (n) { return n !== subject; });
+    board.unscheduled = board.unscheduled.filter(function (n) { return n !== subject; });
   } else {
     var fromDayIndex = Number(fromCol.replace('day-', ''));
-    for (var i = 0; i < _ecScheduleDays.length; i++) {
-      if (_ecScheduleDays[i].dayIndex === fromDayIndex) {
-        _ecScheduleDays[i].subjects = _ecScheduleDays[i].subjects.filter(function (s) { return s.name !== subject; });
+    for (var i = 0; i < board.days.length; i++) {
+      if (board.days[i].dayIndex === fromDayIndex) {
+        board.days[i].subjects = board.days[i].subjects.filter(function (s) { return s.name !== subject; });
       }
     }
   }
   if (toCol === 'unsched') {
-    _ecScheduleUnscheduled.push(subject);
+    board.unscheduled.push(subject);
   } else {
     var toDayIndex = Number(toCol.replace('day-', ''));
     var target = null;
-    for (var j = 0; j < _ecScheduleDays.length; j++) {
-      if (_ecScheduleDays[j].dayIndex === toDayIndex) { target = _ecScheduleDays[j]; break; }
+    for (var j = 0; j < board.days.length; j++) {
+      if (board.days[j].dayIndex === toDayIndex) { target = board.days[j]; break; }
     }
-    if (!target) { target = { dayIndex: toDayIndex, date: '', subjects: [] }; _ecScheduleDays.push(target); }
+    if (!target) { target = { dayIndex: toDayIndex, date: '', subjects: [] }; board.days.push(target); }
     target.subjects.push({ name: subject, order: target.subjects.length + 1 });
   }
-  _ecScheduleDays = _ecScheduleDays.filter(function (d) { return d.subjects.length > 0; });
-  ec_timetableRenderBoard();
-  ec_timetableScheduleSave();
+  board.days = board.days.filter(function (d) { return d.subjects.length > 0; });
+  ec_timetableRenderBoard(key, containerEl);
+  ec_timetableScheduleSave(key);
 }
 
-function ec_timetableSetDate(colId, value) {
+// يبني كائن Date من مكوّنات محلية (لا من تحليل نص مباشر — new Date('yyyy-mm-dd') يُفسَّر UTC
+// فيُنتج انزياح يوم كامل في بعض المناطق الزمنية)، ويُنسِّق الناتج يدوياً 'yyyy-MM-dd' لنفس السبب.
+function _ecNextWorkingDay(dateStr) {
+  var parts = String(dateStr || '').split('-');
+  if (parts.length !== 3) return dateStr;
+  var y = Number(parts[0]), mo = Number(parts[1]), d = Number(parts[2]);
+  if (!y || !mo || !d) return dateStr;
+  var dt = new Date(y, mo - 1, d);
+  dt.setDate(dt.getDate() + 1);
+  while (dt.getDay() === 4 || dt.getDay() === 5) { dt.setDate(dt.getDate() + 1); } // تخطّي الخميس(4)/الجمعة(5)
+  var yy = dt.getFullYear();
+  var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
+  var dd = ('0' + dt.getDate()).slice(-2);
+  return yy + '-' + mm + '-' + dd;
+}
+
+function ec_timetableSetDate(key, colId, value, inputEl) {
+  var board = _ecScheduleBoards[key]; if (!board) return;
   var dayIndex = Number(colId.replace('day-', ''));
   var target = null;
-  for (var i = 0; i < _ecScheduleDays.length; i++) {
-    if (_ecScheduleDays[i].dayIndex === dayIndex) { target = _ecScheduleDays[i]; break; }
+  for (var i = 0; i < board.days.length; i++) {
+    if (board.days[i].dayIndex === dayIndex) { target = board.days[i]; break; }
   }
   if (!target) return; // يوم بلا مواد بعد — لا معنى لحفظ تاريخ وحده (لن يُحفَظ فارغاً على أي حال)
   target.date = value;
-  ec_timetableScheduleSave();
+  if (value) {
+    // تعبئة تلقائية لتواريخ الأيام التالية (بترتيب dayIndex) — كل يوم = أقرب يوم دوام بعد سابقه
+    var sortedDays = board.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+    var cursorDate = value;
+    for (var s = 0; s < sortedDays.length; s++) {
+      if (sortedDays[s].dayIndex <= dayIndex) continue;
+      cursorDate = _ecNextWorkingDay(cursorDate);
+      sortedDays[s].date = cursorDate;
+    }
+  }
+  var containerEl = inputEl ? inputEl.closest('.ec-tt-grade-body') : null;
+  ec_timetableRenderBoard(key, containerEl);
+  ec_timetableScheduleSave(key);
 }
 
-function ec_timetableScheduleSave() {
-  if (_ecTTSaveTimer) clearTimeout(_ecTTSaveTimer);
-  _ecTTSaveTimer = setTimeout(ec_timetableSaveNow, 600);
+function ec_timetableScheduleSave(key) {
+  if (_ecTTSaveTimers[key]) clearTimeout(_ecTTSaveTimers[key]);
+  _ecTTSaveTimers[key] = setTimeout(function () { ec_timetableSaveNow(key); }, 600);
 }
 
-function ec_timetableSaveNow() {
-  var daysToSave = _ecScheduleDays.filter(function (d) { return d.subjects && d.subjects.length > 0; });
+function ec_timetableSaveNow(key) {
+  var board = _ecScheduleBoards[key]; if (!board) return;
+  var parts = key.split('|'), grade = parts[0], month = parts[1];
+  var daysToSave = board.days.filter(function (d) { return d.subjects && d.subjects.length > 0; });
   for (var i = 0; i < daysToSave.length; i++) {
     for (var s = 0; s < daysToSave[i].subjects.length; s++) daysToSave[i].subjects[s].order = s + 1;
   }
-  callServer('saveExamScheduleBulkProtected', { grade: _ecScheduleGrade, month: _ecScheduleMonth, days: daysToSave }, function (res) {
+  callServer('saveExamScheduleBulkProtected', { grade: grade, month: month, days: daysToSave }, function (res) {
     if (!res || !res.success) toast('❌ ' + (res ? res.error : 'تعذّر الحفظ'), 'error');
   }, function (err) { toast('❌ ' + err.message, 'error'); });
 }
 
-// ── معاينة جدول المدرسة الكامل (زر واحد فقط — لا أزرار عرض مفردة لكل صف/شهر) ──
-function ec_showScheduleOverview() {
-  var modal = document.getElementById('ec-tt-overview-modal');
-  var body = document.getElementById('ec-tt-overview-body');
-  if (body) body.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
-  if (modal) modal.style.display = 'flex';
+// ── طباعة احترافية بهوية المدرسة (شعار/اسم/عام دراسي من _ecBrandLogoHtml/_ecBrandColor/_ecData —
+//    نفس أدوات طباعة الكنترول القائمة فعلاً في ec_printCommitteeRoster، بلا كود جلب/تنسيق جديد) ──
+function ec_printGradeSchedule(ev, key) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  var board = _ecScheduleBoards[key];
+  var parts = key.split('|'), grade = parts[0], month = parts[1];
+  var days = board ? board.days.slice().filter(function (d) { return d.subjects && d.subjects.length; }) : [];
+  if (!days.length) { toast('لا توجد مواد مُجدوَلة لهذا الصف بعد', 'warning'); return; }
+  days.sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+  _ecRenderGradePrint(grade, month, days);
+}
+
+function _ecRenderGradePrint(grade, month, days) {
+  var d = _ecData || {};
+  var brandColor = _ecBrandColor();
+  var rows = '';
+  for (var i = 0; i < days.length; i++) {
+    var names = [];
+    for (var s = 0; s < days[i].subjects.length; s++) names.push(days[i].subjects[s].name);
+    rows += '<tr' + (i % 2 ? ' class="alt"' : '') + '><td class="day">اليوم ' + days[i].dayIndex + '</td><td class="date">' + _tfEsc(days[i].date || '—') + '</td><td class="subj">' + _tfEsc(names.join('، ')) + '</td></tr>';
+  }
+  var css = '@page{size:A4;margin:14mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;text-align:center;}' +
+            '.header{background:linear-gradient(135deg,' + brandColor + ',' + brandColor + 'cc);color:#fff;border-radius:12px;padding:16px 10px 14px;margin-bottom:18px;}' +
+            'table{width:100%;border-collapse:collapse;font-size:14px;text-align:center;border:1px solid ' + brandColor + '33;border-radius:8px;overflow:hidden;}' +
+            'th,td{padding:10px;border-bottom:1px solid #e5e7eb;} tr.alt td{background:' + brandColor + '0d;}' +
+            'th{background:' + brandColor + ';color:#fff;font-weight:600;} td.subj{font-weight:600;} td.day{font-weight:800;color:' + brandColor + ';}' +
+            'h2{margin:0;font-size:20px;} .meta{font-size:13px;opacity:.92;margin-top:6px;}';
+  var body = '<div class="header">' + _ecBrandLogoHtml(50) +
+             '<h2>جدول اختبارات ' + _tfEsc(grade) + '</h2>' +
+             '<div class="meta">' + _tfEsc(d.schoolName || '') + ' — ' + _tfEsc(month) + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div></div>' +
+             '<table><thead><tr><th>اليوم</th><th>التاريخ</th><th>المادة</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  _tfPrintWin('جدول اختبارات ' + grade + ' - ' + month, css, body);
+}
+
+function ec_printMonthSchedule(ev, month) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   callServer('getSchoolExamScheduleOverviewProtected', {}, function (res) {
-    if (!res || !res.success) { if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
-    ec_renderScheduleOverview(res.months || []);
-  }, function (err) { if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + err.message + '</p>'; });
+    if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'تعذّر التحميل'), 'error'); return; }
+    var months = res.months || [];
+    var target = null;
+    for (var i = 0; i < months.length; i++) { if (months[i].month === month) { target = months[i]; break; } }
+    if (!target || !target.grades.length) { toast('لا يوجد جدول محفوظ لهذا الشهر بعد', 'warning'); return; }
+    _ecRenderMonthPrint(month, target.grades);
+  }, function (err) { toast('❌ ' + err.message, 'error'); });
 }
 
-function ec_closeScheduleOverview() {
-  var modal = document.getElementById('ec-tt-overview-modal');
-  if (modal) modal.style.display = 'none';
-}
-
-function ec_renderScheduleOverview(months) {
-  var body = document.getElementById('ec-tt-overview-body'); if (!body) return;
-  if (!months.length) {
-    body.innerHTML = '<div class="empty-state"><div class="es-icon">🗓️</div><div class="es-title">لا يوجد جدول اختبارات محفوظ بعد</div></div>';
-    return;
-  }
-  var h = '';
-  for (var m = 0; m < months.length; m++) {
-    var mo = months[m];
-    h += '<div style="margin-bottom:18px;"><div style="font-weight:800;color:#1a237e;font-size:15px;margin-bottom:8px;border-bottom:2px solid #D4A537;padding-bottom:4px;">' + escapeHtml(mo.month) + '</div>';
-    for (var g = 0; g < mo.grades.length; g++) {
-      var gr = mo.grades[g];
-      h += '<div style="margin-bottom:10px;padding-right:8px;"><div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + escapeHtml(gr.grade) + '</div>' +
-           '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody>';
-      for (var d = 0; d < gr.days.length; d++) {
-        var day = gr.days[d];
-        var names = [];
-        for (var s = 0; s < day.subjects.length; s++) names.push(day.subjects[s].name);
-        h += '<tr style="border-bottom:1px solid #e8eef7;"><td style="padding:5px 8px;white-space:nowrap;color:#64748b;">' + escapeHtml(day.date || ('اليوم ' + day.dayIndex)) + '</td><td style="padding:5px 8px;">' + escapeHtml(names.join('، ')) + '</td></tr>';
-      }
-      h += '</tbody></table></div>';
+function _ecRenderMonthPrint(month, grades) {
+  var d = _ecData || {};
+  var brandColor = _ecBrandColor();
+  var sections = '';
+  for (var g = 0; g < grades.length; g++) {
+    var gr = grades[g];
+    var days = gr.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+    var rows = '';
+    for (var i = 0; i < days.length; i++) {
+      var names = [];
+      for (var s = 0; s < days[i].subjects.length; s++) names.push(days[i].subjects[s].name);
+      rows += '<tr' + (i % 2 ? ' class="alt"' : '') + '><td class="day">اليوم ' + days[i].dayIndex + '</td><td class="date">' + _tfEsc(days[i].date || '—') + '</td><td class="subj">' + _tfEsc(names.join('، ')) + '</td></tr>';
     }
-    h += '</div>';
+    sections += '<div class="grade-block"><h3>' + _tfEsc(gr.grade) + '</h3>' +
+                '<table><thead><tr><th>اليوم</th><th>التاريخ</th><th>المادة</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
-  body.innerHTML = h;
-}
-
-function _ecScheduleOverviewModalHtml() {
-  return '<div id="ec-tt-overview-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">' +
-    '<div style="background:#fff;color:#1e293b;border-radius:12px;padding:24px;width:640px;max-width:95%;max-height:85vh;overflow:auto;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
-    '<h4 style="margin:0;">🗓️ جدول الاختبارات الكامل</h4>' +
-    '<button onclick="ec_closeScheduleOverview()" style="background:#f5f5f5;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;">إغلاق</button>' +
-    '</div><div id="ec-tt-overview-body"></div></div></div>';
+  var css = '@page{size:A4;margin:14mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;text-align:center;}' +
+            '.header{background:linear-gradient(135deg,' + brandColor + ',' + brandColor + 'cc);color:#fff;border-radius:12px;padding:16px 10px 14px;margin-bottom:18px;}' +
+            '.grade-block{margin-bottom:20px;page-break-inside:avoid;text-align:right;}' +
+            '.grade-block h3{color:' + brandColor + ';border-bottom:2px solid ' + brandColor + '55;padding-bottom:4px;margin:0 0 8px;font-size:15px;}' +
+            'table{width:100%;border-collapse:collapse;font-size:13px;text-align:center;border:1px solid ' + brandColor + '33;border-radius:8px;overflow:hidden;}' +
+            'th,td{padding:8px;border-bottom:1px solid #e5e7eb;} tr.alt td{background:' + brandColor + '0d;}' +
+            'th{background:' + brandColor + ';color:#fff;font-weight:600;} td.subj{font-weight:600;} td.day{font-weight:800;color:' + brandColor + ';}' +
+            'h2{margin:0;font-size:20px;} .meta{font-size:13px;opacity:.92;margin-top:6px;}';
+  var body = '<div class="header">' + _ecBrandLogoHtml(50) +
+             '<h2>جدول اختبارات ' + _tfEsc(month) + '</h2>' +
+             '<div class="meta">' + _tfEsc(d.schoolName || '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div></div>' +
+             sections;
+  _tfPrintWin('جدول اختبارات ' + month, css, body);
 }
 
 // ── مودالات (لجنة/جنس الطالب) — بطاقة بيضاء ثابتة، لذا لون النص ثابت غامق دوماً ──
