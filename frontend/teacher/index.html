@@ -1314,6 +1314,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     /* احتواء التمرير داخل الدرج (كان مفقوداً في نسخة الجوال) — يمنع تسلسل
        التمرير للصفحة خلفه ويحفظ سلوك سحب-التحديث لحارسنا لا للمتصفح. */
     overscroll-behavior: contain;
+    /* يقصر تفسير اللمس على تمرير رأسي فقط داخل الدرج — طبقة دفاع إضافية مع
+       body.style.touchAction أعلاه لمحركات WebView التي لا تدعم overscroll-behavior بالكامل. */
+    touch-action: pan-y;
     padding-bottom: calc(24px + var(--safe-bottom));
     border-radius: 0 0 0 var(--radius-lg);
     border-right: none;            /* لا حد على الجانب المغلق */
@@ -4536,6 +4539,14 @@ function toggleSidebar(ev) {
       //   الدرج (position:fixed) طفلٌ في شجرة الجذر، وقفل overflow على الجذر كان
       //   يُجمّد تمرير الدرج الداخلي (خصوصاً لأعلى) على بعض محرّكات WebView.
       document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      // تطبيق أندرويد (WebView) يلفّ الصفحة بـ SwipeRefreshLayout أصلي — طبقة
+      // منفصلة تماماً عن حارس PTR في الويب، لا تعرف شيئاً عن حالة الدرج. نُعطّلها
+      // صراحةً عبر الجسر window.AndroidApp أثناء فتح الدرج (لا أثر في المتصفح/PWA
+      // حيث الجسر غير معرَّف أصلاً).
+      if (window.AndroidApp && typeof window.AndroidApp.setSwipeRefreshEnabled === 'function') {
+        try { window.AndroidApp.setSwipeRefreshEnabled(false); } catch (eSbA) {}
+      }
       // إغلاق بمفتاح Escape (desktop) — مستمع واحد يُتتبَّع ويُزال في closeSidebar
       if (_sbKeyHandler) { document.removeEventListener('keydown', _sbKeyHandler); }
       _sbKeyHandler = function(e) { if (e.key === 'Escape') { closeSidebar(); } };
@@ -4554,10 +4565,14 @@ function closeSidebar() {
     if (sb) sb.classList.remove('open');
     if (ov) ov.classList.remove('show');
     // استعادة التمرير بعد إغلاق الـ Drawer (نستعيد كليهما احتياطاً لأي قفل سابق)
-    if (document.body) document.body.style.overflow = '';
+    if (document.body) { document.body.style.overflow = ''; document.body.style.touchAction = ''; }
     if (document.documentElement) document.documentElement.style.overflow = '';
     // إزالة مستمع Escape النشط (كان يتراكم مستمع جديد مع كل فتح)
     if (_sbKeyHandler) { document.removeEventListener('keydown', _sbKeyHandler); _sbKeyHandler = null; }
+    // إعادة تفعيل PTR الأصلي لتطبيق أندرويد (عكس تعطيل toggleSidebar عند الفتح)
+    if (window.AndroidApp && typeof window.AndroidApp.setSwipeRefreshEnabled === 'function') {
+      try { window.AndroidApp.setSwipeRefreshEnabled(true); } catch (eSbA) {}
+    }
   } catch (e) {
     console.warn('closeSidebar error:', e);
   }
