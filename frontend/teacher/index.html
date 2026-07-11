@@ -1761,6 +1761,13 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .smm-tab:hover { background:rgba(15,44,92,.05);color:var(--text); }
 .smm-tab.active { color:#0F2C5C;border-bottom-color:#D4A537;background:#fff; }
 .smm-pane { background:#f8fafc;border-radius:0 0 12px 12px; }
+
+/* كنترول اختبارات نهاية العام — خلفيات ثابتة فاتحة عمداً (كبقية صفحات الإدارة)
+   فالنص داخلها لون ثابت غامق (لا var(--text)) كي لا يختفي في الوضع الليلي/الاحترافي. */
+.ec-tab { padding:12px 18px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#64748b;white-space:nowrap;border-bottom:3px solid transparent;font-family:inherit;transition:.2s ease; }
+.ec-tab:hover { background:rgba(15,44,92,.05);color:#0F2C5C; }
+.ec-tab.active { color:#0F2C5C;border-bottom-color:#D4A537;background:#fff; }
+.ec-pane { background:#f8fafc;border-radius:0 0 12px 12px;color:#1e293b; }
 .smm-stat-chip {
   display:flex;flex-direction:column;align-items:center;
   background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;
@@ -2023,6 +2030,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
   <button class="sidebar-item" id="si-supervisorPerms" onclick="showSection('supervisorPerms')" style="display:none;"><span class="si-icon">🛡️</span> ضبط صلاحيات المشرف</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
+  <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول الاختبارات</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
   <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
@@ -5800,6 +5808,7 @@ function showSection(name) {
       calendar: renderCalendar,
       supervisorPerms: renderSupervisorPerms,
       circulars: renderCirculars,
+      examctrl: renderExamControl,
       profile: renderProfile
     };
 
@@ -5889,6 +5898,7 @@ var SIDEBAR_ROLE_RULES = {
   'si-teachers-mgmt':   ['admin', 'it'],
   'si-supervisorPerms': ['admin', 'deputy'],
   'si-lists-mgmt':      ['admin'],
+  'si-examctrl':        ['admin', 'deputy'],
   'si-schedSettings':   ['admin', 'deputy'],
   'si-adminTeachers':   ['admin', 'it'],
   'si-adminActivities': ['admin', 'deputy', 'activities'],
@@ -5966,7 +5976,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial'];
+  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl'];
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -6128,6 +6138,280 @@ function _spvSave(){
     for(var i=0;i<_spvList.length;i++){ if(_spvList[i].name===_spvCurrent){ _spvList[i].grades=p.grades; _spvList[i].sections=p.sections; _spvList[i].pages=p.pages; _spvList[i].notes=p.notes; } }
     _spvRenderList();
   }, function(err){ if(st) st.innerHTML='<span style="color:#c62828;">❌ '+err.message+'</span>'; });
+}
+
+// ==================== كنترول اختبارات نهاية العام (مدير/وكيل فقط) ====================
+// المرحلة 0+1: تبويب البيانات الأساسية + إدارة اللجان + إدارة الطلاب.
+// كل البيانات في ملف منصة المدرسين نفسه (أوراق الكنترول_البيانات/اللجان/الطلاب)،
+// عبر getExam*/saveExam*/deleteExam*Protected في teacher/ExamControl.js.
+var _ecData = null, _ecCommittees = null, _ecStudents = null;
+var _ecCommitteeEditId = '', _ecStudentEditCode = '';
+
+function renderExamControl() {
+  var u = App.user || {};
+  var box = document.getElementById('dynamicContent');
+  if (!box) return;
+  if (!(u.role === 'admin' || u.role === 'deputy')) {
+    box.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">هذه الصفحة للمدير والوكيل فقط</div></div>';
+    return;
+  }
+  _ecData = null; _ecCommittees = null; _ecStudents = null;
+  box.innerHTML =
+    '<div class="page-head"><h2 style="margin:0;">🗂️ كنترول اختبارات نهاية العام</h2>' +
+    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">البيانات الأساسية، اللجان الامتحانية، وقائمة الطلاب المشاركين في الاختبار.</p></div>' +
+    '<div style="background:#f0f4f8;border-bottom:2px solid #e2e8f0;border-radius:10px 10px 0 0;display:flex;overflow-x:auto;">' +
+      '<button class="ec-tab active" id="ec-tab-data" onclick="ec_setTab(\'data\')">📋 البيانات الأساسية</button>' +
+      '<button class="ec-tab" id="ec-tab-committees" onclick="ec_setTab(\'committees\')">🏫 اللجان</button>' +
+      '<button class="ec-tab" id="ec-tab-students" onclick="ec_setTab(\'students\')">🎒 الطلاب</button>' +
+    '</div>' +
+    '<div id="ec-pane-data" class="ec-pane" style="padding:18px;"></div>' +
+    '<div id="ec-pane-committees" class="ec-pane" style="display:none;padding:18px;"></div>' +
+    '<div id="ec-pane-students" class="ec-pane" style="display:none;padding:18px;"></div>' +
+    _ecCommitteeModalHtml() + _ecGenderModalHtml();
+  ec_setTab('data');
+}
+
+function ec_setTab(name) {
+  var tabs = document.querySelectorAll('#dynamicContent .ec-tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  var activeBtn = document.getElementById('ec-tab-' + name);
+  if (activeBtn) activeBtn.classList.add('active');
+  var names = ['data', 'committees', 'students'];
+  for (var p = 0; p < names.length; p++) {
+    var el = document.getElementById('ec-pane-' + names[p]);
+    if (el) el.style.display = (names[p] === name) ? 'block' : 'none';
+  }
+  if (name === 'data') ec_loadData();
+  else if (name === 'committees') ec_loadCommittees();
+  else if (name === 'students') ec_loadStudents();
+}
+
+// ── البيانات الأساسية ──
+function ec_loadData() {
+  var el = document.getElementById('ec-pane-data'); if (!el) return;
+  el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  callServer('getExamControlDataProtected', {}, function(res) {
+    if (!res || !res.success) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
+    _ecData = res.data || { schoolName: '', examType: '', academicYear: '', updatedAt: '', updatedBy: '' };
+    ec_renderDataPane();
+  }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
+}
+
+// نفس ALL_MONTHS_ORDERED (teacher/TeacherCore.js:27) — "نوع الاختبار" هنا فترة درجات حقيقية
+// من نظام الدرجات القائم (لا نص حرّ منفصل)، كي يعمل الرصد لاحقاً على نفس ورقة «النصفي».
+var EC_EXAM_TYPES = ['محرم', 'صفر', 'نصف العام', 'جماد اول', 'جماد ثاني', 'نهاية العام'];
+function _ecExamTypeOptionsHtml(selected) {
+  var h = '';
+  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
+    var v = EC_EXAM_TYPES[i];
+    h += '<option value="' + escapeHtml(v) + '"' + (v === selected ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+  }
+  return h;
+}
+
+function ec_renderDataPane() {
+  var el = document.getElementById('ec-pane-data'); if (!el) return;
+  var d = _ecData || {};
+  el.innerHTML =
+    '<div style="max-width:480px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;">' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">اسم المدرسة</label>' +
+    '<input id="ec-d-schoolName" type="text" value="' + escapeHtml(d.schoolName || '') + '" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">نوع الاختبار (فترة الدرجات)</label>' +
+    '<select id="ec-d-examType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+      _ecExamTypeOptionsHtml(d.examType || 'نهاية العام') +
+    '</select>' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">العام الدراسي</label>' +
+    '<input id="ec-d-academicYear" type="text" value="' + escapeHtml(d.academicYear || '') + '" placeholder="مثال: 2025-2026" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px;box-sizing:border-box;">' +
+    '<button onclick="ec_saveData()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:10px 22px;cursor:pointer;font-weight:700;">💾 حفظ</button>' +
+    '<span id="ec-d-status" style="margin-right:10px;font-size:13px;"></span>' +
+    (d.updatedAt ? '<div style="margin-top:12px;font-size:12px;color:#64748b;">آخر تحديث: ' + escapeHtml(d.updatedAt) + ' بواسطة ' + escapeHtml(d.updatedBy || '') + '</div>' : '') +
+    '</div>';
+}
+
+function ec_saveData() {
+  var st = document.getElementById('ec-d-status'); if (st) st.innerHTML = '<span>⏳ جارٍ الحفظ...</span>';
+  var p = {
+    schoolName: (document.getElementById('ec-d-schoolName') || {}).value || '',
+    examType: (document.getElementById('ec-d-examType') || {}).value || '',
+    academicYear: (document.getElementById('ec-d-academicYear') || {}).value || ''
+  };
+  callServer('saveExamControlDataProtected', p, function(res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+    if (st) st.innerHTML = '<span style="color:#2e7d32;">✅ تم الحفظ</span>';
+    ec_loadData();
+  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+// ── إدارة اللجان ──
+function ec_loadCommittees() {
+  var el = document.getElementById('ec-pane-committees'); if (!el) return;
+  el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  callServer('getExamCommitteesProtected', {}, function(res) {
+    if (!res || !res.success) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
+    _ecCommittees = res.committees || [];
+    ec_renderCommittees();
+  }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
+}
+
+function ec_renderCommittees() {
+  var el = document.getElementById('ec-pane-committees'); if (!el) return;
+  var list = _ecCommittees || [];
+  var h = '<div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:12px;">' +
+          '<button onclick="ec_showCommitteeModal()" style="background:#1a237e;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">➕ إضافة لجنة</button>' +
+          '</div>';
+  if (!list.length) {
+    h += '<div class="empty-state"><div class="es-icon">🏫</div><div class="es-title">لا توجد لجان بعد</div></div>';
+  } else {
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">' +
+         '<thead><tr style="background:#1a237e;color:#fff;"><th style="padding:9px 8px;text-align:right;">اسم اللجنة</th><th style="padding:9px 8px;text-align:center;">السعة</th><th style="padding:9px 8px;text-align:right;">ملاحظات</th><th style="padding:9px 8px;text-align:center;">إجراءات</th></tr></thead><tbody>';
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      h += '<tr style="border-bottom:1px solid #e8eef7;">' +
+           '<td style="padding:9px 8px;">' + escapeHtml(c.committeeName) + '</td>' +
+           '<td style="padding:9px 8px;text-align:center;">' + c.capacity + '</td>' +
+           '<td style="padding:9px 8px;">' + escapeHtml(c.notes || '') + '</td>' +
+           '<td style="padding:9px 8px;text-align:center;white-space:nowrap;">' +
+             '<button onclick="ec_showCommitteeModal(\'' + c.committeeId + '\')" style="background:#e2e8f0;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;margin-left:4px;">✏️</button>' +
+             '<button onclick="ec_deleteCommittee(\'' + c.committeeId + '\')" style="background:#fdecea;color:#c62828;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;">🗑️</button>' +
+           '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  el.innerHTML = h;
+}
+
+function ec_showCommitteeModal(id) {
+  _ecCommitteeEditId = id || '';
+  var c = null;
+  if (id && _ecCommittees) { for (var i = 0; i < _ecCommittees.length; i++) { if (_ecCommittees[i].committeeId === id) { c = _ecCommittees[i]; break; } } }
+  document.getElementById('ec-cm-title').textContent = id ? 'تعديل لجنة' : 'إضافة لجنة';
+  document.getElementById('ec-cm-name').value = c ? c.committeeName : '';
+  document.getElementById('ec-cm-capacity').value = c ? c.capacity : '';
+  document.getElementById('ec-cm-notes').value = c ? (c.notes || '') : '';
+  document.getElementById('ec-cm-status').innerHTML = '';
+  document.getElementById('ec-committee-modal').style.display = 'flex';
+}
+
+function ec_closeCommitteeModal() { document.getElementById('ec-committee-modal').style.display = 'none'; }
+
+function ec_saveCommittee() {
+  var st = document.getElementById('ec-cm-status');
+  var p = {
+    committeeId: _ecCommitteeEditId,
+    committeeName: (document.getElementById('ec-cm-name') || {}).value || '',
+    capacity: (document.getElementById('ec-cm-capacity') || {}).value || '',
+    notes: (document.getElementById('ec-cm-notes') || {}).value || ''
+  };
+  if (st) st.innerHTML = '<span>⏳ جارٍ الحفظ...</span>';
+  callServer('saveExamCommitteeProtected', p, function(res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+    ec_closeCommitteeModal();
+    ec_loadCommittees();
+  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+function ec_deleteCommittee(id) {
+  if (!confirm('هل تريد حذف هذه اللجنة؟')) return;
+  callServer('deleteExamCommitteeProtected', { committeeId: id }, function(res) {
+    if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'خطأ'), 'error'); return; }
+    ec_loadCommittees();
+  }, function(err) { toast('❌ ' + err.message, 'error'); });
+}
+
+// ── طلاب الاختبار — قائمة مقروءة مباشرة من ورقة «الطلاب» الحقيقية (لا نسخة/CRUD هوية) ──
+// إدارة الاسم/الصف/الشعبة ملك ميزة إدارة الطلاب الموجودة أصلاً بالمنصّة؛ الكنترول يضيف فقط
+// حقل "الجنس" فوق نفس السجل (بمطابقة «الكود»)، وهو اللازم لاحقاً لتوزيع الطلاب الكبار.
+function ec_loadStudents() {
+  var el = document.getElementById('ec-pane-students'); if (!el) return;
+  el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  callServer('getExamStudentsProtected', {}, function(res) {
+    if (!res || !res.success) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
+    _ecStudents = res.students || [];
+    ec_renderStudents();
+  }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
+}
+
+function ec_renderStudents() {
+  var el = document.getElementById('ec-pane-students'); if (!el) return;
+  var list = _ecStudents || [];
+  var h = '<div style="margin-bottom:12px;font-size:13px;">العدد: ' + list.length +
+          ' <span style="color:#64748b;">— الاسم/الصف/الشعبة من ورقة «الطلاب» الحقيقية؛ ' +
+          'الجنس هنا يُضبط لحاجة توزيع اللجان لاحقاً.</span></div>';
+  if (!list.length) {
+    h += '<div class="empty-state"><div class="es-icon">🎒</div><div class="es-title">لا يوجد طلاب في ورقة «الطلاب» بعد</div></div>';
+  } else {
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">' +
+         '<thead><tr style="background:#1a237e;color:#fff;"><th style="padding:9px 8px;text-align:right;">الاسم</th><th style="padding:9px 8px;text-align:center;">الصف</th><th style="padding:9px 8px;text-align:center;">الشعبة</th><th style="padding:9px 8px;text-align:center;">الجنس</th></tr></thead><tbody>';
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      var genderLabel = s.gender === 'M' ? 'ذكر' : (s.gender === 'F' ? 'أنثى' : 'غير محدَّد');
+      h += '<tr style="border-bottom:1px solid #e8eef7;">' +
+           '<td style="padding:9px 8px;">' + escapeHtml(s.name) + '</td>' +
+           '<td style="padding:9px 8px;text-align:center;">' + escapeHtml(s.grade) + '</td>' +
+           '<td style="padding:9px 8px;text-align:center;">' + escapeHtml(s.section || '—') + '</td>' +
+           '<td style="padding:9px 8px;text-align:center;white-space:nowrap;">' +
+             '<button onclick="ec_showGenderModal(\'' + s.code + '\')" style="background:#e2e8f0;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;">' + genderLabel + ' ✏️</button>' +
+           '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  el.innerHTML = h;
+}
+
+function ec_showGenderModal(code) {
+  _ecStudentEditCode = code || '';
+  var s = null;
+  if (code && _ecStudents) { for (var i = 0; i < _ecStudents.length; i++) { if (_ecStudents[i].code === code) { s = _ecStudents[i]; break; } } }
+  if (!s) return;
+  document.getElementById('ec-gm-name').textContent = s.name;
+  document.getElementById('ec-gm-gender').value = s.gender || '';
+  document.getElementById('ec-gm-status').innerHTML = '';
+  document.getElementById('ec-gender-modal').style.display = 'flex';
+}
+
+function ec_closeGenderModal() { document.getElementById('ec-gender-modal').style.display = 'none'; }
+
+function ec_saveGender() {
+  var st = document.getElementById('ec-gm-status');
+  var p = { code: _ecStudentEditCode, gender: (document.getElementById('ec-gm-gender') || {}).value || '' };
+  if (st) st.innerHTML = '<span>⏳ جارٍ الحفظ...</span>';
+  callServer('saveExamStudentGenderProtected', p, function(res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+    ec_closeGenderModal();
+    ec_loadStudents();
+  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+}
+
+// ── مودالات (لجنة/جنس الطالب) — بطاقة بيضاء ثابتة، لذا لون النص ثابت غامق دوماً ──
+function _ecCommitteeModalHtml() {
+  return '<div id="ec-committee-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">' +
+    '<div style="background:#fff;color:#1e293b;border-radius:12px;padding:24px;width:360px;max-width:95%;">' +
+    '<h4 id="ec-cm-title" style="margin:0 0 14px;">إضافة لجنة</h4>' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">اسم اللجنة</label>' +
+    '<input id="ec-cm-name" type="text" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">السعة</label>' +
+    '<input id="ec-cm-capacity" type="number" min="1" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">ملاحظات</label>' +
+    '<input id="ec-cm-notes" type="text" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<div id="ec-cm-status" style="margin-bottom:8px;"></div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+      '<button onclick="ec_closeCommitteeModal()" style="padding:7px 16px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer;">إلغاء</button>' +
+      '<button onclick="ec_saveCommittee()" style="padding:7px 20px;background:#1a237e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">حفظ</button>' +
+    '</div></div></div>';
+}
+
+function _ecGenderModalHtml() {
+  return '<div id="ec-gender-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">' +
+    '<div style="background:#fff;color:#1e293b;border-radius:12px;padding:24px;width:340px;max-width:95%;">' +
+    '<h4 style="margin:0 0 14px;">تحديد الجنس — <span id="ec-gm-name"></span></h4>' +
+    '<select id="ec-gm-gender" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+      '<option value="">غير محدَّد</option><option value="M">ذكر</option><option value="F">أنثى</option>' +
+    '</select>' +
+    '<div id="ec-gm-status" style="margin-bottom:8px;"></div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+      '<button onclick="ec_closeGenderModal()" style="padding:7px 16px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer;">إلغاء</button>' +
+      '<button onclick="ec_saveGender()" style="padding:7px 20px;background:#1a237e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">حفظ</button>' +
+    '</div></div></div>';
 }
 
 // ==================== REFRESH NOTES BADGE (مُحسَّن وآمن) ====================
