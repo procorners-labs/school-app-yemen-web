@@ -1778,6 +1778,7 @@ function owner_changeSchool() {
   var sel = document.getElementById('owner-school-select');
   App.viewSchoolId = sel ? sel.value : '';
   dashboard_load();
+  portals_load();
 }
 
 /* مُحوِّل روابط GAS إلى مسارات الـ Worker — يعمل فقط عند الخدمة عبر الـ Worker
@@ -1838,10 +1839,12 @@ function _renderPortals(res) {
   var html = '';
   for (var i = 0; i < defs.length; i++) {
     var d   = defs[i];
-    // عبر الـ Worker: رابط ديناميكي يفتح بيانات هذه المدرسة فقط (?schoolId)؛
+    // عبر الـ Worker: رابط ديناميكي يفتح بيانات هذه المدرسة فقط (?school)؛
     // وإلا (تشغيل GAS مباشر): استخدم رابط الخادم المُهيّأ.
+    // ⚠️ الاسم يجب أن يطابق ما تقرأه فعلياً صفحات cms/teacher/schedule
+    // (urlParams.get('school')) — استخدام "schoolId" هنا يُسقط المعرّف صامتاً.
     var url = (useWorker && sid)
-      ? ('/' + d.key + '/index.html?schoolId=' + encodeURIComponent(sid))
+      ? ('/' + d.key + '/index.html?school=' + encodeURIComponent(sid))
       : __toWorker(portals[d.key] || '');
     var dis = url ? '' : 'opacity:.45;pointer-events:none;';
     html += '<a href="' + (url || 'javascript:void(0)') + '" target="_blank" ' +
