@@ -60,7 +60,13 @@
       --t2:.32s; --t3:.52s; --ease-out:cubic-bezier(.16,1,.3,1);
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:"Cairo","Segoe UI",Tahoma,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.7}
+    /* نسيج نقاط خافت جداً على مستوى body نفسه (لا عنصر منفصل) — يظهر طبيعياً خلف أي قسم بلا خلفية
+       معتمة خاصة به (كـ#features)، ويبقى ثابت الموضع بصرياً أثناء التمرير (background-attachment:fixed)
+       فتُحرّكه الحركة نفسها لا موضع الصفحة — هذا ما يمنح إحساس "الصفحة كلها حيّة باستمرار". */
+    body{margin:0;font-family:"Cairo","Segoe UI",Tahoma,Arial,sans-serif;color:var(--ink);
+      background-color:var(--bg);background-image:radial-gradient(rgba(15,92,140,.055) 1px,transparent 1px);
+      background-size:30px 30px;background-position:0 0;background-attachment:fixed;
+      animation:pageAmbientDrift 70s linear infinite;line-height:1.7}
     a{color:inherit;text-decoration:none}
     img{max-width:100%;display:block}
     .wrap{max-width:1160px;margin:0 auto;padding:0 18px}
@@ -70,23 +76,45 @@
          0.05s–0.85s : كشف العنوان بستارة تُفتح من اليمين إلى اليسار (clip-path، تناسب RTL)
          0.40s–1.10s : انزلاق الفقرة من الأسفل
          0.62s/0.74s/0.86s : ظهور أزرار CTA الثلاثة فردياً بارتداد خفيف (overshoot)
-         مستمر (loop) : شبكة نقاط تنجرف قطرياً (42s) + فقاعتان ضبابيتان بمسارين مختلفين (9s/11s)
-                        + تدرّج الخلفية (14s، كما كان) — كلّها transform/opacity/background-position فقط
+         0.70s       : عقدة "المنصّة" المركزية تظهر (hub) في كوكبة الـHero
+         1.25s→1.70s : ست خطوط تُرسَم من العقدة المركزية إلى ست عُقَد "مدارس" فردياً (تتابع .09s)
+         1.90s→2.35s : عُقَد المدارس تظهر تباعاً عند اكتمال كل خط (تأثير "الاتصال يكتمل فعقدة تُضاء")
+         مستمر (loop) : شبكة نقاط الـHero تنجرف قطرياً (42s) + عُقَد/خطوط الكوكبة تنبض ببطء بعد اكتمال
+                        الرسم + تدرّج الخلفية (14s) — كلّها transform/opacity/stroke-dashoffset فقط
+         مستمر (loop) : نسيج نقاط خافت جداً على مستوى الصفحة كاملة (لا الـHero فقط) ينجرف ببطء شديد
+                        (70s) خلف كل قسم — يمنح إحساس "الصفحة حيّة باستمرار" حتى بعد نهاية حركات الدخول
          عند التمرير  : بطاقات المميزات/المدارس/الأخبار تدخل بتأثير "focus pull" (ضبابية تتّضح + تكبير خفيف)
+                        + أيقونات المميزات تنبض ببطء شديد (بالكاد محسوسة) بعد ظهورها بدل الجمود التام
        @media(prefers-reduced-motion:reduce) أدناه يُسقِط كل ما سبق فوراً لحالته النهائية الثابتة
        (animation/transition-duration:.01ms على * — يُنهي كل حركة هنا خلال إطار واحد تقريباً). */
     @keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
     @keyframes netDrift{0%{background-position:0 0}100%{background-position:-120px -60px}}
-    @keyframes blobDriftA{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(28px,-22px) scale(1.08)}50%{transform:translate(-8px,-40px) scale(.96)}75%{transform:translate(-32px,-6px) scale(1.04)}}
-    @keyframes blobDriftB{0%,100%{transform:translate(0,0) scale(1)}30%{transform:translate(-24px,20px) scale(1.06)}60%{transform:translate(16px,36px) scale(.94)}}
+    @keyframes pageAmbientDrift{0%{background-position:0 0}100%{background-position:-160px -160px}}
     @keyframes heroTitleReveal{to{clip-path:inset(0 0 0 0)}}
     @keyframes fadeUpIn{to{opacity:1;transform:none}}
     @keyframes ctaPop{to{opacity:1;transform:none}}
+    @keyframes hcDraw{to{stroke-dashoffset:0}}
+    @keyframes hcPulseLine{0%,100%{opacity:.45}50%{opacity:.85}}
+    @keyframes hcPop{from{opacity:0;transform:scale(0)}to{opacity:1;transform:none}}
+    @keyframes hcPulseNode{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.18)}}
+    @keyframes hcHaloPulse{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.7;transform:scale(1.35)}}
+    @keyframes icoIdle{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 
     .hero-net{position:absolute;inset:-20px;background-image:radial-gradient(rgba(255,255,255,.16) 1.5px,transparent 1.5px);background-size:26px 26px;animation:netDrift 42s linear infinite;opacity:.5;pointer-events:none;will-change:background-position}
-    .hero-blob{position:absolute;border-radius:50%;background:rgba(255,255,255,.14);filter:blur(28px);pointer-events:none;will-change:transform}
-    .hero-blob-a{width:260px;height:260px;inset-block-start:-60px;inset-inline-end:-40px;animation:blobDriftA 9s ease-in-out infinite}
-    .hero-blob-b{width:200px;height:200px;inset-block-end:-70px;inset-inline-start:6%;animation:blobDriftB 11s ease-in-out infinite}
+    /* كوكبة SVG (توقيع home-all-school البصري): عقدة "منصّة" مركزية تتصل بست عُقَد "مدارس" عبر خطوط
+       تُرسَم تتابعياً ثم تنبض باستمرار — تجسيد حرفي لفكرة "منصّة واحدة تربط كل المدارس" بدل تجريد بصري عام. */
+    .hero-constellation{position:absolute;inset:0;width:100%;height:100%;opacity:.6;pointer-events:none}
+    .hero-constellation .hc-line{fill:none;stroke:rgba(255,255,255,.55);stroke-width:1.4;stroke-dasharray:1;stroke-dashoffset:1;
+      animation-name:hcDraw,hcPulseLine;animation-duration:.9s,4.5s;animation-timing-function:var(--ease-out),ease-in-out;
+      animation-fill-mode:forwards,none;animation-iteration-count:1,infinite}
+    .hero-constellation .hc-node{fill:#fff;transform-box:fill-box;transform-origin:center;
+      animation-name:hcPop,hcPulseNode;animation-duration:.5s,3.6s;animation-timing-function:var(--ease-out),ease-in-out;
+      animation-fill-mode:forwards,none;animation-iteration-count:1,infinite}
+    .hero-constellation .hc-hub{fill:#fff;transform-box:fill-box;transform-origin:center;
+      animation-name:hcPop,hcPulseNode;animation-duration:.5s,3.6s;animation-timing-function:var(--ease-out),ease-in-out;
+      animation-fill-mode:forwards,none;animation-iteration-count:1,infinite;animation-delay:.7s,1.2s}
+    .hero-constellation .hc-hub-halo{fill:rgba(255,255,255,.22);filter:blur(6px);transform-box:fill-box;transform-origin:center;
+      animation:hcHaloPulse 4s ease-in-out 1.35s infinite}
 
     .hero-title{clip-path:inset(0 0 0 100%);animation:heroTitleReveal .8s var(--ease-out) .05s forwards}
     .hero-sub{opacity:0;transform:translateY(20px);animation:fadeUpIn .7s var(--ease-out) .4s forwards}
@@ -134,6 +162,9 @@
     .feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);transition:opacity var(--t3) var(--ease-out),filter var(--t3) var(--ease-out),transform var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
     .feature:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(20,40,80,.14);border-color:var(--brand)}
     .feature .ico{font-size:30px;margin-bottom:10px}
+    /* idle خفيف جداً بعد ظهور البطاقة (لا قبله) — مُشغَّل عبر وجود .in على الأب فقط، كي لا تنبض
+       أيقونات لم تُكشَف بعد؛ التأخير المتفاوت لكل بطاقة يمنع التزامن الآلي بين الثمانية. */
+    .reveal-s.in .ico{animation:icoIdle 4s ease-in-out infinite}
     .feature h3{margin:0 0 6px;font-size:18px}
     .feature p{margin:0;color:var(--muted);font-size:14.5px}
     .features .feature:nth-child(1){transition-delay:.02s}
@@ -144,6 +175,14 @@
     .features .feature:nth-child(6){transition-delay:.32s}
     .features .feature:nth-child(7){transition-delay:.38s}
     .features .feature:nth-child(8){transition-delay:.44s}
+    .features .feature:nth-child(1) .ico{animation-delay:.1s}
+    .features .feature:nth-child(2) .ico{animation-delay:.4s}
+    .features .feature:nth-child(3) .ico{animation-delay:.7s}
+    .features .feature:nth-child(4) .ico{animation-delay:1s}
+    .features .feature:nth-child(5) .ico{animation-delay:1.3s}
+    .features .feature:nth-child(6) .ico{animation-delay:1.6s}
+    .features .feature:nth-child(7) .ico{animation-delay:1.9s}
+    .features .feature:nth-child(8) .ico{animation-delay:2.2s}
     .features .feature:hover{transition-delay:0s}
 
     /* Partners */
@@ -198,8 +237,22 @@
 
   <header class="hero">
     <div class="hero-net" aria-hidden="true"></div>
-    <div class="hero-blob hero-blob-a" aria-hidden="true"></div>
-    <div class="hero-blob hero-blob-b" aria-hidden="true"></div>
+    <svg class="hero-constellation" viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="230" y2="70" style="animation-delay:1.25s,2.15s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="360" y2="45" style="animation-delay:1.34s,2.24s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="480" y2="100" style="animation-delay:1.43s,2.33s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="520" y2="200" style="animation-delay:1.52s,2.42s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="400" y2="255" style="animation-delay:1.61s,2.51s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="250" y2="235" style="animation-delay:1.70s,2.60s"/>
+      <circle class="hc-node" cx="230" cy="70" r="3.5" style="animation-delay:1.90s,2.40s"/>
+      <circle class="hc-node" cx="360" cy="45" r="3.5" style="animation-delay:1.99s,2.49s"/>
+      <circle class="hc-node" cx="480" cy="100" r="3.5" style="animation-delay:2.08s,2.58s"/>
+      <circle class="hc-node" cx="520" cy="200" r="3.5" style="animation-delay:2.17s,2.67s"/>
+      <circle class="hc-node" cx="400" cy="255" r="3.5" style="animation-delay:2.26s,2.76s"/>
+      <circle class="hc-node" cx="250" cy="235" r="3.5" style="animation-delay:2.35s,2.85s"/>
+      <circle class="hc-hub-halo" cx="95" cy="180" r="14"/>
+      <circle class="hc-hub" cx="95" cy="180" r="6"/>
+    </svg>
     <div class="wrap">
       <h1 class="hero-title">منصّة سكولز اليمن</h1>
       <p class="hero-sub">نظام متكامل لإدارة المدارس: منصّات للمعلمين والطلاب، وإدارة محتوى وأخبار، وجداول ذكية، ومالية وتقارير — يعمل حتى دون اتصال. اكتشف مدارسنا الشريكة واختر مدرستك.</p>
