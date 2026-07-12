@@ -1169,6 +1169,13 @@
     .sk-line.w50 { width:50%; }
     .sk-line.w75 { width:75%; }
 
+    /* SKELETON — بطاقة خبر واقعية الأبعاد (تقليل قفزة التخطيط عند وصول البيانات الفعلية) */
+    .sk-news-card { border:1px solid var(--border); border-radius:var(--radius-md,10px); padding:14px; margin-bottom:14px; }
+    .sk-news-card .sk-line.sk-title { height:16px; width:55%; margin-bottom:12px; }
+    .sk-news-card .sk-line.sk-meta { height:11px; width:30%; margin-bottom:14px; }
+    .sk-news-card .sk-line.sk-body { height:12px; }
+    .sk-news-card .sk-media { height:150px; margin-top:12px; }
+
     /* TEACHER CARDS */
     .teacher-card {
       background:var(--surface); border:1px solid var(--border);
@@ -4376,14 +4383,25 @@ function bootApp() {
   }
 
   // Schema والقوائم يُجلبان بالتوازي — كانا متسلسلَين (قوائم ثم Schema) فيتضاعف
-  // زمن أول عرض على الشبكات البطيئة. العرض ينتظر اكتمالهما معاً.
+  // زمن أول عرض على الشبكات البطيئة. العرض ينتظر اكتمالهما معاً، وشاشة التحميل
+  // لا تُخفى إلا عند العرض الفعلي (لا عند اكتمال القوائم وحدها) — وإلا يظهر
+  // #dynamicContent فارغاً تماماً ريثما يصل ردّ المخطط.
   var _bootSchemaDone = false, _bootListsDone = false, _bootShown = false;
-  var _bootTryShow = function() {
-    if (_bootShown || !_bootSchemaDone || !_bootListsDone) return;
+  var _bootFallbackTimer = null;
+  var _bootTryShow = function(schemaTimedOut) {
+    if (_bootShown) return;
+    if (!_bootListsDone) return; // القوائم لا بديل لها — لا نعرض القسم بدونها أبداً
+    if (!_bootSchemaDone && !schemaTimedOut) return;
     _bootShown = true;
+    if (_bootFallbackTimer) { clearTimeout(_bootFallbackTimer); _bootFallbackTimer = null; }
+    hideLoading();
     // 🔖 استعادة آخر قسم زاره المستخدم بدل العودة القسرية للرئيسية
     showSection(_savedSectionOrDashboard());
   };
+  // إن تأخّر ردّ مخطط الدرجات (شبكة بطيئة/TTL منتهٍ) فلا تُترَك الواجهة معلّقة للأبد —
+  // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadSchemaConfig
+  // (GRADE_SCHEMA يبقى null، ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية).
+  _bootFallbackTimer = setTimeout(function() { _bootTryShow(true); }, 9000);
   loadSchemaConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
   var afterLists = function() {
     _bootListsDone = true;
@@ -4398,7 +4416,6 @@ function bootApp() {
   } else {
     showLoading('جاري تحميل البيانات...');
     _fetchListsFromServer(function(success) {
-      hideLoading();
       if (!success) {
         App.lists = _getDefaultLists();
         toast('تعذر تحميل القوائم الكاملة — قد لا تظهر جميع الخيارات', 'warning', 5000);
@@ -5285,17 +5302,37 @@ function saveNews() {
   _newsUploadNext();
 }
 
+// غلاف retry محدود (خطوتا التنسيق القصيرتان مع الخادم فقط، لا نقل الملف الثقيل) — يُعاد
+// المحاولة فقط عند فشل اتصال (errorCallback)، لا عند فشل منطقي (success:false) قد يكون سبباً
+// حقيقياً غير عابر. مهم خصوصاً لعدم استقرار الشبكة في اليمن (موثَّق صراحة بتعليقات وسيط Worker).
+function _callServerWithRetry(fnName, params, callback, errorCallback, maxRetries, delayMs) {
+  maxRetries = (typeof maxRetries === 'number') ? maxRetries : 2;
+  delayMs = (typeof delayMs === 'number') ? delayMs : 1000;
+  var attempt = 0;
+  function tryOnce() {
+    callServer(fnName, params, callback, function (err) {
+      attempt++;
+      if (attempt <= maxRetries) {
+        setTimeout(tryOnce, delayMs * attempt);
+      } else {
+        errorCallback(err);
+      }
+    });
+  }
+  tryOnce();
+}
+
 // ── رفع Resumable لمرفق خبر عبر وسيط /drive-upload ثم تسجيله وإرجاع رابط العرض ──
 // onDone(url) عند النجاح · onFail(msg) عند الفشل. نموذج مطابق لـ CMS AddForm.
 function _newsResumableUpload(file, onDone, onFail) {
-  callServer('createDriveUploadSessionProtected',
+  _callServerWithRetry('createDriveUploadSessionProtected',
     { fileName: file.name, mimeType: file.type, fileSize: file.size },
     function (res) {
       if (!res || !res.success || !res.sessionUri) { onFail((res && res.error) || 'تعذّر بدء الرفع'); return; }
       var workerBase = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
       var proxyUrl = workerBase + '/drive-upload?sessionUri=' + encodeURIComponent(res.sessionUri);
       _newsResumablePut(proxyUrl, res.sessionUri, file, function (fileId) {
-        callServer('registerNewsMediaProtected',
+        _callServerWithRetry('registerNewsMediaProtected',
           { fileId: fileId, mimeType: file.type },
           function (r2) {
             if (r2 && r2.success && r2.url) { onDone(r2.url); }
@@ -10392,6 +10429,19 @@ function deleteViolationItem(rowIndex) {
   });
 }
 // ==================== NEWS ====================
+// هيكل تحميل بأبعاد أقرب لبطاقة خبر حقيقية (عنوان + سطرا نص + مساحة وسائط) — يقلّل
+// قفزة التخطيط (CLS) مقارنةً بسطرَي sk-line الصغيرين السابقين (~44px فقط).
+function _newsSkeletonHtml() {
+  var card =
+    '<div class="sk-news-card">' +
+      '<div class="sk-line sk-title skeleton"></div>' +
+      '<div class="sk-line sk-meta skeleton"></div>' +
+      '<div class="sk-line sk-body skeleton"></div>' +
+      '<div class="sk-line sk-body skeleton w75"></div>' +
+      '<div class="sk-media skeleton"></div>' +
+    '</div>';
+  return card + card;
+}
 function renderNews() {
   var u = App.user;
   var _nfDrs = _dateRangeShortcuts('nfDateFrom', 'nfDateTo', applyNewsFilters);
@@ -10469,10 +10519,7 @@ function renderNews() {
     '<div id="newsPublicReview" style="margin-bottom:14px"></div>' +
 
     // ── منطقة قائمة الأخبار ──
-    '<div id="newsListArea">' +
-      '<div class="sk-line skeleton"></div>' +
-      '<div class="sk-line skeleton w75"></div>' +
-    '</div>' +
+    '<div id="newsListArea">' + _newsSkeletonHtml() + '</div>' +
 
     // ── زر تحميل المزيد ──
     '<div id="newsLoadMoreWrap" style="text-align:center;margin-top:16px;display:none;">' +
@@ -10504,9 +10551,7 @@ function renderNews() {
 function loadNewsPage(isFirst) {
   var area = document.getElementById('newsListArea');
   if (isFirst && area) {
-    area.innerHTML =
-      '<div class="sk-line skeleton"></div>' +
-      '<div class="sk-line skeleton w75"></div>';
+    area.innerHTML = _newsSkeletonHtml();
   }
  
   var gradeEl   = document.getElementById('nfGrade');
@@ -12278,7 +12323,7 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
       inner = '<a href="' + esc(it.u) + '" target="_blank" rel="noopener" ' +
         'style="display:inline-flex;align-items:center;gap:8px;padding:14px 22px;background:var(--primary);color:#fff;border-radius:10px;font-weight:700;text-decoration:none">📄 عرض ملف PDF</a>';
     }
-    slides += '<div class="tcm-slide" data-idx="' + s + '" style="display:' + disp + ';align-items:center;justify-content:center;width:100%;min-height:120px;padding:6px;box-sizing:border-box">' + inner + '</div>';
+    slides += '<div class="tcm-slide" data-idx="' + s + '" style="display:' + disp + ';align-items:center;justify-content:center;width:100%;min-height:min(45vh,320px);padding:6px;box-sizing:border-box">' + inner + '</div>';
   }
   var nav = '';
   if (multi) {
@@ -12295,7 +12340,7 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
     }
   }
   return '<div class="tcm-gal" id="' + gid + '" data-cur="0" data-count="' + items.length + '" ' +
-    'style="position:relative;overflow:hidden;background:#0b1220;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:120px">' +
+    'style="position:relative;overflow:hidden;background:#0b1220;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:min(45vh,320px)">' +
     slides + nav + '</div>';
 }
 
@@ -13530,9 +13575,10 @@ function renderAdminStudents() {
   html += '<div class="form-row mb-3">';
   html += '<div class="form-group"><label class="form-label">فصل</label><select class="form-select" id="studFilterGrade" onchange="filterGradeCascade(\'studFilterGrade\',\'studFilterSection\',\'applyStudentsFilters\')">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div>';
   html += '<div class="form-group"><label class="form-label">شعبة</label><select class="form-select" id="studFilterSection" onchange="applyStudentsFilters()">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div>';
-  html += '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="studSearch" placeholder="🔍 اسم الطالب..." oninput="applyStudentsFilters()"></div>';
+  html += '<div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="studSearch" placeholder="🔍 اسم الطالب..." oninput="debounceStudentsFilter()"></div>';
   html += '</div>';
   html += '<div id="studListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>';
+  html += '<div id="studListPager"></div>';
   html += '</div>';
   html += '</div>';
   
@@ -13576,6 +13622,7 @@ function loadStudentsList() {
       return;
     }
     window._allStudentsRaw = students;
+    window._stlFilterKey = null; window._stlFilterIdx = null; // بيانات جديدة ⇒ فرض إعادة حساب الفهرس
     applyStudentsFilters();
     updateBlockStatsWithCurrentSettings();
   });
@@ -13763,54 +13810,98 @@ function updateBlockStats() {
     : '🔕 الرسوم مخفية عن كل الطلاب (الافتراضي)';
 }
 
+// ── فلترة/رسم قائمة الطلاب: فهرسة مسبقة + debounce + ترقيم صفحات ──
+// نسخ نمط "دليل الطلاب" (sdir_*) المُثبَت بنفس الملف (sdir_visibleList/sdir_renderRows/
+// sdir_renderPager) — يبقي الـDOM صغيراً وسلساً حتى مع مئات الطلاب، بدل إعادة فلترة/رسم
+// كل طلاب المدرسة عند كل ضغطة حرف بلا ترقيم صفحات كما كان سابقاً.
+window._stlPage = 1;
+window._stlPageSize = 50;
+window._stlFilterKey = null;
+window._stlFilterIdx = null;
+window._stlSearchTimer = null;
+
+// بحث مُؤجَّل (debounce) لحقل البحث فقط — تغييرات الفصل/الشعبة (onchange) تُطبَّق فوراً
+// عبر applyStudentsFilters() مباشرة لأنها ليست عالية التردد كضغطات لوحة المفاتيح.
+function debounceStudentsFilter() {
+  if (window._stlSearchTimer) clearTimeout(window._stlSearchTimer);
+  window._stlSearchTimer = setTimeout(applyStudentsFilters, 150);
+}
+
 function applyStudentsFilters() {
   if (!window._allStudentsRaw) return;
   _fltSave('stud', ['studFilterGrade', 'studFilterSection', 'studSearch']);
+  window._stlPage = 1;
+  renderStudentsList();
+}
+
+// فهرس الطلاب المطابقين للفلاتر الحالية — مُخزَّن مؤقتاً بمفتاح (فصل|شعبة|بحث) كي لا
+// يُعاد فحص كل طلاب المدرسة عند مجرّد التنقّل بين صفحات نفس نتيجة البحث.
+function _stlVisibleIndexes() {
   var gradeEl = document.getElementById('studFilterGrade');
   var sectionEl = document.getElementById('studFilterSection');
   var searchEl = document.getElementById('studSearch');
-  var grade = gradeEl ? gradeEl.value : '';
-  var section = sectionEl ? sectionEl.value : '';
-  var search = searchEl ? searchEl.value : '';
-  grade = (grade || '').trim();
-  section = (section || '').trim();
+  var grade = ((gradeEl ? gradeEl.value : '') || '').trim();
+  var section = ((sectionEl ? sectionEl.value : '') || '').trim();
   // بحث عربي مُطبَّع (تشكيل/همزات/تاء مربوطة) بدل toLowerCase وحدها
-  search = _tcNorm(search);
+  var search = _tcNorm((searchEl ? searchEl.value : '') || '');
+  var key = grade + '|' + section + '|' + search;
+  if (window._stlFilterKey === key && window._stlFilterIdx) return window._stlFilterIdx; // إصابة كاش
 
-  var filtered = [];
-  for (var i = 0; i < window._allStudentsRaw.length; i++) {
-    var s = window._allStudentsRaw[i];
+  var all = window._allStudentsRaw || [];
+  var idx = [];
+  for (var i = 0; i < all.length; i++) {
+    var s = all[i];
     if (!isAllFilter(grade) && s.grade !== grade) continue;
     if (!isAllFilter(section) && s.section !== section) continue;
-    if (search && _tcNorm(s.name).indexOf(search) === -1) continue;
-    filtered.push(s);
+    if (search) {
+      var hay = s._hay; if (hay == null) hay = s._hay = _tcNorm(s.name || '');
+      if (hay.indexOf(search) === -1) continue;
+    }
+    idx.push(i);
   }
-  window._filteredStudents = filtered;
-  renderStudentsList(filtered);
+  window._stlFilterKey = key;
+  window._stlFilterIdx = idx;
+  return idx;
 }
 
-function renderStudentsList(list) {
+function renderStudentsList() {
   var area = document.getElementById('studListArea');
   if (!area) return;
-  
-  if (!list || list.length === 0) {
+  var all = window._allStudentsRaw || [];
+  var idxAll = _stlVisibleIndexes();
+  var total = idxAll.length;
+
+  if (!total) {
+    window._filteredStudents = [];
     area.innerHTML = '<div class="empty-state"><div class="es-icon">🎒</div><div class="es-title">لا يوجد طلاب مطابقين</div></div>';
+    var pagerElEmpty = document.getElementById('studListPager');
+    if (pagerElEmpty) pagerElEmpty.innerHTML = '';
     return;
   }
-  
-  var html = '<div style="margin-bottom:12px; font-size:.85rem; color:var(--text-muted);">📊 إجمالي: <strong>' + list.length + '</strong> طالب</div>';
+
+  var pageSize = window._stlPageSize || 50;
+  var pages = Math.max(1, Math.ceil(total / pageSize));
+  if (!window._stlPage || window._stlPage < 1) window._stlPage = 1;
+  if (window._stlPage > pages) window._stlPage = pages;
+  var start = (window._stlPage - 1) * pageSize;
+  var pageIdx = idxAll.slice(start, start + pageSize);
+  var list = [];
+  for (var k = 0; k < pageIdx.length; k++) list.push(all[pageIdx[k]]);
+  window._filteredStudents = list; // شريحة الصفحة الحالية المعروضة فعلياً
+
+  var html = '<div style="margin-bottom:12px; font-size:.85rem; color:var(--text-muted);">📊 إجمالي: <strong>' + total + '</strong> طالب</div>';
   html += '<div class="table-wrap"><table style="width:100%">';
   html += '<thead><tr>';
   html += '<th>#</th><th>كود</th><th>اسم الطالب</th><th>الفصل</th><th>الشعبة</th>';
   html += '<th>الرسوم</th><th>المسدد</th><th>نسبة التسديد</th><th>الحالة</th><th>إجراءات</th>';
   html += '</tr></thead><tbody>';
-  
+
   for (var i = 0; i < list.length; i++) {
     var st = list[i];
     var fees = parseFloat(st.fees) || 0;
     var paid = parseFloat(st.paid) || 0;
     var pct = (fees > 0) ? Math.round((paid / fees) * 100) : 100;
-    
+
     var _c = (st.code || '');
     var _fhCodes = window._feesHiddenCodes || [];
     var feesHidden = false;
@@ -13825,11 +13916,11 @@ function renderStudentsList(list) {
       ? '<button class="btn btn-sm btn-warning" title="الرسوم محجوبة عن هذا الطالب — اضغط لإظهارها في منصته" onclick="toggleStudentFeesHidden(\'' + _c + '\', false)">👁️</button>'
       : '<button class="btn btn-sm btn-secondary" title="الرسوم ظاهرة لهذا الطالب — اضغط لحجبها عن منصته" onclick="toggleStudentFeesHidden(\'' + _c + '\', true)">🔒</button>';
     actionBtn += '</div>';
-    
+
     var pctClass = (pct >= 80) ? 'badge-success' : ((pct >= 50) ? 'badge-warning' : 'badge-danger');
-    
+
     html += '<tr>';
-    html += '<td>' + (i + 1) + '</td>';
+    html += '<td>' + (start + i + 1) + '</td>';
     html += '<td><span class="badge badge-info">' + escapeHtml(st.code || '') + '</span></td>';
     html += '<td style="text-align:right; font-weight:500;">' + escapeHtml(st.name || '') + '</td>';
     html += '<td>' + escapeHtml(st.grade || '') + '</td>';
@@ -13843,6 +13934,36 @@ function renderStudentsList(list) {
   }
   html += '</tbody></table></div>';
   area.innerHTML = html;
+  _stlRenderPager(total, pages, start, list.length);
+}
+
+// شريط الترقيم (نفس تصميم sdir_renderPager) — يظهر فقط عند تجاوز النتائج حجم الصفحة.
+function _stlRenderPager(total, pages, start, shown) {
+  var el = document.getElementById('studListPager');
+  if (!el) return;
+  var pageSize = window._stlPageSize || 50;
+  if (total <= pageSize) { el.innerHTML = ''; return; }
+  var p = window._stlPage, from = start + 1, to = start + shown;
+  var btn = function (label, target, disabled, title) {
+    return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' +
+      (disabled ? 'disabled ' : '') + (title ? ('title="' + title + '" ') : '') +
+      'onclick="_stlGoPage(' + target + ')">' + label + '</button>';
+  };
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px">' +
+    btn('⏮', 1, p <= 1, 'الأولى') +
+    btn('‹ السابق', p - 1, p <= 1) +
+    '<span style="font-size:13px;color:#475569;white-space:nowrap">صفحة ' + p + ' / ' + pages +
+      ' · <span style="color:var(--text-light)">' + from + '–' + to + ' من ' + total + '</span></span>' +
+    btn('التالي ›', p + 1, p >= pages) +
+    btn('⏭', pages, p >= pages, 'الأخيرة') +
+    '</div>';
+}
+
+function _stlGoPage(n) {
+  window._stlPage = n;
+  renderStudentsList();
+  var area = document.getElementById('studListArea');
+  if (area && area.scrollIntoView) { try { area.scrollIntoView({ block: 'nearest' }); } catch (e) { area.scrollIntoView(); } }
 }
 
 
@@ -17767,8 +17888,11 @@ function sstat_print() {
 #ch-root .ch-btn-sm{padding:6px 12px;font-size:.82rem;}
 #ch-root .ch-progress{height:8px;background:var(--ch-line);border-radius:6px;overflow:hidden;display:none;margin-top:10px;}
 #ch-root .ch-progress.show{display:block;}
-#ch-root .ch-bar{height:100%;width:40%;background:linear-gradient(90deg,var(--ch-navy),var(--ch-gold));
-  border-radius:6px;animation:chSlide 1.1s infinite ease-in-out;}
+/* حالة صادقة (تُستخدَم أثناء قراءة الملفات محلياً — نسبة فعلية، لا وهمية): عرض ثابت مضبوط بـJS بلا حركة */
+#ch-root .ch-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--ch-navy),var(--ch-gold));
+  border-radius:6px;transition:width .2s linear;}
+/* حالة "غير محدَّدة" — فقط أثناء انتظار ردّ الخادم (google.script.run لا يدعم onprogress إطلاقاً) */
+#ch-root .ch-progress.indeterminate .ch-bar{width:40%;animation:chSlide 1.1s infinite ease-in-out;}
 @keyframes chSlide{0%{margin-right:-40%}100%{margin-right:100%}}
 #ch-root .ch-status{margin-top:10px;font-size:.88rem;font-weight:600;min-height:20px;}
 #ch-root .ch-ok{color:#1b7a3d;} #ch-root .ch-err{color:#c0392b;}
@@ -18011,8 +18135,10 @@ function sstat_print() {
     if (pending.length === 0) { setStatus('⚠️ لا توجد ملفات صالحة للرفع', 'ch-err'); return; }
     window.chRenderFileList();
 
+    var progBar = progEl ? progEl.querySelector('.ch-bar') : null;
     if (progEl) progEl.className = 'ch-progress show';
-    setStatus('⏳ جارٍ رفع ' + pending.length + ' ملف...', '');
+    if (progBar) progBar.style.width = '0%';
+    setStatus('⏳ تمت قراءة 0 من ' + pending.length + ' ملفاً محلياً...', '');
 
     // قراءة كل الملفات base64 ثم استدعاء واحد (مجموعة واحدة)
     // payload مفهرس بالموضع حتى لا يختل ترتيب النتائج عند انتهاء القراءات بترتيب مختلف
@@ -18020,7 +18146,16 @@ function sstat_print() {
     var read = 0;
     function afterRead() {
       read++;
-      if (read < pending.length) return;
+      // مرحلة القراءة المحلية (FileReader) — نسبة صادقة فعلية، لا حركة وهمية
+      if (progBar) progBar.style.width = Math.round((read / pending.length) * 100) + '%';
+      if (read < pending.length) {
+        setStatus('⏳ تمت قراءة ' + read + ' من ' + pending.length + ' ملفاً محلياً...', '');
+        return;
+      }
+      // مرحلة انتظار الخادم — google.script.run لا يدعم onprogress إطلاقاً (قيد حقيقي في GAS)،
+      // فلا نعرض نسبة وهمية: حالة "غير محدَّدة" صريحة بدل الرسم المتحرك السابق بلا معنى.
+      if (progEl) progEl.className = 'ch-progress show indeterminate';
+      setStatus('⏳ جارٍ الرفع إلى الخادم — قد يستغرق دقيقة لعدة ملفات كبيرة...', '');
       var meta = { title: title, description: desc, category: category }; // مبادرة: بلا task_id
       google.script.run
         .withSuccessHandler(function (res) {

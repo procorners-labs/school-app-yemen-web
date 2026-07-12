@@ -1062,6 +1062,7 @@ a { color: var(--pr); text-decoration: none; }
   cursor: zoom-in;
   overflow: hidden;
   max-height: 360px;
+  min-height: min(45vh, 280px);
 }
 .news-card .img-wrap img {
   width: 100%;
@@ -3579,7 +3580,9 @@ function loadNews() {
   APP.loaded.news = true;
   loadCirculars();
   // استعادة فلاتر الأخبار المحفوظة قبل أول تحميل (fetchNewsPage يقرأ القيم مباشرة)
-  _fltRestoreStu('news', ['nsSort', 'nsFrom', 'nsTo']);
+  // nsFrom/nsTo عمداً غير مُستعادَين — تاريخ محفوظ من جلسة سابقة قد يُخفي كل الأخبار بصمت
+  // بلا أي مؤشّر مرئي (نفس الخلل المُصلَح في teacher — راجع PR#265).
+  _fltRestoreStu('news', ['nsSort']);
   // اختصارات نطاق التاريخ (مرة واحدة فقط — الحارس يمنع التكرار عند إعادة استدعاء loadNews)
   if (!document.getElementById('drs-wrap-nsFrom')) {
     var _nsToWrap = document.getElementById('nsTo');
@@ -3638,7 +3641,7 @@ function renderCirculars(items) {
 }
 
 function resetNewsAndLoad() {
-  _fltSaveStu('news', ['nsSort', 'nsFrom', 'nsTo']); // القمع الوحيد لكل تغيير فلتر
+  _fltSaveStu('news', ['nsSort']); // القمع الوحيد لكل تغيير فلتر — nsFrom/nsTo مُستبعَدان عمداً (راجع loadNews)
   APP.newsState.items = [];
   APP.newsState.page = 1;
   APP.newsState.hasMore = false;
