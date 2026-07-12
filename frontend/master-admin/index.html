@@ -1513,6 +1513,7 @@ function _renderSchools(schools) {
     html += '<button class="btn btn-sm" style="background:#0288d1;color:#fff;" onclick="schools_downloadPackage(\'' + s.schoolId + '\',this)">📥 تنزيل البرنامج</button>';
     html += '<button class="btn btn-sm" style="background:#ff9800;color:#fff;" onclick="schools_downloadTemplate(\'' + s.schoolId + '\',this)">⬇️ قالب البيانات</button>';
     html += '<button class="btn btn-sm" style="background:#43a047;color:#fff;" onclick="schools_importTemplate(\'' + s.schoolId + '\',this)">📤 استيراد القالب</button>';
+    html += '<button class="btn btn-sm" style="background:#3949ab;color:#fff;" onclick="_brandModal(\'' + s.schoolId + '\',' + i + ')">🔗 روابط السوشل</button>';
     html += '</div></td></tr>';
   }
   tbody.innerHTML = html;
@@ -1626,6 +1627,61 @@ function _tplModal(schoolId, res) {
       '</div>' +
     '</div>';
   document.body.appendChild(d);
+}
+
+// روابط السوشل ميديا العامة (عرض فقط) + لون الثيم لمدرسة قائمة — مالك النظام فقط.
+// منفصلة تماماً عن ربط OAuth الحقيقي لفيسبوك/إنستغرام (ذاك في تبويب CMS "⚙️ حسابات السوشل").
+function _brandModal(schoolId, idx) {
+  var s = (_allSchools && _allSchools[idx]) || {};
+  var ex = document.getElementById('brand-modal');
+  if (ex) { try { ex.parentNode.removeChild(ex); } catch (e) {} }
+  var d = document.createElement('div');
+  d.id = 'brand-modal';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  d.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:22px;max-width:420px;width:92%;text-align:right;">' +
+      '<h3 style="margin:0 0 10px;">🔗 روابط السوشل — ' + (s.name || '') + '</h3>' +
+      '<p style="color:#777;font-size:12.5px;margin:0 0 14px;">روابط عرض عامة تظهر بدليل المدارس فقط — لا علاقة لها بربط النشر التلقائي (فيسبوك/إنستغرام) الذي يتم من لوحة CMS.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        '<input id="brand-whatsapp" type="text" placeholder="واتساب (رقم بصيغة دولية)" value="' + (s.whatsapp || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+        '<input id="brand-facebook" type="text" placeholder="رابط فيسبوك" value="' + (s.facebook || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;" dir="ltr">' +
+        '<input id="brand-instagram" type="text" placeholder="رابط إنستغرام" value="' + (s.instagram || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;" dir="ltr">' +
+        '<input id="brand-youtube" type="text" placeholder="رابط يوتيوب" value="' + (s.youtube || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;" dir="ltr">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<label style="font-size:13px;color:#555;">لون الثيم:</label>' +
+          '<input id="brand-color" type="color" value="' + (s.primaryColor || '#0F5C8C') + '" style="width:44px;height:32px;border:1px solid #ddd;border-radius:6px;padding:2px;">' +
+        '</div>' +
+        '<div id="brand-status"></div>' +
+        '<button class="btn btn-success" onclick="_brandSave(\'' + schoolId + '\')">💾 حفظ</button>' +
+        '<button class="btn" style="background:#777;color:#fff;" onclick="document.getElementById(\'brand-modal\').remove()">إغلاق</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(d);
+}
+function _brandSave(schoolId) {
+  var statusEl = document.getElementById('brand-status');
+  statusEl.innerHTML = '<div class="status-msg">⏳ جارٍ الحفظ...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        statusEl.innerHTML = '<div class="status-msg status-success">✅ تم الحفظ</div>';
+        setTimeout(function() { var m = document.getElementById('brand-modal'); if (m) m.remove(); schools_load(); }, 900);
+      } else {
+        statusEl.innerHTML = '<div class="status-msg status-error">❌ ' + ((res && res.error) || 'خطأ') + '</div>';
+      }
+    })
+    .withFailureHandler(function(err) {
+      statusEl.innerHTML = '<div class="status-msg status-error">❌ ' + (err && err.message ? err.message : err) + '</div>';
+    })
+    .updateSchoolBrandProtected({
+      token: App.token,
+      schoolId: schoolId,
+      whatsapp: document.getElementById('brand-whatsapp').value.trim(),
+      facebook: document.getElementById('brand-facebook').value.trim(),
+      instagram: document.getElementById('brand-instagram').value.trim(),
+      youtube: document.getElementById('brand-youtube').value.trim(),
+      primaryColor: document.getElementById('brand-color').value
+    });
 }
 
 function schools_showAdd() { document.getElementById('add-school-modal').style.display = 'flex'; document.getElementById('add-school-status').innerHTML = ''; }
