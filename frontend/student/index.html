@@ -1838,10 +1838,10 @@ a { color: var(--pr); text-decoration: none; }
         <div class="meta" id="welcomeMeta"></div>
       </div>
 
-      <!-- 👨‍👩‍👦 إخوتك في المنظومة (تظهر فقط عند وجود إخوة مرتبطين فعلاً) -->
+      <!-- 👨‍👩‍👦 إخوتك في المدرسة (تظهر فقط عند وجود إخوة مرتبطين فعلاً) -->
       <div class="card" id="siblingsCard" style="display:none;">
         <div class="card-h">
-          <div class="ttl"><span class="ic">👨‍👩‍👦</span> إخوتك في المنظومة</div>
+          <div class="ttl"><span class="ic">👨‍👩‍👦</span> إخوتك في المدرسة</div>
         </div>
         <div id="siblingsList" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
       </div>
@@ -2788,7 +2788,7 @@ function initApp() {
   if (APP.user.id)      wm += '<span class="chip">🆔 ' + esc(APP.user.id) + '</span>';
   $('welcomeMeta').innerHTML = wm;
 
-  // 👨‍👩‍👦 بطاقة إخوتك في المنظومة (تظهر فقط عند وجود إخوة مرتبطين فعلاً)
+  // 👨‍👩‍👦 بطاقة إخوتك في المدرسة (تظهر فقط عند وجود إخوة مرتبطين فعلاً)
   renderSiblingsCard();
 
   // تحديث رسالة الترحيب حسب الوقت
@@ -5876,6 +5876,22 @@ document.addEventListener('DOMContentLoaded', function () {
     $('loginScreen').style.display = 'none';
     $('app').classList.add('show');
     initApp();
+    // تحديث خلفي صامت لقائمة الإخوة: الجلسة المستعادة من localStorage مجمَّدة على لحظة آخر
+    // دخول حقيقي (حتى 8 ساعات) — بلا هذا النداء لا يظهر أي تعديل بيانات/مطابقة لاحق إلا بعد
+    // تسجيل خروج/دخول يدوي. لا يؤخّر الظهور الأولي (العرض من الكاش فوري، هذا يلحق به بصمت).
+    if (APP.user.id && APP.user.schoolId && APP.user.switchToken) {
+      google.script.run
+        .withSuccessHandler(function (r) {
+          if (r && r.ok) {
+            APP.user.siblings = r.siblings || [];
+            APP.user.switchToken = r.switchToken || APP.user.switchToken;
+            renderSiblingsCard();
+            lsSaveSession();
+          }
+        })
+        .withFailureHandler(function () { /* صامت — يبقى العرض المخزَّن كما هو */ })
+        .refreshStudentSiblings(APP.user.id, APP.user.schoolId, APP.user.switchToken, getClientId());
+    }
     // استعادة التبويب الأخير
     var lastTab = savedSession.tab || 'home';
     if (lastTab !== 'home') {
