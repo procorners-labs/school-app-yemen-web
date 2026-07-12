@@ -156,20 +156,15 @@ export default {
 
     // ── 1ب) عودة OAuth من فيسبوك/إنستغرام: /oauth ───────────────
     //   Meta يعيد التوجيه إلى /oauth?code=...&state=schoolId
-    //   نمرّرها إلى doGet في مشروع CMS (action=fb_oauth) مع الحفاظ على HTML.
+    //   إعادة توجيه حقيقية (لا جلب+بثّ) — صفحات GAS HtmlService تُخدَم داخل
+    //   إطار Sandbox من جوجل يعتمد مسارات نسبية (goog.script.init، CSS/JS ثابتة)؛
+    //   جلب البايتات وبثّها تحت نطاقنا يكسر تلك المسارات (goog is not defined،
+    //   404 على mae_html_css_rtl.css) ويترك الإطار فارغاً. التوجيه الحقيقي يُبقي
+    //   المتصفّح على نطاق جوجل الصحيح فتعمل الصفحة كبقية صفحات GAS الأخرى.
     if (path === '/oauth' || path === '/oauth/') {
       var qs = url.search ? url.search.replace(/^\?/, '') : '';
       var oauthTarget = GAS.cms + '?action=fb_oauth' + (qs ? '&' + qs : '');
-      try {
-        var oResp = await fetch(oauthTarget, { method: 'GET', redirect: 'follow' });
-        var oBody = await oResp.text();
-        var oCt = oResp.headers.get('Content-Type') || 'text/html; charset=utf-8';
-        return withCors(new Response(oBody, { status: oResp.status, headers: { 'Content-Type': oCt } }));
-      } catch (oErr) {
-        return withCors(new Response('<h3>تعذّر إتمام الاتصال: ' + String(oErr) + '</h3>', {
-          status: 502, headers: { 'Content-Type': 'text/html; charset=utf-8' }
-        }));
-      }
+      return Response.redirect(oauthTarget, 302);
     }
 
     // ── 1ج) صفحة التسعيرة (HTML من GAS) عبر الوكيل: /pricing ─────
