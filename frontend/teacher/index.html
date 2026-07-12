@@ -984,6 +984,24 @@
     .flt-btn-reset .flt-ic { display:inline-block; transition:transform .35s ease; }
     .flt-btn-reset:hover .flt-ic { transform:rotate(-180deg); }
 
+    /* ── أزرار اختصار نطاق التاريخ (اليوم/آخر 7 أيام/هذا الأسبوع/هذا الشهر) —
+       مشتركة بين الواجبات/الأخبار والقسم المالي (tf-rec/tf-exp) ── */
+    .flt-quick-btn {
+      padding:4px 10px; border:1px solid var(--border); border-radius:7px;
+      background:var(--surface2); color:var(--text-muted); font-size:12px;
+      cursor:pointer; transition:var(--transition);
+    }
+    .flt-quick-btn:hover {
+      background:var(--primary-glow); border-color:var(--primary); color:var(--primary-dark);
+    }
+    .flt-quick-btn.active {
+      background-image:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);
+      border-color:var(--primary); color:#fff; font-weight:700;
+      box-shadow:0 2px 8px var(--primary-glow-strong);
+    }
+    :root[data-theme="dark"] .flt-quick-btn:hover,
+    :root[data-theme="pro"] .flt-quick-btn:hover { color:var(--primary-light); }
+
     /* جداول الإدارة: رؤوس متدرّجة + صفوف مخطّطة + رأس ثابت عند التمرير */
     .table-wrap { box-shadow:0 2px 10px rgba(15,23,42,.04); }
     .table-wrap thead th {
@@ -9631,6 +9649,7 @@ var _hwSortOrder     = 'newest'; // 'newest' أو 'oldest'
 
 function renderHomework() {
   var subjectOptions = buildSelectOptions(mySubjects(), 'كل المواد', '', true);
+  var _hwDrs = _dateRangeShortcuts('hwDateFrom', 'hwDateTo', applyHomeworkFilters);
 
   var html = '<div class="section-card">' +
     '<div class="section-header">' +
@@ -9681,6 +9700,16 @@ function renderHomework() {
             '<button class="btn btn-secondary btn-sm flt-btn-reset" onclick="resetHomeworkFilters()"><span class="flt-ic">↺</span>إعادة ضبط</button>' +
           '</div>' +
         '</div>' +
+
+        // ── فلترة سريعة بالتاريخ (بلا حقول من/إلى مرئية — لا تُحفَظ محلياً كي لا تعلق) ──
+        '<div class="form-row" style="margin-top:2px;margin-bottom:0;">' +
+          '<div class="form-group flex-1">' +
+            '<label class="form-label">فلترة سريعة بالتاريخ</label>' +
+            _hwDrs.html +
+            '<input type="date" id="hwDateFrom" style="display:none">' +
+            '<input type="date" id="hwDateTo" style="display:none">' +
+          '</div>' +
+        '</div>' +
       '</div>' +
 
       // ── عداد النتائج ──
@@ -9699,7 +9728,9 @@ function renderHomework() {
   '</div>';
 
   document.getElementById('dynamicContent').innerHTML = html;
-  // استعادة آخر فلاتر استخدمها المستخدم (محفوظة محلياً) قبل أول تحميل
+  _hwDrs.wire();
+  // استعادة آخر فلاتر استخدمها المستخدم (محفوظة محلياً) قبل أول تحميل — الفلترة السريعة
+  // بالتاريخ (hwDateFrom/hwDateTo) عمداً غير محفوظة هنا كي لا تعلق صامتة بين الجلسات
   if (_fltRestore('hw', ['hwFilterSubject', 'hwFilterGrade', 'hwFilterSection', 'hwSortOrder', 'hwSearchInput'])) {
     hwFilterCascade('grade');
   }
@@ -9762,10 +9793,14 @@ function hwFilterCascade(which) {
 }
 
 function applyHomeworkFilters() {
+  // hwDateFrom/hwDateTo (فلترة سريعة بالتاريخ) عمداً خارج _fltSave/_fltRestore —
+  // تعمل خلال الجلسة الحالية فقط ولا تُحفَظ محلياً كي لا تعلق صامتة بين الجلسات
   _fltSave('hw', ['hwFilterSubject', 'hwFilterGrade', 'hwFilterSection', 'hwSortOrder', 'hwSearchInput']);
   var g        = (document.getElementById('hwFilterGrade')   || {}).value || '';
   var sec      = (document.getElementById('hwFilterSection') || {}).value || '';
   var subj     = (document.getElementById('hwFilterSubject') || {}).value || '';
+  var dateFrom = (document.getElementById('hwDateFrom')      || {}).value || '';
+  var dateTo   = (document.getElementById('hwDateTo')        || {}).value || '';
   var q        = _tcNorm((document.getElementById('hwSearchInput')  || {}).value || '');
   var sortOrd  = (document.getElementById('hwSortOrder')     || {}).value || 'newest';
   _hwSortOrder = sortOrd;
@@ -9789,6 +9824,10 @@ function applyHomeworkFilters() {
 
     // فلتر المادة
     if (subj && !isAllFilter(subj) && h.subject !== subj) continue;
+
+    // فلتر التاريخ (سريع، من أزرار الاختصار فقط — لا حقول مرئية)
+    if (dateFrom && (h.date || '') < dateFrom) continue;
+    if (dateTo   && (h.date || '') > dateTo)   continue;
 
     // فلتر البحث النصي (مُطبَّع عربياً)
     if (q) {
@@ -9898,10 +9937,15 @@ function hwGoPage(p) {
 }
 
 function resetHomeworkFilters() {
-  var ids = ['hwFilterGrade', 'hwFilterSection', 'hwFilterSubject', 'hwSearchInput'];
+  var ids = ['hwFilterGrade', 'hwFilterSection', 'hwFilterSubject', 'hwSearchInput', 'hwDateFrom', 'hwDateTo'];
   for (var i = 0; i < ids.length; i++) {
     var el = document.getElementById(ids[i]);
     if (el) el.value = '';
+  }
+  var drsWrap = document.getElementById('drs-wrap-hwDateFrom');
+  if (drsWrap) {
+    var drsBtns = drsWrap.querySelectorAll('.flt-quick-btn');
+    for (var k = 0; k < drsBtns.length; k++) drsBtns[k].classList.remove('active');
   }
   var sortEl = document.getElementById('hwSortOrder');
   if (sortEl) sortEl.value = 'newest';
@@ -10350,6 +10394,7 @@ function deleteViolationItem(rowIndex) {
 // ==================== NEWS ====================
 function renderNews() {
   var u = App.user;
+  var _nfDrs = _dateRangeShortcuts('nfDateFrom', 'nfDateTo', applyNewsFilters);
 
   var html =
     '<div class="section-card">' +
@@ -10408,6 +10453,16 @@ function renderNews() {
         '</div>' +
 
       '</div>' +
+
+      // ── فلترة سريعة بالتاريخ (بلا حقول من/إلى مرئية — لا تُحفَظ محلياً كي لا تعلق) ──
+      '<div class="form-row" style="margin-top:2px;margin-bottom:0;">' +
+        '<div class="form-group flex-1">' +
+          '<label class="form-label">فلترة سريعة بالتاريخ</label>' +
+          _nfDrs.html +
+          '<input type="date" id="nfDateFrom" style="display:none">' +
+          '<input type="date" id="nfDateTo" style="display:none">' +
+        '</div>' +
+      '</div>' +
     '</div>' +
 
     // ── لوحة مراجعة طلبات النشر للعامة (للمسؤولين فقط) ──
@@ -10427,8 +10482,10 @@ function renderNews() {
     '</div></div>';
 
   document.getElementById('dynamicContent').innerHTML = html;
+  _nfDrs.wire();
 
-  // استعادة آخر فلاتر مستخدمة (محفوظة محلياً) قبل أول جلب — فيأتي الطلب الأول مفلتراً
+  // استعادة آخر فلاتر مستخدمة (محفوظة محلياً) قبل أول جلب — فيأتي الطلب الأول مفلتراً.
+  // nfDateFrom/nfDateTo (فلترة سريعة بالتاريخ) عمداً غير محفوظة هنا كي لا تعلق صامتة بين الجلسات
   if (_fltRestore('news', ['nfGrade', 'nfSection', 'nfSort', 'nfTeacher'])) {
     filterGradeCascade('nfGrade', 'nfSection', null);
   }
@@ -10455,18 +10512,22 @@ function loadNewsPage(isFirst) {
   var gradeEl   = document.getElementById('nfGrade');
   var sectionEl = document.getElementById('nfSection');
   var sortEl    = document.getElementById('nfSort');
+  var fromEl    = document.getElementById('nfDateFrom');
+  var toEl      = document.getElementById('nfDateTo');
   var tchEl     = document.getElementById('nfTeacher');
 
   var reqParams = {
     grade    : (gradeEl   ? gradeEl.value   : ''),
     section  : (sectionEl ? sectionEl.value : ''),
     sortOrder: (sortEl    ? sortEl.value    : 'newest'),
-    dateFrom : '',
-    dateTo   : '',
+    dateFrom : (fromEl    ? fromEl.value    : ''),
+    dateTo   : (toEl      ? toEl.value      : ''),
     teacher  : (tchEl     ? tchEl.value     : ''),
     page     : _newsCurrentPage,
     pageSize : _newsPageSize
   };
+  // nfDateFrom/nfDateTo (فلترة سريعة، أزرار الاختصار فقط) عمداً خارج _fltSave —
+  // لا تُحفَظ محلياً كي لا تعلق صامتة بين الجلسات
   _fltSave('news', ['nfGrade', 'nfSection', 'nfSort', 'nfTeacher']);
  
   // مفتاح الكاش يشمل الفلاتر — كان «news_page_N» فقط فيعيد نتائج فلاتر قديمة لنفس الصفحة
@@ -10521,10 +10582,15 @@ function debounceNewsFilters() {
 // resetNewsFilters — إعادة ضبط الفلاتر
 // ══════════════════════════════════════════════════════════════════
 function resetNewsFilters() {
-  var ids = ['nfGrade', 'nfSection', 'nfTeacher'];
+  var ids = ['nfGrade', 'nfSection', 'nfTeacher', 'nfDateFrom', 'nfDateTo'];
   for (var i = 0; i < ids.length; i++) {
     var el = document.getElementById(ids[i]);
     if (el) el.value = '';
+  }
+  var drsWrap = document.getElementById('drs-wrap-nfDateFrom');
+  if (drsWrap) {
+    var drsBtns = drsWrap.querySelectorAll('.flt-quick-btn');
+    for (var k = 0; k < drsBtns.length; k++) drsBtns[k].classList.remove('active');
   }
   _fltClear('news');
   var sortEl = document.getElementById('nfSort');
@@ -14386,8 +14452,7 @@ function _dateRangeShortcuts(fromId, toId, onApply) {
   ];
   var html = '<div id="' + wrapId + '" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;">';
   for (var i = 0; i < ranges.length; i++) {
-    html += '<button type="button" data-drs-idx="' + i + '" ' +
-      'style="padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text-muted);font-size:12px;cursor:pointer;transition:var(--transition);">' +
+    html += '<button type="button" class="flt-quick-btn" data-drs-idx="' + i + '">' +
       ranges[i].label + '</button>';
   }
   html += '</div>';
@@ -14400,6 +14465,8 @@ function _dateRangeShortcuts(fromId, toId, onApply) {
       for (var j = 0; j < btns.length; j++) {
         (function (idx) {
           btns[idx].onclick = function () {
+            for (var k = 0; k < btns.length; k++) btns[k].classList.remove('active');
+            btns[idx].classList.add('active');
             var r = ranges[idx].fn();
             setRange(r[0], r[1]);
           };
