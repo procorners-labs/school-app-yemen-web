@@ -866,6 +866,38 @@
       color:var(--text-light); font-size:1rem; pointer-events:none;
     }
 
+    /* ── شريط فلاتر مضغوط v2 (الواجبات/الأخبار) — لا يُعدَّل .form-control/.form-select
+       الأساسية، فقط طبقة تخصيص محصورة داخل هذا الحاوي ── */
+    .flt-bar-v2 {
+      background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%);
+      border:1px solid var(--border); border-right:4px solid var(--primary);
+      border-radius:var(--radius-md); padding:12px 14px; margin-bottom:14px;
+      box-shadow:var(--shadow-sm); transition:var(--transition);
+    }
+    .flt-bar-v2 .form-row:last-child { margin-bottom:0; }
+    .flt-bar-v2 .form-row { gap:10px; margin-bottom:8px; }
+    .flt-bar-v2 .form-group { min-width:135px; gap:4px; }
+    .flt-bar-v2 .form-control,
+    .flt-bar-v2 .form-select { padding:8px 12px; min-height:38px; }
+    .flt-bar-v2 .form-select { padding-left:34px; }
+    @media (hover:hover) {
+      .flt-bar-v2:hover { box-shadow:var(--shadow-md); transform:translateY(-1px); }
+    }
+    /* حقول التاريخ: أيقونة تقويم ملوّنة بلون النظام + تجاوب مع الوضع الليلي/الاحترافي
+       (font-size يبقى 16px عبر القاعدة العالمية أعلاه — لا يُكسَر حارس تكبير iOS) */
+    .flt-bar-v2 input[type="date"] {
+      color-scheme:light;
+      border-right-width:3px; border-right-color:var(--primary-glow-strong);
+    }
+    :root[data-theme="dark"] .flt-bar-v2 input[type="date"],
+    :root[data-theme="pro"] .flt-bar-v2 input[type="date"] { color-scheme:dark; }
+    .flt-bar-v2 input[type="date"]::-webkit-calendar-picker-indicator {
+      background-color:var(--primary); filter:brightness(0) invert(1);
+      opacity:.85; border-radius:6px; padding:4px; cursor:pointer;
+      transition:var(--transition);
+    }
+    .flt-bar-v2 input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity:1; }
+
     /* BUTTONS */
     .btn {
       display:inline-flex; align-items:center; gap:6px;
@@ -9583,8 +9615,7 @@ function renderHomework() {
     '<div class="section-body">' +
 
       // ── صف الفلاتر الأول ──
-      '<div style="background:var(--surface2);border-radius:var(--radius-md);' +
-           'padding:14px;margin-bottom:14px;border:1px solid var(--border);">' +
+      '<div class="flt-bar-v2">' +
         '<div class="form-row" style="margin-bottom:10px;">' +
           '<div class="form-group">' +
             '<label class="form-label">الفصل</label>' +
@@ -10323,8 +10354,7 @@ function renderNews() {
 
     // ── شريط الفلاتر ──
     '<div class="section-body">' +
-    '<div style="background:var(--surface2);border-radius:var(--radius-md);' +
-         'padding:16px;margin-bottom:16px;border:1px solid var(--border);">' +
+    '<div class="flt-bar-v2">' +
       '<div class="form-row" style="margin-bottom:10px;">' +
 
         // فلتر الفصل
@@ -10379,7 +10409,7 @@ function renderNews() {
 
         // زر إعادة ضبط
         '<div class="form-group" style="align-self:flex-end;">' +
-          '<button class="btn btn-secondary" onclick="resetNewsFilters()">↺ إعادة ضبط</button>' +
+          '<button class="btn btn-secondary btn-sm" onclick="resetNewsFilters()">↺ إعادة ضبط</button>' +
         '</div>' +
 
       '</div>' +
@@ -14365,7 +14395,7 @@ function _dateRangeShortcuts(fromId, toId, onApply) {
   var html = '<div id="' + wrapId + '" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;">';
   for (var i = 0; i < ranges.length; i++) {
     html += '<button type="button" data-drs-idx="' + i + '" ' +
-      'style="padding:4px 10px;border:1px solid #d8dee9;border-radius:7px;background:#f4f6fb;color:#46506a;font-size:12px;cursor:pointer;">' +
+      'style="padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text-muted);font-size:12px;cursor:pointer;transition:var(--transition);">' +
       ranges[i].label + '</button>';
   }
   html += '</div>';
