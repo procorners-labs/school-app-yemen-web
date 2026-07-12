@@ -630,6 +630,30 @@ a { color: var(--pr); text-decoration: none; }
   backdrop-filter: blur(8px);
 }
 
+/* 👨‍👩‍👦 شرائح تبديل حسابات الإخوة */
+.sib-chip {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--bdr);
+  color: var(--txt);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--tr-s), box-shadow var(--tr-s), background var(--tr-s);
+}
+.sib-chip:hover { transform: translateY(-1px); box-shadow: var(--sh-1); }
+.sib-chip .sib-sub { font-size: 11px; font-weight: 500; color: var(--muted); }
+.sib-chip.active {
+  background: var(--pr-bg);
+  border-color: var(--pr);
+  color: var(--pr-d);
+  cursor: default;
+}
+.sib-chip.active:hover { transform: none; box-shadow: none; }
+.sib-chip.loading { opacity: .6; pointer-events: none; }
+
 /* بطاقات إحصاء سريعة */
 .q-grid {
   display: grid;
@@ -1814,6 +1838,14 @@ a { color: var(--pr); text-decoration: none; }
         <div class="meta" id="welcomeMeta"></div>
       </div>
 
+      <!-- 👨‍👩‍👦 إخوتك في المنظومة (تظهر فقط عند وجود إخوة مرتبطين فعلاً) -->
+      <div class="card" id="siblingsCard" style="display:none;">
+        <div class="card-h">
+          <div class="ttl"><span class="ic">👨‍👩‍👦</span> إخوتك في المنظومة</div>
+        </div>
+        <div id="siblingsList" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+
       <!-- 🕐 جدول اليوم + الساعة اللحظية -->
       <div class="card" id="homeTodayCard">
         <div class="card-h">
@@ -2661,7 +2693,9 @@ function doLogin() {
         class: r.class || '',
         section: r.section || '',
         role: r.role,
-        schoolId: schoolId   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
+        schoolId: schoolId,   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
+        siblings: r.siblings || [],
+        switchToken: r.switchToken || ''
       };
 
       $('loginScreen').style.display = 'none';
@@ -2754,6 +2788,9 @@ function initApp() {
   if (APP.user.id)      wm += '<span class="chip">🆔 ' + esc(APP.user.id) + '</span>';
   $('welcomeMeta').innerHTML = wm;
 
+  // 👨‍👩‍👦 بطاقة إخوتك في المنظومة (تظهر فقط عند وجود إخوة مرتبطين فعلاً)
+  renderSiblingsCard();
+
   // تحديث رسالة الترحيب حسب الوقت
   var hr = new Date().getHours();
   var greet = 'مرحباً بعودتك';
@@ -2780,6 +2817,96 @@ function initApp() {
 
   // 🆕 تفعيل lazy loading الاحتياطي بعد تحميل التطبيق
   setTimeout(function() { initLazyImages(); }, 500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 👨‍👩‍👦 تبديل حسابات الإخوة
+// ═══════════════════════════════════════════════════════════
+function renderSiblingsCard() {
+  var card = $('siblingsCard');
+  var list = $('siblingsList');
+  var siblings = (APP.user && APP.user.siblings) || [];
+  if (!siblings.length) {
+    card.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+  var h = '';
+  h += '<div class="sib-chip active" title="الحساب الحالي">👤 ' + esc(APP.user.name || APP.user.id) +
+       (APP.user.class ? '<span class="sib-sub">' + esc(APP.user.class) +
+         (APP.user.section ? ' · ' + esc(APP.user.section) : '') + '</span>' : '') + '</div>';
+  for (var i = 0; i < siblings.length; i++) {
+    var sb = siblings[i];
+    h += '<div class="sib-chip" data-sib-code="' + esc(sb.studentId) + '">👤 ' + esc(sb.name || sb.studentId) +
+         ((sb.class || sb.section) ? '<span class="sib-sub">' + esc(sb.class) +
+           (sb.section ? ' · ' + esc(sb.section) : '') + '</span>' : '') + '</div>';
+  }
+  list.innerHTML = h;
+  card.style.display = '';
+  // تفويض حدث نقر واحد (بدل onclick مضمَّن) — يتفادى مشاكل هروب الاقتباس لأي قيمة قادمة من الشيت
+  list.onclick = function (e) {
+    var el = e.target.closest ? e.target.closest('.sib-chip[data-sib-code]') : null;
+    if (el) switchSibling(el.getAttribute('data-sib-code'), el);
+  };
+}
+
+function switchSibling(targetCode, chip) {
+  if (!targetCode || (APP.user && APP.user.id === targetCode)) return;
+  if (chip) chip.classList.add('loading');
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (chip) chip.classList.remove('loading');
+
+      if (!r) { alert('لم يتم استلام رد من الخادم. حاول مرة أخرى.'); return; }
+
+      if (r.blocked) {
+        $('app').classList.remove('show');
+        $('blockedTxt').textContent = r.error || 'حسابك معلق مؤقتاً';
+        $('blockedMsg').classList.add('show');
+        return;
+      }
+      if (r.rateLimited) {
+        alert(r.error || 'تم تجاوز عدد المحاولات. حاول لاحقاً.');
+        return;
+      }
+      if (!r.ok) {
+        alert(r.error || 'تعذّر التبديل');
+        return;
+      }
+
+      // تفريغ الحالة المؤقتة بالكامل (نفس نمط confirmLogout — إعادة بناء APP كاملاً) كي لا
+      // تتسرب أي بيانات خاصة بالأخ السابق (درجات/ملاحظات/جدول اليوم المخزَّن مؤقتاً...) دون
+      // الحاجة لتعداد كل حقل يدوياً في كل مرة يُضاف فيها حقل كاش جديد مستقبلاً.
+      var keepTab = APP.currentTab || 'home';
+      if (APP.badgeInterval) { clearInterval(APP.badgeInterval); APP.badgeInterval = null; }
+      APP = {
+        user: {
+          id: r.studentId,
+          name: r.name,
+          firstName: r.firstName,
+          class: r.class || '',
+          section: r.section || '',
+          role: r.role,
+          schoolId: r.schoolId,
+          siblings: r.siblings || [],
+          switchToken: r.switchToken || ''
+        },
+        currentTab: keepTab, loaded: {}, cache: {},
+        newsState: { items: [], page: 1, pageSize: 8, hasMore: false, loading: false },
+        gradesData: null, selectedMonthIdx: 0, teachersList: [], reportsData: null,
+        badgeInterval: null
+      };
+
+      initApp();
+      if (keepTab !== 'home') goTabByName(keepTab);
+      lsSaveSession();
+    })
+    .withFailureHandler(function (e) {
+      if (chip) chip.classList.remove('loading');
+      alert('تعذّر الاتصال بالخادم: ' + (e.message || e));
+    })
+    .switchStudentAccount(targetCode, APP.user.schoolId, APP.user.id, APP.user.switchToken, getClientId());
 }
 
 function bindPwModalEnter() {
