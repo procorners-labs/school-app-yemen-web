@@ -85,11 +85,29 @@
                         (70s) خلف كل قسم — يمنح إحساس "الصفحة حيّة باستمرار" حتى بعد نهاية حركات الدخول
          عند التمرير  : بطاقات المميزات/المدارس/الأخبار تدخل بتأثير "focus pull" (ضبابية تتّضح + تكبير خفيف)
                         + أيقونات المميزات تنبض ببطء شديد (بالكاد محسوسة) بعد ظهورها بدل الجمود التام
+         تحسين تدريجي : على المتصفحات الداعمة لـanimation-timeline (~83% عالمياً 2026 — Chrome/Edge/Safari،
+                        ليس Firefox المستقر بعد؛ راجع @supports أدناه) تُربَط الكوكبة وHero وكل الأقسام
+                        (المميزات/المدارس/التذييل) بموضع التمرير مباشرة على طول الصفحة كاملة — لا اختطاف
+                        scroll، فقط قراءة موضعه (scroll()/view()) — فوق نظام الكشف القائم بلا تعديله؛
+                        على غير الداعمة تبقى الصفحة تماماً كما كانت (بلا أي تغيير سلوكي).
        @media(prefers-reduced-motion:reduce) أدناه يُسقِط كل ما سبق فوراً لحالته النهائية الثابتة
-       (animation/transition-duration:.01ms على * — يُنهي كل حركة هنا خلال إطار واحد تقريباً). */
+       (animation/transition-duration:.01ms على * — يُنهي كل حركة هنا خلال إطار واحد تقريباً؛ ولحركات
+       التمرير الأصلية تحديداً animation-timeline:none!important صريحة، لأن تصفير المدة الزمنية وحدها
+       لا تُحيِّد حركة مرتبطة بموضع التمرير لا بالزمن). */
     @keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
     @keyframes netDrift{0%{background-position:0 0}100%{background-position:-120px -60px}}
     @keyframes pageAmbientDrift{0%{background-position:0 0}100%{background-position:-160px -160px}}
+    @keyframes hcScrollGrow{from{transform:scale(1)}to{transform:scale(1.12)}}
+    @keyframes heroParallax{from{transform:translateY(0)}to{transform:translateY(40px)}}
+    /* revealTimelineIn/cardTimelineIn تستخدمان خاصيتَي scale/translate الفرديتين لا transform —
+       عمداً: transform محجوزة حصراً لتأثير :hover (feature/school/ncard أدناه). حركة CSS نشطة
+       تُحرِّك خاصية تتفوّق على الـcascade كاملاً لتلك الخاصية (حتى :hover غير الـ!important) طالما
+       الحركة مربوطة — لو استُخدم transform هنا لتجمّد الرفع عند hover نهائياً بعد أول ظهور للبطاقة
+       (خلل حقيقي اكتشفه gas-reviewer وأُصلح قبل الالتزام). scale/translate خاصيتان فرديتان (CSS
+       Transforms Level 2، Baseline منذ أغسطس 2022) تتركّبان مع transform دون أي تعارض قيمة. */
+    @keyframes revealTimelineIn{from{opacity:0;scale:.9;filter:blur(6px)}to{opacity:1;scale:1;filter:blur(0)}}
+    @keyframes cardTimelineIn{from{opacity:0;translate:0 28px;scale:.96;filter:blur(5px)}to{opacity:1;translate:0;scale:1;filter:blur(0)}}
+    @keyframes footerTimelineIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
     @keyframes heroTitleReveal{to{clip-path:inset(0 0 0 0)}}
     @keyframes fadeUpIn{to{opacity:1;transform:none}}
     @keyframes ctaPop{to{opacity:1;transform:none}}
@@ -123,15 +141,27 @@
     .cta-pop:nth-child(2){animation-delay:.74s}
     .cta-pop:nth-child(3){animation-delay:.86s}
 
-    .reveal-s{opacity:0;transform:scale(.9);filter:blur(6px);transition:opacity var(--t3) var(--ease-out),transform var(--t3) var(--ease-out),filter var(--t3) var(--ease-out)}
-    .reveal-s.in{opacity:1;transform:none;filter:blur(0)}
-    /* بطاقات مُنشأة ديناميكياً بعد استجابة الخادم (شركاء/أخبار) — كلاس لا inline-style، كي يبقى
-       hover قادراً على الفوز على transform النهائي (نفس حيلة ترتيب المصدر المستخدمة مع .feature أعلاه):
-       يجب أن تسبق هذه القاعدة .school:hover/.ncard:hover في المصدر. */
-    .card-reveal{opacity:0;transform:translateY(28px) scale(.96);filter:blur(5px);transition:opacity .5s var(--ease-out),transform .5s var(--ease-out),filter .5s var(--ease-out)}
-    .card-reveal.in{opacity:1;transform:none;filter:blur(0)}
+    /* scale/translate الفرديتان لا transform عمداً — تبقيان transform حصراً لـ:hover (راجع تعليق
+       revealTimelineIn/cardTimelineIn أدناه للسبب الكامل؛ يسري هنا أيضاً على المسار الاحتياطي). */
+    .reveal-s{opacity:0;scale:.9;filter:blur(6px);transition:opacity var(--t3) var(--ease-out),scale var(--t3) var(--ease-out),filter var(--t3) var(--ease-out)}
+    .reveal-s.in{opacity:1;scale:1;filter:blur(0)}
+    /* بطاقات مُنشأة ديناميكياً بعد استجابة الخادم (شركاء/أخبار). */
+    .card-reveal{opacity:0;translate:0 28px;scale:.96;filter:blur(5px);transition:opacity .5s var(--ease-out),translate .5s var(--ease-out),scale .5s var(--ease-out),filter .5s var(--ease-out)}
+    .card-reveal.in{opacity:1;translate:0;scale:1;filter:blur(0)}
+    /* تحسين تدريجي لموضع التمرير — لا يمسّ .in ولا JS الكشف الحالي: حين animation نشطة تُحرِّك خاصية
+       عنصر، أي transition مُعرَّفة على نفس الخاصية تُعلَّق تلقائياً (مواصفة CSS Animations) — فالسطور
+       أدناه تفوز تلقائياً على المتصفحات الداعمة بلا حاجة لتحييد .reveal-s.in/.card-reveal.in يدوياً،
+       وتبقى غير موجودة إطلاقاً (@supports) على المتصفحات غير الداعمة فيعمل نظام transition/.in كما هو. */
+    @supports (animation-timeline: scroll()) and (animation-timeline: view()) {
+      .hero-constellation{animation:hcScrollGrow linear both;animation-timeline:scroll(root block);animation-range:0 60vh}
+      header.hero{animation:heroParallax linear both;animation-timeline:scroll(root block);animation-range:0 100vh}
+      .reveal-s{animation:revealTimelineIn linear both;animation-timeline:view();animation-range:entry 0% cover 40%}
+      .card-reveal{animation:cardTimelineIn linear both;animation-timeline:view();animation-range:entry 0% cover 40%}
+      footer{animation:footerTimelineIn linear both;animation-timeline:view();animation-range:entry 0% cover 50%}
+    }
     @media(prefers-reduced-motion:reduce){
       *{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+      .hero-constellation,header.hero,.reveal-s,.card-reveal,footer{animation:none!important;animation-timeline:none!important}
     }
     .btn{display:inline-block;border:none;cursor:pointer;border-radius:12px;padding:11px 18px;font-weight:700;font-size:15px;font-family:inherit;transition:.15s}
     .btn-primary{background:var(--brand);color:#fff}
