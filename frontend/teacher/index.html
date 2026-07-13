@@ -2151,7 +2151,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول الاختبارات</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
-  <button class="sidebar-item" id="si-scheduleDistribution" onclick="showSection('scheduleDistribution')"><span class="si-icon">📋</span> توزيع الحصص</button>
   <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
@@ -5974,7 +5973,6 @@ function showSection(name) {
       studentDirectory: renderStudentDirectory,
       studentStatus: renderStudentStatus,
       schedSettings: renderScheduleSettings,
-      scheduleDistribution: renderScheduleDistribution,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
@@ -6074,7 +6072,6 @@ var SIDEBAR_ROLE_RULES = {
   'si-lists-mgmt':      ['admin'],
   'si-examctrl':        ['admin', 'deputy'],
   'si-schedSettings':   ['admin', 'deputy'],
-  'si-scheduleDistribution': ['admin', 'deputy'],
   'si-adminTeachers':   ['admin', 'it'],
   'si-adminActivities': ['admin', 'deputy', 'activities'],
   'si-adminStudents':   ['admin', 'it'],
@@ -6151,7 +6148,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-scheduleDistribution', 'si-financial', 'si-examctrl'];
+  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl'];
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -8106,11 +8103,23 @@ function renderScheduleSettings() {
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">⚙️</div>' +
     '<div class="section-header-title">إعدادات الجدول والتواقيت</div></div>' +
-    '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div>';
+    '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
+    '<div class="section-header" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
+      '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">📋</div>' +
+      '<div class="section-header-title">توزيع الحصص</div>' +
+      '<div><button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button></div></div>' +
+    '<div class="section-body">' +
+      '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الفصل</div><div class="form-row" style="margin-bottom:0">' +
+        '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sd-class" onchange="schedDist_loadClass()"><option value="">— اختر —</option></select></div>' +
+      '</div></div>' +
+      '<div id="sdStatus"></div>' +
+      '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div></div>' +
+    '</div></div>';
   callServer('getScheduleSettingsProtected', {}, function (r) {
     if (!r || !r.success) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-warning">تعذّر التحميل</div>'; return; }
     _renderSchedSetForm(r.settings, r.breaksByGrade || {}, r.allGrades || []);
   }, function (e) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+  _schedDist_init();
 }
 function _renderSchedSetForm(s, breaks, allGrades) {
   var body = document.getElementById('schedSetBody');
@@ -8156,21 +8165,10 @@ function saveScheduleSettings() {
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
 }
 
-// ── توزيع الحصص (مدير/وكيل) — تعيين/حذف/تراجع، فحص التعارض من الخادم ──
+// ── توزيع الحصص (مدير/وكيل) — قسم مدمَج داخل تبويب «إعدادات الجدول والتواقيت»
+//    (لا تبويب منفصل) — تعيين/حذف/تراجع، فحص التعارض من الخادم ──
 var SCHED_DIST = { className: '', options: null, classTeacherOptions: [] };
-function renderScheduleDistribution() {
-  var el = document.getElementById('dynamicContent');
-  el.innerHTML = '<div class="section-card"><div class="section-header">' +
-    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">📋</div>' +
-    '<div class="section-header-title">توزيع الحصص</div>' +
-    '<div><button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button></div></div>' +
-    '<div class="section-body">' +
-      '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الفصل</div><div class="form-row" style="margin-bottom:0">' +
-        '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sd-class" onchange="schedDist_loadClass()"><option value="">— اختر —</option></select></div>' +
-      '</div></div>' +
-      '<div id="sdStatus"></div>' +
-      '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div></div>' +
-    '</div></div>';
+function _schedDist_init() {
   callServer('getScheduleGridProtected', {}, function (r) {
     if (!r || !r.success) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
     SCHED_DIST.options = r.options || {};
