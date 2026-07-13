@@ -6396,13 +6396,22 @@ function ec_loadData() {
   }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
 }
 
-// نفس ALL_MONTHS_ORDERED (teacher/TeacherCore.js:27) — "نوع الاختبار" هنا فترة درجات حقيقية
-// من نظام الدرجات القائم (لا نص حرّ منفصل)، كي يعمل الرصد لاحقاً على نفس ورقة «النصفي».
+// نفس ALL_MONTHS_ORDERED (teacher/TeacherCore.js:27) — تُستخدَم لجدولة أيام الاختبارات (تبويب
+// "جدول الاختبارات") لأي شهر من الستة، بصرف النظر عن فترة "نوع الاختبار" المختارة أدناه.
 var EC_EXAM_TYPES = ['محرم', 'صفر', 'نصف العام', 'جماد اول', 'جماد ثاني', 'نهاية العام'];
+
+// "نوع الاختبار (فترة الدرجات)" — على عكس جدولة الأيام أعلاه، هذا الحقل يُحدِّد فترة درجات حقيقية
+// من ورقة «النصفي» يُرصَد عليها امتحان الكنترول لاحقاً (رصد الدرجات/بطاقات الجلوس). قاصر عمداً على
+// فترتَي "نصف العام"/"نهاية العام" فقط — الشهرين الوحيدين اللذين لهما حقل "امتحان نهائي" موحّد
+// (exam_score/ye_final) في نظام الدرجات القائم؛ الأشهر العادية الأربعة الأخرى لا تملك إلا مكوّنات
+// منفصلة (سلوك/واجب/شفهي/تحريري) بلا "درجة امتحان" واحدة آمنة للربط بها — أي محاولة سابقة لإتاحة
+// الأشهر الستة هنا كانت تعرض "رصد الدرجات" فارغاً دوماً لغير نهاية العام، وتفشل الحفظ صراحةً لغير
+// فترتَي الامتحان (خطأ "نوع الدرجة exam_score غير صالح لهذا الشهر" من autoSaveSingleGradeProtected).
+var EC_GRADE_PERIODS = ['نصف العام', 'نهاية العام'];
 function _ecExamTypeOptionsHtml(selected) {
   var h = '';
-  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
-    var v = EC_EXAM_TYPES[i];
+  for (var i = 0; i < EC_GRADE_PERIODS.length; i++) {
+    var v = EC_GRADE_PERIODS[i];
     h += '<option value="' + escapeHtml(v) + '"' + (v === selected ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
   }
   return h;
@@ -7104,7 +7113,13 @@ function ec_gradesLoad() {
   }, function () { rosterRes = null; if (--pending === 0) done(); });
 }
 
-function _ecGradeValueOf(stu) { var v = stu.ye_final; return (v === '' || v === null || v === undefined) ? '' : Number(v); }
+// نهاية العام تُبنى عبر مسار خاص (خمسة أعمدة محسوبة، الحقل ye_final = النهائي منها) بينما نصف
+// العام (فترة درجات حقيقية أخرى مسموحة، راجع EC_GRADE_PERIODS) يُقرأ من exam_score العادي مباشرة
+// — قراءة ye_final وحده دوماً كانت تُظهر الدرجات فارغة لكل رصد بفترة نصف العام رغم نجاح الحفظ فعلياً.
+function _ecGradeValueOf(stu, month) {
+  var v = (month === 'نهاية العام') ? stu.ye_final : stu.exam_score;
+  return (v === '' || v === null || v === undefined) ? '' : Number(v);
+}
 
 function ec_gradesRenderTable() {
   var table = document.getElementById('ec-grades-table'); if (!table) return;
@@ -7140,7 +7155,7 @@ function ec_gradesRenderTable() {
 
   for (var i = 0; i < students.length; i++) {
     var s = students[i];
-    var val = _ecGradeValueOf(s);
+    var val = _ecGradeValueOf(s, d.month);
     var display = (val === '' || val === 0) ? '' : val;
     h += '<tr style="border-bottom:1px solid #e8eef7;">';
     if (mode === 'young' || mode === 'nameEntry') {
@@ -7564,7 +7579,10 @@ function ec_timetableMoveSubject(key, subject, fromCol, toCol, containerEl) {
     if (!target) { target = { dayIndex: toDayIndex, date: '', subjects: [] }; board.days.push(target); }
     target.subjects.push({ name: subject, order: target.subjects.length + 1 });
   }
-  board.days = board.days.filter(function (d) { return d.subjects.length > 0; });
+  // يُسقَط فقط اليوم الذي لا مادة فيه ولا تاريخ محدَّد له (لم يُلمَس إطلاقاً) — أما يوم مُفرَّغ
+  // من مواده لكن له تاريخ محفوظ فيبقى في المصفوفة كي لا يُفقَد رقمه/تاريخه نهائياً، ولا يظهر
+  // تسلسل مكسور ("اليوم ١، اليوم ٢، اليوم ٤") يستحيل الوصول لفجوته مجدداً عبر السحب.
+  board.days = board.days.filter(function (d) { return d.subjects.length > 0 || d.date; });
   ec_timetableRenderBoard(key, containerEl);
   ec_timetableScheduleSave(key);
 }
@@ -7604,6 +7622,9 @@ function ec_timetableSetDate(key, colId, value, inputEl) {
       sortedDays[s].date = cursorDate;
     }
   }
+  // إفراغ التاريخ عن يوم أصلاً بلا مواد يُسقِطه فوراً بدل تركه عموداً فارغاً معلَّقاً حتى أوّل سحب
+  // لاحق (نفس شرط الإسقاط في ec_timetableMoveSubject: بلا مواد وبلا تاريخ = لا داعي لبقائه).
+  board.days = board.days.filter(function (d) { return d.subjects.length > 0 || d.date; });
   var containerEl = inputEl ? inputEl.closest('.ec-tt-grade-body') : null;
   ec_timetableRenderBoard(key, containerEl);
   ec_timetableScheduleSave(key);
