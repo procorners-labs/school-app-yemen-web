@@ -6461,9 +6461,15 @@ function ec_loadCommittees() {
 // بدل إدخال كل لجنة يدوياً من الصفر؛ التعديل/الحذف/الإضافة اليدوية تبقى متاحة بعدها كما هي.
 // لجان بحسب الصفوف/الشُعب الحقيقية لهذه المدرسة (لا 5 لجان عامة) — منفَّذة خادمياً بالكامل
 // (seedDefaultCommitteesProtected) بفهرسة منهج صحيحة وidempotent، بدل تسلسل استدعاءات عميل هشّ.
+// السعة القصوى للجنة الواحدة تُطلَب من المستخدم (بدل افتراض لجنة واحدة بسعة كامل الصف بلا حدّ) —
+// كل مدرسة تعرف سعة قاعاتها الفعلية؛ الصف الذي يتجاوز هذه السعة يُقسَّم على عدّة لجان مرقَّمة.
 function ec_seedDefaultCommittees() {
-  if (!confirm('سيتم إنشاء لجنة واحدة لكل صف كبير (الخامس فما فوق) بسعة = عدد طلابه الفعلي (قابلة للتعديل فوراً) — متابعة؟')) return;
-  callServer('seedDefaultCommitteesProtected', {}, function (res) {
+  var maxCapacity = prompt('الحد الأقصى لسعة اللجنة الواحدة (سيُقسَّم أي صف يتجاوز هذا العدد إلى عدّة لجان):', '30');
+  if (maxCapacity === null) return;
+  maxCapacity = Math.floor(Number(maxCapacity));
+  if (!maxCapacity || isNaN(maxCapacity) || maxCapacity < 5) { toast('أدخل رقماً صحيحاً 5 أو أكبر', 'error'); return; }
+  if (!confirm('سيتم إنشاء لجان لكل صف كبير (الخامس فما فوق) بسعة أقصاها ' + maxCapacity + ' لكل لجنة (قابلة للتعديل فوراً) — متابعة؟')) return;
+  callServer('seedDefaultCommitteesProtected', { maxCapacity: maxCapacity }, function (res) {
     if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'فشل التنفيذ'), 'error'); return; }
     var msg = '✅ أُنشئت ' + res.created.length + ' لجنة';
     if (res.skipped && res.skipped.length) msg += ' (تخطّي ' + res.skipped.length + ' موجودة مسبقاً بنفس الاسم)';
