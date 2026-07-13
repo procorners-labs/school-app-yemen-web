@@ -2151,6 +2151,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول الاختبارات</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
+  <button class="sidebar-item" id="si-scheduleDistribution" onclick="showSection('scheduleDistribution')"><span class="si-icon">📋</span> توزيع الحصص</button>
   <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
@@ -2504,6 +2505,29 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 </div> <!-- نهاية #mainApp -->
 
 <!-- ===== جميع المودالات (النوافذ المنبثقة) ===== -->
+
+<!-- مودال تعيين حصة (توزيع الحصص) -->
+<div class="modal-backdrop" id="sdAssignModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>📋 تعيين حصة</span>
+      <button class="modal-close" onclick="closeModal('sdAssignModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="sdAssignDay">
+      <input type="hidden" id="sdAssignPeriod">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">المعلم</label><select class="form-select" id="sdAssignTeacher" onchange="schedDist_onTeacherChange()"></select></div>
+        <div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="sdAssignSubject"></select></div>
+      </div>
+      <div id="sdAssignStatus"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('sdAssignModal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="schedDist_submitAssign()">✅ تعيين</button>
+    </div>
+  </div>
+</div>
 
 <!-- مودال إضافة/تعديل واجب -->
 <div class="modal-backdrop" id="homeworkModal">
@@ -5950,6 +5974,7 @@ function showSection(name) {
       studentDirectory: renderStudentDirectory,
       studentStatus: renderStudentStatus,
       schedSettings: renderScheduleSettings,
+      scheduleDistribution: renderScheduleDistribution,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
@@ -6049,6 +6074,7 @@ var SIDEBAR_ROLE_RULES = {
   'si-lists-mgmt':      ['admin'],
   'si-examctrl':        ['admin', 'deputy'],
   'si-schedSettings':   ['admin', 'deputy'],
+  'si-scheduleDistribution': ['admin', 'deputy'],
   'si-adminTeachers':   ['admin', 'it'],
   'si-adminActivities': ['admin', 'deputy', 'activities'],
   'si-adminStudents':   ['admin', 'it'],
@@ -6125,7 +6151,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl'];
+  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-scheduleDistribution', 'si-financial', 'si-examctrl'];
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -8128,6 +8154,131 @@ function saveScheduleSettings() {
     if (r && r.success) { st.innerHTML = '<span style="color:#2e7d32">✅ ' + r.message + '</span>'; toast('✅ تم حفظ إعدادات الجدول', 'success'); }
     else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+}
+
+// ── توزيع الحصص (مدير/وكيل) — تعيين/حذف/تراجع، فحص التعارض من الخادم ──
+var SCHED_DIST = { className: '', options: null, classTeacherOptions: [] };
+function renderScheduleDistribution() {
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">📋</div>' +
+    '<div class="section-header-title">توزيع الحصص</div>' +
+    '<div><button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button></div></div>' +
+    '<div class="section-body">' +
+      '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الفصل</div><div class="form-row" style="margin-bottom:0">' +
+        '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sd-class" onchange="schedDist_loadClass()"><option value="">— اختر —</option></select></div>' +
+      '</div></div>' +
+      '<div id="sdStatus"></div>' +
+      '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div></div>' +
+    '</div></div>';
+  callServer('getScheduleGridProtected', {}, function (r) {
+    if (!r || !r.success) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
+    SCHED_DIST.options = r.options || {};
+    var sel = document.getElementById('sd-class');
+    var classes = SCHED_DIST.options.classes || [];
+    for (var i = 0; i < classes.length; i++) sel.innerHTML += '<option value="' + escapeHtml(classes[i]) + '">' + escapeHtml(classes[i]) + '</option>';
+  }, function (e) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function schedDist_loadClass() {
+  var cls = document.getElementById('sd-class').value;
+  SCHED_DIST.className = cls;
+  var grid = document.getElementById('sdGrid');
+  if (!cls) { grid.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div>'; return; }
+  grid.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  callServer('getClassScheduleProtected', { className: cls }, function (r) {
+    if (!r || !r.success) { grid.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
+    schedDist_renderGrid(r.grid, r.days, r.periods);
+  }, function (e) { grid.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+}
+function schedDist_renderGrid(grid, days, periods) {
+  var h = '<div class="table-wrap"><table><thead><tr><th>اليوم \\ الحصة</th>';
+  for (var p = 0; p < periods.length; p++) h += '<th>' + periods[p] + '</th>';
+  h += '</tr></thead><tbody>';
+  for (var d = 0; d < days.length; d++) {
+    h += '<tr><td><b>' + escapeHtml(days[d]) + '</b></td>';
+    for (var pi = 0; pi < periods.length; pi++) {
+      var val = grid[d][pi];
+      var empty = (!val || val === '-');
+      var cellLabel = empty ? '+' : escapeHtml(val);
+      var cellClass = empty ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
+      h += '<td><button class="' + cellClass + '" style="width:100%" onclick="schedDist_cellClick(' + d + ',' + pi + ',' + empty + ')">' + cellLabel + '</button></td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table></div>';
+  document.getElementById('sdGrid').innerHTML = h;
+}
+function schedDist_cellClick(dayIdx, periodIdx, wasEmpty) {
+  if (!wasEmpty) {
+    if (!confirm('حذف هذه الحصة؟')) return;
+    callServer('deleteClassSessionProtected', { className: SCHED_DIST.className, dayIdx: dayIdx, periodIdx: periodIdx }, function (r) {
+      if (r && r.success) { toast('✅ ' + r.message, 'success'); schedDist_loadClass(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+    return;
+  }
+  schedDist_openAssign(dayIdx, periodIdx);
+}
+function schedDist_openAssign(dayIdx, periodIdx) {
+  document.getElementById('sdAssignDay').value = dayIdx;
+  document.getElementById('sdAssignPeriod').value = periodIdx;
+  var tSel = document.getElementById('sdAssignTeacher');
+  var sSel = document.getElementById('sdAssignSubject');
+  tSel.innerHTML = '<option value="">⏳ جاري التحميل…</option>';
+  sSel.innerHTML = '<option value="">—</option>';
+  document.getElementById('sdAssignStatus').innerHTML = '';
+  openModal('sdAssignModal');
+  // قائمة المعلمين مقيَّدة ديناميكياً بمن هو مكلَّف فعلياً بمادة في هذا الفصل
+  // تحديداً (من ورقة «المدرسين» الحقيقية) — لا كل الأسماء بلا تمييز.
+  callServer('getClassTeacherOptionsProtected', { className: SCHED_DIST.className }, function (r) {
+    if (!r || !r.success) { tSel.innerHTML = '<option value="">تعذّر التحميل</option>'; return; }
+    SCHED_DIST.classTeacherOptions = r.teachers || [];
+    tSel.innerHTML = '<option value="">— اختر —</option>';
+    for (var i = 0; i < SCHED_DIST.classTeacherOptions.length; i++) {
+      var t = SCHED_DIST.classTeacherOptions[i];
+      tSel.innerHTML += '<option value="' + escapeHtml(t.teacherName) + '">' + escapeHtml(t.teacherName) + '</option>';
+    }
+    if (!SCHED_DIST.classTeacherOptions.length) {
+      tSel.innerHTML = '<option value="">لا يوجد معلم مكلَّف بهذا الفصل</option>';
+    }
+  }, function (e) { tSel.innerHTML = '<option value="">' + (e.message || e) + '</option>'; });
+}
+function schedDist_onTeacherChange() {
+  var teacherName = document.getElementById('sdAssignTeacher').value;
+  var sSel = document.getElementById('sdAssignSubject');
+  var opts = SCHED_DIST.classTeacherOptions || [];
+  var subjects = [];
+  for (var i = 0; i < opts.length; i++) {
+    if (opts[i].teacherName === teacherName) { subjects = opts[i].subjects || []; break; }
+  }
+  sSel.innerHTML = '';
+  for (var j = 0; j < subjects.length; j++) sSel.innerHTML += '<option value="' + escapeHtml(subjects[j]) + '">' + escapeHtml(subjects[j]) + '</option>';
+  if (!subjects.length) sSel.innerHTML = '<option value="">—</option>';
+}
+function schedDist_submitAssign() {
+  var teacherName = document.getElementById('sdAssignTeacher').value;
+  var subject = document.getElementById('sdAssignSubject').value;
+  var dayIdx = parseInt(document.getElementById('sdAssignDay').value, 10);
+  var periodIdx = parseInt(document.getElementById('sdAssignPeriod').value, 10);
+  var st = document.getElementById('sdAssignStatus');
+  if (!teacherName) { st.innerHTML = '<span style="color:#c62828">اختر المعلم</span>'; return; }
+  st.innerHTML = '<span style="color:var(--text)">⏳ جاري التعيين…</span>';
+  callServer('assignPeriodProtected', {
+    teacherName: teacherName, className: SCHED_DIST.className, subject: subject, dayIdx: dayIdx, periodIdx: periodIdx
+  }, function (r) {
+    if (r && r.success) {
+      toast('✅ ' + r.message, 'success');
+      closeModal('sdAssignModal');
+      schedDist_loadClass();
+    } else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+}
+function schedDist_undo() {
+  if (!confirm('التراجع عن آخر تعيين تم تسجيله؟')) return;
+  callServer('undoLastAssignmentProtected', {}, function (r) {
+    if (r && r.success) { toast('✅ ' + r.message, 'success'); if (SCHED_DIST.className) schedDist_loadClass(); }
+    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
 }
 
 // ════════════════════════════════════════════════════════════════════
