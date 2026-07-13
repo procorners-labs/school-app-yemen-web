@@ -7361,12 +7361,33 @@ function ec_timetableComputeUnscheduled(key, grade) {
   }
 }
 
+// مطابقة الصفوف بنفس مجموعة المواد (بصرف النظر عن الترتيب) — من App.lists.curriculumByGrade
+// المحمَّل أصلاً، بلا استدعاء خادم إضافي وبلا قائمة صفوف مكتوبة يدوياً (ديناميكية بالكامل).
+function ec_timetableGradeSubjectsKey(grade) {
+  var subs = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
+  return subs.length ? subs.slice().sort().join('|') : '';
+}
+
+function ec_timetableMatchingGrades(grade) {
+  var groupKey = ec_timetableGradeSubjectsKey(grade);
+  if (!groupKey) return [];
+  var grades = _ecGrades || [], out = [];
+  for (var i = 0; i < grades.length; i++) {
+    if (grades[i] !== grade && ec_timetableGradeSubjectsKey(grades[i]) === groupKey) out.push(grades[i]);
+  }
+  return out;
+}
+
 function ec_timetableRenderBoard(key, containerEl) {
   var board = _ecScheduleBoards[key]; if (!board || !containerEl) return;
   var parts = key.split('|'), grade = parts[0];
   var days = board.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
 
-  var h = '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + escapeHtml(key).replace(/'/g, "\\'") + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button></div>' +
+  var matches = ec_timetableMatchingGrades(grade);
+  var copyBtn = matches.length
+    ? '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableCopyToMatching(event,\'' + escapeHtml(key).replace(/'/g, "\\'") + '\')">📋 نسخ لصفوف مطابقة المواد (' + matches.length + ')</button>'
+    : '';
+  var h = '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + escapeHtml(key).replace(/'/g, "\\'") + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button>' + copyBtn + '</div>' +
           '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;">';
 
   var unschedSubs = [];
@@ -7474,9 +7495,50 @@ function ec_timetableDragEnd(ev) {
   var toKey = col.getAttribute('data-key');
   if (toKey !== _ecTTDragFromKey) return; // لا سحب بين لوحتَي صف/شهر مختلفتين
   var toColId = col.getAttribute('data-col');
-  if (toColId === _ecTTDragFromCol) return;
   var containerEl = col.closest('.ec-tt-grade-body');
+  if (toColId === _ecTTDragFromCol) {
+    ec_timetableReorderInColumn(_ecTTDragFromKey, toColId, _ecTTDragSubject, ev.clientY, containerEl);
+    return;
+  }
   ec_timetableMoveSubject(_ecTTDragFromKey, _ecTTDragSubject, _ecTTDragFromCol, toColId, containerEl);
+}
+
+// إعادة ترتيب مادة داخل نفس اليوم (سحب لأعلى/أسفل بلا تغيير عمود). عمود "غير مُجدوَلة" ليس له
+// ترتيب محفوظ في الشيت (يُعاد بناؤه من المنهج عند كل تحميل) فيُتجاهَل بلا أثر — يطابق سلوك عدم
+// الحفظ السابق تماماً لذلك العمود.
+function ec_timetableReorderInColumn(key, colId, subject, dropClientY, containerEl) {
+  if (colId === 'unsched') return;
+  var board = _ecScheduleBoards[key]; if (!board) return;
+  var dayIndex = Number(colId.replace('day-', ''));
+  var day = null;
+  for (var i = 0; i < board.days.length; i++) { if (board.days[i].dayIndex === dayIndex) { day = board.days[i]; break; } }
+  if (!day) return;
+  var subs = day.subjects;
+  var oldIdx = -1;
+  for (var j = 0; j < subs.length; j++) { if (subs[j].name === subject) { oldIdx = j; break; } }
+  if (oldIdx === -1) return;
+  var moved = subs.splice(oldIdx, 1)[0]; // subs الآن بلا العنصر المسحوب — يطابق ما يبقى في DOM
+  var newIdx = ec_timetableIndexFromPointerY(containerEl, colId, subject, dropClientY);
+  if (newIdx > subs.length) newIdx = subs.length;
+  subs.splice(newIdx, 0, moved);
+  if (newIdx === oldIdx) return; // نفس الموضع فعلياً — بلا حاجة لإعادة رسم/حفظ
+  ec_timetableRenderBoard(key, containerEl);
+  ec_timetableScheduleSave(key);
+}
+
+// يحسب فهرس الإفلات بمقارنة clientY بمنتصف كل بطاقة متبقية في نفس العمود (باستثناء البطاقة
+// المسحوبة نفسها بمطابقة اسم المادة — أوثق من الاعتماد على توقيت إزالة data-dragging في dragEnd).
+function ec_timetableIndexFromPointerY(containerEl, colId, excludeSubject, clientY) {
+  var col = containerEl ? containerEl.querySelector('.ec-tt-col[data-col="' + colId + '"]') : null;
+  if (!col) return 0;
+  var cards = col.querySelectorAll('.ec-tt-card');
+  var idx = 0;
+  for (var i = 0; i < cards.length; i++) {
+    if (cards[i].getAttribute('data-subject') === excludeSubject) continue;
+    var rect = cards[i].getBoundingClientRect();
+    if (clientY > rect.top + rect.height / 2) idx++;
+  }
+  return idx;
 }
 
 function ec_timetableMoveSubject(key, subject, fromCol, toCol, containerEl) {
@@ -7562,6 +7624,75 @@ function ec_timetableSaveNow(key) {
   callServer('saveExamScheduleBulkProtected', { grade: grade, month: month, days: daysToSave }, function (res) {
     if (!res || !res.success) toast('❌ ' + (res ? res.error : 'تعذّر الحفظ'), 'error');
   }, function (err) { toast('❌ ' + err.message, 'error'); });
+}
+
+// نسخ جدول اللوحة المفتوحة حالياً (أيام/تواريخ/ترتيب) لكل صف آخر يطابقه تماماً بمجموعة المواد،
+// لنفس الشهر — استبدال يدوي بضغطة زر لمرّة واحدة (لا ربط تلقائي مستمر)، عبر نفس نقطة الحفظ
+// الذرّي الموجودة أصلاً (saveExamScheduleBulkProtected) لكل صف هدف على حدة.
+function ec_timetableCopyToMatching(ev, key) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  var board = _ecScheduleBoards[key]; if (!board) return;
+  var parts = key.split('|'), grade = parts[0], month = parts[1];
+  var daysToSave = board.days.filter(function (d) { return d.subjects && d.subjects.length > 0; });
+  if (!daysToSave.length) { toast('لا يوجد جدول مُعبّأ بعد لنسخه', 'warning'); return; }
+  for (var i = 0; i < daysToSave.length; i++) {
+    for (var s = 0; s < daysToSave[i].subjects.length; s++) daysToSave[i].subjects[s].order = s + 1;
+  }
+  var targets = ec_timetableMatchingGrades(grade);
+  if (!targets.length) return;
+  if (!confirm('سيُستبدَل جدول اختبارات "' + month + '" الحالي لصفوف: ' + targets.join('، ') + ' بنفس ترتيب/أيام/تواريخ ' + grade + '. متابعة؟')) return;
+
+  var remaining = targets.length, failures = [];
+  for (var t = 0; t < targets.length; t++) {
+    (function (targetGrade) {
+      // ألغِ أي مؤقّت حفظ مؤجَّل (600ms) معلَّق فعلاً لهذا الصف الهدف — وإلا فقد يُطلَق لاحقاً
+      // بالبيانات القديمة (قبل النسخ) ويتصادم مع حفظ النسخ الفوري هذا، فيُلغي أحدهما الآخر بصمت
+      // حسب ترتيب وصول الطلبين للخادم لا ترتيب إرسالهما من العميل.
+      var targetTimerKey = targetGrade + '|' + month;
+      if (_ecTTSaveTimers[targetTimerKey]) { clearTimeout(_ecTTSaveTimers[targetTimerKey]); delete _ecTTSaveTimers[targetTimerKey]; }
+      callServer('saveExamScheduleBulkProtected',
+        { grade: targetGrade, month: month, days: JSON.parse(JSON.stringify(daysToSave)) },
+        function (res) {
+          remaining--;
+          if (!res || !res.success) failures.push(targetGrade);
+          else ec_timetableAfterCopyRefresh(targetGrade, month, daysToSave);
+          if (remaining === 0) ec_timetableCopyDone(failures);
+        },
+        function (err) { remaining--; failures.push(targetGrade); if (remaining === 0) ec_timetableCopyDone(failures); }
+      );
+    })(targets[t]);
+  }
+}
+
+function ec_timetableCopyDone(failures) {
+  if (failures.length) toast('❌ فشل النسخ لـ: ' + failures.join('، '), 'error');
+  else toast('✅ تم نسخ الجدول لكل الصفوف المطابقة', 'success');
+}
+
+// يحدّث لوحة الصف الهدف فوراً إن كانت مفتوحة/محمَّلة أصلاً، وشارة عدد المواد في ملخّصه حتى لو
+// كانت البطاقة مغلقة — بنفس أسلوب التحديث الجزئي الموجود أصلاً في ec_timetableRenderBoard (لا
+// إعادة جلب overview كاملة).
+function ec_timetableAfterCopyRefresh(targetGrade, month, daysToSave) {
+  var targetKey = targetGrade + '|' + month;
+  var detailsEl = _ecTTFindGradeDetails(targetKey);
+  if (_ecScheduleBoards[targetKey]) {
+    _ecScheduleBoards[targetKey].days = JSON.parse(JSON.stringify(daysToSave));
+    ec_timetableComputeUnscheduled(targetKey, targetGrade);
+    var body = detailsEl ? detailsEl.querySelector('.ec-tt-grade-body') : null;
+    if (body && detailsEl.open) ec_timetableRenderBoard(targetKey, body);
+  }
+  if (detailsEl) {
+    var count = 0;
+    for (var d = 0; d < daysToSave.length; d++) count += daysToSave[d].subjects.length;
+    var badge = detailsEl.querySelector('summary .ec-tt-badge');
+    if (badge) { badge.textContent = count + ' مادة مُجدوَلة'; badge.classList.toggle('ec-tt-badge-ok', count > 0); }
+  }
+}
+
+function _ecTTFindGradeDetails(key) {
+  var all = document.querySelectorAll('.ec-tt-grade');
+  for (var i = 0; i < all.length; i++) { if (all[i].getAttribute('data-key') === key) return all[i]; }
+  return null;
 }
 
 // ── طباعة احترافية بهوية المدرسة (شعار/اسم/عام دراسي من _ecBrandLogoHtml/_ecBrandColor/_ecData —
