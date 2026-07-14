@@ -6149,7 +6149,8 @@ function _sbApplyTable(role) {
 function _sbApplyAccountant() {
   var accAllow = {
     'si-financial': 1, 'si-adminStudents': 1, 'si-studentDirectory': 1,
-    'si-studentStatus': 1, 'si-tasksMgmt': 1, 'si-myTasks': 1, 'si-profile': 1
+    'si-studentStatus': 1, 'si-tasksMgmt': 1, 'si-myTasks': 1, 'si-profile': 1,
+    'si-mySchedule': 1, 'si-news': 1
   };
   var secs = document.querySelectorAll('.sidebar-section');
   for (var acx = 0; acx < secs.length; acx++) {
@@ -13012,6 +13013,8 @@ function _buildNewsCard_Teacher(n) {
 
         // نشر للعامة (مسؤول) ⇄ إلغاء النشر (إن كان منشورًا) / طلب نشر (صاحب الخبر)
         (function () {
+          // المحاسب: نشر فقط — بلا صلاحية «نشر للعامة» (نطاق عام يتجاوز مدرسته، ليست جزءاً من "نشر فقط")
+          if (App.user && App.user.role === 'accountant') return '';
           var isPub = !!(window._pubNewsIds && window._pubNewsIds[String(n.id)]);
           if (isPub && _newsIsOfficial())
             return '<button class="btn btn-sm" style="background:#ef4444;color:#fff" onclick="unpublishNewsPublic(\'' + n.id + '\')" title="إلغاء نشر هذا الخبر من الصفحة العامة">🚫 إلغاء النشر</button>';
@@ -13025,13 +13028,15 @@ function _buildNewsCard_Teacher(n) {
         // أزرار الإدارة (للمدير أو المالك)
         (isAdmin() || (App.user && App.user.teacherName === newsOwner)
           ? '<div class="btn-group">' +
-              // معالجة رجعية: خبر نصّي (قديم بلا لقطة أو لتغيير التصميم) — نفس معرض النشر
-              (isTextOnly
-                ? '<button class="btn btn-sm btn-secondary" onclick="_dpOpenRetroNews(\'' + n.id + '\')" title="' +
-                  (_tcNewsDesign(n) ? 'تغيير تصميم الغلاف' : 'أضف تصميماً لهذا الخبر النصّي') + '">🎨</button>'
-                : '') +
-              '<button class="btn btn-sm btn-warning" onclick="editNews(\'' + n.id + '\')" title="تعديل الخبر">✏️</button>' +
-              '<button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\'' + n.id + '\')" title="حذف الخبر">🗑️</button>' +
+              // المحاسب: نشر فقط — بلا تعديل/حذف/تغيير غلاف (isAdmin()===true له أيضاً، فيُستثنى صراحةً هنا)
+              ((App.user && App.user.role === 'accountant') ? '' :
+                // معالجة رجعية: خبر نصّي (قديم بلا لقطة أو لتغيير التصميم) — نفس معرض النشر
+                (isTextOnly
+                  ? '<button class="btn btn-sm btn-secondary" onclick="_dpOpenRetroNews(\'' + n.id + '\')" title="' +
+                    (_tcNewsDesign(n) ? 'تغيير تصميم الغلاف' : 'أضف تصميماً لهذا الخبر النصّي') + '">🎨</button>'
+                  : '') +
+                '<button class="btn btn-sm btn-warning" onclick="editNews(\'' + n.id + '\')" title="تعديل الخبر">✏️</button>' +
+                '<button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\'' + n.id + '\')" title="حذف الخبر">🗑️</button>') +
               '<button class="btn btn-sm btn-secondary" onclick="showNewsViewers(\'' + n.id + '\',\'' + newsOwner + '\')" title="إحصائيات الخبر (من شاهد ومن أعجب)">📊</button>' +
             '</div>'
           : '') +
@@ -14572,6 +14577,7 @@ function _stlGoPage(n) {
 
 
 function exportStudentsList() {
+  if((App.user||{}).role==='accountant') return;
   showLoading('جاري التصدير...');
   callServer('adminExportStudents', {}, function(r) {
     hideLoading();
@@ -16038,6 +16044,7 @@ function ss_winCss(){
 
 // تصدير الكشف كملف CSV (يُفتح في Excel) — يطابق أعمدة الجدول المعروض تماماً.
 function ss_exportCsv(){
+  if((App.user||{}).role==='accountant') return;
   if(!SS.data || !(SS.data.students||[]).length){ toast('لا توجد بيانات للتصدير','warning'); return; }
   var d=SS.data, students=d.students||[], subjects=d.subjects||[], isAll=(d.grade==='الكل');
   var tpl=[]; for(var i=0;i<students.length;i++){ var sj=students[i].subjects||[]; for(var j=0;j<sj.length;j++){ var gg=sj[j].grades||[]; if(gg.length>tpl.length) tpl=gg; } }
@@ -19614,6 +19621,7 @@ function _tfRender(res){
   try{ document.documentElement.style.setProperty('--brand', _tfBrandColor()||'#1a237e'); }catch(eBc){}
   _tfExpFilter='all';           // إعادة رسم كاملة ⇒ فلتر فئة المصروفات يعود متزامناً مع شريحة «الكل» المعروضة
   var k=res.kpi||{}, host=document.getElementById('dynamicContent');
+  var _accV=(App.user||{}).role==='accountant';   // إخفاء الإجماليات الكلية عن المحاسب (لا تخصّ admin)
   var _tfRecDrs=_dateRangeShortcuts('tf-rec-from','tf-rec-to',_tfDrawRecTable);
   var _tfExpDrs=_dateRangeShortcuts('tf-exp-from','tf-exp-to',_tfDrawExpTable);
   var net=k.net||0, netColor=net>=0?'var(--tf-green)':'var(--tf-red)', netWord=net>=0?'فائض':'عجز';
@@ -19709,7 +19717,7 @@ function _tfRender(res){
          _tfTable(['البيان','المبلغ','التاريخ'], (res.topExpenses||[]).map(function(e){
            return [_tfEsc(e.label||'—'), '<span class="tf-amt">'+_tfComma(e.amount)+'</span>', _tfEsc(e.date||'')];
          }))+'</div>'+
-       '<div class="tf-card"><h3>توزّع المصروفات حسب الفئة</h3>'+_tfBars(res.expenseByCategory,'var(--tf-red)')+'</div>'+
+       '<div class="tf-card" id="tf-card-expcat"><h3>توزّع المصروفات حسب الفئة</h3>'+_tfBars(res.expenseByCategory,'var(--tf-red)')+'</div>'+
      '</div></div>';
 
   // ── الرواتب ──
@@ -19726,7 +19734,9 @@ function _tfRender(res){
        _tfTable(['الكود','الاسم','الصف','الرسوم','المدفوع','المتبقّي'], res.topDebtors.map(function(s){
          return [_tfEsc(s.code),_tfEsc(s.name),_tfEsc(s.grade),_tfComma(s.expected),_tfComma(s.paid),'<span class="tf-amt" style="color:var(--tf-red);">'+_tfComma(s.remaining)+'</span>'];
        }))+'</div>') : '')+
-     '<div class="tf-card"><h3>🧾 محاسبة الطلاب — '+(k.students||0)+' طالب · متوقّع '+_tfComma(k.expected)+' · محصّل '+_tfComma(k.feesPaid)+' · متبقٍّ '+_tfComma(k.outstanding)+'</h3>'+
+     '<div class="tf-card"><h3>🧾 محاسبة الطلاب — '+(k.students||0)+' طالب'+
+       (_accV ? '' : (' · متوقّع '+_tfComma(k.expected)+' · محصّل '+_tfComma(k.feesPaid)+' · متبقٍّ '+_tfComma(k.outstanding)))+
+     '</h3>'+
        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'+
          '<input id="tf-stu-q" type="text" placeholder="بحث بالاسم أو الكود..." oninput="_tfDrawStuTable()" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;font-size:13px;">'+
          '<select id="tf-stu-grade" onchange="_tfDrawStuTable()" style="padding:8px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;font-size:13px;"></select>'+
@@ -19766,14 +19776,14 @@ function _tfRender(res){
   // ── الأقساط الشهرية (الرسوم ÷ 7 من 5 محرم + بوّابتا 50%/100%) ──
   var _cal=res.calendar||{}, _ins=res.installments||[];
   h+='<div class="tf-pane" id="tf-pane-installments">';
-  h+='<div class="tf-kpis">'+
+  h+='<div class="tf-kpis" id="tf-inst-kpis">'+
      _tfKpi(_tfComma(k.installmentDue), 'قسط الشهر (إجمالي)', 'الرسوم ÷ 7', 'var(--tf-blue)', true)+
      _tfKpi(_tfComma(k.expectedByNow), 'المستحَق حتى الآن', (k.elapsedInstallments||0)+' من 7 أقساط', 'var(--tf-purple)', true)+
      _tfKpi(_tfComma(k.dueThisMonth), 'المتأخّر عن الجدول', (k.behindScheduleCount||0)+' طالب', 'var(--tf-orange)', true)+
      _tfKpi((k.midYearRiskCount||0), 'مخاطر نصف العام', '<50% قبل الاختبارات', (k.midYearRiskCount>0?'var(--tf-red)':'var(--tf-green)'), false)+
      _tfKpi((k.yearEndIncompleteCount||0), 'غير مكتمل آخر العام', '<100% بعد نهاية العام', (k.yearEndIncompleteCount>0?'var(--tf-magenta)':'var(--tf-green)'), false)+
      '</div>';
-  h+='<div class="tf-card"><h3>📆 جدول الأقساط — التقويم الدراسي</h3>'+
+  h+='<div class="tf-card" id="tf-card-instcal"><h3>📆 جدول الأقساط — التقويم الدراسي</h3>'+
      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.7;">الرسوم تُقسَّم على <strong>7 أقساط شهرية</strong> تبدأ <strong>5 محرم</strong>. '+
      'البوّابتان: <strong>≥50%</strong> قبل اختبارات نصف العام بأسبوع'+(_cal.midYearExam?(' (~'+_tfEsc(_cal.midYearExam)+')'):'')+'، و<strong>100%</strong> قبل نهاية العام'+(_cal.yearEnd?(' (~'+_tfEsc(_cal.yearEnd)+')'):'')+'.'+
      (_cal.source==='auto'?' <span style="color:var(--tf-orange);">(التقويم تلقائي مبدئيًا — تُضبط التواريخ بدقّة في ورقة «التقويم_الدراسي».)</span>':' <span style="color:var(--tf-green);">(تواريخ معتمدة من ورقة التقويم.)</span>')+'</div>'+
@@ -19847,9 +19857,16 @@ function _tfApplyRoleView(){
     var tb=document.getElementById('tf-tab-'+hide[i]); if(tb) tb.style.display='none';
     var pn=document.getElementById('tf-pane-'+hide[i]); if(pn){ pn.style.display='none'; pn.classList.remove('active'); }
   }
-  var hideEls=['tf-card-incomecat','tf-card-recon'];
+  var hideEls=['tf-card-incomecat','tf-card-recon','tf-card-expcat','tf-inst-kpis','tf-card-instcal'];
   for(var j=0;j<hideEls.length;j++){
     var el=document.getElementById(hideEls[j]); if(el) el.style.display='none';
+  }
+  // منع تصدير CSV/Excel عن المحاسب بالكامل (لا مجرّد حراسة دالة) — كل أزرار تصدير صفحة المالية
+  // مصنّفة .tf-abtn وتستدعي دوال تبدأ بـ_tfExport، فحلقة واحدة تكفي بدل تعداد كل معرّف.
+  var expBtns=document.querySelectorAll('.tf-abtn');
+  for(var ex=0; ex<expBtns.length; ex++){
+    var oc=expBtns[ex].getAttribute('onclick')||'';
+    if(oc.indexOf('_tfExport')===0) expBtns[ex].style.display='none';
   }
   _tfTab('cashbox');   // تبويب تشغيلي افتراضي للمحاسب
 }
@@ -20444,11 +20461,14 @@ function _tfDrawStuTable(){
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(s.status)+'</span>'];
   }));
   var tot=document.getElementById('tf-stu-total');
-  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> طالب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
+  if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
+    ? ('المعروض: <strong>'+filt.length+'</strong> طالب')
+    : ('المعروض: <strong>'+filt.length+'</strong> طالب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>');
 }
 
 // ── تصدير CSV (مع BOM لدعم العربية في Excel) ──
 function _tfExportCsv(filename, headers, rows){
+  if((App.user||{}).role==='accountant') return;
   var sep=',', lines=[headers.join(sep)];
   function cell(v){ v=(v===null||v===undefined)?'':(''+v); if(/[",\n]/.test(v)) v='"'+v.replace(/"/g,'""')+'"'; return v; }
   for(var r=0;r<rows.length;r++){ var line=[]; for(var c=0;c<rows[r].length;c++) line.push(cell(rows[r][c])); lines.push(line.join(sep)); }
@@ -20490,7 +20510,9 @@ function _tfDrawFamTable(){
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(a.status)+'</span>'];
   }));
   var tot=document.getElementById('tf-fam-total');
-  if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> حساب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>';
+  if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
+    ? ('المعروض: <strong>'+filt.length+'</strong> حساب')
+    : ('المعروض: <strong>'+filt.length+'</strong> حساب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>');
 }
 function _tfExportFam(){
   var filt=_tfFamFiltered();
