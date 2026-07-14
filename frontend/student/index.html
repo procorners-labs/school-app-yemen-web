@@ -1839,6 +1839,7 @@ a { color: var(--pr); text-decoration: none; }
           <button type="button" class="thm-item" data-mode="pro"   onclick="thmPick('pro')">💎 احترافي</button>
         </div>
       </div>
+      <button class="nav-btn" title="البريد الإلكتروني" onclick="openMyEmailModal()">📧</button>
       <button class="nav-btn" title="تغيير كلمة المرور" onclick="openModal('pwModal')">🔑</button>
       <button class="nav-btn" title="تسجيل الخروج" onclick="doLogout()">🚪</button>
     </div>
@@ -2114,6 +2115,20 @@ a { color: var(--pr); text-decoration: none; }
 </div>
 
 <!-- ═════════════════════ Modals ═════════════════════ -->
+<div class="modal-bg" id="emailModal">
+  <div class="modal">
+    <h3>📧 البريد الإلكتروني</h3>
+    <div class="field">
+      <label>البريد الإلكتروني (اختياري — يتيح الدخول به أيضاً إلى جانب اسمك/كودك)</label>
+      <input type="email" id="myEmailInput" placeholder="example@email.com">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('emailModal')">إلغاء</button>
+      <button class="btn-ok" id="emailSaveBtn" onclick="saveMyEmail()">حفظ</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="pwModal">
   <div class="modal">
     <h3>🔑 تغيير كلمة المرور</h3>
@@ -2728,6 +2743,7 @@ function doLogin() {
         section: r.section || '',
         role: r.role,
         schoolId: schoolId,   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
+        email: r.email || '',
         siblings: r.siblings || [],
         switchToken: r.switchToken || ''
       };
@@ -5844,6 +5860,48 @@ function changeMyPassword() {
       toast('فشل: ' + (e.message || e), 'e');
     })
     .changePassword(APP.user.id, cur, ne, APP.user.schoolId);
+}
+
+function openMyEmailModal() {
+  $('myEmailInput').value = (APP.user && APP.user.email) || '';
+  openModal('emailModal');
+}
+
+function saveMyEmail() {
+  var email = $('myEmailInput').value.trim();
+  var btn = $('emailSaveBtn');
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('صيغة البريد الإلكتروني غير صحيحة', 'w');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'جارٍ الحفظ...';
+  showLoad('جارٍ حفظ البريد الإلكتروني...');
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      hideLoad();
+      btn.disabled = false;
+      btn.textContent = 'حفظ';
+
+      if (r && r.ok) {
+        closeModal('emailModal');
+        APP.user.email = r.email || '';
+        lsSaveSession();
+        toast(r.message || 'تم حفظ البريد الإلكتروني بنجاح', 's');
+      } else {
+        toast((r && r.error) || 'تعذّر الحفظ', 'e');
+      }
+    })
+    .withFailureHandler(function (e) {
+      hideLoad();
+      btn.disabled = false;
+      btn.textContent = 'حفظ';
+      toast('فشل: ' + (e.message || e), 'e');
+    })
+    .updateMyEmail(APP.user.id, email, APP.user.schoolId, APP.user.switchToken);
 }
 
 // ═══════════════════════════════════════════════════════════
