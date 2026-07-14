@@ -19500,6 +19500,7 @@ function sstat_print() {
   .tf-kpi-v{font-size:23px;font-weight:800;letter-spacing:-.5px;}
   .tf-kpi-l{font-size:12px;color:var(--text-muted);margin-top:3px;}
   .tf-kpi-s{font-size:11px;color:var(--text-light);margin-top:2px;}
+  .tf-kpi-group-label{font-size:13px;font-weight:700;color:var(--text-muted);margin:14px 2px 8px;}
   .tf-pane{display:none;}
   .tf-pane.active{display:block;}
   .tf-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 4px 14px rgba(15,23,42,.05);}
@@ -19661,15 +19662,29 @@ function _tfRender(res){
   // ── نظرة عامة ──
   h+='<div class="tf-pane active" id="tf-pane-overview">';
   h+=_tfAlerts(res.alerts);
+  h+='<div class="tf-card"><h3>💵 دخل اليوم والصندوق — '+_tfEsc(k.todayDate||'')+'</h3>'+
+     '<div class="tf-kpis">'+
+       _tfKpi(_tfComma(k.todayIncome), 'دخل اليوم', '', 'var(--tf-green)', false)+
+       _tfKpi(_tfComma(k.todayExpense), 'مصروف اليوم', '', 'var(--tf-red)', false)+
+       _tfKpi(_tfComma(k.todaySupplied), 'توريد اليوم', '', 'var(--tf-purple)', false)+
+       _tfKpi(_tfComma(k.todayLeftover), 'متبقّي اليوم بالصندوق', '', (Math.abs(k.todayLeftover||0)>=1?'var(--tf-red)':'var(--tf-green)'), false)+
+       _tfKpi(_tfComma(k.cashboxNow), 'رصيد الصندوق الحالي', '', ((k.cashboxNow||0)>=0?'var(--text)':'var(--tf-red)'), true)+
+     '</div></div>';
   h+='<div class="tf-kpis">'+
      _tfKpi(_tfComma(k.income), 'إجمالي الدخل', (k.receiptsCount||0)+' سند', 'var(--tf-green)', true)+
      _tfKpi(_tfComma(k.expenseReal), 'المصروفات الحقيقية', (k.expenseCount||0)+' عملية · بلا توريد', 'var(--tf-red)', true)+
      _tfKpi(_tfComma(netReal), 'الصافي الحقيقي ('+netRWord+')', '', netRColor, true)+
+     '</div>';
+  h+='<div class="tf-kpi-group-label">📤 مصروفات وتوريدات محدَّدة</div>'+
+     '<div class="tf-kpis">'+
      _tfKpi(_tfComma(k.supplied), 'مُسلّم للمدير (توريد)', 'تسوية الصندوق — ليس خرجًا', 'var(--tf-purple)', false)+
      _tfKpi(_tfComma(k.rent), 'إيجار المبنى', 'فهد الرقاص', 'var(--tf-amber)', false)+
+     _tfKpi(_tfComma(k.salaries), 'رواتب الموظفين', (k.staff||0)+' موظف', 'var(--tf-purple)', false)+
+     '</div>';
+  h+='<div class="tf-kpi-group-label">🎓 أموال الطلاب</div>'+
+     '<div class="tf-kpis">'+
      _tfKpi(_tfComma(k.expected), 'إجمالي الرسوم', '', 'var(--tf-blue)', false)+
      _tfKpi(_tfComma(k.outstanding), 'المتبقّي على الطلاب', (k.overdueCount||0)+' متأخّر', 'var(--tf-orange)', false)+
-     _tfKpi(_tfComma(k.salaries), 'رواتب الموظفين', (k.staff||0)+' موظف', 'var(--tf-purple)', false)+
      _tfKpi(_tfComma(k.students), 'عدد الطلاب', '', 'var(--text)', false)+
      _tfKpi(_tfComma(k.prevDebt), 'مديونية أعوام سابقة', (k.prevDebtCount||0)+' طالب', 'var(--tf-magenta)', false)+
      _tfKpi(_tfComma(k.discountTotal), 'إجمالي التخفيضات', (k.discountedCount||0)+' طالب', 'var(--tf-teal)', false)+
