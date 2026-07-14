@@ -2751,6 +2751,7 @@ function doLogin() {
       $('loginScreen').style.display = 'none';
       $('app').classList.add('show');
       initApp();
+      _startHeartbeat();
       lsSaveSession(); // حفظ الجلسة في localStorage ليبقى مسجلاً بعد تحديث الصفحة
     })
     .withFailureHandler(function (e) {
@@ -5904,6 +5905,29 @@ function saveMyEmail() {
     .updateMyEmail(APP.user.id, email, APP.user.schoolId, APP.user.switchToken);
 }
 
+// ==================== HEARTBEAT (مدة الاستخدام) ====================
+// نبضة خفيفة كل 3 دقائق فقط أثناء رؤية التبويب فعلياً (Page Visibility API)، تُحدِّث
+// عمود "مدة الاستخدام" التراكمي بالخادم (studentHeartbeat). نفس مبدأ heartbeat
+// تطبيق teacher — نسخة موازية مستقلة. لا نداء عند الإغلاق (فشله مقبول، بلا تعقيد إضافي).
+var _hbTimerStarted = false;
+function _startHeartbeat() {
+  if (_hbTimerStarted) return;
+  _hbTimerStarted = true;
+  function beat() {
+    if (document.visibilityState !== 'visible') return;
+    if (!APP.user || !APP.user.id || !APP.user.switchToken) return;
+    google.script.run
+      .withSuccessHandler(function () {})
+      .withFailureHandler(function () {})
+      .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
+  }
+  setInterval(beat, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') beat();
+  });
+  beat();
+}
+
 // ═══════════════════════════════════════════════════════════
 // 17. شارات الإشعارات (Badges)
 // ═══════════════════════════════════════════════════════════
@@ -5970,6 +5994,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('loginScreen').style.display = 'none';
     $('app').classList.add('show');
     initApp();
+    _startHeartbeat();
     // تحديث خلفي صامت لقائمة الإخوة: الجلسة المستعادة من localStorage مجمَّدة على لحظة آخر
     // دخول حقيقي (حتى 8 ساعات) — بلا هذا النداء لا يظهر أي تعديل بيانات/مطابقة لاحق إلا بعد
     // تسجيل خروج/دخول يدوي. لا يؤخّر الظهور الأولي (العرض من الكاش فوري، هذا يلحق به بصمت).

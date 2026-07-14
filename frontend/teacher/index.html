@@ -3199,6 +3199,27 @@ function callServer(fnName, params, a3, a4, a5, a6) {
     [fnName](params);
 }
 
+// ==================== HEARTBEAT (مدة الاستخدام) ====================
+// نبضة خفيفة كل 3 دقائق فقط أثناء رؤية التبويب فعلياً (Page Visibility API)، تُحدِّث
+// عمود "مدة الاستخدام" التراكمي بالخادم (teacherHeartbeatProtected). لا نداء عند
+// الإغلاق (sendBeacon غير عملي هنا لأن google.script.run ليس رابطاً مباشراً قابلاً
+// للاستخدام مع sendBeacon) — فقدان آخر دقائق نادرة عند الإغلاق المفاجئ مقبول.
+var _hbTimerStarted = false;
+function _startHeartbeat() {
+  if (_hbTimerStarted) return;
+  _hbTimerStarted = true;
+  function beat() {
+    if (document.visibilityState !== 'visible') return;
+    if (!App.user || !App.user.token) return;
+    callServer('teacherHeartbeatProtected', {}, function(){}, function(){});
+  }
+  setInterval(beat, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') beat();
+  });
+  beat();
+}
+
 'use strict';
 // ==================== STATE & GLOBALS ====================
 var App = {
@@ -4230,6 +4251,7 @@ function doLogin() {
           expiresIn   : r.expiresIn   || 28800
         };
         saveSession(App.user);
+        _startHeartbeat();
         hideLoginError();
         document.getElementById('loginUsername').value = '';
         document.getElementById('loginPassword').value = '';
@@ -13911,6 +13933,16 @@ function loadTeachersList() {
     } else showError(r.error);
   });
 }
+// 🆕 فرز تفاعلي بالنقر على رأس عمودي "عداد الدخول"/"مدة الاستخدام" — JS بحت على
+// المصفوفة المحمَّلة أصلاً بالذاكرة، بلا أي نداء خادم إضافي.
+var _teachersSortField = null, _teachersSortDir = 1;
+function _sortTeachersTable(field) {
+  var all = window._allTeachers || [];
+  if (_teachersSortField === field) _teachersSortDir = -_teachersSortDir;
+  else { _teachersSortField = field; _teachersSortDir = -1; }
+  all.sort(function(a, b) { return ((a[field] || 0) - (b[field] || 0)) * _teachersSortDir; });
+  filterTeachersTable(document.getElementById('teacherSearch') ? document.getElementById('teacherSearch').value : '');
+}
 function filterTeachersTable(q) {
   var list = [];
   var all = window._allTeachers || [];
@@ -13923,10 +13955,13 @@ function filterTeachersTable(q) {
     area.innerHTML = '<div class="empty-state"><div class="es-icon">👥</div><div class="es-title">لا يوجد معلمون</div></div>';
     return;
   }
-  var html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>اسم المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>كلمة المرور</th><th>إجراءات</th></tr></thead><tbody>';
+  var html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>اسم المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>كلمة المرور</th>' +
+    '<th style="cursor:pointer" onclick="_sortTeachersTable(\'loginCount\')" title="فرز حسب عدد مرات الدخول">🔑 دخول ⇅</th>' +
+    '<th style="cursor:pointer" onclick="_sortTeachersTable(\'usageMinutes\')" title="فرز حسب مدة الاستخدام">⏱️ الاستخدام (د) ⇅</th>' +
+    '<th>إجراءات</th></tr></thead><tbody>';
   for (var i = 0; i < list.length; i++) {
     var t = list[i];
-    html += '<tr><td>' + (i+1) + '</td><td><div class="d-flex align-center gap-2"><div class="tc-avatar" style="width:32px;height:32px;font-size:.8rem">' + ((t.name||'م')[0]) + '</div><strong>' + (t.name || '') + '</strong></div></td><td><span class="badge badge-primary">' + (t.subject || '') + '</span></td><td><span class="badge badge-info">' + (t.grade || '') + '</span></td><td><span class="badge badge-purple">' + (t.section || '') + '</span></td><td><code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:.8rem">' + (t.password || '') + '</code></td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editTeacherAdmin(' + t.rowIndex + ')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteTeacherAdmin(' + t.rowIndex + ')">🗑️</button></div></td></tr>';
+    html += '<tr><td>' + (i+1) + '</td><td><div class="d-flex align-center gap-2"><div class="tc-avatar" style="width:32px;height:32px;font-size:.8rem">' + ((t.name||'م')[0]) + '</div><strong>' + (t.name || '') + '</strong></div></td><td><span class="badge badge-primary">' + (t.subject || '') + '</span></td><td><span class="badge badge-info">' + (t.grade || '') + '</span></td><td><span class="badge badge-purple">' + (t.section || '') + '</span></td><td><code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:.8rem">' + (t.password || '') + '</code></td><td>' + (t.loginCount || 0) + '</td><td>' + (t.usageMinutes || 0) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editTeacherAdmin(' + t.rowIndex + ')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteTeacherAdmin(' + t.rowIndex + ')">🗑️</button></div></td></tr>';
   }
   html += '</tbody></table></div>';
   area.innerHTML = html;
@@ -14432,7 +14467,7 @@ function renderStudentsList() {
   html += '<div class="table-wrap"><table style="width:100%">';
   html += '<thead><tr>';
   html += '<th>#</th><th>كود</th><th>اسم الطالب</th><th>الفصل</th><th>الشعبة</th>';
-  html += '<th>الرسوم</th><th>المسدد</th><th>نسبة التسديد</th><th>الحالة</th><th>إجراءات</th>';
+  html += '<th>الرسوم</th><th>المسدد</th><th>نسبة التسديد</th><th>🔑 دخول</th><th>⏱️ الاستخدام (د)</th><th>الحالة</th><th>إجراءات</th>';
   html += '</tr></thead><tbody>';
 
   for (var i = 0; i < list.length; i++) {
@@ -14467,6 +14502,8 @@ function renderStudentsList() {
     html += '<td>' + fees.toLocaleString() + '</td>';
     html += '<td>' + paid.toLocaleString() + '</td>';
     html += '<td><span class="badge ' + pctClass + '">' + pct + '%</span></td>';
+    html += '<td>' + (parseInt(st.loginCount, 10) || 0) + '</td>';
+    html += '<td>' + (parseFloat(st.usageMinutes) || 0) + '</td>';
     html += '<td>' + statusBadge + '</td>';
     html += '<td>' + actionBtn + '</td>';
     html += '</tr>';
@@ -16300,6 +16337,7 @@ window.onload = function() {
           };
           // تحديث الجلسة المحفوظة بالبيانات الجديدة من الخادم
           saveSession(App.user);
+          _startHeartbeat();
           hideLoading();
           bootApp();
         } else {
@@ -16776,10 +16814,28 @@ function _rpt_renderAdmin(d) {
   html += _rpt_card('📝', 'آخر الواجبات',
     _rpt_latestList(d.lists.latestHomework, 'hw'));
   html += '</div>';
- 
+
+  // 🆕 نشاط تسجيل الدخول (مرحلة ثانية) — إجمالي/متوسط + Top-10 معلمين/طلاب
+  var la = d.loginActivity || {};
+  html += '<hr class="divider">';
+  html += '<h4 style="margin-bottom:14px;font-size:.95rem">🔑 نشاط تسجيل الدخول</h4>';
+  html += '<div class="rpt-stats">';
+  html += _rpt_stat('👨‍🏫', la.totalTeacherLogins, 'إجمالي دخول المعلمين', 'rgba(16,185,129,.12)', '#10b981');
+  html += _rpt_stat('🎒', la.totalStudentLogins, 'إجمالي دخول الطلاب', 'rgba(79,70,229,.12)', '#4f46e5');
+  html += _rpt_stat('⏱️', (la.avgTeacherSessionMinutes || 0) + ' د', 'متوسط استخدام المعلم', 'rgba(6,182,212,.12)', '#06b6d4');
+  html += _rpt_stat('⏱️', (la.avgStudentSessionMinutes || 0) + ' د', 'متوسط استخدام الطالب', 'rgba(245,158,11,.12)', '#f59e0b');
+  html += '</div>';
+  html += '<div class="rpt-grid-2">';
+  html += _rpt_card('🏅', 'أعلى 10 معلمين دخولاً',
+    _rpt_topList(la.topTeachersByLogin, 'name', 'loginCount', 'دخول'));
+  html += _rpt_card('🏅', 'أعلى 10 طلاب دخولاً',
+    _rpt_topList(la.topStudentsByLogin, 'name', 'loginCount', 'دخول',
+      function(it) { return (it.class || '') + ' ' + (it.section || ''); }));
+  html += '</div>';
+
   return html;
 }
- 
+
 // ── Supervisor ──────────────────────────────────────────
 function _rpt_renderSupervisor(d) {
   var s = d.summary || {};
