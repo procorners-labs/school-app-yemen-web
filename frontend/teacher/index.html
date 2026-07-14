@@ -8276,8 +8276,9 @@ function renderScheduleSettings() {
       '</div></div>' +
     '<div class="section-body">' +
       '<div id="sdProgress"><button class="btn btn-secondary btn-sm" onclick="schedDist_loadProgress()">📊 عرض نسبة إنجاز الحصص لكل معلّم</button></div>' +
-      '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الفصل</div><div class="form-row" style="margin-bottom:0">' +
-        '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sd-class" onchange="schedDist_loadClass()"><option value="">— اختر —</option></select></div>' +
+      '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الصف والشعبة</div><div class="form-row" style="margin-bottom:0">' +
+        '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="sd-grade" onchange="schedDist_onGradeChange()"><option value="">— اختر —</option></select></div>' +
+        '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sd-section" onchange="schedDist_loadClass()" disabled><option value="">— اختر الصف أولاً —</option></select></div>' +
       '</div></div>' +
       '<div id="sdStatus"></div>' +
       '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div></div>' +
@@ -8335,18 +8336,34 @@ function saveScheduleSettings() {
 // ── توزيع الحصص (مدير/وكيل) — قسم مدمَج داخل تبويب «إعدادات الجدول والتواقيت»
 //    (لا تبويب منفصل) — تعيين/تعديل/حذف/تراجع، فحص التعارض من الخادم ──
 var SCHED_DIST = { className: '', options: null, classTeacherOptions: [], grid: null, editCurrentTeacher: '', suggestions: null };
+// ترتيب المنهج الطبيعي (نفس تسلسل SM_CLASS_NAME_MAP بـScheduleManager.js) —
+// يُستخدَم لترتيب قائمة "الصف" فقط؛ أي صفّ حقيقي غير مذكور هنا (اسم غير
+// معياري) يُضاف أبجدياً في النهاية كاحتياط آمن، لا يختفي أبداً.
+var SD_GRADE_ORDER = ['KG1', 'KG2', 'الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس',
+  'السابع', 'الثامن', 'التاسع', 'الأول ثانوي', 'الثاني ثانوي', 'الثالث ثانوي'];
 function _schedDist_init() {
   callServer('getScheduleGridProtected', {}, function (r) {
     if (!r || !r.success) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
     SCHED_DIST.options = r.options || {};
-    var sel = document.getElementById('sd-class');
-    // ★ classes الآن {value,label} — value=مفتاح داخلي خام (_joinClass، يُرسَل
-    // للخادم كما هو)، label=نصّ مقروء يفصل الصف عن الشعبة (يُصلِح خلل عرض
-    // تلاصق مبلَّغ عنه فعلياً: "التاسعب" ← "التاسع ب").
+    // ★ classes {value,label,grade,section} — value=مفتاح داخلي خام (_joinClass،
+    // يُرسَل للخادم كما هو)، grade/section منفصلان تماماً لبناء خانتَي اختيار
+    // ديناميكيتين (الصف ثم الشعبة) بدل قائمة واحدة نصّها متلاصق ("التاسعب").
     var classes = SCHED_DIST.options.classes || [];
+    var gradesSeen = {}, gradeList = [];
     for (var i = 0; i < classes.length; i++) {
-      var co = classes[i];
-      sel.innerHTML += '<option value="' + escapeHtml(co.value) + '">' + escapeHtml(co.label) + '</option>';
+      var g = classes[i].grade;
+      if (g && !gradesSeen[g]) { gradesSeen[g] = true; gradeList.push(g); }
+    }
+    gradeList.sort(function (a, b) {
+      var ia = SD_GRADE_ORDER.indexOf(a), ib = SD_GRADE_ORDER.indexOf(b);
+      if (ia === -1 && ib === -1) return a < b ? -1 : (a > b ? 1 : 0);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    var gSel = document.getElementById('sd-grade');
+    for (var gi = 0; gi < gradeList.length; gi++) {
+      gSel.innerHTML += '<option value="' + escapeHtml(gradeList[gi]) + '">' + escapeHtml(gradeList[gi]) + '</option>';
     }
     var teachers = SCHED_DIST.options.teachers || [];
     var tSel2 = document.getElementById('sd-auto-teacher');
@@ -8356,6 +8373,33 @@ function _schedDist_init() {
   // (قراءة الجدول المسطَّح كاملاً + ورقة المدرسين) يعمل بالتوازي مع طلبَي
   // الإعدادات/الشبكة عند كل فتح للتبويب، فيتزاحمان معاً (سبب بطء >5 ثوانٍ
   // مُبلَّغ عنه فعلياً). أصبحت عند الطلب فقط عبر الزرّ في #sdProgress.
+}
+// عند اختيار "الصف": تُبنى قائمة "الشعبة" ديناميكياً من الشُعب الحقيقية
+// الموجودة فعلياً لهذا الصف تحديداً (لا قائمة أ/ب/ج ثابتة) — مُشتقَّة من
+// classes نفسها (بلا أي نداء خادم إضافي). شعبة واحدة فقط ⇒ تُختار تلقائياً
+// وتُحمَّل الشبكة فوراً (لا خانة اختيار عديمة الفائدة لخيار وحيد).
+function schedDist_onGradeChange() {
+  var grade = document.getElementById('sd-grade').value;
+  var sSel = document.getElementById('sd-section');
+  var grid = document.getElementById('sdGrid');
+  sSel.innerHTML = '';
+  SCHED_DIST.className = '';
+  if (!grade) {
+    sSel.innerHTML = '<option value="">— اختر الصف أولاً —</option>';
+    sSel.disabled = true;
+    grid.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div>';
+    return;
+  }
+  var classes = (SCHED_DIST.options && SCHED_DIST.options.classes) || [];
+  var opts = [];
+  for (var i = 0; i < classes.length; i++) { if (classes[i].grade === grade) opts.push(classes[i]); }
+  sSel.disabled = false;
+  if (opts.length > 1) sSel.innerHTML = '<option value="">— اختر —</option>';
+  for (var j = 0; j < opts.length; j++) {
+    sSel.innerHTML += '<option value="' + escapeHtml(opts[j].value) + '">' + escapeHtml(opts[j].section) + '</option>';
+  }
+  if (opts.length === 1) { sSel.value = opts[0].value; schedDist_loadClass(); }
+  else { grid.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر الشعبة</div></div>'; }
 }
 // شريط تقدّم لكل معلّم (نسبة إنجاز حصص/أسبوع الفعلية) — نفس مكوّنات .progress/
 // .progress-bar الموجودة أصلاً بالواجهة (تدرّج لوني قياسي، لا CSS جديد). يُحمَّل
@@ -8434,7 +8478,9 @@ function schedDist_checkConflicts() {
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
 function schedDist_loadClass() {
-  var cls = document.getElementById('sd-class').value;
+  // ★ القيمة الفعلية (مفتاح _joinClass الخام) تأتي من "sd-section" — خانة
+  // "sd-grade" لاختيار الصف فقط، ديناميكياً منفصلة عن الشعبة تماماً.
+  var cls = document.getElementById('sd-section').value;
   SCHED_DIST.className = cls;
   SCHED_DIST.suggestions = null;
   var grid = document.getElementById('sdGrid');
