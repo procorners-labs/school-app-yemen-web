@@ -8275,7 +8275,7 @@ function renderScheduleSettings() {
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
       '</div></div>' +
     '<div class="section-body">' +
-      '<div id="sdProgress"></div>' +
+      '<div id="sdProgress"><button class="btn btn-secondary btn-sm" onclick="schedDist_loadProgress()">📊 عرض نسبة إنجاز الحصص لكل معلّم</button></div>' +
       '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الفصل</div><div class="form-row" style="margin-bottom:0">' +
         '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sd-class" onchange="schedDist_loadClass()"><option value="">— اختر —</option></select></div>' +
       '</div></div>' +
@@ -8340,23 +8340,35 @@ function _schedDist_init() {
     if (!r || !r.success) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
     SCHED_DIST.options = r.options || {};
     var sel = document.getElementById('sd-class');
+    // ★ classes الآن {value,label} — value=مفتاح داخلي خام (_joinClass، يُرسَل
+    // للخادم كما هو)، label=نصّ مقروء يفصل الصف عن الشعبة (يُصلِح خلل عرض
+    // تلاصق مبلَّغ عنه فعلياً: "التاسعب" ← "التاسع ب").
     var classes = SCHED_DIST.options.classes || [];
-    for (var i = 0; i < classes.length; i++) sel.innerHTML += '<option value="' + escapeHtml(classes[i]) + '">' + escapeHtml(classes[i]) + '</option>';
+    for (var i = 0; i < classes.length; i++) {
+      var co = classes[i];
+      sel.innerHTML += '<option value="' + escapeHtml(co.value) + '">' + escapeHtml(co.label) + '</option>';
+    }
     var teachers = SCHED_DIST.options.teachers || [];
     var tSel2 = document.getElementById('sd-auto-teacher');
     if (tSel2) for (var j = 0; j < teachers.length; j++) tSel2.innerHTML += '<option value="' + escapeHtml(teachers[j]) + '">' + escapeHtml(teachers[j]) + '</option>';
   }, function (e) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
-  schedDist_loadProgress();
+  // ★ لوحة التقدّم لا تُحمَّل تلقائياً هنا عمداً — كانت تضيف طلب خادم ثالث ثقيل
+  // (قراءة الجدول المسطَّح كاملاً + ورقة المدرسين) يعمل بالتوازي مع طلبَي
+  // الإعدادات/الشبكة عند كل فتح للتبويب، فيتزاحمان معاً (سبب بطء >5 ثوانٍ
+  // مُبلَّغ عنه فعلياً). أصبحت عند الطلب فقط عبر الزرّ في #sdProgress.
 }
 // شريط تقدّم لكل معلّم (نسبة إنجاز حصص/أسبوع الفعلية) — نفس مكوّنات .progress/
-// .progress-bar الموجودة أصلاً بالواجهة (تدرّج لوني قياسي، لا CSS جديد).
+// .progress-bar الموجودة أصلاً بالواجهة (تدرّج لوني قياسي، لا CSS جديد). يُحمَّل
+// عند الطلب فقط (زرّ) لا تلقائياً — راجع تعليق _schedDist_init أعلاه.
 function schedDist_loadProgress() {
   var box = document.getElementById('sdProgress');
   if (!box) return;
+  box.innerHTML = '<div class="alert alert-info" style="margin:0">⏳ جاري تحميل نسبة الإنجاز…</div>';
+  var retryBtn = '<button class="btn btn-secondary btn-sm" onclick="schedDist_loadProgress()">📊 عرض نسبة إنجاز الحصص لكل معلّم</button>';
   callServer('getTeacherProgressProtected', {}, function (r) {
-    if (!r || !r.success) { box.innerHTML = ''; return; }
+    if (!r || !r.success) { box.innerHTML = '<div class="alert alert-danger" style="margin:0 0 6px">' + escapeHtml((r && r.error) || 'تعذّر التحميل') + '</div>' + retryBtn; return; }
     var list = r.progress || [];
-    if (!list.length) { box.innerHTML = ''; return; }
+    if (!list.length) { box.innerHTML = retryBtn; return; }
     var h = '<div class="filter-bar"><div class="filter-bar-title">📊 نسبة إنجاز الحصص لكل معلّم</div>' +
       '<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto">';
     for (var i = 0; i < list.length; i++) {
@@ -8371,7 +8383,7 @@ function schedDist_loadProgress() {
     }
     h += '</div></div>';
     box.innerHTML = h;
-  }, function () { box.innerHTML = ''; });
+  }, function (e) { box.innerHTML = '<div class="alert alert-danger" style="margin:0 0 6px">' + escapeHtml(e.message || e) + '</div>' + retryBtn; });
 }
 function schedDist_autoAll() {
   if (!confirm('توزيع كل الحصص المتبقية تلقائياً لكل المعلمين؟')) return;
