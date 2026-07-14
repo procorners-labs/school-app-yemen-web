@@ -588,6 +588,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
           <button class="btn btn-primary" onclick="system_initSheets()">🔧 تهيئة الأوراق</button>
           <button class="btn btn-success" onclick="system_setupTriggers()">⏰ إنشاء Triggers</button>
           <button class="btn" style="background:#455a64;color:#fff;" onclick="system_buildFinancial()">💰 بناء الملخص المالي</button>
+          <button class="btn" style="background:#0F5C8C;color:#fff;" onclick="system_backfillEmailAliases()">📧 تسجيل بريد كل المدارس (Gmail alias)</button>
         </div>
         <div id="system-action-status" style="margin-top:12px;"></div>
       </div>
@@ -1809,6 +1810,32 @@ function system_buildFinancial() {
     .withSuccessHandler(function(res) { status.innerHTML = '<div class="status-msg ' + (res && res.ok ? 'status-success' : 'status-error') + '">' + (res && res.ok ? '✅ تم بناء الملخص المالي: ' + res.count + ' طالب' : '❌ خطأ') + '</div>'; })
     .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
     .buildFinancialSummary();
+}
+
+// تسجيل بريد كل مدرسة حالية تلقائياً كـ"إرسال كـ" (Send-As alias) — لمرة واحدة، لتغطية
+// المدارس المسجَّلة قبل تفعيل هذه الميزة. أي مدرسة جديدة بعد اليوم تُسجَّل تلقائياً بلا زر.
+function system_backfillEmailAliases() {
+  var status = document.getElementById('system-action-status');
+  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ تسجيل بريد كل مدرسة...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        status.innerHTML = '<div class="status-msg status-error">❌ ' + ((res && res.error) || 'خطأ') + '</div>';
+        return;
+      }
+      var html = '<div class="status-msg status-success">✅ تمت المعالجة (' + res.results.length + ' مدرسة):</div>';
+      html += '<ul style="margin:8px 0 0 0;padding-inline-start:20px;font-size:13px;">';
+      for (var i = 0; i < res.results.length; i++) {
+        var r = res.results[i];
+        var line = r.school + ' (' + r.email + ') — ';
+        line += r.ok ? (r.alreadyRegistered ? 'مسجَّل مسبقاً' : 'أُرسل طلب تحقّق — بانتظار تأكيد من بريد المدرسة') : ('فشل: ' + r.error);
+        html += '<li>' + line + '</li>';
+      }
+      html += '</ul>';
+      status.innerHTML = html;
+    })
+    .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
+    .backfillSchoolEmailAliasesProtected({ token: App.token });
 }
 
 // ── محدّد المدرسة للمالك ──
