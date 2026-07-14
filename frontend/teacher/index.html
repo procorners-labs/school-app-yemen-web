@@ -8383,13 +8383,14 @@ function _schedDist_init() {
       if (ib === -1) return -1;
       return ia - ib;
     });
-    var gSel = document.getElementById('sd-grade');
-    for (var gi = 0; gi < gradeList.length; gi++) {
-      gSel.innerHTML += '<option value="' + escapeHtml(gradeList[gi]) + '">' + escapeHtml(gradeList[gi]) + '</option>';
-    }
+    // ★ "الكل" أول خيار افتراضي (buildSelectOptions/allowAll — نفس نمط
+    // schedGradeFilter الجاهز أصلاً بقسم «جدولي») بدل إجبار المدير على اختيار
+    // فصل يدوياً قبل رؤية أي شيء؛ اختيار فصل حقيقي لاحقاً يعمل كما كان تماماً.
+    fillSelect('sd-grade', gradeList, '— اختر —', 'الكل', true);
     var teachers = SCHED_DIST.options.teachers || [];
     var tSel2 = document.getElementById('sd-auto-teacher');
     if (tSel2) for (var j = 0; j < teachers.length; j++) tSel2.innerHTML += '<option value="' + escapeHtml(teachers[j]) + '">' + escapeHtml(teachers[j]) + '</option>';
+    schedDist_onGradeChange(); // يُفعِّل وضع «الكل» الافتراضي فوراً (فحص تعارضات شامل تلقائي)
   }, function (e) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
   // ★ لوحة التقدّم لا تُحمَّل تلقائياً هنا عمداً — كانت تضيف طلب خادم ثالث ثقيل
   // (قراءة الجدول المسطَّح كاملاً + ورقة المدرسين) يعمل بالتوازي مع طلبَي
@@ -8412,6 +8413,12 @@ function schedDist_onGradeChange() {
     grid.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div>';
     return;
   }
+  if (grade === 'الكل') {
+    sSel.innerHTML = '<option value="الكل" selected>الكل</option>';
+    sSel.disabled = true; // لا معنى لاختيار شعبة منفردة والصف نفسه "الكل"
+    schedDist_showAllView();
+    return;
+  }
   var classes = (SCHED_DIST.options && SCHED_DIST.options.classes) || [];
   var opts = [];
   for (var i = 0; i < classes.length; i++) { if (classes[i].grade === grade) opts.push(classes[i]); }
@@ -8422,6 +8429,26 @@ function schedDist_onGradeChange() {
   }
   if (opts.length === 1) { sSel.value = opts[0].value; schedDist_loadClass(); }
   else { grid.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر الشعبة</div></div>'; }
+}
+// وضع «الكل» الافتراضي (لا فصل محدَّد) — يُشغِّل تلقائياً نفس فحص التعارضات
+// الشامل لزرّ 🔍 اليدوي (بلا تكرار كود؛ نداءا قراءة شيت فقط عبر
+// checkAllConflictsProtected — مؤكَّد سريع، لا علاقة له بحلقة الـ~55 معلّم
+// التي سبَّبت بطء لوحة التقدّم سابقاً). لا لوحة تقدّم تلقائية هنا عمداً لنفس
+// السبب المذكور بتعليق _schedDist_init أعلاه.
+function schedDist_showAllView() {
+  SCHED_DIST.className = 'الكل';
+  SCHED_DIST.suggestions = null;
+  document.getElementById('sdGrid').innerHTML = '<div class="empty-state"><div class="es-icon">🔎</div><div class="es-title">وضع «الكل» — نتيجة فحص التعارضات الشامل أعلاه ⬆️</div></div>';
+  schedDist_checkConflicts();
+}
+// يُستدعى بعد أي تعديل يمسّ الجدول (توزيع تلقائي للكل/لمعلّم، تراجع) — يُحدِّث
+// نفس نوع العرض النشط حالياً (فصل محدَّد أو وضع «الكل») بدل افتراض فصل حقيقي
+// دوماً (كان `if (SCHED_DIST.className) schedDist_loadClass()` يُخطئ الآن لأن
+// "الكل" قيمة صحيحة أيضاً لكنها ليست مفتاح فصل).
+function schedDist_refreshView() {
+  if (!SCHED_DIST.className) return;
+  if (SCHED_DIST.className === 'الكل') schedDist_showAllView();
+  else schedDist_loadClass();
 }
 // شريط تقدّم لكل معلّم (نسبة إنجاز حصص/أسبوع الفعلية) — نفس مكوّنات .progress/
 // .progress-bar الموجودة أصلاً بالواجهة (تدرّج لوني قياسي، لا CSS جديد). يُحمَّل
@@ -8460,7 +8487,7 @@ function schedDist_autoAll() {
       st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
       toast('✅ ' + r.message, 'success');
       schedDist_loadProgress();
-      if (SCHED_DIST.className) schedDist_loadClass();
+      schedDist_refreshView();
     } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
@@ -8474,7 +8501,7 @@ function schedDist_autoOne() {
       st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
       toast('✅ ' + r.message, 'success');
       schedDist_loadProgress();
-      if (SCHED_DIST.className) schedDist_loadClass();
+      schedDist_refreshView();
     } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
@@ -8686,7 +8713,7 @@ function schedDist_deleteFromModal() {
 function schedDist_undo() {
   if (!confirm('التراجع عن آخر عملية (تعيين/تعديل) تم تسجيلها؟')) return;
   callServer('undoLastAssignmentProtected', {}, function (r) {
-    if (r && r.success) { toast('✅ ' + r.message, 'success'); if (SCHED_DIST.className) schedDist_loadClass(); schedDist_loadProgress(); }
+    if (r && r.success) { toast('✅ ' + r.message, 'success'); schedDist_refreshView(); schedDist_loadProgress(); }
     else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
   }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
 }
