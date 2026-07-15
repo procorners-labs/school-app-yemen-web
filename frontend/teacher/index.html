@@ -5907,7 +5907,7 @@ function _savedSectionOrDashboard() {
   return sec;
 }
 
-function showSection(name) {
+function showSection(name, opt) {
   try {
     // التأكد من وجود العنصر الرئيسي dynamicContent
     var dynamicEl = document.getElementById('dynamicContent');
@@ -6022,7 +6022,7 @@ function showSection(name) {
 
     var fn = renders[name];
     if (typeof fn === 'function') {
-      fn(); // استدعاء دالة عرض الصفحة
+      fn(opt); // استدعاء دالة عرض الصفحة (opt: معامل اختياري، مثل التبويب الابتدائي لصفحة الزيارات)
       if (name === 'news') markNewsRead(); // فتح قسم الأخبار يُلغي شارة الجرس
     } else {
       console.warn('Section renderer not found: ' + name);
@@ -16879,6 +16879,10 @@ function _rpt_renderAdmin(d) {
     _rpt_topList(la.topStudentsByLogin, 'name', 'loginCount', 'دخول',
       function(it) { return (it.class || '') + ' ' + (it.section || ''); }));
   html += '</div>';
+  html += '<div style="text-align:left;margin-top:8px;">'+
+    '<a href="javascript:void(0)" onclick="showSection(\'visits\',\'cumulative\')" '+
+    'style="font-size:12.5px;font-weight:700;color:var(--brand,#1a237e);text-decoration:none;">'+
+    'عرض التفاصيل الكاملة لكل المعلمين والطلاب ←</a></div>';
 
   return html;
 }
@@ -20579,8 +20583,12 @@ var _visitsPollTimer = null;
 var _visitsRecentAll = [];
 var VT_ROLE_LABELS = { admin:'مدير', deputy:'وكيل', supervisor:'مشرف', accountant:'محاسب', activities:'أنشطة', it:'تقنية', media:'وسائط', teacher:'معلم', student:'طالب' };
 var VT_ROLE_COLORS = ['#4f46e5','#16a34a','#f59e0b','#ef4444','#0ea5e9','#a855f7','#14b8a6','#64748b','#ec4899'];
+var _visitsCumulLoaded = false;
+var _visitsCumulRes = null;
+var _visitsTeacherSortField = null, _visitsTeacherSortDir = 1;
+var _visitsStudentSortField = null, _visitsStudentSortDir = 1;
 
-function renderVisitsTraffic(){
+function renderVisitsTraffic(initialTab){
   var host=document.getElementById('dynamicContent');
   if(!host) return;
   host.innerHTML='<div class="tf-card" style="text-align:center;color:var(--text-muted);">⏳ جارٍ تحميل بيانات الزيارات...</div>';
@@ -20591,7 +20599,7 @@ function renderVisitsTraffic(){
       if(el) el.innerHTML='<div class="tf-card"><div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div></div>';
       return;
     }
-    _visitsRender(res);
+    _visitsRender(res, initialTab);
   });
 }
 
@@ -20601,7 +20609,12 @@ function _visitsRefreshNow(){
   });
 }
 
-function _visitsRender(res){
+function _visitsTabClick(name){
+  _tfTab(name);
+  if (name === 'cumulative' && !_visitsCumulLoaded) _visitsLoadCumulative();
+}
+
+function _visitsRender(res, initialTab){
   var host=document.getElementById('dynamicContent');
   if(!host) return;
   _visitsRecentAll = res.recent || [];
@@ -20610,11 +20623,12 @@ function _visitsRender(res){
      '<button class="tf-abtn tf-sync" onclick="_visitsRefreshNow()">🔄 تحديث</button></div>';
   h+='<div id="tf-root">';
   h+='<div class="tf-tabs" id="tf-maintabs">'+
-     '<div class="tf-tab active" id="tf-tab-overview" onclick="_tfTab(\'overview\')">نظرة عامة</div>'+
+     '<div class="tf-tab" id="tf-tab-overview" onclick="_tfTab(\'overview\')">نظرة عامة</div>'+
      '<div class="tf-tab" id="tf-tab-trend" onclick="_tfTab(\'trend\')">الاتجاه الزمني</div>'+
      '<div class="tf-tab" id="tf-tab-hourly" onclick="_tfTab(\'hourly\')">التوزيع الساعي</div>'+
      '<div class="tf-tab" id="tf-tab-roles" onclick="_tfTab(\'roles\')">الأدوار</div>'+
      '<div class="tf-tab" id="tf-tab-log" onclick="_tfTab(\'log\')">سجلّ تفصيلي</div>'+
+     '<div class="tf-tab" id="tf-tab-cumulative" onclick="_visitsTabClick(\'cumulative\')">📊 الإجمالي التراكمي</div>'+
      '</div>';
 
   h+='<div class="tf-pane active" id="tf-pane-overview">'+
@@ -20651,11 +20665,19 @@ function _visitsRender(res){
        '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t"><thead><tr><th>الوقت</th><th>الاسم</th><th>الدور</th><th>تفاصيل</th></tr></thead><tbody id="vt-log-body"></tbody></table></div>'+
      '</div></div>';
 
+  h+='<div class="tf-pane" id="tf-pane-cumulative">'+
+     '<div id="vt-cumul-body"><div class="tf-empty">⏳ جارٍ التحميل...</div></div>'+
+     '</div>';
+
   h+='</div>'; // tf-root
 
   host.innerHTML=h;
+  _visitsCumulLoaded = false;
+  _visitsCumulRes = null;
   _visitsRenderLog();
   _visitsStartPolling();
+  _tfTab(initialTab || 'overview');
+  if (initialTab === 'cumulative') _visitsLoadCumulative();
 }
 
 function _visitsRoleDonut(roleCounts){
@@ -20782,6 +20804,190 @@ function _visitsStartPolling(){
 
 function _visitsStopPolling(){
   if(_visitsPollTimer){ clearInterval(_visitsPollTimer); _visitsPollTimer=null; }
+}
+
+// ── الإجمالي التراكمي (كل المعلمين/الطلاب منذ إنشاء المدرسة) — تحميل كسول عند أول فتح للتبويب ──
+
+function _visitsLoadCumulative(){
+  var body=document.getElementById('vt-cumul-body');
+  callServer('getVisitsCumulativeProtected', {}, function(res){
+    if(!res || !res.success){
+      var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
+      if(body) body.innerHTML='<div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div>';
+      return;
+    }
+    _visitsCumulLoaded=true;
+    _visitsCumulRes=res;
+    _visitsRenderCumulative(res);
+  });
+}
+
+function _visitsNeverAlert(title, names){
+  var list=(names||[]).slice(0,30).map(_tfEsc).join('، ');
+  var more=(names && names.length>30) ? (' + '+(names.length-30)+' آخرين') : '';
+  return '<div class="tf-alert tf-al-warn"><div>⚠️ <b>'+_tfEsc(title)+'</b>'+
+    '<div style="font-size:11.5px;margin-top:4px;opacity:.85;">'+list+more+'</div></div></div>';
+}
+
+function _visitsHistSvg(buckets, order, color){
+  buckets=buckets||{};
+  var pairs=order.map(function(k){ return { name:k, value:buckets[k]||0 }; });
+  var max=1,i; for(i=0;i<pairs.length;i++) max=Math.max(max, pairs[i].value);
+  var W=380,H=170,pad=28;
+  var n=pairs.length, slot=(W-pad*2)/n, bw=Math.min(40,slot-10);
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1"/>';
+  for(i=0;i<n;i++){
+    var v=pairs[i].value, bh=(H-pad*2)*(v/max), x=pad+slot*i+(slot-bw)/2;
+    svg+='<rect x="'+x+'" y="'+(H-pad-bh)+'" width="'+bw+'" height="'+bh+'" rx="3" style="fill:'+color+'"/>';
+    svg+='<text x="'+(x+bw/2)+'" y="'+(H-pad+14)+'" font-size="9" style="fill:var(--text-muted)" text-anchor="middle">'+_tfEsc(pairs[i].name)+'</text>';
+    if(v>0) svg+='<text x="'+(x+bw/2)+'" y="'+(H-pad-bh-5)+'" font-size="9" font-weight="700" style="fill:var(--text)" text-anchor="middle">'+v+'</text>';
+  }
+  svg+='</svg>';
+  return svg;
+}
+
+function _visitsRenderCumulative(res){
+  var body=document.getElementById('vt-cumul-body');
+  if(!body) return;
+  var tot=res.totals||{}, nev=res.neverLoggedIn||{};
+  window._visitsAllTeachersFull=res.allTeachers||[];
+  window._visitsAllStudentsFull=res.allStudents||[];
+
+  var h='';
+  h+='<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface2);border-radius:10px;padding:10px 14px;margin-bottom:14px;">'+
+     'ℹ️ هذه البيانات <b>تراكمية منذ إنشاء المدرسة على المنصة</b> (لا ترتبط بتاريخ محدَّد) — بخلاف بقية تبويبات هذه الصفحة المبنية على السجلّ الزمني الجديد منذ 15 يوليو 2026.</div>';
+
+  h+='<div class="tf-kpis">'+
+     _tfKpi(String(tot.totalTeacherLogins||0),'إجمالي دخول المعلمين','','var(--tf-blue)',false)+
+     _tfKpi(String(tot.totalStudentLogins||0),'إجمالي دخول الطلاب','','var(--tf-purple)',false)+
+     _tfKpi((tot.avgTeacherUsageMinutes||0)+' د','متوسط استخدام المعلم','','var(--tf-teal)',false)+
+     _tfKpi((tot.avgStudentUsageMinutes||0)+' د','متوسط استخدام الطالب','','var(--tf-amber)',false)+
+     '</div>';
+
+  if((nev.teacherCount||0)>0 || (nev.studentCount||0)>0){
+    h+='<div class="tf-alerts">';
+    if(nev.teacherCount>0) h+=_visitsNeverAlert('👨‍🏫 '+nev.teacherCount+' معلم لم يسجّل الدخول إطلاقاً', nev.teacherNames);
+    if(nev.studentCount>0) h+=_visitsNeverAlert('🎒 '+nev.studentCount+' طالب لم يسجّل الدخول إطلاقاً', nev.studentNames);
+    h+='</div>';
+  }
+
+  h+='<div class="tf-grid2">'+
+     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — المعلمون</h3>'+_visitsHistSvg((res.loginHistogram||{}).teacher, ['0','1','2-3','4-6','7-10','11+'], 'var(--tf-blue)')+'</div>'+
+     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — الطلاب</h3>'+_visitsHistSvg((res.loginHistogram||{}).student, ['0','1','2-3','4-6','7-10','11+'], 'var(--tf-purple)')+'</div>'+
+     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — المعلمون</h3>'+_visitsHistSvg((res.usageHistogram||{}).teacher, ['0','1-10','10-30','30-60','60-120','120+'], 'var(--tf-teal)')+'</div>'+
+     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — الطلاب</h3>'+_visitsHistSvg((res.usageHistogram||{}).student, ['0','1-10','10-30','30-60','60-120','120+'], 'var(--tf-amber)')+'</div>'+
+     '</div>';
+
+  var byGrade=res.byGrade||[];
+  h+='<div class="tf-card"><h3>🏫 التوزيع حسب الصف</h3><div class="tf-grid2">'+
+     '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">متوسط الدخول لكل طالب</div>'+
+       _tfBars(byGrade.map(function(g){ return {name:g.grade, value:g.avgLoginCount}; }), 'var(--tf-blue)')+'</div>'+
+     '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">متوسط الاستخدام (دقائق)</div>'+
+       _tfBars(byGrade.map(function(g){ return {name:g.grade, value:g.avgUsageMinutes}; }), 'var(--tf-teal)')+'</div>'+
+     '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">نسبة المشاركة (%)</div>'+
+       _tfBars(byGrade.map(function(g){ return {name:g.grade, value:g.participationPct}; }), 'var(--tf-green)')+'</div>'+
+     '</div></div>';
+
+  h+='<div class="tf-grid2">'+
+     '<div class="tf-card"><h3>🏅 أعلى 20 معلماً دخولاً</h3>'+
+       _tfBars((res.topTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), 'var(--tf-blue)')+'</div>'+
+     '<div class="tf-card"><h3>🏅 أعلى 20 طالباً دخولاً</h3>'+
+       _tfBars((res.topStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), 'var(--tf-purple)')+'</div>'+
+     '</div>';
+
+  h+='<div class="tf-card"><h3>👨‍🏫 كل المعلمين ('+window._visitsAllTeachersFull.length+')</h3>'+
+     '<input type="text" id="vt-teacher-search" placeholder="بحث بالاسم أو المادة..." oninput="_visitsFilterTeacherTable(this.value)" '+
+     'style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface);color:var(--text);font-size:13px;">'+
+     '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-teacher-table"></table></div>'+
+     '</div>';
+
+  h+='<div class="tf-card"><h3>🎒 كل الطلاب ('+window._visitsAllStudentsFull.length+')</h3>'+
+     '<input type="text" id="vt-student-search" placeholder="بحث بالاسم..." oninput="_visitsFilterStudentTable(this.value)" '+
+     'style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface);color:var(--text);font-size:13px;">'+
+     '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-student-table"></table></div>'+
+     '</div>';
+
+  body.innerHTML=h;
+  _visitsTeacherSortField=null; _visitsTeacherSortDir=1;
+  _visitsStudentSortField=null; _visitsStudentSortDir=1;
+  _visitsFilterTeacherTable('');
+  _visitsFilterStudentTable('');
+}
+
+function _visitsSortTeacherTable(field){
+  var all=window._visitsAllTeachersFull||[];
+  if(_visitsTeacherSortField===field) _visitsTeacherSortDir=-_visitsTeacherSortDir;
+  else { _visitsTeacherSortField=field; _visitsTeacherSortDir=-1; }
+  all.sort(function(a,b){
+    var av=a[field], bv=b[field];
+    if(typeof av==='string') return av.localeCompare(bv)*_visitsTeacherSortDir;
+    return ((av||0)-(bv||0))*_visitsTeacherSortDir;
+  });
+  var q=document.getElementById('vt-teacher-search');
+  _visitsFilterTeacherTable(q?q.value:'');
+}
+
+function _visitsFilterTeacherTable(q){
+  var all=window._visitsAllTeachersFull||[];
+  q=(q||'').trim();
+  var list=[],i;
+  for(i=0;i<all.length;i++){
+    var t=all[i];
+    if(!q || (t.name||'').indexOf(q)!==-1 || (t.subject||'').indexOf(q)!==-1) list.push(t);
+  }
+  var html='<thead><tr>'+
+    '<th style="cursor:pointer" onclick="_visitsSortTeacherTable(\'name\')">الاسم ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortTeacherTable(\'subject\')">المادة ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortTeacherTable(\'loginCount\')">🔑 دخول ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortTeacherTable(\'usageMinutes\')">⏱️ الاستخدام (د) ⇅</th>'+
+    '</tr></thead><tbody>';
+  for(i=0;i<list.length;i++){
+    var t2=list[i];
+    html+='<tr><td>'+_tfEsc(t2.name)+'</td><td>'+_tfEsc(t2.subject)+'</td><td>'+(t2.loginCount||0)+'</td><td>'+(t2.usageMinutes||0)+'</td></tr>';
+  }
+  if(!list.length) html+='<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">لا نتائج</td></tr>';
+  html+='</tbody>';
+  var tbl=document.getElementById('vt-teacher-table');
+  if(tbl) tbl.innerHTML=html;
+}
+
+function _visitsSortStudentTable(field){
+  var all=window._visitsAllStudentsFull||[];
+  if(_visitsStudentSortField===field) _visitsStudentSortDir=-_visitsStudentSortDir;
+  else { _visitsStudentSortField=field; _visitsStudentSortDir=-1; }
+  all.sort(function(a,b){
+    var av=a[field], bv=b[field];
+    if(typeof av==='string') return av.localeCompare(bv)*_visitsStudentSortDir;
+    return ((av||0)-(bv||0))*_visitsStudentSortDir;
+  });
+  var q=document.getElementById('vt-student-search');
+  _visitsFilterStudentTable(q?q.value:'');
+}
+
+function _visitsFilterStudentTable(q){
+  var all=window._visitsAllStudentsFull||[];
+  q=(q||'').trim();
+  var list=[],i;
+  for(i=0;i<all.length;i++){
+    var s=all[i];
+    if(!q || (s.name||'').indexOf(q)!==-1) list.push(s);
+  }
+  var html='<thead><tr>'+
+    '<th style="cursor:pointer" onclick="_visitsSortStudentTable(\'name\')">الاسم ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortStudentTable(\'class\')">الصف ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortStudentTable(\'section\')">الشعبة ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortStudentTable(\'loginCount\')">🔑 دخول ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsSortStudentTable(\'usageMinutes\')">⏱️ الاستخدام (د) ⇅</th>'+
+    '</tr></thead><tbody>';
+  for(i=0;i<list.length;i++){
+    var s2=list[i];
+    html+='<tr><td>'+_tfEsc(s2.name)+'</td><td>'+_tfEsc(s2.class)+'</td><td>'+_tfEsc(s2.section)+'</td><td>'+(s2.loginCount||0)+'</td><td>'+(s2.usageMinutes||0)+'</td></tr>';
+  }
+  if(!list.length) html+='<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">لا نتائج</td></tr>';
+  html+='</tbody>';
+  var tbl=document.getElementById('vt-student-table');
+  if(tbl) tbl.innerHTML=html;
 }
 </script>
 </body>
