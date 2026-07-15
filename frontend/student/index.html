@@ -486,6 +486,59 @@ a { color: var(--pr); text-decoration: none; }
 .card-h .actions { display: flex; gap: 6px; }
 
 /* ── جدول الاختبارات — بطاقات/تايم-لاين لكل يوم اختبار (بدل جدول HTML بسيط) ── */
+
+/* ألوان زخرفية لكل مادة/يوم أسبوع — نقاط/حدود صغيرة فقط، أبداً خلفية معتمة تحمل نصاً (النص دوماً
+   var(--txt)/var(--muted)/أبيض-على-var(--pr) الثابت المُختبَر أصلاً). قيم مشتقة من نفس لوحة
+   EC_SUBJECT_COLORS/EC_DAY_COLORS بجانب طباعة المعلّم، مُعتَّمة للوضع الفاتح تحديداً حيث لزم لتحقيق
+   تباين WCAG ≥3:1 (عتبة العناصر الزخرفية) ضد var(--card)/var(--bg-2) — راجع CLAUDE.md بند 8. */
+:root {
+  --exam-subj-1: #4f46e5; --exam-subj-2: #16a34a; --exam-subj-3: #b45309; --exam-subj-4: #ef4444;
+  --exam-subj-5: #0369a1; --exam-subj-6: #a855f7; --exam-subj-7: #0f766e; --exam-subj-8: #ec4899;
+  --exam-day-sat: #667eea; --exam-day-sun: #be123c; --exam-day-mon: #0369a1;
+  --exam-day-tue: #15803d; --exam-day-wed: #be185d;
+}
+:root[data-theme="dark"], :root[data-theme="pro"] {
+  --exam-subj-1: #818cf8; --exam-subj-3: #f59e0b; --exam-subj-5: #0ea5e9; --exam-subj-7: #14b8a6;
+  --exam-day-sun: #f5576c; --exam-day-mon: #4facfe; --exam-day-tue: #43e97b; --exam-day-wed: #fa709a;
+}
+
+.exam-month-nav {
+  display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  padding-bottom: 4px; margin-bottom: 14px;
+}
+.exam-month-nav::-webkit-scrollbar { display: none; }
+.exam-month-nav .pill {
+  flex: 0 0 auto; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+  background: var(--bg-2); color: var(--muted); border: 1px solid var(--bdr); white-space: nowrap;
+  transition: background var(--tr-s), color var(--tr-s), border-color var(--tr-s);
+}
+.exam-month-nav .pill.has-next { background: var(--pr-bg); color: var(--pr-d); border-color: var(--pr); }
+
+.exam-hero {
+  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-l) 100%); color: #fff;
+  border-radius: var(--rad); padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--sh-h);
+  position: relative; overflow: hidden;
+}
+.exam-hero::before {
+  content: '⏳'; position: absolute; font-size: 100px; opacity: .12; left: -6px; top: -14px;
+  transform: rotate(-12deg);
+}
+.exam-hero .badge {
+  display: inline-block; font-size: 12px; font-weight: 700; background: rgba(255,255,255,.22);
+  padding: 4px 10px; border-radius: 14px; margin-bottom: 8px; position: relative;
+}
+.exam-hero .countdown { font-size: 24px; font-weight: 800; margin-bottom: 4px; position: relative; }
+.exam-hero .date { font-size: 13px; opacity: .9; margin-bottom: 10px; position: relative; }
+.exam-hero .subjects { display: flex; flex-wrap: wrap; gap: 6px; position: relative; }
+.exam-hero .chip {
+  display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.2);
+  padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 600; backdrop-filter: blur(8px);
+}
+.exam-hero .chip .exam-subj-dot { box-shadow: 0 0 0 1.5px rgba(255,255,255,.85); }
+.exam-hero-none { background: var(--bg-2); color: var(--muted); box-shadow: none; border: 1px dashed var(--bdr-2); }
+.exam-hero-none::before { opacity: .06; }
+.exam-hero-none .badge { background: var(--card); color: var(--muted); }
+
 .exam-month-block { margin-bottom: 18px; }
 .exam-month-title {
   font-weight: 800; font-size: 15px; margin-bottom: 10px; color: var(--txt);
@@ -495,20 +548,48 @@ a { color: var(--pr); text-decoration: none; }
 .exam-day-card {
   display: flex; align-items: center; gap: 12px;
   background: var(--bg-2); border: 1px solid var(--bdr); border-radius: var(--rad-s);
-  padding: 10px 12px;
+  padding: 10px 12px; transition: opacity var(--tr);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .exam-day-card { animation: slideUp var(--tr-l) both; animation-delay: calc(var(--exam-i, 0) * 40ms); }
 }
 .exam-day-date {
-  min-width: 92px; flex: 0 0 auto; font-weight: 700; font-size: 12.5px; color: var(--pr);
-  background: var(--pr-bg); border-radius: 8px; padding: 5px 8px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 92px; flex: 0 0 auto; background: var(--pr-bg); border-radius: 8px; padding: 6px 8px;
 }
-.exam-day-subjects { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--txt); }
+.exam-day-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--bdr-2); }
+.exam-day-dot.exam-day-sat { background: var(--exam-day-sat); }
+.exam-day-dot.exam-day-sun { background: var(--exam-day-sun); }
+.exam-day-dot.exam-day-mon { background: var(--exam-day-mon); }
+.exam-day-dot.exam-day-tue { background: var(--exam-day-tue); }
+.exam-day-dot.exam-day-wed { background: var(--exam-day-wed); }
+.exam-day-dname { font-weight: 700; font-size: 12px; color: var(--pr); }
+.exam-day-dnum { font-size: 10.5px; color: var(--muted); }
+.exam-day-subjects { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.exam-subj-chip {
+  display: inline-flex; align-items: center; gap: 5px; background: var(--card);
+  border: 1px solid var(--bdr); border-radius: 14px; padding: 3px 10px;
+  font-size: 12.5px; font-weight: 600; color: var(--txt);
+}
+.exam-subj-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 auto; background: var(--bdr-2); }
+.exam-subj-dot.exam-subj-1 { background: var(--exam-subj-1); }
+.exam-subj-dot.exam-subj-2 { background: var(--exam-subj-2); }
+.exam-subj-dot.exam-subj-3 { background: var(--exam-subj-3); }
+.exam-subj-dot.exam-subj-4 { background: var(--exam-subj-4); }
+.exam-subj-dot.exam-subj-5 { background: var(--exam-subj-5); }
+.exam-subj-dot.exam-subj-6 { background: var(--exam-subj-6); }
+.exam-subj-dot.exam-subj-7 { background: var(--exam-subj-7); }
+.exam-subj-dot.exam-subj-8 { background: var(--exam-subj-8); }
 .exam-day-countdown { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--pr-d); }
 .exam-day-past { opacity: .55; }
-.exam-day-past .exam-day-date { color: var(--muted); background: transparent; border: 1px solid var(--bdr); }
+.exam-day-past .exam-day-date { background: transparent; border: 1px solid var(--bdr); }
+.exam-day-past .exam-day-dname, .exam-day-past .exam-day-dnum { color: var(--muted); }
 .exam-day-next {
   border: 1.5px solid var(--pr); box-shadow: 0 0 0 3px var(--pr-glow);
 }
-.exam-day-next .exam-day-date { background: var(--pr); color: #fff; }
+.exam-day-next .exam-day-date { background: var(--pr); }
+.exam-day-next .exam-day-dname, .exam-day-next .exam-day-dnum { color: #fff; }
+.exam-day-next .exam-day-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
 .exam-instructions-card {
   display: flex; gap: 10px; align-items: flex-start; background: var(--pr-bg);
   border: 1px solid var(--pr); border-radius: var(--rad-s); padding: 12px 14px; margin-bottom: 16px;
@@ -1704,6 +1785,10 @@ a { color: var(--pr); text-decoration: none; }
   .card { padding: 12px; }
   .welcome { padding: 14px; }
   .welcome h2 { font-size: 19px; }
+  .exam-hero { padding: 14px; }
+  .exam-hero .countdown { font-size: 20px; }
+  .exam-day-card { flex-wrap: wrap; }
+  .exam-day-subjects { flex-basis: 100%; }
   .nav-brand .name { font-size: 13px; }
   .news-filters { grid-template-columns: 1fr; }
   .fin-summary { grid-template-columns: 1fr; }
@@ -1720,6 +1805,8 @@ a { color: var(--pr); text-decoration: none; }
   .nav-btn { width: 34px; height: 34px; font-size: 15px; }
   .tab-btn { padding: 0 10px; font-size: 12.5px; }
   .tab-btn .ic { font-size: 14px; }
+  .exam-day-date { min-width: 72px; padding: 5px 6px; }
+  .exam-day-dnum { font-size: 9.5px; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -5628,6 +5715,105 @@ function _examInstructionsHtml(r) {
   return '<div class="exam-instructions-card"><span class="ic">📋</span><div class="txt">' + esc(text) + '</div></div>';
 }
 
+// نقاط لونية زخرفية لكل مادة — بترتيب أول ظهور عبر كل الأشهر معاً (لون واحد ثابت لنفس المادة أينما
+// ظهرت)، نفس مبدأ _ecSubjectColorMap بجانب طباعة المعلّم، لكن تُرجع رقم خانة (1..8) لا hex — القيمة
+// الفعلية متغيّر CSS مُدقَّق WCAG لكل وضع ثيم (--exam-subj-1..8)، لا لون يُمرَّر من JS مباشرة.
+function _examSubjectColorMap(months) {
+  var map = {}, idx = 0;
+  for (var m = 0; m < months.length; m++) {
+    var days = months[m].days;
+    for (var d = 0; d < days.length; d++) {
+      var subjects = days[d].subjects;
+      for (var s = 0; s < subjects.length; s++) {
+        var n = subjects[s].name;
+        if (!n || map.hasOwnProperty(n)) continue;
+        idx++;
+        map[n] = ((idx - 1) % 8) + 1;
+      }
+    }
+  }
+  return map;
+}
+
+var EXAM_DAY_COLOR_CLASS = {
+  'السبت': 'exam-day-sat', 'الأحد': 'exam-day-sun', 'الاثنين': 'exam-day-mon',
+  'الثلاثاء': 'exam-day-tue', 'الأربعاء': 'exam-day-wed'
+};
+
+function _examDayDotHtml(dayName) {
+  var cls = EXAM_DAY_COLOR_CLASS[dayName] || '';
+  return '<span class="exam-day-dot' + (cls ? ' ' + cls : '') + '"></span>';
+}
+
+function _examSubjChipHtml(name, colorMap) {
+  var slot = colorMap[name] || 0;
+  var dot = slot ? '<span class="exam-subj-dot exam-subj-' + slot + '"></span>' : '';
+  return '<span class="exam-subj-chip">' + dot + esc(name) + '</span>';
+}
+
+// أقرب اختبار قادم عبر كل الأشهر معاً — مستخرَجة من الحساب inline السابق داخل renderExamSchedule
+// (نفس المنطق، بلا تغيير سلوكي) ليُعاد استخدامها من كل من بطاقة الاختبار القادم وشريط تنقّل الأشهر.
+function _examFindNextDay(months, todayStr) {
+  var next = null;
+  for (var m = 0; m < months.length; m++) {
+    var days = months[m].days;
+    for (var d = 0; d < days.length; d++) {
+      var day = days[d];
+      if (day.date && day.date >= todayStr && (!next || day.date < next.date)) {
+        next = { date: day.date, month: months[m].month, subjects: day.subjects };
+      }
+    }
+  }
+  return next;
+}
+
+function _examPrefersReducedMotion() {
+  try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  catch (e) { return false; }
+}
+
+function _examHeroHtml(next, todayStr, colorMap) {
+  if (!next) {
+    return '<div class="exam-hero exam-hero-none"><div class="badge">⏳ الاختبار القادم</div>' +
+           '<div class="countdown">لا يوجد اختبار قادم حالياً 🎉</div></div>';
+  }
+  var n = _examDaysBetween(todayStr, next.date);
+  var countdownText = n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'));
+  var dayName = _examDayName(next.date);
+  var dateLabel = (dayName ? (dayName + ' — ') : '') + next.date;
+  var chips = '';
+  for (var s = 0; s < next.subjects.length; s++) {
+    var slot = colorMap[next.subjects[s].name] || 0;
+    var dot = slot ? '<span class="exam-subj-dot exam-subj-' + slot + '"></span>' : '';
+    chips += '<span class="chip">' + dot + esc(next.subjects[s].name) + '</span>';
+  }
+  return '<div class="exam-hero fade-in">' +
+         '<div class="badge">⏳ الاختبار القادم</div>' +
+         '<div class="countdown">' + esc(countdownText) + '</div>' +
+         '<div class="date">' + esc(dateLabel) + '</div>' +
+         '<div class="subjects">' + chips + '</div>' +
+         '</div>';
+}
+
+// شريط تنقّل بصري بحت بين الأشهر — يُمرِّر لعنصر موجود أصلاً في DOM (كل الأشهر تُرسَم معاً كما
+// اليوم)، بلا تصفية بيانات وبلا نداء خادم إضافي؛ لا يُعرَض إن كان شهر واحد فقط (لا داعي للتنقّل).
+function _examMonthNavHtml(months, next) {
+  if (months.length < 2) return '';
+  var h = '<div class="exam-month-nav">';
+  for (var m = 0; m < months.length; m++) {
+    var isNextMonth = !!(next && next.month === months[m].month);
+    h += '<span class="pill' + (isNextMonth ? ' has-next' : '') + '" onclick="_examScrollToMonth(\'examMo_' + m + '\')">' +
+         esc(months[m].month) + '</span>';
+  }
+  return h + '</div>';
+}
+
+function _examScrollToMonth(id) {
+  var el = $(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: _examPrefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+}
+
 function renderExamSchedule(r) {
   var w = $('examSchedWrap');
   var instructionsHtml = _examInstructionsHtml(r);
@@ -5636,27 +5822,22 @@ function renderExamSchedule(r) {
     return;
   }
   var todayStr = _examTodayYmd();
-  // أقرب اختبار قادم عبر كل الأشهر معاً (لا لكل شهر بمفرده) — لتمييزه ببطاقة بارزة وعدّاد تنازلي.
-  var nextDate = '';
-  for (var m0 = 0; m0 < r.months.length; m0++) {
-    var mdays = r.months[m0].days;
-    for (var d0 = 0; d0 < mdays.length; d0++) {
-      if (mdays[d0].date && mdays[d0].date >= todayStr && (!nextDate || mdays[d0].date < nextDate)) nextDate = mdays[d0].date;
-    }
-  }
+  var colorMap = _examSubjectColorMap(r.months);
+  var next = _examFindNextDay(r.months, todayStr);
+  var heroHtml = _examHeroHtml(next, todayStr, colorMap);
+  var navHtml = _examMonthNavHtml(r.months, next);
   var h = '';
+  var cardIdx = 0;
   for (var m = 0; m < r.months.length; m++) {
     var mo = r.months[m];
     var days = mo.days.slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    h += '<div class="exam-month-block">' +
+    h += '<div class="exam-month-block" id="examMo_' + m + '">' +
          '<div class="exam-month-title">🗓️ ' + esc(mo.month) + '</div>' +
          '<div class="exam-day-list">';
     for (var d = 0; d < days.length; d++) {
       var day = days[d];
-      var names = [];
-      for (var s = 0; s < day.subjects.length; s++) names.push(day.subjects[s].name);
       var isPast = !!(day.date && day.date < todayStr);
-      var isNext = !!(day.date && day.date === nextDate);
+      var isNext = !!(next && day.date === next.date);
       var cardClass = 'exam-day-card' + (isPast ? ' exam-day-past' : '') + (isNext ? ' exam-day-next' : '');
       var countdown = '';
       if (isNext) {
@@ -5664,16 +5845,21 @@ function renderExamSchedule(r) {
         countdown = '<div class="exam-day-countdown">' + (n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'))) + '</div>';
       }
       var dayName = day.date ? _examDayName(day.date) : '';
-      var dateLabel = dayName ? (dayName + ' — ' + day.date) : (day.date || ('اليوم ' + day.dayIndex));
-      h += '<div class="' + cardClass + '">' +
-           '<div class="exam-day-date">' + esc(dateLabel) + '</div>' +
-           '<div class="exam-day-subjects">' + esc(names.join('، ')) + '</div>' +
+      var dateNum = day.date || ('اليوم ' + day.dayIndex);
+      var subjChips = '';
+      for (var s = 0; s < day.subjects.length; s++) subjChips += _examSubjChipHtml(day.subjects[s].name, colorMap);
+      h += '<div class="' + cardClass + '" style="--exam-i:' + Math.min(cardIdx, 12) + '">' +
+           '<div class="exam-day-date">' + _examDayDotHtml(dayName) +
+           '<span class="exam-day-dname">' + esc(dayName || '—') + '</span>' +
+           '<span class="exam-day-dnum">' + esc(dateNum) + '</span></div>' +
+           '<div class="exam-day-subjects">' + subjChips + '</div>' +
            countdown +
            '</div>';
+      cardIdx++;
     }
     h += '</div></div>';
   }
-  w.innerHTML = instructionsHtml + h;
+  w.innerHTML = instructionsHtml + heroHtml + navHtml + h;
 }
 
 function loadNotes(force) {
