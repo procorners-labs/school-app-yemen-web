@@ -2146,6 +2146,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 <div class="sidebar-section" id="adminSection" style="display:none;">
   <span class="sidebar-label">إدارة النظام</span>
   <button class="sidebar-item" id="si-financial"       onclick="showSection('financial')" style="display:none;"><span class="si-icon">💰</span> المالية والعمليات</button>
+  <button class="sidebar-item" id="si-visits"          onclick="showSection('visits')" style="display:none;"><span class="si-icon">📈</span> الزيارات وحركة المرور</button>
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
   <button class="sidebar-item" id="si-supervisorPerms" onclick="showSection('supervisorPerms')" style="display:none;"><span class="si-icon">🛡️</span> ضبط صلاحيات المشرف</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
@@ -5907,6 +5908,9 @@ function showSection(name) {
       console.error('dynamicContent غير موجود');
       return;
     }
+    // إيقاف استطلاع "متصلين الآن" الدوري (صفحة الزيارات) عند مغادرتها لأي قسم آخر —
+    // لا آلية تنظيف مؤقّتات مركزية هنا، فيلزم إيقافه صراحة قبل عرض أي قسم جديد.
+    if (typeof _visitsStopPolling === 'function') { try { _visitsStopPolling(); } catch (eVp) {} }
     // 🔖 حفظ القسم الحالي كي تعود إعادة التحميل لنفس المكان لا للصفحة الرئيسية
     App.currentSection = name;
     try { localStorage.setItem('teacherActiveSection_v1', name); } catch (e) {}
@@ -5982,6 +5986,7 @@ function showSection(name) {
     var renders = {
       dashboard: renderDashboard,
       financial: renderFinancial,
+      visits: renderVisitsTraffic,
       grades: renderGrades,
       homework: renderHomework,
       violations: renderViolations,
@@ -6091,6 +6096,7 @@ var SIDEBAR_ROLE_RULES = {
   'si-teacher-absence': ['admin', 'deputy'],
   'si-social':          ['admin', 'deputy', 'activities'],
   'si-financial':       ['admin'],
+  'si-visits':          ['admin'],
   'si-teachers-mgmt':   ['admin', 'it'],
   'si-supervisorPerms': ['admin', 'deputy'],
   'si-lists-mgmt':      ['admin'],
@@ -6173,7 +6179,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl'];
+  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl', 'si-visits'];
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -20543,6 +20549,230 @@ function _tfExportDisc(){
   var res=window._tfRes||{}, s=(res.discountedStudents||[]);
   _tfExportCsv('الطلاب_المخفّضون.csv', ['الكود','الاسم','الصف','معيار الصف','الرسوم المتّفقة','التخفيض','المدفوع','المتبقّي'],
     s.map(function(x){ return [x.code,x.name,x.grade,x.standard,x.agreed,x.discount,x.paid,x.remaining]; }));
+}
+</script>
+
+<!-- ═══ الزيارات وحركة المرور (لوحة المدير فقط) — يُعاد استخدام أصناف .tf-* أعلاه ═══ -->
+<style>
+  .vt-donut{width:150px;height:150px;border-radius:50%;margin:0 auto 14px;}
+  .vt-legend{display:flex;flex-direction:column;gap:6px;font-size:12.5px;}
+  .vt-legend-item{display:flex;align-items:center;gap:8px;color:var(--text);}
+  .vt-legend-dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto;}
+  .vt-live{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;}
+  .vt-live-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;background:var(--surface);}
+  .vt-live-name{font-weight:700;color:var(--text);}
+  .vt-live-role{font-size:11px;color:var(--text-muted);}
+  .vt-live-ago{font-size:11px;color:var(--text-light);white-space:nowrap;margin-inline-start:8px;}
+  .vt-pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tf-green);margin-inline-end:6px;animation:vtPulse 1.6s infinite;}
+  @keyframes vtPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5);}70%{box-shadow:0 0 0 8px rgba(34,197,94,0);}100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}}
+  .vt-filter select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;}
+</style>
+<script>
+var _visitsPollTimer = null;
+var _visitsRecentAll = [];
+var VT_ROLE_LABELS = { admin:'مدير', deputy:'وكيل', supervisor:'مشرف', accountant:'محاسب', activities:'أنشطة', it:'تقنية', media:'وسائط', teacher:'معلم', student:'طالب' };
+var VT_ROLE_COLORS = ['#4f46e5','#16a34a','#f59e0b','#ef4444','#0ea5e9','#a855f7','#14b8a6','#64748b','#ec4899'];
+
+function renderVisitsTraffic(){
+  var host=document.getElementById('dynamicContent');
+  if(!host) return;
+  host.innerHTML='<div class="tf-card" style="text-align:center;color:var(--text-muted);">⏳ جارٍ تحميل بيانات الزيارات...</div>';
+  callServer('getVisitsTrafficProtected', {}, function(res){
+    if(!res || !res.success){
+      var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
+      var el=document.getElementById('dynamicContent');
+      if(el) el.innerHTML='<div class="tf-card"><div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div></div>';
+      return;
+    }
+    _visitsRender(res);
+  });
+}
+
+function _visitsRefreshNow(){
+  callServer('getVisitsTrafficProtected', {noCache:true}, function(res){
+    if(res && res.success) _visitsRender(res);
+  });
+}
+
+function _visitsRender(res){
+  _visitsRecentAll = res.recent || [];
+  var h='';
+  h+='<div class="tf-head"><h2>📈 الزيارات وحركة المرور</h2>'+
+     '<button class="tf-abtn tf-sync" onclick="_visitsRefreshNow()">🔄 تحديث</button></div>';
+  h+='<div id="tf-root">';
+  h+='<div class="tf-tabs" id="tf-maintabs">'+
+     '<div class="tf-tab active" id="tf-tab-overview" onclick="_tfTab(\'overview\')">نظرة عامة</div>'+
+     '<div class="tf-tab" id="tf-tab-trend" onclick="_tfTab(\'trend\')">الاتجاه الزمني</div>'+
+     '<div class="tf-tab" id="tf-tab-hourly" onclick="_tfTab(\'hourly\')">التوزيع الساعي</div>'+
+     '<div class="tf-tab" id="tf-tab-roles" onclick="_tfTab(\'roles\')">الأدوار</div>'+
+     '<div class="tf-tab" id="tf-tab-log" onclick="_tfTab(\'log\')">سجلّ تفصيلي</div>'+
+     '</div>';
+
+  h+='<div class="tf-pane active" id="tf-pane-overview">'+
+     '<div class="tf-kpis">'+
+       _tfKpi(String(res.todayTotal||0),'زيارات اليوم','','var(--tf-blue)',false)+
+       _tfKpi(String(res.weekTotal||0),'زيارات الأسبوع','','var(--tf-purple)',false)+
+       _tfKpi(String(res.avgDaily||0),'متوسط يومي (30 يوماً)','','var(--tf-teal)',false)+
+       '<div class="tf-kpi big" id="vt-online-kpi"><div class="tf-kpi-v" style="color:var(--tf-green);" id="vt-online-count">…</div>'+
+       '<div class="tf-kpi-l"><span class="vt-pulse"></span>متصلين الآن</div></div>'+
+     '</div>'+
+     '<div class="tf-card"><h3>👥 من متصل الآن</h3><div id="vt-online-list"><div class="tf-empty">جارٍ التحميل...</div></div></div>'+
+     '</div>';
+
+  h+='<div class="tf-pane" id="tf-pane-trend">'+
+     '<div class="tf-card"><h3>📅 الاتجاه اليومي (آخر 30 يوماً)</h3>'+_visitsTrendSvg(res.dailyTrend||[])+'</div>'+
+     '<div class="tf-card"><h3>🗓️ توزيع أيام الأسبوع (آخر 8 أسابيع)</h3>'+_visitsWeekdayBars(res.weekday||[])+'</div>'+
+     '</div>';
+
+  h+='<div class="tf-pane" id="tf-pane-hourly">'+
+     '<div class="tf-card"><h3>🕐 توزيع الدخول حسب الساعة (اليوم)</h3>'+_visitsHourlySvg(res.hourly||[])+'</div>'+
+     '</div>';
+
+  h+='<div class="tf-pane" id="tf-pane-roles">'+
+     '<div class="tf-grid2">'+
+       '<div class="tf-card"><h3>🧩 توزيع الأدوار</h3>'+_visitsRoleDonut(res.roleCounts||{})+'</div>'+
+       '<div class="tf-card"><h3>🏆 أعلى 10 نشاطاً هذا الأسبوع</h3>'+_visitsTopUsers(res.topUsers||[])+'</div>'+
+     '</div></div>';
+
+  h+='<div class="tf-pane" id="tf-pane-log">'+
+     '<div class="tf-card"><div class="vt-filter" style="margin-bottom:10px;">'+
+       '<select id="vt-log-filter" onchange="_visitsRenderLog()">'+
+         '<option value="all">كل الأدوار</option><option value="student">الطلاب فقط</option><option value="staff">الطاقم فقط</option>'+
+       '</select></div>'+
+       '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t"><thead><tr><th>الوقت</th><th>الاسم</th><th>الدور</th><th>تفاصيل</th></tr></thead><tbody id="vt-log-body"></tbody></table></div>'+
+     '</div></div>';
+
+  h+='</div>'; // tf-root
+
+  host.innerHTML=h;
+  _visitsRenderLog();
+  _visitsStartPolling();
+}
+
+function _visitsRoleDonut(roleCounts){
+  var keys=[]; for(var k in roleCounts){ if(roleCounts.hasOwnProperty(k)) keys.push(k); }
+  if(!keys.length) return '<div class="tf-empty">لا توجد بيانات بعد</div>';
+  var total=0, i; for(i=0;i<keys.length;i++) total+=roleCounts[keys[i]];
+  keys.sort(function(a,b){ return roleCounts[b]-roleCounts[a]; });
+  var stops='', acc=0, legend='';
+  for(i=0;i<keys.length;i++){
+    var val=roleCounts[keys[i]], pct= total ? (val/total*100) : 0;
+    var color=VT_ROLE_COLORS[i%VT_ROLE_COLORS.length];
+    var from=acc, to=acc+pct; acc=to;
+    stops += (stops?', ':'') + color+' '+from.toFixed(2)+'% '+to.toFixed(2)+'%';
+    var label=VT_ROLE_LABELS[keys[i]]||keys[i];
+    legend += '<div class="vt-legend-item"><span class="vt-legend-dot" style="background:'+color+';"></span>'+
+      _tfEsc(label)+' — '+val+' ('+pct.toFixed(0)+'%)</div>';
+  }
+  return '<div class="vt-donut" style="background:conic-gradient('+stops+');"></div>'+
+         '<div class="vt-legend">'+legend+'</div>';
+}
+
+function _visitsTopUsers(list){
+  if(!list || !list.length) return '<div class="tf-empty">لا توجد بيانات كافية بعد</div>';
+  var pairs=list.map(function(u){ return { name:u.name+' ('+(VT_ROLE_LABELS[u.role]||u.role)+')', value:u.count }; });
+  return _tfBars(pairs, 'var(--tf-purple)');
+}
+
+function _visitsWeekdayBars(weekday){
+  var names=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+  var pairs=[]; for(var i=0;i<7;i++) pairs.push({ name:names[i], value:weekday[i]||0 });
+  return _tfBars(pairs, 'var(--tf-blue)');
+}
+
+function _visitsHourlySvg(hourly){
+  if(!hourly || !hourly.length) return '<div class="tf-empty">لا توجد بيانات اليوم بعد</div>';
+  var W=820,H=220,pad=34,max=1,i;
+  for(i=0;i<hourly.length;i++) max=Math.max(max, hourly[i]||0);
+  var n=hourly.length, slot=(W-pad*2)/n, bw=Math.max(4,slot-4);
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;min-width:520px;">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1"/>';
+  for(i=0;i<n;i++){
+    var v=hourly[i]||0, bh=(H-pad*2)*(v/max), x=pad+slot*i+(slot-bw)/2;
+    svg+='<rect x="'+x+'" y="'+(H-pad-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" style="fill:var(--tf-blue)"/>';
+    if(i%2===0){
+      svg+='<text x="'+(x+bw/2)+'" y="'+(H-pad+13)+'" font-size="9" style="fill:var(--text-muted)" text-anchor="middle">'+i+'</text>';
+    }
+  }
+  svg+='</svg>';
+  return svg;
+}
+
+function _visitsTrendSvg(trend){
+  if(!trend || !trend.length) return '<div class="tf-empty">لا توجد بيانات كافية بعد</div>';
+  var W=820,H=240,pad=34,max=1,i;
+  for(i=0;i<trend.length;i++) max=Math.max(max, trend[i].staff||0, trend[i].student||0);
+  var n=trend.length, stepX=(W-pad*2)/Math.max(1,n-1);
+  function pts(key,color){
+    var s='';
+    for(var j=0;j<n;j++){
+      var x=pad+stepX*j, y=H-pad-((H-pad*2)*((trend[j][key]||0)/max));
+      s+=(j?' ':'')+x.toFixed(1)+','+y.toFixed(1);
+    }
+    return '<polyline points="'+s+'" style="fill:none;stroke:'+color+';stroke-width:2.5;"/>';
+  }
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;min-width:520px;">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1"/>';
+  svg+=pts('staff','var(--tf-blue)');
+  svg+=pts('student','var(--tf-purple)');
+  for(i=0;i<n;i+=5){
+    var xk=pad+stepX*i;
+    svg+='<text x="'+xk+'" y="'+(H-pad+15)+'" font-size="9" style="fill:var(--text-muted)" text-anchor="middle">'+_tfEsc((trend[i].date||'').substring(5))+'</text>';
+  }
+  svg+='</svg>';
+  svg+='<div style="display:flex;gap:18px;justify-content:center;margin-top:8px;font-size:12px;color:var(--text-muted);">'+
+       '<span><span style="display:inline-block;width:11px;height:11px;background:var(--tf-blue);border-radius:2px;margin-inline-end:5px;"></span>الطاقم</span>'+
+       '<span><span style="display:inline-block;width:11px;height:11px;background:var(--tf-purple);border-radius:2px;margin-inline-end:5px;"></span>الطلاب</span></div>';
+  return svg;
+}
+
+function _visitsRenderLog(){
+  var body=document.getElementById('vt-log-body'); if(!body) return;
+  var filterEl=document.getElementById('vt-log-filter');
+  var filter=filterEl?filterEl.value:'all';
+  var rows='';
+  for(var i=0;i<_visitsRecentAll.length;i++){
+    var r=_visitsRecentAll[i];
+    var isStaff = r.role !== 'student';
+    if(filter==='student' && isStaff) continue;
+    if(filter==='staff' && !isStaff) continue;
+    rows+='<tr><td>'+_tfEsc(r.ts)+'</td><td>'+_tfEsc(r.name)+'</td><td>'+_tfEsc(VT_ROLE_LABELS[r.role]||r.role)+'</td><td>'+_tfEsc(r.detail)+'</td></tr>';
+  }
+  body.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">لا توجد أحداث بعد</td></tr>';
+}
+
+function _visitsRenderOnline(res){
+  var countEl=document.getElementById('vt-online-count');
+  var listEl=document.getElementById('vt-online-list');
+  if(!countEl || !listEl) return; // القسم لم يعد معروضاً — تجاهل الرد المتأخر
+  if(!res || !res.success){ countEl.textContent='—'; return; }
+  countEl.textContent = (res.staffCount||0)+(res.studentCount||0);
+  var all = (res.staff||[]).concat(res.students||[]);
+  if(!all.length){ listEl.innerHTML='<div class="tf-empty">لا يوجد أحد متصل حالياً</div>'; return; }
+  var html='<div class="vt-live">';
+  for(var i=0;i<all.length;i++){
+    var u=all[i];
+    html+='<div class="vt-live-item"><div><div class="vt-live-name">'+_tfEsc(u.name)+'</div>'+
+      '<div class="vt-live-role">'+_tfEsc(VT_ROLE_LABELS[u.role]||u.role)+'</div></div>'+
+      '<div class="vt-live-ago">منذ '+(u.minutesAgo||0)+' د</div></div>';
+  }
+  html+='</div>';
+  listEl.innerHTML=html;
+}
+
+function _visitsPollOnline(){
+  if(document.visibilityState !== 'visible') return;
+  callServer('getOnlineNowProtected', {}, function(res){ _visitsRenderOnline(res); }, function(){});
+}
+
+function _visitsStartPolling(){
+  _visitsStopPolling();
+  _visitsPollOnline();
+  _visitsPollTimer = setInterval(_visitsPollOnline, 18000);
+}
+
+function _visitsStopPolling(){
+  if(_visitsPollTimer){ clearInterval(_visitsPollTimer); _visitsPollTimer=null; }
 }
 </script>
 </body>
