@@ -758,6 +758,19 @@ a { color: var(--pr); text-decoration: none; }
   font-weight: 600;
   backdrop-filter: blur(8px);
 }
+.welcome .chip[onclick] { cursor: pointer; }
+.welcome .chip.birthdate-live {
+  background: rgba(255,255,255,.2);
+  border: none;
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  backdrop-filter: blur(8px);
+  color-scheme: dark;
+}
 
 /* 👨‍👩‍👦 شرائح تبديل حسابات الإخوة */
 .sib-chip {
@@ -2869,6 +2882,7 @@ function doLogin() {
         role: r.role,
         schoolId: schoolId,   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
         email: r.email || '',
+        birthdate: r.birthdate || '',
         siblings: r.siblings || [],
         switchToken: r.switchToken || ''
       };
@@ -2962,7 +2976,9 @@ function initApp() {
   if (APP.user.class)   wm += '<span class="chip">📚 ' + esc(APP.user.class) + '</span>';
   if (APP.user.section) wm += '<span class="chip">📌 ' + esc(APP.user.section) + '</span>';
   if (APP.user.id)      wm += '<span class="chip">🆔 ' + esc(APP.user.id) + '</span>';
+  wm += '<span class="chip" id="birthdateChip" onclick="openBirthdatePicker()" title="اضغط لتحديد/تعديل تاريخ ميلادك"></span>';
   $('welcomeMeta').innerHTML = wm;
+  renderBirthdateChip();
 
   // 👨‍👩‍👦 بطاقة إخوتك في المدرسة (تظهر فقط عند وجود إخوة مرتبطين فعلاً)
   renderSiblingsCard();
@@ -6194,6 +6210,91 @@ function saveMyEmail() {
       toast('فشل: ' + (e.message || e), 'e');
     })
     .updateMyEmail(APP.user.id, email, APP.user.schoolId, APP.user.switchToken);
+}
+
+// ==================== تاريخ الميلاد (شريحة قابلة للنقر — بلا مودال/زر حفظ) ====================
+// النقر على الشريحة يستبدلها مؤقتاً بعنصر input[type=date] حقيقي في نفس المكان، فيفتح
+// متصفح/WebView منتقي التاريخ الأصلي عند التفاعل معه (سلوك متصفح قياسي، لا اعتماد كامل على
+// showPicker() غير المدعوم في كل البيئات) — عند الاختيار (onchange) يُحفظ تلقائياً فوراً.
+var STU_AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+function _fmtBirthdateAr(iso) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return '';
+  var mi = parseInt(m[2], 10) - 1;
+  if (mi < 0 || mi > 11) return iso;
+  return parseInt(m[3], 10) + ' ' + STU_AR_MONTHS[mi] + ' ' + m[1];
+}
+
+function renderBirthdateChip() {
+  var el = $('birthdateChip');
+  if (!el) return;
+  el.textContent = APP.user.birthdate
+    ? '🎂 ' + _fmtBirthdateAr(APP.user.birthdate)
+    : '🎂 أضف تاريخ ميلادك';
+}
+
+function _birthdateChipToSpan() {
+  var span = document.createElement('span');
+  span.className = 'chip';
+  span.id = 'birthdateChip';
+  span.title = 'اضغط لتحديد/تعديل تاريخ ميلادك';
+  span.onclick = openBirthdatePicker;
+  return span;
+}
+
+function openBirthdatePicker() {
+  var chip = $('birthdateChip');
+  if (!chip || chip.tagName === 'INPUT') return;
+  var inp = document.createElement('input');
+  inp.type = 'date';
+  inp.id = 'birthdateChip';
+  inp.className = 'chip birthdate-live';
+  if (APP.user.birthdate) inp.value = APP.user.birthdate;
+  var _td = new Date();
+  var _pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  inp.max = _td.getFullYear() + '-' + _pad2(_td.getMonth() + 1) + '-' + _pad2(_td.getDate()); // لا تاريخ مستقبلي (بالتوقيت المحلي)
+  chip.replaceWith(inp);
+  inp.focus();
+  try { inp.showPicker && inp.showPicker(); } catch (e) {}
+  inp.onchange = function () { saveMyBirthdate(inp.value); };
+  inp.onblur = function () {
+    // لم يختر تاريخاً جديداً (تراجع بلا اختيار) — أعد الشريحة النصية كما كانت
+    setTimeout(function () {
+      var live = document.getElementById('birthdateChip');
+      if (live && live.tagName === 'INPUT' && live.value === (APP.user.birthdate || '')) {
+        live.replaceWith(_birthdateChipToSpan());
+        renderBirthdateChip();
+      }
+    }, 150);
+  };
+}
+
+function saveMyBirthdate(value) {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (r && r.ok) {
+        APP.user.birthdate = r.birthdate || value;
+        lsSaveSession();
+        var live = document.getElementById('birthdateChip');
+        if (live && live.tagName === 'INPUT') live.replaceWith(_birthdateChipToSpan());
+        renderBirthdateChip();
+        toast(r.message || 'تم الحفظ', 's');
+      } else {
+        var liveErr = document.getElementById('birthdateChip');
+        if (liveErr && liveErr.tagName === 'INPUT') liveErr.replaceWith(_birthdateChipToSpan());
+        renderBirthdateChip();
+        toast((r && r.error) || 'تعذّر الحفظ', 'e');
+      }
+    })
+    .withFailureHandler(function (e) {
+      var liveFail = document.getElementById('birthdateChip');
+      if (liveFail && liveFail.tagName === 'INPUT') liveFail.replaceWith(_birthdateChipToSpan());
+      renderBirthdateChip();
+      toast('تعذّر الاتصال بالخادم: ' + (e.message || e), 'e');
+    })
+    .updateMyBirthdate(APP.user.id, value, APP.user.schoolId, APP.user.switchToken);
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================
