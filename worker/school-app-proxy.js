@@ -168,22 +168,15 @@ export default {
     }
 
     // ── 1ج) صفحة التسعيرة (HTML من GAS) عبر الوكيل: /pricing ─────
-    //   تخدم صفحة doGet الخاصة بمشروع التسعيرة كـ HTML نظيف (لا JSON).
-    //   مناسبة للمناطق المحجوبة: المتصفّح يتكلّم مع Cloudflare فقط.
+    //   إعادة توجيه حقيقية (لا جلب+بثّ) — نفس سبب /oauth أعلاه: صفحات GAS
+    //   HtmlService تُخدَم داخل إطار Sandbox من جوجل يعتمد مسارات نسبية
+    //   (goog.script.init، CSS/JS ثابتة)؛ جلب البايتات وبثّها تحت نطاقنا يكسر
+    //   تلك المسارات (goog is not defined، 404 على mae_html_css_rtl.css) ويترك
+    //   الإطار فارغاً تماماً (تحقّق حيّ بمتصفح فعلي: الصفحة بيضاء بالكامل عبر
+    //   الوكيل، وتعمل كاملةً عند فتح رابط جوجل مباشرة). التوجيه الحقيقي يُبقي
+    //   المتصفح على نطاق جوجل الصحيح فتعمل الصفحة كبقية صفحات GAS الأخرى.
     if (path === '/pricing' || path === '/pricing/') {
-      try {
-        var prResp = await fetch(GAS.pricing + url.search, { method: 'GET', redirect: 'follow' });
-        var prBody = await prResp.text();
-        var prCt = prResp.headers.get('Content-Type') || 'text/html; charset=utf-8';
-        var prHeaders = new Headers();
-        prHeaders.set('Content-Type', prCt);
-        prHeaders.set('Access-Control-Allow-Origin', '*');
-        return new Response(prBody, { status: prResp.status, headers: prHeaders });
-      } catch (prErr) {
-        return withCors(new Response('<h3>تعذّر فتح صفحة التسعيرة: ' + String(prErr) + '</h3>', {
-          status: 502, headers: { 'Content-Type': 'text/html; charset=utf-8' }
-        }));
-      }
+      return Response.redirect(GAS.pricing + url.search, 302);
     }
 
     // ── 1د) بثّ فيديو Google Drive عبر الوكيل: /media/drive/<fileId> ──
