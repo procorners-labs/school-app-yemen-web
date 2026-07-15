@@ -160,7 +160,13 @@
     }
 
     // online-only (مصادقة/رفع/خارج النطاق): سلوك أصلي + حفظ الجلسة عند النجاح.
-    rawCall(fnName, args, function (result, uo) {
+    // تسجيل الدخول تحديداً (لا بقية online-only) يحصل على إعادة محاولة قصيرة لأخطاء
+    // الشبكة العابرة فقط — آمن: رفض كلمة المرور/تجاوز عدد المحاولات يعودان كرد JSON
+    // صالح (ليس __network)، فإعادة المحاولة لا تُكرّر محاولة دخول مرفوضة ضد عدّاد الحظر،
+    // وتُطلَق فقط عندما لا يصل الطلب للخادم أصلاً (status 0/مهلة/رد غير صالح).
+    var LOGIN_FNS = { handleTeacherLogin: true, loginStudent: true };
+    var _transport = LOGIN_FNS[fnName] ? rawCallWithRetry : rawCall;
+    _transport(fnName, args, function (result, uo) {
       OS.persistSession(fnName, result);
       if (onSuccess) onSuccess(result, uo);
     }, onFailure, userObject);
