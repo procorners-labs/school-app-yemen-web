@@ -10512,26 +10512,6 @@ function renderGradesTable() {
   }
   tbody.innerHTML = html;
 }
-// ── دالة مساعدة لبناء حقل الإدخال ──
-function _gradeInput(code, type, val, max) {
-  var cls = val !== '' ? 'grade-input has-grade' : 'grade-input';
-  return '<input type="number" class="' + cls + '" ' +
-         'data-code="' + esc(code) + '" data-type="' + type + '" ' +
-         'value="' + esc(String(val)) + '" ' +
-         'min="0" max="' + max + '" step="0.5" ' +
-         'oninput="onGradeInput(this)" ' +
-         'onchange="triggerAutoSave(this)">';
-}
-
-// ── ربط أحداث الإدخال لكل الحقول ──
-function _bindGradeInputs() {
-  var inputs = document.querySelectorAll('.grade-input');
-  for (var i = 0; i < inputs.length; i++) {
-    inputs[i].addEventListener('input', function() { onGradeInput(this); });
-    inputs[i].addEventListener('change', function() { triggerAutoSave(this); });
-  }
-}
-
 function filterGradesTable(q) { var rows = document.querySelectorAll('#gradesTable tbody tr'); for (var i = 0; i < rows.length; i++) { var r = rows[i]; if (q === '' || r.dataset.student.indexOf(q.toLowerCase()) !== -1) r.style.display = ''; else r.style.display = 'none'; } }
 function onGradeInput(inp) {
   var val  = inp.value;
@@ -10552,7 +10532,7 @@ function onGradeInput(inp) {
 
   if (val === '') {
     inp.classList.remove('has-grade', 'error', 'pending-save', 'saving');
-    triggerAutoSave(inp);
+    triggerAutoSave(inp, { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section });
     return;
   }
 
@@ -10609,14 +10589,17 @@ function onGradeInput(inp) {
     }
   }
 
-  // مؤقت الحفظ التلقائي
-  var key = code + '_' + type;
+  // مؤقت الحفظ التلقائي — نلتقط سياق GS كـ snapshot الآن وقت الكتابة، لا وقت الإطلاق لاحقاً
+  // (المعلّم قد يبدّل الشهر/المادة/الصف/الشعبة خلال 500ms، فتصبح قراءة GS الحيّة عندها خاطئة
+  //  وتُرسِل الدرجة المكتوبة هنا إلى خانة مادة/شهر مختلفة تماماً لنفس الطالب)
+  var ctx = { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section };
+  var key = ctx.subject + '_' + ctx.month + '_' + code + '_' + type;
   if (App.autoSaveTimers[key]) clearTimeout(App.autoSaveTimers[key]);
   inp.classList.add('pending-save');
   inp.classList.remove('saving');
 
   App.autoSaveTimers[key] = setTimeout(function() {
-    triggerAutoSave(inp);
+    triggerAutoSave(inp, ctx);
   }, 500);   /* أسرع: 500ms بدل 1200ms */
 }
 
@@ -10640,12 +10623,16 @@ function onGradeInput(inp) {
   });
 })();
 
-function triggerAutoSave(inp) {
+function triggerAutoSave(inp, ctx) {
+  // ctx: { month, subject, grade, section } — السياق المُلتقَط وقت الكتابة (onGradeInput)،
+  // وليس GS الحيّة — GS قد تكون تغيّرت لو بدّل المعلّم الشهر/المادة/الصف قبل إطلاق هذا المؤقّت
+  var ctxIsTermMonth = (TERM_MONTHS.indexOf(ctx.month) !== -1);
+
   // ═══════════════════════════════════════════════════
   // ⭐ v3.1: تجاهل الحفظ التلقائي للحقول المقفلة
   // ═══════════════════════════════════════════════════
   var fieldType = inp.getAttribute('data-type');
-  if (GS.isTermMonth && fieldType === 'monthly_score') {
+  if (ctxIsTermMonth && fieldType === 'monthly_score') {
     return;  /* المحصلة محسوبة تلقائياً من السيرفر */
   }
   if (fieldType === 'total_score' || fieldType === 'final_total') {
@@ -10667,10 +10654,10 @@ function triggerAutoSave(inp) {
 
   callServer('autoSaveSingleGradeProtected', {
     token      : App.user.token,
-    month      : GS.month,
-    subject    : GS.subject,
-    grade      : GS.grade,
-    section    : GS.section,
+    month      : ctx.month,
+    subject    : ctx.subject,
+    grade      : ctx.grade,
+    section    : ctx.section,
     studentCode: code,
     gradeType  : type,
     value      : val
