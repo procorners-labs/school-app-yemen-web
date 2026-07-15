@@ -20829,7 +20829,56 @@ function _visitsNeverAlert(title, names){
     '<div style="font-size:11.5px;margin-top:4px;opacity:.85;">'+list+more+'</div></div></div>';
 }
 
-function _visitsHistSvg(buckets, order, color){
+// أداء المعلمين/الطلاب — ألوان محجوزة بمعنى ثابت (جيد/تحذير/حرج)، مصدر حقيقة واحد
+// يُعاد استخدامه في الهستوجرامات + الجدولين + أعلى20 + نسبة المشاركة كي لا يتضارب المعنى.
+function _visitsLoginTier(lc){
+  lc = lc||0;
+  if (lc <= 0) return { color:'var(--tf-red)',   label:'لم يسجّل الدخول' };
+  if (lc <= 3) return { color:'var(--tf-amber)', label:'نشاط منخفض' };
+  return          { color:'var(--tf-green)', label:'نشاط جيد' };
+}
+function _visitsUsageTier(um){
+  um = um||0;
+  if (um <= 0)  return { color:'var(--tf-red)',   label:'بلا استخدام مسجَّل' };
+  if (um <= 30) return { color:'var(--tf-amber)', label:'استخدام محدود' };
+  return           { color:'var(--tf-green)', label:'استخدام جيد' };
+}
+function _visitsParticipationTier(pct){
+  pct = pct||0;
+  if (pct < 50) return { color:'var(--tf-red)',   label:'مشاركة ضعيفة' };
+  if (pct < 80) return { color:'var(--tf-amber)', label:'مشاركة متوسطة' };
+  return           { color:'var(--tf-green)', label:'مشاركة ممتازة' };
+}
+function _visitsLoginBucketColor(k){
+  if (k==='0') return 'var(--tf-red)';
+  if (k==='1' || k==='2-3') return 'var(--tf-amber)';
+  return 'var(--tf-green)';
+}
+function _visitsUsageBucketColor(k){
+  if (k==='0') return 'var(--tf-red)';
+  if (k==='1-10' || k==='10-30') return 'var(--tf-amber)';
+  return 'var(--tf-green)';
+}
+function _visitsTierCell(value, tier){
+  return '<span style="display:inline-flex;align-items:center;gap:5px;">'+
+    '<span style="width:8px;height:8px;border-radius:50%;background:'+tier.color+';flex:0 0 auto;" title="'+_tfEsc(tier.label)+'"></span>'+
+    '<span style="font-weight:700;color:var(--text);">'+value+'</span></span>';
+}
+function _visitsTierBars(pairs, tierFn){
+  if(!pairs || !pairs.length) return '<div class="tf-empty">لا توجد بيانات</div>';
+  var max=1,i; for(i=0;i<pairs.length;i++) max=Math.max(max, pairs[i].value||0);
+  var html='';
+  for(i=0;i<pairs.length;i++){
+    var p=pairs[i], pct=Math.round(((p.value||0)/max)*100);
+    var tier=tierFn(p.value||0);
+    html+='<div class="tf-barrow"><div class="tf-barlbl" title="'+_tfEsc(p.name)+'">'+_tfEsc(p.name)+'</div>'+
+      '<div class="tf-bartrack"><div class="tf-barfill" style="width:'+pct+'%;background:'+tier.color+';" title="'+_tfEsc(tier.label)+'"></div></div>'+
+      '<div class="tf-barval">'+_tfComma(p.value)+'</div></div>';
+  }
+  return html;
+}
+
+function _visitsHistSvg(buckets, order, colorFn){
   buckets=buckets||{};
   var pairs=order.map(function(k){ return { name:k, value:buckets[k]||0 }; });
   var max=1,i; for(i=0;i<pairs.length;i++) max=Math.max(max, pairs[i].value);
@@ -20839,7 +20888,8 @@ function _visitsHistSvg(buckets, order, color){
   svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1"/>';
   for(i=0;i<n;i++){
     var v=pairs[i].value, bh=(H-pad*2)*(v/max), x=pad+slot*i+(slot-bw)/2;
-    svg+='<rect x="'+x+'" y="'+(H-pad-bh)+'" width="'+bw+'" height="'+bh+'" rx="3" style="fill:'+color+'"/>';
+    var c=colorFn(pairs[i].name);
+    svg+='<rect x="'+x+'" y="'+(H-pad-bh)+'" width="'+bw+'" height="'+bh+'" rx="3" style="fill:'+c+'"><title>'+_tfEsc(pairs[i].name)+': '+v+'</title></rect>';
     svg+='<text x="'+(x+bw/2)+'" y="'+(H-pad+14)+'" font-size="9" style="fill:var(--text-muted)" text-anchor="middle">'+_tfEsc(pairs[i].name)+'</text>';
     if(v>0) svg+='<text x="'+(x+bw/2)+'" y="'+(H-pad-bh-5)+'" font-size="9" font-weight="700" style="fill:var(--text)" text-anchor="middle">'+v+'</text>';
   }
@@ -20861,8 +20911,8 @@ function _visitsRenderCumulative(res){
   h+='<div class="tf-kpis">'+
      _tfKpi(String(tot.totalTeacherLogins||0),'إجمالي دخول المعلمين','','var(--tf-blue)',false)+
      _tfKpi(String(tot.totalStudentLogins||0),'إجمالي دخول الطلاب','','var(--tf-purple)',false)+
-     _tfKpi((tot.avgTeacherUsageMinutes||0)+' د','متوسط استخدام المعلم','','var(--tf-teal)',false)+
-     _tfKpi((tot.avgStudentUsageMinutes||0)+' د','متوسط استخدام الطالب','','var(--tf-amber)',false)+
+     _tfKpi((tot.avgTeacherUsageMinutes||0)+' د','متوسط استخدام المعلم','',_visitsUsageTier(tot.avgTeacherUsageMinutes).color,false)+
+     _tfKpi((tot.avgStudentUsageMinutes||0)+' د','متوسط استخدام الطالب','',_visitsUsageTier(tot.avgStudentUsageMinutes).color,false)+
      '</div>';
 
   if((nev.teacherCount||0)>0 || (nev.studentCount||0)>0){
@@ -20872,11 +20922,14 @@ function _visitsRenderCumulative(res){
     h+='</div>';
   }
 
+  h+='<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin:2px 0 14px;">'+
+     '<span>🟢 نشاط جيد</span><span>🟡 نشاط منخفض</span><span>🔴 بلا نشاط</span></div>';
+
   h+='<div class="tf-grid2">'+
-     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — المعلمون</h3>'+_visitsHistSvg((res.loginHistogram||{}).teacher, ['0','1','2-3','4-6','7-10','11+'], 'var(--tf-blue)')+'</div>'+
-     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — الطلاب</h3>'+_visitsHistSvg((res.loginHistogram||{}).student, ['0','1','2-3','4-6','7-10','11+'], 'var(--tf-purple)')+'</div>'+
-     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — المعلمون</h3>'+_visitsHistSvg((res.usageHistogram||{}).teacher, ['0','1-10','10-30','30-60','60-120','120+'], 'var(--tf-teal)')+'</div>'+
-     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — الطلاب</h3>'+_visitsHistSvg((res.usageHistogram||{}).student, ['0','1-10','10-30','30-60','60-120','120+'], 'var(--tf-amber)')+'</div>'+
+     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — المعلمون</h3>'+_visitsHistSvg((res.loginHistogram||{}).teacher, ['0','1','2-3','4-6','7-10','11+'], _visitsLoginBucketColor)+'</div>'+
+     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — الطلاب</h3>'+_visitsHistSvg((res.loginHistogram||{}).student, ['0','1','2-3','4-6','7-10','11+'], _visitsLoginBucketColor)+'</div>'+
+     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — المعلمون</h3>'+_visitsHistSvg((res.usageHistogram||{}).teacher, ['0','1-10','10-30','30-60','60-120','120+'], _visitsUsageBucketColor)+'</div>'+
+     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — الطلاب</h3>'+_visitsHistSvg((res.usageHistogram||{}).student, ['0','1-10','10-30','30-60','60-120','120+'], _visitsUsageBucketColor)+'</div>'+
      '</div>';
 
   var byGrade=res.byGrade||[];
@@ -20886,14 +20939,15 @@ function _visitsRenderCumulative(res){
      '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">متوسط الاستخدام (دقائق)</div>'+
        _tfBars(byGrade.map(function(g){ return {name:g.grade, value:g.avgUsageMinutes}; }), 'var(--tf-teal)')+'</div>'+
      '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">نسبة المشاركة (%)</div>'+
-       _tfBars(byGrade.map(function(g){ return {name:g.grade, value:g.participationPct}; }), 'var(--tf-green)')+'</div>'+
+       _visitsTierBars(byGrade.map(function(g){ return {name:g.grade, value:g.participationPct}; }), _visitsParticipationTier)+
+       '<div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">🟢 ≥80٪ · 🟡 50-79٪ · 🔴 &lt;50٪</div></div>'+
      '</div></div>';
 
   h+='<div class="tf-grid2">'+
      '<div class="tf-card"><h3>🏅 أعلى 20 معلماً دخولاً</h3>'+
-       _tfBars((res.topTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), 'var(--tf-blue)')+'</div>'+
+       _visitsTierBars((res.topTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier)+'</div>'+
      '<div class="tf-card"><h3>🏅 أعلى 20 طالباً دخولاً</h3>'+
-       _tfBars((res.topStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), 'var(--tf-purple)')+'</div>'+
+       _visitsTierBars((res.topStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier)+'</div>'+
      '</div>';
 
   h+='<div class="tf-card"><h3>👨‍🏫 كل المعلمين ('+window._visitsAllTeachersFull.length+')</h3>'+
@@ -20944,7 +20998,9 @@ function _visitsFilterTeacherTable(q){
     '</tr></thead><tbody>';
   for(i=0;i<list.length;i++){
     var t2=list[i];
-    html+='<tr><td>'+_tfEsc(t2.name)+'</td><td>'+_tfEsc(t2.subject)+'</td><td>'+(t2.loginCount||0)+'</td><td>'+(t2.usageMinutes||0)+'</td></tr>';
+    html+='<tr><td>'+_tfEsc(t2.name)+'</td><td>'+_tfEsc(t2.subject)+'</td>'+
+      '<td>'+_visitsTierCell(t2.loginCount||0, _visitsLoginTier(t2.loginCount))+'</td>'+
+      '<td>'+_visitsTierCell(t2.usageMinutes||0, _visitsUsageTier(t2.usageMinutes))+'</td></tr>';
   }
   if(!list.length) html+='<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">لا نتائج</td></tr>';
   html+='</tbody>';
@@ -20982,7 +21038,9 @@ function _visitsFilterStudentTable(q){
     '</tr></thead><tbody>';
   for(i=0;i<list.length;i++){
     var s2=list[i];
-    html+='<tr><td>'+_tfEsc(s2.name)+'</td><td>'+_tfEsc(s2.class)+'</td><td>'+_tfEsc(s2.section)+'</td><td>'+(s2.loginCount||0)+'</td><td>'+(s2.usageMinutes||0)+'</td></tr>';
+    html+='<tr><td>'+_tfEsc(s2.name)+'</td><td>'+_tfEsc(s2.class)+'</td><td>'+_tfEsc(s2.section)+'</td>'+
+      '<td>'+_visitsTierCell(s2.loginCount||0, _visitsLoginTier(s2.loginCount))+'</td>'+
+      '<td>'+_visitsTierCell(s2.usageMinutes||0, _visitsUsageTier(s2.usageMinutes))+'</td></tr>';
   }
   if(!list.length) html+='<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">لا نتائج</td></tr>';
   html+='</tbody>';
