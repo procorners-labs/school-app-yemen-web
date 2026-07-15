@@ -7083,9 +7083,12 @@ function ec_renderGradesControls() {
     h += '<div><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">الشعبة</label>' +
       '<select id="ec-g-section" style="padding:8px;border:1px solid #ddd;border-radius:8px;"></select></div>';
   }
-  h += '<div><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">المادة</label>' +
-    '<select id="ec-g-subject" style="padding:8px;border:1px solid #ddd;border-radius:8px;min-width:140px;"></select></div>' +
-    '<button onclick="ec_gradesLoad()" style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:700;">📄 عرض</button>' +
+  // وضع الصغار: كل المواد السبع تُعرَض معاً في نموذج/كشف واحد — لا حاجة لاختيار مادة.
+  if (mode !== 'young') {
+    h += '<div><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">المادة</label>' +
+      '<select id="ec-g-subject" style="padding:8px;border:1px solid #ddd;border-radius:8px;min-width:140px;"></select></div>';
+  }
+  h += '<button onclick="ec_gradesLoad()" style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:700;">📄 عرض</button>' +
     '<button onclick="ec_gradesPrint()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;">🖨️ طباعة</button>' +
     '</div>';
   // بحث بالاسم — فقط للأوضاع التي تُظهر عمود اسم (لا معنى له في وضعَي الرقم السري المتعمَّدَين
@@ -7120,10 +7123,11 @@ function ec_gradesLoad() {
   var grade   = (document.getElementById('ec-g-grade') || {}).value || '';
   var secSel  = document.getElementById('ec-g-section');
   var section = secSel ? secSel.value : '';
-  var subject = (document.getElementById('ec-g-subject') || {}).value || '';
+  var isYoung = (_ecGradeMode === 'young');
+  var subject = isYoung ? '' : ((document.getElementById('ec-g-subject') || {}).value || '');
   var month   = (_ecData && _ecData.examType) || 'نهاية العام';
   var table = document.getElementById('ec-grades-table');
-  if (!grade || !subject) { if (table) table.innerHTML = '<p style="color:#c62828;">اختر الصف والمادة أولاً</p>'; return; }
+  if (!grade || (!isYoung && !subject)) { if (table) table.innerHTML = '<p style="color:#c62828;">اختر الصف والمادة أولاً</p>'; return; }
   if (table) table.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
   // ورقة "النصفي" (الدرجات) لا تحمل رقم الجلوس/الرقم السري — هما فقط في ورقة "الطلاب"
   // (أعمدة الكنترول)، فنجلب المصدرين معاً وندمجهما بمطابقة الكود.
@@ -7140,12 +7144,18 @@ function ec_gradesLoad() {
       students[j].seatNumber    = r ? r.seatNumber    : '';
       students[j].secretNumber  = r ? r.secretNumber  : '';
     }
-    _ecGradesData = { grade: grade, section: section, subject: subject, month: month, students: students };
+    _ecGradesData = { grade: grade, section: section, subject: subject, month: month, subjects: gradesRes.subjects || null, students: students };
     ec_gradesRenderTable();
   }
-  callServer('getStudentsProtected', { grade: grade, section: section, month: month, subject: subject }, function (res) {
-    gradesRes = res; if (--pending === 0) done();
-  }, function (err) { gradesRes = { success: false, error: err.message }; if (--pending === 0) done(); });
+  if (isYoung) {
+    callServer('getYoungExamGradesProtected', { grade: grade, section: section, month: month }, function (res) {
+      gradesRes = res; if (--pending === 0) done();
+    }, function (err) { gradesRes = { success: false, error: err.message }; if (--pending === 0) done(); });
+  } else {
+    callServer('getStudentsProtected', { grade: grade, section: section, month: month, subject: subject }, function (res) {
+      gradesRes = res; if (--pending === 0) done();
+    }, function (err) { gradesRes = { success: false, error: err.message }; if (--pending === 0) done(); });
+  }
   callServer('getExamStudentsByClassProtected', { grade: grade, section: section }, function (res) {
     rosterRes = res; if (--pending === 0) done();
   }, function () { rosterRes = null; if (--pending === 0) done(); });
@@ -7178,9 +7188,13 @@ function ec_gradesRenderTable() {
     students.sort(function (a, b) { return a.name.localeCompare(b.name, 'ar'); });
   }
 
+  var subjects = (mode === 'young') ? (d.subjects || []) : null;
   var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;" id="ec-grades-real-table">' +
           '<thead><tr style="background:#1a237e;color:#fff;">';
-  if (mode === 'young' || mode === 'nameEntry') {
+  if (mode === 'young') {
+    h += '<th style="padding:8px;">الصف</th><th style="padding:8px;">الاسم</th><th style="padding:8px;">رقم الجلوس</th><th style="padding:8px;">الرقم السري</th>';
+    for (var sc = 0; sc < subjects.length; sc++) h += '<th style="padding:8px;">' + escapeHtml(subjects[sc]) + '</th>';
+  } else if (mode === 'nameEntry') {
     h += '<th style="padding:8px;">الصف</th><th style="padding:8px;">الاسم</th><th style="padding:8px;">رقم الجلوس</th><th style="padding:8px;">الرقم السري</th><th style="padding:8px;">الدرجة</th>';
   } else if (mode === 'secretEntry') {
     h += '<th style="padding:8px;">الرقم السري</th><th style="padding:8px;">الدرجة</th>';
@@ -7193,10 +7207,22 @@ function ec_gradesRenderTable() {
 
   for (var i = 0; i < students.length; i++) {
     var s = students[i];
-    var val = _ecGradeValueOf(s, d.month);
+    var val = (mode === 'young') ? '' : _ecGradeValueOf(s, d.month);
     var display = (val === '' || val === 0) ? '' : val;
     h += '<tr style="border-bottom:1px solid #e8eef7;">';
-    if (mode === 'young' || mode === 'nameEntry') {
+    if (mode === 'young') {
+      h += '<td style="padding:8px;text-align:center;">' + escapeHtml(s.grade) + '</td>' +
+           '<td style="padding:8px;">' + escapeHtml(s.name) + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + escapeHtml(s.seatNumber || '') + '</td>' +
+           '<td style="padding:8px;text-align:center;">' + escapeHtml(s.secretNumber || '') + '</td>';
+      for (var sd = 0; sd < subjects.length; sd++) {
+        var subj = subjects[sd];
+        var sv = (s.subjects && s.subjects[subj] !== undefined) ? s.subjects[subj] : '';
+        var sDisplay = (sv === '' || sv === null || sv === undefined) ? '' : sv;
+        var subjAttr = escapeHtml(subj.replace(/'/g, "\\'"));
+        h += '<td style="padding:8px;text-align:center;"><input type="number" min="0" max="30" value="' + sDisplay + '" onchange="ec_gradesSaveCell(this,\'' + s.code + '\',\'' + subjAttr + '\')" style="width:56px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;"></td>';
+      }
+    } else if (mode === 'nameEntry') {
       h += '<td style="padding:8px;text-align:center;">' + escapeHtml(s.grade) + '</td>' +
            '<td style="padding:8px;">' + escapeHtml(s.name) + '</td>' +
            '<td style="padding:8px;text-align:center;">' + escapeHtml(s.seatNumber || '') + '</td>' +
@@ -7220,11 +7246,11 @@ function ec_gradesRenderTable() {
   table.innerHTML = h;
 }
 
-function ec_gradesSaveCell(input, code) {
+function ec_gradesSaveCell(input, code, subject) {
   var d = _ecGradesData; if (!d) return;
   var value = input.value === '' ? 0 : Number(input.value);
   callServer('autoSaveSingleGradeProtected', {
-    grade: d.grade, section: d.section, month: d.month, subject: d.subject,
+    grade: d.grade, section: d.section, month: d.month, subject: subject || d.subject,
     studentCode: code, gradeType: 'exam_score', value: value
   }, function (res) {
     if (!res || !res.success) toast('❌ ' + (res ? res.error : 'تعذّر الحفظ'), 'error');
@@ -7238,7 +7264,9 @@ function ec_gradesPrint() {
   var d = _ecGradesData || {};
   var titleMap = { young: 'رصد الدرجات للصغار', secretEntry: 'الرصد بالرقم السري', secretView: 'كشف الأرقام السرية', nameEntry: 'الرصد بالاسم', nameView: 'كشف بالاسم' };
   var title = (titleMap[_ecGradeMode] || 'رصد الدرجات') + ' — ' + (d.grade || '') + (d.section ? ' - ' + d.section : '') + (d.subject ? ' — ' + d.subject : '');
-  var css = '@page{size:A4;margin:10mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
+  // وضع الصغار: عمودان ثابتان + عمود لكل مادة (سبعة حالياً) — landscape كي لا يتجاوز عرض A4.
+  var css = (_ecGradeMode === 'young' ? '@page{size:A4 landscape;margin:8mm;}' : '@page{size:A4;margin:10mm;}') +
+            ' body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
             'h3{margin:0 0 12px;font-size:16px;font-weight:700;border-bottom:2px solid #1a237e;padding-bottom:8px;}' +
             'table{width:100%;border-collapse:collapse;font-size:12px;border:1px solid #cbd5e1;}' +
             'th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:center;}' +
@@ -7271,7 +7299,7 @@ function ec_renderRoster() {
   var h = '<div style="display:flex;flex-wrap:wrap;gap:10px;">';
   for (var i = 0; i < list.length; i++) {
     var c = list[i];
-    h += '<button onclick="ec_printCommitteeRoster(\'' + escapeHtml(c.committeeName).replace(/'/g, "\\'") + '\')" style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px 18px;cursor:pointer;text-align:right;min-width:160px;color:#1e293b;">' +
+    h += '<button onclick="ec_printCommitteeRoster(\'' + escapeHtml(c.committeeName.replace(/'/g, "\\'")) + '\')" style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px 18px;cursor:pointer;text-align:right;min-width:160px;color:#1e293b;">' +
          '<div style="font-weight:700;">🏫 ' + escapeHtml(c.committeeName) + '</div>' +
          '<div style="font-size:12px;color:#64748b;margin-top:4px;">' + c.students.length + ' طالباً — اضغط للطباعة</div>' +
          '</button>';
