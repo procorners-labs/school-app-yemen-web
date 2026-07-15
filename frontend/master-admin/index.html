@@ -353,6 +353,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     <div class="nav-item" onclick="showSection('schools')" id="nav-schools">
       <span class="nav-icon">🏫</span><span>إدارة المدارس</span>
     </div>
+    <div class="nav-item" onclick="showSection('referrals')" id="nav-referrals">
+      <span class="nav-icon">🎁</span><span>الإحالات</span>
+    </div>
     <div class="nav-item" onclick="showSection('audit')" id="nav-audit">
       <span class="nav-icon">📋</span><span>سجل التدقيق</span>
     </div>
@@ -561,6 +564,38 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
           <thead><tr><th>المدرسة</th><th>البريد</th><th>نهاية الاشتراك</th><th>الخطة</th><th>الحالة</th><th>إجراءات</th></tr></thead>
           <tbody id="schools-tbody"><tr><td colspan="6" style="text-align:center;padding:20px;color:#999;">⏳ جارٍ التحميل...</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ═══ الإحالات ═══ -->
+    <div id="section-referrals" class="section">
+      <div class="section-title">🎁 إحالات المعلّمين</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="referrals_load()">🔄 تحديث</button>
+        <select id="referrals-status-filter" onchange="referrals_load()" style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;">
+          <option value="pending">⏳ معلّقة فقط</option>
+          <option value="all">الكل</option>
+          <option value="confirmed">✅ مؤكَّدة فقط</option>
+          <option value="rejected">❌ مرفوضة فقط</option>
+          <option value="invalid_code">🚫 كود غير صالح</option>
+        </select>
+        <button class="btn" style="background:#455a64;color:#fff;" onclick="referrals_backfill()">🔁 توليد أكواد للمعلّمين الحاليين</button>
+      </div>
+      <div id="referrals-status" style="margin-bottom:10px;"></div>
+      <div class="panel" style="padding:0;overflow:auto;">
+        <table class="master-table" id="referrals-table">
+          <thead><tr><th>التاريخ</th><th>المدرسة الجديدة</th><th>الكود</th><th>المعلّم المُحيل</th><th>الحالة</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
+          <tbody id="referrals-tbody"><tr><td colspan="7" style="text-align:center;padding:20px;color:#999;">⏳ جارٍ التحميل...</td></tr></tbody>
+        </table>
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-title">📊 إحصاء الإحالات لكل معلّم</div>
+        <div style="overflow:auto;">
+          <table class="master-table" id="referral-teacher-stats-table">
+            <thead><tr><th>المدرسة</th><th>المعلّم</th><th>معلّقة</th><th>مؤكَّدة</th><th>مرفوضة</th></tr></thead>
+            <tbody id="referral-teacher-stats-tbody"><tr><td colspan="5" style="text-align:center;padding:20px;color:#999;">—</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -851,7 +886,7 @@ function _showApp() {
   } catch (e) {}
 
   // إخفاء عناصر المالك عن مديري المدارس
-  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings'];
+  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals'];
   for (var i = 0; i < ownerOnly.length; i++) {
     var el = document.getElementById(ownerOnly[i]);
     if (el) el.style.display = App.isOwner ? '' : 'none';
@@ -976,11 +1011,11 @@ function app_logout() {
 // ── التنقل بين الأقسام ────────────────────────────────────────
 
 function showSection(name) {
-  var sections = ['dashboard','sync','reports','finance','schools','audit','settings','portals'];
+  var sections = ['dashboard','sync','reports','finance','schools','referrals','audit','settings','portals'];
   var titles   = {
     dashboard:'📊 Dashboard', sync:'🔄 المزامنة', reports:'📈 التقارير',
     finance:'💰 المالية',
-    schools:'🏫 المدارس', audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات',
+    schools:'🏫 المدارس', referrals:'🎁 الإحالات', audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات',
     portals:'🚀 منصاتي'
   };
 
@@ -995,6 +1030,7 @@ function showSection(name) {
 
   // تحميل البيانات عند الدخول
   if (name === 'schools') schools_load();
+  if (name === 'referrals') referrals_load();
   if (name === 'audit')   audit_load();
   if (name === 'settings') settings_loadAll();
   if (name === 'portals') portals_load();
@@ -1525,6 +1561,103 @@ function _renderSchools(schools) {
     html += '</div></td></tr>';
   }
   tbody.innerHTML = html;
+}
+
+// ── الإحالات ─────────────────────────────────────────────────
+
+function referrals_load() {
+  var status = document.getElementById('referrals-status');
+  var filter = document.getElementById('referrals-status-filter').value;
+  status.innerHTML = '';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        status.innerHTML = '<div class="status-msg status-error">❌ ' + ((res && res.error) || 'خطأ') + '</div>';
+        return;
+      }
+      _renderReferrals(res.referrals || []);
+    })
+    .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
+    .listReferralsProtected({ token: App.token, status: filter });
+
+  google.script.run
+    .withSuccessHandler(function(res) { if (res && res.success) _renderReferralTeacherStats(res.teacherStats || []); })
+    .withFailureHandler(function() {})
+    .referralTeacherStatsProtected({ token: App.token });
+}
+
+function _renderReferrals(referrals) {
+  var tbody = document.getElementById('referrals-tbody');
+  if (!referrals || referrals.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#999;">لا توجد إحالات</td></tr>'; return; }
+  var statusLabel = {
+    pending: '⏳ معلّقة', confirmed: '✅ مؤكَّدة', rejected: '❌ مرفوضة', invalid_code: '🚫 كود غير صالح'
+  };
+  var html = '';
+  for (var i = 0; i < referrals.length; i++) {
+    var r = referrals[i];
+    html += '<tr><td>' + r.timestamp + '</td>' +
+            '<td>' + r.newSchoolName + '</td>' +
+            '<td><code>' + r.referralCodeUsed + '</code></td>' +
+            '<td>' + (r.referrerTeacherName || '—') + (r.referrerSchoolName ? ('<br><small style="color:#888;">' + r.referrerSchoolName + '</small>') : '') + '</td>' +
+            '<td>' + (statusLabel[r.status] || r.status) + '</td>' +
+            '<td><small>' + (r.notes || '') + '</small></td>' +
+            '<td>';
+    if (r.status === 'pending') {
+      html += '<button class="btn btn-sm btn-success" onclick="referrals_confirm(\'' + r.referralId + '\')">✅ تأكيد</button> ' +
+              '<button class="btn btn-sm btn-danger" onclick="referrals_reject(\'' + r.referralId + '\')">❌ رفض</button>';
+    } else {
+      html += '<small style="color:#888;">' + (r.reviewedBy || '') + '</small>';
+    }
+    html += '</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function _renderReferralTeacherStats(stats) {
+  var tbody = document.getElementById('referral-teacher-stats-tbody');
+  if (!stats || stats.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#999;">لا توجد بيانات</td></tr>'; return; }
+  var html = '';
+  for (var i = 0; i < stats.length; i++) {
+    var s = stats[i];
+    html += '<tr><td>' + s.schoolName + '</td><td>' + s.teacherName + '</td>' +
+            '<td>' + s.pending + '</td><td>' + s.confirmed + '</td><td>' + s.rejected + '</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function referrals_confirm(referralId) {
+  if (!confirm('تأكيد هذه الإحالة؟ سيُضاف +1 لعدّاد الإحالات المؤكَّدة للمعلّم المُحيل.')) return;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) { alert('تعذّر التأكيد: ' + ((res && res.error) || 'خطأ')); return; }
+      referrals_load();
+    })
+    .withFailureHandler(function(err) { alert('خطأ: ' + err.message); })
+    .confirmReferralProtected({ token: App.token, referralId: referralId });
+}
+
+function referrals_reject(referralId) {
+  if (!confirm('رفض هذه الإحالة؟')) return;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) { alert('تعذّر الرفض: ' + ((res && res.error) || 'خطأ')); return; }
+      referrals_load();
+    })
+    .withFailureHandler(function(err) { alert('خطأ: ' + err.message); })
+    .rejectReferralProtected({ token: App.token, referralId: referralId });
+}
+
+function referrals_backfill() {
+  if (!confirm('توليد أكواد إحالة لكل معلّم حالي بلا كود عبر جميع المدارس النشطة؟ عملية آمنة (idempotent) — لا تُنشئ أكواداً مكرَّرة لمن لديه كود بالفعل.')) return;
+  var status = document.getElementById('referrals-status');
+  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ التوليد عبر كل المدارس...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) { status.innerHTML = '<div class="status-msg status-error">❌ ' + ((res && res.error) || 'خطأ') + '</div>'; return; }
+      status.innerHTML = '<div class="status-msg status-success">✅ تم توليد ' + res.generated + ' كوداً عبر ' + res.schoolsScanned + ' مدرسة.</div>';
+    })
+    .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
+    .backfillReferralCodesProtected({ token: App.token });
 }
 
 // تنزيل حزمة المزامنة الجاهزة لمدرسة (قالب Access + الأداة + المُثبِّت + إعداد مخصّص)
