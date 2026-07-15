@@ -7503,6 +7503,9 @@ function ec_timetableBindDrag(containerEl) {
 
 function ec_timetableDragStart(ev) {
   ev.preventDefault();
+  // حارس حالة حافة: سحب سابق لم يُنظَّف (pointercancel فاتته المتصفّح قبل تفعيل هذا الإصلاح، أو
+  // أي مسار نادر آخر) — نظّف بقاياه فوراً قبل بدء سحب جديد كي لا تتراكم عناصر شبح يتيمة في DOM.
+  if (_ecTTDragEl) ec_timetableDragCleanup();
   var card = ev.currentTarget;
   var col = card.closest('.ec-tt-col');
   _ecTTDragSubject = card.getAttribute('data-subject');
@@ -7521,6 +7524,7 @@ function ec_timetableDragStart(ev) {
   ec_timetableDragMove(ev);
   document.addEventListener('pointermove', ec_timetableDragMove);
   document.addEventListener('pointerup', ec_timetableDragEnd);
+  document.addEventListener('pointercancel', ec_timetableDragCancel);
 }
 
 function ec_timetableDragMove(ev) {
@@ -7531,17 +7535,37 @@ function ec_timetableDragMove(ev) {
   for (var i = 0; i < cols.length; i++) cols[i].style.outline = '';
   var under = document.elementFromPoint(ev.clientX, ev.clientY);
   var col = under && under.closest ? under.closest('.ec-tt-col') : null;
-  if (col && col.getAttribute('data-key') === _ecTTDragFromKey) col.style.outline = '2px dashed #1a237e';
+  if (!col) return;
+  if (col.getAttribute('data-key') === _ecTTDragFromKey) {
+    col.style.outline = '2px dashed #1a237e';
+  } else {
+    // لوحة صف/شهر مختلفة — الإفلات هنا مرفوض بتصميم (لا سحب بين الصفوف/الشهور)، فقط توضيح بصري.
+    col.style.outline = '2px dashed #c62828';
+  }
+}
+
+// تنظيف مشترك لحالة السحب (يُستدعى من نهاية سحب فعلي أو من إلغاء/انقطاع اللمس) — إزالة مستمعي
+// document، إعادة شفافية/سمة البطاقة الأصلية، حذف العنصر الشبح المستنسَخ، إزالة كل مؤشرات outline.
+function ec_timetableDragCleanup() {
+  document.removeEventListener('pointermove', ec_timetableDragMove);
+  document.removeEventListener('pointerup', ec_timetableDragEnd);
+  document.removeEventListener('pointercancel', ec_timetableDragCancel);
+  var draggedCard = document.querySelector('.ec-tt-card[data-dragging="1"]');
+  if (draggedCard) { draggedCard.style.opacity = ''; draggedCard.removeAttribute('data-dragging'); }
+  if (_ecTTDragEl && _ecTTDragEl.parentNode) { _ecTTDragEl.parentNode.removeChild(_ecTTDragEl); }
+  _ecTTDragEl = null;
+  var cols = document.querySelectorAll('.ec-tt-col');
+  for (var i = 0; i < cols.length; i++) cols[i].style.outline = '';
+}
+
+// انقطاع لمس فعلي (اتصال هاتفي وارد، سحب إشعار نظام، تبديل تطبيق أثناء السحب) — تنظيف فقط،
+// بلا أي محاولة نقل/إعادة ترتيب/حفظ (لا إحداثيات إفلات موثوقة عند هذا الحدث أصلاً).
+function ec_timetableDragCancel() {
+  ec_timetableDragCleanup();
 }
 
 function ec_timetableDragEnd(ev) {
-  document.removeEventListener('pointermove', ec_timetableDragMove);
-  document.removeEventListener('pointerup', ec_timetableDragEnd);
-  var draggedCard = document.querySelector('.ec-tt-card[data-dragging="1"]');
-  if (draggedCard) { draggedCard.style.opacity = ''; draggedCard.removeAttribute('data-dragging'); }
-  if (_ecTTDragEl) { document.body.removeChild(_ecTTDragEl); _ecTTDragEl = null; }
-  var cols = document.querySelectorAll('.ec-tt-col');
-  for (var i = 0; i < cols.length; i++) cols[i].style.outline = '';
+  ec_timetableDragCleanup();
   var under = document.elementFromPoint(ev.clientX, ev.clientY);
   var col = under && under.closest ? under.closest('.ec-tt-col') : null;
   if (!col) return;
@@ -7594,6 +7618,11 @@ function ec_timetableIndexFromPointerY(containerEl, colId, excludeSubject, clien
   return idx;
 }
 
+// ملاحظة تصميم مهمة: كل مطابقة مادة هنا (وفي ec_timetableReorderInColumn/dragStart) تعتمد على
+// الاسم النصي حرفياً (subject.name)، لا معرّف فريد — آمن طالما كل الأسماء داخل نفس اللوحة فريدة
+// (حال المنهج الحالي دوماً). أي ميزة تسمح بإضافة اسم مكرَّر عمداً داخل نفس اللوحة (مثال: إضافة
+// مادة بنص حرّ) **يجب** أن تمنع التكرار صراحةً قبل الإضافة، وإلا فالسحب/الحذف/التعديل سيُصيب كل
+// المطابقات بالاسم معاً بدل واحدة بعينها.
 function ec_timetableMoveSubject(key, subject, fromCol, toCol, containerEl) {
   var board = _ecScheduleBoards[key]; if (!board) return;
   if (fromCol === 'unsched') {
