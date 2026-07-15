@@ -21197,6 +21197,8 @@ var _visitsCumulLoaded = false;
 var _visitsCumulRes = null;
 var _visitsTeacherSortField = null, _visitsTeacherSortDir = 1;
 var _visitsStudentSortField = null, _visitsStudentSortDir = 1;
+var _visitsReviewLoaded = false;
+var _visitsReviewShowAll = false;
 
 function renderVisitsTraffic(initialTab){
   var host=document.getElementById('dynamicContent');
@@ -21222,6 +21224,7 @@ function _visitsRefreshNow(){
 function _visitsTabClick(name){
   _tfTab(name);
   if (name === 'cumulative' && !_visitsCumulLoaded) _visitsLoadCumulative();
+  if (name === 'review' && !_visitsReviewLoaded) _visitsLoadReview();
 }
 
 function _visitsRender(res, initialTab){
@@ -21239,6 +21242,7 @@ function _visitsRender(res, initialTab){
      '<div class="tf-tab" id="tf-tab-roles" onclick="_tfTab(\'roles\')">الأدوار</div>'+
      '<div class="tf-tab" id="tf-tab-log" onclick="_tfTab(\'log\')">سجلّ تفصيلي</div>'+
      '<div class="tf-tab" id="tf-tab-cumulative" onclick="_visitsTabClick(\'cumulative\')">📊 الإجمالي التراكمي</div>'+
+     '<div class="tf-tab" id="tf-tab-review" onclick="_visitsTabClick(\'review\')">🔎 يحتاج مراجعة</div>'+
      '</div>';
 
   h+='<div class="tf-pane active" id="tf-pane-overview">'+
@@ -21279,15 +21283,21 @@ function _visitsRender(res, initialTab){
      '<div id="vt-cumul-body"><div class="tf-empty">⏳ جارٍ التحميل...</div></div>'+
      '</div>';
 
+  h+='<div class="tf-pane" id="tf-pane-review">'+
+     '<div id="vt-review-body"><div class="tf-empty">⏳ جارٍ التحميل...</div></div>'+
+     '</div>';
+
   h+='</div>'; // tf-root
 
   host.innerHTML=h;
   _visitsCumulLoaded = false;
   _visitsCumulRes = null;
+  _visitsReviewLoaded = false;
   _visitsRenderLog();
   _visitsStartPolling();
   _tfTab(initialTab || 'overview');
   if (initialTab === 'cumulative') _visitsLoadCumulative();
+  if (initialTab === 'review') _visitsLoadReview();
 }
 
 function _visitsRoleDonut(roleCounts){
@@ -21656,6 +21666,130 @@ function _visitsFilterStudentTable(q){
   html+='</tbody>';
   var tbl=document.getElementById('vt-student-table');
   if(tbl) tbl.innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════════
+//  "يحتاج مراجعة" — يربط نشاط الطلاب بنشاط المعلمين لكل فصل. يُعيد استخدام
+//  _visitsTierCell/_visitsParticipationTier القائمتين لضمان اتساق بصري كامل مع
+//  بقية تبويبات هذه الصفحة (لا نظام ألوان جديد).
+// ══════════════════════════════════════════════════════
+
+function _visitsLoadReview(){
+  var body=document.getElementById('vt-review-body');
+  callServer('getVisitsReviewProtected', {}, function(res){
+    if(!res || !res.success){
+      var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
+      if(body) body.innerHTML='<div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div>';
+      return;
+    }
+    _visitsReviewLoaded=true;
+    window._visitsReviewClassesFull=res.classes||[];
+    _visitsRenderReview();
+  });
+}
+
+// عتبتا ٥٠٪/٨٠٪ نفسهما المستخدمتان في _visitsParticipationTier — أي فصل بمشاركة
+// طلاب/نشاط معلمين ≥80٪ "نشط"، و<50٪ "خامل"، لضمان اتساق المعنى عبر التبويب كاملاً.
+function _visitsReviewCategory(studentPct, teacherPct){
+  var s=studentPct||0, t=teacherPct||0;
+  if (s>=80 && t<50)  return { key:'needs_review_a', color:'var(--tf-red)',     icon:'🔴', label:'طلاب نشيطون / معلمون خاملون — يحتاج مراجعة' };
+  if (t>=80 && s<50)  return { key:'needs_review_b', color:'var(--tf-orange)',  icon:'🟠', label:'معلمون نشيطون / طلاب خاملون — يحتاج مراجعة' };
+  if (s>=80 && t>=80) return { key:'excellent',      color:'var(--tf-green)',   icon:'🟢', label:'ممتاز' };
+  if (s<50 && t<50)   return { key:'fully_idle',     color:'var(--tf-magenta)', icon:'⚫', label:'خامل بالكامل' };
+  return                     { key:'normal',         color:'var(--tf-blue)',    icon:'🔵', label:'طبيعي / متوسط' };
+}
+
+function _visitsRenderReview(){
+  var body=document.getElementById('vt-review-body');
+  if(!body) return;
+  var classes=window._visitsReviewClassesFull||[];
+  var counts={needs_review_a:0, needs_review_b:0, excellent:0, fully_idle:0, normal:0};
+  var i, cat;
+  for(i=0;i<classes.length;i++){
+    cat=_visitsReviewCategory(classes[i].studentActivePct, classes[i].teacherActivePct);
+    classes[i]._cat=cat;
+    counts[cat.key]=(counts[cat.key]||0)+1;
+  }
+
+  var h='';
+  h+='<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface2);border-radius:10px;padding:10px 14px;margin-bottom:14px;">'+
+     'ℹ️ نشاط المعلم هنا <b>إجمالي عبر كل فصوله</b> (لا تسجيل دقيق لزيارة كل فصل على حدة حالياً) — '+
+     'اعتبر النِّسب أدناه مؤشراً تقديرياً للمتابعة، لا قياساً حرفياً لكل فصل.</div>';
+
+  h+='<div class="tf-kpis">'+
+     _tfKpi(String(counts.needs_review_a),'طلاب نشيطون / معلمون خاملون','','var(--tf-red)',false)+
+     _tfKpi(String(counts.needs_review_b),'معلمون نشيطون / طلاب خاملون','','var(--tf-orange)',false)+
+     _tfKpi(String(counts.excellent),'فصول بوضعية ممتازة','','var(--tf-green)',false)+
+     _tfKpi(String(counts.fully_idle),'فصول خاملة بالكامل','','var(--tf-magenta)',false)+
+     _tfKpi(String(classes.length),'إجمالي الفصول المفحوصة','','var(--tf-blue)',false)+
+     '</div>';
+
+  h+='<div class="vt-filter" style="margin-bottom:10px;">'+
+     '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-muted);cursor:pointer;">'+
+     '<input type="checkbox" id="vt-review-showall" onchange="_visitsReviewToggleAll(this.checked)"'+(_visitsReviewShowAll?' checked':'')+'> '+
+     'عرض كل الفصول (بما فيها الطبيعية)</label></div>';
+
+  h+='<div class="tf-scroll" style="max-height:560px;"><table class="tf-t" id="vt-review-table"></table></div>';
+
+  body.innerHTML=h;
+  _visitsRenderReviewTable();
+}
+
+function _visitsReviewToggleAll(checked){
+  _visitsReviewShowAll=!!checked;
+  _visitsRenderReviewTable();
+}
+
+function _visitsRenderReviewTable(){
+  var classes=window._visitsReviewClassesFull||[];
+  var html='<thead><tr>'+
+    '<th></th><th>الفصل</th><th>الطلاب</th><th>مشاركة الطلاب</th><th>المعلمون</th><th>نشاط المعلمين</th><th>الحالة</th>'+
+    '</tr></thead><tbody>';
+  var shown=0, i;
+  for(i=0;i<classes.length;i++){
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    if(!_visitsReviewShowAll && cat.key==='normal') continue;
+    shown++;
+    var rid='vt-review-row-'+i;
+    html+='<tr>'+
+      '<td><span style="cursor:pointer;color:var(--text-muted);" onclick="_visitsReviewToggleRow('+i+')" id="'+rid+'-btn">▶</span></td>'+
+      '<td style="font-weight:700;">'+_tfEsc(c.className)+'</td>'+
+      '<td>'+c.studentCount+'</td>'+
+      '<td>'+_visitsTierCell(c.studentActivePct+'٪', _visitsParticipationTier(c.studentActivePct))+'</td>'+
+      '<td>'+c.teacherCount+'</td>'+
+      '<td>'+_visitsTierCell(c.teacherActivePct+'٪', _visitsParticipationTier(c.teacherActivePct))+'</td>'+
+      '<td><span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:'+cat.color+';">'+cat.icon+' '+_tfEsc(cat.label)+'</span></td>'+
+      '</tr>';
+    html+='<tr id="'+rid+'" style="display:none;"><td colspan="7" style="background:var(--surface2);">'+_visitsReviewTeacherList(c)+'</td></tr>';
+  }
+  if(!shown) html+='<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:16px;">لا فصول ضمن هذا الفلتر حالياً</td></tr>';
+  html+='</tbody>';
+  var tbl=document.getElementById('vt-review-table');
+  if(tbl) tbl.innerHTML=html;
+}
+
+function _visitsReviewToggleRow(i){
+  var row=document.getElementById('vt-review-row-'+i);
+  var btn=document.getElementById('vt-review-row-'+i+'-btn');
+  if(!row) return;
+  var open=row.style.display!=='none';
+  row.style.display=open?'none':'table-row';
+  if(btn) btn.textContent=open?'▶':'▼';
+}
+
+function _visitsReviewTeacherList(c){
+  var teachers=c.teachers||[];
+  if(!teachers.length) return '<div style="padding:8px 4px;color:var(--text-muted);font-size:12.5px;">لا يوجد معلمون مسندون لهذا الفصل ضمن بيانات التكليف الحالية.</div>';
+  var html='<div style="padding:8px 4px;display:flex;flex-direction:column;gap:6px;">';
+  for(var i=0;i<teachers.length;i++){
+    var t=teachers[i];
+    var tier=t.active ? {color:'var(--tf-green)',label:'نشط'} : {color:'var(--tf-red)',label:'خامل'};
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;flex-wrap:wrap;">'+
+      '<span>'+_visitsTierCell(_tfEsc(t.name), tier)+' <span style="color:var(--text-muted);">('+_tfEsc((t.subjects||[]).join('، '))+')</span></span>'+
+      '<span style="color:var(--text-muted);white-space:nowrap;">🔑 '+(t.loginCount||0)+' · ⏱️ '+(t.usageMinutes||0)+' د</span></div>';
+  }
+  html+='</div>';
+  return html;
 }
 </script>
 </body>
