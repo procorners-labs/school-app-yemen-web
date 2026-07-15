@@ -485,6 +485,31 @@ a { color: var(--pr); text-decoration: none; }
 .card-h .ttl .ic { font-size: 20px; }
 .card-h .actions { display: flex; gap: 6px; }
 
+/* ── جدول الاختبارات — بطاقات/تايم-لاين لكل يوم اختبار (بدل جدول HTML بسيط) ── */
+.exam-month-block { margin-bottom: 18px; }
+.exam-month-title {
+  font-weight: 800; font-size: 15px; margin-bottom: 10px; color: var(--txt);
+  border-bottom: 2px solid var(--pr); padding-bottom: 6px;
+}
+.exam-day-list { display: flex; flex-direction: column; gap: 8px; }
+.exam-day-card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-2); border: 1px solid var(--bdr); border-radius: var(--rad-s);
+  padding: 10px 12px;
+}
+.exam-day-date {
+  min-width: 92px; flex: 0 0 auto; font-weight: 700; font-size: 12.5px; color: var(--pr);
+  background: var(--pr-bg); border-radius: 8px; padding: 5px 8px; text-align: center;
+}
+.exam-day-subjects { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--txt); }
+.exam-day-countdown { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--pr-d); }
+.exam-day-past { opacity: .55; }
+.exam-day-past .exam-day-date { color: var(--muted); background: transparent; border: 1px solid var(--bdr); }
+.exam-day-next {
+  border: 1.5px solid var(--pr); box-shadow: 0 0 0 3px var(--pr-glow);
+}
+.exam-day-next .exam-day-date { background: var(--pr); color: #fff; }
+
 .refresh-btn {
   padding: 6px 10px;
   border-radius: var(--rad-s);
@@ -5561,27 +5586,61 @@ function loadExamSchedule(force) {
   );
 }
 
+// "اليوم" بصيغة yyyy-mm-dd محلياً (لا new Date(str) على النص النهائي — يُفسَّر UTC فيُنتج انزياح
+// يوم في بعض المناطق الزمنية، نفس فخّ التاريخ الموثَّق في منصة المعلم).
+function _examTodayYmd() {
+  var d = new Date();
+  var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+  var dd = ('0' + d.getDate()).slice(-2);
+  return d.getFullYear() + '-' + mm + '-' + dd;
+}
+
+function _examDaysBetween(fromYmd, toYmd) {
+  var f = new Date(fromYmd + 'T00:00:00'), t = new Date(toYmd + 'T00:00:00');
+  return Math.round((t.getTime() - f.getTime()) / 86400000);
+}
+
 function renderExamSchedule(r) {
   var w = $('examSchedWrap');
   if (!r || !r.ok || !r.months || r.months.length === 0) {
     w.innerHTML = emptyHTML('🗓️', 'لا يوجد جدول اختبارات بعد', 'سيظهر فور إضافته من قِبل الإدارة');
     return;
   }
+  var todayStr = _examTodayYmd();
+  // أقرب اختبار قادم عبر كل الأشهر معاً (لا لكل شهر بمفرده) — لتمييزه ببطاقة بارزة وعدّاد تنازلي.
+  var nextDate = '';
+  for (var m0 = 0; m0 < r.months.length; m0++) {
+    var mdays = r.months[m0].days;
+    for (var d0 = 0; d0 < mdays.length; d0++) {
+      if (mdays[d0].date && mdays[d0].date >= todayStr && (!nextDate || mdays[d0].date < nextDate)) nextDate = mdays[d0].date;
+    }
+  }
   var h = '';
   for (var m = 0; m < r.months.length; m++) {
     var mo = r.months[m];
-    h += '<div style="margin-bottom:18px;">' +
-         '<div style="font-weight:800;font-size:15px;margin-bottom:8px;border-bottom:2px solid var(--brand,#0F2C5C);padding-bottom:4px;">' + esc(mo.month) + '</div>' +
-         '<table style="width:100%;border-collapse:collapse;font-size:13px;"><tbody>';
-    for (var d = 0; d < mo.days.length; d++) {
-      var day = mo.days[d];
+    var days = mo.days.slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    h += '<div class="exam-month-block">' +
+         '<div class="exam-month-title">🗓️ ' + esc(mo.month) + '</div>' +
+         '<div class="exam-day-list">';
+    for (var d = 0; d < days.length; d++) {
+      var day = days[d];
       var names = [];
       for (var s = 0; s < day.subjects.length; s++) names.push(day.subjects[s].name);
-      h += '<tr style="border-bottom:1px solid var(--border,#e2e8f0);">' +
-           '<td style="padding:8px;white-space:nowrap;color:var(--muted,#64748b);font-weight:600;">' + esc(day.date || ('اليوم ' + day.dayIndex)) + '</td>' +
-           '<td style="padding:8px;">' + esc(names.join('، ')) + '</td></tr>';
+      var isPast = !!(day.date && day.date < todayStr);
+      var isNext = !!(day.date && day.date === nextDate);
+      var cardClass = 'exam-day-card' + (isPast ? ' exam-day-past' : '') + (isNext ? ' exam-day-next' : '');
+      var countdown = '';
+      if (isNext) {
+        var n = _examDaysBetween(todayStr, day.date);
+        countdown = '<div class="exam-day-countdown">' + (n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'))) + '</div>';
+      }
+      h += '<div class="' + cardClass + '">' +
+           '<div class="exam-day-date">' + esc(day.date || ('اليوم ' + day.dayIndex)) + '</div>' +
+           '<div class="exam-day-subjects">' + esc(names.join('، ')) + '</div>' +
+           countdown +
+           '</div>';
     }
-    h += '</tbody></table></div>';
+    h += '</div></div>';
   }
   w.innerHTML = h;
 }

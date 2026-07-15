@@ -7321,8 +7321,8 @@ var _ecScheduleBoards = {};      // مفتاحه 'الصف|الشهر' -> {days:
 var _ecTTDragEl = null, _ecTTDragSubject = '', _ecTTDragFromKey = '', _ecTTDragFromCol = '';
 var _ecTTSaveTimers = {}; // مفتاحه 'الصف|الشهر' -> معرّف setTimeout (تأخير مستقلّ لكل لوحة)
 var _ecTTLocked = {}; // مفتاحه 'الصف|الشهر' -> true إن كان ترتيب/محتوى ذلك الجدول مقفلاً عن التعديل
-var _ecHolidays = [];  // [{date:'yyyy-mm-dd', note}] — إجازات مخصَّصة (بالإضافة لخميس/جمعة الثابتين)
-var _ecHolidaySet = {}; // نفس _ecHolidays لكن كمجموعة {date:true} لبحث O(1) داخل _ecNextWorkingDay
+var _ecCalHolidayRanges = []; // [{start,end,title}] — فترات "إجازة" من التقويم المدرسي الحقيقي (قراءة فقط هنا)
+var _ecMonthVisibility = {}; // شهر -> true/false (يُعرَض جدوله على منصة الطالب أم لا)
 
 function ec_renderTimetablePane() {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
@@ -7330,16 +7330,27 @@ function ec_renderTimetablePane() {
   ec_ensureGradesLoaded(function () {
     ec_ensureLocksLoaded(function () {
       ec_ensureHolidaysLoaded(function () {
-        callServer('getSchoolExamScheduleOverviewProtected', {}, function (res) {
-          _ecScheduleOverview = (res && res.success) ? res : { success: true, months: [] };
-          ec_timetableRenderPage();
-        }, function () {
-          _ecScheduleOverview = { success: true, months: [] };
-          ec_timetableRenderPage();
+        ec_ensureMonthVisibilityLoaded(function () {
+          callServer('getSchoolExamScheduleOverviewProtected', {}, function (res) {
+            _ecScheduleOverview = (res && res.success) ? res : { success: true, months: [] };
+            ec_timetableRenderPage();
+          }, function () {
+            _ecScheduleOverview = { success: true, months: [] };
+            ec_timetableRenderPage();
+          });
         });
       });
     });
   });
+}
+
+// يُحمَّل مرّة قبل أول رسم للصفحة — خريطة شهر←ظاهر لمنصة الطالب (افتراضي true لأي شهر بلا صف صريح
+// في الخادم، راجع _ecGetMonthVisibilityMap في ExamControl.js).
+function ec_ensureMonthVisibilityLoaded(cb) {
+  callServer('getExamMonthVisibilityProtected', {}, function (res) {
+    _ecMonthVisibility = (res && res.success && res.visibility) ? res.visibility : {};
+    cb();
+  }, function () { _ecMonthVisibility = {}; cb(); });
 }
 
 function ec_ensureLocksLoaded(cb) {
@@ -7349,15 +7360,31 @@ function ec_ensureLocksLoaded(cb) {
   }, function () { _ecTTLocked = {}; cb(); });
 }
 
-// تُحمَّل مرّة واحدة **قبل** بناء أي لوحة صف (لضمان أن أول حساب لتاريخ لاحق يحترم الإجازات فوراً،
-// لا فقط بعد إعادة تحميل الصفحة).
+// تُحمَّل مرّة واحدة **قبل** بناء أي لوحة صف (لضمان أن أول حساب لتاريخ لاحق يحترم الإجازات فوراً، لا
+// فقط بعد إعادة تحميل الصفحة). المصدر التقويم المدرسي الحقيقي (getSchoolCalendarProtected، نوع
+// 'إجازة') لا ورقة مخصَّصة لهذا التبويب — قراءة فقط هنا، الإضافة/الحذف من صفحة "🗓️ التقويم المدرسي"
+// حصراً (تجنّباً لتكرار واجهة إدارة إجازات في مكانين مختلفين لنفس البيانات).
 function ec_ensureHolidaysLoaded(cb) {
-  callServer('getExamHolidaysProtected', {}, function (res) {
-    _ecHolidays = (res && res.success && res.holidays) ? res.holidays : [];
-    _ecHolidaySet = {};
-    for (var i = 0; i < _ecHolidays.length; i++) _ecHolidaySet[_ecHolidays[i].date] = true;
+  callServer('getSchoolCalendarProtected', {}, function (res) {
+    var events = (res && res.success && res.events) ? res.events : [];
+    _ecCalHolidayRanges = [];
+    for (var i = 0; i < events.length; i++) {
+      if (events[i].type === 'إجازة' && events[i].start) {
+        _ecCalHolidayRanges.push({ start: events[i].start, end: events[i].end || events[i].start, title: events[i].title });
+      }
+    }
     cb();
-  }, function () { _ecHolidays = []; _ecHolidaySet = {}; cb(); });
+  }, function () { _ecCalHolidayRanges = []; cb(); });
+}
+
+// هل يقع dateStr ضمن أي فترة إجازة حقيقية من التقويم المدرسي؟ مقارنة نصّية مباشرة (yyyy-mm-dd
+// تُقارَن مُعجَمياً بشكل صحيح زمنياً) — نفس أسلوب المقارنة المستخدَم أصلاً في getSchoolCalendarProtected.
+function _ecIsCalendarHoliday(dateStr) {
+  for (var i = 0; i < _ecCalHolidayRanges.length; i++) {
+    var r = _ecCalHolidayRanges[i];
+    if (r.start <= dateStr && dateStr <= r.end) return true;
+  }
+  return false;
 }
 
 function _ecScheduleOverviewGradesFor(month) {
@@ -7368,11 +7395,115 @@ function _ecScheduleOverviewGradesFor(month) {
   return [];
 }
 
+// الجدول الشامل (مصفوفة) — صفوف = الصفوف الـ13، أعمدة = أيام الاختبار (بترتيب _ecGrades الكنسي
+// والأيام برقمها التسلسلي) — يُعرَض حيّاً داخل الصفحة (details أدناه) وليس للطباعة فقط. يُعاد
+// استخدام بيانات _ecScheduleOverview المُحمَّلة أصلاً (getSchoolExamScheduleOverviewProtected)،
+// بلا أي استدعاء خادم جديد. عمود "اليوم N" يعرض أول تاريخ فعلي متاح بين كل الصفوف لذلك الترتيب
+// كتقريب فقط (كل صف جدوله مستقلّ تماماً وقد يختلف تاريخه الفعلي بضع أيام عن غيره لنفس الترتيب —
+// عرض تاريخ منفرد لكل خلية يعقّد الجدول بلا فائدة تُذكر، وأغلب الصفوف تتشارك تواريخ الأيام الأولى
+// فعلياً في البيانات الحقيقية المُدخَلة أصلاً).
+function ec_timetableBuildMatrixHtml(month) {
+  var monthGrades = _ecScheduleOverviewGradesFor(month);
+  if (!monthGrades.length) return '<p style="font-size:12px;color:#999;">لا يوجد جدول محفوظ لهذا الشهر بعد</p>';
+  var byGrade = {};
+  for (var g = 0; g < monthGrades.length; g++) byGrade[monthGrades[g].grade] = monthGrades[g];
+  var orderedGrades = [];
+  for (var gi = 0; gi < (_ecGrades || []).length; gi++) {
+    if (byGrade[_ecGrades[gi]]) orderedGrades.push(_ecGrades[gi]);
+  }
+  var sortedByGrade = {}, maxDays = 0;
+  for (var m1 = 0; m1 < orderedGrades.length; m1++) {
+    var sorted = byGrade[orderedGrades[m1]].days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+    sortedByGrade[orderedGrades[m1]] = sorted;
+    if (sorted.length > maxDays) maxDays = sorted.length;
+  }
+  var headCells = '<th>الصف \\ اليوم</th>';
+  for (var day = 0; day < maxDays; day++) {
+    var sampleDate = '';
+    for (var sg = 0; sg < orderedGrades.length; sg++) {
+      var sd = sortedByGrade[orderedGrades[sg]][day];
+      if (sd && sd.date) { sampleDate = sd.date; break; }
+    }
+    headCells += '<th>يوم ' + (day + 1) + (sampleDate ? ('<br><span class="ec-mx-date">' + escapeHtml(sampleDate) + '</span>') : '') + '</th>';
+  }
+  var bodyRows = '';
+  for (var r = 0; r < orderedGrades.length; r++) {
+    var gname = orderedGrades[r];
+    var rowCells = '<td class="ec-mx-grade">' + escapeHtml(gname) + '</td>';
+    for (var day2 = 0; day2 < maxDays; day2++) {
+      var cell = sortedByGrade[gname][day2];
+      var names = [];
+      if (cell) { for (var s2 = 0; s2 < cell.subjects.length; s2++) names.push(cell.subjects[s2].name); }
+      rowCells += '<td>' + escapeHtml(names.join('، ')) + '</td>';
+    }
+    bodyRows += '<tr' + (r % 2 ? ' class="alt"' : '') + '>' + rowCells + '</tr>';
+  }
+  return '<table class="ec-matrix" style="width:100%;border-collapse:collapse;font-size:12px;text-align:center;">' +
+    '<thead><tr>' + headCells + '</tr></thead><tbody>' + bodyRows + '</tbody></table>';
+}
+
+// lazy-load عند أول فتح (نفس نمط ec_timetableGradeToggle) — يبني قائمة الأشهر ويرسم أول شهر افتراضياً.
+function ec_timetableMatrixToggle(detailsEl) {
+  if (!detailsEl.open || detailsEl.getAttribute('data-loaded') === '1') return;
+  detailsEl.setAttribute('data-loaded', '1');
+  var sel = document.getElementById('ec-tt-matrix-month');
+  if (sel) {
+    var opts = '';
+    for (var m = 0; m < EC_EXAM_TYPES.length; m++) opts += '<option value="' + escapeHtml(EC_EXAM_TYPES[m]) + '">' + escapeHtml(EC_EXAM_TYPES[m]) + '</option>';
+    sel.innerHTML = opts;
+  }
+  ec_timetableRenderMatrix();
+}
+
+function ec_timetableRenderMatrix() {
+  var sel = document.getElementById('ec-tt-matrix-month');
+  var body = document.getElementById('ec-tt-matrix-body');
+  if (!sel || !body) return;
+  body.innerHTML = ec_timetableBuildMatrixHtml(sel.value);
+}
+
+// زرّا الطباعة يُغذّيان **نفس الـHTML المعروض على الصفحة** لنافذة الطباعة — لا إعادة بناء منفصلة
+// (تجنّب ازدواج منطق العرض/الطباعة، قرار مالك صريح بعد مراجعة الخطة).
+function ec_timetablePrintMatrix(ev, size) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  var sel = document.getElementById('ec-tt-matrix-month');
+  var month = sel ? sel.value : '';
+  var tableHtml = ec_timetableBuildMatrixHtml(month);
+  if (!tableHtml || tableHtml.indexOf('<table') === -1) { toast('لا يوجد جدول محفوظ لهذا الشهر بعد', 'warning'); return; }
+  var d = _ecData || {};
+  var brandColor = _ecBrandColor();
+  var pageCss = (size === 'A4') ? '@page{size:A4 landscape;margin:8mm;}' : '@page{size:A3 landscape;margin:10mm;}';
+  var fontSize = (size === 'A4') ? '10px' : '12px';
+  var css = pageCss + ' body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;text-align:center;margin:0;background:#fff;}' +
+    'table.ec-matrix{width:100%;border-collapse:collapse;font-size:' + fontSize + ';border:1px solid ' + brandColor + '33;}' +
+    'table.ec-matrix th,table.ec-matrix td{padding:5px 6px;border:1px solid #e5e7eb;}' +
+    'table.ec-matrix tr.alt td{background:' + brandColor + '0d;}' +
+    'table.ec-matrix th{background:' + brandColor + ';color:#fff;font-weight:600;}' +
+    '.ec-mx-grade{font-weight:800;color:' + brandColor + ';background:' + brandColor + '0d;}' +
+    '.ec-mx-date{font-size:9px;font-weight:400;opacity:.85;}' +
+    '.ec-ministry{font-size:11px;font-weight:700;color:' + brandColor + ';line-height:1.4;}';
+  var body = '<div style="text-align:center;margin-bottom:14px;">' + _ecMinistryHeaderHtml() + _ecBrandLogoHtml(34) +
+    '<h2 style="margin:6px 0 2px;font-size:18px;color:' + brandColor + ';">الجدول الشامل — ' + _tfEsc(month) + '</h2>' +
+    '<div style="font-size:12px;color:#475569;">' + _tfEsc(d.schoolName || '') + '</div></div>' +
+    tableHtml;
+  _tfPrintWin('الجدول الشامل - ' + month, css, body);
+}
+
 function ec_timetableRenderPage() {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
   var grades = _ecGrades || [];
-  var h = '<div id="ec-tt-holidays-panel">' + ec_timetableHolidaysHtml() + '</div>' +
-    '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">افتح أي شهر لترى كل الصفوف، ثم افتح صفاً لتوزيع مواده بالسحب. حدِّد تاريخ اليوم الأول فقط — بقية أيام ذلك الصف تُحسَب تلقائياً (تتخطّى الخميس/الجمعة والإجازات المخصَّصة أعلاه).</p>';
+  var h = '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
+    '<div id="ec-tt-holidays-panel">' + ec_timetableHolidaysHtml() + '</div>' +
+    '<details id="ec-tt-matrix-details" style="margin-bottom:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;" ontoggle="ec_timetableMatrixToggle(this)">' +
+      '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#166534;">🗂️ الجدول الشامل (كل الصفوف)</summary>' +
+      '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<label style="font-size:12px;">الشهر: <select id="ec-tt-matrix-month" onchange="ec_timetableRenderMatrix()"></select></label>' +
+        '<button type="button" class="ec-tt-print-btn" onclick="ec_timetablePrintMatrix(event,\'A3\')">🖨️ A3</button>' +
+        '<button type="button" class="ec-tt-print-btn" onclick="ec_timetablePrintMatrix(event,\'A4\')">🖨️ A4</button>' +
+      '</div>' +
+      '<div id="ec-tt-matrix-body" style="margin-top:10px;overflow-x:auto;"></div>' +
+    '</details>' +
+    '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">افتح أي شهر لترى كل الصفوف، ثم افتح صفاً لتوزيع مواده بالسحب. حدِّد تاريخ اليوم الأول فقط — بقية أيام ذلك الصف تُحسَب تلقائياً (تتخطّى الخميس/الجمعة وإجازات التقويم المدرسي أعلاه).</p>';
   for (var m = 0; m < EC_EXAM_TYPES.length; m++) {
     var month = EC_EXAM_TYPES[m];
     var monthGrades = _ecScheduleOverviewGradesFor(month);
@@ -7428,7 +7559,15 @@ function ec_timetableGradeToggle(detailsEl) {
       if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</p>';
       return;
     }
-    _ecScheduleBoards[key] = { days: res.days || [], unscheduled: [] };
+    // تسطيح days[{dayIndex,date,subjects:[{name,order}]}] الخادمية إلى قائمة واحدة مرتَّبة —
+    // الموضع = رقم اليوم (راجع تعليق تصميم board.list أعلى ec_timetableRecalcDates).
+    var days = (res.days || []).slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+    var list = [];
+    for (var d = 0; d < days.length; d++) {
+      var subs = (days[d].subjects || []).slice().sort(function (a, b) { return a.order - b.order; });
+      for (var s = 0; s < subs.length; s++) list.push({ name: subs[s].name, date: days[d].date || '' });
+    }
+    _ecScheduleBoards[key] = { list: list, unscheduled: [] };
     ec_timetableComputeUnscheduled(key, grade);
     ec_timetableRenderBoard(key, body);
   }, function (err) {
@@ -7444,13 +7583,10 @@ function ec_timetableComputeUnscheduled(key, grade) {
   var board = _ecScheduleBoards[key]; if (!board) return;
   var all = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
   var scheduled = {};
-  for (var d = 0; d < board.days.length; d++) {
-    var subs = board.days[d].subjects || [];
-    for (var s = 0; s < subs.length; s++) scheduled[subs[s].name] = true;
-  }
+  for (var i = 0; i < board.list.length; i++) scheduled[board.list[i].name] = true;
   board.unscheduled = [];
-  for (var i = 0; i < all.length; i++) {
-    if (!scheduled[all[i]]) board.unscheduled.push(all[i]);
+  for (var j = 0; j < all.length; j++) {
+    if (!scheduled[all[j]]) board.unscheduled.push(all[j]);
   }
 }
 
@@ -7459,16 +7595,6 @@ function ec_timetableComputeUnscheduled(key, grade) {
 function ec_timetableGradeSubjectsKey(grade) {
   var subs = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
   return subs.length ? subs.slice().sort().join('|') : '';
-}
-
-function ec_timetableMatchingGrades(grade) {
-  var groupKey = ec_timetableGradeSubjectsKey(grade);
-  if (!groupKey) return [];
-  var grades = _ecGrades || [], out = [];
-  for (var i = 0; i < grades.length; i++) {
-    if (grades[i] !== grade && ec_timetableGradeSubjectsKey(grades[i]) === groupKey) out.push(grades[i]);
-  }
-  return out;
 }
 
 // يجمّع _ecGrades بنفس بصمة مجموعة المواد (ec_timetableGradeSubjectsKey) معاً، بالحفاظ على ترتيب
@@ -7498,31 +7624,19 @@ function ec_timetableGroupGrades(grades) {
 function ec_timetableRenderBoard(key, containerEl) {
   var board = _ecScheduleBoards[key]; if (!board || !containerEl) return;
   var parts = key.split('|'), grade = parts[0];
-  var days = board.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
 
-  var keyEsc = escapeHtml(key.replace(/'/g, "\\'")); // ترتيب الهروب: قصّ الاقتباس قبل escapeHtml (راجع تعليق ec_timetableColumnHtml)
+  var keyEsc = escapeHtml(key.replace(/'/g, "\\'")); // ترتيب الهروب: قصّ الاقتباس قبل escapeHtml (راجع تعليق ec_timetableListHtml)
   var locked = !!_ecTTLocked[key];
-  var matches = ec_timetableMatchingGrades(grade);
-  var copyBtn = matches.length
-    ? '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableCopyToMatching(event,\'' + keyEsc + '\')">📋 نسخ لصفوف مطابقة المواد (' + matches.length + ')</button>'
-    : '';
   var saveBtn = locked ? '' :
     '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableSaveClick(event,\'' + keyEsc + '\')">💾 حفظ الآن</button>';
   var lockBtn = '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableToggleLock(event,\'' + keyEsc + '\')">' +
     (locked ? '🔓 فتح القفل' : '🔒 قفل الترتيب') + '</button>';
   var lockNote = locked ? '<span style="color:#c62828;font-size:12px;font-weight:700;margin-inline-start:8px;">🔒 مقفل — افتح القفل للتعديل</span>' : '';
-  var h = '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + keyEsc + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button>' + copyBtn + saveBtn + lockBtn + lockNote + '</div>' +
-          '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;">';
+  var h = '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + keyEsc + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button>' + saveBtn + lockBtn + lockNote + '</div>' +
+          '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding-bottom:8px;">';
 
-  var unschedSubs = [];
-  for (var u = 0; u < board.unscheduled.length; u++) unschedSubs.push({ name: board.unscheduled[u] });
-  h += ec_timetableColumnHtml(key, 'unsched', '📦 غير مُجدوَلة', '', unschedSubs, true, locked);
-
-  for (var i = 0; i < days.length; i++) {
-    h += ec_timetableColumnHtml(key, 'day-' + days[i].dayIndex, 'اليوم ' + days[i].dayIndex, days[i].date, days[i].subjects, false, locked);
-  }
-  var nextDayIndex = days.length ? (days[days.length - 1].dayIndex + 1) : 1;
-  h += ec_timetableColumnHtml(key, 'day-' + nextDayIndex, '➕ اليوم ' + nextDayIndex, '', [], false, locked);
+  h += ec_timetablePoolHtml(key, board, locked);
+  h += ec_timetableListHtml(key, board, locked);
 
   h += '</div>';
   containerEl.innerHTML = h;
@@ -7530,8 +7644,7 @@ function ec_timetableRenderBoard(key, containerEl) {
 
   // تحديث شارة عدد المواد المُجدوَلة في ملخّص بطاقة الصف مباشرة (بلا إعادة جلب overview كاملة)
   var gradeDetails = containerEl.closest('.ec-tt-grade');
-  var count = 0;
-  for (var bd = 0; bd < board.days.length; bd++) count += board.days[bd].subjects.length;
+  var count = board.list.length;
   if (gradeDetails) {
     var badge = gradeDetails.querySelector('summary .ec-tt-badge');
     if (badge) {
@@ -7553,39 +7666,59 @@ function ec_timetableRenderBoard(key, containerEl) {
   }
 }
 
-function ec_timetableColumnHtml(key, colId, title, date, subjects, isUnsched, locked) {
-  // تنبيه: الهروب من علامة الاقتباس الأحادية (لسمّات onclick/onpointerdown المضمَّنة) يجب أن يسبق
-  // escapeHtml لا يتبعها — المتصفح يفكّ كيانات HTML (مثل &#39;) في قيمة أي سمة قبل تفسيرها كنص JS،
-  // فلو أُهرِبت علامة الاقتباس بعد escapeHtml تعود حرفية وتكسر حدود السلسلة النصية (XSS مخزَّن
-  // مؤكَّد عبر مراجعة أمنية — راجع اسم مادة نصّ حرّ يحتوي على ' كمثال هجوم فعلي).
+// تنبيه هروب مشترك للدالّتين أدناه: الهروب من علامة الاقتباس الأحادية (لسمّات onclick/onpointerdown
+// المضمَّنة) يجب أن يسبق escapeHtml لا يتبعها — المتصفح يفكّ كيانات HTML (مثل &#39;) في قيمة أي سمة
+// قبل تفسيرها كنص JS، فلو أُهرِبت علامة الاقتباس بعد escapeHtml تعود حرفية وتكسر حدود السلسلة النصية
+// (XSS مخزَّن مؤكَّد عبر مراجعة أمنية سابقة — راجع اسم مادة نصّ حرّ يحتوي على ' كمثال هجوم فعلي).
+
+// صندوق "📦 غير مُجدوَلة" — مصدر مواد المنهج غير المضافة بعد للجدول + مكان إضافة مادة جديدة بنص حرّ.
+function ec_timetablePoolHtml(key, board, locked) {
   var keyEsc = escapeHtml(key.replace(/'/g, "\\'"));
-  var dateInput = isUnsched ? '' :
-    '<input type="date" value="' + escapeHtml(date || '') + '"' + (locked ? ' disabled' : '') + ' onchange="ec_timetableSetDate(\'' + keyEsc + '\', \'' + colId + '\', this.value, this)" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;margin-top:6px;font-size:12px;box-sizing:border-box;">';
   var cards = '';
-  for (var i = 0; i < subjects.length; i++) {
-    var nameEsc = escapeHtml(subjects[i].name.replace(/'/g, "\\'"));
+  for (var i = 0; i < board.unscheduled.length; i++) {
+    var name = board.unscheduled[i];
+    var nameEsc = escapeHtml(name.replace(/'/g, "\\'"));
     var editIcon = locked ? '' :
-      '<span title="تعديل الاسم" onpointerdown="ec_timetableRenameSubjectPrompt(event,\'' + keyEsc + '\',\'' + colId + '\',\'' + nameEsc + '\')" style="float:left;opacity:.5;cursor:pointer;font-size:12px;padding:0 4px;touch-action:none;">✏️</span>';
-    // تاريخ مصغَّر بجانب كل مادة — يعكس تاريخ اليوم نفسه (نفس colId) ويسمح بتعديله مباشرة من
-    // البطاقة (اختصار لنفس منتقي تاريخ العمود أعلاه، لا حقل بيانات مستقلّ: تعديل تاريخ أي مادة في
-    // يوم يضمّ أكثر من مادة يُغيّر تاريخ اليوم كاملاً لجميعها، لأن التاريخ خاصية اليوم في الشيت لا
-    // المادة المفردة). محسوب/معروض تلقائياً من _ecNextWorkingDay عند تسلسل الأيام.
-    // onpointerdown="event.stopPropagation()" إلزامي هنا: البطاقة الأب عليها مستمع pointerdown
-    // لبدء السحب (ec_timetableBindDrag) — بلا هذا الإيقاف، أي نقر على منتقي التاريخ يُطلِق سحباً
-    // للبطاقة كاملة بدل فتح التقويم. touch-action:manipulation (لا none كبقية البطاقة) كي يعمل
-    // التاريخ باللمس على الجوال بدل أن يُعامَل كإيماءة سحب.
-    var subjDateRow = isUnsched ? '' :
-      '<input type="date" value="' + escapeHtml(date || '') + '"' + (locked ? ' disabled' : '') + ' onpointerdown="event.stopPropagation()" onchange="ec_timetableSetDate(\'' + keyEsc + '\', \'' + colId + '\', this.value, this)" style="width:100%;margin-top:5px;padding:3px 4px;font-size:11px;border:1px solid #e2e8f0;border-radius:5px;box-sizing:border-box;color:#475569;touch-action:manipulation;">';
-    cards += '<div class="ec-tt-card" data-subject="' + escapeHtml(subjects[i].name) + '" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:' + (locked ? 'default' : 'grab') + ';font-size:13px;font-weight:600;touch-action:none;user-select:none;position:relative;' + (locked ? 'opacity:.75;' : '') + '">' +
-      '<span>' + escapeHtml(subjects[i].name) + '</span>' + editIcon + subjDateRow +
+      '<span title="تعديل الاسم" onpointerdown="ec_timetableRenameSubjectPrompt(event,\'' + keyEsc + '\',\'unsched\',\'' + nameEsc + '\')" style="float:left;opacity:.5;cursor:pointer;font-size:12px;padding:0 4px;touch-action:none;">✏️</span>';
+    cards += '<div class="ec-tt-card" data-subject="' + escapeHtml(name) + '" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:' + (locked ? 'default' : 'grab') + ';font-size:13px;font-weight:600;touch-action:none;user-select:none;position:relative;' + (locked ? 'opacity:.75;' : '') + '">' +
+      '<span>' + escapeHtml(name) + '</span>' + editIcon +
       '</div>';
   }
   var addBtn = locked ? '' :
-    '<button type="button" onclick="ec_timetableAddSubjectPrompt(event,\'' + keyEsc + '\',\'' + colId + '\')" style="width:100%;margin-top:6px;padding:5px;border:1px dashed #94a3b8;background:transparent;border-radius:6px;font-size:12px;color:#64748b;cursor:pointer;">+ إضافة مادة</button>';
-  return '<div class="ec-tt-col" data-key="' + escapeHtml(key) + '" data-col="' + colId + '" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;min-width:170px;flex:0 0 170px;">' +
-    '<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1a237e;">' + escapeHtml(title) + '</div>' +
-    dateInput +
+    '<button type="button" onclick="ec_timetableAddSubjectPrompt(event,\'' + keyEsc + '\',\'unsched\')" style="width:100%;margin-top:6px;padding:5px;border:1px dashed #94a3b8;background:transparent;border-radius:6px;font-size:12px;color:#64748b;cursor:pointer;">+ إضافة مادة</button>';
+  return '<div class="ec-tt-col" data-key="' + escapeHtml(key) + '" data-col="unsched" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;min-width:170px;flex:0 0 170px;">' +
+    '<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1a237e;">📦 غير مُجدوَلة</div>' +
     '<div class="ec-tt-cards" style="margin-top:8px;min-height:40px;">' + cards + '</div>' +
+    addBtn +
+    '</div>';
+}
+
+// "الجدول" — قائمة عمودية واحدة مرتَّبة: صف لكل مادة، الفهرس (i) ≡ رقم اليوم (i+1). الموضع خاصية
+// التاريخ لا المادة — راجع تعليق التصميم أعلى ec_timetableRecalcDates لتفصيل سبب هذا الاختيار.
+function ec_timetableListHtml(key, board, locked) {
+  var keyEsc = escapeHtml(key.replace(/'/g, "\\'"));
+  var rows = '';
+  for (var i = 0; i < board.list.length; i++) {
+    var item = board.list[i];
+    var nameEsc = escapeHtml(item.name.replace(/'/g, "\\'"));
+    var editIcon = locked ? '' :
+      '<span title="تعديل الاسم" onpointerdown="ec_timetableRenameSubjectPrompt(event,\'' + keyEsc + '\',\'list\',\'' + nameEsc + '\')" style="opacity:.5;cursor:pointer;font-size:12px;padding:0 4px;touch-action:none;">✏️</span>';
+    // onpointerdown="event.stopPropagation()" إلزامي هنا: الصف الأب عليه مستمع pointerdown لبدء
+    // السحب (ec_timetableBindDrag) — بلا هذا الإيقاف، أي نقر على منتقي التاريخ يُطلِق سحباً للصف
+    // كاملاً بدل فتح التقويم. touch-action:manipulation (لا none كبقية الصف) كي يعمل التاريخ باللمس.
+    var dateInput = '<input type="date" value="' + escapeHtml(item.date || '') + '"' + (locked ? ' disabled' : '') +
+      ' onpointerdown="event.stopPropagation()" onchange="ec_timetableSetDate(\'' + keyEsc + '\', ' + i + ', this.value, this)" style="width:100%;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;box-sizing:border-box;color:#475569;touch-action:manipulation;">';
+    rows += '<div class="ec-tt-card ec-tt-row" data-subject="' + escapeHtml(item.name) + '" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:' + (locked ? 'default' : 'grab') + ';font-size:13px;touch-action:none;user-select:none;display:flex;align-items:center;gap:10px;' + (locked ? 'opacity:.75;' : '') + '">' +
+      '<span style="font-weight:800;color:#1a237e;min-width:20px;">' + (i + 1) + '</span>' +
+      '<span style="flex:1;font-weight:600;">' + escapeHtml(item.name) + '</span>' + editIcon +
+      '<span style="min-width:150px;flex:0 0 150px;">' + dateInput + '</span>' +
+      '</div>';
+  }
+  var addBtn = locked ? '' :
+    '<button type="button" onclick="ec_timetableAddSubjectPrompt(event,\'' + keyEsc + '\',\'list\')" style="width:100%;margin-top:6px;padding:5px;border:1px dashed #94a3b8;background:transparent;border-radius:6px;font-size:12px;color:#64748b;cursor:pointer;">+ إضافة مادة لآخر الجدول</button>';
+  return '<div class="ec-tt-col" data-key="' + escapeHtml(key) + '" data-col="list" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;flex:1 1 320px;min-width:280px;">' +
+    '<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1a237e;">📅 الجدول — اسحب لإعادة الترتيب</div>' +
+    '<div class="ec-tt-cards" style="margin-top:8px;min-height:40px;">' + rows + '</div>' +
     addBtn +
     '</div>';
 }
@@ -7665,44 +7798,20 @@ function ec_timetableDragEnd(ev) {
   if (!col) return;
   var toKey = col.getAttribute('data-key');
   if (toKey !== _ecTTDragFromKey) return; // لا سحب بين لوحتَي صف/شهر مختلفتين
-  var toColId = col.getAttribute('data-col');
+  var toColId = col.getAttribute('data-col'); // 'unsched' أو 'list' فقط الآن — صندوقان لا N عمود
   var containerEl = col.closest('.ec-tt-grade-body');
-  if (toColId === _ecTTDragFromCol) {
-    ec_timetableReorderInColumn(_ecTTDragFromKey, toColId, _ecTTDragSubject, ev.clientY, containerEl);
-    return;
-  }
-  ec_timetableMoveSubject(_ecTTDragFromKey, _ecTTDragSubject, _ecTTDragFromCol, toColId, containerEl);
+  // إعادة الترتيب داخل "الجدول" هي نفس عملية move (إزالة ثم إدراج بموضع الإفلات) — بلا حاجة لمسار
+  // خاص "نفس العمود" بعد تسطيح اللوحة إلى قائمة واحدة (كانت هذه الحالة الخاصة ضرورية فقط مع أعمدة
+  // أيام متعدّدة، راجع _docs/2026-07-15 لتفصيل التبسيط).
+  ec_timetableMoveSubject(_ecTTDragFromKey, _ecTTDragSubject, _ecTTDragFromCol, toColId, containerEl, ev.clientY);
 }
 
-// إعادة ترتيب مادة داخل نفس اليوم (سحب لأعلى/أسفل بلا تغيير عمود). عمود "غير مُجدوَلة" ليس له
-// ترتيب محفوظ في الشيت (يُعاد بناؤه من المنهج عند كل تحميل) فيُتجاهَل بلا أثر — يطابق سلوك عدم
-// الحفظ السابق تماماً لذلك العمود.
-function ec_timetableReorderInColumn(key, colId, subject, dropClientY, containerEl) {
-  if (colId === 'unsched') return;
-  var board = _ecScheduleBoards[key]; if (!board) return;
-  var dayIndex = Number(colId.replace('day-', ''));
-  var day = null;
-  for (var i = 0; i < board.days.length; i++) { if (board.days[i].dayIndex === dayIndex) { day = board.days[i]; break; } }
-  if (!day) return;
-  var subs = day.subjects;
-  var oldIdx = -1;
-  for (var j = 0; j < subs.length; j++) { if (subs[j].name === subject) { oldIdx = j; break; } }
-  if (oldIdx === -1) return;
-  var moved = subs.splice(oldIdx, 1)[0]; // subs الآن بلا العنصر المسحوب — يطابق ما يبقى في DOM
-  var newIdx = ec_timetableIndexFromPointerY(containerEl, colId, subject, dropClientY);
-  if (newIdx > subs.length) newIdx = subs.length;
-  subs.splice(newIdx, 0, moved);
-  if (newIdx === oldIdx) return; // نفس الموضع فعلياً — بلا حاجة لإعادة رسم/حفظ
-  ec_timetableRenderBoard(key, containerEl);
-  ec_timetableScheduleSave(key);
-}
-
-// يحسب فهرس الإفلات بمقارنة clientY بمنتصف كل بطاقة متبقية في نفس العمود (باستثناء البطاقة
-// المسحوبة نفسها بمطابقة اسم المادة — أوثق من الاعتماد على توقيت إزالة data-dragging في dragEnd).
-function ec_timetableIndexFromPointerY(containerEl, colId, excludeSubject, clientY) {
-  var col = containerEl ? containerEl.querySelector('.ec-tt-col[data-col="' + colId + '"]') : null;
-  if (!col) return 0;
-  var cards = col.querySelectorAll('.ec-tt-card');
+// يحسب فهرس الإفلات داخل "الجدول" بمقارنة clientY بمنتصف كل صف متبقٍ (باستثناء الصف المسحوب نفسه
+// بمطابقة اسم المادة — أوثق من الاعتماد على توقيت إزالة data-dragging في dragEnd).
+function ec_timetableIndexFromPointerY(containerEl, excludeSubject, clientY) {
+  var listCol = containerEl ? containerEl.querySelector('.ec-tt-col[data-col="list"]') : null;
+  if (!listCol) return 0;
+  var cards = listCol.querySelectorAll('.ec-tt-row');
   var idx = 0;
   for (var i = 0; i < cards.length; i++) {
     if (cards[i].getAttribute('data-subject') === excludeSubject) continue;
@@ -7712,38 +7821,32 @@ function ec_timetableIndexFromPointerY(containerEl, colId, excludeSubject, clien
   return idx;
 }
 
-// ملاحظة تصميم مهمة: كل مطابقة مادة هنا (وفي ec_timetableReorderInColumn/dragStart) تعتمد على
-// الاسم النصي حرفياً (subject.name)، لا معرّف فريد — آمن طالما كل الأسماء داخل نفس اللوحة فريدة
-// (حال المنهج الحالي دوماً). أي ميزة تسمح بإضافة اسم مكرَّر عمداً داخل نفس اللوحة (مثال: إضافة
-// مادة بنص حرّ) **يجب** أن تمنع التكرار صراحةً قبل الإضافة، وإلا فالسحب/الحذف/التعديل سيُصيب كل
-// المطابقات بالاسم معاً بدل واحدة بعينها.
-function ec_timetableMoveSubject(key, subject, fromCol, toCol, containerEl) {
+// ملاحظة تصميم مهمة: كل مطابقة مادة هنا (وفي dragStart) تعتمد على الاسم النصي حرفياً (item.name)،
+// لا معرّف فريد — آمن طالما كل الأسماء داخل نفس اللوحة فريدة (حال المنهج الحالي دوماً). أي ميزة
+// تسمح بإضافة اسم مكرَّر عمداً داخل نفس اللوحة (مثال: إضافة مادة بنص حرّ) **يجب** أن تمنع التكرار
+// صراحةً قبل الإضافة، وإلا فالسحب/الحذف/التعديل سيُصيب كل المطابقات بالاسم معاً بدل واحدة بعينها.
+function ec_timetableMoveSubject(key, subject, fromCol, toCol, containerEl, dropClientY) {
   var board = _ecScheduleBoards[key]; if (!board) return;
   if (fromCol === 'unsched') {
     board.unscheduled = board.unscheduled.filter(function (n) { return n !== subject; });
   } else {
-    var fromDayIndex = Number(fromCol.replace('day-', ''));
-    for (var i = 0; i < board.days.length; i++) {
-      if (board.days[i].dayIndex === fromDayIndex) {
-        board.days[i].subjects = board.days[i].subjects.filter(function (s) { return s.name !== subject; });
-      }
+    for (var i = 0; i < board.list.length; i++) {
+      if (board.list[i].name === subject) { board.list.splice(i, 1); break; }
     }
   }
   if (toCol === 'unsched') {
-    board.unscheduled.push(subject);
+    if (board.unscheduled.indexOf(subject) === -1) board.unscheduled.push(subject);
   } else {
-    var toDayIndex = Number(toCol.replace('day-', ''));
-    var target = null;
-    for (var j = 0; j < board.days.length; j++) {
-      if (board.days[j].dayIndex === toDayIndex) { target = board.days[j]; break; }
-    }
-    if (!target) { target = { dayIndex: toDayIndex, date: '', subjects: [] }; board.days.push(target); }
-    target.subjects.push({ name: subject, order: target.subjects.length + 1 });
+    var newIdx = ec_timetableIndexFromPointerY(containerEl, subject, dropClientY);
+    if (newIdx > board.list.length) newIdx = board.list.length;
+    board.list.splice(newIdx, 0, { name: subject, date: '' });
   }
-  // يُسقَط فقط اليوم الذي لا مادة فيه ولا تاريخ محدَّد له (لم يُلمَس إطلاقاً) — أما يوم مُفرَّغ
-  // من مواده لكن له تاريخ محفوظ فيبقى في المصفوفة كي لا يُفقَد رقمه/تاريخه نهائياً، ولا يظهر
-  // تسلسل مكسور ("اليوم ١، اليوم ٢، اليوم ٤") يستحيل الوصول لفجوته مجدداً عبر السحب.
-  board.days = board.days.filter(function (d) { return d.subjects.length > 0 || d.date; });
+  // أي تغيير هيكلي على board.list (إدراج أو حذف، من/إلى القائمة أو داخلها) يُعيد حساب كل تواريخه
+  // تسلسلياً من الموضع الأول — راجع تعليق التصميم أعلى ec_timetableRecalcDates. إزالة مادة (toCol
+  // === 'unsched') تُزيح كل ما بعدها موضعاً واحداً أيضاً وتحتاج نفس إعادة الحساب لا الإدراج فقط
+  // (خلل حقيقي رصدته مراجعة: كان الحذف يترك تواريخ الأيام التالية بلا تحديث، منزاحة يوماً كاملاً
+  // بصمت عن موضعها الفعلي الجديد).
+  ec_timetableRecalcDates(board.list, 0);
   ec_timetableRenderBoard(key, containerEl);
   ec_timetableScheduleSave(key);
 }
@@ -7764,86 +7867,94 @@ function _ecNextWorkingDay(dateStr) {
   if (!y || !mo || !d) return dateStr;
   var dt = new Date(y, mo - 1, d);
   dt.setDate(dt.getDate() + 1);
-  // تخطّي الخميس(4)/الجمعة(5) الثابتين، وأي إجازة مخصَّصة أضافتها الإدارة (_ecHolidaySet).
-  while (dt.getDay() === 4 || dt.getDay() === 5 || _ecHolidaySet[_ecFmtYmd(dt)]) { dt.setDate(dt.getDate() + 1); }
+  // تخطّي الخميس(4)/الجمعة(5) الثابتين، وأي فترة "إجازة" حقيقية من التقويم المدرسي (_ecCalHolidayRanges).
+  while (dt.getDay() === 4 || dt.getDay() === 5 || _ecIsCalendarHoliday(_ecFmtYmd(dt))) { dt.setDate(dt.getDate() + 1); }
   return _ecFmtYmd(dt);
 }
 
-// لوحة إدارة الإجازات المخصَّصة — تُعرَض أعلى تبويب "جدول الاختبارات" (لا علاقة لها بصف/شهر محدَّد،
-// تُطبَّق على كل حسابات _ecNextWorkingDay لكل الصفوف/الشهور معاً).
-function ec_timetableHolidaysHtml() {
-  var chips = '';
-  for (var i = 0; i < _ecHolidays.length; i++) {
-    var hol = _ecHolidays[i];
-    var dateEsc = escapeHtml(hol.date.replace(/'/g, "\\'"));
-    chips += '<span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border-radius:6px;padding:3px 8px;margin:2px;font-size:12px;">' +
-      escapeHtml(hol.date) + (hol.note ? (' — ' + escapeHtml(hol.note)) : '') +
-      ' <b style="cursor:pointer;" onclick="ec_timetableRemoveHoliday(\'' + dateEsc + '\')">×</b></span>';
+// تصميم التاريخ في القائمة الواحدة (board.list): التاريخ خاصية **الموضع** لا المادة — الموضع i يمثّل
+// "اليوم i+1" تماماً كما كان عمود اليوم قديماً. عند أي تغيير هيكلي (سحب لإعادة الترتيب، إدراج من/إلى
+// غير مُجدوَلة، إضافة مادة) تُعاد تسمية كل التواريخ تسلسلياً من الموضع الأول (fromIdx=0) بدل إبقاء
+// التاريخ ملتصقاً بالمادة أثناء تنقّلها — وإلا لظهر عمود تواريخ غير مرتَّب زمنياً بعد أي سحب، وهو ما
+// يُفقِد الغرض من عرض "اسحب لإعادة الترتيب" بجانب عمود تواريخ. تعديل تاريخ صف بعينه يدوياً عبر منتقي
+// التاريخ يستدعي نفس الدالة بـfromIdx=ذلك الصف فتُحرّك ما بعده فقط (نفس سلوك الأعمدة السابق، منقول
+// لموضع لا عمود يوم).
+function ec_timetableRecalcDates(list, fromIdx) {
+  // ابحث عن أول تاريخ مرجعي فعلي بدءاً من fromIdx لا fromIdx نفسه بالضرورة — قد يكون فارغاً (مادة
+  // أُدرِجت للتوّ بلا تاريخ خاص بها) بينما ما بعدها في القائمة يحمل تاريخاً حقيقياً من قبل؛ التوقّف
+  // عند fromIdx فارغاً بلا هذا التراجع كان يُسقِط إعادة الحساب بالكامل صامتاً (خلل رصدته مراجعة).
+  var seedIdx = fromIdx;
+  while (seedIdx < list.length && !list[seedIdx].date) seedIdx++;
+  if (seedIdx >= list.length) return; // لا تاريخ مرجعي في كل ما تبقّى من القائمة — لا شيء يُحسَب تلقائياً
+  var cursor = list[seedIdx].date;
+  for (var i = seedIdx + 1; i < list.length; i++) {
+    cursor = _ecNextWorkingDay(cursor);
+    list[i].date = cursor;
   }
-  if (!chips) chips = '<span style="font-size:12px;color:#999;">لا إجازات مخصَّصة بعد (الخميس/الجمعة يُتخطَّيان دوماً بلا حاجة لإضافتهما هنا)</span>';
-  return '<details style="margin-bottom:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 12px;">' +
-    '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#9a3412;">🗓️ إجازات مخصَّصة (' + _ecHolidays.length + ') — تُستثنى تلقائياً من حساب التواريخ التالية</summary>' +
-    '<div style="margin-top:8px;">' + chips + '</div>' +
-    '<button type="button" onclick="ec_timetableAddHolidayPrompt(event)" style="margin-top:8px;padding:5px 10px;border:1px dashed #ea580c;background:transparent;border-radius:6px;font-size:12px;color:#9a3412;cursor:pointer;">+ إضافة إجازة</button>' +
+}
+
+// لوحة "عرض على منصة الطالب" — تحكّم إداري **لكل شهر** (لا لكل صف)، أعلى تبويب "جدول الاختبارات".
+// حفظ فوري عند التبديل (بلا زر حفظ منفصل) — كل تبديل استدعاء خادم واحد صريح، لا Debounce، كي تنعكس
+// حالة "مخفي/ظاهر" فوراً بلا التباس. الإنفاذ الفعلي في getStudentExamSchedule (student/StudentLogic.js)
+// لا هنا — هذه اللوحة تُغيّر العلم الخادمي المُستهلَك من هناك، وليست تصفية عميلية تجميلية.
+function ec_timetableVisibilityHtml() {
+  var rows = '';
+  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
+    var month = EC_EXAM_TYPES[i];
+    var visible = _ecMonthVisibility.hasOwnProperty(month) ? _ecMonthVisibility[month] : true;
+    var monthEsc = escapeHtml(month.replace(/'/g, "\\'"));
+    rows += '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:12px;cursor:pointer;">' +
+      '<input type="checkbox"' + (visible ? ' checked' : '') + ' onchange="ec_timetableToggleMonthVisibility(\'' + monthEsc + '\', this.checked, this)">' +
+      escapeHtml(month) + '</label>';
+  }
+  return '<details open style="margin-bottom:12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 12px;">' +
+    '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#1e40af;">👁️ عرض الجدول على منصة الطالب — لكل شهر</summary>' +
+    '<div style="margin-top:8px;">' + rows + '</div>' +
     '</details>';
 }
 
-function ec_timetableRefreshHolidaysPanel() {
-  var panel = document.getElementById('ec-tt-holidays-panel');
-  if (panel) panel.innerHTML = ec_timetableHolidaysHtml();
-}
-
-function ec_timetableAddHolidayPrompt(ev) {
-  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-  var dateStr = window.prompt('تاريخ الإجازة (yyyy-mm-dd):', '');
-  if (dateStr === null) return;
-  dateStr = dateStr.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { toast('⚠️ صيغة التاريخ يجب أن تكون yyyy-mm-dd', 'error'); return; }
-  if (_ecHolidaySet[dateStr]) { toast('⚠️ هذا التاريخ مُضاف أصلاً كإجازة', 'error'); return; }
-  var note = window.prompt('ملاحظة (اختياري):', '');
-  if (note === null) note = '';
-  _ecHolidays.push({ date: dateStr, note: note.trim().substring(0, 60) });
-  _ecHolidays.sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
-  _ecHolidaySet[dateStr] = true;
-  ec_timetableRefreshHolidaysPanel();
-  ec_timetableSaveHolidays();
-}
-
-function ec_timetableRemoveHoliday(dateStr) {
-  _ecHolidays = _ecHolidays.filter(function (h) { return h.date !== dateStr; });
-  delete _ecHolidaySet[dateStr];
-  ec_timetableRefreshHolidaysPanel();
-  ec_timetableSaveHolidays();
-}
-
-function ec_timetableSaveHolidays() {
-  callServer('saveExamHolidaysProtected', { holidays: _ecHolidays }, function (res) {
-    if (!res || !res.success) toast('❌ ' + (res ? res.error : 'تعذّر حفظ الإجازات'), 'error');
-  }, function (err) { toast('❌ ' + err.message, 'error'); });
-}
-
-function ec_timetableSetDate(key, colId, value, inputEl) {
-  var board = _ecScheduleBoards[key]; if (!board) return;
-  var dayIndex = Number(colId.replace('day-', ''));
-  var target = null;
-  for (var i = 0; i < board.days.length; i++) {
-    if (board.days[i].dayIndex === dayIndex) { target = board.days[i]; break; }
-  }
-  if (!target) return; // يوم بلا مواد بعد — لا معنى لحفظ تاريخ وحده (لن يُحفَظ فارغاً على أي حال)
-  target.date = value;
-  if (value) {
-    // تعبئة تلقائية لتواريخ الأيام التالية (بترتيب dayIndex) — كل يوم = أقرب يوم دوام بعد سابقه
-    var sortedDays = board.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
-    var cursorDate = value;
-    for (var s = 0; s < sortedDays.length; s++) {
-      if (sortedDays[s].dayIndex <= dayIndex) continue;
-      cursorDate = _ecNextWorkingDay(cursorDate);
-      sortedDays[s].date = cursorDate;
+function ec_timetableToggleMonthVisibility(month, visible, cbEl) {
+  if (cbEl) cbEl.disabled = true;
+  callServer('setExamMonthVisibilityProtected', { month: month, visible: visible }, function (res) {
+    if (cbEl) cbEl.disabled = false;
+    if (!res || !res.success) {
+      toast('❌ ' + (res ? res.error : 'تعذّر التحديث'), 'error');
+      if (cbEl) cbEl.checked = !visible; // تراجع بصري عن الفشل — الحالة الخادمية لم تتغيّر
+      return;
     }
+    _ecMonthVisibility = res.visibility || _ecMonthVisibility;
+    toast(visible ? ('✅ جدول ' + month + ' أصبح ظاهراً لمنصة الطالب') : ('🚫 جدول ' + month + ' أصبح مخفياً عن منصة الطالب'), 'success');
+  }, function (err) {
+    if (cbEl) { cbEl.disabled = false; cbEl.checked = !visible; }
+    toast('❌ ' + err.message, 'error');
+  });
+}
+
+// لوحة عرض **للقراءة فقط** أعلى تبويب "جدول الاختبارات" — تعكس فترات "إجازة" من التقويم المدرسي
+// الحقيقي (لا علاقة لها بصف/شهر محدَّد، تُطبَّق على كل حسابات _ecNextWorkingDay معاً). لا زر
+// إضافة/حذف هنا عمداً — إدارة الإجازات فعلياً من صفحة "🗓️ التقويم المدرسي" حصراً، تفادياً لتكرار
+// نفس البيانات بواجهتَي إدارة مستقلّتين (قرار مالك صريح).
+function ec_timetableHolidaysHtml() {
+  var chips = '';
+  for (var i = 0; i < _ecCalHolidayRanges.length; i++) {
+    var r = _ecCalHolidayRanges[i];
+    var rangeLabel = (r.start === r.end) ? r.start : (r.start + ' → ' + r.end);
+    chips += '<span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border-radius:6px;padding:3px 8px;margin:2px;font-size:12px;">' +
+      escapeHtml(rangeLabel) + (r.title ? (' — ' + escapeHtml(r.title)) : '') + '</span>';
   }
-  // إفراغ التاريخ عن يوم أصلاً بلا مواد يُسقِطه فوراً بدل تركه عموداً فارغاً معلَّقاً حتى أوّل سحب
-  // لاحق (نفس شرط الإسقاط في ec_timetableMoveSubject: بلا مواد وبلا تاريخ = لا داعي لبقائه).
-  board.days = board.days.filter(function (d) { return d.subjects.length > 0 || d.date; });
+  if (!chips) chips = '<span style="font-size:12px;color:#999;">لا إجازات مسجَّلة في التقويم المدرسي بعد (الخميس/الجمعة يُتخطَّيان دوماً على أي حال)</span>';
+  return '<details style="margin-bottom:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 12px;">' +
+    '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#9a3412;">🗓️ إجازات من التقويم المدرسي (' + _ecCalHolidayRanges.length + ') — تُستثنى تلقائياً من حساب التواريخ التالية</summary>' +
+    '<div style="margin-top:8px;">' + chips + '</div>' +
+    '<p style="font-size:11px;color:#9a3412;margin:8px 0 0;">لإضافة/تعديل إجازة: من صفحة "🗓️ التقويم المدرسي".</p>' +
+    '</details>';
+}
+
+function ec_timetableSetDate(key, idx, value, inputEl) {
+  var board = _ecScheduleBoards[key]; if (!board) return;
+  var item = board.list[idx]; if (!item) return;
+  item.date = value;
+  if (value) ec_timetableRecalcDates(board.list, idx); // تعديل يدوي فردي — يُحرّك ما بعده فقط
   var containerEl = inputEl ? inputEl.closest('.ec-tt-grade-body') : null;
   ec_timetableRenderBoard(key, containerEl);
   ec_timetableScheduleSave(key);
@@ -7854,15 +7965,12 @@ function ec_timetableSetDate(key, colId, value, inputEl) {
 // معرّف فريد (راجع التعليق فوق ec_timetableMoveSubject) — اسمان متطابقان في نفس اللوحة يجعلان أي
 // سحب أو حذف لاحق يُصيب كليهما معاً بدل واحد بعينه.
 function ec_timetableSubjectNameExists(board, name) {
-  var i, j;
+  var i;
   for (i = 0; i < board.unscheduled.length; i++) {
     if (board.unscheduled[i] === name) return true;
   }
-  for (i = 0; i < board.days.length; i++) {
-    var subs = board.days[i].subjects;
-    for (j = 0; j < subs.length; j++) {
-      if (subs[j].name === name) return true;
-    }
+  for (i = 0; i < board.list.length; i++) {
+    if (board.list[i].name === name) return true;
   }
   return false;
 }
@@ -7875,7 +7983,7 @@ function ec_timetableAddSubjectPrompt(ev, key, colId) {
   if (name === null) return;
   name = name.trim();
   if (!name) return;
-  if (name.length > 40) name = name.substring(0, 40); // حماية تخطيط عمود عرضه ثابت (170px)
+  if (name.length > 40) name = name.substring(0, 40); // حماية تخطيط الصف/البطاقة
   if (ec_timetableSubjectNameExists(board, name)) {
     toast('⚠️ هذه المادة موجودة أصلاً في هذه اللوحة', 'error');
     return;
@@ -7883,13 +7991,8 @@ function ec_timetableAddSubjectPrompt(ev, key, colId) {
   if (colId === 'unsched') {
     board.unscheduled.push(name);
   } else {
-    var dayIndex = Number(colId.replace('day-', ''));
-    var target = null;
-    for (var i = 0; i < board.days.length; i++) {
-      if (board.days[i].dayIndex === dayIndex) { target = board.days[i]; break; }
-    }
-    if (!target) { target = { dayIndex: dayIndex, date: '', subjects: [] }; board.days.push(target); }
-    target.subjects.push({ name: name, order: target.subjects.length + 1 });
+    board.list.push({ name: name, date: '' });
+    ec_timetableRecalcDates(board.list, 0); // تغيير هيكلي — أعد حساب التواريخ تسلسلياً
   }
   var containerEl = ev && ev.currentTarget ? ev.currentTarget.closest('.ec-tt-grade-body') : null;
   ec_timetableRenderBoard(key, containerEl);
@@ -7915,13 +8018,8 @@ function ec_timetableRenameSubjectPrompt(ev, key, colId, oldName) {
       if (board.unscheduled[u] === oldName) { board.unscheduled[u] = newName; renamed = true; break; }
     }
   } else {
-    var dayIndex = Number(colId.replace('day-', ''));
-    for (var d = 0; d < board.days.length; d++) {
-      if (board.days[d].dayIndex !== dayIndex) continue;
-      var subs = board.days[d].subjects;
-      for (var s = 0; s < subs.length; s++) {
-        if (subs[s].name === oldName) { subs[s].name = newName; renamed = true; break; }
-      }
+    for (var i = 0; i < board.list.length; i++) {
+      if (board.list[i].name === oldName) { board.list[i].name = newName; renamed = true; break; }
     }
   }
   if (!renamed) return;
@@ -7965,9 +8063,11 @@ function ec_timetableSaveClick(ev, key) {
 function ec_timetableSaveNow(key, manual, btnEl) {
   var board = _ecScheduleBoards[key]; if (!board) return;
   var parts = key.split('|'), grade = parts[0], month = parts[1];
-  var daysToSave = board.days.filter(function (d) { return d.subjects && d.subjects.length > 0; });
-  for (var i = 0; i < daysToSave.length; i++) {
-    for (var s = 0; s < daysToSave[i].subjects.length; s++) daysToSave[i].subjects[s].order = s + 1;
+  // إعادة تسطيح board.list (قائمة واحدة) إلى بنية الشيت الموجودة أصلاً — يوم واحد لكل مادة، الموضع
+  // = dayIndex، order=1 دوماً (مادة واحدة/يوم في هذا التصميم) — بلا أي تغيير خادمي مطلوب لهذا الجزء.
+  var daysToSave = [];
+  for (var i = 0; i < board.list.length; i++) {
+    daysToSave.push({ dayIndex: i + 1, date: board.list[i].date || '', subjects: [{ name: board.list[i].name, order: 1 }] });
   }
   callServer('saveExamScheduleBulkProtected', { grade: grade, month: month, days: daysToSave }, function (res) {
     if (!res || !res.success) {
@@ -7992,95 +8092,23 @@ function ec_timetableSaveNow(key, manual, btnEl) {
   });
 }
 
-// نسخ جدول اللوحة المفتوحة حالياً (أيام/تواريخ/ترتيب) لكل صف آخر يطابقه تماماً بمجموعة المواد،
-// لنفس الشهر — استبدال يدوي بضغطة زر لمرّة واحدة (لا ربط تلقائي مستمر)، عبر نفس نقطة الحفظ
-// الذرّي الموجودة أصلاً (saveExamScheduleBulkProtected) لكل صف هدف على حدة.
-function ec_timetableCopyToMatching(ev, key) {
-  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-  var board = _ecScheduleBoards[key]; if (!board) return;
-  var parts = key.split('|'), grade = parts[0], month = parts[1];
-  var daysToSave = board.days.filter(function (d) { return d.subjects && d.subjects.length > 0; });
-  if (!daysToSave.length) { toast('لا يوجد جدول مُعبّأ بعد لنسخه', 'warning'); return; }
-  for (var i = 0; i < daysToSave.length; i++) {
-    for (var s = 0; s < daysToSave[i].subjects.length; s++) daysToSave[i].subjects[s].order = s + 1;
-  }
-  var targets = ec_timetableMatchingGrades(grade);
-  if (!targets.length) return;
-  if (!confirm('سيُستبدَل جدول اختبارات "' + month + '" الحالي لصفوف: ' + targets.join('، ') + ' بنفس ترتيب/أيام/تواريخ ' + grade + '. متابعة؟')) return;
-
-  var remaining = targets.length, failures = [];
-  for (var t = 0; t < targets.length; t++) {
-    (function (targetGrade) {
-      // ألغِ أي مؤقّت حفظ مؤجَّل (600ms) معلَّق فعلاً لهذا الصف الهدف — وإلا فقد يُطلَق لاحقاً
-      // بالبيانات القديمة (قبل النسخ) ويتصادم مع حفظ النسخ الفوري هذا، فيُلغي أحدهما الآخر بصمت
-      // حسب ترتيب وصول الطلبين للخادم لا ترتيب إرسالهما من العميل.
-      var targetTimerKey = targetGrade + '|' + month;
-      if (_ecTTSaveTimers[targetTimerKey]) { clearTimeout(_ecTTSaveTimers[targetTimerKey]); delete _ecTTSaveTimers[targetTimerKey]; }
-      callServer('saveExamScheduleBulkProtected',
-        { grade: targetGrade, month: month, days: JSON.parse(JSON.stringify(daysToSave)) },
-        function (res) {
-          remaining--;
-          if (!res || !res.success) failures.push(targetGrade);
-          else ec_timetableAfterCopyRefresh(targetGrade, month, daysToSave);
-          if (remaining === 0) ec_timetableCopyDone(failures);
-        },
-        function (err) { remaining--; failures.push(targetGrade); if (remaining === 0) ec_timetableCopyDone(failures); }
-      );
-    })(targets[t]);
-  }
-}
-
-function ec_timetableCopyDone(failures) {
-  if (failures.length) toast('❌ فشل النسخ لـ: ' + failures.join('، '), 'error');
-  else toast('✅ تم نسخ الجدول لكل الصفوف المطابقة', 'success');
-}
-
-// يحدّث لوحة الصف الهدف فوراً إن كانت مفتوحة/محمَّلة أصلاً، وشارة عدد المواد في ملخّصه حتى لو
-// كانت البطاقة مغلقة — بنفس أسلوب التحديث الجزئي الموجود أصلاً في ec_timetableRenderBoard (لا
-// إعادة جلب overview كاملة).
-function ec_timetableAfterCopyRefresh(targetGrade, month, daysToSave) {
-  var targetKey = targetGrade + '|' + month;
-  var detailsEl = _ecTTFindGradeDetails(targetKey);
-  if (_ecScheduleBoards[targetKey]) {
-    _ecScheduleBoards[targetKey].days = JSON.parse(JSON.stringify(daysToSave));
-    ec_timetableComputeUnscheduled(targetKey, targetGrade);
-    var body = detailsEl ? detailsEl.querySelector('.ec-tt-grade-body') : null;
-    if (body && detailsEl.open) ec_timetableRenderBoard(targetKey, body);
-  }
-  if (detailsEl) {
-    var count = 0;
-    for (var d = 0; d < daysToSave.length; d++) count += daysToSave[d].subjects.length;
-    var badge = detailsEl.querySelector('summary .ec-tt-badge');
-    if (badge) { badge.textContent = count + ' مادة مُجدوَلة'; badge.classList.toggle('ec-tt-badge-ok', count > 0); }
-  }
-}
-
-function _ecTTFindGradeDetails(key) {
-  var all = document.querySelectorAll('.ec-tt-grade');
-  for (var i = 0; i < all.length; i++) { if (all[i].getAttribute('data-key') === key) return all[i]; }
-  return null;
-}
-
 // ── طباعة احترافية بهوية المدرسة (شعار/اسم/عام دراسي من _ecBrandLogoHtml/_ecBrandColor/_ecData —
 //    نفس أدوات طباعة الكنترول القائمة فعلاً في ec_printCommitteeRoster، بلا كود جلب/تنسيق جديد) ──
 function ec_printGradeSchedule(ev, key) {
   if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   var board = _ecScheduleBoards[key];
   var parts = key.split('|'), grade = parts[0], month = parts[1];
-  var days = board ? board.days.slice().filter(function (d) { return d.subjects && d.subjects.length; }) : [];
-  if (!days.length) { toast('لا توجد مواد مُجدوَلة لهذا الصف بعد', 'warning'); return; }
-  days.sort(function (a, b) { return a.dayIndex - b.dayIndex; });
-  _ecRenderGradePrint(grade, month, days);
+  var list = board ? board.list.slice() : [];
+  if (!list.length) { toast('لا توجد مواد مُجدوَلة لهذا الصف بعد', 'warning'); return; }
+  _ecRenderGradePrint(grade, month, list);
 }
 
-function _ecRenderGradePrint(grade, month, days) {
+function _ecRenderGradePrint(grade, month, list) {
   var d = _ecData || {};
   var brandColor = _ecBrandColor();
   var rows = '';
-  for (var i = 0; i < days.length; i++) {
-    var names = [];
-    for (var s = 0; s < days[i].subjects.length; s++) names.push(days[i].subjects[s].name);
-    rows += '<tr' + (i % 2 ? ' class="alt"' : '') + '><td class="day">اليوم ' + days[i].dayIndex + '</td><td class="date">' + _tfEsc(days[i].date || '—') + '</td><td class="subj">' + _tfEsc(names.join('، ')) + '</td></tr>';
+  for (var i = 0; i < list.length; i++) {
+    rows += '<tr' + (i % 2 ? ' class="alt"' : '') + '><td class="day">اليوم ' + (i + 1) + '</td><td class="date">' + _tfEsc(list[i].date || '—') + '</td><td class="subj">' + _tfEsc(list[i].name) + '</td></tr>';
   }
   var css = '@page{size:A4;margin:14mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;text-align:center;}' +
             '.header{background:linear-gradient(135deg,' + brandColor + ',' + brandColor + 'cc);color:#fff;border-radius:12px;padding:16px 10px 14px;margin-bottom:18px;}' +
@@ -8107,35 +8135,75 @@ function ec_printMonthSchedule(ev, month) {
   }, function (err) { toast('❌ ' + err.message, 'error'); });
 }
 
+// ترويسة رسمية ثابتة (وزارة التربية والتعليم) — لا مصدر بيانات لها، نص وطني ثابت يُضاف لأول مرة
+// (لا يوجد أي سطر مشابه بالمستودع كله قبل هذا). تُستخدَم على **كل** جدول-صف مطبوع بمفرده أدناه —
+// كل جدول سيُقصّ ليصير ورقة مستقلّة فيلزمه ترويسة كاملة قائمة بذاتها، لا ترويسة واحدة أعلى الصفحة.
+function _ecMinistryHeaderHtml() {
+  return '<div class="ec-ministry">الجمهورية اليمنية<br>وزارة التربية والتعليم</div>';
+}
+
+// ملاحظات مشتركة حرفية (نصّ المالك) تحت كل جدول — وقت البدء الوحيد المتغيّر حسب الصف (7:30 للأول
+// ثانوي حصراً، 8:00 لبقية الصفوف).
+function _ecPrintNotesHtml(grade) {
+  var startTime = (grade === 'الأول ثانوي') ? '7:30' : '8:00';
+  return '<div class="ec-notes">' +
+    '<div>⏰ يبدأ الاختبار الساعة ' + startTime + '</div>' +
+    '<div>🚫 الرجاء عدم الغياب — لن يتم إعادة الاختبار</div>' +
+    '<div>💰 الرجاء تسديد القسط حتى لا يُحرم الطالب/ة من الاختبار</div>' +
+    '</div>';
+}
+
+// طباعة قابلة للقص: 3 جداول-صف مكدَّسة عمودياً لكل صفحة A4، بينها خط قصّ متقطّع (✂️) — الصفحة
+// الأخيرة الناقصة تُحشى بمربَّعات فارغة بحدّ متقطّع (نفس اصطلاح .card-empty في ec_printSeatCards)
+// كي تكتمل ثلاثة شكلياً بلا فراغ غير مُنسَّق.
 function _ecRenderMonthPrint(month, grades) {
   var d = _ecData || {};
   var brandColor = _ecBrandColor();
-  var sections = '';
-  for (var g = 0; g < grades.length; g++) {
-    var gr = grades[g];
-    var days = gr.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
-    var rows = '';
-    for (var i = 0; i < days.length; i++) {
-      var names = [];
-      for (var s = 0; s < days[i].subjects.length; s++) names.push(days[i].subjects[s].name);
-      rows += '<tr' + (i % 2 ? ' class="alt"' : '') + '><td class="day">اليوم ' + days[i].dayIndex + '</td><td class="date">' + _tfEsc(days[i].date || '—') + '</td><td class="subj">' + _tfEsc(names.join('، ')) + '</td></tr>';
+  var logoHtml = _ecBrandLogoHtml(36);
+  var ministryHtml = _ecMinistryHeaderHtml();
+  var perPage = 3;
+  var pagesHtml = '';
+  for (var p = 0; p < grades.length; p += perPage) {
+    var chunk = grades.slice(p, p + perPage);
+    var slicesHtml = '';
+    for (var c = 0; c < chunk.length; c++) {
+      var gr = chunk[c];
+      var days = gr.days.slice().sort(function (a, b) { return a.dayIndex - b.dayIndex; });
+      var rows = '';
+      for (var i = 0; i < days.length; i++) {
+        var names = [];
+        for (var s = 0; s < days[i].subjects.length; s++) names.push(days[i].subjects[s].name);
+        rows += '<tr' + (i % 2 ? ' class="alt"' : '') + '><td class="day">اليوم ' + days[i].dayIndex + '</td><td class="date">' + _tfEsc(days[i].date || '—') + '</td><td class="subj">' + _tfEsc(names.join('، ')) + '</td></tr>';
+      }
+      if (c > 0) slicesHtml += '<div class="ec-cut-line">✂️ قصّ هنا</div>';
+      slicesHtml += '<div class="ec-slice">' +
+        '<div class="ec-slice-head">' + ministryHtml + logoHtml +
+          '<div class="ec-slice-school">' + _tfEsc(d.schoolName || '') + '</div>' +
+          '<h3>جدول اختبارات ' + _tfEsc(gr.grade) + ' — ' + _tfEsc(month) + '</h3>' +
+        '</div>' +
+        '<table><thead><tr><th>اليوم</th><th>التاريخ</th><th>المادة</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        _ecPrintNotesHtml(gr.grade) +
+        '</div>';
     }
-    sections += '<div class="grade-block"><h3>' + _tfEsc(gr.grade) + '</h3>' +
-                '<table><thead><tr><th>اليوم</th><th>التاريخ</th><th>المادة</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    for (var f = chunk.length; f < perPage; f++) {
+      slicesHtml += '<div class="ec-cut-line">✂️ قصّ هنا</div><div class="ec-slice ec-slice-empty"></div>';
+    }
+    pagesHtml += '<div class="page">' + slicesHtml + '</div>';
   }
-  var css = '@page{size:A4;margin:14mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;text-align:center;}' +
-            '.header{background:linear-gradient(135deg,' + brandColor + ',' + brandColor + 'cc);color:#fff;border-radius:12px;padding:16px 10px 14px;margin-bottom:18px;}' +
-            '.grade-block{margin-bottom:20px;page-break-inside:avoid;text-align:right;}' +
-            '.grade-block h3{color:' + brandColor + ';border-bottom:2px solid ' + brandColor + '55;padding-bottom:4px;margin:0 0 8px;font-size:15px;}' +
-            'table{width:100%;border-collapse:collapse;font-size:13px;text-align:center;border:1px solid ' + brandColor + '33;border-radius:8px;overflow:hidden;}' +
-            'th,td{padding:8px;border-bottom:1px solid #e5e7eb;} tr.alt td{background:' + brandColor + '0d;}' +
-            'th{background:' + brandColor + ';color:#fff;font-weight:600;} td.subj{font-weight:600;} td.day{font-weight:800;color:' + brandColor + ';}' +
-            'h2{margin:0;font-size:20px;} .meta{font-size:13px;opacity:.92;margin-top:6px;}';
-  var body = '<div class="header">' + _ecBrandLogoHtml(50) +
-             '<h2>جدول اختبارات ' + _tfEsc(month) + '</h2>' +
-             '<div class="meta">' + _tfEsc(d.schoolName || '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div></div>' +
-             sections;
-  _tfPrintWin('جدول اختبارات ' + month, css, body);
+  var css = '@page{size:A4;margin:10mm;} body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;background:#fff;}' +
+    '.page{page-break-after:always;display:flex;flex-direction:column;} .page:last-child{page-break-after:auto;}' +
+    '.ec-slice{border:1px solid ' + brandColor + '55;border-radius:8px;padding:8px 10px;box-sizing:border-box;flex:1;}' +
+    '.ec-slice-empty{border:1.5px dashed #cbd5e1;min-height:60mm;}' +
+    '.ec-cut-line{text-align:center;font-size:10px;color:#94a3b8;border-top:2px dashed #94a3b8;margin:3px 0;padding-top:2px;}' +
+    '.ec-slice-head{text-align:center;margin-bottom:6px;}' +
+    '.ec-ministry{font-size:10px;font-weight:700;color:' + brandColor + ';line-height:1.4;}' +
+    '.ec-slice-school{font-size:11px;font-weight:700;margin-top:2px;}' +
+    '.ec-slice h3{margin:4px 0;font-size:13px;color:' + brandColor + ';}' +
+    'table{width:100%;border-collapse:collapse;font-size:11px;text-align:center;border:1px solid ' + brandColor + '33;border-radius:6px;overflow:hidden;}' +
+    'th,td{padding:4px 6px;border-bottom:1px solid #e5e7eb;} tr.alt td{background:' + brandColor + '0d;}' +
+    'th{background:' + brandColor + ';color:#fff;font-weight:600;font-size:10px;} td.subj{font-weight:600;} td.day{font-weight:800;color:' + brandColor + ';}' +
+    '.ec-notes{margin-top:6px;font-size:9.5px;color:#475569;text-align:center;line-height:1.6;border-top:1px dashed #e2e8f0;padding-top:4px;}';
+  _tfPrintWin('جدول اختبارات ' + month + ' (قابل للقص)', css, pagesHtml);
 }
 
 // ── مودالات (لجنة/جنس الطالب) — بطاقة بيضاء ثابتة، لذا لون النص ثابت غامق دوماً ──
