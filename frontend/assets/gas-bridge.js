@@ -15,17 +15,6 @@
   // علامة على أخطاء الشبكة (تعذّر الوصول للخادم) لتمييزها عن أخطاء الخادم المنطقية.
   function netError(msg) { var e = new Error(msg); e.__network = true; return e; }
 
-  // تسجيل تشخيصي مؤقّت لأخطاء الشبكة — يظهر في Logcat عبر onConsoleMessage الموجود أصلاً
-  // في تطبيق أندرويد (BaseWebViewActivity.kt) بلا حاجة لإصدار APK جديد. آمن: لا يغيّر أي مسار تنفيذ.
-  function _diagLogFailure(fnName, kind, xhr) {
-    try {
-      console.error('[gas-bridge] فشل ' + fnName + ': ' + kind +
-        ' status=' + (xhr ? xhr.status : '?') +
-        ' readyState=' + (xhr ? xhr.readyState : '?') +
-        ' body=' + String((xhr && xhr.responseText) || '').slice(0, 200));
-    } catch (e) {}
-  }
-
   // النقل الخام: نفس سلوك google.script.run الأصلي عبر XHR.
   // أخطاء الشبكة (status 0/مهلة/onerror/رد غير صالح/خطأ بوابة) تُعلَّم __network=true.
   function rawCall(fnName, args, onSuccess, onFailure, userObject) {
@@ -54,7 +43,6 @@
 
       if (xhr.status === 0 || xhr.status >= 400) {
         // الخادم غير قابل للوصول (شبكة/بوابة): خطأ شبكة.
-        _diagLogFailure(fnName, 'status-error', xhr);
         if (onFailure) onFailure(netError('فشل الاتصال (status ' + xhr.status + ')'), userObject);
         return;
       }
@@ -63,7 +51,6 @@
       var data = null;
       try { data = JSON.parse(text); } catch (e) {
         // رد غير JSON (بوابة أسر/صفحة خطأ) — نعدّه خطأ شبكة ليعمل التراجع للكاش.
-        _diagLogFailure(fnName, 'invalid-json', xhr);
         if (onFailure) onFailure(netError('رد غير صالح'), userObject);
         return;
       }
@@ -77,12 +64,10 @@
     };
 
     xhr.ontimeout = function () {
-      _diagLogFailure(fnName, 'timeout', xhr);
       if (onFailure) onFailure(netError('انتهت مهلة الاتصال'), userObject);
     };
 
     xhr.onerror = function () {
-      _diagLogFailure(fnName, 'xhr-onerror', xhr);
       if (onFailure) onFailure(netError('فشل الاتصال بالشبكة'), userObject);
     };
 
@@ -175,13 +160,7 @@
     }
 
     // online-only (مصادقة/رفع/خارج النطاق): سلوك أصلي + حفظ الجلسة عند النجاح.
-    // تسجيل الدخول تحديداً (لا بقية online-only) يحصل على إعادة محاولة قصيرة لأخطاء
-    // الشبكة العابرة فقط — آمن: رفض كلمة المرور/تجاوز عدد المحاولات يعودان كرد JSON
-    // صالح (ليس __network)، فإعادة المحاولة لا تُكرّر محاولة دخول مرفوضة ضد عدّاد الحظر،
-    // وتُطلَق فقط عندما لا يصل الطلب للخادم أصلاً (status 0/مهلة/رد غير صالح).
-    var LOGIN_FNS = { handleTeacherLogin: true, loginStudent: true };
-    var _transport = LOGIN_FNS[fnName] ? rawCallWithRetry : rawCall;
-    _transport(fnName, args, function (result, uo) {
+    rawCall(fnName, args, function (result, uo) {
       OS.persistSession(fnName, result);
       if (onSuccess) onSuccess(result, uo);
     }, onFailure, userObject);
