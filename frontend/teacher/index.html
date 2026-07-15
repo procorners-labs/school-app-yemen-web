@@ -17370,13 +17370,14 @@ function _rpt_renderAdmin(d) {
   // Charts
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
+  html += _rpt_card('🗓️', 'الجدول اليومي التفصيلي (آخر 7 أيام)', _rpt_dayTable(d.charts.weeklyActivity));
   html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
     _rpt_barChart(d.charts.contentByClass, 'value', 8));
   if (d.charts.studentsBySection && d.charts.studentsBySection.length)
     html += _rpt_card('🔠', 'توزيع الطلاب على الشعب',
       _rpt_barChart(d.charts.studentsBySection, 'value', 12));
   html += '</div>';
- 
+
   // Lists
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('🏆', 'أعلى 5 معلمين تفاعلاً',
@@ -17390,8 +17391,14 @@ function _rpt_renderAdmin(d) {
   html += _rpt_card('🔥', 'الأكثر ترنداً (آخر 14 يوماً)',
     _rpt_topList(d.lists.trendingTeachers, 'name', 'trendScore', 'نقطة',
       function(it) {
-        return it.homework + ' واجب · ' + it.news + ' خبر · ' + it.merits + ' تعزيز · ' + it.likes + ' إعجاب';
+        return it.homework + ' واجب · ' + it.news + ' خبر · ' + it.merits + ' تعزيز · ' +
+               (it.replies||0) + ' رد · ' + it.likes + ' إعجاب';
       }));
+
+  // 🆕 «معلمون بحاجة لمتابعة» — غياب بدون عذر أنزل صافي نقاطهم لصفر أو أقل (لا اختفاء صامت)
+  if (d.lists.needsAttentionTeachers && d.lists.needsAttentionTeachers.length) {
+    html += _rpt_card('⚠️', 'معلمون بحاجة لمتابعة', _rpt_needsAttentionList(d.lists.needsAttentionTeachers));
+  }
 
   // Latest activities
   html += '<div class="rpt-grid-2">';
@@ -17442,6 +17449,7 @@ function _rpt_renderSupervisor(d) {
 
   html += '<div class="rpt-grid-2">';
   html += _rpt_card('📈', 'النشاط خلال 7 أيام', _rpt_weekChart(d.charts.weeklyActivity));
+  html += _rpt_card('🗓️', 'الجدول اليومي التفصيلي (آخر 7 أيام)', _rpt_dayTable(d.charts.weeklyActivity));
   html += _rpt_card('🏫', 'توزيع المحتوى على الفصول',
     _rpt_barChart(d.charts.contentByClass, 'value', 8));
   if (d.charts.studentsBySection && d.charts.studentsBySection.length)
@@ -17485,11 +17493,25 @@ function _rpt_renderTeacher(d) {
  
   html += _rpt_card('📈', 'نشاطي خلال 7 أيام',
     _rpt_weekChart(d.charts.activityTimeline));
- 
+  html += _rpt_card('🗓️', 'جدولي اليومي التفصيلي', _rpt_dayTable(d.charts.activityTimeline));
+
   // Recent activities
   html += _rpt_card('🕐', 'آخر 5 أنشطة',
     _rpt_recentActivities(d.lists.recentActivities));
- 
+
+  // 🆕 «نقاطي وترتيبي» — لمسة تحفيزية شخصية، بلا كشف أسماء/نقاط أي زميل آخر
+  if (d.myTrend) {
+    var mt = d.myTrend;
+    html += '<hr class="divider">';
+    html += '<h4 style="margin-bottom:14px;font-size:.95rem">🎮 نقاطي وترتيبي</h4>';
+    html += '<div class="rpt-stats">';
+    html += _rpt_stat('🔥', mt.score, 'نقاط الترند', 'rgba(245,158,11,.12)', '#f59e0b');
+    html += _rpt_stat('🏅', '#' + mt.rank + ' / ' + mt.totalTeachers, 'ترتيبي بين الكل', 'rgba(79,70,229,.12)', '#4f46e5');
+    html += '</div>';
+    html += '<div class="rpt-empty" style="font-size:12.5px;text-align:right;padding:8px 4px;">' +
+            _tfEsc(mt.penaltyNote) + '</div>';
+  }
+
   return html;
 }
  
@@ -17576,7 +17598,56 @@ function _rpt_weekChart(days) {
           '</div>';
   return html;
 }
- 
+
+// 🆕 جدول أرقام يومي دقيق (نفس مصدر بيانات _rpt_weekChart أعلاه، بلا أي تغيير خلفي) —
+// واجبات/أخبار/مخالفات/تعزيزات لكل يوم على حدة، بدل الاكتفاء بالارتفاع النسبي بالرسم البياني.
+function _rpt_dayTable(days) {
+  if (!days || !days.length) return '<div class="rpt-empty">لا توجد بيانات</div>';
+  var html = '<div style="overflow-x:auto;">' +
+    '<table class="rpt-day-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">' +
+    '<thead><tr>' +
+      '<th style="text-align:right;padding:6px">التاريخ</th>' +
+      '<th style="padding:6px">📝 واجبات</th><th style="padding:6px">📢 أخبار</th>' +
+      '<th style="padding:6px">⚠️ مخالفات</th><th style="padding:6px">⭐ تعزيزات</th>' +
+      '<th style="padding:6px">الإجمالي</th>' +
+    '</tr></thead><tbody>';
+  for (var i = 0; i < days.length; i++) {
+    var d = days[i];
+    html += '<tr>' +
+      '<td style="text-align:right;padding:6px">' + _tfEsc(d.label) + '</td>' +
+      '<td style="padding:6px">' + d.homework + '</td>' +
+      '<td style="padding:6px">' + d.news + '</td>' +
+      '<td style="padding:6px">' + d.violations + '</td>' +
+      '<td style="padding:6px">' + (d.merits||0) + '</td>' +
+      '<td style="padding:6px"><b>' + d.total + '</b></td>' +
+    '</tr>';
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// 🆕 «معلمون بحاجة لمتابعة» — غياب بدون عذر فعلي أنزل صافي نقاطهم لصفر أو أقل.
+// عمداً بلا رقم نقاط سالب — فقط عدّ الغياب الفعلي (أوضح وأقل إرباكاً للإدارة).
+function _rpt_needsAttentionList(items) {
+  if (!items || !items.length) return '<div class="rpt-empty">لا يوجد</div>';
+  var html = '<div class="rpt-list">';
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var sub = (it.absenceFullDayCount ? it.absenceFullDayCount + ' يوم كامل' : '') +
+              (it.absenceFullDayCount && it.absencePeriodCount ? ' · ' : '') +
+              (it.absencePeriodCount ? it.absencePeriodCount + ' حصة' : '') + ' (غياب بدون عذر)';
+    html += '<div class="rpt-list-item">' +
+              '<div class="rank">⚠️</div>' +
+              '<div class="body">' +
+                '<div class="ttl">' + _tfEsc(it.name) + '</div>' +
+                '<div class="meta">' + _tfEsc(sub) + '</div>' +
+              '</div>' +
+            '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function _rpt_topList(items, nameField, valueField, valueLabel, subFn) {
   if (!items || !items.length) return '<div class="rpt-empty">لا توجد بيانات</div>';
   var html = '<div class="rpt-list">';
