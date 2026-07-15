@@ -509,6 +509,12 @@ a { color: var(--pr); text-decoration: none; }
   border: 1.5px solid var(--pr); box-shadow: 0 0 0 3px var(--pr-glow);
 }
 .exam-day-next .exam-day-date { background: var(--pr); color: #fff; }
+.exam-instructions-card {
+  display: flex; gap: 10px; align-items: flex-start; background: var(--pr-bg);
+  border: 1px solid var(--pr); border-radius: var(--rad-s); padding: 12px 14px; margin-bottom: 16px;
+}
+.exam-instructions-card .ic { font-size: 20px; flex: 0 0 auto; }
+.exam-instructions-card .txt { flex: 1; font-size: 13px; font-weight: 600; color: var(--txt); line-height: 1.7; white-space: pre-line; }
 
 .refresh-btn {
   padding: 6px 10px;
@@ -5600,10 +5606,33 @@ function _examDaysBetween(fromYmd, toYmd) {
   return Math.round((t.getTime() - f.getTime()) / 86400000);
 }
 
+// اسم اليوم الفعلي (السبت/الأحد/...) من تاريخ "yyyy-mm-dd" — نفس خريطة dayByJs المُستخدَمة أصلاً
+// لجدول الحصص العادي بهذا الملف (renderHomeToday/renderSchedule)، بناء Date من مكوّنات محلية لا
+// تحليل مباشر للنص (نفس أسلوب _examDaysBetween أعلاه لتفادي انزياح التوقيت).
+function _examDayName(dateStr) {
+  var parts = String(dateStr || '').split('-');
+  if (parts.length !== 3) return '';
+  var y = Number(parts[0]), mo = Number(parts[1]), d = Number(parts[2]);
+  if (!y || !mo || !d) return '';
+  var dt = new Date(y, mo - 1, d);
+  if (isNaN(dt.getTime())) return '';
+  var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
+  return dayByJs[dt.getDay()] || '';
+}
+
+// بطاقة "تعليمات الاختبار" — نص حرّ اختياري يضبطه المدير/الوكيل من منصة المعلم (كنترول الاختبارات).
+// تُعرَض فقط إن كان النص غير فارغ فعلياً؛ لا أثر إطلاقاً للمدارس التي لم تضبط تعليمات (افتراضي فارغ).
+function _examInstructionsHtml(r) {
+  var text = (r && r.instructions) ? String(r.instructions).trim() : '';
+  if (!text) return '';
+  return '<div class="exam-instructions-card"><span class="ic">📋</span><div class="txt">' + esc(text) + '</div></div>';
+}
+
 function renderExamSchedule(r) {
   var w = $('examSchedWrap');
+  var instructionsHtml = _examInstructionsHtml(r);
   if (!r || !r.ok || !r.months || r.months.length === 0) {
-    w.innerHTML = emptyHTML('🗓️', 'لا يوجد جدول اختبارات بعد', 'سيظهر فور إضافته من قِبل الإدارة');
+    w.innerHTML = instructionsHtml + emptyHTML('🗓️', 'لا يوجد جدول اختبارات بعد', 'سيظهر فور إضافته من قِبل الإدارة');
     return;
   }
   var todayStr = _examTodayYmd();
@@ -5634,15 +5663,17 @@ function renderExamSchedule(r) {
         var n = _examDaysBetween(todayStr, day.date);
         countdown = '<div class="exam-day-countdown">' + (n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'))) + '</div>';
       }
+      var dayName = day.date ? _examDayName(day.date) : '';
+      var dateLabel = dayName ? (dayName + ' — ' + day.date) : (day.date || ('اليوم ' + day.dayIndex));
       h += '<div class="' + cardClass + '">' +
-           '<div class="exam-day-date">' + esc(day.date || ('اليوم ' + day.dayIndex)) + '</div>' +
+           '<div class="exam-day-date">' + esc(dateLabel) + '</div>' +
            '<div class="exam-day-subjects">' + esc(names.join('، ')) + '</div>' +
            countdown +
            '</div>';
     }
     h += '</div></div>';
   }
-  w.innerHTML = h;
+  w.innerHTML = instructionsHtml + h;
 }
 
 function loadNotes(force) {
