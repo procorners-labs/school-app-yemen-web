@@ -168,15 +168,33 @@ export default {
     }
 
     // ── 1ج) صفحة التسعيرة (HTML من GAS) عبر الوكيل: /pricing ─────
-    //   إعادة توجيه حقيقية (لا جلب+بثّ) — نفس سبب /oauth أعلاه: صفحات GAS
-    //   HtmlService تُخدَم داخل إطار Sandbox من جوجل يعتمد مسارات نسبية
-    //   (goog.script.init، CSS/JS ثابتة)؛ جلب البايتات وبثّها تحت نطاقنا يكسر
-    //   تلك المسارات (goog is not defined، 404 على mae_html_css_rtl.css) ويترك
-    //   الإطار فارغاً تماماً (تحقّق حيّ بمتصفح فعلي: الصفحة بيضاء بالكامل عبر
-    //   الوكيل، وتعمل كاملةً عند فتح رابط جوجل مباشرة). التوجيه الحقيقي يُبقي
-    //   المتصفح على نطاق جوجل الصحيح فتعمل الصفحة كبقية صفحات GAS الأخرى.
+    //   تُضمَّن عبر <iframe> بدل توجيه المتصفّح أو جلب+بثّ البايتات:
+    //   - جلب+بثّ (المحاولة الأولى) يكسر إطار Sandbox في جوجل (نفس شرح
+    //     /oauth أعلاه) ويترك الصفحة فارغة تماماً (goog is not defined).
+    //   - توجيه 302 مباشر (المحاولة الثانية) يُصلح ذلك، لكنه ينقل شريط
+    //     عنوان المتصفّح إلى نطاق جوجل — غير مناسب لصفحة تصفّح دائمة
+    //     (بخلاف /oauth، نقطة عبور لحظية) يُفضَّل بقاء الزائر فيها على
+    //     نطاق المشروع عند الضغط على روابط "خطط الأسعار".
+    //   - الحل: iframe مصدره رابط جوجل الحقيقي مباشرة (لا جلب من طرف
+    //     الخادم) — المتصفّح يحمّل محتوى الإطار من أصل جوجل الحقيقي فيعمل
+    //     Sandbox طبيعياً (المسارات النسبية تُحل صحيحاً)، بينما يبقى شريط
+    //     العنوان على نطاقنا. appsscript.json لتطبيق pricing مضبوط على
+    //     XFrameOptionsMode.ALLOWALL فيسمح بهذا التضمين. تحقّق حيّ بمتصفح
+    //     فعلي: عرض كامل بلا أخطاء، وشريط تحذير جوجل العلوي يختفي أيضاً
+    //     (يظهر فقط عند التنقّل المباشر، لا داخل iframe).
     if (path === '/pricing' || path === '/pricing/') {
-      return Response.redirect(GAS.pricing + url.search, 302);
+      var prSrc = (GAS.pricing + url.search).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      var prHtml = '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<title>سكولز اليمن | Schoolz Yemen — خطط الأسعار</title>' +
+        '<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#060e1e}' +
+        'iframe{width:100%;height:100vh;border:0;display:block}</style></head><body>' +
+        '<iframe src="' + prSrc + '" title="سكولز اليمن — خطط الأسعار" allowfullscreen></iframe>' +
+        '</body></html>';
+      var prHeaders = new Headers();
+      prHeaders.set('Content-Type', 'text/html; charset=utf-8');
+      prHeaders.set('Access-Control-Allow-Origin', '*');
+      return new Response(prHtml, { status: 200, headers: prHeaders });
     }
 
     // ── 1د) بثّ فيديو Google Drive عبر الوكيل: /media/drive/<fileId> ──
