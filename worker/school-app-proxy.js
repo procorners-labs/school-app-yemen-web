@@ -304,7 +304,10 @@ export default {
     }
 
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
-    if (path === '/' || path === '') path = '/index.html';
+    // الجذر / يخدم بوّابة home-all-school (متعدّدة المدارس) منذ 2026-07-17 — بدل البوّابة
+    // القديمة أحادية الهوية (assets/index.html)، التي تبقى موجودة وتعمل عند طلبها صراحة عبر
+    // /index.html، فقط لم تعد الافتراضي عند الجذر. راجع _build/gen-sitemap.js في school-app-yemen-gas.
+    if (path === '/' || path === '') path = '/home-all-school/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;
     var ghResp = await fetch(ghUrl, {
       headers: { 'User-Agent': 'cf-worker-proxy', 'Accept': request.headers.get('Accept') || '*/*' },
