@@ -55,7 +55,7 @@
 ## التشغيل بدون VPN (المناطق التي يُحجب فيها github.io — مثل اليمن)
 
 في بعض الدول يُحجب نطاق `github.io` (بينما تعمل خدمات Google عادةً). الحل: وضع
-كل شيء خلف **Cloudflare Worker** على نطاق `workers.dev` غير المحجوب.
+كل شيء خلف **Cloudflare Worker**.
 
 - ملف الـ Worker: `worker/school-app-proxy.js`
 - يخدم صفحات الواجهة بجلبها من GitHub Pages، ويمرّر نداءات الـ API على `/gas/<app>`
@@ -64,7 +64,14 @@
 
 **خطوات النشر:** Cloudflare → Workers & Pages → Create Worker → الصق محتوى
 `worker/school-app-proxy.js` → Deploy. الرابط الناتج (مثل
-`https://school-app.<account>.workers.dev/`) هو رابط التطبيق النهائي للمستخدمين.
+`https://school-app.<account>.workers.dev/`) هو رابط تلقائي مجاني، لكنه معرَّض هو نفسه
+للحجب في بعض الشبكات (نطاقا `workers.dev`/`pages.dev` مُساء استخدامهما عالمياً لأدوات
+VPN/الالتفاف، فيُستهدَفان أحياناً بحجب DNS كامل — حدث فعلياً على شبكة يمن نت 2026-07-16).
+**رابط التطبيق النهائي القانوني للمستخدمين الآن نطاق مخصّص** (`school.procorners.com` في
+نشر الإنتاج الحالي) مربوط على نفس الـWorker عبر Custom Domain في لوحة Cloudflare — بلا أي
+تعديل في كود الـWorker (التوجيه بالكامل مبني على المسار لا اسم المضيف). النطاق التلقائي
+`workers.dev` يبقى يعمل بالتوازي كاحتياط. التفاصيل الكاملة:
+`school-app-yemen-gas/_docs/2026-07-16-حجب-يمن-نت-workers-dev-ونطاق-مخصص.md`.
 
 ## ملاحظات / قيود معروفة
 - الدالتان `checkSession` (home) و`getStudentsForView` (teacher) تُستدعيان من الواجهة

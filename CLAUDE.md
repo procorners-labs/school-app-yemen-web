@@ -58,7 +58,10 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 
 ## Cloudflare Worker — مسارات رئيسية
 
-الملف: `worker/school-app-proxy.js` · النشر: `school-teacher-proxy.procorners-shop.workers.dev`
+الملف: `worker/school-app-proxy.js` · النشر: `school.procorners.com` (نطاق مخصّص أساسي منذ
+2026-07-16، يتفادى حجب يمن نت لـ`workers.dev` — راجع
+`school-app-yemen-gas/_docs/2026-07-16-حجب-يمن-نت-workers-dev-ونطاق-مخصص.md`)؛ النطاق القديم
+`school-teacher-proxy.procorners-shop.workers.dev` لا يزال حيّاً بالتوازي (تطبيق أندرويد يعتمده).
 
 | المسار | الوظيفة |
 |---|---|
@@ -150,6 +153,7 @@ Before editing, confirm you're editing `worker/school-app-proxy.js` (the real so
 
 ## نقاط الفحص الحية
 
-- **Worker health:** `https://school-teacher-proxy.procorners-shop.workers.dev/gas/teacher?action=health`
+- **Worker health (النطاق القانوني):** `https://school.procorners.com/gas/teacher?action=health`
+- **Worker health (workers.dev، لا يزال حيّاً):** `https://school-teacher-proxy.procorners-shop.workers.dev/gas/teacher?action=health`
 - **GitHub Pages:** `https://procorners-labs.github.io/school-app-yemen-web/`
 - **CI gas repo:** `https://github.com/procorners-labs/school-app-yemen-gas/actions`
