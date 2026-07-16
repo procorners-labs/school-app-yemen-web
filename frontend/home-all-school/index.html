@@ -59,6 +59,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>سكولز اليمن | Schoolz Yemen — بوّابة المدارس</title>
   <meta name="description" content="البوّابة الرسمية لمنصّة إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <link rel="canonical" href="https://school.procorners.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="سكولز اليمن | Schoolz Yemen">
+  <meta property="og:title" content="سكولز اليمن | Schoolz Yemen — بوّابة المدارس">
+  <meta property="og:description" content="البوّابة الرسمية لمنصّة إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <meta property="og:url" content="https://school.procorners.com/">
+  <meta property="og:image" content="https://school.procorners.com/assets/schoolz-yemen-og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="سكولز اليمن | Schoolz Yemen — بوّابة المدارس">
+  <meta name="twitter:description" content="البوّابة الرسمية لمنصّة إدارة المدارس — اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <meta name="twitter:image" content="https://school.procorners.com/assets/schoolz-yemen-og.png">
   <style>
     :root{
       --brand:#0F5C8C; --brand2:#0A4266; --ink:#1a2233; --muted:#667085;
@@ -480,6 +493,7 @@
         try { localStorage.removeItem(HAS_DEFAULT_KEY); } catch (e) {}
         $('schoolView').style.display = 'none';
         resetSchoolTheme();
+        resetSchoolSeo();
         if (_partners) renderPartners(_partners); else loadPartners();
         location.hash = '#partners';
       }
@@ -527,6 +541,79 @@
       }
       // تقريب عملي لسطوع اللون (صيغة YIQ) لاختيار نص أبيض/أسود تلقائياً — ليس حساب WCAG الدقيق الكامل.
       function _thLuma(rgb) { return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000; }
+
+      // ── SEO ديناميكي (نفس نمط applySchoolSeo في home/Index.html، منسوخ لا مُخترَع) ──
+      // القيم الافتراضية (هوية سكولز اليمن) مضبوطة سلفاً كـ<meta> ثابتة في <head>؛ هذه الدوال
+      // تُستبدَل ديناميكياً بشعار/اسم/لون المدرسة الفعلية عند اختيارها فقط، وتعود للافتراضي عند
+      // «تغيير المدرسة».
+      var DEFAULT_SEO = {
+        title: 'سكولز اليمن | Schoolz Yemen — بوّابة المدارس',
+        description: 'البوّابة الرسمية لمنصّة إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.',
+        image: 'https://school.procorners.com/assets/schoolz-yemen-og.png',
+        siteName: 'سكولز اليمن | Schoolz Yemen'
+      };
+      function setMeta(selector, value) {
+        if (value == null) return;
+        var el = document.head.querySelector(selector);
+        if (!el) {
+          var m = selector.match(/\[(name|property)="([^"]+)"\]/);
+          if (!m) return;
+          el = document.createElement('meta');
+          el.setAttribute(m[1], m[2]);
+          document.head.appendChild(el);
+        }
+        el.setAttribute('content', value);
+      }
+      function injectLd(id, obj) {
+        var old = document.getElementById(id);
+        if (old) old.parentNode.removeChild(old);
+        var s = document.createElement('script');
+        s.type = 'application/ld+json';
+        s.id = id;
+        s.textContent = JSON.stringify(obj);
+        document.head.appendChild(s);
+      }
+      function applySchoolSeo(b) {
+        b = b || {};
+        var title = b.name ? (b.name + ' | سكولز اليمن') : DEFAULT_SEO.title;
+        var desc = b.name ? ('صفحة ' + b.name + ' على منصّة سكولز اليمن — دخول المعلمين والطلاب وآخر الأخبار.') : DEFAULT_SEO.description;
+        var image = b.logo || DEFAULT_SEO.image;
+        document.title = title;
+        setMeta('meta[name="description"]', desc);
+        setMeta('meta[property="og:title"]', title);
+        setMeta('meta[property="og:description"]', desc);
+        setMeta('meta[property="og:image"]', image);
+        setMeta('meta[name="twitter:title"]', title);
+        setMeta('meta[name="twitter:description"]', desc);
+        setMeta('meta[name="twitter:image"]', image);
+        if (b.schoolId) {
+          injectLd('ld-school', {
+            '@context': 'https://schema.org',
+            '@type': ['School', 'EducationalOrganization'],
+            name: b.name,
+            description: desc,
+            url: 'https://school.procorners.com/#school=' + encodeURIComponent(b.schoolId),
+            logo: image,
+            image: image,
+            telephone: b.phone || undefined,
+            address: b.address ? { '@type': 'PostalAddress', streetAddress: b.address } : undefined,
+            sameAs: [b.facebook, b.instagram, b.youtube].filter(function (u) { return !!u; })
+          });
+        }
+      }
+      function resetSchoolSeo() {
+        document.title = DEFAULT_SEO.title;
+        setMeta('meta[name="description"]', DEFAULT_SEO.description);
+        setMeta('meta[property="og:title"]', DEFAULT_SEO.title);
+        setMeta('meta[property="og:description"]', DEFAULT_SEO.description);
+        setMeta('meta[property="og:image"]', DEFAULT_SEO.image);
+        setMeta('meta[name="twitter:title"]', DEFAULT_SEO.title);
+        setMeta('meta[name="twitter:description"]', DEFAULT_SEO.description);
+        setMeta('meta[name="twitter:image"]', DEFAULT_SEO.image);
+        var old = document.getElementById('ld-school');
+        if (old) old.parentNode.removeChild(old);
+      }
+
       function applySchoolTheme(color) {
         var rgb = _thParse(color);
         if (!rgb) return; // يبقى fallback على --brand العام عبر CSS
@@ -561,6 +648,7 @@
       function renderBanner(b) {
         b = b || {};
         if (b.color) { applySchoolTheme(b.color); cacheTheme(b.schoolId, b.color); }
+        applySchoolSeo(b);
         var logo = b.logo
           ? '<img class="logo" src="' + attr(b.logo) + '" alt="' + attr(b.name) + '" onerror="this.style.display=\'none\'">'
           : '';
