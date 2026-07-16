@@ -21219,7 +21219,17 @@ var _visitsCumulRes = null;
 var _visitsTeacherSortField = null, _visitsTeacherSortDir = 1;
 var _visitsStudentSortField = null, _visitsStudentSortDir = 1;
 var _visitsReviewLoaded = false;
-var _visitsReviewShowAll = false;
+var _visitsReviewCatFilter = 'flagged'; // 'all' | 'flagged' | فئة محدَّدة
+var _visitsReviewSortField = null;
+var _visitsReviewSortDir = 1;
+var _visitsReviewSearchQ = '';
+var _VT_REVIEW_CATS = [
+  {key:'needs_review_a', color:'var(--tf-red)',     icon:'🔴', label:'طلاب نشيطون / معلمون خاملون'},
+  {key:'needs_review_b', color:'var(--tf-orange)',  icon:'🟠', label:'معلمون نشيطون / طلاب خاملون'},
+  {key:'excellent',      color:'var(--tf-green)',   icon:'🟢', label:'ممتاز'},
+  {key:'fully_idle',     color:'var(--tf-magenta)', icon:'⚫', label:'خامل بالكامل'},
+  {key:'normal',         color:'var(--tf-blue)',    icon:'🔵', label:'طبيعي / متوسط'}
+];
 
 function renderVisitsTraffic(initialTab){
   var host=document.getElementById('dynamicContent');
@@ -21745,10 +21755,25 @@ function _visitsRenderReview(){
      _tfKpi(String(classes.length),'إجمالي الفصول المفحوصة','','var(--tf-blue)',false)+
      '</div>';
 
-  h+='<div class="vt-filter" style="margin-bottom:10px;">'+
-     '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-muted);cursor:pointer;">'+
-     '<input type="checkbox" id="vt-review-showall" onchange="_visitsReviewToggleAll(this.checked)"'+(_visitsReviewShowAll?' checked':'')+'> '+
-     'عرض كل الفصول (بما فيها الطبيعية)</label></div>';
+  h+='<div class="tf-card"><h3>🧭 خريطة الفصول (مشاركة الطلاب × نشاط المعلمين)</h3>'+
+     _visitsReviewQuadrant(classes)+_visitsReviewLegend(counts)+'</div>';
+
+  h+='<div class="tf-grid2">'+
+     '<div class="tf-card"><h3>📊 توزيع الفصول حسب الحالة</h3>'+_visitsReviewStackedBar(counts, classes.length)+'</div>'+
+     '<div class="tf-card"><h3>🏫 الفصول التي تحتاج مراجعة حسب الصف</h3>'+_visitsReviewGradeRollup(classes)+'</div>'+
+     '</div>';
+
+  h+='<div class="tf-card"><h3>⚠️ أكثر 5 فصول تحتاج متابعة</h3>'+_visitsReviewTopOffenders(classes)+'</div>';
+
+  h+='<div class="vt-filter" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'+
+     '<select onchange="_visitsReviewSetFilter(this.value)">'+
+       '<option value="flagged"'+(_visitsReviewCatFilter==='flagged'?' selected':'')+'>يحتاج مراجعة فقط (افتراضي)</option>'+
+       '<option value="all"'+(_visitsReviewCatFilter==='all'?' selected':'')+'>كل الفصول</option>'+
+       _VT_REVIEW_CATS.map(function(rc){ return '<option value="'+rc.key+'"'+(_visitsReviewCatFilter===rc.key?' selected':'')+'>'+rc.icon+' '+_tfEsc(rc.label)+'</option>'; }).join('')+
+     '</select>'+
+     '<input type="text" id="vt-review-search" placeholder="بحث باسم الفصل..." value="'+_tfEsc(_visitsReviewSearchQ)+'" oninput="_visitsReviewSearch(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;">'+
+     '<button class="tf-abtn" onclick="_visitsReviewExportCsv()">⬇️ تصدير CSV</button>'+
+     '</div>';
 
   h+='<div class="tf-scroll" style="max-height:560px;"><table class="tf-t" id="vt-review-table"></table></div>';
 
@@ -21756,21 +21781,48 @@ function _visitsRenderReview(){
   _visitsRenderReviewTable();
 }
 
-function _visitsReviewToggleAll(checked){
-  _visitsReviewShowAll=!!checked;
+function _visitsReviewSetFilter(v){ _visitsReviewCatFilter=v; _visitsRenderReviewTable(); }
+function _visitsReviewSearch(q){ _visitsReviewSearchQ=(q||'').replace(/^\s+|\s+$/g,''); _visitsRenderReviewTable(); }
+function _visitsReviewSort(field){
+  if(_visitsReviewSortField===field) _visitsReviewSortDir=-_visitsReviewSortDir;
+  else { _visitsReviewSortField=field; _visitsReviewSortDir=1; }
   _visitsRenderReviewTable();
+}
+function _visitsReviewFilterSortRows(classes){
+  var out=[], i;
+  for(i=0;i<classes.length;i++){
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    if(_visitsReviewCatFilter==='flagged' && cat.key!=='needs_review_a' && cat.key!=='needs_review_b') continue;
+    if(_visitsReviewCatFilter!=='all' && _visitsReviewCatFilter!=='flagged' && cat.key!==_visitsReviewCatFilter) continue;
+    if(_visitsReviewSearchQ && (c.className||'').indexOf(_visitsReviewSearchQ)===-1) continue;
+    out.push(c);
+  }
+  if(_visitsReviewSortField){
+    var f=_visitsReviewSortField, d=_visitsReviewSortDir;
+    out.sort(function(a,b){
+      var av=a[f], bv=b[f];
+      if(typeof av==='string') return av.localeCompare(bv)*d;
+      return ((av||0)-(bv||0))*d;
+    });
+  }
+  return out;
 }
 
 function _visitsRenderReviewTable(){
   var classes=window._visitsReviewClassesFull||[];
+  var rows=_visitsReviewFilterSortRows(classes);
   var html='<thead><tr>'+
-    '<th></th><th>الفصل</th><th>الطلاب</th><th>مشاركة الطلاب</th><th>المعلمون</th><th>نشاط المعلمين</th><th>الحالة</th>'+
+    '<th></th>'+
+    '<th style="cursor:pointer" onclick="_visitsReviewSort(\'className\')">الفصل ⇅</th>'+
+    '<th>الطلاب</th>'+
+    '<th style="cursor:pointer" onclick="_visitsReviewSort(\'studentActivePct\')">مشاركة الطلاب ⇅</th>'+
+    '<th>المعلمون</th>'+
+    '<th style="cursor:pointer" onclick="_visitsReviewSort(\'teacherActivePct\')">نشاط المعلمين ⇅</th>'+
+    '<th>الحالة</th>'+
     '</tr></thead><tbody>';
-  var shown=0, i;
-  for(i=0;i<classes.length;i++){
-    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
-    if(!_visitsReviewShowAll && cat.key==='normal') continue;
-    shown++;
+  var i;
+  for(i=0;i<rows.length;i++){
+    var c=rows[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
     var rid='vt-review-row-'+i;
     html+='<tr>'+
       '<td><span style="cursor:pointer;color:var(--text-muted);" onclick="_visitsReviewToggleRow('+i+')" id="'+rid+'-btn">▶</span></td>'+
@@ -21783,7 +21835,7 @@ function _visitsRenderReviewTable(){
       '</tr>';
     html+='<tr id="'+rid+'" style="display:none;"><td colspan="7" style="background:var(--surface2);">'+_visitsReviewTeacherList(c)+'</td></tr>';
   }
-  if(!shown) html+='<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:16px;">لا فصول ضمن هذا الفلتر حالياً</td></tr>';
+  if(!rows.length) html+='<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:16px;">لا فصول ضمن هذا الفلتر حالياً</td></tr>';
   html+='</tbody>';
   var tbl=document.getElementById('vt-review-table');
   if(tbl) tbl.innerHTML=html;
@@ -21811,6 +21863,122 @@ function _visitsReviewTeacherList(c){
   }
   html+='</div>';
   return html;
+}
+
+// ── خريطة الفصول (Quadrant SVG) ── محورا نسبة النشاط 0-100٪، خطوط تقسيم متقطّعة عند
+// 50/80 على كلا المحورين تطابق منطق _visitsReviewCategory تماماً. مسمّى نصّي فقط لفئتَي
+// 🔴/🟠 (الأقلّ عدداً عادةً) مع إزاحة حتمية (لا Math.random) لمنع تراكب المسمّيات.
+function _visitsReviewQuadrant(classes){
+  if(!classes || !classes.length) return '<div class="tf-empty">لا توجد بيانات كافية بعد</div>';
+  var W=560, H=420, pad=44;
+  function mapX(v){ return pad + (W-pad*2)*((v||0)/100); }   // نشاط المعلمين٪ → x
+  function mapY(v){ return H-pad - (H-pad*2)*((v||0)/100); } // مشاركة الطلاب٪ → y (معكوس)
+
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;max-width:640px;display:block;margin:0 auto;">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1"/>';
+  svg+='<line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1"/>';
+
+  var ti, tv;
+  var thresholds=[50,80];
+  for(ti=0;ti<thresholds.length;ti++){
+    tv=thresholds[ti];
+    svg+='<line x1="'+mapX(tv)+'" y1="'+pad+'" x2="'+mapX(tv)+'" y2="'+(H-pad)+'" style="stroke:var(--border)" stroke-width="1" stroke-dasharray="4,4"/>';
+    svg+='<line x1="'+pad+'" y1="'+mapY(tv)+'" x2="'+(W-pad)+'" y2="'+mapY(tv)+'" style="stroke:var(--border)" stroke-width="1" stroke-dasharray="4,4"/>';
+  }
+  var ticks=[0,50,80,100];
+  for(ti=0;ti<ticks.length;ti++){
+    tv=ticks[ti];
+    svg+='<text x="'+mapX(tv)+'" y="'+(H-pad+14)+'" font-size="9" text-anchor="middle" style="fill:var(--text-muted)">'+tv+'</text>';
+    svg+='<text x="'+(pad-8)+'" y="'+(mapY(tv)+3)+'" font-size="9" text-anchor="end" style="fill:var(--text-muted)">'+tv+'</text>';
+  }
+  svg+='<text x="'+(W/2)+'" y="'+(H-6)+'" font-size="10" text-anchor="middle" style="fill:var(--text-muted)">نشاط المعلمين ٪</text>';
+  svg+='<text x="12" y="'+(H/2)+'" font-size="10" text-anchor="middle" style="fill:var(--text-muted)" transform="rotate(-90 12 '+(H/2)+')">مشاركة الطلاب ٪</text>';
+
+  var placed=[], pts='', i;
+  for(i=0;i<classes.length;i++){
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    var x=mapX(c.teacherActivePct), y=mapY(c.studentActivePct);
+    pts+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="5" style="fill:'+cat.color+';fill-opacity:.85;stroke:var(--surface);stroke-width:1.2;">'+
+         '<title>'+_tfEsc(c.className)+' — طلاب '+c.studentActivePct+'٪ · معلمون '+c.teacherActivePct+'٪ — '+_tfEsc(cat.label)+'</title></circle>';
+
+    if(cat.key==='needs_review_a' || cat.key==='needs_review_b'){
+      var ly=y-9, k, collided=false;
+      for(k=0;k<placed.length;k++){
+        if(Math.abs(placed[k].x-x)<24 && Math.abs(placed[k].y-ly)<12){ collided=true; break; }
+      }
+      if(collided) ly = (placed.length%2===0) ? (ly-12) : (ly+22);
+      placed.push({x:x,y:ly});
+      pts+='<text x="'+x.toFixed(1)+'" y="'+ly.toFixed(1)+'" font-size="8.5" text-anchor="middle" style="fill:'+cat.color+';font-weight:700;">'+_tfEsc(c.className)+'</text>';
+    }
+  }
+  svg+=pts+'</svg>';
+  return svg;
+}
+
+// ── شريط مُكدَّس + مفتاح ألوان لتوزيع الفئات الخمس (بديل عن donut — أنسب لعدد فئات ≤6) ──
+function _visitsReviewStackedBar(counts, total){
+  if(!total) return '<div class="tf-empty">لا توجد بيانات</div>';
+  var html='<div style="display:flex;width:100%;height:22px;border-radius:6px;overflow:hidden;">', i;
+  for(i=0;i<_VT_REVIEW_CATS.length;i++){
+    var c=_VT_REVIEW_CATS[i], n=counts[c.key]||0, pct=(n/total*100);
+    if(!n) continue;
+    html+='<div style="width:'+pct+'%;background:'+c.color+';" title="'+_tfEsc(c.label)+': '+n+'"></div>';
+  }
+  html+='</div>';
+  return html;
+}
+
+function _visitsReviewLegend(counts){
+  var html='<div class="vt-legend" style="flex-direction:row;flex-wrap:wrap;gap:14px;margin-top:10px;">', i;
+  for(i=0;i<_VT_REVIEW_CATS.length;i++){
+    var c=_VT_REVIEW_CATS[i];
+    html+='<span class="vt-legend-item"><span class="vt-legend-dot" style="background:'+c.color+';"></span>'+
+      c.icon+' '+_tfEsc(c.label)+(counts?(' ('+(counts[c.key]||0)+')'):'')+'</span>';
+  }
+  html+='</div>';
+  return html;
+}
+
+// ── تفصيل حسب الصف: عدّ فصول 🔴+🟠 فقط لكل صف — مقياس كمّي بلون واحد (لا تدرّج فئات جديد) ──
+function _visitsReviewGradeRollup(classes){
+  var byGrade={}, order=[], i;
+  for(i=0;i<classes.length;i++){
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    if(cat.key!=='needs_review_a' && cat.key!=='needs_review_b') continue;
+    if(byGrade[c.grade]===undefined){ byGrade[c.grade]=0; order.push(c.grade); }
+    byGrade[c.grade]++;
+  }
+  if(!order.length) return '<div class="tf-empty">لا فصول تحتاج مراجعة حالياً 🎉</div>';
+  var pairs=order.map(function(g){ return {name:g, value:byGrade[g]}; });
+  return _tfBars(pairs, 'var(--tf-red)');
+}
+
+// ── أكثر 5 فصول تحتاج متابعة (حسب مجموع النسبتين تصاعدياً) ──
+function _visitsReviewTopOffenders(classes){
+  if(!classes || !classes.length) return '<div class="tf-empty">لا بيانات</div>';
+  var scored=classes.map(function(c){ return { c:c, score:(c.studentActivePct||0)+(c.teacherActivePct||0) }; });
+  scored.sort(function(a,b){ return a.score-b.score; });
+  var top=scored.slice(0,5), html='<div style="display:flex;flex-direction:column;gap:8px;">', i;
+  for(i=0;i<top.length;i++){
+    var c=top[i].c, cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);flex-wrap:wrap;">'+
+      '<span style="font-weight:700;">'+_tfEsc(c.className)+'</span>'+
+      '<span style="display:flex;gap:10px;font-size:12px;color:var(--text-muted);align-items:center;flex-wrap:wrap;">'+
+      _visitsTierCell(c.studentActivePct+'٪ طلاب', _visitsParticipationTier(c.studentActivePct))+
+      _visitsTierCell(c.teacherActivePct+'٪ معلمون', _visitsParticipationTier(c.teacherActivePct))+
+      '<span style="color:'+cat.color+';font-weight:700;">'+cat.icon+' '+_tfEsc(cat.label)+'</span></span></div>';
+  }
+  html+='</div>';
+  return html;
+}
+
+function _visitsReviewExportCsv(){
+  var rows=_visitsReviewFilterSortRows(window._visitsReviewClassesFull||[]);
+  _tfExportCsv('يحتاج_مراجعة.csv', ['الفصل','الطلاب','مشاركة الطلاب ٪','المعلمون','نشاط المعلمين ٪','الحالة'],
+    rows.map(function(c){
+      var cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+      return [c.className, c.studentCount, c.studentActivePct, c.teacherCount, c.teacherActivePct, cat.label];
+    }));
 }
 </script>
 </body>
