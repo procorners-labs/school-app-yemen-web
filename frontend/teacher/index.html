@@ -5384,7 +5384,7 @@ function _newsResumableUpload(file, onDone, onFail) {
     { fileName: file.name, mimeType: file.type, fileSize: file.size },
     function (res) {
       if (!res || !res.success || !res.sessionUri) { onFail((res && res.error) || 'تعذّر بدء الرفع'); return; }
-      var workerBase = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+      var workerBase = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
       var proxyUrl = workerBase + '/drive-upload?sessionUri=' + encodeURIComponent(res.sessionUri);
       _newsResumablePut(proxyUrl, res.sessionUri, file, function (fileId) {
         _callServerWithRetry('registerNewsMediaProtected',
@@ -11879,7 +11879,7 @@ function _collectShareFiles(urls, done) {
 
 // وسيط جلب صورة Drive عبر الـWorker (CORS مسموح) لبناء ملفّ المشاركة
 function _shareImgProxy(fileId) {
-  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  var base = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
   return base + '/media/drive/' + fileId;
 }
 
@@ -12177,7 +12177,7 @@ function _tcGalGo(gid, idx) { _tcGalShow(gid, idx); }
 // مصدر بثّ فيديو Drive عبر وسيط الـWorker /media/drive (Range + video/mp4 + تجاوز فحص الفيروسات)
 // يُشغَّل في <video> الأصلي ويعمل داخل اليمن (المتصفّح يتكلّم مع Cloudflare فقط) — يتجاوز مشغّل Drive المتعثّر.
 function _drvVideoSrc(fileId) {
-  var base = (location.origin.indexOf('workers.dev') !== -1) ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
+  var base = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '' : 'https://school-teacher-proxy.procorners-shop.workers.dev';
   return base + '/media/drive/' + fileId;
 }
 // تراجع: إن فشل البثّ المباشر، نعرض مشغّل Drive (/preview) داخل نفس الإطار
