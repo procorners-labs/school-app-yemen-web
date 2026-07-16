@@ -2346,7 +2346,10 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <div id="teachers-mgmt-section" class="section" style="display:none;">
       <div class="section-header">
         <h2 style="margin:0;">👥 إدارة المعلمين</h2>
-        <button onclick="tm_showAddModal()" style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:14px;">➕ إضافة معلم</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="tm_regenerateWideView()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔄 توليد عرض بصف واحد لكل معلّم</button>
+          <button onclick="tm_showAddModal()" style="background:#1a237e;color:#fff;border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:14px;">➕ إضافة معلم</button>
+        </div>
       </div>
       <div style="margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;">
         <input type="text" id="tm-search" placeholder="🔍 بحث باسم المعلم..." oninput="tm_filterList()" style="flex:1;padding:9px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -16132,6 +16135,10 @@ function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.tri
 function tm_deleteTeacher(name){ if(!confirm('هل أنت متأكد من حذف المعلم "'+name+'"؟\nسيتم حذف جميع تعييناته.')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ alert('❌ '+err.message); }).adminDeleteTeacherByName({token:App.user.token, name:name}); }
 function tm_closeModal(){ document.getElementById('tm-modal').style.display='none'; _tmEditingName=null; }
 function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';font-size:14px;">'+msg+'</div>'; }
+// عرض مُشتقّ للقراءة فقط (صف واحد لكل معلّم، أعمدة تعيين منفصلة بلا فواصل) — يُعاد توليده
+// بالكامل من ورقة «المدرسين» الذرّية الحيّة في ورقة شيت منفصلة عند الطلب فقط؛ لا يُقرأ من
+// أي كود صلاحيات/جدول/تقارير. راجع _tcBuildTeacherWideView في TeacherCore.js.
+function tm_regenerateWideView(){ tm_setStatus('⏳ جارٍ توليد العرض...', '#455a64'); google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ tm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); }).withFailureHandler(function(err){ tm_setStatus('❌ '+err.message,'#c62828'); }).adminRegenerateTeacherWideViewProtected({token:App.user.token}); }
 
 // ==================== LM (إدارة القوائم) ====================
 function lm_load(){ var grid=document.getElementById('lm-grid'); if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_render(res); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).getListsDataProtected({token:App.user.token}); }
