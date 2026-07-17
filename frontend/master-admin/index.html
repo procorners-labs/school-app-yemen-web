@@ -1334,7 +1334,7 @@ function sync_runAll() {
       btn.textContent = '🔄 تشغيل مزامنة شاملة';
       stat.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
     })
-    .masterSyncAll();
+    .masterSyncAll({ token: App.token });
 }
 
 function sync_single(type) {
@@ -1365,7 +1365,7 @@ function sync_single(type) {
     })
     .withFailureHandler(function(err) {
       if (stepEl) { stepEl.className = 'sync-step error'; }
-    })[fn]();
+    })[fn](fn === 'buildFinancialSummary' ? { token: App.token } : undefined);
 }
 
 // ── التقارير ──────────────────────────────────────────────────
@@ -1949,7 +1949,7 @@ function system_buildFinancial() {
   google.script.run
     .withSuccessHandler(function(res) { status.innerHTML = '<div class="status-msg ' + (res && res.ok ? 'status-success' : 'status-error') + '">' + (res && res.ok ? '✅ تم بناء الملخص المالي: ' + res.count + ' طالب' : '❌ خطأ') + '</div>'; })
     .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
-    .buildFinancialSummary();
+    .buildFinancialSummary({ token: App.token });
 }
 
 // تسجيل بريد كل مدرسة حالية تلقائياً كـ"إرسال كـ" (Send-As alias) — لمرة واحدة، لتغطية
