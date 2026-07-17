@@ -11783,8 +11783,14 @@ function shareNews(newsId) {
   for (var i = 0; i < list.length; i++) {
     if (String(list[i].id) === String(newsId)) { item = list[i]; break; }
   }
-  var HOME_BASE = 'https://school.procorners.com/home/index.html';
+  // مدرسة المالك (الإبداع والتميز): تبقى على home/ (تجربتها الغنية الحالية بلا أي تغيير).
+  // أي مدرسة أخرى: home-all-school (الجذر الحالي) — home/ أحادية المستأجر عمداً (راجع home/CLAUDE.md).
+  var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
   var schoolId = (typeof App !== 'undefined' && App.user && App.user.schoolId) ? App.user.schoolId : '';
+  // schoolId فارغ = رابط بلا معرّف مدرسة، يسقط على مدرسة المالك افتراضياً (نفس اصطلاح _setActiveTenant) — يُعامَل معاملة مدرسة المالك.
+  var HOME_BASE = (!schoolId || schoolId === OWNER_SCHOOL_ID)
+    ? 'https://school.procorners.com/home/index.html'
+    : 'https://school.procorners.com/';
   var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) +
             (schoolId ? '&school=' + encodeURIComponent(schoolId) : '');
   var body  = item ? String(item.news || '') : '';

@@ -277,6 +277,7 @@
     .ncard .foot{color:var(--muted);font-size:12.5px;margin-top:auto;padding-top:6px;border-top:1px dashed var(--line);display:flex;justify-content:space-between}
     .ncard.text-card .body{background:linear-gradient(135deg,#0d6efd08,#6610f210)}
     .ncard.text-card h4{color:var(--brand)}
+    .ncard-highlight{outline:3px solid var(--brand);outline-offset:2px;box-shadow:0 0 0 6px rgba(13,110,253,.18)}
 
     .state{text-align:center;color:var(--muted);padding:34px 0;font-size:15px}
     footer{background:#0f1830;color:#c7d2e6;padding:34px 0;text-align:center;font-size:14px}
@@ -506,6 +507,19 @@
       }
 
       // ── عرض المدرسة المختارة ──
+      // ── تمييز بصري لخبر مشارَك (?news=<id>) بعد تحميل قائمة الأخبار — لا صفحة تفصيل منفصلة ──
+      var _pendingNewsHighlight = '';
+      function highlightSharedNews(newsId) {
+        if (!newsId) return;
+        try {
+          var card = $('schoolNews') && $('schoolNews').querySelector('[data-news-id="' + newsId.replace(/"/g, '') + '"]');
+          if (!card) return;   // الخبر أقدم من آخر 12 المعروضة — قيد معروف ومقبول
+          try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e2) { card.scrollIntoView(); }
+          card.classList.add('ncard-highlight');
+          setTimeout(function () { card.classList.remove('ncard-highlight'); }, 2600);
+        } catch (e) { /* محدِّد CSS غير صالح لمعرّف غير متوقَّع — تجاهل بصمت */ }
+      }
+
       function loadSchoolView(id) {
         $('schoolView').style.display = 'block';
         applyCachedTheme(id);
@@ -518,7 +532,13 @@
           }
           renderBanner(res.brand);
           renderNews(res.news || []);
-          try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+          if (_pendingNewsHighlight) {
+            var target = _pendingNewsHighlight;
+            _pendingNewsHighlight = '';
+            setTimeout(function () { highlightSharedNews(target); }, 60);
+          } else {
+            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+          }
         }, function () {
           $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>';
         });
@@ -686,7 +706,7 @@
           } else if (!isText && n.videos && n.videos.length) {
             media = '<div class="media"><div class="count">🎬 فيديو</div></div>';
           }
-          html += '<div class="ncard' + (isText ? ' text-card' : '') + '">' + media
+          html += '<div class="ncard' + (isText ? ' text-card' : '') + '" data-news-id="' + attr(String(n.id || '').replace(/^news_/, '')) + '">' + media
             +   '<div class="body">'
             +     '<h4>' + esc(n.title || 'خبر') + '</h4>'
             +     (n.content ? '<div class="txt">' + esc(n.content) + '</div>' : '')
@@ -724,6 +744,8 @@
         var deep = qparam('school') || qparam('schoolId');
         var def = getDefault();
         var initial = deep || def;
+        var newsParam = qparam('news');
+        if (newsParam) _pendingNewsHighlight = String(newsParam).replace(/^news_/, '');
         if (initial) { if (deep) setDefault(deep); loadSchoolView(initial); }
       }
       if (document.readyState === 'loading') {
