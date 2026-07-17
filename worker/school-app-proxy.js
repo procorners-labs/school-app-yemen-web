@@ -336,11 +336,14 @@ export default {
       headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     }
 
-    // حقن وسوم OG لكل خبر (?news=<id>) كي تُظهر تطبيقات المشاركة (واتساب/فيسبوك) صورة الخبر وعنوانه
+    // حقن وسوم OG لكل خبر (?news=<id>) كي تُظهر تطبيقات المشاركة (واتساب/فيسبوك) صورة الخبر وعنوانه.
+    // /home/ (مدرسة المالك، أحادية المستأجر) تستهدف GAS.home كسابقاً؛ أي مسار آخر (بما فيه الجذر
+    // المُعاد كتابته أعلاه إلى home-all-school) يستهدف home-all-school (getNewsOg متعدّدة المستأجرين).
     var _newsId = url.searchParams.get('news');
     if (_newsId && isHtml) {
       try {
-        var _ogRes = await fetch(GAS.home, {
+        var _ogTarget = /^\/home\//.test(path) ? GAS.home : GAS['home-all-school'];
+        var _ogRes = await fetch(_ogTarget, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, url.searchParams.get('school') || ''] })
