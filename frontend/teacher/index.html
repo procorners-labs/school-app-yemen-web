@@ -2165,7 +2165,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول الاختبارات</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
-  <button class="sidebar-item" id="si-adminTeachers"   onclick="showSection('adminTeachers')">  <span class="si-icon">👥</span> المعلمون (موسّع)</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
@@ -6115,7 +6114,6 @@ var SIDEBAR_ROLE_RULES = {
   'si-lists-mgmt':      ['admin'],
   'si-examctrl':        ['admin', 'deputy'],
   'si-schedSettings':   ['admin', 'deputy'],
-  'si-adminTeachers':   ['admin', 'it'],
   'si-adminActivities': ['admin', 'deputy', 'activities'],
   'si-adminStudents':   ['admin', 'it'],
   'si-certificates':    ['admin', 'deputy'],
@@ -6234,7 +6232,6 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-attendance',       label:'📋 الغياب اليومي' },
   { key:'si-teacher-absence',  label:'🧑‍🏫 غياب المعلمين' },
   { key:'si-teachers-mgmt',    label:'👥 إدارة المعلمين' },
-  { key:'si-adminTeachers',    label:'👥 المعلمون (موسّع)' },
   { key:'si-adminActivities',  label:'📋 جميع الأنشطة' },
   { key:'si-certificates',     label:'🏅 الشهادات' },
   { key:'si-scoresheets',      label:'📋 الكشوفات' },
@@ -6244,7 +6241,7 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' }
 ];
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
-function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminTeachers','si-adminStudents']; }
+function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminStudents']; }
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
 function _applySupervisorPagePerms(u){
@@ -16114,7 +16111,7 @@ function tm_addAssignment(data){ var list=document.getElementById('tm-assignment
 function tm_onSecAllToggle(chk){ var row=chk.closest('.asgn-row'); if(!row) return; var opts=row.querySelectorAll('.asgn-sec-opt'); for(var i=0;i<opts.length;i++){ opts[i].disabled=chk.checked; if(chk.checked) opts[i].checked=false; } }
 function tm_onSecOptToggle(chk){ if(!chk.checked) return; var row=chk.closest('.asgn-row'); if(!row) return; var allBox=row.querySelector('.asgn-sec-all'); if(allBox&&allBox.checked) allBox.checked=false; }
 function tm_removeAssignment(btn){ var row=btn.parentElement; if(document.getElementById('tm-assignments-list').children.length<=1){ alert('يجب أن يبقى تعيين واحد على الأقل'); return; } row.remove(); }
-function tm_collectAssignments(){ var rows=document.getElementById('tm-assignments-list').children; var asgns=[]; for(var i=0;i<rows.length;i++){ var subj=rows[i].querySelector('.asgn-subject').value; var grd=rows[i].querySelector('.asgn-grade').value; var allBox=rows[i].querySelector('.asgn-sec-all'); var sec=''; if(allBox&&allBox.checked){ sec='جميع الشعب'; } else { var opts=rows[i].querySelectorAll('.asgn-sec-opt:checked'); var vals=[]; for(var k=0;k<opts.length;k++) vals.push(opts[k].value); sec=vals.join(','); } if(subj||grd||sec) asgns.push({subject:subj, grade:grd, section:sec}); } return asgns; }
+function tm_collectAssignments(){ var rows=document.getElementById('tm-assignments-list').children; var asgns=[]; for(var i=0;i<rows.length;i++){ var subj=rows[i].querySelector('.asgn-subject').value; var grd=rows[i].querySelector('.asgn-grade').value; var allBox=rows[i].querySelector('.asgn-sec-all'); if(allBox&&allBox.checked){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:'جميع الشعب'}); } else { var opts=rows[i].querySelectorAll('.asgn-sec-opt:checked'); if(opts.length===0){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:''}); } else { for(var k=0;k<opts.length;k++){ asgns.push({subject:subj, grade:grd, section:opts[k].value}); } } } } return asgns; }
 function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1a237e;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); tm_load(); },1200); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments}}); }
 function tm_deleteTeacher(name){ if(!confirm('هل أنت متأكد من حذف المعلم "'+name+'"؟\nسيتم حذف جميع تعييناته.')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ alert('❌ '+err.message); }).adminDeleteTeacherByName({token:App.user.token, name:name}); }
 function tm_closeModal(){ document.getElementById('tm-modal').style.display='none'; _tmEditingName=null; }
