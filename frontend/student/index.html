@@ -3070,8 +3070,11 @@ function switchSibling(targetCode, chip) {
       // تفريغ الحالة المؤقتة بالكامل (نفس نمط confirmLogout — إعادة بناء APP كاملاً) كي لا
       // تتسرب أي بيانات خاصة بالأخ السابق (درجات/ملاحظات/جدول اليوم المخزَّن مؤقتاً...) دون
       // الحاجة لتعداد كل حقل يدوياً في كل مرة يُضاف فيها حقل كاش جديد مستقبلاً.
+      // ✅ إعادة بناء APP بالذاكرة وحدها لا تكفي — sessionStorage (ssGet/ssSet: درجات/مالية/
+      // واجبات/مخالفات/جدول/حضور) كان يبقى فعلياً من الأخ السابق حتى انقضاء الكاش أو الخروج.
       var keepTab = APP.currentTab || 'home';
       if (APP.badgeInterval) { clearInterval(APP.badgeInterval); APP.badgeInterval = null; }
+      try { ssClearAll(); } catch (eSS2) {}
       APP = {
         user: {
           id: r.studentId,
@@ -6387,6 +6390,7 @@ document.addEventListener('DOMContentLoaded', function () {
   try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || _reqSchool; } catch (eRS) {}
   if (_reqSchool && savedSession && savedSession.user && savedSession.user.schoolId && savedSession.user.schoolId !== _reqSchool) {
     try { lsClearSession(); } catch (eCS) {}
+    try { ssClearAll(); } catch (eSS) {} // ✅ يمسح أيضاً كاش sessionStorage (درجات/مالية/واجبات...) لا localStorage فقط
     savedSession = null;
   }
   if (savedSession && savedSession.user) {
