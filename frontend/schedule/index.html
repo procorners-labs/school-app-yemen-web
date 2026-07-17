@@ -411,10 +411,21 @@ function initLists() {
     _fillDatalist('secList', _sections);
     var sel = document.getElementById('classSel');
     sel.innerHTML = '<option value="">— اختر فصلاً —</option>';
+    // ★ _classes الآن مصفوفة {value,label}: value = مفتاح المطابقة الداخلي الخام
+    // (يُرسَل للخادم كما هو)، label = نصّ معروض مقروء (صف+شعبة بمسافة صريحة).
     for (var i = 0; i < _classes.length; i++) {
-      sel.innerHTML += '<option value="' + _e(_classes[i]) + '">' + _e(_classes[i]) + '</option>';
+      sel.innerHTML += '<option value="' + _e(_classes[i].value) + '">' + _e(_classes[i].label) + '</option>';
     }
   });
+}
+
+// يبحث عن نص العرض المقروء لقيمة فصل خام — يُستخدم لعدم عرض المفتاح الداخلي المشوَّه
+// (مثال: "التاسعج") في رسائل الحالة/التحميل.
+function _classLabelFor(value) {
+  for (var i = 0; i < _classes.length; i++) {
+    if (_classes[i].value === value) return _classes[i].label;
+  }
+  return value;
 }
 
 // مزامنة أسماء المعلمين من ملف Teacher إلى ملف الجداول
@@ -783,7 +794,7 @@ function loadClass() {
   var cls  = document.getElementById('classSel').value;
   var area = document.getElementById('t2Content');
   if (!cls) { area.innerHTML = '<div class="ld">اختر فصلاً للعرض</div>'; return; }
-  area.innerHTML = '<div class="ld"><div class="sp"></div><br>جاري تحميل جدول ' + _e(cls) + '...</div>';
+  area.innerHTML = '<div class="ld"><div class="sp"></div><br>جاري تحميل جدول ' + _e(_classLabelFor(cls)) + '...</div>';
   gsr('getClassSchedule', cls, function(d) {
     if (d.error) { area.innerHTML = '<div class="ld" style="color:var(--err)">❌ ' + d.error + '</div>'; return; }
     renderClass(d, area);
