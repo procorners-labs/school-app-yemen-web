@@ -546,16 +546,23 @@ a { color: var(--pr); text-decoration: none; }
 }
 .exam-day-list { display: flex; flex-direction: column; gap: 8px; }
 .exam-day-card {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; flex-direction: column;
   background: var(--bg-2); border: 1px solid var(--bdr); border-radius: var(--rad-s);
-  padding: 10px 12px; transition: opacity var(--tr);
+  overflow: hidden; transition: opacity var(--tr);
 }
 @media (prefers-reduced-motion: no-preference) {
   .exam-day-card { animation: slideUp var(--tr-l) both; animation-delay: calc(var(--exam-i, 0) * 40ms); }
 }
-.exam-day-date {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  min-width: 92px; flex: 0 0 auto; background: var(--pr-bg); border-radius: 8px; padding: 6px 8px;
+/* رأس البطاقة: شارة اليوم + التاريخ + العدّ التنازلي — يفصله عن جسم المواد تسطير صريح
+   (border-bottom)، إضافةً إلى التسطير القائم أصلاً على مستوى عنوان الشهر. */
+.exam-day-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-bottom: 1px solid var(--bdr);
+}
+.exam-day-daypill {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  background: var(--pr-bg); color: var(--pr-d); border-radius: 999px;
+  padding: 3px 10px; font-weight: 700; font-size: 12px; white-space: nowrap;
 }
 .exam-day-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--bdr-2); }
 .exam-day-dot.exam-day-sat { background: var(--exam-day-sat); }
@@ -563,9 +570,9 @@ a { color: var(--pr); text-decoration: none; }
 .exam-day-dot.exam-day-mon { background: var(--exam-day-mon); }
 .exam-day-dot.exam-day-tue { background: var(--exam-day-tue); }
 .exam-day-dot.exam-day-wed { background: var(--exam-day-wed); }
-.exam-day-dname { font-weight: 700; font-size: 12px; color: var(--pr); }
-.exam-day-dnum { font-size: 10.5px; color: var(--muted); }
-.exam-day-subjects { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.exam-day-datetext { flex: 1; font-size: 12.5px; font-weight: 600; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exam-day-body { padding: 10px 12px 12px; }
+.exam-day-subjects { display: flex; flex-wrap: wrap; gap: 8px; }
 .exam-subj-chip {
   display: inline-flex; align-items: center; gap: 5px; background: var(--card);
   border: 1px solid var(--bdr); border-radius: 14px; padding: 3px 10px;
@@ -580,15 +587,18 @@ a { color: var(--pr); text-decoration: none; }
 .exam-subj-dot.exam-subj-6 { background: var(--exam-subj-6); }
 .exam-subj-dot.exam-subj-7 { background: var(--exam-subj-7); }
 .exam-subj-dot.exam-subj-8 { background: var(--exam-subj-8); }
-.exam-day-countdown { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--pr-d); }
+.exam-day-countdown {
+  flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--pr-d);
+  background: var(--pr-bg); border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+}
 .exam-day-past { opacity: .55; }
-.exam-day-past .exam-day-date { background: transparent; border: 1px solid var(--bdr); }
-.exam-day-past .exam-day-dname, .exam-day-past .exam-day-dnum { color: var(--muted); }
+.exam-day-past .exam-day-head { border-bottom-color: var(--bdr); }
+.exam-day-past .exam-day-daypill { background: transparent; border: 1px solid var(--bdr); color: var(--muted); }
 .exam-day-next {
   border: 1.5px solid var(--pr); box-shadow: 0 0 0 3px var(--pr-glow);
 }
-.exam-day-next .exam-day-date { background: var(--pr); }
-.exam-day-next .exam-day-dname, .exam-day-next .exam-day-dnum { color: #fff; }
+.exam-day-next .exam-day-head { background: var(--pr-bg); border-bottom-color: var(--pr); }
+.exam-day-next .exam-day-daypill { background: var(--pr); color: #fff; }
 .exam-day-next .exam-day-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
 .exam-instructions-card {
   display: flex; gap: 10px; align-items: flex-start; background: var(--pr-bg);
@@ -1800,8 +1810,6 @@ a { color: var(--pr); text-decoration: none; }
   .welcome h2 { font-size: 19px; }
   .exam-hero { padding: 14px; }
   .exam-hero .countdown { font-size: 20px; }
-  .exam-day-card { flex-wrap: wrap; }
-  .exam-day-subjects { flex-basis: 100%; }
   .nav-brand .name { font-size: 13px; }
   .news-filters { grid-template-columns: 1fr; }
   .fin-summary { grid-template-columns: 1fr; }
@@ -1818,8 +1826,9 @@ a { color: var(--pr); text-decoration: none; }
   .nav-btn { width: 34px; height: 34px; font-size: 15px; }
   .tab-btn { padding: 0 10px; font-size: 12.5px; }
   .tab-btn .ic { font-size: 14px; }
-  .exam-day-date { min-width: 72px; padding: 5px 6px; }
-  .exam-day-dnum { font-size: 9.5px; }
+  .exam-day-head { gap: 6px; padding: 8px 10px; }
+  .exam-day-daypill, .exam-day-countdown { font-size: 11px; padding: 3px 8px; }
+  .exam-day-body { padding: 8px 10px 10px; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -5733,6 +5742,17 @@ function _examDayName(dateStr) {
   return dayByJs[dt.getDay()] || '';
 }
 
+// نصّ تاريخ عربي مقروء ("18 يوليو") من "yyyy-mm-dd" — نفس أسلوب بناء Date من مكوّنات محلية أعلاه
+// (لا new Date(str) على النص الخام). يُستخدَم بدل عرض yyyy-mm-dd الخام في رأس بطاقة يوم الاختبار.
+var EXAM_MONTH_NAMES_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+function _examFullDateAr(dateStr) {
+  var parts = String(dateStr || '').split('-');
+  if (parts.length !== 3) return dateStr || '';
+  var mo = Number(parts[1]), d = Number(parts[2]);
+  if (!mo || !d) return dateStr || '';
+  return d + ' ' + (EXAM_MONTH_NAMES_AR[mo - 1] || '');
+}
+
 // بطاقة "تعليمات الاختبار" — نص حرّ اختياري يضبطه المدير/الوكيل من منصة المعلم (كنترول الاختبارات).
 // تُعرَض فقط إن كان النص غير فارغ فعلياً؛ لا أثر إطلاقاً للمدارس التي لم تضبط تعليمات (افتراضي فارغ).
 function _examInstructionsHtml(r) {
@@ -5868,18 +5888,19 @@ function renderExamSchedule(r) {
       var countdown = '';
       if (isNext) {
         var n = _examDaysBetween(todayStr, day.date);
-        countdown = '<div class="exam-day-countdown">' + (n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'))) + '</div>';
+        countdown = '<span class="exam-day-countdown">' + (n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'))) + '</span>';
       }
       var dayName = day.date ? _examDayName(day.date) : '';
-      var dateNum = day.date || ('اليوم ' + day.dayIndex);
+      var dateNum = day.date ? _examFullDateAr(day.date) : ('اليوم ' + day.dayIndex);
       var subjChips = '';
       for (var s = 0; s < day.subjects.length; s++) subjChips += _examSubjChipHtml(day.subjects[s].name, colorMap);
       h += '<div class="' + cardClass + '" style="--exam-i:' + Math.min(cardIdx, 12) + '">' +
-           '<div class="exam-day-date">' + _examDayDotHtml(dayName) +
-           '<span class="exam-day-dname">' + esc(dayName || '—') + '</span>' +
-           '<span class="exam-day-dnum">' + esc(dateNum) + '</span></div>' +
-           '<div class="exam-day-subjects">' + subjChips + '</div>' +
-           countdown +
+           '<div class="exam-day-head">' +
+             '<span class="exam-day-daypill">' + _examDayDotHtml(dayName) + esc(dayName || '—') + '</span>' +
+             '<span class="exam-day-datetext">' + esc(dateNum) + '</span>' +
+             countdown +
+           '</div>' +
+           '<div class="exam-day-body"><div class="exam-day-subjects">' + subjChips + '</div></div>' +
            '</div>';
       cardIdx++;
     }
