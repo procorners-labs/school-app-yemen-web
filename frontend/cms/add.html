@@ -89,9 +89,29 @@
     .status-info { background:#dbeafe; color:#1e40af; border-right:6px solid #3b82f6; }
     .back-link { margin-top:30px; text-align:center; }
     .back-link a { color:#1a73e8; text-decoration:none; font-weight:500; cursor:pointer; }
+    /* 2026-07-18: بوابة تسجيل دخول CMS — تحمي أزرار النشر/ربط فيسبوك الحسّاسة فقط
+       (راجع cms/CLAUDE.md/التوثيق الأمني — بقية الصفحة لا تزال بانتظار تمرير مماثل). */
+    #cmsLoginGate { position:fixed; inset:0; z-index:9999; background:rgba(15,23,42,.55); display:flex; align-items:center; justify-content:center; padding:20px; }
+    #cmsLoginGate .box { background:white; border-radius:24px; padding:28px 24px; max-width:360px; width:100%; box-shadow:0 20px 50px rgba(0,0,0,.2); }
+    #cmsLoginGate h3 { margin-bottom:8px; color:#0f172a; }
+    #cmsLoginGate p { color:#64748b; font-size:.9rem; margin-bottom:18px; }
+    #cmsLoginGate input { width:100%; padding:12px 16px; border:1.5px solid #e2e8f0; border-radius:14px; margin-bottom:12px; font-size:1rem; }
+    #cmsLoginGate button { width:100%; background:#1a73e8; color:white; border:none; padding:13px; border-radius:14px; font-weight:600; cursor:pointer; }
+    #cmsLoginGate .msg { margin-top:10px; font-size:.85rem; }
   </style>
 </head>
 <body>
+<div id="cmsLoginGate" style="display:none">
+  <div class="box">
+    <h3>🔐 تسجيل الدخول</h3>
+    <p>مطلوب لإجراءات النشر/ربط حسابات السوشل — استخدم بيانات دخولك في منصّة المعلمين
+       (مشرف الأنشطة/المدير/الوكيل فقط).</p>
+    <input id="cmsLoginUser" type="text" placeholder="اسم المستخدم">
+    <input id="cmsLoginPass" type="password" placeholder="كلمة المرور">
+    <button onclick="_cmsDoLogin()">دخول</button>
+    <div id="cmsLoginMsg" class="msg"></div>
+  </div>
+</div>
 <div class="container">
   <h2>📥 إضافة محتوى جديد</h2>
 
@@ -210,6 +230,66 @@
   (function() {
     var urlParams = new URLSearchParams(window.location.search);
     window.SCHOOL_ID = urlParams.get('school') || '';
+  })();
+
+  // ══════════════════════════════════════════════════════
+  // 2026-07-18: بوابة تسجيل دخول CMS — تحمي فقط smmSaveSocialSettings/getFbConnectUrl/
+  // smmPublishNow (الأزرار الحسّاسة على هذه الصفحة). بقية النماذج (أخبار/فيديو/صور) لا
+  // تزال بانتظار نفس التمرير في دفعة لاحقة — راجع _docs/…-cms-track2-auth-design.
+  // الهوية مفوَّضة بالكامل لتسجيل دخول teacher الحيّ (raja withCmsAuthEither في CMSAuth.js).
+  // ══════════════════════════════════════════════════════
+  function _cmsToken() { try { return sessionStorage.getItem('cms_token') || ''; } catch (e) { return ''; } }
+  function _cmsSetToken(t) { try { sessionStorage.setItem('cms_token', t || ''); } catch (e) {} }
+  function _cmsClientId() {
+    try {
+      var id = localStorage.getItem('cms_clientId');
+      if (!id) { id = 'cms_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9); localStorage.setItem('cms_clientId', id); }
+      return id;
+    } catch (e) { return 'cms_fallback'; }
+  }
+  function _cmsShowGate() { var g = document.getElementById('cmsLoginGate'); if (g) g.style.display = 'flex'; }
+  function _cmsHideGate() { var g = document.getElementById('cmsLoginGate'); if (g) g.style.display = 'none'; }
+
+  function _cmsDoLogin() {
+    var user = (document.getElementById('cmsLoginUser') || {}).value || '';
+    var pass = (document.getElementById('cmsLoginPass') || {}).value || '';
+    var msgEl = document.getElementById('cmsLoginMsg');
+    if (msgEl) { msgEl.style.color = '#64748b'; msgEl.textContent = 'جاري التحقق…'; }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.success) {
+          _cmsSetToken(res.token);
+          _cmsHideGate();
+        } else if (msgEl) {
+          msgEl.style.color = '#dc2626';
+          msgEl.textContent = (res && res.error) || 'تعذّر تسجيل الدخول';
+        }
+      })
+      .withFailureHandler(function (err) { if (msgEl) { msgEl.style.color = '#dc2626'; msgEl.textContent = 'خطأ: ' + err.message; } })
+      .handleCmsLogin({ username: user, password: pass, clientId: _cmsClientId(), schoolId: window.SCHOOL_ID || '' });
+  }
+
+  // يستدعيها أي زرّ حسّاس قبل تنفيذ فعله — إن كانت الجلسة صالحة يمرّ التنفيذ مباشرة،
+  // وإلا تظهر بوابة الدخول ويُعاد المحاولة تلقائياً بعد نجاح تسجيل الدخول.
+  function _cmsRequireAuth(onReady) {
+    var token = _cmsToken();
+    if (!token) { _cmsShowGate(); _cmsPendingAction = onReady; return; }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.valid) { onReady(); }
+        else { _cmsSetToken(''); _cmsShowGate(); _cmsPendingAction = onReady; }
+      })
+      .withFailureHandler(function () { _cmsShowGate(); _cmsPendingAction = onReady; })
+      .checkCmsSession({ token: token });
+  }
+  var _cmsPendingAction = null;
+  // بعد نجاح الدخول من داخل البوابة، تابع الإجراء الذي استدعاها إن وُجد
+  (function () {
+    var origHide = _cmsHideGate;
+    _cmsHideGate = function () {
+      origHide();
+      if (_cmsPendingAction) { var a = _cmsPendingAction; _cmsPendingAction = null; a(); }
+    };
   })();
 
   // Worker-aware navigation — يبني رابط الصفحة مباشرةً عبر Worker
@@ -482,51 +562,57 @@
       .smmGetSocialSettings(window.SCHOOL_ID);
   }
   function saveSocialSettings() {
-    var g = function(id){ var el=document.getElementById(id); return el ? el.value.trim() : ''; };
-    var obj = {
-      fb_page_id: g('set_fb_page_id'), fb_page_token: g('set_fb_page_token'),
-      ig_business_id: g('set_ig_business_id'), wa_phone_id: g('set_wa_phone_id'),
-      wa_token: g('set_wa_token'), wa_recipients: g('set_wa_recipients'),
-      yt_channel_url: g('set_yt_channel_url')
-    };
-    setStatus('socialStatus', '⏳ جاري الحفظ…', 'info');
-    google.script.run
-      .withSuccessHandler(function(res) {
-        var ok = (res && res.success);
-        setStatus('socialStatus', ok ? ('✅ ' + res.message) : ('❌ ' + ((res && res.error) || 'خطأ')), ok ? 'success' : 'error');
-        document.getElementById('set_fb_page_token').value = '';
-        document.getElementById('set_wa_token').value = '';
-        loadSocialSettings();
-      })
-      .withFailureHandler(function(err) { setStatus('socialStatus', '❌ خطأ: ' + err.message, 'error'); })
-      .smmSaveSocialSettings(window.SCHOOL_ID, obj);
+    _cmsRequireAuth(function () {
+      var g = function(id){ var el=document.getElementById(id); return el ? el.value.trim() : ''; };
+      var obj = {
+        fb_page_id: g('set_fb_page_id'), fb_page_token: g('set_fb_page_token'),
+        ig_business_id: g('set_ig_business_id'), wa_phone_id: g('set_wa_phone_id'),
+        wa_token: g('set_wa_token'), wa_recipients: g('set_wa_recipients'),
+        yt_channel_url: g('set_yt_channel_url')
+      };
+      setStatus('socialStatus', '⏳ جاري الحفظ…', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          var ok = (res && res.success);
+          setStatus('socialStatus', ok ? ('✅ ' + res.message) : ('❌ ' + ((res && res.error) || 'خطأ')), ok ? 'success' : 'error');
+          document.getElementById('set_fb_page_token').value = '';
+          document.getElementById('set_wa_token').value = '';
+          loadSocialSettings();
+        })
+        .withFailureHandler(function(err) { setStatus('socialStatus', '❌ خطأ: ' + err.message, 'error'); })
+        .smmSaveSocialSettings({ schoolId: window.SCHOOL_ID, obj: obj, token: _cmsToken() });
+    });
   }
 
   // الاتصال السريع بفيسبوك (OAuth) — يفتح حوار التفويض ثم يحفظ التوكن تلقائياً للمدرسة
   function fbConnect() {
-    setStatus('fbConnectStatus', '⏳ جاري تجهيز رابط الاتصال…', 'info');
-    google.script.run
-      .withSuccessHandler(function(res) {
-        if (res && res.success && res.url) {
-          setStatus('fbConnectStatus', '🔗 افتُحت نافذة فيسبوك — أكمل الموافقة ثم عُد وحدّث الصفحة.', 'success');
-          window.open(res.url, '_blank');
-        } else {
-          setStatus('fbConnectStatus', '❌ ' + ((res && res.error) || 'تعذّر بناء رابط الاتصال'), 'error');
-        }
-      })
-      .withFailureHandler(function(err) { setStatus('fbConnectStatus', '❌ خطأ: ' + err.message, 'error'); })
-      .getFbConnectUrl(window.SCHOOL_ID);
+    _cmsRequireAuth(function () {
+      setStatus('fbConnectStatus', '⏳ جاري تجهيز رابط الاتصال…', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success && res.url) {
+            setStatus('fbConnectStatus', '🔗 افتُحت نافذة فيسبوك — أكمل الموافقة ثم عُد وحدّث الصفحة.', 'success');
+            window.open(res.url, '_blank');
+          } else {
+            setStatus('fbConnectStatus', '❌ ' + ((res && res.error) || 'تعذّر بناء رابط الاتصال'), 'error');
+          }
+        })
+        .withFailureHandler(function(err) { setStatus('fbConnectStatus', '❌ خطأ: ' + err.message, 'error'); })
+        .getFbConnectUrl({ schoolId: window.SCHOOL_ID, token: _cmsToken() });
+    });
   }
 
   // نشر فوري — يشغّل Trigger يدوياً من الواجهة
   function publishNow() {
-    setStatus('scheduleStatus', '⏳ جاري تشغيل معالج النشر…', 'info');
-    google.script.run
-      .withSuccessHandler(function(res) {
-        setStatus('scheduleStatus', res && res.success ? '✅ ' + res.message : '❌ ' + ((res && res.error) || 'خطأ'), (res && res.success) ? 'success' : 'error');
-      })
-      .withFailureHandler(function(e) { setStatus('scheduleStatus', '❌ ' + e.message, 'error'); })
-      .smmPublishNow(window.SCHOOL_ID);
+    _cmsRequireAuth(function () {
+      setStatus('scheduleStatus', '⏳ جاري تشغيل معالج النشر…', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          setStatus('scheduleStatus', res && res.success ? '✅ ' + res.message : '❌ ' + ((res && res.error) || 'خطأ'), (res && res.success) ? 'success' : 'error');
+        })
+        .withFailureHandler(function(e) { setStatus('scheduleStatus', '❌ ' + e.message, 'error'); })
+        .smmPublishNow({ schoolId: window.SCHOOL_ID, token: _cmsToken() });
+    });
   }
 
   // اختبار توكن فيسبوك

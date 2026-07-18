@@ -18155,9 +18155,12 @@ function smm_renderPlan() {
   tbl.innerHTML = '<table class="smm-plan-table"><thead><tr><th>العنوان</th><th>المنصة</th><th>النوع</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
+// 2026-07-18: smmUpdateStatus/smmPromoteToSchedule/smmPublishNow/smmSaveSocialSettings في CMS
+// أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken (جلسة teacher الحالية نفسها، تُتحقَّق
+// حيّاً من طرف CMS عبر checkSession، لا حاجة لتسجيل دخول منفصل لأن المستخدم مسجَّل هنا أصلاً).
 function smm_approve(id) {
   if (!id) return;
-  callCMS('smmUpdateStatus', [id, 'معتمد', ''], function(res, err) {
+  callCMS('smmUpdateStatus', { planId: id, newStatus: 'معتمد', approverEmail: '', teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
     if (res && res.success) { toast('✅ تم الاعتماد', 'success'); smm_loadPlan(); smm_loadStats(); }
     else toast((res && res.error) || err || 'خطأ في الاعتماد', 'error');
   });
@@ -18165,7 +18168,7 @@ function smm_approve(id) {
 
 function smm_scheduleItem(id) {
   if (!id) return;
-  callCMS('smmPromoteToSchedule', [id], function(res, err) {
+  callCMS('smmPromoteToSchedule', { planId: id, teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
     if (res && res.success) { toast('📅 تم الجدول', 'success'); smm_loadPlan(); smm_loadStats(); }
     else toast((res && res.error) || err || 'خطأ في الجدولة', 'error');
   });
@@ -18232,7 +18235,7 @@ function smm_publishDirect() {
 
 function smm_publishNow() {
   showLoading('جاري تشغيل معالج النشر…');
-  callCMS('smmPublishNow', [window.SCHOOL_ID || ''], function(res, err) {
+  callCMS('smmPublishNow', { teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
     hideLoading();
     if (res && res.success) toast('✅ ' + res.message, 'success');
     else toast('❌ ' + (err || 'خطأ'), 'error');
@@ -18325,7 +18328,7 @@ function smm_saveAccounts() {
     yt_channel_url:(document.getElementById('smm-acc-yt')      || {}).value || ''
   };
   smm_statusMsg('smm-acc-status', '⏳ جاري الحفظ…', 'info');
-  callCMS('smmSaveSocialSettings', [window.SCHOOL_ID || '', obj], function(res, err) {
+  callCMS('smmSaveSocialSettings', { schoolId: App.user.schoolId, obj: obj, teacherToken: (App.user && App.user.token) || '' }, function(res, err) {
     if (res && res.success) { smm_statusMsg('smm-acc-status', '✅ ' + res.message, 'success'); smm_loadAccounts(); }
     else smm_statusMsg('smm-acc-status', '❌ ' + (err || 'خطأ'), 'error');
   });
