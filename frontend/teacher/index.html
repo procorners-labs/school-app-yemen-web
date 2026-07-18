@@ -21733,7 +21733,8 @@ var _VT_REVIEW_CATS = [
   {key:'needs_review_b', color:'var(--tf-orange)',  icon:'🟠', label:'معلمون نشيطون / طلاب خاملون'},
   {key:'excellent',      color:'var(--tf-green)',   icon:'🟢', label:'ممتاز'},
   {key:'fully_idle',     color:'var(--tf-magenta)', icon:'⚫', label:'خامل بالكامل'},
-  {key:'normal',         color:'var(--tf-blue)',    icon:'🔵', label:'طبيعي / متوسط'}
+  {key:'normal',         color:'var(--tf-blue)',    icon:'🔵', label:'طبيعي / متوسط'},
+  {key:'pending_maturity', color:'var(--tf-teal)',  icon:'🕓', label:'بيانات قيد التجميع'}
 ];
 
 function renderVisitsTraffic(initialTab){
@@ -22224,9 +22225,19 @@ function _visitsLoadReview(){
   });
 }
 
+function _visitsReviewRefreshNow(){
+  callServer('getVisitsReviewProtected', {noCache:true}, function(res){
+    if(!res || !res.success) return;
+    window._visitsReviewClassesFull=res.classes||[];
+    _visitsRenderReview();
+  });
+}
+
 // عتبتا ٥٠٪/٨٠٪ نفسهما المستخدمتان في _visitsParticipationTier — أي فصل بمشاركة
 // طلاب/نشاط معلمين ≥80٪ "نشط"، و<50٪ "خامل"، لضمان اتساق المعنى عبر التبويب كاملاً.
-function _visitsReviewCategory(studentPct, teacherPct){
+function _visitsReviewCategory(studentPct, teacherPct, dataMaturity){
+  if (dataMaturity === 'pending')
+    return { key:'pending_maturity', color:'var(--tf-teal)', icon:'🕓', label:'بيانات قيد التجميع — لا تصنيف بعد' };
   var s=studentPct||0, t=teacherPct||0;
   if (s>=80 && t<50)  return { key:'needs_review_a', color:'var(--tf-red)',     icon:'🔴', label:'طلاب نشيطون / معلمون خاملون — يحتاج مراجعة' };
   if (t>=80 && s<50)  return { key:'needs_review_b', color:'var(--tf-orange)',  icon:'🟠', label:'معلمون نشيطون / طلاب خاملون — يحتاج مراجعة' };
@@ -22239,24 +22250,30 @@ function _visitsRenderReview(){
   var body=document.getElementById('vt-review-body');
   if(!body) return;
   var classes=window._visitsReviewClassesFull||[];
-  var counts={needs_review_a:0, needs_review_b:0, excellent:0, fully_idle:0, normal:0};
+  var counts={needs_review_a:0, needs_review_b:0, excellent:0, fully_idle:0, normal:0, pending_maturity:0};
   var i, cat;
   for(i=0;i<classes.length;i++){
-    cat=_visitsReviewCategory(classes[i].studentActivePct, classes[i].teacherActivePct);
+    cat=_visitsReviewCategory(classes[i].studentActivePct, classes[i].teacherActivePct, classes[i].dataMaturity);
     classes[i]._cat=cat;
     counts[cat.key]=(counts[cat.key]||0)+1;
   }
 
   var h='';
+  h+='<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'+
+     '<button class="tf-abtn tf-sync" onclick="_visitsReviewRefreshNow()">🔄 تحديث فوري</button></div>';
   h+='<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface2);border-radius:10px;padding:10px 14px;margin-bottom:14px;">'+
      'ℹ️ نشاط المعلم هنا <b>إجمالي عبر كل فصوله</b> (لا تسجيل دقيق لزيارة كل فصل على حدة حالياً) — '+
-     'اعتبر النِّسب أدناه مؤشراً تقديرياً للمتابعة، لا قياساً حرفياً لكل فصل.</div>';
+     'اعتبر النِّسب أدناه مؤشراً تقديرياً للمتابعة، لا قياساً حرفياً لكل فصل. '+
+     '🆕 عدّادا تسجيل الدخول ومدة الاستخدام حديثان (منذ 2026-07-14)؛ الفصول المُصنَّفة 🕓 «قيد التجميع» '+
+     'لم تُرصَد لها أي إشارة نشاط بعد من أي مصدر (عدّادات، جلسات حضور، ملاحظات، مشاهدات أخبار) — '+
+     'لا تُصنَّف ضمن الخماسي العادي حتى تتوفّر أول إشارة، تفادياً لِـ«خامل بالكامل» مُضلِّلة.</div>';
 
   h+='<div class="tf-kpis">'+
      _tfKpi(String(counts.needs_review_a),'طلاب نشيطون / معلمون خاملون','','var(--tf-red)',false)+
      _tfKpi(String(counts.needs_review_b),'معلمون نشيطون / طلاب خاملون','','var(--tf-orange)',false)+
      _tfKpi(String(counts.excellent),'فصول بوضعية ممتازة','','var(--tf-green)',false)+
      _tfKpi(String(counts.fully_idle),'فصول خاملة بالكامل','','var(--tf-magenta)',false)+
+     _tfKpi(String(counts.pending_maturity),'بيانات قيد التجميع','','var(--tf-teal)',false)+
      _tfKpi(String(classes.length),'إجمالي الفصول المفحوصة','','var(--tf-blue)',false)+
      '</div>';
 
@@ -22296,7 +22313,7 @@ function _visitsReviewSort(field){
 function _visitsReviewFilterSortRows(classes){
   var out=[], i;
   for(i=0;i<classes.length;i++){
-    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct, c.dataMaturity);
     if(_visitsReviewCatFilter==='flagged' && cat.key!=='needs_review_a' && cat.key!=='needs_review_b') continue;
     if(_visitsReviewCatFilter!=='all' && _visitsReviewCatFilter!=='flagged' && cat.key!==_visitsReviewCatFilter) continue;
     if(_visitsReviewSearchQ && (c.displayClass||'').indexOf(_visitsReviewSearchQ)===-1) continue;
@@ -22327,7 +22344,7 @@ function _visitsRenderReviewTable(){
     '</tr></thead><tbody>';
   var i;
   for(i=0;i<rows.length;i++){
-    var c=rows[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    var c=rows[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct, c.dataMaturity);
     var rid='vt-review-row-'+i;
     html+='<tr>'+
       '<td><span style="cursor:pointer;color:var(--text-muted);" onclick="_visitsReviewToggleRow('+i+')" id="'+rid+'-btn">▶</span></td>'+
@@ -22399,9 +22416,12 @@ function _visitsReviewQuadrant(classes){
   svg+='<text x="'+(W/2)+'" y="'+(H-6)+'" font-size="10" text-anchor="middle" style="fill:var(--text-muted)">نشاط المعلمين ٪</text>';
   svg+='<text x="12" y="'+(H/2)+'" font-size="10" text-anchor="middle" style="fill:var(--text-muted)" transform="rotate(-90 12 '+(H/2)+')">مشاركة الطلاب ٪</text>';
 
-  var placed=[], pts='', i;
+  var placed=[], pts='', i, pendingCount=0;
   for(i=0;i<classes.length;i++){
-    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct, c.dataMaturity);
+    // فصول "قيد التجميع" تُستبعَد من الرسم كلياً — عرضها عند (0,0) يُعيد نفس اللَّبس البصري
+    // مع ⚫ "خامل بالكامل" الذي يحاول هذا التمييز حلّه (لا بيانات ≠ نشاط صفري مؤكَّد).
+    if(cat.key==='pending_maturity'){ pendingCount++; continue; }
     var x=mapX(c.teacherActivePct), y=mapY(c.studentActivePct);
     pts+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="5" style="fill:'+cat.color+';fill-opacity:.85;stroke:var(--surface);stroke-width:1.2;">'+
          '<title>'+_tfEsc(c.displayClass)+' — طلاب '+c.studentActivePct+'٪ · معلمون '+c.teacherActivePct+'٪ — '+_tfEsc(cat.label)+'</title></circle>';
@@ -22417,6 +22437,7 @@ function _visitsReviewQuadrant(classes){
     }
   }
   svg+=pts+'</svg>';
+  if(pendingCount) svg+='<div style="text-align:center;font-size:11.5px;color:var(--text-muted);margin-top:6px;">🕓 '+pendingCount+' فصل غير مُدرَج بالرسم (بيانات قيد التجميع)</div>';
   return svg;
 }
 
@@ -22448,7 +22469,7 @@ function _visitsReviewLegend(counts){
 function _visitsReviewGradeRollup(classes){
   var byGrade={}, order=[], i;
   for(i=0;i<classes.length;i++){
-    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    var c=classes[i], cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct, c.dataMaturity);
     if(cat.key!=='needs_review_a' && cat.key!=='needs_review_b') continue;
     if(byGrade[c.grade]===undefined){ byGrade[c.grade]=0; order.push(c.grade); }
     byGrade[c.grade]++;
@@ -22461,11 +22482,14 @@ function _visitsReviewGradeRollup(classes){
 // ── أكثر 5 فصول تحتاج متابعة (حسب مجموع النسبتين تصاعدياً) ──
 function _visitsReviewTopOffenders(classes){
   if(!classes || !classes.length) return '<div class="tf-empty">لا بيانات</div>';
-  var scored=classes.map(function(c){ return { c:c, score:(c.studentActivePct||0)+(c.teacherActivePct||0) }; });
+  // فصول "قيد التجميع" (0/0 بلا أي إشارة نشاط) تُستبعَد — لا تظهر زوراً كأكثر الفصول تحتاج متابعة.
+  var eligible=classes.filter(function(c){ return c.dataMaturity!=='pending'; });
+  if(!eligible.length) return '<div class="tf-empty">لا بيانات كافية بعد لكل الفصول (قيد التجميع)</div>';
+  var scored=eligible.map(function(c){ return { c:c, score:(c.studentActivePct||0)+(c.teacherActivePct||0) }; });
   scored.sort(function(a,b){ return a.score-b.score; });
   var top=scored.slice(0,5), html='<div style="display:flex;flex-direction:column;gap:8px;">', i;
   for(i=0;i<top.length;i++){
-    var c=top[i].c, cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+    var c=top[i].c, cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct, c.dataMaturity);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);flex-wrap:wrap;">'+
       '<span style="font-weight:700;">'+_tfEsc(c.displayClass)+'</span>'+
       '<span style="display:flex;gap:10px;font-size:12px;color:var(--text-muted);align-items:center;flex-wrap:wrap;">'+
@@ -22481,7 +22505,7 @@ function _visitsReviewExportCsv(){
   var rows=_visitsReviewFilterSortRows(window._visitsReviewClassesFull||[]);
   _tfExportCsv('يحتاج_مراجعة.csv', ['الفصل','الطلاب','مشاركة الطلاب ٪','المعلمون','نشاط المعلمين ٪','الحالة'],
     rows.map(function(c){
-      var cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct);
+      var cat=c._cat||_visitsReviewCategory(c.studentActivePct, c.teacherActivePct, c.dataMaturity);
       return [c.displayClass, c.studentCount, c.studentActivePct, c.teacherCount, c.teacherActivePct, cat.label];
     }));
 }
