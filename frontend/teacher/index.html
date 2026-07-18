@@ -3352,24 +3352,14 @@ var _hwTotalPages    = 1;
 var _hwDebounceTimer = null;
 var _hwSortOrder     = 'newest';
 
-// ── الكاش المحلي للعميل (Client Cache) ──
+// ── الكاش المحلي للعميل (Client Cache) — يبقى فقط لأجل clientCacheInvalidate('news_v3_') ──
+// callServerSmart (الغلاف القديم الذي كان يملأ هذا الكاش عبر clientCacheSet/clientCacheGet) أُزيل
+// 2026-07-18 — كان مكافئاً مكرَّراً وأضعف من callServer القائم فعلياً في هذا الملف (توقيع مختلف
+// عن نظيره بنفس الاسم في student/Student Portal.html، ودالّة الحجب فيه تُسقِط النداء المتزامن
+// الثاني صامتاً بدل ضمّه لطابور الانتظار كما يفعل callServer). موقع الاستدعاء الوحيد
+// (loadHomework) يستخدم callServer مباشرة الآن.
 var _clientCache = {};
 var _clientCacheTTL = {};
-
-function clientCacheSet(key, data, ttlSeconds) {
-  _clientCache[key] = data;
-  _clientCacheTTL[key] = Date.now() + (ttlSeconds * 1000);
-}
-
-function clientCacheGet(key) {
-  if (!_clientCache[key]) return null;
-  if (Date.now() > (_clientCacheTTL[key] || 0)) {
-    delete _clientCache[key];
-    delete _clientCacheTTL[key];
-    return null;
-  }
-  return _clientCache[key];
-}
 
 function clientCacheInvalidate(prefix) {
   var keys = Object.keys(_clientCache);
@@ -3379,28 +3369,6 @@ function clientCacheInvalidate(prefix) {
       delete _clientCacheTTL[keys[i]];
     }
   }
-}
-
-function callServerSmart(fnName, params, callback, cacheKey, cacheTTL) {
-  if (cacheKey) {
-    var cached = clientCacheGet(cacheKey);
-    if (cached) {
-      if (callback) callback(cached);
-      return;
-    }
-  }
-
-  var dedupKey = fnName + '_' + JSON.stringify(params || {});
-  if (_pendingCalls[dedupKey]) return;
-  _pendingCalls[dedupKey] = true;
-
-  callServer(fnName, params, function(r) {
-    delete _pendingCalls[dedupKey];
-    if (cacheKey && r && (r.success !== false)) {
-      clientCacheSet(cacheKey, r, cacheTTL || 120);
-    }
-    if (callback) callback(r);
-  });
 }
 
 // ==================== HELPER FUNCTIONS ====================
@@ -10966,7 +10934,9 @@ function loadHomework() {
   var area = document.getElementById('homeworkListArea');
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div>';
 
-  callServerSmart('getMyActivitiesProtected', {},
+  callServer('getMyActivitiesProtected', {},
+    'activities_hw', // مفتاح الكاش
+    60,               // صلاحية 60 ثانية
     function(r) {
       if (r && r.success) {
         _hwAllData = r.data.homework || [];
@@ -10974,9 +10944,7 @@ function loadHomework() {
       } else {
         if (area) area.innerHTML = '<div class="empty-state"><div class="es-icon">❌</div><div class="es-title">' + (r ? r.error : 'خطأ') + '</div></div>';
       }
-    },
-    'activities_hw', // مفتاح الكاش
-    60                // صلاحية 60 ثانية
+    }
   );
 }
 
