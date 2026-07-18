@@ -544,39 +544,53 @@ a { color: var(--pr); text-decoration: none; }
   font-weight: 800; font-size: 15px; margin-bottom: 10px; color: var(--txt);
   border-bottom: 2px solid var(--pr); padding-bottom: 6px;
 }
-.exam-day-list { display: flex; flex-direction: column; gap: 8px; }
-.exam-day-card {
-  display: flex; flex-direction: column;
-  background: var(--bg-2); border: 1px solid var(--bdr); border-radius: var(--rad-s);
-  overflow: hidden; transition: opacity var(--tr);
+/* جدول شبكي حقيقي (أعمدة/صفوف مسطّرة) بدل بطاقات — تسطير كل خلية + محاذاة متوازية/متوازنة
+   للأعمدة الثابتة (اليوم/التاريخ/الحالة) بينما عمود المواد يتّسع لاستيعاب شرائح متعددة. */
+.exam-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--bdr); border-radius: var(--rad-s);
 }
+.exam-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.exam-table thead th {
+  background: var(--bg-2); color: var(--txt); font-weight: 800; font-size: 12.5px;
+  padding: 10px 12px; border-bottom: 2px solid var(--pr); white-space: nowrap; text-align: center;
+}
+.exam-table thead th.exam-th-subjects { text-align: start; }
+.exam-table tbody td {
+  padding: 9px 12px; border-bottom: 1px solid var(--bdr); vertical-align: middle; text-align: center;
+}
+.exam-table tbody tr:last-child td { border-bottom: none; }
+.exam-table tbody tr:nth-child(even) { background: var(--bg-2); }
 @media (prefers-reduced-motion: no-preference) {
-  .exam-day-card { animation: slideUp var(--tr-l) both; animation-delay: calc(var(--exam-i, 0) * 40ms); }
+  /* fadeIn (opacity فقط) لا slideUp (يشمل transform) — عناصر صفوف الجداول تاريخياً أقل اتساقاً
+     عبر المتصفحات مع transform من عناصر flex عادية؛ التلاشي وحده كافٍ للتأثير المتدرّج المطلوب
+     وخالٍ تماماً من هذا الخطر. */
+  .exam-table tbody tr { animation: fadeIn var(--tr-l) both; animation-delay: calc(var(--exam-i, 0) * 30ms); }
 }
-/* رأس البطاقة: شارة اليوم + التاريخ + العدّ التنازلي — يفصله عن جسم المواد تسطير صريح
-   (border-bottom)، إضافةً إلى التسطير القائم أصلاً على مستوى عنوان الشهر. */
-.exam-day-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 10px 12px; border-bottom: 1px solid var(--bdr);
-}
+/* شريط لون تصنيفي حسب يوم الأسبوع على أول خلية بكل صفّ — زخرفي فقط (حدّ، لا خلفية نصّية)،
+   نفس قيم --exam-day-* المدقَّقة أصلاً. */
+.exam-table tbody tr.exam-day-sat td:first-child { border-inline-start: 4px solid var(--exam-day-sat); }
+.exam-table tbody tr.exam-day-sun td:first-child { border-inline-start: 4px solid var(--exam-day-sun); }
+.exam-table tbody tr.exam-day-mon td:first-child { border-inline-start: 4px solid var(--exam-day-mon); }
+.exam-table tbody tr.exam-day-tue td:first-child { border-inline-start: 4px solid var(--exam-day-tue); }
+.exam-table tbody tr.exam-day-wed td:first-child { border-inline-start: 4px solid var(--exam-day-wed); }
+/* شارة اسم اليوم بخلفية ثابتة var(--pr-bg) (لا تتغيّر بالثيم) — تُبقي إقران النص/الخلفية آمناً
+   (٩٫٣٥:١) بصرف النظر عن لون خلية الجدول المتغيّر بالثيم (بطاقة/بطاقة-ثانية)؛ استخدام var(--pr-d)
+   كنصّ عادي فوق خلية الجدول مباشرة كان سيفشل التباين في الوضع الداكن (~١٫٤:١ محسوبة) لأن
+   --pr/--pr-d ثابتان بلا تخصيص per-theme بينما خلفية الخلية تُظلِم في الوضع الداكن. */
+.exam-cell-day { white-space: nowrap; }
 .exam-day-daypill {
-  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 6px;
   background: var(--pr-bg); color: var(--pr-d); border-radius: 999px;
   padding: 3px 10px; font-weight: 700; font-size: 12px; white-space: nowrap;
 }
-.exam-day-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--bdr-2); }
-.exam-day-dot.exam-day-sat { background: var(--exam-day-sat); }
-.exam-day-dot.exam-day-sun { background: var(--exam-day-sun); }
-.exam-day-dot.exam-day-mon { background: var(--exam-day-mon); }
-.exam-day-dot.exam-day-tue { background: var(--exam-day-tue); }
-.exam-day-dot.exam-day-wed { background: var(--exam-day-wed); }
-.exam-day-datetext { flex: 1; font-size: 12.5px; font-weight: 600; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.exam-day-body { padding: 10px 12px 12px; }
-.exam-day-subjects { display: flex; flex-wrap: wrap; gap: 8px; }
+.exam-cell-date { font-weight: 600; color: var(--txt); white-space: nowrap; }
+.exam-table tbody td.exam-cell-subjects { text-align: start; }
+.exam-day-subjects { display: flex; flex-wrap: wrap; gap: 6px; }
 .exam-subj-chip {
   display: inline-flex; align-items: center; gap: 5px; background: var(--card);
   border: 1px solid var(--bdr); border-radius: 14px; padding: 3px 10px;
-  font-size: 12.5px; font-weight: 600; color: var(--txt);
+  font-size: 12px; font-weight: 600; color: var(--txt);
 }
 .exam-subj-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 auto; background: var(--bdr-2); }
 .exam-subj-dot.exam-subj-1 { background: var(--exam-subj-1); }
@@ -587,19 +601,29 @@ a { color: var(--pr); text-decoration: none; }
 .exam-subj-dot.exam-subj-6 { background: var(--exam-subj-6); }
 .exam-subj-dot.exam-subj-7 { background: var(--exam-subj-7); }
 .exam-subj-dot.exam-subj-8 { background: var(--exam-subj-8); }
-.exam-day-countdown {
-  flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--pr-d);
-  background: var(--pr-bg); border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+.exam-cell-status { white-space: nowrap; }
+.exam-status-pill {
+  display: inline-block; font-size: 11.5px; font-weight: 700; border-radius: 999px;
+  padding: 3px 10px; white-space: nowrap;
 }
-.exam-day-past { opacity: .55; }
-.exam-day-past .exam-day-head { border-bottom-color: var(--bdr); }
-.exam-day-past .exam-day-daypill { background: transparent; border: 1px solid var(--bdr); color: var(--muted); }
-.exam-day-next {
-  border: 1.5px solid var(--pr); box-shadow: 0 0 0 3px var(--pr-glow);
-}
-.exam-day-next .exam-day-head { background: var(--pr-bg); border-bottom-color: var(--pr); }
-.exam-day-next .exam-day-daypill { background: var(--pr); color: #fff; }
-.exam-day-next .exam-day-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
+.exam-status-upcoming { background: var(--pr-bg); color: var(--pr-d); }
+.exam-status-next { background: var(--pr); color: #fff; }
+/* لا لون خاص هنا — var(--txt) عادي (آمن التباين دوماً بذاته). التمييز البصري لصفّ "منتهى" لا
+   يُطبَّق كـopacity على مستوى الصفّ كاملاً (بما فيه هذا النص) — مراجعة gas-reviewer حسبت أن
+   opacity على <tr> يُركِّب مع تلوين تظليل الصفوف الزوجية (--bg-2) فينتج تبايناً مختلفاً فعلياً
+   بين صفّ فردي (يمرّ) وصفّ زوجي (يفشل AA بفارق ضئيل، ٤٫٤٥:١) — بدل ضبط قيمة opacity على حافة
+   الحدّ (هشّ)، التعتيم يُطبَّق فقط على العناصر الزخرفية ذات هامش تباين واسع أصلاً (الشارة/شرائح
+   المواد/شريط اللون)، فيبقى نصّ الحالة والتاريخ بكامل تباينه دوماً بصرف النظر عن تظليل الصفّ. */
+.exam-status-done { color: var(--txt); font-weight: 600; }
+.exam-row-past .exam-day-daypill, .exam-row-past .exam-subj-chip { opacity: .6; }
+.exam-table tbody tr.exam-row-past td:first-child { border-inline-start-color: var(--bdr-2); }
+/* تمييز صفّ "التالي" عبر شريط اللون الأعرض + شارة الحالة الملوَّنة فقط — بلا تلوين خلفية الصفّ
+   كاملاً: var(--pr-bg) ثابت بلا تخصيص للوضع الداكن، بينما نصّ الخلية العادي var(--txt) يتغيّر
+   فاتحاً في الوضع الداكن — تلوين الخلفية وحدها كان سينتج نصاً فاتحاً على خلفية فاتحة أيضاً هناك. */
+.exam-row-next td { font-weight: 700; }
+.exam-row-next.exam-day-sat td:first-child, .exam-row-next.exam-day-sun td:first-child,
+.exam-row-next.exam-day-mon td:first-child, .exam-row-next.exam-day-tue td:first-child,
+.exam-row-next.exam-day-wed td:first-child { border-inline-start-width: 6px; }
 .exam-instructions-card {
   display: flex; gap: 10px; align-items: flex-start; background: var(--pr-bg);
   border: 1px solid var(--pr); border-radius: var(--rad-s); padding: 12px 14px; margin-bottom: 16px;
@@ -1826,9 +1850,9 @@ a { color: var(--pr); text-decoration: none; }
   .nav-btn { width: 34px; height: 34px; font-size: 15px; }
   .tab-btn { padding: 0 10px; font-size: 12.5px; }
   .tab-btn .ic { font-size: 14px; }
-  .exam-day-head { gap: 6px; padding: 8px 10px; }
-  .exam-day-daypill, .exam-day-countdown { font-size: 11px; padding: 3px 8px; }
-  .exam-day-body { padding: 8px 10px 10px; }
+  .exam-table { font-size: 12px; }
+  .exam-table thead th, .exam-table tbody td { padding: 7px 8px; }
+  .exam-day-daypill, .exam-status-pill { font-size: 10.5px; padding: 2px 7px; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -5786,11 +5810,6 @@ var EXAM_DAY_COLOR_CLASS = {
   'الثلاثاء': 'exam-day-tue', 'الأربعاء': 'exam-day-wed'
 };
 
-function _examDayDotHtml(dayName) {
-  var cls = EXAM_DAY_COLOR_CLASS[dayName] || '';
-  return '<span class="exam-day-dot' + (cls ? ' ' + cls : '') + '"></span>';
-}
-
 function _examSubjChipHtml(name, colorMap) {
   var slot = colorMap[name] || 0;
   var dot = slot ? '<span class="exam-subj-dot exam-subj-' + slot + '"></span>' : '';
@@ -5879,32 +5898,37 @@ function renderExamSchedule(r) {
     var days = mo.days.slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
     h += '<div class="exam-month-block" id="examMo_' + m + '">' +
          '<div class="exam-month-title">🗓️ ' + esc(mo.month) + '</div>' +
-         '<div class="exam-day-list">';
+         '<div class="exam-table-wrap"><table class="exam-table">' +
+         '<thead><tr><th>اليوم</th><th>التاريخ</th><th class="exam-th-subjects">المواد</th><th>الحالة</th></tr></thead>' +
+         '<tbody>';
     for (var d = 0; d < days.length; d++) {
       var day = days[d];
       var isPast = !!(day.date && day.date < todayStr);
       var isNext = !!(next && day.date === next.date);
-      var cardClass = 'exam-day-card' + (isPast ? ' exam-day-past' : '') + (isNext ? ' exam-day-next' : '');
-      var countdown = '';
-      if (isNext) {
-        var n = _examDaysBetween(todayStr, day.date);
-        countdown = '<span class="exam-day-countdown">' + (n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'))) + '</span>';
-      }
       var dayName = day.date ? _examDayName(day.date) : '';
+      var dayCls = EXAM_DAY_COLOR_CLASS[dayName] || '';
+      var rowClass = 'exam-row' + (dayCls ? ' ' + dayCls : '') + (isPast ? ' exam-row-past' : '') + (isNext ? ' exam-row-next' : '');
+      var statusHtml;
+      if (isPast) {
+        statusHtml = '<span class="exam-status-done">✅ منتهى</span>';
+      } else {
+        var n = day.date ? _examDaysBetween(todayStr, day.date) : 0;
+        var statusCls = isNext ? 'exam-status-next' : 'exam-status-upcoming';
+        var statusText = n <= 0 ? '📌 اليوم' : (n === 1 ? '📌 غداً' : ('⏳ بعد ' + n + ' يوم'));
+        statusHtml = '<span class="exam-status-pill ' + statusCls + '">' + statusText + '</span>';
+      }
       var dateNum = day.date ? _examFullDateAr(day.date) : ('اليوم ' + day.dayIndex);
       var subjChips = '';
       for (var s = 0; s < day.subjects.length; s++) subjChips += _examSubjChipHtml(day.subjects[s].name, colorMap);
-      h += '<div class="' + cardClass + '" style="--exam-i:' + Math.min(cardIdx, 12) + '">' +
-           '<div class="exam-day-head">' +
-             '<span class="exam-day-daypill">' + _examDayDotHtml(dayName) + esc(dayName || '—') + '</span>' +
-             '<span class="exam-day-datetext">' + esc(dateNum) + '</span>' +
-             countdown +
-           '</div>' +
-           '<div class="exam-day-body"><div class="exam-day-subjects">' + subjChips + '</div></div>' +
-           '</div>';
+      h += '<tr class="' + rowClass + '" style="--exam-i:' + Math.min(cardIdx, 12) + '">' +
+           '<td class="exam-cell-day"><span class="exam-day-daypill">' + esc(dayName || '—') + '</span></td>' +
+           '<td class="exam-cell-date">' + esc(dateNum) + '</td>' +
+           '<td class="exam-cell-subjects"><div class="exam-day-subjects">' + subjChips + '</div></td>' +
+           '<td class="exam-cell-status">' + statusHtml + '</td>' +
+           '</tr>';
       cardIdx++;
     }
-    h += '</div></div>';
+    h += '</tbody></table></div></div>';
   }
   w.innerHTML = instructionsHtml + heroHtml + navHtml + h;
 }
