@@ -1117,6 +1117,10 @@
     .badge-danger  { background:rgba(239,68,68,.12);  color:var(--danger); }
     .badge-info    { background:rgba(59,130,246,.12);  color:var(--info); }
     .badge-purple  { background:rgba(139,92,246,.12); color:var(--purple); }
+    /* تصعيد ملاحظات أولياء الأمور: متأخرة (24-48 ساعة) — بين التحذير الأصفر والخطر الأحمر */
+    .badge-overdue { background:rgba(234,88,12,.14); color:#c2410c; }
+    /* شارة الجرس/القائمة الجانبية عند وجود ملاحظة حرجة (>48 ساعة) — لون مختلف عن العدّاد العادي */
+    #notesBadge.badge-critical { background:var(--danger); }
 
     /* CHIP (التعاميم) */
     .chip { display:inline-block; padding:3px 10px; border-radius:999px; font-size:.74rem;
@@ -3997,6 +4001,36 @@ function _tcByNewest(a, b) {
 }
 function _tcByOldest(a, b) { return -_tcByNewest(a, b); }
 
+// تصعيد ملاحظات أولياء الأمور: غير المُجاب (الأعلى إلحاحاً أولاً) قبل المُجاب عليه —
+// يطابق ترتيب الخادم في getParentNotesProtected (يُعاد تطبيقه هنا بعد فلترة الصف/الشعبة/البحث).
+function _tcNotesUrgencyRank(level) { return level === 'critical' ? 2 : (level === 'overdue' ? 1 : 0); }
+function _tcByNotesUrgency(a, b) {
+  var aPending = !(a.reply && String(a.reply).trim() !== '');
+  var bPending = !(b.reply && String(b.reply).trim() !== '');
+  if (aPending !== bPending) return aPending ? -1 : 1;
+  if (aPending && bPending) {
+    var rankDiff = _tcNotesUrgencyRank(b.urgencyLevel) - _tcNotesUrgencyRank(a.urgencyLevel);
+    if (rankDiff !== 0) return rankDiff;
+  }
+  return _tcByNewest(a, b);
+}
+
+// مدّة نسبية عربية مبسّطة لعرض إلحاح الملاحظة ("منذ يومين"/"منذ 30 ساعة") — تطبيق مطابقة
+// عدد/معدود عربية أساسية (مفرد/مثنى/جمع/مفرد منصوب بعد 11+).
+function _tcArabicCount(n, sing, dual, plural, singAcc) {
+  n = Math.max(0, Math.floor(n));
+  if (n === 1) return sing;
+  if (n === 2) return dual;
+  if (n >= 3 && n <= 10) return n + ' ' + plural;
+  return n + ' ' + singAcc;
+}
+function _tcHumanizeElapsedAr(hours) {
+  hours = Math.max(0, hours || 0);
+  if (hours < 1) return 'منذ دقائق';
+  if (hours < 24) return 'منذ ' + _tcArabicCount(hours, 'ساعة', 'ساعتين', 'ساعات', 'ساعة');
+  return 'منذ ' + _tcArabicCount(hours / 24, 'يوم', 'يومين', 'أيام', 'يوماً');
+}
+
 function toggleNewsLike(newsId) {
   if (!newsId) return;
   callServer('toggleNewsLikeProtected', { newsId: newsId }, function(r) {
@@ -5045,12 +5079,19 @@ function _loadNotificationsList() {
     }
     render();
   }, function () { render(); });
-  // 2) ملاحظات أولياء الأمور غير المقروءة
+  // 2) ملاحظات أولياء الأمور غير المقروءة — نص متصاعد حسب أعلى مستوى إلحاح موجود
   callServer('getUnreadNotesCountProtected', {}, function (r) {
-    var cnt = (r && r.success) ? (parseInt(r.count, 10) || 0) : 0;
+    var cnt  = (r && r.success) ? (parseInt(r.count, 10) || 0) : 0;
+    var crit = (r && r.success) ? (parseInt(r.criticalCount, 10) || 0) : 0;
+    var ovd  = (r && r.success) ? (parseInt(r.overdueCount, 10) || 0) : 0;
     if (cnt > 0) {
+      var icon  = crit > 0 ? '🔴' : (ovd > 0 ? '🟠' : '💬');
+      var title = crit > 0 ? (crit + ' ملاحظة حرجة — تجاوزت 48 ساعة بلا رد')
+                : ovd > 0  ? (ovd + ' ملاحظة متأخرة عن الرد (أكثر من 24 ساعة)')
+                :            (cnt + ' ملاحظة جديدة من أولياء الأمور');
+      var sub   = crit > 0 ? 'يرجى المبادرة فوراً بالرد' : 'اضغط للاطلاع والرد';
       parts.notes = '<div style="font-size:11px;color:var(--text-light);padding:6px 10px">💬 أولياء الأمور</div>' +
-        _notifItem('💬', cnt + ' ملاحظة جديدة من أولياء الأمور', 'اضغط للاطلاع والرد', "closeNotificationsPanel();showSection('notes')");
+        _notifItem(icon, title, sub, "closeNotificationsPanel();showSection('notes')");
     }
     render();
   }, function () { render(); });
@@ -8599,12 +8640,16 @@ function _refreshNotesBadge() {
       if (!r || !r.success) return;
       var badge = document.getElementById('notesBadge');
       var count = parseInt(r.count, 10) || 0;
+      var critical = parseInt(r.criticalCount, 10) || 0;
       if (badge) {
         if (count > 0) {
           badge.textContent = count > 99 ? '99+' : String(count);
           badge.style.display = 'inline-block';
+          badge.title = critical > 0 ? 'يوجد ملاحظات حرجة تجاوزت 48 ساعة بلا رد' : '';
+          badge.classList.toggle('badge-critical', critical > 0);
         } else {
           badge.style.display = 'none';
+          badge.classList.remove('badge-critical');
         }
       }
     } catch (e) {
@@ -14014,7 +14059,7 @@ function deleteNewsItem(id) { confirmAction('حذف الخبر', 'هل تريد 
 function renderNotes() { var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(139,92,246,.1)">💬</div><div class="section-header-title">ملاحظات أولياء الأمور</div><span class="badge badge-info" style="margin-right: 12px;">المرسلة من منصة الطلاب</span></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="notesFilterGrade" onchange="applyParentNotesFilters()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="notesFilterSection" onchange="applyParentNotesFilters()">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div><div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="notesSearch" placeholder="🔍 اسم الطالب..." oninput="filterParentNotes()"></div></div><div id="notesListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; _fltRestore('notes', ['notesFilterGrade', 'notesFilterSection', 'notesSearch']); loadParentNotesForUI(); }
 function loadParentNotesForUI() { showLoading('جاري تحميل الملاحظات...'); callServer('getParentNotesProtected', {}, 'parent_notes', 120, function(r) { hideLoading(); if (r.success) { _allParentNotes = r.notes || []; applyParentNotesFilters(); } else showError(r.error); }); }
 function applyParentNotesFilters() { _fltSave('notes', ['notesFilterGrade', 'notesFilterSection', 'notesSearch']); var gEl = document.getElementById('notesFilterGrade'); var sEl = document.getElementById('notesFilterSection'); var qEl = document.getElementById('notesSearch'); var g = gEl ? gEl.value : ''; var sec = sEl ? sEl.value : ''; var q = _tcNorm(qEl ? qEl.value : ''); var filtered = []; for (var i = 0; i < _allParentNotes.length; i++) { var n = _allParentNotes[i]; if (!isAllFilter(g) && n.grade !== g) continue;
-if (!isAllFilter(sec) && n.section !== sec) continue; if (q) { var hay = _tcNorm((n.studentName || '') + ' ' + (n.teacher || '') + ' ' + (n.message || '')); if (hay.indexOf(q) === -1) continue; } filtered.push(n); } filtered.sort(_tcByNewest); renderParentNotesList(filtered); }
+if (!isAllFilter(sec) && n.section !== sec) continue; if (q) { var hay = _tcNorm((n.studentName || '') + ' ' + (n.teacher || '') + ' ' + (n.message || '')); if (hay.indexOf(q) === -1) continue; } filtered.push(n); } filtered.sort(_tcByNotesUrgency); renderParentNotesList(filtered); }
 function filterParentNotes() { applyParentNotesFilters(); }
 // حذف ملاحظات أولياء الأمور مقصور على المدير/الوكيل/المشرف — يطابق فحص الخادم
 // في deleteNoteProtected حرفياً، بما فيه تقييد نطاق المشرف بصفوفه (session.classes
@@ -14029,7 +14074,7 @@ function canDeleteParentNote(note) {
   return false;
 }
 
-function renderParentNotesList(notes) { var container = document.getElementById('notesListArea'); if (!notes.length) { container.innerHTML = '<div class="empty-state"><div class="es-icon">💬</div><div class="es-title">لا توجد ملاحظات</div><div class="es-sub">ستظهر هنا ملاحظات أولياء الأمور عند وصولها</div></div>'; return; } var html = '<div style="display:flex; flex-direction:column; gap:14px;">'; for (var i = 0; i < notes.length; i++) { var n = notes[i]; var hasReply = n.reply && n.reply.trim() !== ''; var canReply = isAdmin() || (App.user.teacherName === n.teacher); var canDelete = canDeleteParentNote(n); html += '<div class="note-card" style="border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; background:var(--surface);"><div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;"><span class="badge badge-info">' + (n.grade || '') + '</span><span class="badge badge-purple">' + (n.section || '') + '</span><span style="font-weight:600;">' + (n.studentName || '') + '</span><span style="color:var(--text-muted); font-size:0.85rem;">إلى: ' + (n.teacher || '') + '</span><span style="margin-right:auto; font-size:0.78rem; color:var(--text-light);">' + formatDate(n.date) + '</span>' + (hasReply ? '<span class="badge badge-success">تم الرد</span>' : '<span class="badge badge-warning">بانتظار الرد</span>') + (canDelete ? '<button class="btn btn-sm btn-danger" title="حذف الملاحظة" onclick="deleteNoteItem(' + n.id + ',' + JSON.stringify(n.grade) + ')">🗑️</button>' : '') + '</div><p style="margin:0 0 12px 0; line-height:1.6; background:var(--surface2); padding:12px; border-radius:var(--radius-sm);">' + (n.message || '') + '</p>'; if (hasReply) { html += '<div style="background:#f0fdf4; border-right:3px solid var(--success); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:12px;"><div style="font-weight:600; font-size:0.8rem; color:var(--success); margin-bottom:4px;">💬 الرد:</div><div style="font-size:0.9rem;">' + n.reply + '</div></div>'; } if (!hasReply && canReply) { html += '<div style="display:flex; gap:8px; margin-top:8px;"><input type="text" class="form-control" id="replyInput_' + n.id + '" placeholder="اكتب رداً..." style="flex:1;"><button class="btn btn-sm btn-primary" onclick="submitNoteReply(' + n.id + ')">إرسال الرد</button></div>'; } html += '</div>'; } html += '</div>'; container.innerHTML = html; }
+function renderParentNotesList(notes) { var container = document.getElementById('notesListArea'); if (!notes.length) { container.innerHTML = '<div class="empty-state"><div class="es-icon">💬</div><div class="es-title">لا توجد ملاحظات</div><div class="es-sub">ستظهر هنا ملاحظات أولياء الأمور عند وصولها</div></div>'; return; } var html = '<div style="display:flex; flex-direction:column; gap:14px;">'; for (var i = 0; i < notes.length; i++) { var n = notes[i]; var hasReply = n.reply && n.reply.trim() !== ''; var canReply = isAdmin() || (App.user.teacherName === n.teacher); var canDelete = canDeleteParentNote(n); html += '<div class="note-card" style="border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; background:var(--surface);"><div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;"><span class="badge badge-info">' + (n.grade || '') + '</span><span class="badge badge-purple">' + (n.section || '') + '</span><span style="font-weight:600;">' + (n.studentName || '') + '</span><span style="color:var(--text-muted); font-size:0.85rem;">إلى: ' + (n.teacher || '') + '</span><span style="margin-right:auto; font-size:0.78rem; color:var(--text-light);">' + formatDate(n.date) + '</span>' + (hasReply ? '<span class="badge badge-success">تم الرد</span>' : (n.urgencyLevel === 'critical' ? '<span class="badge badge-danger">🔴 حرجة — بانتظار تدخّل المشرف</span>' : (n.urgencyLevel === 'overdue' ? '<span class="badge badge-overdue">⏰ متأخرة ' + _tcHumanizeElapsedAr(n.hoursElapsed) + '</span>' : '<span class="badge badge-warning">بانتظار الرد</span>'))) + (canDelete ? '<button class="btn btn-sm btn-danger" title="حذف الملاحظة" onclick="deleteNoteItem(' + n.id + ',' + JSON.stringify(n.grade) + ')">🗑️</button>' : '') + '</div><p style="margin:0 0 12px 0; line-height:1.6; background:var(--surface2); padding:12px; border-radius:var(--radius-sm);">' + (n.message || '') + '</p>'; if (hasReply) { html += '<div style="background:#f0fdf4; border-right:3px solid var(--success); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:12px;"><div style="font-weight:600; font-size:0.8rem; color:var(--success); margin-bottom:4px;">💬 الرد:</div><div style="font-size:0.9rem;">' + n.reply + '</div></div>'; } if (!hasReply && canReply) { html += '<div style="display:flex; gap:8px; margin-top:8px;"><input type="text" class="form-control" id="replyInput_' + n.id + '" placeholder="اكتب رداً..." style="flex:1;"><button class="btn btn-sm btn-primary" onclick="submitNoteReply(' + n.id + ')">إرسال الرد</button></div>'; } html += '</div>'; } html += '</div>'; container.innerHTML = html; }
 function submitNoteReply(noteId) { var input = document.getElementById('replyInput_' + noteId); var reply = input.value.trim(); if (!reply) { toast('الرجاء كتابة رد', 'warning'); return; } showLoading('جاري حفظ الرد...'); callServer('addNoteReplyProtected', { noteId: noteId, reply: reply }, function(r) { hideLoading(); if (r.success) { toast('تم حفظ الرد بنجاح', 'success'); loadParentNotesForUI(); try { ClientCache.del('notes_pending'); } catch(e){} loadNotesNotifications(); } else showError(r.error); }); }
 function deleteNoteItem(noteId, noteGrade) {
   if (!canDeleteParentNote({ grade: noteGrade })) { toast('غير مصرح لك بحذف هذه الملاحظة', 'error'); return; }
