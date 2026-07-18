@@ -22229,6 +22229,8 @@ function _tfExportDisc(){
   .vt-pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tf-green);margin-inline-end:6px;animation:vtPulse 1.6s infinite;}
   @keyframes vtPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5);}70%{box-shadow:0 0 0 8px rgba(34,197,94,0);}100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}}
   .vt-filter select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;}
+  .vt-filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);}
+  .vt-filter-bar input[type="date"]{padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;}
 </style>
 <script>
 var _visitsPollTimer = null;
@@ -22244,6 +22246,9 @@ var _visitsReviewCatFilter = 'flagged'; // 'all' | 'flagged' | فئة محدَّ
 var _visitsReviewSortField = null;
 var _visitsReviewSortDir = 1;
 var _visitsReviewSearchQ = '';
+var _visitsCurrentRange = '30d'; // نطاق التبويبات 2-5 (الاتجاه/الساعي/الأدوار/السجل) — راجع شريط الفلتر أدناه
+var VT_RANGE_TABS = { trend: 1, hourly: 1, roles: 1, log: 1 }; // التبويبات التي يظهر لها شريط النطاق
+var VT_RANGE_PRESETS = [['today','اليوم'],['7d','آخر 7 أيام'],['30d','آخر 30 يوماً'],['90d','آخر 90 يوماً'],['custom','نطاق مخصّص...']];
 var _VT_REVIEW_CATS = [
   {key:'needs_review_a', color:'var(--tf-red)',     icon:'🔴', label:'طلاب نشيطون / معلمون خاملون'},
   {key:'needs_review_b', color:'var(--tf-orange)',  icon:'🟠', label:'معلمون نشيطون / طلاب خاملون'},
@@ -22253,11 +22258,26 @@ var _VT_REVIEW_CATS = [
   {key:'pending_maturity', color:'var(--tf-teal)',  icon:'🕓', label:'بيانات قيد التجميع'}
 ];
 
+// ═══ مكوّنات مشتركة (بطاقة/تحميل/حالة فراغ) — نُقطة انطلاق لتعميم لاحق أوسع على بقية
+// التبويبات (مرحلة تناسق بصري منفصلة). تُستخدَم هنا فعلياً في تبويبات الاتجاه/الساعي/الأدوار. ═══
+function _visitsCard(titleHtml, bodyHtml, opts){
+  opts = opts || {};
+  var act = opts.actionHtml ? '<span>'+opts.actionHtml+'</span>' : '';
+  var h3Style = act ? ' style="display:flex;justify-content:space-between;align-items:center;gap:8px;"' : '';
+  return '<div class="tf-card"><h3'+h3Style+'><span>'+titleHtml+'</span>'+act+'</h3>'+bodyHtml+'</div>';
+}
+function _visitsLoadingSkeleton(msg){
+  return '<div class="tf-card" style="text-align:center;color:var(--text-muted);">⏳ '+_tfEsc(msg||'جارٍ تحميل بيانات الزيارات...')+'</div>';
+}
+function _visitsEmptyState(msg, icon){
+  return '<div class="tf-empty">'+(icon||'📭')+' '+_tfEsc(msg||'لا توجد بيانات كافية بعد')+'</div>';
+}
+
 function renderVisitsTraffic(initialTab){
   var host=document.getElementById('dynamicContent');
   if(!host) return;
-  host.innerHTML='<div class="tf-card" style="text-align:center;color:var(--text-muted);">⏳ جارٍ تحميل بيانات الزيارات...</div>';
-  callServer('getVisitsTrafficProtected', {}, function(res){
+  host.innerHTML=_visitsLoadingSkeleton();
+  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, function(res){
     if(!res || !res.success){
       var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
       var el=document.getElementById('dynamicContent');
@@ -22269,15 +22289,74 @@ function renderVisitsTraffic(initialTab){
 }
 
 function _visitsRefreshNow(){
-  callServer('getVisitsTrafficProtected', {noCache:true}, function(res){
+  callServer('getVisitsTrafficProtected', {noCache:true, range:_visitsCurrentRange}, function(res){
     if(res && res.success) _visitsRender(res);
   });
 }
 
 function _visitsTabClick(name){
   _tfTab(name);
+  var bar=document.getElementById('vt-range-bar-wrap');
+  if(bar) bar.style.display = VT_RANGE_TABS[name] ? '' : 'none';
   if (name === 'cumulative' && !_visitsCumulLoaded) _visitsLoadCumulative();
   if (name === 'review' && !_visitsReviewLoaded) _visitsLoadReview();
+}
+
+// ═══ شريط فلتر النطاق الزمني الموحَّد — يضبط تبويبات الاتجاه/الساعي/الأدوار/السجل معاً ═══
+function _visitsRangeBarHtml(){
+  var r=_visitsCurrentRange, isCustom=(r.indexOf('_')>-1), i, opt;
+  var h='<div class="vt-filter vt-filter-bar">';
+  h+='<label style="font-size:12.5px;color:var(--text-muted);">📅 النطاق الزمني:</label>';
+  h+='<select id="vt-range-select" onchange="_visitsRangeChange(this.value)">';
+  for(i=0;i<VT_RANGE_PRESETS.length;i++){
+    opt=VT_RANGE_PRESETS[i];
+    var sel=((opt[0]==='custom'&&isCustom)||opt[0]===r)?' selected':'';
+    h+='<option value="'+opt[0]+'"'+sel+'>'+opt[1]+'</option>';
+  }
+  h+='</select>';
+  h+='<span id="vt-range-custom" style="display:'+(isCustom?'inline-flex':'none')+';gap:6px;align-items:center;">'+
+     '<input type="date" id="vt-range-from" value="'+(isCustom?_tfEsc(r.split('_')[0]):'')+'">'+
+     '<span style="color:var(--text-muted);">إلى</span>'+
+     '<input type="date" id="vt-range-to" value="'+(isCustom?_tfEsc(r.split('_')[1]):'')+'">'+
+     '<button class="tf-abtn" onclick="_visitsApplyCustomRange()">تطبيق</button></span>';
+  h+='</div>';
+  return h;
+}
+function _visitsRangeChange(v){
+  var custom=document.getElementById('vt-range-custom');
+  if(v==='custom'){ if(custom) custom.style.display='inline-flex'; return; }
+  if(custom) custom.style.display='none';
+  _visitsCurrentRange=v;
+  _visitsRefetchRanged();
+}
+function _visitsApplyCustomRange(){
+  var f=document.getElementById('vt-range-from'), t=document.getElementById('vt-range-to');
+  var fv=f?f.value:'', tv=t?t.value:'';
+  if(!fv || !tv || fv>tv){ try{ toast('اختر نطاق تاريخ صحيحاً (من قبل إلى)', 'warning', 3000); }catch(e){ alert('اختر نطاق تاريخ صحيحاً'); } return; }
+  _visitsCurrentRange=fv+'_'+tv;
+  _visitsRefetchRanged();
+}
+function _visitsRefetchRanged(){
+  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, function(res){
+    if(!res || !res.success) return;
+    if(res.range) _visitsCurrentRange=res.range; // قد يُطبَّق نطاق مُقصوص فعلياً غير المطلوب حرفياً
+    _visitsUpdateRangedPanes(res);
+  }, function(){});
+}
+function _visitsUpdateRangedPanes(res){
+  _visitsRecentAll = res.recent || [];
+  var elTrend=document.getElementById('tf-pane-trend');
+  if(elTrend) elTrend.innerHTML =
+     _visitsCard('📅 الاتجاه اليومي', (res.dailyTrend&&res.dailyTrend.length)?_visitsTrendSvg(res.dailyTrend):_visitsEmptyState()) +
+     _visitsCard('🗓️ توزيع أيام الأسبوع', _visitsWeekdayBars(res.weekday||[]));
+  var elHourly=document.getElementById('tf-pane-hourly');
+  if(elHourly) elHourly.innerHTML =
+     _visitsCard('🕐 توزيع الدخول حسب الساعة', (res.hourly&&res.hourly.length)?_visitsHourlySvg(res.hourly):_visitsEmptyState());
+  var elRoles=document.getElementById('tf-pane-roles');
+  if(elRoles) elRoles.innerHTML = '<div class="tf-grid2">'+
+     _visitsCard('🧩 توزيع الأدوار', _visitsRoleDonut(res.roleCounts||{})) +
+     _visitsCard('🏆 الأعلى نشاطاً ضمن النطاق', _visitsTopUsers(res.topUsers||[])) + '</div>';
+  _visitsRenderLog();
 }
 
 function _visitsRender(res, initialTab){
@@ -22289,14 +22368,16 @@ function _visitsRender(res, initialTab){
      '<button class="tf-abtn tf-sync" onclick="_visitsRefreshNow()">🔄 تحديث</button></div>';
   h+='<div id="tf-root">';
   h+='<div class="tf-tabs" id="tf-maintabs">'+
-     '<div class="tf-tab" id="tf-tab-overview" onclick="_tfTab(\'overview\')">نظرة عامة</div>'+
-     '<div class="tf-tab" id="tf-tab-trend" onclick="_tfTab(\'trend\')">الاتجاه الزمني</div>'+
-     '<div class="tf-tab" id="tf-tab-hourly" onclick="_tfTab(\'hourly\')">التوزيع الساعي</div>'+
-     '<div class="tf-tab" id="tf-tab-roles" onclick="_tfTab(\'roles\')">الأدوار</div>'+
-     '<div class="tf-tab" id="tf-tab-log" onclick="_tfTab(\'log\')">سجلّ تفصيلي</div>'+
+     '<div class="tf-tab" id="tf-tab-overview" onclick="_visitsTabClick(\'overview\')">نظرة عامة</div>'+
+     '<div class="tf-tab" id="tf-tab-trend" onclick="_visitsTabClick(\'trend\')">الاتجاه الزمني</div>'+
+     '<div class="tf-tab" id="tf-tab-hourly" onclick="_visitsTabClick(\'hourly\')">التوزيع الساعي</div>'+
+     '<div class="tf-tab" id="tf-tab-roles" onclick="_visitsTabClick(\'roles\')">الأدوار</div>'+
+     '<div class="tf-tab" id="tf-tab-log" onclick="_visitsTabClick(\'log\')">سجلّ تفصيلي</div>'+
      '<div class="tf-tab" id="tf-tab-cumulative" onclick="_visitsTabClick(\'cumulative\')">📊 الإجمالي التراكمي</div>'+
      '<div class="tf-tab" id="tf-tab-review" onclick="_visitsTabClick(\'review\')">🔎 يحتاج مراجعة</div>'+
      '</div>';
+
+  h+='<div id="vt-range-bar-wrap" style="display:none;">'+_visitsRangeBarHtml()+'</div>';
 
   h+='<div class="tf-pane active" id="tf-pane-overview">'+
      '<div class="tf-kpis">'+
@@ -22310,22 +22391,22 @@ function _visitsRender(res, initialTab){
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-trend">'+
-     '<div class="tf-card"><h3>📅 الاتجاه اليومي (آخر 30 يوماً)</h3>'+_visitsTrendSvg(res.dailyTrend||[])+'</div>'+
-     '<div class="tf-card"><h3>🗓️ توزيع أيام الأسبوع (آخر 8 أسابيع)</h3>'+_visitsWeekdayBars(res.weekday||[])+'</div>'+
+     _visitsCard('📅 الاتجاه اليومي', (res.dailyTrend&&res.dailyTrend.length)?_visitsTrendSvg(res.dailyTrend):_visitsEmptyState())+
+     _visitsCard('🗓️ توزيع أيام الأسبوع', _visitsWeekdayBars(res.weekday||[]))+
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-hourly">'+
-     '<div class="tf-card"><h3>🕐 توزيع الدخول حسب الساعة (اليوم)</h3>'+_visitsHourlySvg(res.hourly||[])+'</div>'+
+     _visitsCard('🕐 توزيع الدخول حسب الساعة', (res.hourly&&res.hourly.length)?_visitsHourlySvg(res.hourly):_visitsEmptyState())+
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-roles">'+
      '<div class="tf-grid2">'+
-       '<div class="tf-card"><h3>🧩 توزيع الأدوار</h3>'+_visitsRoleDonut(res.roleCounts||{})+'</div>'+
-       '<div class="tf-card"><h3>🏆 أعلى 10 نشاطاً هذا الأسبوع</h3>'+_visitsTopUsers(res.topUsers||[])+'</div>'+
+       _visitsCard('🧩 توزيع الأدوار', _visitsRoleDonut(res.roleCounts||{}))+
+       _visitsCard('🏆 الأعلى نشاطاً ضمن النطاق', _visitsTopUsers(res.topUsers||[]))+
      '</div></div>';
 
   h+='<div class="tf-pane" id="tf-pane-log">'+
-     '<div class="tf-card"><div class="vt-filter" style="margin-bottom:10px;">'+
+     '<div class="tf-card"><div class="vt-filter vt-filter-bar">'+
        '<select id="vt-log-filter" onchange="_visitsRenderLog()">'+
          '<option value="all">كل الأدوار</option><option value="student">الطلاب فقط</option><option value="staff">الطاقم فقط</option>'+
        '</select></div>'+
@@ -22348,9 +22429,7 @@ function _visitsRender(res, initialTab){
   _visitsReviewLoaded = false;
   _visitsRenderLog();
   _visitsStartPolling();
-  _tfTab(initialTab || 'overview');
-  if (initialTab === 'cumulative') _visitsLoadCumulative();
-  if (initialTab === 'review') _visitsLoadReview();
+  _visitsTabClick(initialTab || 'overview');
 }
 
 function _visitsRoleDonut(roleCounts){
@@ -22804,7 +22883,7 @@ function _visitsRenderReview(){
 
   h+='<div class="tf-card"><h3>⚠️ أكثر 5 فصول تحتاج متابعة</h3>'+_visitsReviewTopOffenders(classes)+'</div>';
 
-  h+='<div class="vt-filter" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'+
+  h+='<div class="vt-filter vt-filter-bar">'+
      '<select onchange="_visitsReviewSetFilter(this.value)">'+
        '<option value="flagged"'+(_visitsReviewCatFilter==='flagged'?' selected':'')+'>يحتاج مراجعة فقط (افتراضي)</option>'+
        '<option value="all"'+(_visitsReviewCatFilter==='all'?' selected':'')+'>كل الفصول</option>'+
