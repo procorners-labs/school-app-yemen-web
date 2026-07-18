@@ -2147,6 +2147,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </button>
   <button class="sidebar-item" id="si-attendance" onclick="showSection('attendance')"><span class="si-icon">📋</span> الغياب اليومي</button>
   <button class="sidebar-item" id="si-teacher-absence" onclick="showSection('teacher-absence')"><span class="si-icon">🧑‍🏫</span> غياب المعلمين</button>
+  <button type="button" class="sidebar-item" id="si-letterheads" onclick="showSection('letterheads')" style="display:none;"><span class="si-icon">🗂️</span> ديباجات المدرسة</button>
 </div>
 <!-- قسم التحكم الاجتماعي (مدير/وكيل/الأنشطة) -->
 <div class="sidebar-section" id="socialSection" style="display:none;">
@@ -6007,7 +6008,8 @@ function showSection(name, opt) {
       supervisorPerms: renderSupervisorPerms,
       circulars: renderCirculars,
       examctrl: renderExamControl,
-      profile: renderProfile
+      profile: renderProfile,
+      letterheads: renderLetterheads
     };
 
     var fn = renders[name];
@@ -6105,7 +6107,8 @@ var SIDEBAR_ROLE_RULES = {
   'si-scoresheets':     ['admin', 'deputy'],
   'si-tasksMgmt':       ['admin', 'deputy', 'activities'],
   'si-studentDirectory':['admin', 'deputy', 'activities', 'it', 'teacher'],
-  'si-studentStatus':   ['admin', 'deputy', 'activities', 'it', 'teacher']
+  'si-studentStatus':   ['admin', 'deputy', 'activities', 'it', 'teacher'],
+  'si-letterheads':     ['admin', 'deputy', 'teacher']
 };
 
 // اشتقاق الدور: يثق بالخادم؛ التراجع الأخير (استنتاج «الأنشطة» من المادة) توافقٌ قديم فقط.
@@ -6223,7 +6226,8 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-myTasks',          label:'✅ مهامي' },
   { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام' },
   { key:'si-studentDirectory', label:'🎒 أسماء الطلاب' },
-  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' }
+  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' },
+  { key:'si-letterheads',      label:'🗂️ ديباجات المدرسة' }
 ];
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
 function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminStudents']; }
@@ -16228,6 +16232,337 @@ function _downloadText(filename, text, mime){
     setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 200);
     toast('تم تنزيل الملف ✓','success');
   }catch(e){ toast('تعذّر التصدير على هذا الجهاز','error'); }
+}
+
+// ════════════════════════════════════════════════════════
+//  🗂️ ديباجات المدرسة (LETTERHEADS) — قوالب طباعة رسمية جديدة (دفعة 1)
+//  هوية مدرسة واحدة موحّدة لكل القوالب عبر نداء خادمي مباشر طازج (لا window._schoolBrand
+//  ولا .school-brand-name كالنقاط الست القديمة). بلا حفظ سجل، بلا ترقيم تسلسلي آلي،
+//  بلا أي إنشاء/كتابة على أي شيت — طباعة فورية من جهة العميل فقط عبر _docPrintWindow
+//  الموجودة أعلاه (لا تعديل عليها). منفصلة تماماً عن CERT/cert_* أدناه (شهادات أكاديمية).
+// ════════════════════════════════════════════════════════
+function _lhBrand(schoolId, cb) {
+  try {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) { cb(res); return; }
+        cb(_lhBrandFallback());
+      })
+      .withFailureHandler(function () { cb(_lhBrandFallback()); })
+      .getTeacherSchoolBrand(schoolId || '');
+  } catch (e) { cb(_lhBrandFallback()); }
+}
+function _lhBrandFallback() {
+  return { ok: false, name: 'المدرسة', phone: '', address: '', logo: '', color: '#0F5C8C',
+           whatsapp: '', facebook: '', instagram: '', youtube: '' };
+}
+
+function _lhHeaderFooterCss(brand) {
+  var c = (brand && brand.color) || '#0F5C8C';
+  return '.lh-doc{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:8px}' +
+    '.lh-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid ' + c + ';padding-bottom:10px;margin-bottom:16px}' +
+    '.lh-head img{width:64px;height:64px;object-fit:contain}' +
+    '.lh-head .lh-name{font-size:18px;font-weight:800;color:' + c + '}' +
+    '.lh-head .lh-contact{font-size:11px;color:#555}' +
+    '.lh-title{text-align:center;font-size:20px;font-weight:800;margin:10px 0 18px;color:' + c + '}' +
+    '.lh-field-row{display:flex;gap:14px;margin-bottom:10px;font-size:13px}' +
+    '.lh-field{flex:1;border-bottom:1px solid #999;padding-bottom:4px}' +
+    '.lh-field b{margin-left:6px}' +
+    '.lh-sig-row{display:flex;justify-content:space-between;margin-top:40px;font-size:13px}' +
+    '.lh-sig{width:45%;text-align:center;border-top:1px solid #333;padding-top:6px}' +
+    '.lh-score-table{width:100%;border-collapse:collapse;margin-top:10px}' +
+    '.lh-score-table th,.lh-score-table td{border:1px solid #999;padding:6px;font-size:12px;text-align:center}' +
+    '.lh-footer{margin-top:26px;font-size:11px;color:#666;border-top:1px dashed #ccc;padding-top:8px}' +
+    '.lh-disclaimer{font-size:10px;color:#999;font-style:italic;margin-top:4px}';
+}
+function _lhHeaderHtml(brand, titleText) {
+  var name = escapeHtml((brand && brand.name) || 'المدرسة');
+  var logoImg = (brand && brand.logo)
+    ? '<img src="' + escapeHtml(brand.logo) + '" alt="" onerror="this.style.display=\'none\'">'
+    : '';
+  var contact = [];
+  if (brand && brand.phone) contact.push(escapeHtml(brand.phone));
+  if (brand && brand.address) contact.push(escapeHtml(brand.address));
+  return '<div class="lh-head">' + logoImg +
+    '<div><div class="lh-name">' + name + '</div>' +
+    (contact.length ? '<div class="lh-contact">' + contact.join(' · ') + '</div>' : '') +
+    '</div></div><div class="lh-title">' + escapeHtml(titleText) + '</div>';
+}
+function _lhFooterHtml() {
+  var stamp = new Date().toLocaleDateString('ar-EG');
+  return '<div class="lh-footer">وثيقة مطبوعة داخلياً — أي رقم/تاريخ مُدخَل يدوياً أعلاه لغرض العرض، وليس ترقيماً رسمياً معتمَداً آلياً.' +
+    '<div class="lh-disclaimer">تم إنشاؤه عبر نظام سكولز اليمن — ' + escapeHtml(stamp) + '</div></div>';
+}
+
+var LH = { view: 'menu', wsupRows: [], wsupDays: [] };
+var LH_TEMPLATES = [
+  { key:'lessonPrep',       icon:'📝', label:'ورقة تحضير درس',                    roles:['teacher'] },
+  { key:'examPaper',        icon:'🧾', label:'ورقة اختبار',                       roles:['teacher'] },
+  { key:'behaviorNotice',   icon:'📋', label:'إشعار سلوك/تعزيز',                  roles:['teacher'] },
+  { key:'appreciationCert', icon:'🎖️', label:'شهادة تقدير',                      roles:['admin','deputy'] },
+  { key:'weeklySupPrint',   icon:'🗓️', label:'نسخة مطبوعة لخطة الإشراف الأسبوعي', roles:['supervisor'] }
+];
+
+function renderLetterheads() {
+  var box = document.getElementById('dynamicContent');
+  if (!box) return;
+  var role = (App.user && App.user.role) || 'teacher';
+  var isAdminLike = (role === 'admin' || role === 'deputy');
+  var cards = '';
+  for (var i = 0; i < LH_TEMPLATES.length; i++) {
+    var t = LH_TEMPLATES[i];
+    if (!isAdminLike && t.roles.indexOf(role) === -1) continue;
+    cards += '<div class="card" style="cursor:pointer;padding:16px;text-align:center;min-width:160px;" onclick="lhOpen(\'' + t.key + '\')">' +
+      '<div style="font-size:28px;margin-bottom:8px;">' + t.icon + '</div>' +
+      '<div style="font-size:14px;font-weight:600;">' + t.label + '</div></div>';
+  }
+  var head = '<div class="page-head"><h2 style="margin:0;">🗂️ ديباجات المدرسة</h2>' +
+    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">قوالب طباعة رسمية جديدة — بلا حفظ سجل ولا ترقيم آلي. أي رقم/تاريخ يُدخَل يدوياً لغرض العرض فقط.</p></div>';
+  box.innerHTML = head +
+    (cards ? '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;">' + cards + '</div>'
+           : '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا قوالب متاحة لدورك حالياً</div></div>') +
+    '<div id="lh-formArea" style="margin-top:16px;"></div>';
+}
+
+function lhOpen(key) {
+  LH.view = key;
+  var area = document.getElementById('lh-formArea');
+  if (!area) return;
+  var fnMap = {
+    lessonPrep: lhLessonPrepForm,
+    examPaper: lhExamPaperForm,
+    behaviorNotice: lhBehaviorNoticeForm,
+    appreciationCert: lhAppreciationCertForm,
+    weeklySupPrint: lhWeeklySupForm
+  };
+  var fn = fnMap[key];
+  if (fn) fn(area);
+}
+
+// ── ورقة تحضير درس ──
+function lhLessonPrepForm(area) {
+  area.innerHTML =
+    '<div class="card" style="padding:16px;">' +
+    '<h3 style="margin:0 0 12px;font-size:16px;">📝 ورقة تحضير درس</h3>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="lh-lp-subject">' + buildSelectOptions(mySubjects(), '— اختر —', '') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="lh-lp-grade">' + buildSelectOptions(myGrades(), '— اختر —', '') + '</select></div>' +
+    '</div>' +
+    '<div class="form-group"><label class="form-label">عنوان الدرس</label><input type="text" class="form-control" id="lh-lp-title"></div>' +
+    '<div class="form-group"><label class="form-label">الأهداف</label><textarea class="form-control" id="lh-lp-obj" rows="3"></textarea></div>' +
+    '<div class="form-group"><label class="form-label">الوسائل/المواد</label><textarea class="form-control" id="lh-lp-materials" rows="2"></textarea></div>' +
+    '<div class="form-group"><label class="form-label">خطوات الدرس</label><textarea class="form-control" id="lh-lp-steps" rows="5"></textarea></div>' +
+    '<div class="form-group"><label class="form-label">أسلوب التقويم</label><textarea class="form-control" id="lh-lp-assess" rows="2"></textarea></div>' +
+    '<button class="btn btn-primary" onclick="lhLessonPrepPrint()">🖨️ طباعة</button>' +
+    '</div>';
+}
+function lhLessonPrepPrint() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var subject = g('lh-lp-subject'), grade = g('lh-lp-grade'), title = g('lh-lp-title');
+  if (!subject || !grade || !title) { toast('أكمل المادة والصف وعنوان الدرس على الأقل', 'warning'); return; }
+  var nl2br = function (s) { return escapeHtml(s).replace(/\n/g, '<br>'); };
+  _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
+    var body = _lhHeaderHtml(brand, 'ورقة تحضير درس') +
+      '<div class="lh-field-row">' +
+        '<div class="lh-field"><b>المادة:</b>' + escapeHtml(subject) + '</div>' +
+        '<div class="lh-field"><b>الصف:</b>' + escapeHtml(grade) + '</div>' +
+      '</div>' +
+      '<div class="lh-field-row"><div class="lh-field"><b>عنوان الدرس:</b>' + escapeHtml(title) + '</div></div>' +
+      '<div class="lh-field-row"><div class="lh-field"><b>الأهداف:</b><br>' + nl2br(g('lh-lp-obj')) + '</div></div>' +
+      '<div class="lh-field-row"><div class="lh-field"><b>الوسائل:</b><br>' + nl2br(g('lh-lp-materials')) + '</div></div>' +
+      '<div class="lh-field-row"><div class="lh-field"><b>خطوات الدرس:</b><br>' + nl2br(g('lh-lp-steps')) + '</div></div>' +
+      '<div class="lh-field-row"><div class="lh-field"><b>أسلوب التقويم:</b><br>' + nl2br(g('lh-lp-assess')) + '</div></div>' +
+      _lhFooterHtml();
+    _docPrintWindow('ورقة تحضير درس', '@page{size:A4 portrait;margin:12mm}',
+      _lhHeaderFooterCss(brand) + '.lh-doc{font-size:13px}',
+      '<div class="lh-doc">' + body + '</div>');
+  });
+}
+
+// ── ورقة اختبار ──
+function lhExamPaperForm(area) {
+  var todayStr = new Date().toISOString().slice(0, 10);
+  area.innerHTML =
+    '<div class="card" style="padding:16px;">' +
+    '<h3 style="margin:0 0 12px;font-size:16px;">🧾 ورقة اختبار</h3>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="lh-ex-subject">' + buildSelectOptions(mySubjects(), '— اختر —', '') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="lh-ex-grade">' + buildSelectOptions(myGrades(), '— اختر —', '') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="lh-ex-section">' + buildSelectOptions(mySections(), '— اختر —', '') + '</select></div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="lh-ex-date" value="' + todayStr + '"></div>' +
+      '<div class="form-group"><label class="form-label">الوقت</label><input type="text" class="form-control" id="lh-ex-time" placeholder="مثال: 9:00 - 10:30"></div>' +
+      '<div class="form-group"><label class="form-label">عدد صفوف بطاقة الدرجات</label><input type="number" class="form-control" id="lh-ex-rows" value="25" min="5" max="60"></div>' +
+    '</div>' +
+    '<button class="btn btn-primary" onclick="lhExamPaperPrint()">🖨️ طباعة</button>' +
+    '</div>';
+}
+function lhExamPaperPrint() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+  var subject = g('lh-ex-subject'), grade = g('lh-ex-grade');
+  if (!subject || !grade) { toast('أكمل المادة والصف على الأقل', 'warning'); return; }
+  var section = g('lh-ex-section'), date = g('lh-ex-date'), time = g('lh-ex-time').trim();
+  var rowsCount = parseInt(g('lh-ex-rows'), 10);
+  if (!rowsCount || rowsCount < 5) rowsCount = 25;
+  if (rowsCount > 60) rowsCount = 60;
+  _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
+    var trs = '';
+    for (var i = 1; i <= rowsCount; i++) {
+      trs += '<tr><td>' + i + '</td><td></td><td></td><td></td><td></td></tr>';
+    }
+    var body = _lhHeaderHtml(brand, 'ورقة اختبار') +
+      '<div class="lh-field-row">' +
+        '<div class="lh-field"><b>المادة:</b>' + escapeHtml(subject) + '</div>' +
+        '<div class="lh-field"><b>الصف/الشعبة:</b>' + escapeHtml(grade) + (section ? (' / ' + escapeHtml(section)) : '') + '</div>' +
+      '</div>' +
+      '<div class="lh-field-row">' +
+        '<div class="lh-field"><b>التاريخ:</b>' + escapeHtml(date) + '</div>' +
+        '<div class="lh-field"><b>الوقت:</b>' + (time ? escapeHtml(time) : '—') + '</div>' +
+      '</div>' +
+      '<table class="lh-score-table"><thead><tr><th>م</th><th>اسم الطالب</th><th>رقم الجلوس</th><th>الدرجة</th><th>ملاحظات</th></tr></thead><tbody>' + trs + '</tbody></table>' +
+      _lhFooterHtml();
+    _docPrintWindow('ورقة اختبار', '@page{size:A4 portrait;margin:10mm}',
+      _lhHeaderFooterCss(brand),
+      '<div class="lh-doc">' + body + '</div>');
+  });
+}
+
+// ── إشعار سلوك/تعزيز مطبوع ──
+function lhBehaviorNoticeForm(area) {
+  var todayStr = new Date().toISOString().slice(0, 10);
+  area.innerHTML =
+    '<div class="card" style="padding:16px;">' +
+    '<h3 style="margin:0 0 12px;font-size:16px;">📋 إشعار سلوك/تعزيز مطبوع</h3>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">اسم الطالب</label><input type="text" class="form-control" id="lh-bn-name"></div>' +
+      '<div class="form-group"><label class="form-label">نوع الملاحظة</label><select class="form-select" id="lh-bn-type">' +
+        '<option value="تعزيز إيجابي">تعزيز إيجابي</option>' +
+        '<option value="إشعار سلوكي">إشعار سلوكي</option>' +
+        '<option value="ملاحظة عامة">ملاحظة عامة</option>' +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="lh-bn-date" value="' + todayStr + '"></div>' +
+    '</div>' +
+    '<div class="form-group"><label class="form-label">نص الملاحظة</label><textarea class="form-control" id="lh-bn-text" rows="4"></textarea></div>' +
+    '<button class="btn btn-primary" onclick="lhBehaviorNoticePrint()">🖨️ طباعة</button>' +
+    '</div>';
+}
+function lhBehaviorNoticePrint() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var name = g('lh-bn-name'), text = g('lh-bn-text');
+  if (!name || !text) { toast('أكمل اسم الطالب ونص الملاحظة على الأقل', 'warning'); return; }
+  var type = g('lh-bn-type') || 'ملاحظة عامة', date = g('lh-bn-date');
+  _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
+    var body = _lhHeaderHtml(brand, 'إشعار سلوك/تعزيز') +
+      '<div class="lh-field-row">' +
+        '<div class="lh-field"><b>اسم الطالب:</b>' + escapeHtml(name) + '</div>' +
+        '<div class="lh-field"><b>نوع الملاحظة:</b>' + escapeHtml(type) + '</div>' +
+        '<div class="lh-field"><b>التاريخ:</b>' + escapeHtml(date) + '</div>' +
+      '</div>' +
+      '<div class="lh-field-row"><div class="lh-field"><b>النص:</b><br>' + escapeHtml(text).replace(/\n/g, '<br>') + '</div></div>' +
+      '<div class="lh-sig-row"><div class="lh-sig">توقيع ولي الأمر</div><div class="lh-sig">توقيع الإدارة</div></div>' +
+      _lhFooterHtml();
+    _docPrintWindow('إشعار سلوك/تعزيز', '@page{size:A5 portrait;margin:10mm}',
+      _lhHeaderFooterCss(brand),
+      '<div class="lh-doc">' + body + '</div>');
+  });
+}
+
+// ── شهادة تقدير (مختلفة تماماً عن CERT/cert_* — انظر التعليق أعلى الملف) ──
+function lhAppreciationCertForm(area) {
+  var todayStr = new Date().toISOString().slice(0, 10);
+  area.innerHTML =
+    '<div class="card" style="padding:16px;">' +
+    '<h3 style="margin:0 0 12px;font-size:16px;">🎖️ شهادة تقدير</h3>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">اسم المكرَّم</label><input type="text" class="form-control" id="lh-ac-name"></div>' +
+      '<div class="form-group"><label class="form-label">الصفة</label><select class="form-select" id="lh-ac-role">' +
+        '<option value="طالب">طالب</option><option value="معلم">معلم</option><option value="موظف">موظف</option>' +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="lh-ac-date" value="' + todayStr + '"></div>' +
+    '</div>' +
+    '<div class="form-group"><label class="form-label">السبب</label><textarea class="form-control" id="lh-ac-reason" rows="3" placeholder="تقديراً لـ..."></textarea></div>' +
+    '<div class="form-group"><label class="form-label">اسم المدير (للتوقيع)</label><input type="text" class="form-control" id="lh-ac-principal"></div>' +
+    '<button class="btn btn-primary" onclick="lhAppreciationCertPrint()">🖨️ طباعة</button>' +
+    '</div>';
+}
+function lhAppreciationCertPrint() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var name = g('lh-ac-name');
+  if (!name) { toast('أدخل اسم المكرَّم على الأقل', 'warning'); return; }
+  var role = g('lh-ac-role') || 'طالب', reason = g('lh-ac-reason'), principal = g('lh-ac-principal'), date = g('lh-ac-date');
+  _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
+    var c = brand.color || '#0F5C8C';
+    var body = _lhHeaderHtml(brand, 'شهادة تقدير') +
+      '<div style="text-align:center;margin:20px 0;">' +
+        '<div style="font-size:14px;color:#555;">تُمنَح هذه الشهادة إلى</div>' +
+        '<div style="font-size:26px;font-weight:800;color:' + c + ';margin:10px 0;">' + escapeHtml(name) + '</div>' +
+        '<div style="font-size:13px;color:#777;">(' + escapeHtml(role) + ')</div>' +
+      '</div>' +
+      (reason ? '<div style="text-align:center;font-size:14px;line-height:1.8;margin:14px 30px;">' + escapeHtml(reason).replace(/\n/g, '<br>') + '</div>' : '') +
+      '<div style="text-align:center;font-size:12px;color:#888;margin-top:10px;">بتاريخ: ' + escapeHtml(date) + '</div>' +
+      '<div class="lh-sig-row" style="justify-content:center;margin-top:50px;">' +
+        '<div class="lh-sig" style="width:220px;">' + (principal ? escapeHtml(principal) + '<br>' : '') + 'مدير المدرسة</div>' +
+      '</div>' +
+      _lhFooterHtml();
+    _docPrintWindow('شهادة تقدير', '@page{size:A4 landscape;margin:14mm}',
+      _lhHeaderFooterCss(brand),
+      '<div class="lh-doc">' + body + '</div>');
+  });
+}
+
+// ── نسخة مطبوعة لخطة الإشراف الأسبوعي (قراءة فقط — بلا حقول إدخال، بلا كتابة على أي شيت) ──
+function lhWeeklySupForm(area) {
+  area.innerHTML = '<div class="card" style="padding:16px;"><div class="sk-line skeleton"></div></div>';
+  callServer('getWeeklySupervisionProtected', {}, function (r) {
+    if (!r || !r.success) {
+      area.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر التحميل') + '</div>';
+      return;
+    }
+    LH.wsupRows = r.rows || [];
+    LH.wsupDays = r.days || [];
+    area.innerHTML =
+      '<div class="card" style="padding:16px;">' +
+      '<h3 style="margin:0 0 12px;font-size:16px;">🗓️ نسخة مطبوعة لخطة الإشراف الأسبوعي</h3>' +
+      '<div class="alert alert-info">القالب المتكرّر كما هو مسجَّل حالياً — بلا عمود وقت محسوب.</div>' +
+      '<button class="btn btn-primary" onclick="lhWeeklySupPrint()">🖨️ طباعة</button>' +
+      '</div>';
+  }, function (err) {
+    area.innerHTML = '<div class="alert alert-warning">' + escapeHtml((err && err.message) || 'تعذّر التحميل') + '</div>';
+  });
+}
+function lhWeeklySupPrint() {
+  var rows = LH.wsupRows || [], days = LH.wsupDays || [];
+  var active = [];
+  for (var r = 0; r < rows.length; r++) { if (rows[r].active !== false) active.push(rows[r]); }
+  if (!active.length) { toast('لا توجد صفوف نشطة في القالب', 'warning'); return; }
+  _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
+    var byDay = {}, i;
+    for (i = 0; i < days.length; i++) byDay[days[i]] = [];
+    for (i = 0; i < active.length; i++) {
+      var w = active[i];
+      if (!byDay[w.day]) byDay[w.day] = [];
+      byDay[w.day].push(w);
+    }
+    var tables = '';
+    for (i = 0; i < days.length; i++) {
+      var list = byDay[days[i]];
+      if (!list || !list.length) continue;
+      var trs = '';
+      for (var k = 0; k < list.length; k++) {
+        var w2 = list[k];
+        trs += '<tr><td>' + escapeHtml(w2.teacher) + '</td><td>' + escapeHtml(w2.duty) + '</td>' +
+          '<td>' + escapeHtml((w2.grade || '—') + (w2.section ? (' ' + w2.section) : '')) + '</td>' +
+          '<td>' + escapeHtml(w2.afterPeriod || '—') + '</td></tr>';
+      }
+      tables += '<h3 style="margin:14px 0 6px;font-size:14px;">' + escapeHtml(days[i]) + '</h3>' +
+        '<table class="lh-score-table"><thead><tr><th>المعلم</th><th>المهمة</th><th>الصف/الشعبة</th><th>بعد الحصة/الوقت</th></tr></thead><tbody>' + trs + '</tbody></table>';
+    }
+    var body = _lhHeaderHtml(brand, 'خطة الإشراف الأسبوعي') + tables + _lhFooterHtml();
+    _docPrintWindow('خطة الإشراف الأسبوعي', '@page{size:A4 portrait;margin:10mm}',
+      _lhHeaderFooterCss(brand),
+      '<div class="lh-doc">' + body + '</div>');
+  });
 }
 
 // ════════════════════════════════════════════════════════
