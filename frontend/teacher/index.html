@@ -16310,11 +16310,13 @@ function _downloadText(filename, text, mime){
 }
 
 // ════════════════════════════════════════════════════════
-//  🗂️ ديباجات المدرسة (LETTERHEADS) — قوالب طباعة رسمية جديدة (دفعة 1)
-//  هوية مدرسة واحدة موحّدة لكل القوالب عبر نداء خادمي مباشر طازج (لا window._schoolBrand
-//  ولا .school-brand-name كالنقاط الست القديمة). بلا حفظ سجل، بلا ترقيم تسلسلي آلي،
-//  بلا أي إنشاء/كتابة على أي شيت — طباعة فورية من جهة العميل فقط عبر _docPrintWindow
-//  الموجودة أعلاه (لا تعديل عليها). منفصلة تماماً عن CERT/cert_* أدناه (شهادات أكاديمية).
+//  🗂️ ديباجات المدرسة (LETTERHEADS) — قوالب طباعة رسمية (دفعة 2: محرّك Canvas)
+//  كل قالب يُرسَم على <canvas> بدقة تصميم ثابتة (لا HTML/CSS كالدفعة الأولى)، ثم يُستهلَك
+//  بثلاث طرق من نفس الصورة الواحدة: معاينة/تكبير (lightbox الموجود)، تنزيل PNG مباشر،
+//  وطباعة (صورة بملء صفحة — المستخدم يختار "حفظ كـ PDF" من حوار الطباعة، بلا مكتبة PDF
+//  خارجية). هوية المدرسة عبر _lhBrand (نداء خادمي مباشر، بلا window._schoolBrand ولا
+//  .school-brand-name). بلا حفظ سجل، بلا ترقيم تسلسلي آلي، بلا أي إنشاء/كتابة على أي شيت.
+//  منفصلة تماماً عن CERT/cert_* أدناه (شهادات أكاديمية) — لا استدعاء ولا تداخل حالة.
 // ════════════════════════════════════════════════════════
 function _lhBrand(schoolId, cb) {
   try {
@@ -16332,86 +16334,279 @@ function _lhBrandFallback() {
            whatsapp: '', facebook: '', instagram: '', youtube: '' };
 }
 
-function _lhHeaderFooterCss(brand) {
-  var c = (brand && brand.color) || '#0F5C8C';
-  return '.lh-doc{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:8px}' +
-    '.lh-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid ' + c + ';padding-bottom:10px;margin-bottom:16px}' +
-    '.lh-head img{width:64px;height:64px;object-fit:contain}' +
-    '.lh-head .lh-name{font-size:18px;font-weight:800;color:' + c + '}' +
-    '.lh-head .lh-contact{font-size:11px;color:#555}' +
-    '.lh-title{text-align:center;font-size:20px;font-weight:800;margin:10px 0 18px;color:' + c + '}' +
-    '.lh-field-row{display:flex;gap:14px;margin-bottom:10px;font-size:13px}' +
-    '.lh-field{flex:1;border-bottom:1px solid #999;padding-bottom:4px}' +
-    '.lh-field b{margin-left:6px}' +
-    '.lh-sig-row{display:flex;justify-content:space-between;margin-top:40px;font-size:13px}' +
-    '.lh-sig{width:45%;text-align:center;border-top:1px solid #333;padding-top:6px}' +
-    '.lh-score-table{width:100%;border-collapse:collapse;margin-top:10px}' +
-    '.lh-score-table th,.lh-score-table td{border:1px solid #999;padding:6px;font-size:12px;text-align:center}' +
-    '.lh-footer{margin-top:26px;font-size:11px;color:#666;border-top:1px dashed #ccc;padding-top:8px}' +
-    '.lh-disclaimer{font-size:10px;color:#999;font-style:italic;margin-top:4px}';
-}
-function _lhHeaderHtml(brand, titleText) {
-  var name = escapeHtml((brand && brand.name) || 'المدرسة');
-  var logoImg = (brand && brand.logo)
-    ? '<img src="' + escapeHtml(brand.logo) + '" alt="" onerror="this.style.display=\'none\'">'
-    : '';
-  var contact = [];
-  if (brand && brand.phone) contact.push(escapeHtml(brand.phone));
-  if (brand && brand.address) contact.push(escapeHtml(brand.address));
-  return '<div class="lh-head">' + logoImg +
-    '<div><div class="lh-name">' + name + '</div>' +
-    (contact.length ? '<div class="lh-contact">' + contact.join(' · ') + '</div>' : '') +
-    '</div></div><div class="lh-title">' + escapeHtml(titleText) + '</div>';
-}
-function _lhFooterHtml() {
-  var stamp = new Date().toLocaleDateString('ar-EG');
-  return '<div class="lh-footer">وثيقة مطبوعة داخلياً — أي رقم/تاريخ مُدخَل يدوياً أعلاه لغرض العرض، وليس ترقيماً رسمياً معتمَداً آلياً.' +
-    '<div class="lh-disclaimer">تم إنشاؤه عبر نظام سكولز اليمن — ' + escapeHtml(stamp) + '</div></div>';
-}
+// ── أبعاد التصميم (بكسل ثابت، لا تحجيم DPR — دقة طباعة ~150 DPI) ──
+var _LH_PAGE = {
+  a4p: { w: 1240, h: 1754 },
+  a4l: { w: 1754, h: 1240 },
+  a5p: { w: 874,  h: 1240 }
+};
+var _LH_FONT = 'Tahoma, "Segoe UI", Arial, sans-serif';
+var _LH_MINISTRY_LINES = ['الجمهورية اليمنية', 'وزارة التربية والتعليم'];
+var _LH_MARGIN_X = 90;
+var _LH_FOOTER_RESERVE = 130;
 
-var LH = { view: 'menu', wsupRows: [], wsupDays: [] };
-var LH_TEMPLATES = [
-  { key:'lessonPrep',       icon:'📝', label:'ورقة تحضير درس',                    roles:['teacher'] },
-  { key:'examPaper',        icon:'🧾', label:'ورقة اختبار',                       roles:['teacher'] },
-  { key:'behaviorNotice',   icon:'📋', label:'إشعار سلوك/تعزيز',                  roles:['teacher'] },
-  { key:'appreciationCert', icon:'🎖️', label:'شهادة تقدير',                      roles:['admin','deputy'] },
-  { key:'weeklySupPrint',   icon:'🗓️', label:'نسخة مطبوعة لخطة الإشراف الأسبوعي', roles:['supervisor'] }
-];
-
-function renderLetterheads() {
-  var box = document.getElementById('dynamicContent');
-  if (!box) return;
-  var role = (App.user && App.user.role) || 'teacher';
-  var isAdminLike = (role === 'admin' || role === 'deputy');
-  var cards = '';
-  for (var i = 0; i < LH_TEMPLATES.length; i++) {
-    var t = LH_TEMPLATES[i];
-    if (!isAdminLike && t.roles.indexOf(role) === -1) continue;
-    cards += '<div class="card" style="cursor:pointer;padding:16px;text-align:center;min-width:160px;" onclick="lhOpen(\'' + t.key + '\')">' +
-      '<div style="font-size:28px;margin-bottom:8px;">' + t.icon + '</div>' +
-      '<div style="font-size:14px;font-weight:600;">' + t.label + '</div></div>';
+// ── قياس/التفاف نص عبر canvas مخفي (يحاكي _tcComputeCoverSlides) ──
+var _lhMeasureCanvas = null;
+function _lhMeasureCtx() {
+  if (!_lhMeasureCanvas) { _lhMeasureCanvas = document.createElement('canvas'); _lhMeasureCanvas.width = 10; _lhMeasureCanvas.height = 10; }
+  return _lhMeasureCanvas.getContext('2d');
+}
+function _lhWrapText(text, maxW, font) {
+  var ctx = _lhMeasureCtx(); ctx.font = font;
+  var raw = String(text || '').replace(/\r/g, '');
+  var paragraphs = raw.split('\n');
+  var lines = [];
+  for (var p = 0; p < paragraphs.length; p++) {
+    var words = [];
+    var rawWords = paragraphs[p].split(/\s+/);
+    for (var wi = 0; wi < rawWords.length; wi++) { if (rawWords[wi]) words.push(rawWords[wi]); }
+    if (!words.length) { lines.push(''); continue; }
+    var line = '';
+    for (var i = 0; i < words.length; i++) {
+      var probe = line ? (line + ' ' + words[i]) : words[i];
+      if (ctx.measureText(probe).width > maxW && line) { lines.push(line); line = words[i]; }
+      else line = probe;
+    }
+    if (line) lines.push(line);
   }
-  var head = '<div class="page-head"><h2 style="margin:0;">🗂️ ديباجات المدرسة</h2>' +
-    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">قوالب طباعة رسمية جديدة — بلا حفظ سجل ولا ترقيم آلي. أي رقم/تاريخ يُدخَل يدوياً لغرض العرض فقط.</p></div>';
-  box.innerHTML = head +
-    (cards ? '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;">' + cards + '</div>'
-           : '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا قوالب متاحة لدورك حالياً</div></div>') +
-    '<div id="lh-formArea" style="margin-top:16px;"></div>';
+  return lines;
+}
+function _lhRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
-function lhOpen(key) {
-  LH.view = key;
-  var area = document.getElementById('lh-formArea');
+// ── تحميل شعار آمن CORS (يحاكي _tcLogoImage، مفتاح بالرابط لدعم عدة مدارس بجلسة واحدة) ──
+var _lhLogoCache = {};
+function _lhLogoUrl(rawLogo) {
+  if (!rawLogo) return '';
+  var s = String(rawLogo);
+  var m = s.match(/[?&]id=([a-zA-Z0-9_-]+)/) || s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? ('https://lh3.googleusercontent.com/d/' + m[1] + '=w400') : s;
+}
+function _lhLogoImage(brand, cb) {
+  var url = _lhLogoUrl(brand && brand.logo);
+  if (!url) { cb(null); return; }
+  if (_lhLogoCache[url]) { cb(_lhLogoCache[url]); return; }
+  var img = new Image(), done = false;
+  img.crossOrigin = 'anonymous';
+  img.onload = function () { if (!done) { done = true; _lhLogoCache[url] = img; cb(img); } };
+  img.onerror = function () { if (!done) { done = true; cb(null); } };
+  img.src = url;
+  setTimeout(function () { if (!done) { done = true; img.onload = img.onerror = null; cb(null); } }, 4000);
+}
+
+// ── ترويسة موحّدة: نص الوزارة أعلى يمين، شعار دائري في المنتصف، اسم المدرسة، شريط لوني ──
+function _lhMeasureHeader(brand, W) {
+  var name = (brand && brand.name) || 'المدرسة';
+  var nameFontPx = 40, nameLines;
+  do {
+    nameLines = _lhWrapText(name, W - 240, '800 ' + nameFontPx + 'px ' + _LH_FONT);
+    if (nameLines.length <= 1) break;
+    nameFontPx -= 2;
+  } while (nameFontPx > 24);
+  var hasContact = !!((brand && brand.phone) || (brand && brand.address));
+  var LOGO_D = 140, TOP = 46;
+  var lineH = Math.round(nameFontPx * 1.25);
+  var nameY = TOP + LOGO_D + 34;
+  var contactY = nameY + lineH * (nameLines.length - 1) + 34;
+  var barY = contactY + (hasContact ? 26 : 4);
+  var titleY = barY + 46;
+  return { LOGO_D: LOGO_D, TOP: TOP, nameFontPx: nameFontPx, nameLines: nameLines, lineH: lineH,
+           hasContact: hasContact, nameY: nameY, contactY: contactY, barY: barY, titleY: titleY,
+           height: titleY + 20 };
+}
+function _lhDrawHeader(ctx, brand, header, W, logoImg, docTitle) {
+  var c = (brand && brand.color) || '#0F5C8C';
+  var logoCx = W / 2, logoCy = header.TOP + header.LOGO_D / 2;
+
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
+  try { ctx.direction = 'rtl'; } catch (eDir) {}
+  ctx.font = '700 22px ' + _LH_FONT; ctx.fillStyle = '#64748b';
+  ctx.fillText(_LH_MINISTRY_LINES[0], W - 56, header.TOP + 26);
+  ctx.fillText(_LH_MINISTRY_LINES[1], W - 56, header.TOP + 52);
+
+  ctx.textAlign = 'center';
+  if (logoImg) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(logoCx, logoCy, header.LOGO_D / 2, 0, Math.PI * 2); ctx.closePath();
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.drawImage(logoImg, logoCx - header.LOGO_D / 2, logoCy - header.LOGO_D / 2, header.LOGO_D, header.LOGO_D);
+    ctx.restore();
+    ctx.lineWidth = 4; ctx.strokeStyle = c; ctx.stroke();
+    ctx.restore();
+  } else {
+    ctx.beginPath(); ctx.arc(logoCx, logoCy, header.LOGO_D / 2, 0, Math.PI * 2);
+    ctx.fillStyle = c + '22'; ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = c; ctx.stroke();
+    ctx.fillStyle = c; ctx.font = '800 52px ' + _LH_FONT; ctx.textBaseline = 'middle';
+    ctx.fillText(((brand && brand.name) || 'م').charAt(0), logoCx, logoCy + 2);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  ctx.fillStyle = c; ctx.font = '800 ' + header.nameFontPx + 'px ' + _LH_FONT;
+  var ny = header.nameY;
+  for (var i = 0; i < header.nameLines.length; i++) { ctx.fillText(header.nameLines[i], W / 2, ny); ny += header.lineH; }
+
+  if (header.hasContact) {
+    var bits = [];
+    if (brand && brand.phone) bits.push(brand.phone);
+    if (brand && brand.address) bits.push(brand.address);
+    ctx.font = '400 17px ' + _LH_FONT; ctx.fillStyle = '#64748b';
+    ctx.fillText(bits.join('   ·   '), W / 2, header.contactY);
+  }
+
+  var grad = ctx.createLinearGradient(60, 0, W - 60, 0);
+  grad.addColorStop(0, c); grad.addColorStop(1, c + 'cc');
+  _lhRoundRect(ctx, 60, header.barY, W - 120, 6, 3); ctx.fillStyle = grad; ctx.fill();
+
+  ctx.font = '800 32px ' + _LH_FONT; ctx.fillStyle = '#1e293b';
+  ctx.fillText(docTitle, W / 2, header.titleY);
+}
+function _lhDrawFooter(ctx, W, H) {
+  var msg = 'وثيقة مطبوعة داخلياً — أي رقم/تاريخ مُدخَل يدوياً أعلاه لغرض العرض، وليس ترقيماً رسمياً معتمَداً آلياً.';
+  var font1 = '400 15px ' + _LH_FONT;
+  var lines = _lhWrapText(msg, W - 140, font1);
+  var lineH = 20;
+  var blockH = lines.length * lineH + 26;
+  var y = H - blockH - 14;
+  ctx.setLineDash([5, 5]); ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(60, y); ctx.lineTo(W - 60, y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#94a3b8';
+  ctx.font = font1;
+  var ty = y + 24;
+  for (var i = 0; i < lines.length; i++) { ctx.fillText(lines[i], W / 2, ty); ty += lineH; }
+  ctx.font = '400 12px ' + _LH_FONT;
+  ctx.fillText('تم إنشاؤه عبر نظام سكولز اليمن — ' + new Date().toLocaleDateString('ar-EG'), W / 2, ty + 4);
+}
+function _lhDrawFrame(ctx, W, H, brandColor) {
+  _lhRoundRect(ctx, 24, 24, W - 48, H - 48, 16);
+  ctx.lineWidth = 2; ctx.strokeStyle = brandColor; ctx.stroke();
+}
+function _lhDrawCertFrame(ctx, W, H, brandColor, schoolName) {
+  _lhRoundRect(ctx, 18, 18, W - 36, H - 36, 14);
+  ctx.lineWidth = 1.5; ctx.strokeStyle = '#e2e8f0'; ctx.stroke();
+  _lhRoundRect(ctx, 34, 34, W - 68, H - 68, 12);
+  ctx.lineWidth = 2.5; ctx.strokeStyle = brandColor + 'aa'; ctx.stroke();
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(-18 * Math.PI / 180);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 96px ' + _LH_FONT;
+  ctx.fillStyle = brandColor + '0c';
+  ctx.fillText(schoolName || 'المدرسة', 0, 0);
+  ctx.restore();
+}
+
+// ── لوحة الإخراج المشتركة: معاينة/تكبير + تنزيل PNG + طباعة/حفظ PDF من نفس الصورة ──
+var _LH_PAGE_CSS_SIZE = { a4p: 'A4 portrait', a4l: 'A4 landscape', a5p: 'A5 portrait' };
+function _lhShowOutput(area, canvases, title, fname, pageKey) {
   if (!area) return;
-  var fnMap = {
-    lessonPrep: lhLessonPrepForm,
-    examPaper: lhExamPaperForm,
-    behaviorNotice: lhBehaviorNoticeForm,
-    appreciationCert: lhAppreciationCertForm,
-    weeklySupPrint: lhWeeklySupForm
-  };
-  var fn = fnMap[key];
-  if (fn) fn(area);
+  LH._out = { canvases: canvases, title: title, fname: fname, pageKey: pageKey || 'a4p' };
+  var imgsHtml = '';
+  for (var i = 0; i < canvases.length; i++) {
+    var durl = '';
+    try { durl = canvases[i].toDataURL('image/png'); } catch (eTaint) { durl = ''; }
+    if (durl) {
+      imgsHtml += '<img src="' + durl + '" style="max-width:100%;border:1px solid #e2e8f0;border-radius:10px;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,.10);cursor:zoom-in;margin-bottom:12px;display:block;" onclick="_lhZoom(' + i + ')">';
+    } else {
+      imgsHtml += '<div class="alert alert-warning">تعذّر إنشاء معاينة الصورة (مشكلة تحميل الشعار) — جرّب زر الطباعة مباشرة.</div>';
+    }
+  }
+  area.innerHTML = '<div class="card" style="padding:16px;margin-top:14px;text-align:center;">' +
+    '<h4 style="margin:0 0 12px;">🖼️ ' + escapeHtml(title) + '</h4>' + imgsHtml +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px;">' +
+      '<button class="btn btn-secondary" onclick="_lhZoom(0)">🔍 عرض/تكبير</button>' +
+      '<button class="btn btn-secondary" onclick="_lhDownloadAll()">⬇️ تنزيل PNG</button>' +
+      '<button class="btn btn-primary" onclick="_lhPrintAll()">🖨️ طباعة / حفظ PDF</button>' +
+    '</div></div>';
+}
+function _lhZoom(idx) {
+  var o = LH._out;
+  if (!o || !o.canvases[idx]) return;
+  try { openLightbox(o.canvases[idx].toDataURL('image/png')); } catch (e) { toast('تعذّر فتح المعاينة', 'error'); }
+}
+function _lhDownloadAll() {
+  var o = LH._out; if (!o) return;
+  for (var i = 0; i < o.canvases.length; i++) {
+    (function (idx) {
+      setTimeout(function () {
+        var suffix = o.canvases.length > 1 ? ('-ص' + (idx + 1)) : '';
+        try { _schedSavePng(o.canvases[idx], o.fname + suffix + '.png'); } catch (e) { toast('تعذّر التنزيل على هذا الجهاز', 'error'); }
+      }, idx * 250);
+    })(i);
+  }
+}
+function _lhPrintAll() {
+  var o = LH._out; if (!o || !o.canvases.length) return;
+  var pages = '';
+  for (var i = 0; i < o.canvases.length; i++) {
+    var durl = '';
+    try { durl = o.canvases[i].toDataURL('image/png'); } catch (eTaint2) { durl = ''; }
+    if (durl) pages += '<div class="lh-pg"><img src="' + durl + '"></div>';
+  }
+  if (!pages) { toast('تعذّر إنشاء صورة للطباعة', 'error'); return; }
+  var pageSizeCss = _LH_PAGE_CSS_SIZE[o.pageKey] || 'A4 portrait';
+  var css = '@page{size:' + pageSizeCss + ';margin:0}' +
+    '.lh-pg{page-break-after:always}.lh-pg:last-child{page-break-after:auto}' +
+    '.lh-pg img{width:100%;height:100vh;object-fit:contain;display:block}';
+  _docPrintWindow(o.title, '', css, pages);
+}
+
+// ── قالب عام لأوراق "حقول + محتوى نصّي" (تحضير الدرس) — قياس ثنائي المرحلة لارتفاع متغيّر ──
+function _lhBuildBlockDoc(brand, logoImg, dims, docTitle, fields) {
+  var W = dims.w;
+  var header = _lhMeasureHeader(brand, W);
+  var c = (brand && brand.color) || '#0F5C8C';
+  var blocks = [], i;
+  for (i = 0; i < fields.length; i++) {
+    var f = fields[i];
+    if (f.inline) { blocks.push({ f: f, h: 44 }); continue; }
+    var lines = _lhWrapText(f.value || '—', W - (_LH_MARGIN_X * 2) - 20, '400 18px ' + _LH_FONT);
+    if (!lines.length) lines = ['—'];
+    blocks.push({ f: f, h: 34 + lines.length * 24 + 18, lines: lines });
+  }
+  var contentH = 0;
+  for (i = 0; i < blocks.length; i++) contentH += blocks[i].h + 12;
+  var neededH = header.height + 30 + contentH + _LH_FOOTER_RESERVE;
+  var H = Math.max(dims.h, neededH);
+
+  var canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  _lhDrawFrame(ctx, W, H, c);
+  _lhDrawHeader(ctx, brand, header, W, logoImg, docTitle);
+
+  ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+  try { ctx.direction = 'rtl'; } catch (eDir2) {}
+  var cy = header.height + 30;
+  for (i = 0; i < blocks.length; i++) {
+    var b = blocks[i];
+    if (b.f.inline) {
+      ctx.font = '700 20px ' + _LH_FONT; ctx.fillStyle = c;
+      var label = b.f.label + ':  ';
+      ctx.fillText(label, W - _LH_MARGIN_X, cy + 26);
+      var labelW = ctx.measureText(label).width;
+      ctx.font = '400 20px ' + _LH_FONT; ctx.fillStyle = '#1e293b';
+      ctx.fillText(b.f.value || '—', W - _LH_MARGIN_X - labelW, cy + 26);
+    } else {
+      ctx.font = '700 20px ' + _LH_FONT; ctx.fillStyle = c;
+      ctx.fillText(b.f.label + ':', W - _LH_MARGIN_X, cy + 24);
+      ctx.font = '400 18px ' + _LH_FONT; ctx.fillStyle = '#334155';
+      var ly = cy + 24 + 30;
+      for (var k = 0; k < b.lines.length; k++) { ctx.fillText(b.lines[k], W - _LH_MARGIN_X - 10, ly); ly += 24; }
+    }
+    cy += b.h + 12;
+  }
+  _lhDrawFooter(ctx, W, H);
+  return canvas;
 }
 
 // ── ورقة تحضير درس ──
@@ -16435,26 +16630,24 @@ function lhLessonPrepPrint() {
   var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
   var subject = g('lh-lp-subject'), grade = g('lh-lp-grade'), title = g('lh-lp-title');
   if (!subject || !grade || !title) { toast('أكمل المادة والصف وعنوان الدرس على الأقل', 'warning'); return; }
-  var nl2br = function (s) { return escapeHtml(s).replace(/\n/g, '<br>'); };
+  var fields = [
+    { label: 'المادة', value: subject, inline: true },
+    { label: 'الصف', value: grade, inline: true },
+    { label: 'عنوان الدرس', value: title, inline: true },
+    { label: 'الأهداف', value: g('lh-lp-obj'), inline: false },
+    { label: 'الوسائل/المواد', value: g('lh-lp-materials'), inline: false },
+    { label: 'خطوات الدرس', value: g('lh-lp-steps'), inline: false },
+    { label: 'أسلوب التقويم', value: g('lh-lp-assess'), inline: false }
+  ];
   _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
-    var body = _lhHeaderHtml(brand, 'ورقة تحضير درس') +
-      '<div class="lh-field-row">' +
-        '<div class="lh-field"><b>المادة:</b>' + escapeHtml(subject) + '</div>' +
-        '<div class="lh-field"><b>الصف:</b>' + escapeHtml(grade) + '</div>' +
-      '</div>' +
-      '<div class="lh-field-row"><div class="lh-field"><b>عنوان الدرس:</b>' + escapeHtml(title) + '</div></div>' +
-      '<div class="lh-field-row"><div class="lh-field"><b>الأهداف:</b><br>' + nl2br(g('lh-lp-obj')) + '</div></div>' +
-      '<div class="lh-field-row"><div class="lh-field"><b>الوسائل:</b><br>' + nl2br(g('lh-lp-materials')) + '</div></div>' +
-      '<div class="lh-field-row"><div class="lh-field"><b>خطوات الدرس:</b><br>' + nl2br(g('lh-lp-steps')) + '</div></div>' +
-      '<div class="lh-field-row"><div class="lh-field"><b>أسلوب التقويم:</b><br>' + nl2br(g('lh-lp-assess')) + '</div></div>' +
-      _lhFooterHtml();
-    _docPrintWindow('ورقة تحضير درس', '@page{size:A4 portrait;margin:12mm}',
-      _lhHeaderFooterCss(brand) + '.lh-doc{font-size:13px}',
-      '<div class="lh-doc">' + body + '</div>');
+    _lhLogoImage(brand, function (logoImg) {
+      var canvas = _lhBuildBlockDoc(brand, logoImg, _LH_PAGE.a4p, 'ورقة تحضير درس', fields);
+      _lhShowOutput(document.getElementById('lh-outputArea'), [canvas], 'ورقة تحضير درس', 'ورقة-تحضير-درس', 'a4p');
+    });
   });
 }
 
-// ── ورقة اختبار ──
+// ── ورقة اختبار — إعادة تصميم كاملة: ورقة إجابة امتحان تحريري فارغة (لا كشف رصد درجات) ──
 function lhExamPaperForm(area) {
   var todayStr = new Date().toISOString().slice(0, 10);
   area.innerHTML =
@@ -16468,7 +16661,6 @@ function lhExamPaperForm(area) {
     '<div class="form-row">' +
       '<div class="form-group"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="lh-ex-date" value="' + todayStr + '"></div>' +
       '<div class="form-group"><label class="form-label">الوقت</label><input type="text" class="form-control" id="lh-ex-time" placeholder="مثال: 9:00 - 10:30"></div>' +
-      '<div class="form-group"><label class="form-label">عدد صفوف بطاقة الدرجات</label><input type="number" class="form-control" id="lh-ex-rows" value="25" min="5" max="60"></div>' +
     '</div>' +
     '<button class="btn btn-primary" onclick="lhExamPaperPrint()">🖨️ طباعة</button>' +
     '</div>';
@@ -16478,28 +16670,61 @@ function lhExamPaperPrint() {
   var subject = g('lh-ex-subject'), grade = g('lh-ex-grade');
   if (!subject || !grade) { toast('أكمل المادة والصف على الأقل', 'warning'); return; }
   var section = g('lh-ex-section'), date = g('lh-ex-date'), time = g('lh-ex-time').trim();
-  var rowsCount = parseInt(g('lh-ex-rows'), 10);
-  if (!rowsCount || rowsCount < 5) rowsCount = 25;
-  if (rowsCount > 60) rowsCount = 60;
   _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
-    var trs = '';
-    for (var i = 1; i <= rowsCount; i++) {
-      trs += '<tr><td>' + i + '</td><td></td><td></td><td></td><td></td></tr>';
-    }
-    var body = _lhHeaderHtml(brand, 'ورقة اختبار') +
-      '<div class="lh-field-row">' +
-        '<div class="lh-field"><b>المادة:</b>' + escapeHtml(subject) + '</div>' +
-        '<div class="lh-field"><b>الصف/الشعبة:</b>' + escapeHtml(grade) + (section ? (' / ' + escapeHtml(section)) : '') + '</div>' +
-      '</div>' +
-      '<div class="lh-field-row">' +
-        '<div class="lh-field"><b>التاريخ:</b>' + escapeHtml(date) + '</div>' +
-        '<div class="lh-field"><b>الوقت:</b>' + (time ? escapeHtml(time) : '—') + '</div>' +
-      '</div>' +
-      '<table class="lh-score-table"><thead><tr><th>م</th><th>اسم الطالب</th><th>رقم الجلوس</th><th>الدرجة</th><th>ملاحظات</th></tr></thead><tbody>' + trs + '</tbody></table>' +
-      _lhFooterHtml();
-    _docPrintWindow('ورقة اختبار', '@page{size:A4 portrait;margin:10mm}',
-      _lhHeaderFooterCss(brand),
-      '<div class="lh-doc">' + body + '</div>');
+    _lhLogoImage(brand, function (logoImg) {
+      var dims = _LH_PAGE.a4p, W = dims.w, H = dims.h;
+      var c = (brand && brand.color) || '#0F5C8C';
+      var header = _lhMeasureHeader(brand, W);
+      var canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      _lhDrawFrame(ctx, W, H, c);
+      _lhDrawHeader(ctx, brand, header, W, logoImg, 'ورقة اختبار');
+
+      var boxY = header.height + 20, boxH = 210, boxX = _LH_MARGIN_X, boxW = W - _LH_MARGIN_X * 2;
+      _lhRoundRect(ctx, boxX, boxY, boxW, boxH, 10);
+      ctx.fillStyle = c + '10'; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = c + '55'; ctx.stroke();
+
+      var rowH = boxH / 3;
+      var colRX = boxX + boxW - 30, colLX = boxX + boxW / 2 - 10;
+      ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+      try { ctx.direction = 'rtl'; } catch (eDir3) {}
+
+      function fieldFilled(label, value, x, yTop) {
+        ctx.font = '400 15px ' + _LH_FONT; ctx.fillStyle = '#64748b';
+        ctx.fillText(label, x, yTop + 22);
+        ctx.font = '700 21px ' + _LH_FONT; ctx.fillStyle = '#1e293b';
+        ctx.fillText(value || '—', x, yTop + 48);
+      }
+      function fieldBlank(label, x, yTop, lineW) {
+        ctx.font = '400 15px ' + _LH_FONT; ctx.fillStyle = '#64748b';
+        ctx.fillText(label, x, yTop + 22);
+        ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x, yTop + 46); ctx.lineTo(x - lineW, yTop + 46); ctx.stroke();
+      }
+
+      fieldBlank('اسم الطالب', colRX, boxY + 6, 360);
+      fieldBlank('رقم الجلوس', colLX, boxY + 6, 170);
+      fieldFilled('الصف والشعبة', grade + (section ? (' / ' + section) : ''), colRX, boxY + 6 + rowH);
+      fieldFilled('المادة', subject, colLX, boxY + 6 + rowH);
+      fieldFilled('التاريخ', date, colRX, boxY + 6 + rowH * 2);
+      fieldFilled('الزمن', time || '—', colLX, boxY + 6 + rowH * 2);
+
+      var linesTop = boxY + boxH + 40;
+      var linesBottom = H - _LH_FOOTER_RESERVE;
+      var spacing = 46;
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
+      for (var ly = linesTop; ly <= linesBottom; ly += spacing) {
+        ctx.beginPath(); ctx.moveTo(_LH_MARGIN_X, ly); ctx.lineTo(W - _LH_MARGIN_X, ly); ctx.stroke();
+      }
+      ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(W - _LH_MARGIN_X - 40, linesTop - 10); ctx.lineTo(W - _LH_MARGIN_X - 40, linesBottom); ctx.stroke();
+
+      _lhDrawFooter(ctx, W, H);
+      _lhShowOutput(document.getElementById('lh-outputArea'), [canvas], 'ورقة اختبار', 'ورقة-اختبار', 'a4p');
+    });
   });
 }
 
@@ -16528,18 +16753,56 @@ function lhBehaviorNoticePrint() {
   if (!name || !text) { toast('أكمل اسم الطالب ونص الملاحظة على الأقل', 'warning'); return; }
   var type = g('lh-bn-type') || 'ملاحظة عامة', date = g('lh-bn-date');
   _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
-    var body = _lhHeaderHtml(brand, 'إشعار سلوك/تعزيز') +
-      '<div class="lh-field-row">' +
-        '<div class="lh-field"><b>اسم الطالب:</b>' + escapeHtml(name) + '</div>' +
-        '<div class="lh-field"><b>نوع الملاحظة:</b>' + escapeHtml(type) + '</div>' +
-        '<div class="lh-field"><b>التاريخ:</b>' + escapeHtml(date) + '</div>' +
-      '</div>' +
-      '<div class="lh-field-row"><div class="lh-field"><b>النص:</b><br>' + escapeHtml(text).replace(/\n/g, '<br>') + '</div></div>' +
-      '<div class="lh-sig-row"><div class="lh-sig">توقيع ولي الأمر</div><div class="lh-sig">توقيع الإدارة</div></div>' +
-      _lhFooterHtml();
-    _docPrintWindow('إشعار سلوك/تعزيز', '@page{size:A5 portrait;margin:10mm}',
-      _lhHeaderFooterCss(brand),
-      '<div class="lh-doc">' + body + '</div>');
+    _lhLogoImage(brand, function (logoImg) {
+      var dims = _LH_PAGE.a5p, W = dims.w;
+      var c = (brand && brand.color) || '#0F5C8C';
+      var header = _lhMeasureHeader(brand, W);
+      var textLines = _lhWrapText(text, W - _LH_MARGIN_X * 2 - 20, '400 18px ' + _LH_FONT);
+      var textH = 30 + textLines.length * 24 + 20;
+      var neededH = header.height + 30 + 140 + textH + 100 + _LH_FOOTER_RESERVE;
+      var H = Math.max(dims.h, neededH);
+      var canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      _lhDrawFrame(ctx, W, H, c);
+      _lhDrawHeader(ctx, brand, header, W, logoImg, 'إشعار سلوك/تعزيز');
+
+      ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+      try { ctx.direction = 'rtl'; } catch (eDir4) {}
+      var y = header.height + 30;
+      function row(label, value) {
+        ctx.font = '700 18px ' + _LH_FONT; ctx.fillStyle = c;
+        var lbl = label + ':  ';
+        ctx.fillText(lbl, W - _LH_MARGIN_X, y + 22);
+        var lw = ctx.measureText(lbl).width;
+        ctx.font = '400 18px ' + _LH_FONT; ctx.fillStyle = '#1e293b';
+        ctx.fillText(value, W - _LH_MARGIN_X - lw, y + 22);
+        y += 38;
+      }
+      row('اسم الطالب', name);
+      row('نوع الملاحظة', type);
+      row('التاريخ', date);
+
+      y += 10;
+      ctx.font = '700 18px ' + _LH_FONT; ctx.fillStyle = c;
+      ctx.fillText('النص:', W - _LH_MARGIN_X, y + 22);
+      y += 22 + 30;
+      ctx.font = '400 18px ' + _LH_FONT; ctx.fillStyle = '#334155';
+      for (var k = 0; k < textLines.length; k++) { ctx.fillText(textLines[k], W - _LH_MARGIN_X - 10, y); y += 24; }
+
+      y += 50;
+      var sigW = (W - _LH_MARGIN_X * 2 - 40) / 2;
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(_LH_MARGIN_X, y); ctx.lineTo(_LH_MARGIN_X + sigW, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W - _LH_MARGIN_X - sigW, y); ctx.lineTo(W - _LH_MARGIN_X, y); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.font = '400 15px ' + _LH_FONT; ctx.fillStyle = '#64748b';
+      ctx.fillText('توقيع الإدارة', _LH_MARGIN_X + sigW / 2, y + 22);
+      ctx.fillText('توقيع ولي الأمر', W - _LH_MARGIN_X - sigW / 2, y + 22);
+
+      _lhDrawFooter(ctx, W, H);
+      _lhShowOutput(document.getElementById('lh-outputArea'), [canvas], 'إشعار سلوك/تعزيز', 'اشعار-سلوك', 'a5p');
+    });
   });
 }
 
@@ -16567,26 +16830,52 @@ function lhAppreciationCertPrint() {
   if (!name) { toast('أدخل اسم المكرَّم على الأقل', 'warning'); return; }
   var role = g('lh-ac-role') || 'طالب', reason = g('lh-ac-reason'), principal = g('lh-ac-principal'), date = g('lh-ac-date');
   _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
-    var c = brand.color || '#0F5C8C';
-    var body = _lhHeaderHtml(brand, 'شهادة تقدير') +
-      '<div style="text-align:center;margin:20px 0;">' +
-        '<div style="font-size:14px;color:#555;">تُمنَح هذه الشهادة إلى</div>' +
-        '<div style="font-size:26px;font-weight:800;color:' + c + ';margin:10px 0;">' + escapeHtml(name) + '</div>' +
-        '<div style="font-size:13px;color:#777;">(' + escapeHtml(role) + ')</div>' +
-      '</div>' +
-      (reason ? '<div style="text-align:center;font-size:14px;line-height:1.8;margin:14px 30px;">' + escapeHtml(reason).replace(/\n/g, '<br>') + '</div>' : '') +
-      '<div style="text-align:center;font-size:12px;color:#888;margin-top:10px;">بتاريخ: ' + escapeHtml(date) + '</div>' +
-      '<div class="lh-sig-row" style="justify-content:center;margin-top:50px;">' +
-        '<div class="lh-sig" style="width:220px;">' + (principal ? escapeHtml(principal) + '<br>' : '') + 'مدير المدرسة</div>' +
-      '</div>' +
-      _lhFooterHtml();
-    _docPrintWindow('شهادة تقدير', '@page{size:A4 landscape;margin:14mm}',
-      _lhHeaderFooterCss(brand),
-      '<div class="lh-doc">' + body + '</div>');
+    _lhLogoImage(brand, function (logoImg) {
+      var dims = _LH_PAGE.a4l, W = dims.w, H = dims.h;
+      var c = (brand && brand.color) || '#0F5C8C';
+      var header = _lhMeasureHeader(brand, W);
+      var canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+      _lhDrawCertFrame(ctx, W, H, c, (brand && brand.name) || 'المدرسة');
+      _lhDrawHeader(ctx, brand, header, W, logoImg, 'شهادة تقدير');
+
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      try { ctx.direction = 'rtl'; } catch (eDir5) {}
+      var cy = header.height + 50;
+      ctx.font = '400 20px ' + _LH_FONT; ctx.fillStyle = '#555';
+      ctx.fillText('تُمنَح هذه الشهادة إلى', W / 2, cy); cy += 50;
+      ctx.font = '800 46px ' + _LH_FONT; ctx.fillStyle = c;
+      ctx.fillText(name, W / 2, cy); cy += 36;
+      ctx.font = '400 18px ' + _LH_FONT; ctx.fillStyle = '#777';
+      ctx.fillText('(' + role + ')', W / 2, cy); cy += 50;
+
+      if (reason) {
+        var reasonLines = _lhWrapText(reason, W - 400, '400 20px ' + _LH_FONT);
+        ctx.font = '400 20px ' + _LH_FONT; ctx.fillStyle = '#334155';
+        for (var i = 0; i < reasonLines.length; i++) { ctx.fillText(reasonLines[i], W / 2, cy); cy += 30; }
+        cy += 14;
+      }
+      ctx.font = '400 16px ' + _LH_FONT; ctx.fillStyle = '#888';
+      ctx.fillText('بتاريخ: ' + date, W / 2, cy);
+
+      var sigY = H - _LH_FOOTER_RESERVE - 40;
+      var sigW2 = 260;
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(W / 2 - sigW2 / 2, sigY); ctx.lineTo(W / 2 + sigW2 / 2, sigY); ctx.stroke();
+      ctx.font = '400 15px ' + _LH_FONT; ctx.fillStyle = '#64748b';
+      var sigLabel = principal ? (principal + ' — مدير المدرسة') : 'مدير المدرسة';
+      ctx.fillText(sigLabel, W / 2, sigY + 22);
+
+      _lhDrawFooter(ctx, W, H);
+      _lhShowOutput(document.getElementById('lh-outputArea'), [canvas], 'شهادة تقدير', 'شهادة-تقدير', 'a4l');
+    });
   });
 }
 
-// ── نسخة مطبوعة لخطة الإشراف الأسبوعي (قراءة فقط — بلا حقول إدخال، بلا كتابة على أي شيت) ──
+// ── نسخة مطبوعة لخطة الإشراف الأسبوعي (قراءة فقط، بلا حقول إدخال، بلا كتابة على أي شيت) ──
+//    ترقيم صفحات ديناميكي حقيقي: قياس ثنائي المرحلة لعدد الصفوف الفعلي قبل إنشاء أي canvas.
 function lhWeeklySupForm(area) {
   area.innerHTML = '<div class="card" style="padding:16px;"><div class="sk-line skeleton"></div></div>';
   callServer('getWeeklySupervisionProtected', {}, function (r) {
@@ -16606,38 +16895,144 @@ function lhWeeklySupForm(area) {
     area.innerHTML = '<div class="alert alert-warning">' + escapeHtml((err && err.message) || 'تعذّر التحميل') + '</div>';
   });
 }
+function _lhDrawSupDayBlock(ctx, block, x0, y0, W, brandColor, ROW_H, DAY_H, TABLE_HDR_H) {
+  var grad = ctx.createLinearGradient(x0, 0, x0 + W, 0);
+  grad.addColorStop(0, brandColor); grad.addColorStop(1, brandColor + 'cc');
+  _lhRoundRect(ctx, x0, y0, W, DAY_H, 8); ctx.fillStyle = grad; ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '800 20px ' + _LH_FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(block.day, x0 + W / 2, y0 + 27);
+
+  var cols = [0.30, 0.30, 0.20, 0.20];
+  var labels = ['المعلم', 'المهمة', 'الصف/الشعبة', 'بعد الحصة/الوقت'];
+  var hy = y0 + DAY_H;
+  ctx.fillStyle = '#1f2937'; ctx.fillRect(x0, hy, W, TABLE_HDR_H);
+  ctx.fillStyle = '#fff'; ctx.font = '700 15px ' + _LH_FONT;
+  var cx = x0, cix;
+  for (cix = 0; cix < 4; cix++) { ctx.fillText(labels[cix], cx + W * cols[cix] / 2, hy + 24); cx += W * cols[cix]; }
+
+  var ry = hy + TABLE_HDR_H;
+  for (var r2 = 0; r2 < block.rows.length; r2++) {
+    var row = block.rows[r2];
+    ctx.fillStyle = (r2 % 2) ? '#ffffff' : '#f8fafc'; ctx.fillRect(x0, ry, W, ROW_H);
+    ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1; ctx.strokeRect(x0, ry, W, ROW_H);
+    ctx.fillStyle = '#1e293b'; ctx.font = '400 16px ' + _LH_FONT;
+    var vals = [row.teacher || '—', row.duty || '—', (row.grade || '—') + (row.section ? (' ' + row.section) : ''), row.afterPeriod || '—'];
+    var vx = x0;
+    for (var civ = 0; civ < 4; civ++) { ctx.fillText(vals[civ], vx + W * cols[civ] / 2, ry + 27); vx += W * cols[civ]; }
+    ry += ROW_H;
+  }
+  return ry;
+}
 function lhWeeklySupPrint() {
   var rows = LH.wsupRows || [], days = LH.wsupDays || [];
   var active = [];
   for (var r = 0; r < rows.length; r++) { if (rows[r].active !== false) active.push(rows[r]); }
   if (!active.length) { toast('لا توجد صفوف نشطة في القالب', 'warning'); return; }
   _lhBrand((App.user && App.user.schoolId) || '', function (brand) {
-    var byDay = {}, i;
-    for (i = 0; i < days.length; i++) byDay[days[i]] = [];
-    for (i = 0; i < active.length; i++) {
-      var w = active[i];
-      if (!byDay[w.day]) byDay[w.day] = [];
-      byDay[w.day].push(w);
-    }
-    var tables = '';
-    for (i = 0; i < days.length; i++) {
-      var list = byDay[days[i]];
-      if (!list || !list.length) continue;
-      var trs = '';
-      for (var k = 0; k < list.length; k++) {
-        var w2 = list[k];
-        trs += '<tr><td>' + escapeHtml(w2.teacher) + '</td><td>' + escapeHtml(w2.duty) + '</td>' +
-          '<td>' + escapeHtml((w2.grade || '—') + (w2.section ? (' ' + w2.section) : '')) + '</td>' +
-          '<td>' + escapeHtml(w2.afterPeriod || '—') + '</td></tr>';
+    _lhLogoImage(brand, function (logoImg) {
+      var byDay = {}, i;
+      for (i = 0; i < days.length; i++) byDay[days[i]] = [];
+      for (i = 0; i < active.length; i++) {
+        var w = active[i];
+        if (!byDay[w.day]) byDay[w.day] = [];
+        byDay[w.day].push(w);
       }
-      tables += '<h3 style="margin:14px 0 6px;font-size:14px;">' + escapeHtml(days[i]) + '</h3>' +
-        '<table class="lh-score-table"><thead><tr><th>المعلم</th><th>المهمة</th><th>الصف/الشعبة</th><th>بعد الحصة/الوقت</th></tr></thead><tbody>' + trs + '</tbody></table>';
-    }
-    var body = _lhHeaderHtml(brand, 'خطة الإشراف الأسبوعي') + tables + _lhFooterHtml();
-    _docPrintWindow('خطة الإشراف الأسبوعي', '@page{size:A4 portrait;margin:10mm}',
-      _lhHeaderFooterCss(brand),
-      '<div class="lh-doc">' + body + '</div>');
+      var dims = _LH_PAGE.a4p, W = dims.w;
+      var header = _lhMeasureHeader(brand, W);
+      var ROW_H = 42, DAY_H = 42, TABLE_HDR_H = 38, GAP = 18;
+      var dayBlocks = [];
+      for (i = 0; i < days.length; i++) {
+        var list = byDay[days[i]];
+        if (!list || !list.length) continue;
+        dayBlocks.push({ day: days[i], rows: list, h: DAY_H + TABLE_HDR_H + list.length * ROW_H + GAP });
+      }
+
+      var pageBudget = dims.h - header.height - 30 - _LH_FOOTER_RESERVE;
+      var pages = [], cur = [], curH = 0;
+      for (i = 0; i < dayBlocks.length; i++) {
+        var blk = dayBlocks[i];
+        if (curH + blk.h > pageBudget && cur.length) { pages.push(cur); cur = []; curH = 0; }
+        cur.push(blk); curH += blk.h;
+      }
+      if (cur.length) pages.push(cur);
+      if (!pages.length) pages.push([]);
+
+      var canvases = [];
+      for (var p = 0; p < pages.length; p++) {
+        // ارتفاع كل صفحة يُحسَب من محتواها الفعلي (لا يُفترَض دوماً dims.h) — يمنع اقتطاع
+        // صامتاً ليوم واحد كبير يتجاوز بمفرده ارتفاع صفحة قياسية (نفس نهج _lhBuildBlockDoc).
+        var pageContentH = 0;
+        for (var pb = 0; pb < pages[p].length; pb++) pageContentH += pages[p][pb].h;
+        var neededPageH = header.height + 30 + pageContentH + _LH_FOOTER_RESERVE;
+        var pageH = Math.max(dims.h, neededPageH);
+
+        var canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = pageH;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, pageH);
+        var c = (brand && brand.color) || '#0F5C8C';
+        _lhDrawFrame(ctx, W, pageH, c);
+        var titleSuffix = pages.length > 1 ? (' (' + (p + 1) + '/' + pages.length + ')') : '';
+        _lhDrawHeader(ctx, brand, header, W, logoImg, 'خطة الإشراف الأسبوعي' + titleSuffix);
+
+        var y = header.height + 30;
+        for (var b = 0; b < pages[p].length; b++) {
+          y = _lhDrawSupDayBlock(ctx, pages[p][b], _LH_MARGIN_X, y, W - _LH_MARGIN_X * 2, c, ROW_H, DAY_H, TABLE_HDR_H) + GAP;
+        }
+        _lhDrawFooter(ctx, W, pageH);
+        canvases.push(canvas);
+      }
+      _lhShowOutput(document.getElementById('lh-outputArea'), canvases, 'خطة الإشراف الأسبوعي', 'خطة-الاشراف-الاسبوعي', 'a4p');
+    });
   });
+}
+
+var LH = { view: 'menu', wsupRows: [], wsupDays: [], _out: null };
+var LH_TEMPLATES = [
+  { key:'lessonPrep',       icon:'📝', label:'ورقة تحضير درس',                    roles:['teacher'] },
+  { key:'examPaper',        icon:'🧾', label:'ورقة اختبار',                       roles:['teacher'] },
+  { key:'behaviorNotice',   icon:'📋', label:'إشعار سلوك/تعزيز',                  roles:['teacher'] },
+  { key:'appreciationCert', icon:'🎖️', label:'شهادة تقدير',                      roles:['admin','deputy'] },
+  { key:'weeklySupPrint',   icon:'🗓️', label:'نسخة مطبوعة لخطة الإشراف الأسبوعي', roles:['supervisor'] }
+];
+
+function renderLetterheads() {
+  var box = document.getElementById('dynamicContent');
+  if (!box) return;
+  var role = (App.user && App.user.role) || 'teacher';
+  var isAdminLike = (role === 'admin' || role === 'deputy');
+  var cards = '';
+  for (var i = 0; i < LH_TEMPLATES.length; i++) {
+    var t = LH_TEMPLATES[i];
+    if (!isAdminLike && t.roles.indexOf(role) === -1) continue;
+    cards += '<div class="card" style="cursor:pointer;padding:16px;text-align:center;min-width:160px;" onclick="lhOpen(\'' + t.key + '\')">' +
+      '<div style="font-size:28px;margin-bottom:8px;">' + t.icon + '</div>' +
+      '<div style="font-size:14px;font-weight:600;">' + t.label + '</div></div>';
+  }
+  var head = '<div class="page-head"><h2 style="margin:0;">🗂️ ديباجات المدرسة</h2>' +
+    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">قوالب طباعة رسمية جديدة — بلا حفظ سجل ولا ترقيم آلي. أي رقم/تاريخ يُدخَل يدوياً لغرض العرض فقط.</p></div>';
+  box.innerHTML = head +
+    (cards ? '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;">' + cards + '</div>'
+           : '<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">لا قوالب متاحة لدورك حالياً</div></div>') +
+    '<div id="lh-formArea" style="margin-top:16px;"></div>' +
+    '<div id="lh-outputArea"></div>';
+}
+
+function lhOpen(key) {
+  LH.view = key;
+  var area = document.getElementById('lh-formArea');
+  var outArea = document.getElementById('lh-outputArea');
+  if (outArea) outArea.innerHTML = '';
+  if (!area) return;
+  var fnMap = {
+    lessonPrep: lhLessonPrepForm,
+    examPaper: lhExamPaperForm,
+    behaviorNotice: lhBehaviorNoticeForm,
+    appreciationCert: lhAppreciationCertForm,
+    weeklySupPrint: lhWeeklySupForm
+  };
+  var fn = fnMap[key];
+  if (fn) fn(area);
 }
 
 // ════════════════════════════════════════════════════════
