@@ -2542,6 +2542,23 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال مراجعة ونشر تغييرات الجدول للمنصتين (توزيع الحصص) -->
+<div class="modal-backdrop" id="sdPublishModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>📢 مراجعة ونشر التغييرات للمنصتين</span>
+      <button class="modal-close" onclick="closeModal('sdPublishModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="sdPublishBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('sdPublishModal')">إلغاء</button>
+      <button class="btn btn-primary" id="sdPublishConfirmBtn" style="display:none" onclick="schedDist_confirmPublish()">✅ تأكيد النشر للمنصتين</button>
+    </div>
+  </div>
+</div>
+
 <!-- مودال إضافة/تعديل واجب -->
 <div class="modal-backdrop" id="homeworkModal">
   <div class="modal-dialog">
@@ -8827,6 +8844,7 @@ function renderScheduleSettings() {
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_autoOne()">🎯 توزيع تلقائي لمعلّم</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_checkConflicts()">🔍 فحص تعارضات شامل</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
+        '<button class="btn btn-info btn-sm" onclick="schedDist_openPublish()">📢 مراجعة ونشر التغييرات</button>' +
       '</div></div>' +
     '<div class="section-body">' +
       '<div id="sdProgress"><button class="btn btn-secondary btn-sm" onclick="schedDist_loadProgress()">📊 عرض نسبة إنجاز الحصص لكل معلّم</button></div>' +
@@ -9248,6 +9266,69 @@ function schedDist_undo() {
     if (r && r.success) { toast('✅ ' + r.message, 'success'); schedDist_refreshView(); schedDist_loadProgress(); }
     else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
   }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+}
+
+// مراجعة ونشر التغييرات للمنصتين — يلتقط أي تعديل مباشر على شيت الجدول
+// الرئيسي (خارج هذه الواجهة) ويعرض الفرق قبل الدفع الفعلي لمنصّتي المعلم
+// والطالب. لا علاقة له بالمزامنة التلقائية القائمة أصلاً بعد كل تعيين/تعديل/
+// حذف/تراجع عبر هذه الواجهة — أداة إضافية اختيارية فقط.
+function _sdPublishRowLine(r) {
+  return escapeHtml(_sdClassLabel(r.grade, r.section)) + ' — ' + escapeHtml(r.day) + ' الحصة ' + r.period +
+    ': ' + escapeHtml(r.subject) + ' (' + escapeHtml(r.teacher) + ')';
+}
+function schedDist_openPublish() {
+  var body = document.getElementById('sdPublishBody');
+  body.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  document.getElementById('sdPublishConfirmBtn').style.display = 'none';
+  openModal('sdPublishModal');
+  callServer('previewScheduleSyncProtected', {}, function (r) {
+    if (!r || !r.success) { body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>'; return; }
+    var added = r.added || [], removed = r.removed || [], changed = r.changed || [];
+    var total = added.length + removed.length + changed.length;
+    if (!total) {
+      body.innerHTML = '<div class="alert alert-success">✅ لا توجد تغييرات غير منشورة حالياً — الجدول متطابق بالفعل مع المنصّتين.</div>';
+      return;
+    }
+    var h = '<div class="alert alert-warning">⚠️ ' + total + ' تغييراً غير منشور بعد (' +
+      added.length + ' إضافة، ' + changed.length + ' تعديل، ' + removed.length + ' حذف).</div>';
+    if (added.length) {
+      h += '<b>➕ إضافات:</b><ul style="margin:6px 0 12px;padding-right:18px">';
+      for (var i = 0; i < added.length; i++) h += '<li>' + _sdPublishRowLine(added[i]) + '</li>';
+      h += '</ul>';
+    }
+    if (changed.length) {
+      h += '<b>✏️ تعديلات:</b><ul style="margin:6px 0 12px;padding-right:18px">';
+      for (var j = 0; j < changed.length; j++) {
+        var c = changed[j];
+        h += '<li>' + escapeHtml(_sdClassLabel(c.grade, c.section)) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period +
+          ': ' + escapeHtml(c.before.subject) + ' (' + escapeHtml(c.before.teacher) + ') ← ' +
+          escapeHtml(c.after.subject) + ' (' + escapeHtml(c.after.teacher) + ')</li>';
+      }
+      h += '</ul>';
+    }
+    if (removed.length) {
+      h += '<b>🗑️ حذف:</b><ul style="margin:6px 0 0;padding-right:18px">';
+      for (var k = 0; k < removed.length; k++) h += '<li>' + _sdPublishRowLine(removed[k]) + '</li>';
+      h += '</ul>';
+    }
+    body.innerHTML = h;
+    document.getElementById('sdPublishConfirmBtn').style.display = '';
+  }, function (e) { body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+}
+function schedDist_confirmPublish() {
+  if (!confirm('نشر هذه التغييرات فعلياً لمنصّتي المعلم والطالب؟')) return;
+  var body = document.getElementById('sdPublishBody');
+  document.getElementById('sdPublishConfirmBtn').style.display = 'none';
+  body.innerHTML = '<div class="alert alert-info">⏳ جاري النشر…</div>';
+  callServer('publishScheduleSyncProtected', {}, function (r) {
+    if (r && r.success) {
+      toast('✅ ' + r.message, 'success');
+      body.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) +
+        '<br><small>قد يستغرق ظهور التغييرات لدى الطلاب حتى ٣ دقائق (كاش المنصة).</small></div>';
+    } else {
+      body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+    }
+  }, function (e) { body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
 
 // ════════════════════════════════════════════════════════════════════
