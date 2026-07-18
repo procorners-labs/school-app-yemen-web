@@ -7201,9 +7201,13 @@ function ec_gradesRenderTable() {
     if (q) students = students.filter(function (s) { return s.name.toLowerCase().indexOf(q) !== -1; });
   }
 
-  // كل أوضاع رصد الدرجات (للصغار/بالرقم السري/بالاسم، إدخال وكشف) تُرتَّب موحَّدة بالرقم السري
-  // تصاعدياً — يطابق ترتيب لجان الجلوس الفعلي بصرف النظر عن الوضع المعروض.
-  students.sort(function (a, b) { return (parseInt(a.secretNumber, 10) || 0) - (parseInt(b.secretNumber, 10) || 0); });
+  // أوضاع الرقم السري والاسم (إدخال وكشف) تُرتَّب بالرقم السري تصاعدياً — يطابق ترتيب لجان
+  // الجلوس الفعلي. وضع "للصغار" وحده يبقى مرتّباً بالاسم أبجدياً (لا رقم جلوس/لجان لهذه الفئة).
+  if (mode === 'young') {
+    students.sort(function (a, b) { return a.name.localeCompare(b.name, 'ar'); });
+  } else {
+    students.sort(function (a, b) { return (parseInt(a.secretNumber, 10) || 0) - (parseInt(b.secretNumber, 10) || 0); });
+  }
 
   var subjects = (mode === 'young') ? (d.subjects || []) : null;
   var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;" id="ec-grades-real-table">' +
