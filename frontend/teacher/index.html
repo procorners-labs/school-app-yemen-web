@@ -7201,13 +7201,9 @@ function ec_gradesRenderTable() {
     if (q) students = students.filter(function (s) { return s.name.toLowerCase().indexOf(q) !== -1; });
   }
 
-  if (mode === 'secretEntry' || mode === 'secretView') {
-    students.sort(function (a, b) { return (parseInt(a.secretNumber, 10) || 0) - (parseInt(b.secretNumber, 10) || 0); });
-  } else if (mode === 'nameView') {
-    students.sort(function (a, b) { return (parseInt(a.seatNumber, 10) || 0) - (parseInt(b.seatNumber, 10) || 0); });
-  } else {
-    students.sort(function (a, b) { return a.name.localeCompare(b.name, 'ar'); });
-  }
+  // كل أوضاع رصد الدرجات (للصغار/بالرقم السري/بالاسم، إدخال وكشف) تُرتَّب موحَّدة بالرقم السري
+  // تصاعدياً — يطابق ترتيب لجان الجلوس الفعلي بصرف النظر عن الوضع المعروض.
+  students.sort(function (a, b) { return (parseInt(a.secretNumber, 10) || 0) - (parseInt(b.secretNumber, 10) || 0); });
 
   var subjects = (mode === 'young') ? (d.subjects || []) : null;
   var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;" id="ec-grades-real-table">' +
