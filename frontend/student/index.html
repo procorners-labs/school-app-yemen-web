@@ -806,6 +806,26 @@ a { color: var(--pr); text-decoration: none; }
   color-scheme: dark;
 }
 
+/* 🎂 بطاقة تذكير تاريخ الميلاد — خلفية .card العادية (متكيّفة مع الثيم) لا var(--warn-bg)
+   الثابتة؛ حساب فعلي أظهر أن var(--warn) نصّاً على var(--warn-bg) يعطي ~2.86:1 فقط (دون AA
+   رغم استخدام هذا الإقران بالذات في عناصر أخرى موجودة أصلاً بالملف — لن يُكرَّر هنا). --warn
+   يُستخدَم زخرفياً فقط (شريط الحدّ، عتبته ٣:١ لا ٤٫٥:١) والنصّ كله var(--txt) الآمن دوماً. */
+.birthdate-notice { border-inline-start: 4px solid var(--warn); }
+.birthdate-notice-body { display: flex; align-items: center; gap: 12px; }
+.birthdate-notice .ic { font-size: 28px; flex: 0 0 auto; }
+.birthdate-notice .txt { flex: 1; min-width: 0; }
+.birthdate-notice .ttl { font-weight: 800; font-size: 14.5px; color: var(--txt); margin-bottom: 2px; }
+.birthdate-notice .sub { font-size: 12.5px; color: var(--txt); line-height: 1.6; }
+.birthdate-notice-btn {
+  flex: 0 0 auto; background: var(--pr); color: #fff; border: none; border-radius: var(--rad-s);
+  padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.birthdate-notice-btn:hover { background: var(--pr-d); }
+@media (max-width: 480px) {
+  .birthdate-notice-body { flex-wrap: wrap; }
+  .birthdate-notice-btn { width: 100%; }
+}
+
 /* 👨‍👩‍👦 شرائح تبديل حسابات الإخوة */
 .sib-chip {
   display: flex; align-items: center; gap: 6px;
@@ -2044,6 +2064,18 @@ a { color: var(--pr); text-decoration: none; }
         <div class="meta" id="welcomeMeta"></div>
       </div>
 
+      <!-- 🎂 تذكير بإضافة تاريخ ميلاد الطالب (تظهر فقط عند خلو الحقل — تختفي فور التعبئة) -->
+      <div class="card birthdate-notice" id="birthdateNoticeCard" style="display:none;">
+        <div class="birthdate-notice-body">
+          <div class="ic">🎂</div>
+          <div class="txt">
+            <div class="ttl">أضف تاريخ ميلاد الطالب</div>
+            <div class="sub">يرجى من ولي الأمر إدخال تاريخ ميلاد الطالب لإكمال الملف الشخصي.</div>
+          </div>
+          <button class="birthdate-notice-btn" onclick="_birthdateNoticeOpenPicker()">➕ إضافة الآن</button>
+        </div>
+      </div>
+
       <!-- 👨‍👩‍👦 إخوتك في المدرسة (تظهر فقط عند وجود إخوة مرتبطين فعلاً) -->
       <div class="card" id="siblingsCard" style="display:none;">
         <div class="card-h">
@@ -3011,6 +3043,7 @@ function initApp() {
   wm += '<span class="chip" id="birthdateChip" onclick="openBirthdatePicker()" title="اضغط لتحديد/تعديل تاريخ ميلادك"></span>';
   $('welcomeMeta').innerHTML = wm;
   renderBirthdateChip();
+  renderBirthdateNotice();
 
   // 👨‍👩‍👦 بطاقة إخوتك في المدرسة (تظهر فقط عند وجود إخوة مرتبطين فعلاً)
   renderSiblingsCard();
@@ -6290,6 +6323,23 @@ function renderBirthdateChip() {
     : '🎂 أضف تاريخ ميلادك';
 }
 
+// بطاقة تذكير بارزة أعلى الرئيسية (لا الشارة الصغيرة وحدها) — تظهر فقط عند خلو الحقل، وتختفي
+// فوراً عند الحفظ الناجح (استدعاء إضافي من saveMyBirthdate) بلا حاجة لإعادة تحميل الصفحة.
+function renderBirthdateNotice() {
+  var card = $('birthdateNoticeCard');
+  if (!card) return;
+  card.style.display = APP.user.birthdate ? 'none' : 'block';
+}
+
+// زرّ البطاقة يمرّر التركيز للشريحة الفعلية أعلى الترحيب (حيث يفتح منتقي التاريخ الأصلي في
+// مكانها فعلياً — openBirthdatePicker/saveMyBirthdate مرتبطتان بعنصر #birthdateChip تحديداً،
+// لا تكرار لمنطقهما هنا) كي لا يظهر منتقي التاريخ بمكان بعيد عن الزرّ الذي ضغطه المستخدم.
+function _birthdateNoticeOpenPicker() {
+  var chip = $('birthdateChip');
+  if (chip) chip.scrollIntoView({ behavior: _examPrefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+  openBirthdatePicker();
+}
+
 function _birthdateChipToSpan() {
   var span = document.createElement('span');
   span.className = 'chip';
@@ -6335,6 +6385,7 @@ function saveMyBirthdate(value) {
         var live = document.getElementById('birthdateChip');
         if (live && live.tagName === 'INPUT') live.replaceWith(_birthdateChipToSpan());
         renderBirthdateChip();
+        renderBirthdateNotice();
         toast(r.message || 'تم الحفظ', 's');
       } else {
         var liveErr = document.getElementById('birthdateChip');
