@@ -3761,6 +3761,13 @@ function renderGradesVisChips() {
 // الشعب») — مناسبة لفلاتر العرض. الشعب محلولة فعلياً من الخادم في assignments.
 function getMySectionsForGradeSubject(subject, grade) {
   if (!App.user) return [];
+  // المشرف يحمل isAdmin=true دوماً حتى عند تقييده بصفوف/شعب محدَّدة عبر «ضبط
+  // صلاحيات المشرف» — App.user.sections يحمل نطاقه الفعلي المُحلَّل خادمياً
+  // (المقيَّد إن وُجد تقييد، أو الكامل إن لم يُقيَّد)؛ لا نعتمد isAdmin() هنا
+  // كي لا نتجاوز التقييد بعرض كل شعب المدرسة.
+  if (isSupervisor()) {
+    return (App.user.sections && App.user.sections.length) ? App.user.sections.slice() : [];
+  }
   if (isAdmin()) {
     return (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
   }
