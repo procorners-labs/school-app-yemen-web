@@ -6511,21 +6511,20 @@ function ec_loadCommittees() {
 
 // دفعة لجان افتراضية أولية (تظهر فقط حين تكون القائمة فارغة تماماً) — نقطة انطلاق سريعة
 // بدل إدخال كل لجنة يدوياً من الصفر؛ التعديل/الحذف/الإضافة اليدوية تبقى متاحة بعدها كما هي.
-// لجان بحسب الصفوف/الشُعب الحقيقية لهذه المدرسة (لا 5 لجان عامة) — منفَّذة خادمياً بالكامل
-// (seedDefaultCommitteesProtected) بفهرسة منهج صحيحة وidempotent، بدل تسلسل استدعاءات عميل هشّ.
-// السعة القصوى للجنة الواحدة تُطلَب من المستخدم (بدل افتراض لجنة واحدة بسعة كامل الصف بلا حدّ) —
-// كل مدرسة تعرف سعة قاعاتها الفعلية؛ الصف الذي يتجاوز هذه السعة يُقسَّم على عدّة لجان مرقَّمة.
+// مجمّع لجان عام مرقَّم تسلسلياً يغطي كل طلاب الصفوف الكبيرة معاً (لا لجنة لكل صف — خوارزمية
+// التوزيع تدمج صفَّين متتاليَين داخل كل لجنة عمداً، راجع تعليق seedDefaultCommitteesProtected
+// بـExamControl.js) — منفَّذة خادمياً بالكامل وidempotent (ترفض التوليد إن وُجدت لجان فعّالة أصلاً).
+// السعة القصوى للجنة الواحدة تُطلَب من المستخدم — كل مدرسة تعرف سعة قاعاتها الفعلية؛ الإجمالي
+// الذي يتجاوز هذه السعة يُقسَّم على عدّة لجان مرقَّمة متوازنة.
 function ec_seedDefaultCommittees() {
-  var maxCapacity = prompt('الحد الأقصى لسعة اللجنة الواحدة (سيُقسَّم أي صف يتجاوز هذا العدد إلى عدّة لجان):', '30');
+  var maxCapacity = prompt('الحد الأقصى لسعة اللجنة الواحدة (سيُقسَّم إجمالي طلاب الصفوف الكبيرة إلى عدّة لجان بهذه السعة):', '30');
   if (maxCapacity === null) return;
   maxCapacity = Math.floor(Number(maxCapacity));
   if (!maxCapacity || isNaN(maxCapacity) || maxCapacity < 5) { toast('أدخل رقماً صحيحاً 5 أو أكبر', 'error'); return; }
-  if (!confirm('سيتم إنشاء لجان لكل صف كبير (الخامس فما فوق) بسعة أقصاها ' + maxCapacity + ' لكل لجنة (قابلة للتعديل فوراً) — متابعة؟')) return;
+  if (!confirm('سيتم إنشاء لجان عامة مرقّمة تسلسلياً (لجنة - 1، لجنة - 2...) تغطي كل طلاب الصفوف الكبيرة (الخامس فما فوق) معاً، بسعة أقصاها ' + maxCapacity + ' لكل لجنة (قابلة للتعديل فوراً) — متابعة؟')) return;
   callServer('seedDefaultCommitteesProtected', { maxCapacity: maxCapacity }, function (res) {
     if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'فشل التنفيذ'), 'error'); return; }
-    var msg = '✅ أُنشئت ' + res.created.length + ' لجنة';
-    if (res.skipped && res.skipped.length) msg += ' (تخطّي ' + res.skipped.length + ' موجودة مسبقاً بنفس الاسم)';
-    toast(msg, 'success');
+    toast('✅ أُنشئت ' + res.created.length + ' لجنة', 'success');
     ec_loadCommittees();
   }, function (err) { toast('❌ ' + err.message, 'error'); });
 }
@@ -6538,7 +6537,7 @@ function ec_renderCommittees() {
           '</div>';
   if (!list.length) {
     h += '<div class="empty-state"><div class="es-icon">🏫</div><div class="es-title">لا توجد لجان بعد</div>' +
-         '<button onclick="ec_seedDefaultCommittees()" style="margin-top:10px;background:#455a64;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">⚡ توليد لجان بحسب الصفوف الحقيقية</button>' +
+         '<button onclick="ec_seedDefaultCommittees()" style="margin-top:10px;background:#455a64;color:#fff;border:none;border-radius:10px;padding:9px 18px;cursor:pointer;font-weight:700;">⚡ توليد لجان افتراضية مرقّمة</button>' +
          '</div>';
   } else {
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">' +
@@ -7269,7 +7268,8 @@ function ec_gradesPrint() {
   var d = _ecGradesData || {};
   var titleMap = { young: 'رصد الدرجات للصغار', secretEntry: 'الرصد بالرقم السري', secretView: 'كشف الأرقام السرية', nameEntry: 'الرصد بالاسم', nameView: 'كشف بالاسم' };
   var title = (titleMap[_ecGradeMode] || 'رصد الدرجات') + ' — ' + (d.grade || '') + (d.section ? ' - ' + d.section : '') + (d.subject ? ' — ' + d.subject : '');
-  // وضع الصغار: عمودان ثابتان + عمود لكل مادة (سبعة حالياً) — landscape كي لا يتجاوز عرض A4.
+  // وضع الصغار: عمودان ثابتان + عمود لكل مادة من منهج الصف الفعلي (عدد ديناميكي لكل صف، لا سبعة
+  // ثابتة) — landscape احتياطاً لأكبر عدد مواد ممكن كي لا يتجاوز عرض A4.
   var css = (_ecGradeMode === 'young' ? '@page{size:A4 landscape;margin:8mm;}' : '@page{size:A4;margin:10mm;}') +
             ' body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#1e293b;margin:0;}' +
             'h3{margin:0 0 12px;font-size:16px;font-weight:700;border-bottom:2px solid #1a237e;padding-bottom:8px;}' +
