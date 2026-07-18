@@ -2593,11 +2593,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </div>
     <div class="modal-body">
       <input type="hidden" id="newsEditId">
-      <div class="form-row">
+      <div class="form-row" id="newsGradeSecRowEdit">
         <div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="newsGrade"></select></div>
         <div class="form-group" style="flex:2"><label class="form-label">الشعبة <span style="font-weight:400;font-size:.78rem;color:var(--text-light)">(اختر أكثر من شعبة للنشر لها معاً)</span></label>
           <div class="asgn-section-group" id="newsSectionBox" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:13px;min-height:38px"></div>
         </div>
+      </div>
+      <div class="form-group mb-3" id="newsGradeSecRowAdd">
+        <label class="form-label">الفصول والشعب <span style="font-weight:400;font-size:.78rem;color:var(--text-light)">(اختر فصلاً أو أكثر، ولكل فصل حدّد الشعب التي تريد النشر لها)</span></label>
+        <div id="newsGradeSecBox" style="border:1px solid var(--border,#ddd);border-radius:8px;padding:8px;max-height:260px;overflow-y:auto;font-size:13px"></div>
       </div>
       <div class="form-group mb-3"><label class="form-label">نص الخبر <span style="color:var(--danger)">*</span></label><textarea class="form-control" id="newsText" placeholder="اكتب الخبر أو الإشعار..."></textarea></div>
       <div class="form-group mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="newsDate"></div>
@@ -5215,15 +5219,128 @@ function _newsCollectSelectedSections() {
 }
 
 /**
+ * يرسم شجرة فصول/شعب المعلّم الحقيقية (وضع الإضافة فقط) — كل فصل checkbox
+ * مستقل، وعند تفعيله تظهر تحته قائمة شعب ذلك الفصل تحديداً (شعبه الحقيقية
+ * هو، لا شعب فصل آخر)، محدَّدة تلقائياً كاملةً وقابلة للإلغاء فردياً. زر
+ * "تحديد كل فصولي وشعبي" يفعّل كل الفصول وكل شعبها دفعة واحدة.
+ */
+function _newsRenderGradeSectionTree() {
+  var box = document.getElementById('newsGradeSecBox');
+  if (!box) return;
+  var grades = myGrades();
+  var html = '';
+  if (grades.length > 1) {
+    html += '<label class="asgn-sec-lbl" style="font-weight:600;display:block;margin-bottom:6px">' +
+      '<input type="checkbox" id="newsAllGradesChk" onchange="_newsOnAllGradesToggle(this)"> تحديد كل فصولي وشعبي</label>' +
+      '<hr style="margin:4px 0 8px;border-color:var(--border,#ddd)">';
+  }
+  for (var i = 0; i < grades.length; i++) {
+    var g = grades[i];
+    var secs = getMySectionsForGradeSubject('', g);
+    html += '<div class="news-grade-block" style="margin-bottom:8px">';
+    html += '<label class="asgn-sec-lbl"><input type="checkbox" class="news-grade-opt" value="' + esc(g) + '" onchange="_newsOnGradeToggle(this)"> ' + esc(g) + '</label>';
+    html += '<div class="news-grade-secs" style="display:none;flex-wrap:wrap;gap:6px;margin-inline-start:22px;margin-top:4px">';
+    for (var k = 0; k < secs.length; k++) {
+      html += '<label class="asgn-sec-lbl"><input type="checkbox" class="news-gsec-opt" value="' + esc(secs[k]) + '" onchange="_newsOnGSecToggle(this)"> ' + esc(secs[k]) + '</label>';
+    }
+    if (!secs.length) html += '<span style="color:var(--text-light);font-size:.8rem">لا توجد شعب متاحة</span>';
+    html += '</div></div>';
+  }
+  if (!grades.length) html = '<span style="color:var(--text-light);font-size:.82rem">لا توجد فصول متاحة لحسابك</span>';
+  box.innerHTML = html;
+}
+
+// تفعيل/تعطيل فصل ⇒ إظهار/إخفاء قائمة شعبه + تحديد/إلغاء كل شعبه دفعة واحدة.
+function _newsOnGradeToggle(chk) {
+  var block = chk.closest ? chk.closest('.news-grade-block') : null;
+  if (block) {
+    var secsDiv = block.querySelector('.news-grade-secs');
+    if (secsDiv) {
+      var opts = secsDiv.querySelectorAll('.news-gsec-opt');
+      secsDiv.style.display = chk.checked ? 'flex' : 'none';
+      for (var i = 0; i < opts.length; i++) opts[i].checked = chk.checked;
+    }
+  }
+  if (!chk.checked) {
+    var allChk = document.getElementById('newsAllGradesChk');
+    if (allChk) allChk.checked = false;
+  }
+}
+
+// إلغاء شعبة واحدة لا يُلغي الفصل نفسه (يبقى مفعّلاً بشعبه المتبقية) — فقط
+// يُلغي «تحديد كل فصولي وشعبي» إن كان مفعّلاً، كي لا يوهم بأن الكل ما زال مختاراً.
+function _newsOnGSecToggle(chk) {
+  if (chk.checked) return;
+  var allChk = document.getElementById('newsAllGradesChk');
+  if (allChk) allChk.checked = false;
+}
+
+function _newsOnAllGradesToggle(masterChk) {
+  var box = document.getElementById('newsGradeSecBox');
+  if (!box) return;
+  var gradeOpts = box.querySelectorAll('.news-grade-opt');
+  for (var i = 0; i < gradeOpts.length; i++) {
+    gradeOpts[i].checked = masterChk.checked;
+    var block = gradeOpts[i].closest ? gradeOpts[i].closest('.news-grade-block') : null;
+    if (block) {
+      var secsDiv = block.querySelector('.news-grade-secs');
+      if (secsDiv) {
+        secsDiv.style.display = masterChk.checked ? 'flex' : 'none';
+        var sOpts = secsDiv.querySelectorAll('.news-gsec-opt');
+        for (var k = 0; k < sOpts.length; k++) sOpts[k].checked = masterChk.checked;
+      }
+    }
+  }
+}
+
+/**
+ * يجمع اختيارات شجرة الإضافة — يُرجع مصفوفة { grade, sections:[...] } لكل
+ * فصل مفعَّل له شعبة واحدة على الأقل محدَّدة (فصل مفعَّل بلا أي شعبة محدَّدة يُستبعَد).
+ */
+function _newsCollectGradeSections() {
+  var box = document.getElementById('newsGradeSecBox');
+  if (!box) return [];
+  var out = [];
+  var blocks = box.querySelectorAll('.news-grade-block');
+  for (var i = 0; i < blocks.length; i++) {
+    var gradeChk = blocks[i].querySelector('.news-grade-opt');
+    if (!gradeChk || !gradeChk.checked) continue;
+    var secOpts = blocks[i].querySelectorAll('.news-gsec-opt:checked');
+    var secs = [];
+    for (var k = 0; k < secOpts.length; k++) secs.push(secOpts[k].value);
+    if (secs.length) out.push({ grade: gradeChk.value, sections: secs });
+  }
+  return out;
+}
+
+/**
  * فتح مودال إضافة / تعديل خبر
  * @param {string} [id] - معرّف الخبر للتعديل
  */
 function openNewsModal(id) {
   document.getElementById('newsEditId').value = id || '';
   document.getElementById('newsModalTitle').textContent = id ? '✏️ تعديل خبر' : '📢 إضافة خبر / إشعار';
-  fillSelect('newsGrade', myGrades(), 'اختر الفصل', isAdmin() ? '' : pickDefault(myGrades()));
-  var defGrade = document.getElementById('newsGrade').value;
-  _newsRenderSectionCheckboxes(defGrade, { editMode: false });
+
+  // وضع التعديل: فصل+شعبة مفردة (القائمة القديمة). وضع الإضافة: شجرة فصول/شعب متعددة.
+  var rowEdit = document.getElementById('newsGradeSecRowEdit');
+  var rowAdd  = document.getElementById('newsGradeSecRowAdd');
+  if (rowEdit) rowEdit.style.display = id ? '' : 'none';
+  if (rowAdd)  rowAdd.style.display  = id ? 'none' : '';
+
+  if (id) {
+    fillSelect('newsGrade', myGrades(), 'اختر الفصل', isAdmin() ? '' : pickDefault(myGrades()));
+    var defGrade = document.getElementById('newsGrade').value;
+    _newsRenderSectionCheckboxes(defGrade, { editMode: true });
+    var gradeSelect = document.getElementById('newsGrade');
+    if (gradeSelect) {
+      gradeSelect.onchange = function() {
+        _newsRenderSectionCheckboxes(this.value, { editMode: true });
+      };
+    }
+  } else {
+    _newsRenderGradeSectionTree();
+  }
+
   document.getElementById('newsDate').value = todayDate();
   document.getElementById('newsText').value = '';
   document.getElementById('newsFile').value = '';
@@ -5236,13 +5353,6 @@ function openNewsModal(id) {
   window._newsEditHadMedia = false;
   _newsRenderExistingMedia();
   _newsRenderNewFiles();
-
-  var gradeSelect = document.getElementById('newsGrade');
-  if (gradeSelect) {
-    gradeSelect.onchange = function() {
-      _newsRenderSectionCheckboxes(this.value, { editMode: !!document.getElementById('newsEditId').value });
-    };
-  }
 
   if (id) {
     showLoading('جاري تحميل بيانات الخبر...');
@@ -5334,19 +5444,30 @@ function _newsRemoveMedia(idx) {
  * حفظ الخبر (إضافة أو تحديث) مع دعم رفع المرفقات
  */
 function saveNews() {
-  var id       = document.getElementById('newsEditId').value || null;
-  var grade    = document.getElementById('newsGrade').value || '';
-  var sections = _newsCollectSelectedSections();
-  var news     = document.getElementById('newsText').value.trim();
-  var date     = document.getElementById('newsDate').value || todayDate();
+  var id   = document.getElementById('newsEditId').value || null;
+  var news = document.getElementById('newsText').value.trim();
+  var date = document.getElementById('newsDate').value || todayDate();
 
-  if (!news || !grade || !sections.length) {
-    toast('أكمل الحقول المطلوبة (اختر شعبة واحدة على الأقل)', 'warning');
-    return;
+  // مسار التعديل يبقى فصلاً وشعبة مفردة (اختيار وحيد مفروض في وضع editMode أصلاً).
+  // مسار الإضافة أصبح متعدّد الفصول — كل فصل له شعبه المختارة الخاصة به.
+  var grade, scopeData;
+  if (id) {
+    grade = document.getElementById('newsGrade').value || '';
+    var sections = _newsCollectSelectedSections();
+    if (!news || !grade || !sections.length) {
+      toast('أكمل الحقول المطلوبة (اختر شعبة واحدة على الأقل)', 'warning');
+      return;
+    }
+    scopeData = { grade: grade, section: sections[0] };
+  } else {
+    var gradeSections = _newsCollectGradeSections();
+    if (!news || !gradeSections.length) {
+      toast('أكمل الحقول المطلوبة (اختر فصلاً واحداً على الأقل وشعبة له)', 'warning');
+      return;
+    }
+    grade = gradeSections[0].grade; // سياق عرض معرض التصميم فقط — لا يُرسَل كنطاق نشر
+    scopeData = { items: gradeSections };
   }
-  // مسار التعديل يبقى بشعبة واحدة فقط (اختيار وحيد مفروض في وضع editMode أصلاً)
-  var section = sections[0];
-  var scopeData = id ? { section: section } : { sections: sections };
 
   // الوسائط المُبقاة (وضع التعديل) — روابط جاهزة
   var keptUrls = id ? ((window._newsKeepMedia || []).slice()) : [];
@@ -5366,7 +5487,7 @@ function saveNews() {
           design: id ? (window._newsEditDesign || '') : '',
           onConfirm: function (designStr) {
             var fresh = document.getElementById('newsText').value.trim() || news;
-            var payload = { id: id, grade: grade, news: fresh, date: date, attachments: '', design: designStr };
+            var payload = { id: id, news: fresh, date: date, attachments: '', design: designStr };
             for (var k in scopeData) payload[k] = scopeData[k];
             sendSaveNews(payload, id);
           }
@@ -5374,7 +5495,7 @@ function saveNews() {
       } catch (eDp) { _dpOpened = false; }
       if (_dpOpened) return;
     }
-    var payload1 = { id: id, grade: grade, news: news, date: date, attachments: keptUrls.join('\n') };
+    var payload1 = { id: id, news: news, date: date, attachments: keptUrls.join('\n') };
     for (var k1 in scopeData) payload1[k1] = scopeData[k1];
     sendSaveNews(payload1, id);
     return;
@@ -5399,7 +5520,7 @@ function saveNews() {
   function _newsUploadNext() {
     if (i >= files.length) {
       if (saveBtn) saveBtn.disabled = false;
-      var payload2 = { id: id, grade: grade, news: news, date: date, attachments: keptUrls.concat(newUrls).join('\n') };
+      var payload2 = { id: id, news: news, date: date, attachments: keptUrls.concat(newUrls).join('\n') };
       for (var k2 in scopeData) payload2[k2] = scopeData[k2];
       sendSaveNews(payload2, id);
       return;
