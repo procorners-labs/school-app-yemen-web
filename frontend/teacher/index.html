@@ -22317,6 +22317,9 @@ function _visitsLoadingSkeleton(msg){
 function _visitsEmptyState(msg, icon){
   return '<div class="tf-empty">'+(icon||'📭')+' '+_tfEsc(msg||'لا توجد بيانات كافية بعد')+'</div>';
 }
+function _visitsInfoBanner(text){
+  return '<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface2);border-radius:10px;padding:10px 14px;margin-bottom:14px;">'+text+'</div>';
+}
 
 // ═══ مؤشرات المقارنة + الملخّص الذكي (مرحلة 2) — كل النصوص عربية بقواعد حتمية مبنية على
 // أرقام محسوبة خادمياً أصلاً (res.deltas/res.topUsers) — بلا أي نداء LLM/خدمة خارجية. ═══
@@ -22357,7 +22360,7 @@ function renderVisitsTraffic(initialTab){
     if(!res || !res.success){
       var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
       var el=document.getElementById('dynamicContent');
-      if(el) el.innerHTML='<div class="tf-card"><div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div></div>';
+      if(el) el.innerHTML=_visitsCard('⚠️ تعذّر التحميل', _visitsEmptyState(msg));
       return;
     }
     _visitsRender(res, initialTab);
@@ -22463,7 +22466,7 @@ function _visitsRender(res, initialTab){
        '<div class="tf-kpi big" id="vt-online-kpi"><div class="tf-kpi-v" style="color:var(--tf-green);" id="vt-online-count">…</div>'+
        '<div class="tf-kpi-l"><span class="vt-pulse"></span>متصلين الآن</div></div>'+
      '</div>'+
-     '<div class="tf-card"><h3>👥 من متصل الآن</h3><div id="vt-online-list"><div class="tf-empty">جارٍ التحميل...</div></div></div>'+
+     _visitsCard('👥 من متصل الآن', '<div id="vt-online-list">'+_visitsEmptyState('جارٍ التحميل...','⏳')+'</div>')+
      _visitsCard('🌟 بارز هذا الأسبوع', _visitsBuildHighlightsHtml(res))+
      '</div>';
 
@@ -22483,19 +22486,20 @@ function _visitsRender(res, initialTab){
      '</div></div>';
 
   h+='<div class="tf-pane" id="tf-pane-log">'+
-     '<div class="tf-card"><div class="vt-filter vt-filter-bar">'+
+     _visitsCard('📋 سجلّ الزيارات التفصيلي',
+       '<div class="vt-filter vt-filter-bar">'+
        '<select id="vt-log-filter" onchange="_visitsRenderLog()">'+
          '<option value="all">كل الأدوار</option><option value="student">الطلاب فقط</option><option value="staff">الطاقم فقط</option>'+
        '</select></div>'+
-       '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t"><thead><tr><th>الوقت</th><th>الاسم</th><th>الدور</th><th>تفاصيل</th></tr></thead><tbody id="vt-log-body"></tbody></table></div>'+
-     '</div></div>';
+       '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t"><thead><tr><th>الوقت</th><th>الاسم</th><th>الدور</th><th>تفاصيل</th></tr></thead><tbody id="vt-log-body"></tbody></table></div>')+
+     '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-cumulative">'+
-     '<div id="vt-cumul-body"><div class="tf-empty">⏳ جارٍ التحميل...</div></div>'+
+     '<div id="vt-cumul-body">'+_visitsLoadingSkeleton()+'</div>'+
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-review">'+
-     '<div id="vt-review-body"><div class="tf-empty">⏳ جارٍ التحميل...</div></div>'+
+     '<div id="vt-review-body">'+_visitsLoadingSkeleton()+'</div>'+
      '</div>';
 
   h+='</div>'; // tf-root
@@ -22511,7 +22515,7 @@ function _visitsRender(res, initialTab){
 
 function _visitsRoleDonut(roleCounts){
   var keys=[]; for(var k in roleCounts){ if(roleCounts.hasOwnProperty(k)) keys.push(k); }
-  if(!keys.length) return '<div class="tf-empty">لا توجد بيانات بعد</div>';
+  if(!keys.length) return _visitsEmptyState('لا توجد بيانات بعد');
   var total=0, i; for(i=0;i<keys.length;i++) total+=roleCounts[keys[i]];
   keys.sort(function(a,b){ return roleCounts[b]-roleCounts[a]; });
   var stops='', acc=0, legend='';
@@ -22529,7 +22533,7 @@ function _visitsRoleDonut(roleCounts){
 }
 
 function _visitsTopUsers(list){
-  if(!list || !list.length) return '<div class="tf-empty">لا توجد بيانات كافية بعد</div>';
+  if(!list || !list.length) return _visitsEmptyState('لا توجد بيانات كافية بعد');
   var pairs=list.map(function(u){ return { name:u.name+' ('+(VT_ROLE_LABELS[u.role]||u.role)+')', value:u.count }; });
   return _tfBars(pairs, 'var(--tf-purple)');
 }
@@ -22541,7 +22545,7 @@ function _visitsWeekdayBars(weekday){
 }
 
 function _visitsHourlySvg(hourly){
-  if(!hourly || !hourly.length) return '<div class="tf-empty">لا توجد بيانات اليوم بعد</div>';
+  if(!hourly || !hourly.length) return _visitsEmptyState('لا توجد بيانات اليوم بعد');
   var W=820,H=220,pad=34,max=1,i;
   for(i=0;i<hourly.length;i++) max=Math.max(max, hourly[i]||0);
   var n=hourly.length, slot=(W-pad*2)/n, bw=Math.max(4,slot-4);
@@ -22559,7 +22563,7 @@ function _visitsHourlySvg(hourly){
 }
 
 function _visitsTrendSvg(trend){
-  if(!trend || !trend.length) return '<div class="tf-empty">لا توجد بيانات كافية بعد</div>';
+  if(!trend || !trend.length) return _visitsEmptyState('لا توجد بيانات كافية بعد');
   var W=820,H=240,pad=34,max=1,i;
   for(i=0;i<trend.length;i++) max=Math.max(max, trend[i].staff||0, trend[i].student||0);
   var n=trend.length, stepX=(W-pad*2)/Math.max(1,n-1);
@@ -22608,7 +22612,7 @@ function _visitsRenderOnline(res){
   if(!res || !res.success){ countEl.textContent='—'; return; }
   countEl.textContent = (res.staffCount||0)+(res.studentCount||0);
   var all = (res.staff||[]).concat(res.students||[]);
-  if(!all.length){ listEl.innerHTML='<div class="tf-empty">لا يوجد أحد متصل حالياً</div>'; return; }
+  if(!all.length){ listEl.innerHTML=_visitsEmptyState('لا يوجد أحد متصل حالياً'); return; }
   var html='<div class="vt-live">';
   for(var i=0;i<all.length;i++){
     var u=all[i];
@@ -22642,7 +22646,7 @@ function _visitsLoadCumulative(){
   callServer('getVisitsCumulativeProtected', {}, function(res){
     if(!res || !res.success){
       var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
-      if(body) body.innerHTML='<div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div>';
+      if(body) body.innerHTML=_visitsCard('⚠️ تعذّر التحميل', _visitsEmptyState(msg));
       return;
     }
     _visitsCumulLoaded=true;
@@ -22694,7 +22698,7 @@ function _visitsTierCell(value, tier){
     '<span style="font-weight:700;color:var(--text);">'+value+'</span></span>';
 }
 function _visitsTierBars(pairs, tierFn){
-  if(!pairs || !pairs.length) return '<div class="tf-empty">لا توجد بيانات</div>';
+  if(!pairs || !pairs.length) return _visitsEmptyState('لا توجد بيانات');
   var max=1,i; for(i=0;i<pairs.length;i++) max=Math.max(max, pairs[i].value||0);
   var html='';
   for(i=0;i<pairs.length;i++){
@@ -22748,8 +22752,7 @@ function _visitsRenderCumulative(res){
   window._visitsAllStudentsFull=res.allStudents||[];
 
   var h='';
-  h+='<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface2);border-radius:10px;padding:10px 14px;margin-bottom:14px;">'+
-     'ℹ️ هذه البيانات <b>تراكمية منذ إنشاء المدرسة على المنصة</b> (لا ترتبط بتاريخ محدَّد) — بخلاف بقية تبويبات هذه الصفحة المبنية على السجلّ الزمني الجديد منذ 15 يوليو 2026.</div>';
+  h+=_visitsInfoBanner('ℹ️ هذه البيانات <b>تراكمية منذ إنشاء المدرسة على المنصة</b> (لا ترتبط بتاريخ محدَّد) — بخلاف بقية تبويبات هذه الصفحة المبنية على السجلّ الزمني الجديد منذ 15 يوليو 2026.');
 
   h+='<div class="tf-kpis">'+
      _tfKpi(String(tot.totalTeacherLogins||0),'إجمالي دخول المعلمين','','var(--tf-blue)',false)+
@@ -22769,14 +22772,14 @@ function _visitsRenderCumulative(res){
      '<span>🟢 نشاط جيد</span><span>🟡 نشاط منخفض</span><span>🔴 بلا نشاط</span></div>';
 
   h+='<div class="tf-grid2">'+
-     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — المعلمون</h3>'+_visitsHistSvg((res.loginHistogram||{}).teacher, ['0','1','2-3','4-6','7-10','11+'], _visitsLoginBucketColor)+'</div>'+
-     '<div class="tf-card"><h3>📊 توزيع عدد الدخول — الطلاب</h3>'+_visitsHistSvg((res.loginHistogram||{}).student, ['0','1','2-3','4-6','7-10','11+'], _visitsLoginBucketColor)+'</div>'+
-     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — المعلمون</h3>'+_visitsHistSvg((res.usageHistogram||{}).teacher, ['0','1-10','10-30','30-60','60-120','120+'], _visitsUsageBucketColor)+'</div>'+
-     '<div class="tf-card"><h3>⏱️ توزيع مدة الاستخدام — الطلاب</h3>'+_visitsHistSvg((res.usageHistogram||{}).student, ['0','1-10','10-30','30-60','60-120','120+'], _visitsUsageBucketColor)+'</div>'+
+     _visitsCard('📊 توزيع عدد الدخول — المعلمون', _visitsHistSvg((res.loginHistogram||{}).teacher, ['0','1','2-3','4-6','7-10','11+'], _visitsLoginBucketColor))+
+     _visitsCard('📊 توزيع عدد الدخول — الطلاب', _visitsHistSvg((res.loginHistogram||{}).student, ['0','1','2-3','4-6','7-10','11+'], _visitsLoginBucketColor))+
+     _visitsCard('⏱️ توزيع مدة الاستخدام — المعلمون', _visitsHistSvg((res.usageHistogram||{}).teacher, ['0','1-10','10-30','30-60','60-120','120+'], _visitsUsageBucketColor))+
+     _visitsCard('⏱️ توزيع مدة الاستخدام — الطلاب', _visitsHistSvg((res.usageHistogram||{}).student, ['0','1-10','10-30','30-60','60-120','120+'], _visitsUsageBucketColor))+
      '</div>';
 
   var byGrade=res.byGrade||[];
-  h+='<div class="tf-card"><h3>🏫 التوزيع حسب الصف</h3><div class="tf-grid2">'+
+  h+=_visitsCard('🏫 التوزيع حسب الصف', '<div class="tf-grid2">'+
      '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">متوسط الدخول لكل طالب</div>'+
        _tfBars(byGrade.map(function(g){ return {name:g.grade, value:g.avgLoginCount}; }), 'var(--tf-blue)')+'</div>'+
      '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">متوسط الاستخدام (دقائق)</div>'+
@@ -22784,16 +22787,16 @@ function _visitsRenderCumulative(res){
      '<div><div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">نسبة المشاركة (%)</div>'+
        _visitsTierBars(byGrade.map(function(g){ return {name:g.grade, value:g.participationPct}; }), _visitsParticipationTier)+
        '<div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">🟢 ≥80٪ · 🟡 50-79٪ · 🔴 &lt;50٪</div></div>'+
-     '</div></div>';
+     '</div>');
 
   h+='<div class="tf-grid2">'+
-     '<div class="tf-card"><h3>🏅 أعلى 20 معلماً دخولاً</h3>'+
-       _visitsTierBars((res.topTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier)+'</div>'+
-     '<div class="tf-card"><h3>🏅 أعلى 20 طالباً دخولاً</h3>'+
-       _visitsTierBars((res.topStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier)+'</div>'+
+     _visitsCard('🏅 أعلى 20 معلماً دخولاً',
+       _visitsTierBars((res.topTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier))+
+     _visitsCard('🏅 أعلى 20 طالباً دخولاً',
+       _visitsTierBars((res.topStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier))+
      '</div>';
 
-  h+='<div class="tf-card"><h3>👨‍🏫 كل المعلمين ('+window._visitsAllTeachersFull.length+')</h3>'+
+  h+=_visitsCard('👨‍🏫 كل المعلمين ('+window._visitsAllTeachersFull.length+')',
      '<div class="vt-filter vt-filter-bar">'+
        '<input type="text" id="vt-teacher-search" placeholder="بحث بالاسم أو المادة..." oninput="_visitsFilterTeacherTable(this.value)" '+
        'style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;">'+
@@ -22801,10 +22804,9 @@ function _visitsRenderCumulative(res){
          _visitsBuildOptionList(window._visitsAllTeachersFull, 'subject', 'كل المواد')+
        '</select>'+
      '</div>'+
-     '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-teacher-table"></table></div>'+
-     '</div>';
+     '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-teacher-table"></table></div>');
 
-  h+='<div class="tf-card"><h3>🎒 كل الطلاب ('+window._visitsAllStudentsFull.length+')</h3>'+
+  h+=_visitsCard('🎒 كل الطلاب ('+window._visitsAllStudentsFull.length+')',
      '<div class="vt-filter vt-filter-bar">'+
        '<input type="text" id="vt-student-search" placeholder="بحث بالاسم..." oninput="_visitsFilterStudentTable(this.value)" '+
        'style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;">'+
@@ -22812,8 +22814,7 @@ function _visitsRenderCumulative(res){
          _visitsBuildOptionList(window._visitsAllStudentsFull, 'class', 'كل الصفوف')+
        '</select>'+
      '</div>'+
-     '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-student-table"></table></div>'+
-     '</div>';
+     '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-student-table"></table></div>');
 
   body.innerHTML=h;
   _visitsTeacherSortField=null; _visitsTeacherSortDir=1;
@@ -22918,7 +22919,7 @@ function _visitsLoadReview(){
   callServer('getVisitsReviewProtected', {}, function(res){
     if(!res || !res.success){
       var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
-      if(body) body.innerHTML='<div class="tf-empty">⚠️ '+_tfEsc(msg)+'</div>';
+      if(body) body.innerHTML=_visitsCard('⚠️ تعذّر التحميل', _visitsEmptyState(msg));
       return;
     }
     _visitsReviewLoaded=true;
@@ -22963,13 +22964,12 @@ function _visitsRenderReview(){
   var h='';
   h+='<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'+
      '<button class="tf-abtn tf-sync" onclick="_visitsReviewRefreshNow()">🔄 تحديث فوري</button></div>';
-  h+='<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface2);border-radius:10px;padding:10px 14px;margin-bottom:14px;">'+
-     'ℹ️ نشاط المعلم هنا <b>إجمالي عبر كل فصوله</b> (لا تسجيل دقيق لزيارة كل فصل على حدة حالياً) — '+
+  h+=_visitsInfoBanner('ℹ️ نشاط المعلم هنا <b>إجمالي عبر كل فصوله</b> (لا تسجيل دقيق لزيارة كل فصل على حدة حالياً) — '+
      'اعتبر النِّسب أدناه مؤشراً تقديرياً للمتابعة، لا قياساً حرفياً لكل فصل. '+
      '🆕 عدّادا تسجيل الدخول ومدة الاستخدام حديثان (منذ 2026-07-14)؛ النِّسب أدناه تُثرَى تلقائياً '+
      'ببيانات تاريخية أقدم (جلسات حضور، ملاحظات، مشاهدات أخبار) لكل طالب/فصل على حدة، فلا تعتمد '+
      'على العدّادين الجديدين وحدهما. الفصول المُصنَّفة 🕓 «قيد التجميع» لم تُرصَد لها أي إشارة نشاط '+
-     'مطلقاً من أي مصدر — لا تُصنَّف ضمن الخماسي العادي حتى تتوفّر أول إشارة، تفادياً لِـ«خامل بالكامل» مُضلِّلة.</div>';
+     'مطلقاً من أي مصدر — لا تُصنَّف ضمن الخماسي العادي حتى تتوفّر أول إشارة، تفادياً لِـ«خامل بالكامل» مُضلِّلة.');
 
   h+='<div class="tf-kpis">'+
      _tfKpi(String(counts.needs_review_a),'طلاب نشيطون / معلمون خاملون','','var(--tf-red)',false)+
@@ -22980,15 +22980,15 @@ function _visitsRenderReview(){
      _tfKpi(String(classes.length),'إجمالي الفصول المفحوصة','','var(--tf-blue)',false)+
      '</div>';
 
-  h+='<div class="tf-card"><h3>🧭 خريطة الفصول (مشاركة الطلاب × نشاط المعلمين)</h3>'+
-     _visitsReviewQuadrant(classes)+_visitsReviewLegend(counts)+'</div>';
+  h+=_visitsCard('🧭 خريطة الفصول (مشاركة الطلاب × نشاط المعلمين)',
+     _visitsReviewQuadrant(classes)+_visitsReviewLegend(counts));
 
   h+='<div class="tf-grid2">'+
-     '<div class="tf-card"><h3>📊 توزيع الفصول حسب الحالة</h3>'+_visitsReviewStackedBar(counts, classes.length)+'</div>'+
-     '<div class="tf-card"><h3>🏫 الفصول التي تحتاج مراجعة حسب الصف</h3>'+_visitsReviewGradeRollup(classes)+'</div>'+
+     _visitsCard('📊 توزيع الفصول حسب الحالة', _visitsReviewStackedBar(counts, classes.length))+
+     _visitsCard('🏫 الفصول التي تحتاج مراجعة حسب الصف', _visitsReviewGradeRollup(classes))+
      '</div>';
 
-  h+='<div class="tf-card"><h3>⚠️ أكثر 5 فصول تحتاج متابعة</h3>'+_visitsReviewTopOffenders(classes)+'</div>';
+  h+=_visitsCard('⚠️ أكثر 5 فصول تحتاج متابعة', _visitsReviewTopOffenders(classes));
 
   h+='<div class="vt-filter vt-filter-bar">'+
      '<select onchange="_visitsReviewSetFilter(this.value)">'+
@@ -23094,7 +23094,7 @@ function _visitsReviewTeacherList(c){
 // 50/80 على كلا المحورين تطابق منطق _visitsReviewCategory تماماً. مسمّى نصّي فقط لفئتَي
 // 🔴/🟠 (الأقلّ عدداً عادةً) مع إزاحة حتمية (لا Math.random) لمنع تراكب المسمّيات.
 function _visitsReviewQuadrant(classes){
-  if(!classes || !classes.length) return '<div class="tf-empty">لا توجد بيانات كافية بعد</div>';
+  if(!classes || !classes.length) return _visitsEmptyState('لا توجد بيانات كافية بعد');
   var W=560, H=420, pad=44;
   function mapX(v){ return pad + (W-pad*2)*((v||0)/100); }   // نشاط المعلمين٪ → x
   function mapY(v){ return H-pad - (H-pad*2)*((v||0)/100); } // مشاركة الطلاب٪ → y (معكوس)
@@ -23146,7 +23146,7 @@ function _visitsReviewQuadrant(classes){
 
 // ── شريط مُكدَّس + مفتاح ألوان لتوزيع الفئات الخمس (بديل عن donut — أنسب لعدد فئات ≤6) ──
 function _visitsReviewStackedBar(counts, total){
-  if(!total) return '<div class="tf-empty">لا توجد بيانات</div>';
+  if(!total) return _visitsEmptyState('لا توجد بيانات');
   var html='<div style="display:flex;width:100%;height:22px;border-radius:6px;overflow:hidden;">', i;
   for(i=0;i<_VT_REVIEW_CATS.length;i++){
     var c=_VT_REVIEW_CATS[i], n=counts[c.key]||0, pct=(n/total*100);
@@ -23177,17 +23177,17 @@ function _visitsReviewGradeRollup(classes){
     if(byGrade[c.grade]===undefined){ byGrade[c.grade]=0; order.push(c.grade); }
     byGrade[c.grade]++;
   }
-  if(!order.length) return '<div class="tf-empty">لا فصول تحتاج مراجعة حالياً 🎉</div>';
+  if(!order.length) return _visitsEmptyState('لا فصول تحتاج مراجعة حالياً 🎉');
   var pairs=order.map(function(g){ return {name:g, value:byGrade[g]}; });
   return _tfBars(pairs, 'var(--tf-red)');
 }
 
 // ── أكثر 5 فصول تحتاج متابعة (حسب مجموع النسبتين تصاعدياً) ──
 function _visitsReviewTopOffenders(classes){
-  if(!classes || !classes.length) return '<div class="tf-empty">لا بيانات</div>';
+  if(!classes || !classes.length) return _visitsEmptyState('لا بيانات');
   // فصول "قيد التجميع" (0/0 بلا أي إشارة نشاط) تُستبعَد — لا تظهر زوراً كأكثر الفصول تحتاج متابعة.
   var eligible=classes.filter(function(c){ return c.dataMaturity!=='pending'; });
-  if(!eligible.length) return '<div class="tf-empty">لا بيانات كافية بعد لكل الفصول (قيد التجميع)</div>';
+  if(!eligible.length) return _visitsEmptyState('لا بيانات كافية بعد لكل الفصول (قيد التجميع)');
   var scored=eligible.map(function(c){ return { c:c, score:(c.studentActivePct||0)+(c.teacherActivePct||0) }; });
   scored.sort(function(a,b){ return a.score-b.score; });
   var top=scored.slice(0,5), html='<div style="display:flex;flex-direction:column;gap:8px;">', i;
