@@ -314,6 +314,19 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
             <option>أخرى</option>
           </select>
         </div>
+        <div class="fld">
+          <label>نوع/مرحلة المدرسة (اختياري)</label>
+          <select id="f-slevel">
+            <option value="">-- شامل (كل المراحل) --</option>
+            <option value="kg">رياض أطفال فقط</option>
+            <option value="primary">ابتدائي (يشمل الروضة)</option>
+            <option value="primary_middle">ابتدائي + إعدادي</option>
+            <option value="middle">إعدادي فقط</option>
+            <option value="middle_secondary">إعدادي + ثانوي</option>
+            <option value="secondary">ثانوي فقط</option>
+          </select>
+          <div class="fld-hint">يحدّد الصفوف والرسوم الافتراضية المزروعة تلقائياً — اتركه فارغاً للشمول الكامل</div>
+        </div>
         <div class="fld full">
           <label>العنوان التفصيلي</label>
           <input type="text" id="f-address" placeholder="الحي / الشارع">
@@ -703,6 +716,15 @@ function _planName(id) {
   return f[id] || id;
 }
 
+function _slevelLabel(id) {
+  var f = {
+    kg: 'رياض أطفال فقط', primary: 'ابتدائي (يشمل الروضة)',
+    primary_middle: 'ابتدائي + إعدادي', middle: 'إعدادي فقط',
+    middle_secondary: 'إعدادي + ثانوي', secondary: 'ثانوي فقط'
+  };
+  return f[id] || '';
+}
+
 // تهريب HTML — دفاع عميق ضد الحقن إن أتى plans_json من مصدر أقلّ ثقةً لاحقاً.
 function _esc(s) {
   return String(s == null ? '' : s)
@@ -866,6 +888,7 @@ function _buildSummary() {
     { l:'اسم المدرسة',      v: _val('f-sname')  || '—' },
     { l:'الهاتف',           v: _val('f-phone')  || '—' },
     { l:'المدينة',          v: _val('f-city')   || '—' },
+    { l:'نوع المدرسة',      v: _slevelLabel(_val('f-slevel')) || 'شامل' },
     { l:'العنوان',          v: _val('f-address')|| '—' },
     { l:'اسم المدير',       v: _val('f-aname')  || '—' },
     { l:'البريد الإلكتروني',v: _val('f-aemail') || '—' },
@@ -906,6 +929,7 @@ function reg_submit() {
       adminPass  : document.getElementById('f-pass').value,
       adminPhone : _val('f-aphone'),
       address    : (_val('f-city') ? _val('f-city') + ' - ' : '') + _val('f-address'),
+      schoolLevel: _val('f-slevel'),
       planType   : _selPlan,
       inviteKey  : _val('f-invite'),
       referralCode: _val('f-referral'),
