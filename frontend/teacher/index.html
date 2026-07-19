@@ -22582,6 +22582,7 @@ function _visitsRender(res, initialTab){
   h+='<div class="tf-pane active" id="tf-pane-overview">'+
      '<div class="tf-kpis">'+
        _tfKpi(String(res.todayTotal||0),'زيارات اليوم','','var(--tf-blue)',false)+
+       _tfKpi(String(res.yesterdayTotal||0),'زيارات الأمس','','var(--tf-orange)',false)+
        _tfKpi(String(res.weekTotal||0),'زيارات الأسبوع',_visitsDeltaSubText((res.deltas||{}).weekVsPrevWeek,'عن الأسبوع السابق'),'var(--tf-purple)',false)+
        _tfKpi(String(res.avgDaily||0),'متوسط يومي (30 يوماً)',_visitsDeltaSubText((res.deltas||{}).monthVsPrevMonth,'عن الفترة السابقة'),'var(--tf-teal)',false)+
        '<div class="tf-kpi big" id="vt-online-kpi"><div class="tf-kpi-v" style="color:var(--tf-green);" id="vt-online-count">…</div>'+
@@ -22612,7 +22613,7 @@ function _visitsRender(res, initialTab){
        '<select id="vt-log-filter" onchange="_visitsRenderLog()">'+
          '<option value="all">كل الأدوار</option><option value="student">الطلاب فقط</option><option value="staff">الطاقم فقط</option>'+
        '</select></div>'+
-       '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t"><thead><tr><th>الوقت</th><th>الاسم</th><th>الدور</th><th>تفاصيل</th></tr></thead><tbody id="vt-log-body"></tbody></table></div>')+
+       '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t"><thead><tr><th>الوقت</th><th>الاسم</th><th>الدور</th><th>الصف/الشعبة أو المادة</th><th>تفاصيل</th></tr></thead><tbody id="vt-log-body"></tbody></table></div>')+
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-cumulative">'+
@@ -22711,6 +22712,16 @@ function _visitsTrendSvg(trend){
   return svg;
 }
 
+// يبني نص "الصف الشعبة" (طالب) أو "المادة" (معلم) لعنصر يحمل grade/section أو subject —
+// مشترك بين جدول السجلّ التفصيلي وبطاقة "من متصل الآن".
+function _visitsIdentityMeta(r){
+  if (r.role === 'student') {
+    if (r.grade) return _tfEsc(r.grade + (r.section ? (' ' + r.section) : ''));
+    return '';
+  }
+  return r.subject ? _tfEsc(r.subject) : '';
+}
+
 function _visitsRenderLog(){
   var body=document.getElementById('vt-log-body'); if(!body) return;
   var filterEl=document.getElementById('vt-log-filter');
@@ -22721,9 +22732,9 @@ function _visitsRenderLog(){
     var isStaff = r.role !== 'student';
     if(filter==='student' && isStaff) continue;
     if(filter==='staff' && !isStaff) continue;
-    rows+='<tr><td>'+_tfEsc(r.ts)+'</td><td>'+_tfEsc(r.name)+'</td><td>'+_tfEsc(VT_ROLE_LABELS[r.role]||r.role)+'</td><td>'+_tfEsc(r.detail)+'</td></tr>';
+    rows+='<tr><td>'+_tfEsc(r.ts)+'</td><td>'+_tfEsc(r.name)+'</td><td>'+_tfEsc(VT_ROLE_LABELS[r.role]||r.role)+'</td><td>'+(_visitsIdentityMeta(r)||'—')+'</td><td>'+_tfEsc(r.detail)+'</td></tr>';
   }
-  body.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">لا توجد أحداث بعد</td></tr>';
+  body.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">لا توجد أحداث بعد</td></tr>';
 }
 
 function _visitsRenderOnline(res){
@@ -22737,8 +22748,9 @@ function _visitsRenderOnline(res){
   var html='<div class="vt-live">';
   for(var i=0;i<all.length;i++){
     var u=all[i];
+    var meta=_visitsIdentityMeta(u);
     html+='<div class="vt-live-item"><div><div class="vt-live-name">'+_tfEsc(u.name)+'</div>'+
-      '<div class="vt-live-role">'+_tfEsc(VT_ROLE_LABELS[u.role]||u.role)+'</div></div>'+
+      '<div class="vt-live-role">'+_tfEsc(VT_ROLE_LABELS[u.role]||u.role)+(meta?(' · '+meta):'')+'</div></div>'+
       '<div class="vt-live-ago">منذ '+(u.minutesAgo||0)+' د</div></div>';
   }
   html+='</div>';
