@@ -2170,6 +2170,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول الاختبارات</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
+  <button class="sidebar-item" id="si-schoolTemplate"  onclick="showSection('schoolTemplate')" style="display:none;"><span class="si-icon">🏫</span> قالب تزويد المدرسة</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
@@ -6234,6 +6235,7 @@ function showSection(name, opt) {
       studentDirectory: renderStudentDirectory,
       studentStatus: renderStudentStatus,
       schedSettings: renderScheduleSettings,
+      schoolTemplate: renderSchoolTemplateBridge,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
@@ -6335,6 +6337,7 @@ var SIDEBAR_ROLE_RULES = {
   'si-lists-mgmt':      ['admin'],
   'si-examctrl':        ['admin', 'deputy'],
   'si-schedSettings':   ['admin', 'deputy'],
+  'si-schoolTemplate':  ['admin'],
   'si-adminActivities': ['admin', 'deputy', 'activities'],
   'si-adminStudents':   ['admin', 'it'],
   'si-certificates':    ['admin', 'deputy'],
@@ -6412,7 +6415,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl', 'si-visits'];
+  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl', 'si-visits', 'si-schoolTemplate'];
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -9110,6 +9113,85 @@ function saveScheduleSettings() {
   callServer('saveScheduleSettingsProtected', { settings: settings, breaksByGrade: breaksByGrade }, function (r) {
     if (r && r.success) { st.innerHTML = '<span style="color:#2e7d32">✅ ' + r.message + '</span>'; toast('✅ تم حفظ إعدادات الجدول', 'success'); }
     else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+}
+
+// ── قالب تزويد المدرسة (مدير فقط) — استدعاء خفيف لنفس دوال master-admin
+//    (توليد/استيراد قالب، بذر افتراضيات) عبر SchoolTemplateBridge.js، بلا تكرار منطق.
+//    يحتاج تسجيل دخول لوحة الإدارة المركزية مرّة واحدة لكل جلسة teacher.
+var STB_LOGGED_IN = false;
+function renderSchoolTemplateBridge() {
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">🏫</div>' +
+    '<div class="section-header-title">قالب تزويد المدرسة</div></div>' +
+    '<div class="section-body">' +
+    '<div class="alert alert-info" style="margin-bottom:12px">توليد/استيراد قالب بيانات المدرسة، أو بذر أمثلة افتراضية — نفس أدوات لوحة الإدارة المركزية، بدون مغادرة منصّة المعلم.</div>' +
+    '<div id="stbLoginBox"></div>' +
+    '<div id="stbActionsBox" style="display:none"></div>' +
+    '<div id="stbStatus" style="margin-top:10px"></div>' +
+    '</div></div>';
+  if (STB_LOGGED_IN) { _stbShowActions(); } else { _stbShowLogin(); }
+}
+function _stbShowLogin() {
+  var box = document.getElementById('stbLoginBox');
+  if (!box) return;
+  box.innerHTML =
+    '<div class="filter-bar"><div class="filter-bar-title">🔑 دخول لوحة الإدارة المركزية (مرّة واحدة لهذه الجلسة)</div>' +
+    '<div class="form-row">' +
+    '<div class="form-group"><label class="form-label">البريد الإلكتروني</label><input type="email" class="form-control" id="stb-email"></div>' +
+    '<div class="form-group"><label class="form-label">كلمة المرور</label><input type="password" class="form-control" id="stb-pass"></div>' +
+    '</div>' +
+    '<button class="btn btn-primary btn-sm" onclick="_stbLogin()">دخول</button></div>';
+  document.getElementById('stbActionsBox').style.display = 'none';
+}
+function _stbLogin() {
+  var email = (document.getElementById('stb-email').value || '').trim();
+  var pass  = document.getElementById('stb-pass').value || '';
+  var st = document.getElementById('stbStatus');
+  if (!email || !pass) { st.innerHTML = '<span style="color:#c62828">أدخل البريد وكلمة المرور</span>'; return; }
+  st.innerHTML = '⏳ جاري الدخول…';
+  callServer('teacherBridgeLoginProtected', { masterEmail: email, masterPass: pass }, function (r) {
+    if (r && r.success) {
+      STB_LOGGED_IN = true;
+      st.innerHTML = '<span style="color:#2e7d32">✅ تم الدخول</span>';
+      _stbShowActions();
+    } else {
+      st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل الدخول') + '</span>';
+    }
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+}
+function _stbShowActions() {
+  document.getElementById('stbLoginBox').innerHTML = '';
+  var box = document.getElementById('stbActionsBox');
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<button class="btn btn-secondary btn-sm" onclick="_stbAction(\'generate\')">⬇️ توليد/فتح قالب البيانات</button>' +
+    '<button class="btn btn-secondary btn-sm" onclick="_stbAction(\'import\')">📤 استيراد بيانات القالب</button>' +
+    '<button class="btn btn-secondary btn-sm" onclick="_stbAction(\'seed\')">♻️ بذر الافتراضيات</button>' +
+    '</div>';
+}
+function _stbAction(action) {
+  var st = document.getElementById('stbStatus');
+  st.innerHTML = '⏳ جاري التنفيذ…';
+  callServer('teacherBridgeActionProtected', { action: action }, function (r) {
+    if (r && r.requiresMasterLogin) {
+      STB_LOGGED_IN = false;
+      st.innerHTML = '<span style="color:#c62828">انتهت الجلسة — يلزم الدخول مجدداً</span>';
+      _stbShowLogin();
+      return;
+    }
+    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>'; return; }
+    if (action === 'generate' && r.editUrl) {
+      st.innerHTML = '<span style="color:#2e7d32">✅ القالب جاهز — </span><a href="' + r.editUrl + '" target="_blank" rel="noopener">فتح القالب للتعبئة</a>';
+    } else if (action === 'seed') {
+      st.innerHTML = '<span style="color:#2e7d32">✅ رسوم: ' + (r.seeded && r.seeded.fees || 0) + ' · أمثلة معلّمين: ' + (r.seeded && r.seeded.teacherExamples || 0) + '</span>';
+    } else if (action === 'import') {
+      st.innerHTML = '<span style="color:#2e7d32">✅ تمّ الاستيراد</span>';
+    } else {
+      st.innerHTML = '<span style="color:#2e7d32">✅ تم</span>';
+    }
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
 }
 
