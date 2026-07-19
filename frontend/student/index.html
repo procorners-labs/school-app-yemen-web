@@ -2276,6 +2276,7 @@ a { color: var(--pr); text-decoration: none; }
           <select id="noteTeacher">
             <option value="">— اختر المعلم —</option>
           </select>
+          <div id="noteWeeklyHint" style="font-size:.75rem;color:var(--muted);margin:-4px 0 6px;">رسالة واحدة أسبوعياً لكل معلم — يتجدد الحدّ كل يوم سبت.</div>
           <textarea id="noteMsg" placeholder="اكتب رسالتك للمعلم هنا (5 أحرف على الأقل)..." maxlength="500" oninput="updateNoteCharCount()"></textarea>
           <div id="noteCharCount" style="font-size:.75rem;color:var(--muted);text-align:left;margin-top:-6px;margin-bottom:4px;"></div>
           <button class="btn-primary" id="noteSendBtn" onclick="submitMyNote()">إرسال الرسالة ✉️</button>
@@ -5662,17 +5663,50 @@ function loadTeachersList() {
   google.script.run
     .withSuccessHandler(function (list) {
       APP.teachersList = list || [];
-      var sel = $('noteTeacher');
-      sel.innerHTML = '<option value="">— اختر المعلم —</option>';
-      for (var i = 0; i < APP.teachersList.length; i++) {
-        var opt = document.createElement('option');
-        opt.value = APP.teachersList[i];
-        opt.textContent = APP.teachersList[i];
-        sel.appendChild(opt);
-      }
+      _renderNoteTeacherOptions();
+
+      // بعد تعبئة القائمة: اجلب حالة الحدّ الأسبوعي لتعطيل من استُنفدت حصته —
+      // فشل الطلب لا يمنع الإرسال (الخادم هو الحكم النهائي داخل submitNote).
+      google.script.run
+        .withSuccessHandler(function (status) {
+          APP.noteWeeklyExhausted = (status && status.exhaustedTeachers) || [];
+          _renderNoteTeacherOptions();
+        })
+        .withFailureHandler(function () { /* تجاهل صامت */ })
+        .getNoteWeeklyStatus({ studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId });
     })
     .withFailureHandler(function () { /* تجاهل صامت */ })
     .getTeachersForClass({ className: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId });
+}
+
+// هل استنفد الطالب حدّه الأسبوعي مع هذا المعلم؟ (مقارنة مطبَّعة بالمسافات)
+function _noteMatchExhausted(teacherName) {
+  var list = APP.noteWeeklyExhausted || [];
+  var clean = _noteMsgNorm(teacherName);
+  for (var i = 0; i < list.length; i++) {
+    if (_noteMsgNorm(list[i]) === clean) return true;
+  }
+  return false;
+}
+
+// يبني خيارات <select id="noteTeacher"> من APP.teachersList، مع تعطيل ديناميكي
+// (disabled + لاحقة توضيحية) لأي معلّم استنفد الطالب حصته الأسبوعية معه.
+function _renderNoteTeacherOptions() {
+  var sel = $('noteTeacher');
+  if (!sel) return;
+  var prevValue = sel.value;
+  sel.innerHTML = '<option value="">— اختر المعلم —</option>';
+  var list = APP.teachersList || [];
+  for (var i = 0; i < list.length; i++) {
+    var name = list[i];
+    var opt = document.createElement('option');
+    opt.value = name;
+    var exhausted = _noteMatchExhausted(name);
+    opt.textContent = name + (exhausted ? ' — ✅ أُرسلت هذا الأسبوع' : '');
+    if (exhausted) opt.disabled = true;
+    sel.appendChild(opt);
+  }
+  if (prevValue && !_noteMatchExhausted(prevValue)) sel.value = prevValue;
 }
 
 // عدّاد أحرف الرسالة الحرّة (يوضّح الحد الأدنى 5 والحد الأقصى 500)
@@ -5698,6 +5732,12 @@ function submitMyNote() {
 
   if (!teacher) { toast('يرجى اختيار المعلم', 'w'); return; }
   if (msg.length < 5) { toast('الرسالة قصيرة جداً (5 أحرف على الأقل)', 'w'); return; }
+
+  // الحدّ الأسبوعي — فحص محلي فوري (تحسين تجربة، الخادم هو الحكم النهائي داخل submitNote)
+  if (_noteMatchExhausted(teacher)) {
+    toast('لقد أرسلتَ رسالة لهذا المعلم بالفعل هذا الأسبوع — حاول الأسبوع القادم', 'w');
+    return;
+  }
 
   // منع تكرار نفس الرسالة لنفس المعلم — فحص محلي فوري على الملاحظات المحمَّلة
   // (الخادم يتحقق أيضاً من سجلّ الورقة، فهذا توفير لرحلة شبكة ورسالة أوضح).
@@ -5727,6 +5767,11 @@ function submitMyNote() {
         updateNoteCharCount();
         toast(r.message || 'تم الإرسال بنجاح — ستصل رسالتك للمعلم', 's');
         loadNotes(true);
+        loadTeachersList(); // تحديث فوري لتعطيل هذا المعلم في القائمة
+      } else if (r && r.weeklyLimit) {
+        // بلوغ الحدّ الأسبوعي: توضيح ودّي (ليست خطأ تقنياً) + تحديث القائمة
+        toast(r.error || 'لقد استنفدتَ رسالتك الأسبوعية لهذا المعلم', 'w');
+        loadTeachersList();
       } else if (r && r.duplicate) {
         // رسالة مكررة لنفس المعلم: توضيح ودّي (ليست خطأ تقنياً)
         toast(r.error || 'تم استلام رسالتك سابقاً — لا حاجة لإعادة الإرسال', 'w');
