@@ -314,6 +314,9 @@
     document.querySelectorAll('.tab').forEach(function(el) { el.classList.remove('active'); });
     document.getElementById(id).classList.add('active');
     document.querySelector('.tab[data-tab="' + id + '"]').classList.add('active');
+    // 2026-07-19: smmGetSocialSettings أصبحت موثَّقة — تُحمَّل بكسل عند فتح التبويب فعلياً
+    // (لا عند تحميل الصفحة) كي لا تُظهر بوابة الدخول لكل زائر يريد فقط نشر خبر.
+    if (id === 'social') _cmsRequireAuth(loadSocialSettings);
   }
   document.querySelectorAll('.tab').forEach(function(t) {
     t.addEventListener('click', function() { switchTab(this.dataset.tab); });
@@ -559,7 +562,7 @@
         }
       })
       .withFailureHandler(function(){})
-      .smmGetSocialSettings(window.SCHOOL_ID);
+      .smmGetSocialSettings({ schoolId: window.SCHOOL_ID, token: _cmsToken() });
   }
   function saveSocialSettings() {
     _cmsRequireAuth(function () {
@@ -617,13 +620,15 @@
 
   // اختبار توكن فيسبوك
   function testFbConnection() {
-    setStatus('fbConnectStatus', '⏳ جاري اختبار الاتصال…', 'info');
-    google.script.run
-      .withSuccessHandler(function(res) {
-        setStatus('fbConnectStatus', res && res.success ? '✅ ' + res.message : '❌ ' + ((res && res.error) || 'لا يوجد توكن'), (res && res.success) ? 'success' : 'error');
-      })
-      .withFailureHandler(function(e) { setStatus('fbConnectStatus', '❌ ' + e.message, 'error'); })
-      .smmTestFbConnection(window.SCHOOL_ID);
+    _cmsRequireAuth(function () {
+      setStatus('fbConnectStatus', '⏳ جاري اختبار الاتصال…', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          setStatus('fbConnectStatus', res && res.success ? '✅ ' + res.message : '❌ ' + ((res && res.error) || 'لا يوجد توكن'), (res && res.success) ? 'success' : 'error');
+        })
+        .withFailureHandler(function(e) { setStatus('fbConnectStatus', '❌ ' + e.message, 'error'); })
+        .smmTestFbConnection({ schoolId: window.SCHOOL_ID, token: _cmsToken() });
+    });
   }
 
   document.getElementById('submitVideoUploadBtn').addEventListener('click', submitVideoUpload);
@@ -634,7 +639,8 @@
   if (_testBtn) _testBtn.addEventListener('click', testFbConnection);
   var _nowBtn = document.getElementById('publishNowBtn');
   if (_nowBtn) _nowBtn.addEventListener('click', publishNow);
-  loadSocialSettings();
+  // 2026-07-19: كانت تُحمَّل هنا دون شرط — انتقلت لتحميل بكسل عند فتح تبويب "⚙️ حسابات
+  // السوشل" فعلياً (switchTab أعلاه) بعد أن أصبحت smmGetSocialSettings موثَّقة.
 
   function submitImage() {
     var name = document.getElementById('imageName').value.trim();

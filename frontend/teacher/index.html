@@ -19048,7 +19048,8 @@ function smm_setTab(tab) {
 function smm_loadStats() {
   var grid = document.getElementById('smm-dash-cards');
   if (grid) grid.innerHTML = '<div class="smm-card smm-card-loading">⏳ جاري تحميل بيانات المدرسة…</div>';
-  callCMS('smmGetDashboard', [], function(res, err) {
+  // 2026-07-19: smmGetDashboard أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
+  callCMS('smmGetDashboard', { teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
     if (!res) {
       if (grid) grid.innerHTML = '<div class="smm-card smm-card-loading">⚠️ ' + (err || 'لم تُحمَّل البيانات — تأكد من إعداد CMS للمدرسة') + '</div>';
       return;
@@ -19146,8 +19147,8 @@ function smm_setupSystem() {
 function smm_loadPlan() {
   var tbl = document.getElementById('smm-plan-table');
   if (tbl) tbl.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center;">⏳ جاري التحميل…</div>';
-  // smmGetPlan يقبل كائن filters (أو بلا معامل)
-  callCMS('smmGetPlan', [{}], function(res, err) {
+  // smmGetPlan يقبل كائن filters (أو بلا معامل) — 2026-07-19: أصبحت موثَّقة، تحتاج teacherToken.
+  callCMS('smmGetPlan', { filters: {}, teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
     if (!res) {
       if (tbl) tbl.innerHTML = '<div style="color:#c5221f;padding:20px;text-align:center;">⚠️ ' + (err || 'لا يوجد ملف CMS لهذه المدرسة') + '</div>';
       return;
@@ -19253,8 +19254,10 @@ function smm_saveDraft() {
     fingerprint: '',
     schoolId:  window.SCHOOL_ID || ''
   };
-  callCMS('smmAddPlanItem', [{ platform: platforms[0], post_type: args.postType, category: args.category,
-    title: content.substring(0, 40), content: content, media_url: args.mediaURL }], function(res, err) {
+  // 2026-07-19: smmAddPlanItem أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
+  callCMS('smmAddPlanItem', { data: { platform: platforms[0], post_type: args.postType, category: args.category,
+    title: content.substring(0, 40), content: content, media_url: args.mediaURL },
+    teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
     if (res && res.success) {
       smm_statusMsg('smm-compose-status', '✅ تم الحفظ كمسودة', 'success');
       smm_loadPlan(); smm_loadStats();
@@ -19301,7 +19304,8 @@ function smm_loadQR() {
   var grid = document.getElementById('smm-qr-grid');
   if (!grid) return;
   grid.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">⏳ جاري التحميل…</div>';
-  callCMS('getAllQRCodes', [window.SCHOOL_ID || ''], function(res, err) {
+  // 2026-07-19: getAllQRCodes أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
+  callCMS('getAllQRCodes', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, function(res, err) {
     SMM.qrData = (res && Array.isArray(res)) ? res : (res && res.data ? res.data : []);
     smm_renderQR();
   });
@@ -19357,7 +19361,8 @@ function smm_openQRPage() {
 
 // ── حسابات السوشل ──
 function smm_loadAccounts() {
-  callCMS('smmGetSocialSettings', [window.SCHOOL_ID || ''], function(res, err) {
+  // 2026-07-19: smmGetSocialSettings أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
+  callCMS('smmGetSocialSettings', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, function(res, err) {
     if (!res || !res.success || !res.settings) return;
     var s = res.settings;
     function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
@@ -19389,7 +19394,8 @@ function smm_saveAccounts() {
 
 function smm_testFb() {
   smm_statusMsg('smm-acc-status', '⏳ جاري اختبار الاتصال…', 'info');
-  callCMS('smmTestFbConnection', [window.SCHOOL_ID || ''], function(res, err) {
+  // 2026-07-19: smmTestFbConnection أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
+  callCMS('smmTestFbConnection', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, function(res, err) {
     if (res && res.success) smm_statusMsg('smm-acc-status', '✅ ' + res.message, 'success');
     else smm_statusMsg('smm-acc-status', '❌ ' + (err || (res && res.error) || 'لا يوجد توكن'), 'error');
   });
