@@ -39,6 +39,7 @@ var PRECACHE = [
   '/assets/offline-db.js',
   '/assets/offline-sync.js',
   '/home/index.html',
+  '/home-all-school/index.html',
   '/student/index.html',
   '/teacher/index.html',
   '/cms/index.html',
