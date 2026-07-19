@@ -22412,6 +22412,10 @@ var _visitsReviewCatFilter = 'flagged'; // 'all' | 'flagged' | فئة محدَّ
 var _visitsReviewSortField = null;
 var _visitsReviewSortDir = 1;
 var _visitsReviewSearchQ = '';
+var _visitsEngagementFilter = 'flagged'; // 'all' | 'flagged' | 'red' | 'yellow' | 'green'
+var _visitsEngagementSortField = 'oldestPendingHours';
+var _visitsEngagementSortDir = -1; // تنازلياً افتراضياً: الأخطر (أقدم رسالة معلَّقة) أولاً
+var _visitsEngagementSearchQ = '';
 var _visitsCurrentRange = '30d'; // نطاق التبويبات 2-5 (الاتجاه/الساعي/الأدوار/السجل) — راجع شريط الفلتر أدناه
 var VT_RANGE_TABS = { trend: 1, hourly: 1, roles: 1, log: 1 }; // التبويبات التي يظهر لها شريط النطاق
 var VT_RANGE_PRESETS = [['today','اليوم'],['7d','آخر 7 أيام'],['30d','آخر 30 يوماً'],['90d','آخر 90 يوماً'],['custom','نطاق مخصّص...']];
@@ -23064,6 +23068,7 @@ function _visitsLoadReview(){
     }
     _visitsReviewLoaded=true;
     window._visitsReviewClassesFull=res.classes||[];
+    window._visitsReviewEngagementFull=res.teacherEngagement||[];
     _visitsRenderReview();
   });
 }
@@ -23072,6 +23077,7 @@ function _visitsReviewRefreshNow(){
   callServer('getVisitsReviewProtected', {noCache:true}, function(res){
     if(!res || !res.success) return;
     window._visitsReviewClassesFull=res.classes||[];
+    window._visitsReviewEngagementFull=res.teacherEngagement||[];
     _visitsRenderReview();
   });
 }
@@ -23130,6 +23136,8 @@ function _visitsRenderReview(){
 
   h+=_visitsCard('⚠️ أكثر 5 فصول تحتاج متابعة', _visitsReviewTopOffenders(classes));
 
+  h+=_visitsRenderEngagementSection();
+
   h+='<div class="vt-filter vt-filter-bar">'+
      '<select onchange="_visitsReviewSetFilter(this.value)">'+
        '<option value="flagged"'+(_visitsReviewCatFilter==='flagged'?' selected':'')+'>يحتاج مراجعة فقط (افتراضي)</option>'+
@@ -23144,6 +23152,7 @@ function _visitsRenderReview(){
 
   body.innerHTML=h;
   _visitsRenderReviewTable();
+  _visitsRenderEngagementTable();
 }
 
 function _visitsReviewSetFilter(v){ _visitsReviewCatFilter=v; _visitsRenderReviewTable(); }
@@ -23171,6 +23180,125 @@ function _visitsReviewFilterSortRows(classes){
     });
   }
   return out;
+}
+
+// ══════════════════════════════════════════════════════
+//  👨‍🏫 معلمون بحاجة لمتابعة — النشاط والتواصل مع أولياء الأمور. قسم مستقلّ تماماً عن
+//  خريطة الفصول أعلاه (مستوى-معلّم بمعيار محتوى/تواصل، لا مستوى-فصل بمعيار دخول/استخدام).
+//  عتبات 🔴/🟡 تطابق حرفياً نظام إلحاح الملاحظات الجاهز أصلاً (NOTES_OVERDUE_HOURS=24/
+//  NOTES_CRITICAL_HOURS=48، TeacherCore.js) — لا عتبات جديدة منفصلة.
+// ══════════════════════════════════════════════════════
+
+function _visitsEngagementTier(e){
+  if ((e.criticalNotes||0) >= 1) return { key:'red',    color:'var(--tf-red)',    icon:'🔴', label:'لا يردّ على أولياء الأمور' };
+  if ((e.overdueNotes||0)  >= 1) return { key:'yellow', color:'var(--tf-orange)', icon:'🟡', label:'بحاجة متابعة' };
+  return                                { key:'green',  color:'var(--tf-green)',  icon:'🟢', label:'ملتزم' };
+}
+
+function _visitsRenderEngagementSection(){
+  var list=window._visitsReviewEngagementFull||[];
+  var counts={red:0, yellow:0, green:0};
+  var i;
+  for(i=0;i<list.length;i++){ list[i]._tier=_visitsEngagementTier(list[i]); counts[list[i]._tier.key]++; }
+
+  var h=_visitsInfoBanner('ℹ️ الواجبات/الأخبار/السلوكيات محسوبة على نافذة 30 يوماً متجدّدة. تصنيف '+
+    '🔴/🟡 لتواصل أولياء الأمور يطابق نفس عتبتَي إلحاح شارة الإشعارات الحيّة بلوحة المعلم '+
+    '(متأخر ≥24 ساعة، حرج ≥48 ساعة) — لا عتبات جديدة منفصلة. عمود السلوكيات معلوماتي فقط '+
+    '(صفر سلوكيات ليس بالضرورة إهمالاً).');
+
+  h+='<div class="tf-kpis">'+
+     _tfKpi(String(counts.red),'لا يردّون على أولياء الأمور','','var(--tf-red)',false)+
+     _tfKpi(String(counts.yellow),'بحاجة متابعة','','var(--tf-orange)',false)+
+     _tfKpi(String(counts.green),'ملتزمون','','var(--tf-green)',false)+
+     _tfKpi(String(list.length),'إجمالي المعلمين المفحوصين','','var(--tf-blue)',false)+
+     '</div>';
+
+  h+='<div class="vt-filter vt-filter-bar">'+
+     '<select onchange="_visitsEngagementSetFilter(this.value)">'+
+       '<option value="flagged"'+(_visitsEngagementFilter==='flagged'?' selected':'')+'>يحتاج متابعة فقط (افتراضي)</option>'+
+       '<option value="all"'+(_visitsEngagementFilter==='all'?' selected':'')+'>كل المعلمين</option>'+
+       '<option value="red"'+(_visitsEngagementFilter==='red'?' selected':'')+'>🔴 لا يردّون فقط</option>'+
+       '<option value="yellow"'+(_visitsEngagementFilter==='yellow'?' selected':'')+'>🟡 بحاجة متابعة فقط</option>'+
+       '<option value="green"'+(_visitsEngagementFilter==='green'?' selected':'')+'>🟢 ملتزمون فقط</option>'+
+     '</select>'+
+     '<input type="text" id="vt-engagement-search" placeholder="بحث باسم المعلّم..." value="'+_tfEsc(_visitsEngagementSearchQ)+'" oninput="_visitsEngagementSearch(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;">'+
+     '<button class="tf-abtn" onclick="_visitsEngagementExportCsv()">⬇️ تصدير CSV</button>'+
+     '</div>';
+
+  h+='<div class="tf-scroll" style="max-height:480px;"><table class="tf-t" id="vt-engagement-table"></table></div>';
+
+  return _visitsCard('👨‍🏫 معلمون بحاجة لمتابعة — النشاط والتواصل مع أولياء الأمور', h);
+}
+
+function _visitsEngagementSetFilter(v){ _visitsEngagementFilter=v; _visitsRenderEngagementTable(); }
+function _visitsEngagementSearch(q){ _visitsEngagementSearchQ=(q||'').replace(/^\s+|\s+$/g,''); _visitsRenderEngagementTable(); }
+function _visitsEngagementSort(field){
+  if(_visitsEngagementSortField===field) _visitsEngagementSortDir=-_visitsEngagementSortDir;
+  else { _visitsEngagementSortField=field; _visitsEngagementSortDir=1; }
+  _visitsRenderEngagementTable();
+}
+function _visitsEngagementFilterSortRows(list){
+  var out=[], i;
+  for(i=0;i<list.length;i++){
+    var e=list[i], tier=e._tier||_visitsEngagementTier(e);
+    if(_visitsEngagementFilter==='flagged' && tier.key!=='red' && tier.key!=='yellow') continue;
+    if(_visitsEngagementFilter!=='all' && _visitsEngagementFilter!=='flagged' && tier.key!==_visitsEngagementFilter) continue;
+    if(_visitsEngagementSearchQ && (e.name||'').indexOf(_visitsEngagementSearchQ)===-1) continue;
+    out.push(e);
+  }
+  if(_visitsEngagementSortField){
+    var f=_visitsEngagementSortField, d=_visitsEngagementSortDir;
+    out.sort(function(a,b){
+      var av=a[f], bv=b[f];
+      if(typeof av==='string') return av.localeCompare(bv)*d;
+      return ((av||0)-(bv||0))*d;
+    });
+  }
+  return out;
+}
+function _visitsRenderEngagementTable(){
+  var list=window._visitsReviewEngagementFull||[];
+  var rows=_visitsEngagementFilterSortRows(list);
+  var html='<thead><tr>'+
+    '<th style="cursor:pointer" onclick="_visitsEngagementSort(\'name\')">الاسم ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsEngagementSort(\'homeworkCount\')">واجبات (30ي) ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsEngagementSort(\'newsCount\')">أخبار (30ي) ⇅</th>'+
+    '<th>سلوكيات (30ي)</th>'+
+    '<th style="cursor:pointer" onclick="_visitsEngagementSort(\'pendingNotes\')">رسائل معلَّقة ⇅</th>'+
+    '<th style="cursor:pointer" onclick="_visitsEngagementSort(\'oldestPendingHours\')">أقدم معلَّقة (ساعة) ⇅</th>'+
+    '<th>متوسط زمن الردّ (ساعة)</th>'+
+    '<th>الحالة</th>'+
+    '</tr></thead><tbody>';
+  if(!rows.length){
+    html+='<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:16px;">لا يوجد معلمون مطابقون للفلتر الحالي</td></tr>';
+  } else {
+    for(var i=0;i<rows.length;i++){
+      var e=rows[i], tier=e._tier||_visitsEngagementTier(e);
+      html+='<tr>'+
+        '<td>'+_tfEsc(e.name)+'</td>'+
+        '<td>'+(e.homeworkCount||0)+'</td>'+
+        '<td>'+(e.newsCount||0)+'</td>'+
+        '<td>'+(e.violationsCount||0)+'</td>'+
+        '<td>'+(e.pendingNotes||0)+'</td>'+
+        '<td>'+(e.pendingNotes?(e.oldestPendingHours||0):'—')+'</td>'+
+        '<td>'+(e.avgReplyHours!==null && e.avgReplyHours!==undefined ? e.avgReplyHours : '—')+'</td>'+
+        '<td style="color:'+tier.color+';font-weight:700;">'+tier.icon+' '+_tfEsc(tier.label)+'</td>'+
+        '</tr>';
+    }
+  }
+  html+='</tbody>';
+  var t=document.getElementById('vt-engagement-table');
+  if(t) t.innerHTML=html;
+}
+function _visitsEngagementExportCsv(){
+  var rows=_visitsEngagementFilterSortRows(window._visitsReviewEngagementFull||[]);
+  _tfExportCsv('معلمون_بحاجة_لمتابعة.csv',
+    ['الاسم','واجبات (30ي)','أخبار (30ي)','سلوكيات (30ي)','رسائل معلَّقة','أقدم معلَّقة (ساعة)','متوسط زمن الردّ (ساعة)','الحالة'],
+    rows.map(function(e){
+      var tier=e._tier||_visitsEngagementTier(e);
+      return [e.name, e.homeworkCount||0, e.newsCount||0, e.violationsCount||0, e.pendingNotes||0,
+        e.pendingNotes?(e.oldestPendingHours||0):'', (e.avgReplyHours!==null&&e.avgReplyHours!==undefined)?e.avgReplyHours:'', tier.label];
+    }));
 }
 
 function _visitsRenderReviewTable(){
