@@ -22318,6 +22318,37 @@ function _visitsEmptyState(msg, icon){
   return '<div class="tf-empty">'+(icon||'📭')+' '+_tfEsc(msg||'لا توجد بيانات كافية بعد')+'</div>';
 }
 
+// ═══ مؤشرات المقارنة + الملخّص الذكي (مرحلة 2) — كل النصوص عربية بقواعد حتمية مبنية على
+// أرقام محسوبة خادمياً أصلاً (res.deltas/res.topUsers) — بلا أي نداء LLM/خدمة خارجية. ═══
+function _visitsDeltaSubText(delta, label){
+  if(!delta) return '';
+  if(delta.pct===null) return delta.cur>0 ? ('🆕 جديد ('+label+')') : '';
+  var arrow = delta.pct>=0 ? '▲' : '▼';
+  return arrow+' '+Math.abs(delta.pct)+'٪ '+label;
+}
+function _visitsBuildHighlights(res){
+  var items=[], d=res.deltas||{}, wk=d.weekVsPrevWeek, mo=d.monthVsPrevMonth;
+  var SIG=15; // عتبة اعتبار التغيّر "ملحوظاً" (٪) — تفادياً لإبراز ضجيج إحصائي على أرقام صغيرة
+  if(wk){
+    if(wk.pct===null && wk.cur>0) items.push('🆕 نشاط جديد هذا الأسبوع ('+wk.cur+' زيارة) — لا يوجد أساس مقارنة من الأسبوع السابق.');
+    else if(wk.pct!==null && wk.pct>=SIG) items.push('📈 ارتفع نشاط هذا الأسبوع بنسبة '+wk.pct+'٪ مقارنةً بالأسبوع السابق ('+wk.prev+' ← '+wk.cur+').');
+    else if(wk.pct!==null && wk.pct<=-SIG) items.push('📉 تراجع نشاط هذا الأسبوع بنسبة '+Math.abs(wk.pct)+'٪ مقارنةً بالأسبوع السابق ('+wk.prev+' ← '+wk.cur+').');
+  }
+  if(mo && mo.pct!==null && Math.abs(mo.pct)>=SIG){
+    items.push((mo.pct>=0?'📈 المتوسط الشهري ارتفع':'📉 المتوسط الشهري تراجع')+' بنسبة '+Math.abs(mo.pct)+'٪ مقارنةً بالفترة السابقة.');
+  }
+  var top=(res.topUsers||[])[0];
+  if(top && top.count>0) items.push('🏆 الأكثر نشاطاً مؤخراً: '+top.name+' ('+(VT_ROLE_LABELS[top.role]||top.role)+') بـ'+top.count+' زيارة.');
+  if(!items.length) items.push('لا توجد تغيّرات ملحوظة حالياً مقارنةً بالفترة السابقة.');
+  return items;
+}
+function _visitsBuildHighlightsHtml(res){
+  var items=_visitsBuildHighlights(res), h='<ul style="margin:0;padding-inline-start:20px;font-size:13px;line-height:1.9;color:var(--text);">', i;
+  for(i=0;i<items.length;i++) h+='<li>'+_tfEsc(items[i])+'</li>';
+  h+='</ul>';
+  return h;
+}
+
 function renderVisitsTraffic(initialTab){
   var host=document.getElementById('dynamicContent');
   if(!host) return;
@@ -22427,12 +22458,13 @@ function _visitsRender(res, initialTab){
   h+='<div class="tf-pane active" id="tf-pane-overview">'+
      '<div class="tf-kpis">'+
        _tfKpi(String(res.todayTotal||0),'زيارات اليوم','','var(--tf-blue)',false)+
-       _tfKpi(String(res.weekTotal||0),'زيارات الأسبوع','','var(--tf-purple)',false)+
-       _tfKpi(String(res.avgDaily||0),'متوسط يومي (30 يوماً)','','var(--tf-teal)',false)+
+       _tfKpi(String(res.weekTotal||0),'زيارات الأسبوع',_visitsDeltaSubText((res.deltas||{}).weekVsPrevWeek,'عن الأسبوع السابق'),'var(--tf-purple)',false)+
+       _tfKpi(String(res.avgDaily||0),'متوسط يومي (30 يوماً)',_visitsDeltaSubText((res.deltas||{}).monthVsPrevMonth,'عن الفترة السابقة'),'var(--tf-teal)',false)+
        '<div class="tf-kpi big" id="vt-online-kpi"><div class="tf-kpi-v" style="color:var(--tf-green);" id="vt-online-count">…</div>'+
        '<div class="tf-kpi-l"><span class="vt-pulse"></span>متصلين الآن</div></div>'+
      '</div>'+
      '<div class="tf-card"><h3>👥 من متصل الآن</h3><div id="vt-online-list"><div class="tf-empty">جارٍ التحميل...</div></div></div>'+
+     _visitsCard('🌟 بارز هذا الأسبوع', _visitsBuildHighlightsHtml(res))+
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-trend">'+
@@ -22694,6 +22726,20 @@ function _visitsHistSvg(buckets, order, colorFn){
   return svg;
 }
 
+// بناء قائمة خيارات <option> فريدة من حقل نصّي في مصفوفة — يُستخدَم لفلترتي المادة/الصف
+// التصنيفيتين في تبويب "الإجمالي التراكمي" (بلا نداء خادم إضافي، فوق البيانات المُحمَّلة أصلاً).
+function _visitsBuildOptionList(arr, field, allLabel){
+  var seen={}, vals=[], i, v;
+  for(i=0;i<(arr||[]).length;i++){
+    v=(arr[i][field]||'').toString().trim();
+    if(v && !seen[v]){ seen[v]=true; vals.push(v); }
+  }
+  vals.sort();
+  var h='<option value="">'+_tfEsc(allLabel)+'</option>';
+  for(i=0;i<vals.length;i++) h+='<option value="'+_tfEsc(vals[i])+'">'+_tfEsc(vals[i])+'</option>';
+  return h;
+}
+
 function _visitsRenderCumulative(res){
   var body=document.getElementById('vt-cumul-body');
   if(!body) return;
@@ -22748,14 +22794,24 @@ function _visitsRenderCumulative(res){
      '</div>';
 
   h+='<div class="tf-card"><h3>👨‍🏫 كل المعلمين ('+window._visitsAllTeachersFull.length+')</h3>'+
-     '<input type="text" id="vt-teacher-search" placeholder="بحث بالاسم أو المادة..." oninput="_visitsFilterTeacherTable(this.value)" '+
-     'style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface);color:var(--text);font-size:13px;">'+
+     '<div class="vt-filter vt-filter-bar">'+
+       '<input type="text" id="vt-teacher-search" placeholder="بحث بالاسم أو المادة..." oninput="_visitsFilterTeacherTable(this.value)" '+
+       'style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;">'+
+       '<select id="vt-teacher-subject-filter" onchange="_visitsFilterTeacherTable(document.getElementById(\'vt-teacher-search\').value)">'+
+         _visitsBuildOptionList(window._visitsAllTeachersFull, 'subject', 'كل المواد')+
+       '</select>'+
+     '</div>'+
      '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-teacher-table"></table></div>'+
      '</div>';
 
   h+='<div class="tf-card"><h3>🎒 كل الطلاب ('+window._visitsAllStudentsFull.length+')</h3>'+
-     '<input type="text" id="vt-student-search" placeholder="بحث بالاسم..." oninput="_visitsFilterStudentTable(this.value)" '+
-     'style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface);color:var(--text);font-size:13px;">'+
+     '<div class="vt-filter vt-filter-bar">'+
+       '<input type="text" id="vt-student-search" placeholder="بحث بالاسم..." oninput="_visitsFilterStudentTable(this.value)" '+
+       'style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;">'+
+       '<select id="vt-student-grade-filter" onchange="_visitsFilterStudentTable(document.getElementById(\'vt-student-search\').value)">'+
+         _visitsBuildOptionList(window._visitsAllStudentsFull, 'class', 'كل الصفوف')+
+       '</select>'+
+     '</div>'+
      '<div class="tf-scroll" style="max-height:420px;"><table class="tf-t" id="vt-student-table"></table></div>'+
      '</div>';
 
@@ -22782,9 +22838,12 @@ function _visitsSortTeacherTable(field){
 function _visitsFilterTeacherTable(q){
   var all=window._visitsAllTeachersFull||[];
   q=(q||'').trim();
+  var subjSel=document.getElementById('vt-teacher-subject-filter');
+  var subj=subjSel?subjSel.value:'';
   var list=[],i;
   for(i=0;i<all.length;i++){
     var t=all[i];
+    if(subj && t.subject!==subj) continue;
     if(!q || (t.name||'').indexOf(q)!==-1 || (t.subject||'').indexOf(q)!==-1) list.push(t);
   }
   var html='<thead><tr>'+
@@ -22821,9 +22880,12 @@ function _visitsSortStudentTable(field){
 function _visitsFilterStudentTable(q){
   var all=window._visitsAllStudentsFull||[];
   q=(q||'').trim();
+  var gradeSel=document.getElementById('vt-student-grade-filter');
+  var grade=gradeSel?gradeSel.value:'';
   var list=[],i;
   for(i=0;i<all.length;i++){
     var s=all[i];
+    if(grade && s.class!==grade) continue;
     if(!q || (s.name||'').indexOf(q)!==-1) list.push(s);
   }
   var html='<thead><tr>'+
