@@ -9074,10 +9074,6 @@ function _tsStatus(p, nowMin) {
 function renderScheduleSettings() {
   var el = document.getElementById('dynamicContent');
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
-    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">⚙️</div>' +
-    '<div class="section-header-title">إعدادات الجدول والتواقيت</div></div>' +
-    '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
-    '<div class="section-header" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
       '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">📋</div>' +
       '<div class="section-header-title">توزيع الحصص</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
@@ -9095,8 +9091,13 @@ function renderScheduleSettings() {
         '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sd-section" onchange="schedDist_loadClass()" disabled><option value="">— اختر الصف أولاً —</option></select></div>' +
       '</div></div>' +
       '<div id="sdStatus"></div>' +
-      '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div></div>' +
-    '</div></div>';
+      '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">جارٍ تحميل الجدول الكامل…</div></div></div>' +
+    '</div>' +
+    '<div class="section-header" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
+      '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">⏰</div>' +
+      '<div class="section-header-title">التواقيت العامة</div></div>' +
+    '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
+    '</div>';
   callServer('getScheduleSettingsProtected', {}, function (r) {
     if (!r || !r.success) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-warning">تعذّر التحميل</div>'; return; }
     _renderSchedSetForm(r.settings, r.breaksByGrade || {}, r.allGrades || []);
@@ -9107,7 +9108,7 @@ function _renderSchedSetForm(s, breaks, allGrades) {
   var body = document.getElementById('schedSetBody');
   // مصدر الصفوف: كل صفوف المدرسة من الجدول (لكل الفصول) مع احتياطي لصفوف المستخدم
   var grades = (allGrades && allGrades.length) ? allGrades : myGrades();
-  var h = '<div class="filter-bar"><div class="filter-bar-title">⏰ التواقيت العامة</div>' +
+  var h = '<div class="filter-bar"><div class="filter-bar-title">🕐 الأوقات الأساسية للدوام</div>' +
     '<div class="form-row">' +
     '<div class="form-group"><label class="form-label">بداية الدوام</label><input type="time" class="form-control" id="ss-start" value="' + escapeHtml(s.dayStart || '07:00') + '"></div>' +
     '<div class="form-group"><label class="form-label">مدة طابور الصباح (دقيقة)</label><input type="number" class="form-control" id="ss-assembly" value="' + (s.assemblyMinutes || 15) + '"></div>' +
@@ -9309,8 +9310,75 @@ function schedDist_onGradeChange() {
 function schedDist_showAllView() {
   SCHED_DIST.className = 'الكل';
   SCHED_DIST.suggestions = null;
-  document.getElementById('sdGrid').innerHTML = '<div class="empty-state"><div class="es-icon">🔎</div><div class="es-title">وضع «الكل» — نتيجة فحص التعارضات الشامل أعلاه ⬆️</div></div>';
-  schedDist_checkConflicts();
+  document.getElementById('sdGrid').innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  schedDist_checkConflicts();   // يملأ #sdStatus (خفيفة، لا علاقة لها بحلقة المعلّمين الثقيلة)
+  schedDist_loadFullGrid();     // يملأ #sdGrid بالجدول الكامل — بديل الافتراضي عن حالة فارغة سابقاً
+}
+// الجدول الكامل للمدرسة (كل المعلمين × كل الفصول)، عرضان قابلان للتبديل بلا أي
+// نداء خادم إضافي (pivot في الذاكرة من نفس المصفوفة المسطَّحة). نداء خفيف O(1)
+// واحد فقط (getFullScheduleGridProtected يقرأ الشيت مرّة واحدة) — لا علاقة له
+// بمسار getTeacherProgressProtected الثقيل المسؤول عن بطء >5 ثوانٍ الموثَّق سابقاً
+// (يبقى ذاك خلف زرّه كما هو، غير مُستدعًى هنا).
+var SD_FULL_GRID = { rows: [], days: [], periods: [], view: 'teacher' };
+function schedDist_loadFullGrid() {
+  var box = document.getElementById('sdGrid');
+  callServer('getFullScheduleGridProtected', {}, function (r) {
+    if (SCHED_DIST.className !== 'الكل') return; // المستخدم بدّل لفصل محدَّد قبل وصول الرد
+    if (!r || !r.success) { box.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر تحميل الجدول الكامل') + '</div>'; return; }
+    SD_FULL_GRID.rows = r.rows || [];
+    SD_FULL_GRID.days = r.days || [];
+    SD_FULL_GRID.periods = r.periods || [];
+    schedDist_renderFullGrid();
+  }, function (e) { if (SCHED_DIST.className !== 'الكل') return; box.innerHTML = '<div class="alert alert-danger">' + escapeHtml(e.message || e) + '</div>'; });
+}
+function schedDist_setFullGridView(v) {
+  SD_FULL_GRID.view = v;
+  schedDist_renderFullGrid();
+}
+function schedDist_renderFullGrid() {
+  var box = document.getElementById('sdGrid');
+  if (SCHED_DIST.className !== 'الكل') return; // المستخدم بدّل لفصل محدَّد قبل اكتمال التحميل
+  var days = SD_FULL_GRID.days, periods = SD_FULL_GRID.periods, rows = SD_FULL_GRID.rows;
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">لا توجد حصص مُسنَدة بعد في جدول المدرسة</div></div>';
+    return;
+  }
+  var byTeacher = SD_FULL_GRID.view === 'teacher';
+  // فهرسة الصفوف حسب (المفتاح، اليوم، الحصة) لبناء شبكة واحدة لكل معلّم/فصل
+  var keyOf = function (r) { return byTeacher ? r.teacher : _sdClassLabel(r.grade, r.section); };
+  var index = {}; // key -> {day_period: 'فصل (مادة)' أو 'معلّم (مادة)'}
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var k = keyOf(r);
+    if (!index[k]) index[k] = {};
+    var dayIdx = days.indexOf(r.day);
+    if (dayIdx === -1) continue;
+    var cellText = byTeacher ? (_sdClassLabel(r.grade, r.section) + ' (' + r.subject + ')')
+                             : (r.teacher + ' (' + r.subject + ')');
+    index[k][dayIdx + '_' + r.period] = cellText;
+  }
+  var keys = Object.keys(index).sort(function (a, b) { return a.localeCompare(b, 'ar'); });
+  var h = '<div class="filter-bar" style="margin-bottom:8px"><div class="filter-bar-title">📋 الجدول الكامل للمدرسة</div>' +
+    '<div style="display:flex;gap:6px">' +
+      '<button class="btn btn-sm ' + (byTeacher ? 'btn-primary' : 'btn-secondary') + '" onclick="schedDist_setFullGridView(\'teacher\')">👨‍🏫 حسب المعلّم</button>' +
+      '<button class="btn btn-sm ' + (!byTeacher ? 'btn-primary' : 'btn-secondary') + '" onclick="schedDist_setFullGridView(\'class\')">🏫 حسب الفصل</button>' +
+    '</div></div>';
+  for (var ki = 0; ki < keys.length; ki++) {
+    var key = keys[ki];
+    h += '<div class="table-wrap" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:4px">' + escapeHtml(key) + '</div><table><thead><tr><th>اليوم \\ الحصة</th>';
+    for (var p = 0; p < periods.length; p++) h += '<th>' + periods[p] + '</th>';
+    h += '</tr></thead><tbody>';
+    for (var d = 0; d < days.length; d++) {
+      h += '<tr><td><b>' + escapeHtml(days[d]) + '</b></td>';
+      for (var pi = 0; pi < periods.length; pi++) {
+        var cell = index[key][d + '_' + periods[pi]];
+        h += '<td>' + (cell ? escapeHtml(cell) : '') + '</td>';
+      }
+      h += '</tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  box.innerHTML = h;
 }
 // يُستدعى بعد أي تعديل يمسّ الجدول (توزيع تلقائي للكل/لمعلّم، تراجع) — يُحدِّث
 // نفس نوع العرض النشط حالياً (فصل محدَّد أو وضع «الكل») بدل افتراض فصل حقيقي
@@ -9646,6 +9714,7 @@ function schedDist_confirmPublish() {
       toast('✅ ' + r.message, 'success');
       body.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) +
         '<br><small>قد يستغرق ظهور التغييرات لدى الطلاب حتى ٣ دقائق (كاش المنصة).</small></div>';
+      schedDist_refreshView(); // الشبكة الكاملة مرئية افتراضياً الآن — يجب ألا تبقى قديمة بعد النشر
     } else {
       body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
     }
