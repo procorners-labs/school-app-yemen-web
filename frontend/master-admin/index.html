@@ -625,6 +625,20 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
         <button class="btn btn-primary" onclick="settings_loadAll()" style="margin-top:12px;">🔄 تحميل الإعدادات</button>
       </div>
       <div class="panel">
+        <div class="panel-title">🧩 القالب الافتراضي للمدارس الجديدة</div>
+        <p style="color:#64748b;font-size:13px;margin:0 0 12px;">
+          تنطبق هذه التغييرات فقط على المدارس التي يتم إنشاؤها بعد الحفظ. لتحديث مدرسة قائمة استخدم
+          زرّ «♻️ بذر الافتراضيات» من صفحة إدارة المدارس.
+        </p>
+        <div id="template-levels-container" style="margin-bottom:16px;"></div>
+        <div id="template-fees-container" style="margin-bottom:16px;"></div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-primary" onclick="template_load()">🔄 تحميل القالب الحالي</button>
+          <button class="btn btn-success" onclick="template_save()">💾 حفظ التغييرات</button>
+        </div>
+        <div id="template-status" style="margin-top:12px;"></div>
+      </div>
+      <div class="panel">
         <div class="panel-title">⚡ إجراءات النظام</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="system_initSheets()">🔧 تهيئة الأوراق</button>
@@ -1032,7 +1046,7 @@ function showSection(name) {
   if (name === 'schools') schools_load();
   if (name === 'referrals') referrals_load();
   if (name === 'audit')   audit_load();
-  if (name === 'settings') settings_loadAll();
+  if (name === 'settings') { settings_loadAll(); template_load(); }
   if (name === 'portals') portals_load();
   if (name === 'dashboard') dashboard_load(); // تحميل الإحصائيات عند زيارة Dashboard
   if (name === 'finance') finance_load(false);
@@ -1923,6 +1937,123 @@ function settings_loadAll() {
     })
     .withFailureHandler(function() {})
     .getAllSettingsProtected({ token: App.token });
+}
+
+// ── القالب الافتراضي للمدارس الجديدة ─────────────────────────
+var _tmplState = { allGrades: [], defaultRanges: {}, levelRanges: {}, fees: {} };
+
+var _tmplLevelLabels = {
+  kg: 'روضة', primary: 'ابتدائي', primary_middle: 'ابتدائي+متوسط',
+  middle: 'متوسط', middle_secondary: 'متوسط+ثانوي', secondary: 'ثانوي'
+};
+
+function template_load() {
+  var status = document.getElementById('template-status');
+  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ التحميل...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        status.innerHTML = '<div class="status-msg status-error">❌ ' + (res ? res.error : 'خطأ') + '</div>';
+        return;
+      }
+      _tmplState.allGrades = res.allGrades || [];
+      _tmplState.defaultRanges = res.defaultRanges || {};
+      _tmplState.levelRanges = {};
+      (res.levelRanges || []).forEach(function(r) { _tmplState.levelRanges[r.level_key] = r; });
+      _tmplState.fees = {};
+      (res.fees || []).forEach(function(r) { _tmplState.fees[r.grade] = r; });
+      _template_renderLevels();
+      _template_renderFees();
+      status.innerHTML = '<div class="status-msg status-success">✅ تم التحميل</div>';
+    })
+    .withFailureHandler(function(err) {
+      status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
+    })
+    .getTemplateDefaultsProtected({ token: App.token });
+}
+
+function _template_gradeOptions(selected) {
+  var html = '<option value="">—</option>';
+  _tmplState.allGrades.forEach(function(g) {
+    html += '<option value="' + g + '"' + (g === selected ? ' selected' : '') + '>' + g + '</option>';
+  });
+  return html;
+}
+
+function _template_renderLevels() {
+  var html = '<table class="master-table"><thead><tr><th>المستوى</th><th>من صف</th><th>إلى صف</th></tr></thead><tbody>';
+  Object.keys(_tmplLevelLabels).forEach(function(key) {
+    var ov = _tmplState.levelRanges[key];
+    var def = _tmplState.defaultRanges[key] || [0, 0];
+    var fromG = ov ? ov.from_grade : _tmplState.allGrades[def[0]];
+    var toG = ov ? ov.to_grade : _tmplState.allGrades[def[1]];
+    html += '<tr data-level="' + key + '">' +
+      '<td>' + _tmplLevelLabels[key] + (ov ? '' : ' <span style="color:#aaa;font-size:11px;">(افتراضي النظام)</span>') + '</td>' +
+      '<td><select class="tmpl-from">' + _template_gradeOptions(fromG) + '</select></td>' +
+      '<td><select class="tmpl-to">' + _template_gradeOptions(toG) + '</select></td>' +
+      '</tr>';
+  });
+  document.getElementById('template-levels-container').innerHTML = html + '</tbody></table>';
+}
+
+function _template_renderFees() {
+  var html = '<table class="master-table" id="tmpl-fees-table"><thead><tr><th>الصف</th><th>رسوم دراسية</th><th>رسوم كتب</th></tr></thead><tbody>';
+  Object.keys(_tmplState.fees).forEach(function(grade) {
+    var f = _tmplState.fees[grade];
+    html += '<tr data-grade="' + grade + '">' +
+      '<td>' + grade + '</td>' +
+      '<td><input type="number" class="tmpl-study" value="' + f.study_fee + '"></td>' +
+      '<td><input type="number" class="tmpl-books" value="' + f.books_fee + '"></td>' +
+      '</tr>';
+  });
+  html += '<tr>' +
+    '<td><select id="tmpl-new-grade">' + _template_gradeOptions('') + '</select></td>' +
+    '<td><input type="number" id="tmpl-new-study" placeholder="رسوم دراسية"></td>' +
+    '<td><input type="number" id="tmpl-new-books" placeholder="رسوم كتب"></td>' +
+    '</tr>';
+  document.getElementById('template-fees-container').innerHTML = html + '</tbody></table>';
+}
+
+function template_save() {
+  var status = document.getElementById('template-status');
+  var levelRanges = [];
+  document.querySelectorAll('#template-levels-container tr[data-level]').forEach(function(tr) {
+    var from = tr.querySelector('.tmpl-from').value;
+    var to = tr.querySelector('.tmpl-to').value;
+    if (from && to) levelRanges.push({ level_key: tr.getAttribute('data-level'), from_grade: from, to_grade: to });
+  });
+
+  var fees = [];
+  document.querySelectorAll('#tmpl-fees-table tr[data-grade]').forEach(function(tr) {
+    fees.push({
+      grade: tr.getAttribute('data-grade'),
+      study_fee: tr.querySelector('.tmpl-study').value,
+      books_fee: tr.querySelector('.tmpl-books').value
+    });
+  });
+  var newGrade = document.getElementById('tmpl-new-grade').value;
+  if (newGrade) {
+    fees.push({
+      grade: newGrade,
+      study_fee: document.getElementById('tmpl-new-study').value,
+      books_fee: document.getElementById('tmpl-new-books').value
+    });
+  }
+
+  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ الحفظ...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        status.innerHTML = '<div class="status-msg status-error">❌ ' + (res ? res.error : 'خطأ') + '</div>';
+        return;
+      }
+      status.innerHTML = '<div class="status-msg status-success">✅ تم الحفظ</div>';
+      template_load();
+    })
+    .withFailureHandler(function(err) {
+      status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
+    })
+    .updateTemplateDefaultsProtected({ token: App.token, levelRanges: levelRanges, fees: fees });
 }
 
 function system_initSheets() {
