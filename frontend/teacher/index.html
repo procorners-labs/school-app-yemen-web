@@ -2604,6 +2604,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <div class="asgn-section-group" id="newsSectionBox" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:13px;min-height:38px"></div>
         </div>
       </div>
+      <!-- خبر بنطاق مركّب (عدّة فصول/شعب) قيد التعديل — النطاق للقراءة فقط، النص/الوسائط فقط قابلان للتعديل -->
+      <div class="form-group mb-3 hidden" id="newsScopeReadonly" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:.85rem">
+        <div style="font-weight:700;margin-bottom:4px">🔒 نطاق هذا الخبر: <span id="newsScopeReadonlyLabel"></span></div>
+        <div style="color:var(--text-light)">هذا الخبر يستهدف عدّة فصول/شعب معاً — تعديل النطاق غير مدعوم، يمكنك تعديل النص/الوسائط فقط.</div>
+      </div>
       <div class="form-group mb-3" id="newsGradeSecRowAdd">
         <label class="form-label">الفصول والشعب <span style="font-weight:400;font-size:.78rem;color:var(--text-light)">(اختر فصلاً أو أكثر، ولكل فصل حدّد الشعب التي تريد النشر لها)</span></label>
         <div id="newsGradeSecBox" style="border:1px solid var(--border,#ddd);border-radius:8px;padding:8px;max-height:260px;overflow-y:auto;font-size:13px"></div>
@@ -5366,8 +5371,13 @@ function openNewsModal(id) {
   // وضع التعديل: فصل+شعبة مفردة (القائمة القديمة). وضع الإضافة: شجرة فصول/شعب متعددة.
   var rowEdit = document.getElementById('newsGradeSecRowEdit');
   var rowAdd  = document.getElementById('newsGradeSecRowAdd');
+  var rowReadonly = document.getElementById('newsScopeReadonly');
   if (rowEdit) rowEdit.style.display = id ? '' : 'none';
   if (rowAdd)  rowAdd.style.display  = id ? 'none' : '';
+  if (rowReadonly) rowReadonly.classList.add('hidden');
+  // نطاق خام مُخزَّن لخبر مركّب قيد التعديل (يُرسَل كما هو دون تفكيك عند الحفظ) — يُعاد ضبطه هنا دوماً.
+  window._newsEditRawGrade = null;
+  window._newsEditRawSection = null;
 
   if (id) {
     fillSelect('newsGrade', myGrades(), 'اختر الفصل', isAdmin() ? '' : pickDefault(myGrades()));
@@ -5402,8 +5412,20 @@ function openNewsModal(id) {
       hideLoading();
       if (r && r.success && r.data) {
         var n = r.data;
-        document.getElementById('newsGrade').value = n.grade || '';
-        _newsRenderSectionCheckboxes(n.grade, { editMode: true, preselect: [n.section || ''] });
+        if (n.isMultiScope) {
+          // نطاق مركّب (عدّة فصول/شعب) — قفل الاختيار، عرض للقراءة فقط، وحفظ
+          // القيمة الخام لإرسالها كما هي عند الحفظ دون أي إعادة بناء من الواجهة.
+          if (rowEdit) rowEdit.style.display = 'none';
+          if (rowReadonly) {
+            rowReadonly.classList.remove('hidden');
+            document.getElementById('newsScopeReadonlyLabel').textContent = n.scopeLabel || (n.grade + ' / ' + n.section);
+          }
+          window._newsEditRawGrade = n.grade || '';
+          window._newsEditRawSection = n.section || '';
+        } else {
+          document.getElementById('newsGrade').value = n.grade || '';
+          _newsRenderSectionCheckboxes(n.grade, { editMode: true, preselect: [n.section || ''] });
+        }
         document.getElementById('newsText').value = n.news || '';
         document.getElementById('newsDate').value = n.date || todayDate();
         // [3.2] تحميل وسائط الخبر الحالية في المحرّر (حذف/ترتيب/إضافة)
@@ -5490,17 +5512,26 @@ function saveNews() {
   var news = document.getElementById('newsText').value.trim();
   var date = document.getElementById('newsDate').value || todayDate();
 
-  // مسار التعديل يبقى فصلاً وشعبة مفردة (اختيار وحيد مفروض في وضع editMode أصلاً).
-  // مسار الإضافة أصبح متعدّد الفصول — كل فصل له شعبه المختارة الخاصة به.
+  // مسار التعديل يبقى فصلاً وشعبة مفردة (اختيار وحيد مفروض في وضع editMode أصلاً) —
+  // إلا لخبر بنطاق مركّب (window._newsEditRawGrade مضبوطة من openNewsModal)، حيث
+  // يُعاد إرسال النطاق الخام كما هو دون أي تفكيك من عناصر واجهة مخفية/فارغة أصلاً.
   var grade, scopeData;
   if (id) {
-    grade = document.getElementById('newsGrade').value || '';
-    var sections = _newsCollectSelectedSections();
-    if (!news || !grade || !sections.length) {
-      toast('أكمل الحقول المطلوبة (اختر شعبة واحدة على الأقل)', 'warning');
-      return;
+    if (window._newsEditRawGrade) {
+      if (!news) {
+        toast('أكمل الحقول المطلوبة', 'warning');
+        return;
+      }
+      scopeData = { grade: window._newsEditRawGrade, section: window._newsEditRawSection || '' };
+    } else {
+      grade = document.getElementById('newsGrade').value || '';
+      var sections = _newsCollectSelectedSections();
+      if (!news || !grade || !sections.length) {
+        toast('أكمل الحقول المطلوبة (اختر شعبة واحدة على الأقل)', 'warning');
+        return;
+      }
+      scopeData = { grade: grade, section: sections[0] };
     }
-    scopeData = { grade: grade, section: sections[0] };
   } else {
     var gradeSections = _newsCollectGradeSections();
     if (!news || !gradeSections.length) {
@@ -13853,7 +13884,9 @@ function _buildNewsCard_Teacher(n) {
   var newsOwner   = n.teacher || '';
   var newsGrade   = n.grade   || '';
   var newsSection = n.section || '';
-  var scopeLabel  = newsGrade + (newsSection ? ' / ' + newsSection : '');
+  // scopeLabel من الخادم متاح فقط للأخبار مركّبة النطاق فعلاً (عدّة فصول/شعب) —
+  // بقية الأخبار (الغالبية) تحافظ على نفس العرض الحالي حرفياً بلا أي تغيير بصري.
+  var scopeLabel  = n.scopeLabel || (newsGrade + (newsSection ? ' / ' + newsSection : ''));
   var initial     = newsOwner.charAt(0) || '?';
 
   // ── تجميع البطاقة ──────────────────────────────────────
