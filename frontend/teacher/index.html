@@ -4589,7 +4589,14 @@ function _fetchListsFromServer(callback) {
 
 function _refreshListsSilently() {
   _fetchListsFromServer(function(success) {
-    if (success) console.log('Lists refreshed silently');
+    if (success) {
+      console.log('Lists refreshed silently');
+      // إن كانت شاشة «إدارة الدرجات» مفتوحة بالفعل من التحميل الأول (بـApp.lists مؤقّت/قديم
+      // قبل اكتمال هذا التحديث الصامت)، أعد بناء قائمة "المادة" فقط من البيانات الجديدة —
+      // يحافظ على الشهر/الفصل/الشعبة المختارة، ويصحّح مادة جامعة قديمة (مثال: "الاجتماعيات"
+      // لصف "الأول ثانوي") إلى موادها الفرعية الصحيحة فوراً بلا حاجة لمغادرة التبويب والعودة.
+      if (document.getElementById('gradeGrade')) gradesOnGradeChange();
+    }
   });
 }
 
