@@ -75,19 +75,6 @@
     if (b) b.removeAttribute('target');
   }
 })();
-(function() {
-  // إذا كنا داخل WebView لتطبيق Android (User-Agent يحتوي علامة wv أو SchoolAppYemen)
-  var ua = navigator.userAgent || '';
-  var isWebView = (ua.indexOf('wv') !== -1) ||
-                  (ua.indexOf('SchoolAppYemen') !== -1) ||
-                  (ua.indexOf('Android') !== -1 && ua.indexOf('Version/') !== -1 && ua.indexOf('Chrome') === -1);
-  if (isWebView) {
-    var baseTag = document.querySelector('base[target]');
-    if (baseTag) {
-      baseTag.removeAttribute('target');
-    }
-  }
-})();
 </script>
 <script>
 (function () {
@@ -2137,7 +2124,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <span class="sidebar-label">الأدوات الأكاديمية</span>
   <button class="sidebar-item" id="si-grades"     onclick="showSection('grades')">    <span class="si-icon">📊</span> الدرجات</button>
   <button class="sidebar-item" id="si-homework"   onclick="showSection('homework')">  <span class="si-icon">📝</span> الواجبات</button>
-  <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">📋</span> تسجيل سلوك</button>
+  <button class="sidebar-item" id="si-violations" onclick="showSection('violations')"><span class="si-icon">📋</span> سجل السلوكيات</button>
   <button class="sidebar-item" id="si-mySchedule" onclick="showSection('mySchedule')"><span class="si-icon">📅</span> جدول الحصص</button>
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')" title="نشر الأخبار والإشعارات للطلاب وأولياء الأمور">      <span class="si-icon">📢</span> نشر الاخبار</button>
@@ -2168,8 +2155,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-teachers-mgmt"   onclick="showSection('teachers-mgmt')">  <span class="si-icon">👥</span> إدارة المعلمين</button>
   <button class="sidebar-item" id="si-supervisorPerms" onclick="showSection('supervisorPerms')" style="display:none;"><span class="si-icon">🛡️</span> ضبط صلاحيات المشرف</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
-  <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول الاختبارات</button>
-  <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول</button>
+  <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول اختبارات نهاية العام</button>
+  <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول والتواقيت</button>
   <button class="sidebar-item" id="si-schoolTemplate"  onclick="showSection('schoolTemplate')" style="display:none;"><span class="si-icon">🏫</span> قالب تزويد المدرسة</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🎒</span> قائمة الطلاب</button>
@@ -2184,7 +2171,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <span class="si-badge-notes" id="myTasksBadge" style="display:none;">0</span>
   </button>
   <button class="sidebar-item" id="si-tasksMgmt" onclick="showSection('tasksMgmt')" style="display:none;">
-    <span class="si-icon">🗂️</span> إدارة المهام
+    <span class="si-icon">🗂️</span> إدارة المهام والإشراف
   </button>
 </div>
 <div class="sidebar-divider"></div>
@@ -6477,7 +6464,7 @@ function initSidebarByRole() {
 var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-grades',           label:'📊 الدرجات' },
   { key:'si-homework',         label:'📝 الواجبات' },
-  { key:'si-violations',       label:'📋 تسجيل سلوك' },
+  { key:'si-violations',       label:'📋 سجل السلوكيات' },
   { key:'si-mySchedule',       label:'📅 جدول الحصص' },
   { key:'si-calendar',         label:'🗓️ التقويم المدرسي' },
   { key:'si-news',             label:'📢 نشر الاخبار' },
@@ -6492,7 +6479,7 @@ var SUPERVISOR_PAGE_CATALOG = [
   { key:'si-certificates',     label:'🏅 الشهادات' },
   { key:'si-scoresheets',      label:'📋 الكشوفات' },
   { key:'si-myTasks',          label:'✅ مهامي' },
-  { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام' },
+  { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام والإشراف' },
   { key:'si-studentDirectory', label:'🎒 أسماء الطلاب' },
   { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' },
   { key:'si-letterheads',      label:'🗂️ ديباجات المدرسة' }
@@ -15109,7 +15096,7 @@ function doImportTeachers(inp) {
 
 // ==================== ADMIN ACTIVITIES ====================
 function renderAdminActivities() {
-  if (!isAdmin()) { toast('ليس لديك صلاحية', 'error'); showSection('dashboard'); return; }
+  if (!isAdmin() && !(App.user && App.user.role === 'activities')) { toast('ليس لديك صلاحية', 'error'); showSection('dashboard'); return; }
   var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(245,158,11,.1)">📋</div><div class="section-header-title">جميع الأنشطة</div></div><div class="section-body"><div class="tabs mb-3"><button class="tab-btn active" onclick="switchActivitiesTab(\'homework\',this)">📝 الواجبات</button><button class="tab-btn" onclick="switchActivitiesTab(\'news\',this)">📢 الأخبار</button><button class="tab-btn" onclick="switchActivitiesTab(\'violations\',this)">⚠️ السلوكيات</button></div><div id="adminActivitiesContent"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div></div>';
   document.getElementById('dynamicContent').innerHTML = html;
   loadAdminActivities();
@@ -15177,42 +15164,6 @@ function renderAdminStudents() {
   var html = '';
   html += '<div class="section-card" style="margin-bottom:20px;">';
   html += '<div class="section-header">';
-  html += '<div class="section-header-icon" style="background:rgba(245,158,11,.1)">⚙️</div>';
-  html += '<div class="section-header-title">إعدادات عرض الرسوم للطلاب</div>';
-  html += '<span class="badge badge-warning">للمدير فقط</span>';
-  html += '</div>';
-  html += '<div class="section-body">';
-  html += '<div class="form-row">';
-  html += '<div class="form-group"><label class="form-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);"><input type="checkbox" id="feesVisibleChk" style="width:18px;height:18px;flex:none;">💰 عرض الرسوم في منصة الطالب</label>';
-  html += '<small style="color:var(--text-muted);display:block;margin-top:5px;">🔕 <strong>الافتراضي: مخفي</strong> — لا يرى أي طالب رسومه/المدفوع/المتبقّي في منصته. فعّل هذا الزر ثم احفظ لإظهارها.</small></div>';
-  html += '<div class="form-group"><label class="form-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);"><input type="checkbox" id="hideDiscountedChk" checked style="width:18px;height:18px;flex:none;">🔒 حجب الطلاب المخفَّضين تلقائيًّا</label>';
-  html += '<small style="color:var(--text-muted);display:block;margin-top:5px;">الطلاب الذين رسومهم لا تطابق معيار صفّهم (تخفيض) لا تظهر رسومهم في منصتهم — حتى لو فعّلت «عرض الرسوم».</small></div>';
-  html += '</div>';
-  html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
-  html += '<div style="display:flex; gap:8px; flex-wrap:wrap;">';
-  html += '<button class="btn btn-primary" onclick="saveBlockSettings()">💾 حفظ إعدادات العرض</button>';
-  html += '<button class="btn btn-warning" onclick="sendBulkPaymentNotices()" title="إرسال إشعار سداد لكل طالب لديه رسوم متبقّية — يظهر في «ملاحظاتي» لديه">📨 إرسال إشعارات للمتأخّرين</button>';
-  html += '</div>';
-  html += '<span id="blockStatsBadge" class="badge badge-info" style="font-size:0.9rem; padding:8px 16px;">📊 جاري تحميل الإحصائيات...</span>';
-  html += '</div>';
-  html += '</div>';
-  html += '</div>';
-  html += '<div class="section-card" style="margin-bottom:20px;">';
-  html += '<div class="section-header">';
-  html += '<div class="section-header-icon" style="background:rgba(239,68,68,.1)">🔒</div>';
-  html += '<div class="section-header-title">إعدادات الحجب المالي بنسبة التسديد</div>';
-  html += '<span class="badge badge-warning">للمدير فقط</span>';
-  html += '</div>';
-  html += '<div class="section-body">';
-  html += '<div class="form-row">';
-  html += '<div class="form-group"><label class="form-label">نسبة الحجب (%)</label><input type="number" class="form-control" id="blockPercentageInput" min="0" max="100" step="1" placeholder="0 = معطَّل" style="width:160px;"></div>';
-  html += '</div>';
-  html += '<small style="color:var(--text-muted);display:block;margin:4px 0 12px;">إن انخفضت نسبة سداد الطالب عن هذه القيمة يُحجب دخوله بالكامل عن منصته حتى تسديد رسومه. صفر = معطَّل (لا حجب). لاستثناء طالب معيّن، استخدم زر «🔓 إلغاء الحجب» أسفل جدول الطلاب.</small>';
-  html += '<button class="btn btn-primary" onclick="saveFinancialBlockSettings()">🔒 حفظ إعدادات الحجب المالي</button>';
-  html += '</div>';
-  html += '</div>';
-  html += '<div class="section-card">';
-  html += '<div class="section-header">';
   html += '<div class="section-header-icon" style="background:rgba(16,185,129,.1)">🎒</div>';
   html += '<div class="section-header-title">قائمة الطلاب</div>';
   html += '<button class="btn btn-secondary btn-sm" onclick="exportStudentsList()">📤 تصدير</button>';
@@ -15227,6 +15178,35 @@ function renderAdminStudents() {
   html += '<div id="studListPager"></div>';
   html += '</div>';
   html += '</div>';
+  html += '<details class="section-card">';
+  html += '<summary class="section-header" style="cursor:pointer;list-style:none;">';
+  html += '<span class="section-header-icon" style="background:rgba(239,68,68,.1)">⚙️</span>';
+  html += '<span class="section-header-title" style="flex:1;">الإعدادات المالية للطلاب</span>';
+  html += '<span class="badge badge-warning">للمدير فقط</span>';
+  html += '</summary>';
+  html += '<div class="section-body" style="border-top:1px solid var(--border);">';
+  html += '<div class="section-header-title" style="font-size:0.95rem;margin-bottom:10px;">💰 عرض الرسوم للطلاب</div>';
+  html += '<div class="form-row">';
+  html += '<div class="form-group"><label class="form-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);"><input type="checkbox" id="feesVisibleChk" style="width:18px;height:18px;flex:none;">💰 عرض الرسوم في منصة الطالب</label>';
+  html += '<small style="color:var(--text-muted);display:block;margin-top:5px;">🔕 <strong>الافتراضي: مخفي</strong> — لا يرى أي طالب رسومه/المدفوع/المتبقّي في منصته. فعّل هذا الزر ثم احفظ لإظهارها.</small></div>';
+  html += '<div class="form-group"><label class="form-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);"><input type="checkbox" id="hideDiscountedChk" checked style="width:18px;height:18px;flex:none;">🔒 حجب الطلاب المخفَّضين تلقائيًّا</label>';
+  html += '<small style="color:var(--text-muted);display:block;margin-top:5px;">الطلاب الذين رسومهم لا تطابق معيار صفّهم (تخفيض) لا تظهر رسومهم في منصتهم — حتى لو فعّلت «عرض الرسوم».</small></div>';
+  html += '</div>';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
+  html += '<div style="display:flex; gap:8px; flex-wrap:wrap;">';
+  html += '<button class="btn btn-primary" onclick="saveBlockSettings()">💾 حفظ إعدادات العرض</button>';
+  html += '<button class="btn btn-warning" onclick="sendBulkPaymentNotices()" title="إرسال إشعار سداد لكل طالب لديه رسوم متبقّية — يظهر في «ملاحظاتي» لديه">📨 إرسال إشعارات للمتأخّرين</button>';
+  html += '</div>';
+  html += '<span id="blockStatsBadge" class="badge badge-info" style="font-size:0.9rem; padding:8px 16px;">📊 جاري تحميل الإحصائيات...</span>';
+  html += '</div>';
+  html += '<div class="section-header-title" style="font-size:0.95rem;margin:16px 0 10px;border-top:1px solid var(--border);padding-top:14px;">🔒 الحجب المالي بنسبة التسديد</div>';
+  html += '<div class="form-row">';
+  html += '<div class="form-group"><label class="form-label">نسبة الحجب (%)</label><input type="number" class="form-control" id="blockPercentageInput" min="0" max="100" step="1" placeholder="0 = معطَّل" style="width:160px;"></div>';
+  html += '</div>';
+  html += '<small style="color:var(--text-muted);display:block;margin:4px 0 12px;">إن انخفضت نسبة سداد الطالب عن هذه القيمة يُحجب دخوله بالكامل عن منصته حتى تسديد رسومه. صفر = معطَّل (لا حجب). لاستثناء طالب معيّن، استخدم زر «🔓 إلغاء الحجب» أسفل جدول الطلاب.</small>';
+  html += '<button class="btn btn-primary" onclick="saveFinancialBlockSettings()">🔒 حفظ إعدادات الحجب المالي</button>';
+  html += '</div>';
+  html += '</details>';
 
   document.getElementById('dynamicContent').innerHTML = html;
   // استعادة آخر فلاتر مستخدمة قبل أول تحميل (تُحفظ محلياً)
@@ -17418,7 +17398,7 @@ function renderCertificates(){
   el.innerHTML =
     '<div class="section-card"><div class="section-header">' +
       '<div class="section-header-icon" style="background:rgba(245,158,11,.12)">🏅</div>' +
-      '<div class="section-header-title">نظام طباعة الشهادات الدراسية</div></div>' +
+      '<div class="section-header-title">طباعة الشهادات الدراسية</div></div>' +
       '<div class="section-body">' +
         '<div class="alert alert-info" style="margin-bottom:12px">يدعم مسميات نصف العام ونهاية العام · توزيع المواد حسب الصف · حساب تلقائي للمجموع والتقدير · طباعة الكل: شهادتان في صفحة A4.</div>' +
         '<div class="filter-bar"><div class="filter-bar-title">🔎 معايير البحث</div>' +
@@ -17731,7 +17711,7 @@ function renderScoreSheets(){
   el.innerHTML =
     '<div class="section-card"><div class="section-header">' +
       '<div class="section-header-icon" style="background:rgba(37,99,235,.12)">📋</div>' +
-      '<div class="section-header-title">نظام عرض وطباعة الكشوفات</div></div>' +
+      '<div class="section-header-title">عرض وطباعة الكشوفات</div></div>' +
       '<div class="section-body">' +
         '<div class="alert alert-info" style="margin-bottom:12px">عرض وطباعة نتائج جميع الطلاب جدولياً — يدعم الشهور العادية ونصف العام ونهاية العام · مواد كل صف ديناميكياً · معدّل وإحصائيات تلقائية.</div>' +
         '<div class="filter-bar"><div class="filter-bar-title">🔎 تصفية البيانات</div>' +
