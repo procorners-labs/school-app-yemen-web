@@ -3645,8 +3645,27 @@ function saveGradesVisPref(pref) {
   try { localStorage.setItem(gradesVisPrefKey(), JSON.stringify(pref)); } catch (e) {}
 }
 
+// يوسّع مادة تكليف خام إلى موادها الفرعية الفعلية لصفٍّ معيّن — مصدر الخريطة
+// App.lists.subjectExpansionMap (من ورقة «القوائم» H/I عبر
+// teacher/TeacherCore.js::_tcSubjectExpansionMap). يُعيد null إن كانت المادة
+// تطابق منهج الصف مباشرة (لا توسعة) أو لا توجد علاقة جامع/فرعي معروفة لها.
+function _expandAssignedSubjectForGrade(rawSubject, grade) {
+  if (!rawSubject || !grade) return null;
+  var curric = (App.lists && App.lists.curriculumByGrade) ? App.lists.curriculumByGrade[grade] : null;
+  if (!curric || !curric.length) return null;
+  if (curric.indexOf(rawSubject) !== -1) return null; // مطابقة مباشرة — لا توسعة
+  var children = (App.lists && App.lists.subjectExpansionMap) ? App.lists.subjectExpansionMap[rawSubject] : null;
+  if (!children || !children.length) return null;
+  var out = [];
+  for (var i = 0; i < children.length; i++) { if (curric.indexOf(children[i]) !== -1) out.push(children[i]); }
+  return out.length ? out : null;
+}
+
 // كل المواد القابلة للرصد لهذا الصف (قبل تفضيل الإخفاء): مواد المعلم/الصف
 // ناقص غير المُقيَّمة، مقاطعةً مع مقرر الصف إن كان معرَّفاً في المرجع.
+// مادة تكليف جامعة (الاجتماعيات) لصفٍّ منهجه الفعلي يقسّمها لمواد فرعية (الأول
+// ثانوي) تُستبدَل هنا بموادها الفرعية الحقيقية بدل استبعادها — راجع
+// _expandAssignedSubjectForGrade و_docs/2026-07-20-توسعة-مادة-الاجتماعيات-الفرعية.md.
 function gradableSubjectsForGrade(grade) {
   var subs = subjectsForGrade(grade) || [];
   var out = [];
@@ -3655,7 +3674,13 @@ function gradableSubjectsForGrade(grade) {
     var sj = subs[i];
     if (!sj || sj === 'جميع المواد') continue;
     if (_isNonGradedSubjClient(sj)) continue;
-    if (curric && curric.length && curric.indexOf(sj) === -1) continue;
+    if (curric && curric.length && curric.indexOf(sj) === -1) {
+      var expanded = _expandAssignedSubjectForGrade(sj, grade);
+      if (expanded) {
+        for (var e = 0; e < expanded.length; e++) { if (out.indexOf(expanded[e]) === -1) out.push(expanded[e]); }
+      }
+      continue;
+    }
     out.push(sj);
   }
   // تراجع آمن: إن أفرغت الفلترة القائمة كلياً (بيانات ناقصة) نعود لقائمة الصف
@@ -3780,7 +3805,17 @@ function getMySectionsForGradeSubject(subject, grade) {
   }
   var out = [], seen = {};
   for (var i = 0; i < asg.length; i++) {
-    if (subject && asg[i].subject !== subject && asg[i].subject !== 'جميع المواد') continue;
+    if (subject) {
+      var subjMatches = (asg[i].subject === subject || asg[i].subject === 'جميع المواد');
+      // مادة تكليف جامعة (الاجتماعيات) قد تنقسم لهذا الصف تحديداً إلى موادها
+      // الفرعية — subject الوارد هنا هو الاسم الفرعي بعد إصلاح gradableSubjectsForGrade،
+      // فلا يطابق asg[i].subject الخام الجامع بلا هذا التوسع (وإلا قائمة شعبة فارغة).
+      if (!subjMatches && grade) {
+        var expandedS = _expandAssignedSubjectForGrade(asg[i].subject, grade);
+        subjMatches = !!(expandedS && expandedS.indexOf(subject) !== -1);
+      }
+      if (!subjMatches) continue;
+    }
     var grs = asg[i].grades || [];
     for (var k = 0; k < grs.length; k++) {
       if (grade && grs[k].grade !== grade && grs[k].grade !== 'جميع الفصول') continue;
@@ -4535,6 +4570,7 @@ function _fetchListsFromServer(callback) {
         subjectsByGrade: r.subjectsByGrade || {},
         nonGradedSubjects: r.nonGradedSubjects || {},
         curriculumByGrade: r.curriculumByGrade || {},
+        subjectExpansionMap: r.subjectExpansionMap || {},
         _ts            : Date.now()
       };
       try { sessionStorage.setItem('teacherLists_v2', JSON.stringify(App.lists)); } catch(e) {}
