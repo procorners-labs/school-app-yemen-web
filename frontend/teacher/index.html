@@ -21822,8 +21822,9 @@ function _tfDrawRecTable(){
   var tbl=document.getElementById('tf-rec-table');
   if(tbl) tbl.innerHTML=_tfTable(['التاريخ','الاسم','البيان','المبلغ','الطريقة','سند'], filt.map(function(r,ix){
     var pend=r.pending?' <span style="color:var(--tf-orange);font-size:11px;">⏳ قيد المزامنة</span>':'';
+    var web=(!r.pending&&r.id&&(''+r.id).indexOf('WEB-')===0)?' <span style="color:var(--tf-blue);font-size:11px;">⏳ قيد المطابقة</span>':'';
     var pbtn='<button class="tf-abtn" style="padding:3px 10px;font-size:12px;" title="طباعة سند قبض" onclick="_tfPrintVoucherRow(\'rec\','+ix+')">🖨️</button>';
-    return [_tfEsc(r.date), _tfEsc(r.name||r.label||'—')+pend, _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.method||''), pbtn];
+    return [_tfEsc(r.date), _tfEsc(r.name||r.label||'—')+pend+web, _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.method||''), pbtn];
   }));
   var tot=document.getElementById('tf-rec-total');
   if(tot) tot.innerHTML='المعروض: <strong>'+filt.length+'</strong> سند · الإجمالي <strong>'+_tfComma(total)+'</strong>';
@@ -22159,6 +22160,13 @@ function _tfFld(id,label,attrs){
   return '<label style="display:block;margin:9px 0 3px;font-size:13px;color:var(--text-muted);">'+label+'</label>'+
     '<input id="'+id+'" '+attrs+' style="width:100%;padding:9px 11px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;font-size:14px;box-sizing:border-box;">';
 }
+// مفتاح "إدخال مباشر" — receipt/expense فقط. مفعَّل افتراضيًا (غرض الميزة: ظهور فوري
+// بلا انتظار جهاز المدرسة). الحارس الحقيقي الوحيد خادمي (_tfinCanFinance) — هذا اختيار مسار فقط.
+function _tfOpDirectToggle(){
+  return '<label style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:13px;color:var(--text);cursor:pointer;">'+
+    '<input type="checkbox" id="tfop-direct" checked style="width:16px;height:16px;">'+
+    '⚡ إدخال مباشر — يظهر فورًا دون انتظار مزامنة Access</label>';
+}
 function _tfOpForm(type, prefill){
   prefill=prefill||{};
   var title='', body='';
@@ -22179,12 +22187,14 @@ function _tfOpForm(type, prefill){
       '</div>'+
       _tfFld('tfop-date','تاريخ السند','type="date" value="'+_tfTodayIso()+'"')+
       _tfFld('tfop-label','البيان','value="رسوم دراسية" oninput="_tfOpSearchLabel(this.value)" onblur="_acHide(\'tfop-label-ac\')" autocomplete="off"')+
-      '<div id="tfop-label-ac" class="ac-box" style="position:relative;"></div>';
+      '<div id="tfop-label-ac" class="ac-box" style="position:relative;"></div>'+
+      _tfOpDirectToggle();
   } else if(type==='expense'){
     title='➖ إضافة مصروف';
     body=_tfFld('tfop-amount','المبلغ المسحوب (ريال)','type="number" inputmode="numeric" placeholder="0"')+
       _tfFld('tfop-label','بيان المصروف','placeholder="مثال: كهرباء / قرطاسية"')+
-      _tfFld('tfop-date','تاريخ السحب','type="date" value="'+_tfTodayIso()+'"');
+      _tfFld('tfop-date','تاريخ السحب','type="date" value="'+_tfTodayIso()+'"')+
+      _tfOpDirectToggle();
   } else if(type==='supply'){
     title='📤 توريد للمدير (تسليم نقد الصندوق)';
     body=_tfFld('tfop-amount','المبلغ المُورَّد (ريال)','type="number" inputmode="numeric" placeholder="0"')+
@@ -22217,9 +22227,12 @@ function _tfOpSubmit(type){
   else if(type==='supply') payload={amount:v('tfop-amount'),date:v('tfop-date'),note:v('tfop-note')};
   else if(type==='fee_adjust') payload={code:v('tfop-code'),name:v('tfop-name'),newFee:v('tfop-newfee')};
   else return;
+  var directEl=document.getElementById('tfop-direct');
+  var useDirect=(type==='receipt'||type==='expense')&&directEl&&directEl.checked;
+  var fn=useDirect?'addFinancialOperationDirectProtected':'addFinancialOperationProtected';
   var st=document.getElementById('tfop-status');
   if(st) st.innerHTML='<span style="color:var(--text-muted);">⏳ جارٍ الحفظ...</span>';
-  callServer('addFinancialOperationProtected', {type:type, payload:payload}, function(res){
+  callServer(fn, {type:type, payload:payload}, function(res){
     if(!res||!res.success){ if(st) st.innerHTML='<span style="color:var(--tf-red);font-weight:700;">⚠️ '+_tfEsc((res&&res.error)||'تعذّر الحفظ')+'</span>'; return; }
     if(type==='fee_adjust'){
       if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">✅ سُجّلت العملية — ستظهر في برنامج Access خلال دقيقة.</span>';
@@ -22229,7 +22242,10 @@ function _tfOpSubmit(type){
     // قبض/صرف/توريد: نعرض زر طباعة السند بدل الإغلاق الآلي (الطباعة من حمولة العملية المُدخلة فورًا)
     window._tfLastOp={type:type, payload:payload};
     var bts=document.getElementById('tfop-btns'); if(bts) bts.style.display='none';
-    if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">✅ سُجّلت العملية — ستصل برنامج Access خلال دقيقة.</span>'+
+    var doneMsg=res.direct?
+      '✅ ظهرت فورًا في السجل — ستُطابَق تلقائيًا مع Access خلال دقائق.'+(res.outboxOk===false?' <span style="color:var(--tf-orange);">(تنبيه: لم تُسجَّل نسخة انتظار — تواصل مع الدعم الفني)</span>':''):
+      '✅ سُجّلت العملية — ستصل برنامج Access خلال دقيقة.';
+    if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">'+doneMsg+'</span>'+
       '<div style="margin-top:10px;display:flex;gap:8px;">'+
       '<button class="tf-abtn" style="background:var(--tf-blue);color:#fff;border-color:var(--tf-blue);" onclick="_tfPrintLastOp()">🖨️ طباعة السند</button>'+
       '<button class="tf-abtn" onclick="_tfModalClose();_tfLoad(true);">إغلاق</button></div>';
@@ -22326,8 +22342,9 @@ function _tfDrawExpTable(){
   window._tfExpView=filt;
   var tbl=document.getElementById('tf-exp-table');
   if(tbl) tbl.innerHTML=_tfTable(['التاريخ','البيان','المبلغ','الفئة','سند'], filt.map(function(r,ix){
+    var web=(r.id&&(''+r.id).indexOf('WEB-')===0)?' <span style="color:var(--tf-blue);font-size:11px;">⏳ قيد المطابقة</span>':'';
     var pbtn='<button class="tf-abtn" style="padding:3px 10px;font-size:12px;" title="طباعة سند" onclick="_tfPrintVoucherRow(\'exp\','+ix+')">🖨️</button>';
-    return [_tfEsc(r.date), _tfEsc(r.label||'—'), '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.categoryName||''), pbtn];
+    return [_tfEsc(r.date), _tfEsc(r.label||'—')+web, '<span class="tf-amt">'+_tfComma(r.amount)+'</span>', _tfEsc(r.categoryName||''), pbtn];
   }));
   var tot=document.getElementById('tf-exp-total');
   if(tot) tot.innerHTML='الإجمالي المعروض: <strong>'+_tfComma(total)+'</strong> ('+filt.length+' حركة)';
