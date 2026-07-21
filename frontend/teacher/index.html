@@ -9179,83 +9179,126 @@ function saveScheduleSettings() {
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
 }
 
-// ── قالب تزويد المدرسة (مدير فقط) — استدعاء خفيف لنفس دوال master-admin
-//    (توليد/استيراد قالب، بذر افتراضيات) عبر SchoolTemplateBridge.js، بلا تكرار منطق.
-//    يحتاج تسجيل دخول لوحة الإدارة المركزية مرّة واحدة لكل جلسة teacher.
-var STB_LOGGED_IN = false;
+// ── قالب تزويد المدرسة (مدير فقط) — نقطة دخول موحَّدة (تنزيل → تعبئة → رفع → تفعيل كامل)
+//    عبر SchoolTemplateBridge.js. بلا دخول ثانٍ منفصل بلوحة الإدارة المركزية — كل استدعاء يوقّع
+//    جلسة teacher الموثوقة بتوقيع HMAC طازج تلقائياً (راجع teacherBridgeActionProtected).
 function renderSchoolTemplateBridge() {
   var el = document.getElementById('dynamicContent');
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">🏫</div>' +
     '<div class="section-header-title">قالب تزويد المدرسة</div></div>' +
     '<div class="section-body">' +
-    '<div class="alert alert-info" style="margin-bottom:12px">توليد/استيراد قالب بيانات المدرسة، أو بذر أمثلة افتراضية — نفس أدوات لوحة الإدارة المركزية، بدون مغادرة منصّة المعلم.</div>' +
-    '<div id="stbLoginBox"></div>' +
-    '<div id="stbActionsBox" style="display:none"></div>' +
-    '<div id="stbStatus" style="margin-top:10px"></div>' +
-    '</div></div>';
-  if (STB_LOGGED_IN) { _stbShowActions(); } else { _stbShowLogin(); }
-}
-function _stbShowLogin() {
-  var box = document.getElementById('stbLoginBox');
-  if (!box) return;
-  box.innerHTML =
-    '<div class="filter-bar"><div class="filter-bar-title">🔑 دخول لوحة الإدارة المركزية (مرّة واحدة لهذه الجلسة)</div>' +
-    '<div class="form-row">' +
-    '<div class="form-group"><label class="form-label">البريد الإلكتروني</label><input type="email" class="form-control" id="stb-email"></div>' +
-    '<div class="form-group"><label class="form-label">كلمة المرور</label><input type="password" class="form-control" id="stb-pass"></div>' +
+    '<div class="alert alert-info" style="margin-bottom:12px">' +
+      '① نزّل القالب وعبِّئه ببيانات مدرستك الحقيقية (طلاب/معلمين/رسوم/جدول) — ' +
+      '② ارفع رابط الملف بعد التعبئة — ③ اضغط «تفعيل المنصة كاملة» فتُستورَد بياناتك ويُبنى الجدول ' +
+      'وتُفتَح منصّتك تلقائياً بضغطة واحدة. كل صف يبدأ بكلمة «مثال» توضيحي فقط — احذفه لاحقاً بزرّ 🧹.' +
     '</div>' +
-    '<button class="btn btn-primary btn-sm" onclick="_stbLogin()">دخول</button></div>';
-  document.getElementById('stbActionsBox').style.display = 'none';
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">⬇️ تنزيل القالب</div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="_stbDownloadTemplate()">⬇️ تنزيل القالب</button>' +
+      '<div id="stbDownloadStatus" style="margin-top:8px"></div>' +
+    '</div>' +
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">📤 رفع القالب المُعبَّأ + تفعيل</div>' +
+      '<div class="form-group"><label class="form-label">رابط/معرّف ملف Google Sheet المُعبَّأ</label>' +
+      '<input type="text" class="form-control" id="stb-upload-url" placeholder="الصق رابط الشيت هنا (اختياري إن كنت عبّأت نفس القالب المُنزَّل أعلاه)"></div>' +
+      '<button class="btn btn-primary btn-sm" onclick="_stbActivate()">🚀 تفعيل المنصة كاملة</button>' +
+      '<div id="stbActivateStatus" style="margin-top:8px"></div>' +
+    '</div>' +
+    '<div id="stbResultPanel"></div>' +
+    '<div style="margin-top:12px"><button class="btn btn-outline-danger btn-sm" onclick="_stbClearExamples()">🧹 حذف صفوف الأمثلة الآن</button></div>' +
+    '<div style="margin-top:16px;border-top:1px solid var(--border,#e2e8f0);padding-top:12px">' +
+      '<button class="btn btn-secondary btn-sm" onclick="_stbToggleBranchForm()">➕ إضافة فرع جديد</button>' +
+      '<div id="stbBranchForm" style="display:none;margin-top:10px"></div>' +
+    '</div>' +
+    '</div></div>';
 }
-function _stbLogin() {
-  var email = (document.getElementById('stb-email').value || '').trim();
-  var pass  = document.getElementById('stb-pass').value || '';
-  var st = document.getElementById('stbStatus');
-  if (!email || !pass) { st.innerHTML = '<span style="color:#c62828">أدخل البريد وكلمة المرور</span>'; return; }
-  st.innerHTML = '⏳ جاري الدخول…';
-  callServer('teacherBridgeLoginProtected', { masterEmail: email, masterPass: pass }, function (r) {
-    if (r && r.success) {
-      STB_LOGGED_IN = true;
-      st.innerHTML = '<span style="color:#2e7d32">✅ تم الدخول</span>';
-      _stbShowActions();
-    } else {
-      st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل الدخول') + '</span>';
-    }
-  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+
+// ⬇️ تنزيل/فتح القالب — نفس إجراء generate القائم، بتوقيع HMAC طازج بدل توكن مخزَّن.
+function _stbDownloadTemplate() {
+  var st = document.getElementById('stbDownloadStatus');
+  st.innerHTML = '⏳ جاري التوليد…';
+  callServer('teacherBridgeActionProtected', { action: 'generate' }, function (r) {
+    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
+    st.innerHTML = '<span style="color:#2e7d32">✅ القالب جاهز — </span>' +
+      '<a href="' + r.editUrl + '" target="_blank" rel="noopener">فتح للتعبئة</a>' +
+      (r.xlsxUrl ? ' · <a href="' + r.xlsxUrl + '" target="_blank" rel="noopener">تنزيل Excel</a>' : '');
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
 }
-function _stbShowActions() {
-  document.getElementById('stbLoginBox').innerHTML = '';
-  var box = document.getElementById('stbActionsBox');
-  box.style.display = 'block';
-  box.innerHTML =
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    '<button class="btn btn-secondary btn-sm" onclick="_stbAction(\'generate\')">⬇️ توليد/فتح قالب البيانات</button>' +
-    '<button class="btn btn-secondary btn-sm" onclick="_stbAction(\'import\')">📤 استيراد بيانات القالب</button>' +
-    '<button class="btn btn-secondary btn-sm" onclick="_stbAction(\'seed\')">♻️ بذر الافتراضيات</button>' +
-    '</div>';
-}
-function _stbAction(action) {
-  var st = document.getElementById('stbStatus');
-  st.innerHTML = '⏳ جاري التنفيذ…';
-  callServer('teacherBridgeActionProtected', { action: action }, function (r) {
-    if (r && r.requiresMasterLogin) {
-      STB_LOGGED_IN = false;
-      st.innerHTML = '<span style="color:#c62828">انتهت الجلسة — يلزم الدخول مجدداً</span>';
-      _stbShowLogin();
+
+// 🚀 تفعيل المنصة كاملة — استيراد + بذر + توليد/نشر الجدول + فحص صحة، بضغطة واحدة.
+function _stbActivate() {
+  var url = (document.getElementById('stb-upload-url').value || '').trim();
+  var st = document.getElementById('stbActivateStatus');
+  st.innerHTML = '⏳ جاري التفعيل (استيراد ← بذر ← جدول ← فحص صحة)…';
+  document.getElementById('stbResultPanel').innerHTML = '';
+  var args = { action: 'activate' };
+  if (url) args.url = url;
+  callServer('teacherBridgeActionProtected', args, function (r) {
+    if (!r || !r.success) {
+      st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل التفعيل') + '</span>';
       return;
     }
-    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>'; return; }
-    if (action === 'generate' && r.editUrl) {
-      st.innerHTML = '<span style="color:#2e7d32">✅ القالب جاهز — </span><a href="' + r.editUrl + '" target="_blank" rel="noopener">فتح القالب للتعبئة</a>';
-    } else if (action === 'seed') {
-      st.innerHTML = '<span style="color:#2e7d32">✅ رسوم: ' + (r.seeded && r.seeded.fees || 0) + ' · أمثلة معلّمين: ' + (r.seeded && r.seeded.teacherExamples || 0) + '</span>';
-    } else if (action === 'import') {
-      st.innerHTML = '<span style="color:#2e7d32">✅ تمّ الاستيراد</span>';
-    } else {
-      st.innerHTML = '<span style="color:#2e7d32">✅ تم</span>';
-    }
-  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+    st.innerHTML = '<span style="color:#2e7d32">✅ تم التفعيل بنجاح</span>';
+    document.getElementById('stbResultPanel').innerHTML = _stbBuildResultPanelHtml(r, null, null);
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+// 🧹 حذف صفوف الأمثلة — فعل غير تلقائي، يحتاج تأكيداً صريحاً (يحذف بيانات).
+function _stbClearExamples() {
+  if (!confirm('حذف كل صفوف الأمثلة (الطلاب/المعلمين/الحسابات المالية) الموسومة «مثال»؟ لا يمكن التراجع.')) return;
+  var st = document.getElementById('stbActivateStatus');
+  st.innerHTML = '⏳ جاري الحذف…';
+  callServer('teacherBridgeActionProtected', { action: 'clear' }, function (r) {
+    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
+    st.innerHTML = '<span style="color:#2e7d32">✅ حُذف ' + (r.removed || 0) + ' صفّ مثال</span>';
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+// ➕ إضافة فرع جديد — الاسم فقط؛ بريد/كلمة مرور مدير الفرع تُولَّد تلقائياً وتُعرَض في النتيجة.
+function _stbToggleBranchForm() {
+  var box = document.getElementById('stbBranchForm');
+  if (box.style.display === 'none') {
+    box.style.display = 'block';
+    box.innerHTML =
+      '<div class="form-group"><label class="form-label">اسم الفرع</label>' +
+      '<input type="text" class="form-control" id="stb-branch-name" placeholder="مثال: الفرع الشرقي"></div>' +
+      '<button class="btn btn-primary btn-sm" onclick="_stbCreateBranch()">➕ إنشاء الفرع</button>' +
+      '<div id="stbBranchStatus" style="margin-top:8px"></div>';
+  } else {
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+}
+function _stbCreateBranch() {
+  var name = (document.getElementById('stb-branch-name').value || '').trim();
+  var st = document.getElementById('stbBranchStatus');
+  if (!name) { st.innerHTML = '<span style="color:#c62828">أدخل اسم الفرع</span>'; return; }
+  st.innerHTML = '⏳ جاري إنشاء الفرع (قد يستغرق دقيقة)…';
+  callServer('teacherBridgeActionProtected', { action: 'branch', branchName: name }, function (r) {
+    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
+    st.innerHTML = '<span style="color:#2e7d32">✅ تم إنشاء الفرع</span>';
+    document.getElementById('stbResultPanel').innerHTML = _stbBuildResultPanelHtml(r, r.adminEmail, r.adminPass);
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+// لوحة نتيجة موحَّدة (تفعيل أو إنشاء فرع) — روابط البوابات + بيانات اعتماد + تحذير كلمات مرور الأمثلة.
+function _stbBuildResultPanelHtml(r, adminEmail, adminPass) {
+  var portals = r.portals || {};
+  var h = '<div class="filter-bar" style="margin-top:8px;background:rgba(46,125,50,.06)"><div class="filter-bar-title">✅ منصّتك جاهزة</div>';
+  var links = [];
+  if (portals.teacher)  links.push('<a href="' + portals.teacher  + '" target="_blank" rel="noopener">منصّة المعلم</a>');
+  if (portals.student)  links.push('<a href="' + portals.student  + '" target="_blank" rel="noopener">منصّة الطالب</a>');
+  if (portals.cms)      links.push('<a href="' + portals.cms      + '" target="_blank" rel="noopener">إدارة المحتوى</a>');
+  if (links.length) h += '<div style="margin-bottom:6px">' + links.join(' · ') + '</div>';
+  if (adminEmail || adminPass) {
+    h += '<div style="margin-bottom:6px">بيانات دخول مدير الفرع: <b>' + escapeHtml(adminEmail || '') +
+      '</b> / <b>' + escapeHtml(adminPass || '') + '</b></div>';
+  }
+  if (r.steps && r.steps.healthCheck && r.steps.healthCheck.issues && r.steps.healthCheck.issues.length) {
+    h += '<div class="alert alert-warning" style="margin-top:6px">⚠️ ' + escapeHtml(r.steps.healthCheck.issues.join(' · ')) + '</div>';
+  }
+  h += '<div class="alert alert-warning" style="margin-top:6px">⚠️ كلمات مرور الأمثلة المزروعة تجريبية — غيّرها أو احذف صفوف الأمثلة بزرّ 🧹 قبل الاستخدام الفعلي.</div>';
+  h += '</div>';
+  return h;
 }
 
 // ── توزيع الحصص (مدير/وكيل) — قسم مدمَج داخل تبويب «إعدادات الجدول والتواقيت»
