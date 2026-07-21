@@ -9189,17 +9189,18 @@ function renderSchoolTemplateBridge() {
     '<div class="section-header-title">قالب تزويد المدرسة</div></div>' +
     '<div class="section-body">' +
     '<div class="alert alert-info" style="margin-bottom:12px">' +
-      '① نزّل القالب وعبِّئه ببيانات مدرستك الحقيقية (طلاب/معلمين/رسوم/جدول) — ' +
-      '② ارفع رابط الملف بعد التعبئة — ③ اضغط «تفعيل المنصة كاملة» فتُستورَد بياناتك ويُبنى الجدول ' +
-      'وتُفتَح منصّتك تلقائياً بضغطة واحدة. كل صف يبدأ بكلمة «مثال» توضيحي فقط — احذفه لاحقاً بزرّ 🧹.' +
+      '① نزّل القالب (يحتوي بيانات مدرستك الحقيقية الحالية تلقائياً إن كانت موجودة، وإلا أمثلة توضيحية) ' +
+      'وعبِّئه/عدّل عليه — ② عدِّل مباشرة في نفس الملف ثم اضغط تفعيل مباشرة، أو ارفع ملف Excel آخر من جهازك — ' +
+      '③ اضغط «تفعيل المنصة كاملة» فتُستورَد بياناتك ويُبنى الجدول وتُفتَح منصّتك تلقائياً بضغطة واحدة. ' +
+      'كل صف يبدأ بكلمة «مثال» توضيحي فقط — احذفه لاحقاً بزرّ 🧹.' +
     '</div>' +
     '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">⬇️ تنزيل القالب</div>' +
       '<button class="btn btn-secondary btn-sm" onclick="_stbDownloadTemplate()">⬇️ تنزيل القالب</button>' +
       '<div id="stbDownloadStatus" style="margin-top:8px"></div>' +
     '</div>' +
     '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">📤 رفع القالب المُعبَّأ + تفعيل</div>' +
-      '<div class="form-group"><label class="form-label">رابط/معرّف ملف Google Sheet المُعبَّأ</label>' +
-      '<input type="text" class="form-control" id="stb-upload-url" placeholder="الصق رابط الشيت هنا (اختياري إن كنت عبّأت نفس القالب المُنزَّل أعلاه)"></div>' +
+      '<div class="form-group"><label class="form-label">اختر ملف Excel (.xlsx) من جهازك — اتركه فارغاً إن كنت عدّلت مباشرة في نفس ملف Google Sheet المُنزَّل أعلاه</label>' +
+      '<input type="file" class="form-control" id="stb-upload-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>' +
       '<button class="btn btn-primary btn-sm" onclick="_stbActivate()">🚀 تفعيل المنصة كاملة</button>' +
       '<div id="stbActivateStatus" style="margin-top:8px"></div>' +
     '</div>' +
@@ -9218,20 +9219,54 @@ function _stbDownloadTemplate() {
   st.innerHTML = '⏳ جاري التوليد…';
   callServer('teacherBridgeActionProtected', { action: 'generate' }, function (r) {
     if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
+    var note = r.hasLiveData
+      ? ' <span style="color:#b26a00">(يحتوي بيانات مدرستك الحقيقية — عرض فقط؛ للتعديل نزّل Excel وعدّل عليه ثم ارفعه أدناه)</span>'
+      : '';
     st.innerHTML = '<span style="color:#2e7d32">✅ القالب جاهز — </span>' +
-      '<a href="' + r.editUrl + '" target="_blank" rel="noopener">فتح للتعبئة</a>' +
-      (r.xlsxUrl ? ' · <a href="' + r.xlsxUrl + '" target="_blank" rel="noopener">تنزيل Excel</a>' : '');
+      '<a href="' + r.editUrl + '" target="_blank" rel="noopener">' + (r.hasLiveData ? 'فتح للعرض' : 'فتح للتعبئة') + '</a>' +
+      (r.xlsxUrl ? ' · <a href="' + r.xlsxUrl + '" target="_blank" rel="noopener">تنزيل Excel</a>' : '') + note;
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
 }
 
 // 🚀 تفعيل المنصة كاملة — استيراد + بذر + توليد/نشر الجدول + فحص صحة، بضغطة واحدة.
+// إن اختار المدير ملفاً محلياً: يُرفَع أولاً (uploadFile) ويُحوَّل تلقائياً لـGoogle Sheet،
+// ثم يُستخدَم fileId الناتج في التفعيل. بلا ملف مُختار: يفترض أن التعديل تمّ مباشرة في نفس
+// ملف Google Sheet المُنزَّل (يُستورَد من templateId المحفوظ تلقائياً).
+var STB_UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
 function _stbActivate() {
-  var url = (document.getElementById('stb-upload-url').value || '').trim();
+  var fileInput = document.getElementById('stb-upload-file');
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  var st = document.getElementById('stbActivateStatus');
+  document.getElementById('stbResultPanel').innerHTML = '';
+  if (!file) { _stbRunActivate(null); return; }
+  if (file.size > STB_UPLOAD_MAX_BYTES) {
+    st.innerHTML = '<span style="color:#c62828">❌ حجم الملف يتجاوز ' + Math.round(STB_UPLOAD_MAX_BYTES / 1024 / 1024) + 'MB — قلّل حجمه ثم أعد المحاولة</span>';
+    return;
+  }
+  st.innerHTML = '⏳ جاري رفع الملف…';
+  var reader = new FileReader();
+  reader.onload = function () {
+    var dataUrl = reader.result || '';
+    var comma = dataUrl.indexOf(',');
+    var base64 = comma > -1 ? dataUrl.substring(comma + 1) : dataUrl;
+    callServer('teacherBridgeActionProtected', {
+      action: 'uploadFile', fileBase64: base64, fileName: file.name, mimeType: file.type
+    }, function (r) {
+      if (!r || !r.success || !r.fileId) {
+        st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل رفع الملف') + '</span>';
+        return;
+      }
+      _stbRunActivate(r.fileId);
+    }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+  };
+  reader.onerror = function () { st.innerHTML = '<span style="color:#c62828">❌ تعذّرت قراءة الملف</span>'; };
+  reader.readAsDataURL(file);
+}
+function _stbRunActivate(uploadedFileId) {
   var st = document.getElementById('stbActivateStatus');
   st.innerHTML = '⏳ جاري التفعيل (استيراد ← بذر ← جدول ← فحص صحة)…';
-  document.getElementById('stbResultPanel').innerHTML = '';
   var args = { action: 'activate' };
-  if (url) args.url = url;
+  if (uploadedFileId) args.fileId = uploadedFileId;
   callServer('teacherBridgeActionProtected', args, function (r) {
     if (!r || !r.success) {
       st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل التفعيل') + '</span>';
