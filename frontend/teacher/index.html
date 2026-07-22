@@ -2175,6 +2175,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول اختبارات نهاية العام</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول والتواقيت</button>
   <button class="sidebar-item" id="si-schoolTemplate"  onclick="showSection('schoolTemplate')" style="display:none;"><span class="si-icon">🏫</span> قالب تزويد المدرسة</button>
+  <button class="sidebar-item" id="si-schoolBrand"     onclick="showSection('schoolBrand')" style="display:none;"><span class="si-icon">🖼️</span> بيانات المدرسة</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🔒</span> الحجب المالي</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
@@ -6330,6 +6331,7 @@ function showSection(name, opt) {
       studentStatus: renderStudentStatus,
       schedSettings: renderScheduleSettings,
       schoolTemplate: renderSchoolTemplateBridge,
+      schoolBrand: renderSchoolBrand,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
@@ -6432,6 +6434,7 @@ var SIDEBAR_ROLE_RULES = {
   'si-examctrl':        ['admin', 'deputy'],
   'si-schedSettings':   ['admin', 'deputy'],
   'si-schoolTemplate':  ['admin'],
+  'si-schoolBrand':     ['admin'],
   'si-adminActivities': ['admin', 'deputy', 'activities'],
   'si-adminStudents':   ['admin'],
   'si-certificates':    ['admin', 'deputy'],
@@ -6509,7 +6512,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl', 'si-visits', 'si-schoolTemplate'];
+  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl', 'si-visits', 'si-schoolTemplate', 'si-schoolBrand'];
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -9272,6 +9275,147 @@ function renderSchoolTemplateBridge() {
       '<div id="stbBranchForm" style="display:none;margin-top:10px"></div>' +
     '</div>' +
     '</div></div>';
+}
+
+// ── بيانات المدرسة (شعار/سوشل/لون + اتصال فيسبوك) — مدير المدرسة فقط، عبر نفس جسر HMAC ──
+function renderSchoolBrand() {
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">🖼️</div>' +
+    '<div class="section-header-title">بيانات المدرسة</div></div>' +
+    '<div class="section-body">' +
+    '<div class="alert alert-info" style="margin-bottom:12px">عدِّل شعار مدرستك وروابط التواصل الاجتماعي ولون الثيم — تظهر هذه البيانات في دليل المدارس العام.</div>' +
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">🖼️ الشعار</div>' +
+      '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+        '<img id="sbLogoPreview" src="" alt="" style="width:72px;height:72px;object-fit:contain;border:1px solid var(--border,#e2e8f0);border-radius:8px;background:#fff;display:none">' +
+        '<input type="file" class="form-control" id="sbLogoFile" accept="image/png,image/jpeg,image/webp" style="max-width:280px">' +
+      '</div>' +
+    '</div>' +
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">📲 روابط التواصل</div>' +
+      '<div class="form-group"><label class="form-label">واتساب (رقم بصيغة دولية)</label><input class="form-control" id="sbWhatsapp" placeholder="9677xxxxxxxx"></div>' +
+      '<div class="form-group"><label class="form-label">فيسبوك</label><input class="form-control" id="sbFacebook" dir="ltr" placeholder="facebook.com/school"></div>' +
+      '<div class="form-group"><label class="form-label">انستغرام</label><input class="form-control" id="sbInstagram" dir="ltr" placeholder="instagram.com/school"></div>' +
+      '<div class="form-group"><label class="form-label">يوتيوب</label><input class="form-control" id="sbYoutube" dir="ltr" placeholder="youtube.com/@school"></div>' +
+      '<div class="form-group"><label class="form-label">لون الثيم</label><input type="color" class="form-control" id="sbPrimaryColor" style="max-width:100px;padding:2px"></div>' +
+    '</div>' +
+    '<button class="btn btn-primary btn-sm" onclick="sbSave()">💾 حفظ</button>' +
+    '<div id="sbSaveStatus" style="margin-top:8px"></div>' +
+    '<div class="filter-bar" style="margin-top:16px"><div class="filter-bar-title">🔗 اتصال فيسبوك</div>' +
+      '<div id="sbFbStatus" style="margin-bottom:8px">⏳ جاري التحقّق…</div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="sbConnectFacebook()">🔗 اتصل بفيسبوك</button>' +
+    '</div>' +
+    '</div></div>';
+  _sbInit();
+}
+
+// تحميل القيم الحالية: getTeacherSchoolBrand عامة بلا حارس جلسة (مصمَّمة أصلاً لعرض واجهة قبل
+// الدخول)، تُرجِع الحقول الستة كلها بما فيها الشعار — لا حاجة لدالة قراءة جديدة.
+function _sbInit() {
+  var sid = (App.user && App.user.schoolId) || '';
+  try {
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || !r.ok) return;
+        var wa  = document.getElementById('sbWhatsapp');     if (wa)  wa.value  = r.whatsapp  || '';
+        var fb  = document.getElementById('sbFacebook');     if (fb)  fb.value  = r.facebook  || '';
+        var ig  = document.getElementById('sbInstagram');    if (ig)  ig.value  = r.instagram || '';
+        var yt  = document.getElementById('sbYoutube');      if (yt)  yt.value  = r.youtube   || '';
+        var col = document.getElementById('sbPrimaryColor'); if (col) col.value = r.color     || '#0F5C8C';
+        var prev = document.getElementById('sbLogoPreview');
+        if (prev && r.logo) { prev.src = r.logo; prev.style.display = 'inline-block'; }
+      })
+      .withFailureHandler(function () {})
+      .getTeacherSchoolBrand(sid);
+  } catch (e) {}
+  // حالة اتصال فيسبوك — نفس قناة callCMS القائمة فعلياً في تبويب "السوشل ميديا والنشر"،
+  // بلا أي جسر جديد. تعرض fb_page_name فقط — أبداً fb_page_token_mask.
+  callCMS('smmGetSocialSettings', { schoolId: sid, teacherToken: (App.user && App.user.token) || '' }, function (res) {
+    var st = document.getElementById('sbFbStatus');
+    if (!st) return;
+    if (res && res.success && res.settings && res.settings.fb_page_id) {
+      st.innerHTML = '✅ متّصل باسم: ' + escapeHtml(res.settings.fb_page_name || 'صفحة فيسبوك');
+    } else {
+      st.innerHTML = '⚪ غير متّصل بعد';
+    }
+  });
+}
+
+function sbConnectFacebook() {
+  var sid = (App.user && App.user.schoolId) || '';
+  var st = document.getElementById('sbFbStatus');
+  if (st) st.innerHTML = '⏳ جاري تجهيز رابط الاتصال…';
+  callCMS('getFbConnectUrl', { schoolId: sid, teacherToken: (App.user && App.user.token) || '' }, function (res) {
+    if (res && res.success && res.url) {
+      window.open(res.url, '_blank', 'noopener');
+      if (st) st.innerHTML = '🔗 أكمل الموافقة بالنافذة الجديدة ثم عُد وحدّث الصفحة.';
+    } else if (st) {
+      st.innerHTML = '❌ ' + escapeHtml((res && res.error) || 'تعذّر بناء رابط الاتصال');
+    }
+  });
+}
+
+function sbSave() {
+  var st = document.getElementById('sbSaveStatus');
+  st.innerHTML = '⏳ جاري الحفظ…';
+  var payload = {
+    action: 'updateBrand',
+    whatsapp:     (document.getElementById('sbWhatsapp')     || {}).value || '',
+    facebook:     (document.getElementById('sbFacebook')     || {}).value || '',
+    instagram:    (document.getElementById('sbInstagram')    || {}).value || '',
+    youtube:      (document.getElementById('sbYoutube')      || {}).value || '',
+    primaryColor: (document.getElementById('sbPrimaryColor') || {}).value || ''
+  };
+  var fileInput = document.getElementById('sbLogoFile');
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  if (file) {
+    _sbCompressImage(file, function (base64, mime) {
+      payload.logoBase64   = base64;
+      payload.logoFileName = file.name || 'logo.jpg';
+      payload.logoMimeType = mime;
+      _sbSubmit(payload, st);
+    }, function (errMsg) {
+      st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(errMsg) + '</span>';
+    });
+  } else {
+    _sbSubmit(payload, st);
+  }
+}
+
+function _sbSubmit(payload, st) {
+  callServer('teacherBridgeActionProtected', payload, function (r) {
+    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل الحفظ') + '</span>'; return; }
+    st.innerHTML = '<span style="color:#2e7d32">✅ تم الحفظ</span>';
+    if (r.logoUrl) {
+      var prev = document.getElementById('sbLogoPreview');
+      if (prev) { prev.src = r.logoUrl; prev.style.display = 'inline-block'; }
+    }
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+// ضغط الشعار في العميل قبل الرفع (≤800×800px، JPEG جودة 0.8) — يرفض ملفات > 3MB مصدرياً
+// (الحدّ الخادمي المستقلّ 2MB بعد الفكّ يبقى الفاصل النهائي، هذا فقط تخفيف حِمل الشبكة).
+function _sbCompressImage(file, onDone, onError) {
+  if (file.size > 3 * 1024 * 1024) { onError('حجم الملف كبير جداً (الحدّ 3MB)'); return; }
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    var img = new Image();
+    img.onload = function () {
+      var maxDim = 800, w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      var dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      onDone(dataUrl.split(',')[1], 'image/jpeg');
+    };
+    img.onerror = function () { onError('تعذّر قراءة الصورة'); };
+    img.src = e.target.result;
+  };
+  reader.onerror = function () { onError('تعذّر قراءة الملف'); };
+  reader.readAsDataURL(file);
 }
 
 // ⬇️ تنزيل/فتح القالب — نفس إجراء generate القائم، بتوقيع HMAC طازج بدل توكن مخزَّن.
