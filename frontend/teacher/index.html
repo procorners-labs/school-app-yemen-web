@@ -565,7 +565,7 @@
     .sidebar::-webkit-scrollbar-track { background: transparent; }
     /* منع الوميض: تُخفى كل العناصر القابلة للتقييد حتى تُحسم القائمة حسب الدور
        (initSidebarByRole يضيف .role-ready). العناصر الظاهرة للجميع مستثناة بالمعرّف. */
-    .sidebar:not(.role-ready) .sidebar-item:not(#si-dashboard):not(#si-myTasks):not(#si-profile) { display: none !important; }
+    .sidebar:not(.role-ready) .sidebar-item:not(#si-dashboard):not(#si-myTasks):not(#si-profile):not(#si-help) { display: none !important; }
 
     /* ─── قسم القائمة الجانبية ─── */
     .sidebar-section { margin-bottom: 4px; }
@@ -2208,6 +2208,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <span class="si-icon">👤</span> الملف الشخصي
   </button>
 </div>
+<div class="sidebar-divider"></div>
+<div class="sidebar-section">
+  <button class="sidebar-item" id="si-help" onclick="showSection('help')">
+    <span class="si-icon">❓</span> التعليمات
+  </button>
+</div>
     </aside>
 
     <!-- MAIN CONTENT (DYNAMIC) -->
@@ -2382,6 +2388,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
             <div style="font-size:12px;color:rgba(255,255,255,.7);" id="smm-school-label">مدارس الإبداع والتميز الدولية</div>
           </div>
         </div>
+        <button type="button" title="مساعدة" onclick="_helpOpen('social')" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:13px;font-family:inherit;">❓</button>
         <button onclick="smm_reload()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-family:inherit;">🔄 تحديث</button>
       </div>
 
@@ -6341,7 +6348,8 @@ function showSection(name, opt) {
       circulars: renderCirculars,
       examctrl: renderExamControl,
       profile: renderProfile,
-      letterheads: renderLetterheads
+      letterheads: renderLetterheads,
+      help: renderHelp
     };
 
     var fn = renders[name];
@@ -6410,7 +6418,7 @@ function updateActiveSidebarItem(name) {
 // SIDEBAR_ROLE_RULES: تعيين «عنصر si-* قابل للتقييد ← الأدوار المسموح لها» للأدوار
 // المدفوعة بالجدول (admin/deputy/activities/it/media/teacher). المحاسب (قائمة سماح
 // مركّزة) والمشرف (مدفوع بـpagePerms) حالتان فرعيتان داخل نفس التدفّق أدناه.
-// العناصر غير المذكورة (si-dashboard · si-myTasks · si-profile) ظاهرة للجميع دائماً.
+// العناصر غير المذكورة (si-dashboard · si-myTasks · si-profile · si-help) ظاهرة للجميع دائماً.
 var SIDEBAR_ROLE_RULES = {
   'si-grades':          ['admin', 'deputy', 'activities', 'teacher'],
   'si-homework':        ['admin', 'deputy', 'activities', 'teacher'],
@@ -6489,7 +6497,7 @@ function _sbApplyAccountant() {
   var accAllow = {
     'si-financial': 1, 'si-studentDirectory': 1,
     'si-studentStatus': 1, 'si-tasksMgmt': 1, 'si-myTasks': 1, 'si-profile': 1,
-    'si-mySchedule': 1, 'si-news': 1
+    'si-mySchedule': 1, 'si-news': 1, 'si-help': 1
   };
   var secs = document.querySelectorAll('.sidebar-section');
   for (var acx = 0; acx < secs.length; acx++) {
@@ -6566,6 +6574,50 @@ var SUPERVISOR_PAGE_CATALOG = [
 ];
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
 function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminStudents']; }
+
+// ==================== كتالوج مواضيع "التعليمات" ====================
+// id يطابق مفتاح renders (Teacher Dashboard.html) أو اسم أحد الأقسام الثابتة الخمسة
+// (attendance/teacher-absence/teachers-mgmt/lists-mgmt/social). category = نص sidebar-label
+// الفعلي لنفس القسم بالشريط الجانبي — بلا حقل دور مستقل عمداً: تبويب "التعليمات" يُعرض كاملاً
+// لكل الأدوار (نص توضيحي عام، لا بيانات حسّاسة)، فلا داعٍ لجدول دور ثانٍ قد ينحرف عن
+// SIDEBAR_ROLE_RULES بمرور الوقت. إضافة قسم/صفحة جديدة مستقبلاً: (1) سطر هنا، (2) زر
+// _helpOpen('id') داخل section-header الخاص بالقسم الجديد — راجع teacher/CLAUDE.md.
+var HELP_TOPICS_CATALOG = [
+  { id:'dashboard',         label:'لوحة التحكم',                 icon:'🏠', category:'الرئيسية' },
+  { id:'grades',            label:'الدرجات',                     icon:'📊', category:'الأدوات الأكاديمية' },
+  { id:'homework',          label:'الواجبات',                    icon:'📝', category:'الأدوات الأكاديمية' },
+  { id:'violations',        label:'سجل السلوكيات',               icon:'📋', category:'الأدوات الأكاديمية' },
+  { id:'mySchedule',        label:'جدول الحصص',                  icon:'📅', category:'الأدوات الأكاديمية' },
+  { id:'calendar',          label:'التقويم المدرسي',              icon:'🗓️', category:'الأدوات الأكاديمية' },
+  { id:'news',              label:'نشر الاخبار',                 icon:'📢', category:'الأدوات الأكاديمية' },
+  { id:'circulars',         label:'التعاميم الإدارية',            icon:'📜', category:'الأدوات الأكاديمية' },
+  { id:'contentHub',        label:'إدارة المحتوى والأنشطة',       icon:'🎨', category:'الأدوات الأكاديمية' },
+  { id:'activitySup',       label:'إدارة الأنشطة والإشراف',       icon:'🗂️', category:'الأدوات الأكاديمية' },
+  { id:'reports',           label:'التقارير',                    icon:'📊', category:'الأدوات الأكاديمية' },
+  { id:'notes',             label:'ملاحظات أولياء الأمور',        icon:'💬', category:'الأدوات الأكاديمية' },
+  { id:'attendance',        label:'الغياب اليومي',                icon:'📋', category:'الأدوات الأكاديمية' },
+  { id:'teacher-absence',   label:'غياب المعلمين',                icon:'🧑‍🏫', category:'الأدوات الأكاديمية' },
+  { id:'letterheads',       label:'ديباجات المدرسة',              icon:'🗂️', category:'الأدوات الأكاديمية' },
+  { id:'social',            label:'السوشل ميديا والنشر',          icon:'📲', category:'📱 التسويق الاجتماعي' },
+  { id:'financial',         label:'المالية والعمليات',            icon:'💰', category:'إدارة النظام' },
+  { id:'visits',            label:'الزيارات وحركة المرور',        icon:'📈', category:'إدارة النظام' },
+  { id:'teachers-mgmt',     label:'إدارة المعلمين',               icon:'👥', category:'إدارة النظام' },
+  { id:'supervisorPerms',   label:'ضبط صلاحيات المشرف',           icon:'🛡️', category:'إدارة النظام' },
+  { id:'lists-mgmt',        label:'إدارة القوائم',                icon:'📝', category:'إدارة النظام' },
+  { id:'examctrl',          label:'كنترول اختبارات نهاية العام',  icon:'🗂️', category:'إدارة النظام' },
+  { id:'schedSettings',     label:'إعدادات الجدول والتواقيت',     icon:'⚙️', category:'إدارة النظام' },
+  { id:'schoolTemplate',    label:'قالب تزويد المدرسة',           icon:'🏫', category:'إدارة النظام' },
+  { id:'schoolBrand',       label:'بيانات المدرسة',               icon:'🖼️', category:'إدارة النظام' },
+  { id:'adminActivities',   label:'جميع الأنشطة',                 icon:'📋', category:'إدارة النظام' },
+  { id:'adminStudents',     label:'الحجب المالي',                 icon:'🔒', category:'إدارة النظام' },
+  { id:'certificates',      label:'الشهادات',                     icon:'🏅', category:'إدارة النظام' },
+  { id:'scoresheets',       label:'الكشوفات',                     icon:'📋', category:'إدارة النظام' },
+  { id:'myTasks',           label:'مهامي',                        icon:'✅', category:'المهام والإشراف' },
+  { id:'tasksMgmt',         label:'إدارة المهام والإشراف',        icon:'🗂️', category:'المهام والإشراف' },
+  { id:'studentDirectory',  label:'أسماء الطلاب',                 icon:'🎒', category:'شؤون الطلاب' },
+  { id:'studentStatus',     label:'بيان حالة طالب',               icon:'🔎', category:'شؤون الطلاب' },
+  { id:'profile',           label:'الملف الشخصي',                 icon:'👤', category:'الملف الشخصي' }
+];
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
 function _applySupervisorPagePerms(u){
@@ -9418,6 +9470,110 @@ function _sbCompressImage(file, onDone, onError) {
   reader.readAsDataURL(file);
 }
 
+// ==================== تبويب "التعليمات" (إطار عام — راجع HELP_TOPICS_CATALOG أعلاه) ====================
+// فتح تبويب التعليمات عند موضوع محدَّد — يُستدعى من زر "؟" بأي section-header عبر المنصة.
+function _helpOpen(topicId) { showSection('help', topicId); }
+
+function renderHelp(topicId) {
+  var el = document.getElementById('dynamicContent');
+  var canEdit = isFullAdmin(); // admin فقط — راجع ملاحظة session.role مقابل isAdmin في CLAUDE.md
+  var cats = [];
+  var byCat = {};
+  for (var i = 0; i < HELP_TOPICS_CATALOG.length; i++) {
+    var t = HELP_TOPICS_CATALOG[i];
+    if (!byCat[t.category]) { byCat[t.category] = []; cats.push(t.category); }
+    byCat[t.category].push(t);
+  }
+  var html = '<div class="section-card"><div class="section-header">' +
+    '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">❓</div>' +
+    '<div class="section-header-title">التعليمات</div></div>' +
+    '<div class="section-body">' +
+    '<div class="alert alert-info" style="margin-bottom:14px">دليل مختصر لكل قسم بالمنصة — يُستكمل تباعاً بنصوص وفيديوهات تعليمية.</div>';
+  for (var c = 0; c < cats.length; c++) {
+    var cat = cats[c];
+    html += '<div class="filter-bar-title" style="margin:18px 0 8px">' + escapeHtml(cat) + '</div>';
+    var topics = byCat[cat];
+    for (var j = 0; j < topics.length; j++) {
+      var tp = topics[j];
+      html += '<div id="help-topic-' + tp.id + '" style="padding:12px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="font-weight:700;font-size:.95rem;margin-bottom:4px">' + tp.icon + ' ' + escapeHtml(tp.label) + '</div>' +
+        '<div style="color:var(--text-muted);font-size:.85rem">المحتوى التفصيلي لهذا القسم قيد الإعداد.</div>' +
+        '<div id="help-video-wrap-' + tp.id + '"></div>';
+      if (canEdit) {
+        html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+          '<input class="form-control" id="help-video-input-' + tp.id + '" placeholder="رابط فيديو تعليمي (اختياري)" style="max-width:360px" dir="ltr">' +
+          '<button type="button" class="btn btn-secondary btn-sm" onclick="_helpSaveVideo(\'' + tp.id + '\')">💾 حفظ الرابط</button>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+  }
+  html += '</div></div>';
+  el.innerHTML = html;
+  _helpInit(topicId);
+}
+
+// نفس قائمة teacher/HelpCenter.js::HELP_VIDEO_HOST_ALLOWLIST حرفياً — دفاع بعمق فقط، الحارس
+// الإلزامي هو الخادمي (saveHelpTopicVideoProtected). يُبقي sandbox="allow-scripts allow-same-origin"
+// أدناه آمنة فعلياً بمنع أي رابط يشير لنطاق التطبيق نفسه أو نطاق غير معروف.
+var HELP_VIDEO_HOST_ALLOWLIST = ['youtube.com', 'youtube-nocookie.com', 'youtu.be', 'vimeo.com', 'drive.google.com'];
+function _helpIsAllowedVideoHost(url) {
+  var host;
+  try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return false; }
+  for (var i = 0; i < HELP_VIDEO_HOST_ALLOWLIST.length; i++) {
+    var allowed = HELP_VIDEO_HOST_ALLOWLIST[i];
+    if (host === allowed || host.slice(-(allowed.length + 1)) === '.' + allowed) return true;
+  }
+  return false;
+}
+
+// يعرض/يخفي حاوية الفيديو لموضوع واحد — بلا حاوية فارغة عند غياب الرابط (الحاوية بأكملها لا تُبنى).
+// دفاع بعمق: فحص مخطّط https:// + نطاق مسموح مكرَّران هنا عميلياً رغم الفحص الخادمي الإلزامي في
+// saveHelpTopicVideoProtected (teacher/HelpCenter.js) — بيانات محفوظة سابقاً على الفحص الخادمي
+// يجب ألا تنفَّذ أبداً كـjavascript:/data: في iframe::src؛ + sandbox كطبقة حماية إضافية.
+function _helpRenderVideo(topicId, url) {
+  var wrap = document.getElementById('help-video-wrap-' + topicId);
+  if (!wrap) return;
+  var safe = url && /^https:\/\//i.test(url) && _helpIsAllowedVideoHost(url);
+  wrap.innerHTML = safe
+    ? '<iframe src="' + escapeHtml(url) + '" sandbox="allow-scripts allow-same-origin" style="width:100%;max-width:480px;aspect-ratio:16/9;border:0;border-radius:8px;display:block;margin-top:6px" allowfullscreen loading="lazy"></iframe>'
+    : '';
+}
+
+function _helpInit(topicId) {
+  callServer('getHelpTopicVideosProtected', {}, function (res) {
+    if (!res || !res.ok) return;
+    var videos = res.videos || {};
+    for (var i = 0; i < HELP_TOPICS_CATALOG.length; i++) {
+      var id = HELP_TOPICS_CATALOG[i].id;
+      var url = (videos[id] && videos[id].videoUrl) || '';
+      _helpRenderVideo(id, url);
+      var input = document.getElementById('help-video-input-' + id);
+      if (input && url) input.value = url;
+    }
+    if (topicId) {
+      var target = document.getElementById('help-topic-' + topicId);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+}
+
+// حفظ/مسح رابط فيديو موضوع — admin فقط (تحقّق مُكرَّر خادمياً في saveHelpTopicVideoProtected).
+// القيمة مشتركة عبر كل مدارس المنصة عمداً — راجع HELP_TOPIC_VIDEOS_PROP في teacher/HelpCenter.js.
+function _helpSaveVideo(topicId) {
+  var input = document.getElementById('help-video-input-' + topicId);
+  if (!input) return;
+  var url = (input.value || '').toString().trim();
+  callServer('saveHelpTopicVideoProtected', { topicId: topicId, videoUrl: url }, function (res) {
+    if (res && res.ok) {
+      toast(url ? 'تم حفظ رابط الفيديو' : 'تم مسح رابط الفيديو', 'success');
+      _helpRenderVideo(topicId, url);
+    } else {
+      toast((res && res.error) || 'تعذّر الحفظ', 'error');
+    }
+  });
+}
+
 // ⬇️ تنزيل/فتح القالب — نفس إجراء generate القائم، بتوقيع HMAC طازج بدل توكن مخزَّن.
 function _stbDownloadTemplate() {
   var st = document.getElementById('stbDownloadStatus');
@@ -10117,7 +10273,8 @@ function renderMyTasks() {
   var el = document.getElementById('dynamicContent');
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(16,185,129,.12)">✅</div>' +
-    '<div class="section-header-title">مهامي</div></div>' +
+    '<div class="section-header-title">مهامي</div>' +
+    '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'myTasks\')" style="padding:4px 8px">❓</button></div>' +
     '<div class="section-body" id="myTasksBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div>';
   callServer('getMyTasksProtected', {}, function (r) {
     var b = document.getElementById('myTasksBody');
@@ -11639,6 +11796,7 @@ function renderHomework() {
     '<div class="section-header">' +
       '<div class="section-header-icon" style="background:rgba(16,185,129,.1)">📝</div>' +
       '<div class="section-header-title">الواجبات</div>' +
+      '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'homework\')" style="padding:4px 8px">❓</button>' +
       '<button class="btn btn-primary btn-sm flt-cta-btn" onclick="openHomeworkModal()">➕ إضافة واجب</button>' +
     '</div>' +
     '<div class="section-body">' +
@@ -15548,6 +15706,7 @@ function renderAdminStudents() {
   html += '<div class="section-header">';
   html += '<div class="section-header-icon" style="background:rgba(245,158,11,.1)">⚙️</div>';
   html += '<div class="section-header-title">إعدادات عرض الرسوم للطلاب</div>';
+  html += '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'adminStudents\')" style="padding:4px 8px">❓</button>';
   html += '<span class="badge badge-warning">للمدير فقط</span>';
   html += '</div>';
   html += '<div class="section-body">';
@@ -20021,7 +20180,8 @@ function renderStudentDirectory() {
   var el = document.getElementById('dynamicContent');
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(16,185,129,.12)">🎒</div>' +
-    '<div class="section-header-title">أسماء الطلاب</div></div>' +
+    '<div class="section-header-title">أسماء الطلاب</div>' +
+    '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'studentDirectory\')" style="padding:4px 8px">❓</button></div>' +
     '<div class="section-body" id="sdir-body"><div class="empty-state"><div class="spinner"></div>' +
     '<div style="margin-top:10px">جاري التحميل…</div></div></div></div>';
   sdir_load();
