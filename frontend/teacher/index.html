@@ -9231,11 +9231,39 @@ function renderSchoolTemplateBridge() {
       '<button class="btn btn-secondary btn-sm" onclick="_stbDownloadTemplate()">⬇️ تنزيل القالب</button>' +
       '<div id="stbDownloadStatus" style="margin-top:8px"></div>' +
     '</div>' +
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">⬇️ تنزيل ورقة واحدة فقط</div>' +
+      '<div class="form-group"><label class="form-label">اختر الورقة</label>' +
+      '<select class="form-control" id="stb-tab-download" style="max-width:280px">' +
+        '<option value="students">الطلاب</option>' +
+        '<option value="teachers">المدرسون</option>' +
+        '<option value="fees">جدول_الرسوم</option>' +
+        '<option value="studentFinance">طلاب_مالية</option>' +
+        '<option value="schedule">الجدول المدرسي</option>' +
+        '<option value="instructions">تعليمات</option>' +
+      '</select></div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="_stbDownloadTab()">⬇️ تنزيل هذه الورقة</button>' +
+      '<div id="stbTabDownloadStatus" style="margin-top:8px"></div>' +
+    '</div>' +
     '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">📤 رفع القالب المُعبَّأ + تفعيل</div>' +
       '<div class="form-group"><label class="form-label">اختر ملف Excel (.xlsx) من جهازك — اتركه فارغاً إن كنت عدّلت مباشرة في نفس ملف Google Sheet المُنزَّل أعلاه</label>' +
       '<input type="file" class="form-control" id="stb-upload-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>' +
       '<button class="btn btn-primary btn-sm" onclick="_stbActivate()">🚀 تفعيل المنصة كاملة</button>' +
       '<div id="stbActivateStatus" style="margin-top:8px"></div>' +
+    '</div>' +
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">📤 رفع ورقة واحدة فقط (بلا تعليمات)</div>' +
+      '<div class="alert alert-info" style="margin-bottom:8px">لتحديث بيانات ورقة واحدة فقط (مثال: المدرسون فقط) بلا رفع/تفعيل الملف كاملاً — يُطبَّق فوراً بنفس أسلوب upsert الآمن (إضافة/تحديث، بلا حذف).</div>' +
+      '<div class="form-group"><label class="form-label">أي ورقة؟</label>' +
+      '<select class="form-control" id="stb-tab-upload" style="max-width:280px">' +
+        '<option value="students">الطلاب</option>' +
+        '<option value="teachers">المدرسون</option>' +
+        '<option value="fees">جدول_الرسوم</option>' +
+        '<option value="studentFinance">طلاب_مالية</option>' +
+        '<option value="schedule">الجدول المدرسي</option>' +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">ملف Excel (.xlsx) يحتوي هذه الورقة فقط</label>' +
+      '<input type="file" class="form-control" id="stb-upload-tab-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>' +
+      '<button class="btn btn-primary btn-sm" onclick="_stbUploadTab()">📤 رفع واستيراد هذه الورقة فقط</button>' +
+      '<div id="stbTabUploadStatus" style="margin-top:8px"></div>' +
     '</div>' +
     '<div id="stbResultPanel"></div>' +
     '<div style="margin-top:12px"><button class="btn btn-outline-danger btn-sm" onclick="_stbClearExamples()">🧹 حذف صفوف الأمثلة الآن</button></div>' +
@@ -9259,6 +9287,61 @@ function _stbDownloadTemplate() {
       '<a href="' + r.editUrl + '" target="_blank" rel="noopener">' + (r.hasLiveData ? 'فتح للعرض' : 'فتح للتعبئة') + '</a>' +
       (r.xlsxUrl ? ' · <a href="' + r.xlsxUrl + '" target="_blank" rel="noopener">تنزيل Excel</a>' : '') + note;
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+// ⬇️ تنزيل تبويب واحد فقط من القالب — رابط تصدير Google Sheets القياسي (export?...&gid=) لتبويب
+// محدَّد، بلا فتح/تنزيل الملف الكامل بست تبويباته.
+function _stbDownloadTab() {
+  var sel = document.getElementById('stb-tab-download');
+  var tabKey = sel ? sel.value : '';
+  var st = document.getElementById('stbTabDownloadStatus');
+  st.innerHTML = '⏳ جاري التجهيز…';
+  callServer('teacherBridgeActionProtected', { action: 'tabInfo', tabKey: tabKey }, function (r) {
+    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
+    window.open(r.xlsxUrl, '_blank', 'noopener');
+    st.innerHTML = '<span style="color:#2e7d32">✅ فُتح تنزيل «' + escapeHtml(r.sheetName || '') + '» — </span>' +
+      '<a href="' + r.csvUrl + '" target="_blank" rel="noopener">تنزيل CSV بدلاً منه</a>';
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+// 📤 رفع واستيراد تبويب واحد فقط — يرفع الملف (يُحوَّل لـGoogle Sheet عبر نفس مسار uploadFile
+// القائم) ثم يستورد تبويباً واحداً محدَّداً منه فقط (upsert آمن، بلا لمس بقية بيانات المدرسة).
+var STB_UPLOAD_TAB_MAX_BYTES = 15 * 1024 * 1024;
+function _stbUploadTab() {
+  var sel = document.getElementById('stb-tab-upload');
+  var tabKey = sel ? sel.value : '';
+  var fileInput = document.getElementById('stb-upload-tab-file');
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  var st = document.getElementById('stbTabUploadStatus');
+  if (!file) { st.innerHTML = '<span style="color:#c62828">اختر ملفاً أولاً</span>'; return; }
+  if (file.size > STB_UPLOAD_TAB_MAX_BYTES) {
+    st.innerHTML = '<span style="color:#c62828">❌ حجم الملف يتجاوز ' + Math.round(STB_UPLOAD_TAB_MAX_BYTES / 1024 / 1024) + 'MB</span>';
+    return;
+  }
+  st.innerHTML = '⏳ جاري رفع الملف…';
+  var reader = new FileReader();
+  reader.onload = function () {
+    var dataUrl = reader.result || '';
+    var comma = dataUrl.indexOf(',');
+    var base64 = comma > -1 ? dataUrl.substring(comma + 1) : dataUrl;
+    callServer('teacherBridgeActionProtected', {
+      action: 'uploadFile', fileBase64: base64, fileName: file.name, mimeType: file.type
+    }, function (r) {
+      if (!r || !r.success || !r.fileId) {
+        st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل رفع الملف') + '</span>';
+        return;
+      }
+      st.innerHTML = '⏳ جاري استيراد الورقة…';
+      callServer('teacherBridgeActionProtected', { action: 'importTab', tabKey: tabKey, fileId: r.fileId }, function (r2) {
+        if (!r2 || !r2.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r2 && r2.error) || 'فشل الاستيراد') + '</span>'; return; }
+        var counts = r2[tabKey] || {};
+        st.innerHTML = '<span style="color:#2e7d32">✅ تم — أُضيف ' + (counts.added || 0) + ' وحُدِّث ' + (counts.updated || 0) + '</span>' +
+          (r2.warnings && r2.warnings.length ? '<div style="color:#b26a00;margin-top:4px">⚠️ ' + escapeHtml(r2.warnings.join(' · ')) + '</div>' : '');
+      }, function (e2) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e2.message || e2) + '</span>'; });
+    }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+  };
+  reader.onerror = function () { st.innerHTML = '<span style="color:#c62828">❌ تعذّرت قراءة الملف</span>'; };
+  reader.readAsDataURL(file);
 }
 
 // 🚀 تفعيل المنصة كاملة — استيراد + بذر + توليد/نشر الجدول + فحص صحة، بضغطة واحدة.
