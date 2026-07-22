@@ -537,15 +537,21 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
       </div>
     </div>
 
-    <!-- ═══ شاشة الخطأ ═══ -->
+    <!-- ═══ شاشة الخطأ / تحذير تكرار الاسم ═══ -->
     <div class="form-section" id="fs-7">
       <div class="err-wrap">
-        <div style="font-size:52px;margin-bottom:14px;">❌</div>
-        <h2 style="color:#c62828;margin-bottom:8px;font-size:18px;">حدث خطأ أثناء الإنشاء</h2>
+        <div id="err-icon" style="font-size:52px;margin-bottom:14px;">❌</div>
+        <h2 id="err-title" style="color:#c62828;margin-bottom:8px;font-size:18px;">حدث خطأ أثناء الإنشاء</h2>
         <p id="err-msg" style="color:#888;font-size:13px;margin-bottom:20px;
            background:#f8f9ff;padding:12px;border-radius:8px;"></p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="navStep(4)" style="max-width:200px;">
+          <button id="btn-dup-confirm" onclick="reg_confirmDuplicateAndSubmit()"
+                  style="display:none;padding:11px 20px;background:#2e7d32;color:#fff;
+                         border:none;border-radius:10px;cursor:pointer;
+                         font-size:13px;font-weight:700;">
+            ✅ نعم، مدرستي مختلفة — متابعة التسجيل
+          </button>
+          <button class="btn btn-primary" onclick="_errScreenReset();navStep(4)" style="max-width:200px;">
             🔄 إعادة المحاولة
           </button>
           <a id="wa-error" href="https://wa.me/967775189922" target="_blank"
@@ -578,6 +584,7 @@ var _logoMime  = '';
 var _logoFName = '';
 var _animTid   = null;      // Timer ID للأنيميشن
 var _animIdx   = 0;
+var _dupConfirmed = false;  // متابعة صريحة رغم تحذير تكرار اسم مدرسة قائمة
 
 // ══════════════════════════════════════════════════════════════
 //  navStep — الدالة الوحيدة للتنقل (لا override)
@@ -917,9 +924,21 @@ function reg_submit() {
   }
   if (msgEl) msgEl.innerHTML = '';
 
+  _dupConfirmed = false;
   navStep(5);
   _startAnimation();
+  _reg_doSubmit();
+}
 
+// إعادة إرسال بعد أن أكّد المستخدم صراحةً تجاوز تحذير تكرار الاسم (زر الشاشة 7).
+function reg_confirmDuplicateAndSubmit() {
+  _dupConfirmed = true;
+  navStep(5);
+  _startAnimation();
+  _reg_doSubmit();
+}
+
+function _reg_doSubmit() {
   var payload = {
     schoolData: {
       schoolName : _val('f-sname'),
@@ -935,7 +954,8 @@ function reg_submit() {
       referralCode: _val('f-referral'),
       logoBase64 : _logoB64,
       logoMime   : _logoMime,
-      logoFileName: _logoFName
+      logoFileName: _logoFName,
+      confirmDuplicate: _dupConfirmed
     }
   };
 
@@ -943,6 +963,11 @@ function reg_submit() {
     .withSuccessHandler(function(res) {
       _stopAnimation();
       if (!res || !res.success) {
+        if (res && res.duplicateWarning) {
+          _dupWarnShow(res.error);
+          return;
+        }
+        _errScreenReset();
         var em = document.getElementById('err-msg');
         if (em) em.textContent = res ? res.error : 'خطأ غير معروف. يرجى المحاولة مرة أخرى.';
         navStep(7);
@@ -952,11 +977,36 @@ function reg_submit() {
     })
     .withFailureHandler(function(err) {
       _stopAnimation();
+      _errScreenReset();
       var em = document.getElementById('err-msg');
       if (em) em.textContent = err.message || 'خطأ في الاتصال بالخادم';
       navStep(7);
     })
     .provisionNewSchool(payload);
+}
+
+// عرض شاشة 7 كتحذير قابل للتجاوز (لا خطأ حاجب) عند تكرار اسم مدرسة.
+function _dupWarnShow(msg) {
+  var icon  = document.getElementById('err-icon');
+  var title = document.getElementById('err-title');
+  var em    = document.getElementById('err-msg');
+  var btn   = document.getElementById('btn-dup-confirm');
+  if (icon)  icon.textContent = '⚠️';
+  if (title) { title.textContent = 'تنبيه: اسم مدرسة مشابه مسجَّل بالفعل'; title.style.color = '#e65100'; }
+  if (em)    em.textContent = msg || '';
+  if (btn)   btn.style.display = 'inline-block';
+  navStep(7);
+}
+
+// إعادة شاشة 7 لهيئة الخطأ الافتراضية (تُستدعى قبل عرض خطأ حقيقي أو عند مغادرة الشاشة).
+function _errScreenReset() {
+  var icon  = document.getElementById('err-icon');
+  var title = document.getElementById('err-title');
+  var btn   = document.getElementById('btn-dup-confirm');
+  if (icon)  icon.textContent = '❌';
+  if (title) { title.textContent = 'حدث خطأ أثناء الإنشاء'; title.style.color = '#c62828'; }
+  if (btn)   btn.style.display = 'none';
+  _dupConfirmed = false;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1112,6 +1162,7 @@ function reg_reset() {
   pickPlan('trial');
   _animIdx = 0;
   _logoB64 = ''; _logoMime = ''; _logoFName = '';
+  _errScreenReset();
 
   // إعادة ضبط خطوات الأنيميشن
   for (var j = 1; j <= 7; j++) {  // ★ تم التعديل من 8 إلى 7
