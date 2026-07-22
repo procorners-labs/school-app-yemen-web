@@ -492,6 +492,17 @@
     }
     .nav-bell-badge.hidden { display:none; }
 
+    /* 🆕 NAV POINTS — شريط نقاط الترند الدائم (يفتح تبويب التقارير عند الضغط) */
+    .nav-points {
+      position:relative; background:none; border:1px solid var(--border);
+      border-radius:10px; height:40px; padding:0 10px; cursor:pointer; flex-shrink:0;
+      font-size:.85rem; font-weight:700; display:flex; align-items:center; gap:5px;
+      color:var(--text-muted); transition:var(--transition); font-family:var(--font);
+      white-space:nowrap;
+    }
+    .nav-points:hover { background:var(--primary-glow); color:var(--primary); }
+    @media (max-width: 480px) { .nav-points { padding:0 7px; font-size:.78rem; } }
+
     /* THEME TOGGLE — تبديل وضع العرض (نهاري/ليلي/احترافي) */
     .thm-wrap { position:relative; flex-shrink:0; }
     .thm-btn {
@@ -2078,6 +2089,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <button type="button" class="thm-item" data-mode="pro"   onclick="thmPick('pro')">💎 احترافي</button>
         </div>
       </div>
+
+      <!-- 🆕 شريط نقاط الترند الدائم — يفتح تبويب التقارير -->
+      <button type="button" class="nav-points hidden" id="navPointsBtn"
+        title="نقاطي وترتيبي" onclick="showSection('reports'); return false;">
+        🔥 <span id="navPointsScore">--</span>
+      </button>
 
       <!-- جرس إشعارات الأخبار -->
       <button type="button" class="nav-bell" id="navBell"
@@ -4553,6 +4570,22 @@ function bootApp() {
   callServer('getV3Config', {}, 'v3_config', 600, function(cfg) {
     if (cfg && cfg.success !== false) V3_CONFIG = cfg;
   }, function() { /* تعذّر الجلب: نُبقي افتراضات V3_CONFIG */ });
+
+  // 🆕 شريط النقاط العلوي الدائم — بعد bootApp لا ضمنه (غير حاجب لبوّابة الإقلاع، بند 11 بـCLAUDE.md)
+  _loadMyPointsHeader();
+}
+
+// 🆕 يجلب نقاط/ترتيب المعلم صاحب الجلسة ويعرضها في الشريط العلوي — بكاش عميلي 3 دقائق
+// (يطابق TTL الكاش الخادمي لنفس البيانات في getMyPointsHeaderProtected).
+function _loadMyPointsHeader() {
+  var btn = document.getElementById('navPointsBtn');
+  if (!btn) return;
+  callServer('getMyPointsHeaderProtected', {}, 'my_points_header', 180, function(r) {
+    if (!r || !r.success) return; // فشل صامت — الشريط يبقى مخفياً بلا إزعاج المستخدم
+    var scoreEl = document.getElementById('navPointsScore');
+    if (scoreEl) scoreEl.textContent = r.score + ' • #' + r.rank + '/' + r.totalTeachers;
+    btn.classList.remove('hidden');
+  }, function() { /* فشل الاتصال: يبقى الشريط مخفياً */ });
 }
 
 function _fetchListsFromServer(callback) {
@@ -18319,6 +18352,8 @@ window.togglePasswordVisibility = togglePasswordVisibility;
 // ════════════════════════════════════════════════════════
 
 var _RPT_CACHE = null; // cache بسيط داخل المتصفح
+var _RPT_CACHE_TS = 0;      // 🆕 طابع وقت التخزين — بدونه كان الكاش يبقى صالحاً بلا انتهاء طوال الجلسة
+var _RPT_CACHE_TTL_MS = 180000; // 🆕 3 دقائق — يطابق TTL الكاش الخادمي لنفس التقرير
 var _RPT_SECTION = '';  // الشعبة المختارة لعرض التقرير حسب الشعبة
 function rep_setSection(v) { _RPT_SECTION = v || ''; loadReports(true); }
 function rep_fillSectionPicker(d) {
@@ -18358,33 +18393,59 @@ function renderReports() {
   loadReports(false);
 }
 
+// 🆕 نطاق المعلم من جلسة العميل مباشرة (App.user.role معروف أصلاً بلا انتظار الخادم) —
+// يطابق منطق تحديد scope في getTeacherReportsProtected خادمياً، يُستخدَم فقط لإطلاق
+// التقارير الفرعية الثلاثة بالتوازي دون انتظار اكتمال التقرير الرئيسي.
+function _rpt_clientScope() {
+  var role = (App.user && App.user.role) || 'teacher';
+  if (role === 'admin' || role === 'deputy') return 'admin';
+  if (role === 'supervisor' || role === 'activities') return 'supervisor';
+  return 'teacher';
+}
+
 function loadReports(force) {
   var bodyEl = document.getElementById('rptBody');
   if (!bodyEl) return;
 
-  if (!force && _RPT_CACHE) {
+  // 🆕 الهيكل الثابت (التقرير الرئيسي + حاويات التقارير الفرعية الثلاثة) يُبنى مرّة واحدة هنا؛
+  // التقارير الفرعية لا تنتظر اكتمال التقرير الرئيسي بعد الآن (كانت مسلسلة داخل _renderReportsBody) —
+  // تفرّع متوازٍ فعلي لتسريع أول عرض لتبويب التقارير.
+  bodyEl.innerHTML =
+    '<div id="rpt-main">' +
+      '<div class="rpt-card">' +
+        '<div class="sk-line skeleton"></div>' +
+        '<div class="sk-line skeleton w75"></div>' +
+        '<div class="sk-line skeleton w50"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="rpt-teachers-activity" style="margin-top:14px;"></div>' +
+    '<div id="rpt-absence" style="margin-top:14px;"></div>' +
+    '<div id="rpt-tasks" style="margin-top:14px;"></div>';
+
+  var _rptScope = _rpt_clientScope();
+  rep_loadAllTeacherActivity(_rptScope);
+  rep_loadTeacherAbsence(_rptScope);
+  rep_loadTaskPerformance(_rptScope);
+
+  if (!force && _RPT_CACHE && (Date.now() - _RPT_CACHE_TS) < _RPT_CACHE_TTL_MS) {
     _renderReportsBody(_RPT_CACHE);
     return;
   }
 
-  bodyEl.innerHTML =
-    '<div class="rpt-card">' +
-      '<div class="sk-line skeleton"></div>' +
-      '<div class="sk-line skeleton w75"></div>' +
-      '<div class="sk-line skeleton w50"></div>' +
-    '</div>';
-
   callServer('getTeacherReportsProtected', { section: _RPT_SECTION || '' }, function(r) {
     if (!r || !r.success) {
-      bodyEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
+      var mainEl = document.getElementById('rpt-main');
+      if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
         ((r && r.error) || 'خطأ غير معروف') + '</div>';
       return;
     }
     _RPT_CACHE = r.data;
+    _RPT_CACHE_TS = Date.now();
     _renderReportsBody(r.data);
     rep_fillSectionPicker(r.data);
   }, function(err) {
-    bodyEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
+    var mainEl = document.getElementById('rpt-main');
+    if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
   });
 }
 
@@ -18443,15 +18504,11 @@ function _renderReportsBody(data) {
   } else {
     html = _rpt_renderTeacher(data);
   }
-  var bodyEl = document.getElementById('rptBody');
-  if (!bodyEl) return; // المستخدم غادر صفحة التقارير قبل وصول الاستجابة المتأخّرة
-  bodyEl.innerHTML = html +
-    '<div id="rpt-teachers-activity" style="margin-top:14px;"></div>' +
-    '<div id="rpt-absence" style="margin-top:14px;"></div>' +
-    '<div id="rpt-tasks" style="margin-top:14px;"></div>';
-  rep_loadAllTeacherActivity(data.scope);
-  rep_loadTeacherAbsence(data.scope);
-  rep_loadTaskPerformance(data.scope);
+  // 🆕 يُحدَّث فقط قسم التقرير الرئيسي — التقارير الفرعية الثلاثة أُطلِقت بالفعل بالتوازي
+  // من loadReports() ولها حاوياتها الخاصة (#rpt-teachers-activity/#rpt-absence/#rpt-tasks).
+  var mainEl = document.getElementById('rpt-main');
+  if (!mainEl) return; // المستخدم غادر صفحة التقارير قبل وصول الاستجابة المتأخّرة
+  mainEl.innerHTML = html;
 }
 
 // ── تقرير موسّع: نشاط كل المعلمين (للمدير/الوكيل فقط) ──────────
@@ -18759,15 +18816,13 @@ function _rpt_renderAdmin(d) {
       function(it) { return (it.class || '') + ' ' + (it.section || ''); }));
   html += '</div>';
 
-  // 🆕 لوحة صدارة «الأكثر ترنداً» — نقاط تُرجَّح بالحداثة + عقوبة تكرار + مكافأة وسائط/إعجابات
-  html += _rpt_card('🔥', 'الأكثر ترنداً (آخر 14 يوماً)',
-    _rpt_topList(d.lists.trendingTeachers, 'name', 'trendScore', 'نقطة',
-      function(it) {
-        return it.homework + ' واجب · ' + it.news + ' خبر · ' + it.merits + ' تعزيز · ' +
-               (it.replies||0) + ' رد · ' + it.likes + ' إعجاب';
-      }));
+  // 🆕 جدول ترند نقاط المعلمين — كل معلمي المدرسة (لا Top-N)، نقاط مُرجَّحة بالحداثة عبر كل
+  // تاريخ المعلم + تفصيل مصدر النقاط لكل معلم. window._rptTrendData لخدمة إعادة الفرز عند الضغط.
+  window._rptTrendData = d.lists.trendingTeachers || [];
+  html += _rpt_card('🔥', 'ترند نقاط المعلمين (كل النشاط، الأحدث أثقل وزناً)',
+    '<div id="rptTrendTableBox">' + _rpt_trendTableRender(window._rptTrendData, 'trendScore', true) + '</div>');
 
-  // 🆕 «معلمون بحاجة لمتابعة» — غياب بدون عذر أنزل صافي نقاطهم لصفر أو أقل (لا اختفاء صامت)
+  // 🆕 «معلمون بحاجة لمتابعة» — غياب بدون عذر خلال آخر 30 يوماً (مستقل عن نقاط الترند)
   if (d.lists.needsAttentionTeachers && d.lists.needsAttentionTeachers.length) {
     html += _rpt_card('⚠️', 'معلمون بحاجة لمتابعة', _rpt_needsAttentionList(d.lists.needsAttentionTeachers));
   }
@@ -19024,6 +19079,51 @@ function _rpt_needsAttentionList(items) {
   return html;
 }
 
+// 🆕 جدول ترند نقاط المعلمين الكامل — قابل للفرز بالضغط على رأس أي عمود.
+// window._rptTrendData يحمل نفس مصفوفة d.lists.trendingTeachers (مضبوطة عند render الأدمن)؛
+// _rpt_trendSort تعيد رسم #rptTrendTableBox فقط دون استدعاء خادم جديد.
+var _rptTrendSortField = 'trendScore', _rptTrendSortDesc = true;
+function _rpt_trendTableRender(items, sortField, desc) {
+  if (!items || !items.length) return '<div class="rpt-empty">لا توجد بيانات</div>';
+  var sorted = items.slice().sort(function(a, b) {
+    var av = a[sortField], bv = b[sortField];
+    if (sortField === 'name') { av = av || ''; bv = bv || ''; return desc ? (bv < av ? -1 : 1) : (av < bv ? -1 : 1); }
+    av = av || 0; bv = bv || 0;
+    return desc ? (bv - av) : (av - bv);
+  });
+  function th(field, label) {
+    var arrow = (field === sortField) ? (desc ? ' ▼' : ' ▲') : '';
+    return '<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="_rpt_trendSort(\'' + field + '\')">' + label + arrow + '</th>';
+  }
+  var h = '<div style="overflow-x:auto"><table class="att-table" style="min-width:760px"><thead><tr>' +
+    '<th>#</th>' + th('name', 'المعلم') + th('trendScore', 'نقاط الترند') +
+    th('homework', '📝 واجب') + th('news', '📢 خبر') + th('merits', '⭐ تعزيز') +
+    th('violations', '⚠️ مخالفة') + th('replies', '💬 رد') + th('likes', '👍 إعجاب') +
+    '</tr></thead><tbody>';
+  for (var i = 0; i < sorted.length; i++) {
+    var it = sorted[i];
+    h += '<tr>' +
+      '<td style="text-align:center;color:var(--text-light)">' + (i + 1) + '</td>' +
+      '<td style="font-weight:600">' + _tfEsc(it.name || '') + '</td>' +
+      '<td style="text-align:center;font-weight:800;color:#f59e0b">' + it.trendScore + '</td>' +
+      '<td style="text-align:center">' + (it.homework || 0) + '</td>' +
+      '<td style="text-align:center">' + (it.news || 0) + '</td>' +
+      '<td style="text-align:center">' + (it.merits || 0) + '</td>' +
+      '<td style="text-align:center">' + (it.violations || 0) + '</td>' +
+      '<td style="text-align:center">' + (it.replies || 0) + '</td>' +
+      '<td style="text-align:center">' + (it.likes || 0) + '</td>' +
+      '</tr>';
+  }
+  h += '</tbody></table></div>';
+  return h;
+}
+function _rpt_trendSort(field) {
+  if (_rptTrendSortField === field) { _rptTrendSortDesc = !_rptTrendSortDesc; }
+  else { _rptTrendSortField = field; _rptTrendSortDesc = (field !== 'name'); }
+  var box = document.getElementById('rptTrendTableBox');
+  if (box) box.innerHTML = _rpt_trendTableRender(window._rptTrendData, _rptTrendSortField, _rptTrendSortDesc);
+}
+
 function _rpt_topList(items, nameField, valueField, valueLabel, subFn) {
   if (!items || !items.length) return '<div class="rpt-empty">لا توجد بيانات</div>';
   var html = '<div class="rpt-list">';
@@ -19159,7 +19259,7 @@ function drawTerm1SummaryTable(students) {
   }
 }
 // تنظيف الكاش عند تسجيل الخروج (اختياري)
-function _rpt_clearCache() { _RPT_CACHE = null; }
+function _rpt_clearCache() { _RPT_CACHE = null; _RPT_CACHE_TS = 0; }
 
 // ════════════════════════════════════════════════════════════════════
 //  السوشل ميديا والنشر — Social Media Control Panel
