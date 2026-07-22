@@ -1227,8 +1227,39 @@ function goToLogin() {
   }).getMasterAppUrl();
 }
 
+// تعبئة كود الإحالة تلقائياً إن وصل المستخدم عبر رابط ?ref=CODE (مشاركة معلّم) + تسجيل زيارة
+// تحليلية بسيطة (عرض فقط، بلا أي أثر على منطق الإسناد/المصادقة في _referralValidateAndAttribute).
+function _applyReferralFromUrl() {
+  try {
+    var qs = new URLSearchParams(window.location.search);
+    var ref = (qs.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!ref) return;
+
+    var field = document.getElementById('f-referral');
+    if (field && !field.value) {
+      field.value = ref;
+      var hintEl = field.parentNode ? field.parentNode.querySelector('.fld-hint') : null;
+      if (hintEl) hintEl.textContent = '✅ تم تعبئة كود الإحالة (' + ref + ') تلقائياً من الرابط الذي وصلك';
+    }
+
+    var flagKey = 'refClickLogged_' + ref;
+    var already = false;
+    try { already = !!sessionStorage.getItem(flagKey); } catch (eRead) {}
+    if (!already) {
+      try { sessionStorage.setItem(flagKey, '1'); } catch (eStore) {}
+      try {
+        google.script.run
+          .withSuccessHandler(function () {})
+          .withFailureHandler(function () {})
+          .logReferralClickPublic(ref);
+      } catch (eCall) {}
+    }
+  } catch (e) {}
+}
+
 // تحميل إعدادات التسجيل الديناميكية عند فتح الصفحة (الخطط/التواصل/الدعوة).
 _loadRegisterConfig();
+_applyReferralFromUrl();
 </script>
 </body>
 </html>
