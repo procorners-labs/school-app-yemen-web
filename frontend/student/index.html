@@ -221,6 +221,14 @@ a { color: var(--pr); text-decoration: none; }
   font-size: 13px;
   margin-bottom: 22px;
 }
+.login-welcome-tagline {
+  text-align: center;
+  color: var(--pr);
+  font-weight: 600;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: -14px 0 20px;
+}
 .field {
   margin-bottom: 14px;
 }
@@ -1912,6 +1920,7 @@ a { color: var(--pr); text-decoration: none; }
     <div class="login-logo" id="stuLoginLogo">🎓</div>
     <h1>منصة الطالب</h1>
     <div class="subtitle school-brand-name">مدرستي</div>
+    <p class="login-welcome-tagline" id="stuLoginWelcomeText"></p>
 
     <div class="login-err" id="loginErr"></div>
 
@@ -6633,6 +6642,22 @@ function initLazyImages() {
     var _stbRaw = window.localStorage && localStorage.getItem(_stBrandCacheKey);
     if (_stbRaw) _stCachedBrand = JSON.parse(_stbRaw);
   } catch (eCB) {}
+  // عبارات ترحيب دوّارة لشاشة الدخول — تُختار مرّة واحدة فقط لكل تحميل صفحة (لا تتبدّل
+  // عند كل تحديث صامت لبيانات الهوية)، مع إدراج اسم المدرسة الحقيقي حيثما يلزم.
+  var _stLoginTaglines = [
+    'منصة تعليمية ذكية لمتابعة مستوى ابنك أولاً بأول 📊',
+    'كن على تواصل دائم مع مدرسة {SCHOOL} وتابع مستقبل ابنك 🎓',
+    'نرتقي معاً بمستوى التعليم — خطوة بخطوة نحو التميز ✨'
+  ];
+  var _stTaglineIdx = Math.floor(Math.random() * _stLoginTaglines.length);
+  function _stRenderLoginWelcome(schoolName) {
+    try {
+      var elw = document.getElementById('stuLoginWelcomeText');
+      if (!elw) return;
+      elw.textContent = _stLoginTaglines[_stTaglineIdx].replace('{SCHOOL}', schoolName || 'مدرستي');
+    } catch (eWlc) {}
+  }
+  _stRenderLoginWelcome('مدرستي');
   if (_stCachedBrand) {
     // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
     applyBrand(_stCachedBrand);
@@ -6684,6 +6709,7 @@ function initLazyImages() {
     if (b.name) {
       var els = document.querySelectorAll('.school-brand-name');
       for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
+      _stRenderLoginWelcome(b.name);
       try { document.title = document.title.replace(/مدرستي/g, b.name); } catch (e) {}
     }
     if (b.logo) {
