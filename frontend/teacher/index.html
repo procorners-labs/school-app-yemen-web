@@ -1943,12 +1943,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .smm-qr-mini { background:#fff;border-radius:10px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,.07);text-align:center; }
 .smm-qr-mini img { width:120px;height:120px;border-radius:8px;margin:0 auto 8px; }
 .smm-qr-mini .qmtitle { font-size:12px;font-weight:600;color:#0F2C5C;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-/* ─── مركز التعليمات: محتوى نصّي مُصنَّف (p/ul/tip/note) داخل كل بطاقة موضوع ─── */
-.help-p{margin:6px 0;font-size:.88rem;line-height:1.9;color:var(--text);}
-.help-ul{margin:6px 0;padding-inline-start:20px;font-size:.85rem;line-height:1.9;color:var(--text);}
-.help-callout{background:var(--surface2);border-inline-start:3px solid #D4A537;border-radius:10px;padding:10px 12px;margin:8px 0;}
-.help-callout-t{font-weight:700;color:var(--text);font-size:.86rem;line-height:1.8;}
-.help-note{background:var(--surface2);border-inline-start:3px solid var(--brand,#1a237e);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:.85rem;color:var(--text);line-height:1.8;}
   </style>
 </head>
 <body>
@@ -9612,6 +9606,90 @@ function _sbCompressImage(file, onDone, onError) {
 // فتح تبويب التعليمات عند موضوع محدَّد — يُستدعى من زر "؟" بأي section-header عبر المنصة.
 function _helpOpen(topicId) { showSection('help', topicId); }
 
+// خريطة لون كل فئة — كل قيمها متغيّرات ثيم موجودة أصلاً (--tf-* مُعرَّفة/مُخصَّصة لكل وضع)،
+// لا ألوان ثابتة جديدة تحتاج تدقيق تباين مستقل. الفئات مطابقة حرفياً لقيم category في
+// HELP_TOPICS_CATALOG أعلاه — فئة غير مذكورة هنا تتراجع بأمان إلى var(--primary).
+var HELP_CATEGORY_COLORS = {
+  'الرئيسية': 'var(--primary)',
+  'الأدوات الأكاديمية': 'var(--tf-teal)',
+  '📱 التسويق الاجتماعي': 'var(--tf-purple)',
+  'إدارة النظام': 'var(--tf-orange)',
+  'المهام والإشراف': 'var(--tf-amber)',
+  'شؤون الطلاب': 'var(--tf-green)',
+  'الملف الشخصي': 'var(--text-muted)'
+};
+function _helpCatColor(cat) { return HELP_CATEGORY_COLORS[cat] || 'var(--primary)'; }
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
+.help-page{ --hp-font:'Cairo','Segoe UI',Tahoma,sans-serif; }
+.help-hero{
+  display:flex; align-items:center; gap:16px;
+  background:linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color:#fff; border-radius:var(--radius-md); padding:20px 22px; margin-bottom:18px;
+  box-shadow:var(--shadow-md); position:relative; overflow:hidden;
+}
+.help-hero::after{ content:''; position:absolute; inset:0; background:radial-gradient(circle at 92% -20%, rgba(255,255,255,.2), transparent 55%); pointer-events:none; }
+.help-hero-icon{ width:52px; height:52px; border-radius:16px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0; position:relative; }
+.help-hero-text{ position:relative; }
+.help-hero-text h2{ margin:0 0 4px; font-family:var(--hp-font); font-size:1.15rem; font-weight:800; }
+.help-hero-text p{ margin:0; font-size:.85rem; color:rgba(255,255,255,.86); line-height:1.6; }
+
+.help-search-wrap{ position:sticky; top:var(--nav-height); z-index:5; margin-bottom:16px; }
+.help-search{ width:100%; padding:12px 44px 12px 16px; border-radius:var(--radius-md); border:1.5px solid var(--border); background:var(--surface); color:var(--text); font-size:.92rem; font-family:var(--font); box-shadow:var(--shadow-sm); transition:var(--transition); }
+.help-search:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-glow); }
+.help-search-count{ position:absolute; inset-inline-end:14px; top:50%; transform:translateY(-50%); font-size:.74rem; color:var(--text-muted); pointer-events:none; }
+.help-search-empty{ display:none; text-align:center; padding:26px 16px; color:var(--text-muted); font-size:.88rem; }
+
+.help-layout{ display:grid; grid-template-columns:220px 1fr; gap:20px; align-items:start; }
+.help-rail{ position:sticky; top:calc(var(--nav-height) + 60px); display:flex; flex-direction:column; gap:4px; max-height:calc(100vh - var(--nav-height) - 80px); overflow-y:auto; }
+.help-rail-item{ display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:10px; border:none; background:transparent; color:var(--text-muted); font-family:var(--hp-font); font-size:.82rem; font-weight:700; cursor:pointer; text-align:start; transition:var(--transition); border-inline-start:3px solid transparent; }
+.help-rail-item:hover{ background:var(--surface2); color:var(--text); }
+.help-rail-item:focus-visible{ outline:2px solid var(--primary); outline-offset:1px; }
+.help-rail-item.is-active{ background:var(--surface2); color:var(--text); border-inline-start-color:var(--cat-color,var(--primary)); }
+.help-rail-item.is-active .help-rail-dot{ box-shadow:0 0 0 3px color-mix(in srgb, var(--cat-color,var(--primary)) 25%, transparent); }
+.help-rail-dot{ width:8px; height:8px; border-radius:50%; background:var(--cat-color,var(--primary)); flex-shrink:0; }
+.help-rail-count{ margin-inline-start:auto; font-size:.7rem; opacity:.7; }
+
+.help-section{ margin-bottom:26px; scroll-margin-top:calc(var(--nav-height) + 70px); }
+.help-section-title{ display:flex; align-items:center; gap:10px; font-family:var(--hp-font); font-size:.98rem; font-weight:800; color:var(--text); margin:0 0 12px; }
+.help-section-bar{ width:5px; height:20px; border-radius:3px; background:var(--cat-color,var(--primary)); flex-shrink:0; }
+
+.help-cards{ display:flex; flex-direction:column; gap:10px; }
+.help-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; transition:var(--transition); }
+.help-card:hover{ box-shadow:var(--shadow-sm); border-color:var(--cat-color,var(--border)); }
+.help-card[open]{ box-shadow:var(--shadow-md); }
+.help-summary{ display:flex; align-items:center; gap:12px; padding:13px 16px; cursor:pointer; list-style:none; -webkit-user-select:none; user-select:none; }
+.help-summary::-webkit-details-marker{ display:none; }
+.help-summary:focus-visible{ outline:2px solid var(--primary); outline-offset:-2px; }
+.help-card-icon{ width:36px; height:36px; border-radius:11px; background:var(--surface2); background:color-mix(in srgb, var(--cat-color,var(--primary)) 15%, transparent); display:flex; align-items:center; justify-content:center; font-size:1.05rem; flex-shrink:0; }
+.help-card-title{ flex:1; font-weight:700; font-size:.9rem; color:var(--text); }
+.help-chevron{ color:var(--text-light); transition:transform .25s ease; font-size:.8rem; display:inline-block; }
+.help-card[open] .help-chevron{ transform:rotate(90deg); color:var(--cat-color,var(--primary)); }
+.help-body{ padding:0 16px 16px 52px; }
+@media (prefers-reduced-motion:no-preference){
+  .help-card[open] .help-body{ animation:helpBodyIn .22s ease; }
+}
+@keyframes helpBodyIn{ from{ opacity:0; transform:translateY(-4px);} to{ opacity:1; transform:translateY(0);} }
+
+.help-p{ margin:0 0 10px; font-size:.88rem; line-height:1.9; color:var(--text); }
+.help-ul{ margin:0 0 10px; padding-inline-start:20px; font-size:.85rem; line-height:1.9; color:var(--text); }
+.help-callout{ background:var(--surface2); border-inline-start:3px solid #D4A537; border-radius:10px; padding:10px 12px; margin:8px 0; }
+.help-callout-t{ font-weight:700; color:var(--text); font-size:.86rem; line-height:1.8; }
+.help-note{ background:var(--surface2); border-inline-start:3px solid var(--cat-color,var(--primary)); border-radius:8px; padding:8px 12px; margin:8px 0; font-size:.85rem; color:var(--text); line-height:1.8; }
+
+.help-video-admin{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+@media (max-width:860px){
+  .help-layout{ grid-template-columns:1fr; }
+  .help-rail{ position:sticky; top:var(--nav-height); flex-direction:row; overflow-x:auto; overflow-y:hidden; max-height:none; background:var(--surface); padding:8px 2px; margin:0 -4px 14px; border-bottom:1px solid var(--border); z-index:4; }
+  .help-rail-item{ flex-shrink:0; border-inline-start:none; border-bottom:3px solid transparent; white-space:nowrap; }
+  .help-rail-item.is-active{ border-inline-start-color:transparent; border-bottom-color:var(--cat-color,var(--primary)); }
+  .help-body{ padding-inline-start:16px; }
+}
+</style>
+<script>
+
 function renderHelp(topicId) {
   var el = document.getElementById('dynamicContent');
   var canEdit = isFullAdmin(); // admin فقط — راجع ملاحظة session.role مقابل isAdmin في CLAUDE.md
@@ -9625,36 +9703,122 @@ function renderHelp(topicId) {
     if (!byCat[t.category]) { byCat[t.category] = []; cats.push(t.category); }
     byCat[t.category].push(t);
   }
+
   var html = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">❓</div>' +
     '<div class="section-header-title">التعليمات</div></div>' +
-    '<div class="section-body">' +
-    '<div class="alert alert-info" style="margin-bottom:14px">دليل مختصر لكل قسم بالمنصة — يُستكمل تباعاً بفيديوهات تعليمية.</div>';
+    '<div class="section-body"><div class="help-page">';
+
+  html += '<div class="help-hero">' +
+    '<div class="help-hero-icon">📚</div>' +
+    '<div class="help-hero-text"><h2>مركز التعليمات</h2>' +
+    '<p>دليلك السريع لكل صفحة في المنصة — ابحث بالاسم أو تصفَّح حسب القسم من القائمة الجانبية.</p></div>' +
+  '</div>';
+
   if (!visibleTopics.length) {
     html += '<div class="empty-state"><div class="es-icon">❓</div><div class="es-title">لا توجد مواضيع تعليمات متاحة حالياً</div></div>';
+    html += '</div></div></div>';
+    el.innerHTML = html;
+    _helpInit(topicId, visibleTopics);
+    return;
   }
+
+  html += '<div class="help-search-wrap">' +
+    '<input type="text" id="helpSearchQ" class="help-search" placeholder="🔍 ابحث عن موضوع، مثل: الدرجات، الغياب، الأخبار..." oninput="_helpFilter(this.value)">' +
+    '<span class="help-search-count" id="helpSearchCount"></span>' +
+  '</div>';
+
+  html += '<div class="help-layout"><nav class="help-rail" id="helpRail">';
   for (var c = 0; c < cats.length; c++) {
-    var cat = cats[c];
-    html += '<div class="filter-bar-title" style="margin:18px 0 8px">' + escapeHtml(cat) + '</div>';
-    var topics = byCat[cat];
+    var cat = cats[c], color = _helpCatColor(cat);
+    html += '<button type="button" class="help-rail-item" data-cat-idx="' + c + '" style="--cat-color:' + color + '" onclick="_helpScrollToCat(' + c + ')">' +
+      '<span class="help-rail-dot"></span><span>' + escapeHtml(cat) + '</span>' +
+      '<span class="help-rail-count">' + byCat[cat].length + '</span></button>';
+  }
+  html += '</nav><div class="help-content" id="helpContent">';
+
+  for (var c2 = 0; c2 < cats.length; c2++) {
+    var cat2 = cats[c2], color2 = _helpCatColor(cat2), topics = byCat[cat2];
+    html += '<section class="help-section" id="help-cat-' + c2 + '" data-cat-idx="' + c2 + '" style="--cat-color:' + color2 + '">' +
+      '<h3 class="help-section-title"><span class="help-section-bar"></span>' + escapeHtml(cat2) + '</h3>' +
+      '<div class="help-cards">';
     for (var j = 0; j < topics.length; j++) {
       var tp = topics[j];
-      html += '<div id="help-topic-' + tp.id + '" style="padding:12px 0;border-bottom:1px solid var(--border)">' +
-        '<div style="font-weight:700;font-size:.95rem;margin-bottom:4px">' + tp.icon + ' ' + escapeHtml(tp.label) + '</div>' +
-        _helpRenderBlocks(tp.body) +
-        '<div id="help-video-wrap-' + tp.id + '"></div>';
+      html += '<details class="help-card" id="help-topic-' + tp.id + '">' +
+        '<summary class="help-summary">' +
+          '<span class="help-card-icon">' + tp.icon + '</span>' +
+          '<span class="help-card-title">' + escapeHtml(tp.label) + '</span>' +
+          '<span class="help-chevron">›</span>' +
+        '</summary>' +
+        '<div class="help-body">' +
+          _helpRenderBlocks(tp.body) +
+          '<div id="help-video-wrap-' + tp.id + '"></div>';
       if (canEdit) {
-        html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
-          '<input class="form-control" id="help-video-input-' + tp.id + '" placeholder="رابط فيديو تعليمي (اختياري)" style="max-width:360px" dir="ltr">' +
+        html += '<div class="help-video-admin">' +
+          '<input class="form-control" id="help-video-input-' + tp.id + '" placeholder="رابط فيديو تعليمي (اختياري)" style="max-width:320px;flex:1" dir="ltr">' +
           '<button type="button" class="btn btn-secondary btn-sm" onclick="_helpSaveVideo(\'' + tp.id + '\')">💾 حفظ الرابط</button>' +
           '</div>';
       }
-      html += '</div>';
+      html += '</div></details>';
     }
+    html += '</div></section>';
   }
-  html += '</div></div>';
+  html += '<div class="help-search-empty" id="helpSearchEmpty">🔍 لا توجد مواضيع مطابقة لبحثك</div>';
+  html += '</div></div>'; // help-content, help-layout
+  html += '</div></div></div>'; // help-page, section-body, section-card
+
   el.innerHTML = html;
   _helpInit(topicId, visibleTopics);
+  _helpObserveSections();
+}
+
+function _helpScrollToCat(idx) {
+  var target = document.getElementById('help-cat-' + idx);
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// فلترة حيّة تفحص محتوى البطاقة كاملاً (العنوان + النص) لا العنوان فقط — تُخفي فئة كاملة إن
+// لم يبقَ فيها أي موضوع مطابق، وتُظهر حالة "لا نتائج" بدل قائمة فارغة صامتة.
+function _helpFilter(q) {
+  q = (q || '').trim().toLowerCase();
+  var sections = document.querySelectorAll('#helpContent .help-section');
+  var totalVisible = 0, s, cards, anyVisible, i, j, card, match;
+  for (i = 0; i < sections.length; i++) {
+    s = sections[i];
+    cards = s.querySelectorAll('.help-card');
+    anyVisible = false;
+    for (j = 0; j < cards.length; j++) {
+      card = cards[j];
+      match = !q || (card.textContent || '').toLowerCase().indexOf(q) !== -1;
+      card.style.display = match ? '' : 'none';
+      if (match) { anyVisible = true; totalVisible++; }
+    }
+    s.style.display = anyVisible ? '' : 'none';
+  }
+  var countEl = document.getElementById('helpSearchCount');
+  if (countEl) countEl.textContent = q ? (totalVisible + ' نتيجة') : '';
+  var emptyEl = document.getElementById('helpSearchEmpty');
+  if (emptyEl) emptyEl.style.display = (q && totalVisible === 0) ? 'block' : 'none';
+}
+
+// تمييز فئة الشريط الجانبي النشطة أثناء التمرير — تحسين تدريجي بحت (feature-detected)، لا
+// أثر وظيفي إن غاب IntersectionObserver (WebView قديم مثلاً): البحث والتنقّل بالنقر يبقيان يعملان.
+function _helpObserveSections() {
+  if (typeof IntersectionObserver === 'undefined') return;
+  var sections = document.querySelectorAll('#helpContent .help-section');
+  var railItems = document.querySelectorAll('#helpRail .help-rail-item');
+  if (!sections.length || !railItems.length) return;
+  var obs = new IntersectionObserver(function (entries) {
+    for (var i = 0; i < entries.length; i++) {
+      if (!entries[i].isIntersecting) continue;
+      var idx = entries[i].target.getAttribute('data-cat-idx');
+      for (var j = 0; j < railItems.length; j++) {
+        var active = railItems[j].getAttribute('data-cat-idx') === idx;
+        if (active) railItems[j].classList.add('is-active'); else railItems[j].classList.remove('is-active');
+      }
+    }
+  }, { rootMargin: '-15% 0px -70% 0px' });
+  for (var k = 0; k < sections.length; k++) obs.observe(sections[k]);
 }
 
 // نفس قائمة teacher/HelpCenter.js::HELP_VIDEO_HOST_ALLOWLIST حرفياً — دفاع بعمق فقط، الحارس
@@ -9703,6 +9867,7 @@ function _helpInit(topicId, visibleTopics) {
     for (var k = 0; k < (visibleTopics || []).length; k++) { if (visibleTopics[k].id === topicId) { isVisible = true; break; } }
     var target = isVisible ? document.getElementById('help-topic-' + topicId) : null;
     if (target) {
+      target.open = true; // الرابط العميق (زر "؟" بأي صفحة) يجب أن يفتح البطاقة لا يُمرِّر إليها مغلقة
       setTimeout(function () { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     } else if (typeof toast === 'function') {
       toast('لم يتم العثور على هذا الموضوع — إليك كل التعليمات المتاحة لك', 'info');
