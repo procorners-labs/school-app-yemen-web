@@ -6421,43 +6421,106 @@ function updateActiveSidebarItem(name) {
 // TeacherAuth._auth_canonRole) والواجهة تثق به — لا تعيد استنتاجه من نص المواد.
 // المرجع: docs/الأمان/مصفوفة-الصلاحيات-الأدوار.md.
 //
-// SIDEBAR_ROLE_RULES: تعيين «عنصر si-* قابل للتقييد ← الأدوار المسموح لها» للأدوار
-// المدفوعة بالجدول (admin/deputy/activities/it/media/teacher). المحاسب (قائمة سماح
-// مركّزة) والمشرف (مدفوع بـpagePerms) حالتان فرعيتان داخل نفس التدفّق أدناه.
-// العناصر غير المذكورة (si-dashboard · si-myTasks · si-profile · si-help) ظاهرة للجميع دائماً.
-var SIDEBAR_ROLE_RULES = {
-  'si-grades':          ['admin', 'deputy', 'activities', 'teacher'],
-  'si-homework':        ['admin', 'deputy', 'activities', 'teacher'],
-  'si-violations':      ['admin', 'deputy', 'activities', 'teacher'],
-  'si-mySchedule':      ['admin', 'deputy', 'activities', 'teacher'],
-  'si-calendar':        ['admin', 'deputy', 'activities', 'teacher'],
-  'si-news':            ['admin', 'deputy', 'activities', 'teacher'],
-  'si-circulars':       ['admin', 'deputy', 'activities', 'teacher'],
-  'si-contentHub':      ['admin', 'deputy', 'activities', 'teacher', 'media'],
-  'si-reports':         ['admin', 'deputy', 'activities', 'teacher'],
-  'si-notes':           ['admin', 'deputy', 'activities', 'teacher'],
-  'si-activitySup':     ['admin', 'deputy', 'activities'],
-  'si-attendance':      ['admin', 'deputy'],
-  'si-teacher-absence': ['admin', 'deputy'],
-  'si-social':          ['admin', 'deputy', 'activities'],
-  'si-financial':       ['admin'],
-  'si-visits':          ['admin'],
-  'si-teachers-mgmt':   ['admin', 'it'],
-  'si-supervisorPerms': ['admin', 'deputy'],
-  'si-lists-mgmt':      ['admin'],
-  'si-examctrl':        ['admin', 'deputy'],
-  'si-schedSettings':   ['admin', 'deputy'],
-  'si-schoolTemplate':  ['admin'],
-  'si-schoolBrand':     ['admin'],
-  'si-adminActivities': ['admin', 'deputy', 'activities'],
-  'si-adminStudents':   ['admin'],
-  'si-certificates':    ['admin', 'deputy'],
-  'si-scoresheets':     ['admin', 'deputy'],
-  'si-tasksMgmt':       ['admin', 'deputy', 'activities'],
-  'si-studentDirectory':['admin', 'deputy', 'activities', 'it', 'teacher'],
-  'si-studentStatus':   ['admin', 'deputy', 'activities', 'it', 'teacher'],
-  'si-letterheads':     ['admin', 'deputy', 'teacher']
+// SIDEBAR_PERMISSIONS_MANIFEST: مصدر الحقيقة الوحيد لكل عنصر si-* قابل للتقييد.
+// SIDEBAR_ROLE_RULES / accAllow (المحاسب) / SUPERVISOR_PAGE_CATALOG / _supDefaultHidden() /
+// alwaysHide (المشرف) — الخمسة كانت قوائم مُحرَّرة يدوياً بمعزل عن بعضها (فخّ موثَّق:
+// CLAUDE.md الجذر البند 28 وteacher/CLAUDE.md البند 19 — عنصر يُضاف/يُعدَّل بمكان وينحرف عن
+// آخر بصمت). الآن الخمسة تُشتَقّ برمجياً من هذا الكائن الواحد أدناه فقط — أي عنصر جديد أو
+// تعديل صلاحية يُضاف هنا حصراً، لا داخل أي دالة اشتقاق.
+//
+// لكل مفتاح: roles (مصفوفة الأدوار المدفوعة بالجدول admin/deputy/activities/it/media/teacher،
+// أو null إن لم يكن مقيَّداً بها) · accountant (true إن ظاهر لدور المحاسب، له allowlist منفصل
+// عمداً) · supervisor: null (غير مُدار بنظام صلاحيات المشرف — يبقى بحالته الافتراضية أياً كانت)
+// أو {configurable:true, label, defaultVisible} (قابل للضبط لكل مشرف عبر صلاحيات_المشرفين) أو
+// {configurable:false, alwaysHidden:true} (مخفي دوماً عن كل مشرف بصرف النظر عن الإعداد).
+var SIDEBAR_PERMISSIONS_MANIFEST = {
+  'si-grades':           { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'📊 الدرجات',                  defaultVisible:true  } },
+  'si-homework':         { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'📝 الواجبات',                  defaultVisible:true  } },
+  'si-violations':       { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'📋 سجل السلوكيات',             defaultVisible:true  } },
+  'si-mySchedule':       { roles:['admin','deputy','activities','teacher'],       accountant:true,  supervisor:{ configurable:true, label:'📅 جدول الحصص',                defaultVisible:true  } },
+  'si-calendar':         { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'🗓️ التقويم المدرسي',           defaultVisible:true  } },
+  'si-news':             { roles:['admin','deputy','activities','teacher'],       accountant:true,  supervisor:{ configurable:true, label:'📢 نشر الاخبار',               defaultVisible:true  } },
+  'si-contentHub':       { roles:['admin','deputy','activities','teacher','media'], accountant:false, supervisor:{ configurable:true, label:'🎨 إدارة المحتوى والأنشطة',   defaultVisible:true  } },
+  'si-activitySup':      { roles:['admin','deputy','activities'],                 accountant:false, supervisor:{ configurable:true, label:'🗂️ إدارة الأنشطة والإشراف',   defaultVisible:true  } },
+  'si-reports':          { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'📊 التقارير',                  defaultVisible:true  } },
+  'si-notes':            { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'💬 ملاحظات أولياء الأمور',      defaultVisible:true  } },
+  'si-attendance':       { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'📋 الغياب اليومي',             defaultVisible:true  } },
+  'si-teacher-absence':  { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'🧑‍🏫 غياب المعلمين',        defaultVisible:true  } },
+  'si-teachers-mgmt':    { roles:['admin','it'],                                  accountant:false, supervisor:{ configurable:true, label:'👥 إدارة المعلمين',            defaultVisible:false } },
+  'si-adminStudents':    { roles:['admin'],                                       accountant:false, supervisor:{ configurable:true, label:'🔒 الحجب المالي',              defaultVisible:false } },
+  'si-adminActivities':  { roles:['admin','deputy','activities'],                 accountant:false, supervisor:{ configurable:true, label:'📋 جميع الأنشطة',              defaultVisible:true  } },
+  'si-certificates':     { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'🏅 الشهادات',                  defaultVisible:false } },
+  'si-scoresheets':      { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'📋 الكشوفات',                  defaultVisible:false } },
+  'si-myTasks':          { roles:null,                                           accountant:true,  supervisor:{ configurable:true, label:'✅ مهامي',                     defaultVisible:true  } },
+  'si-tasksMgmt':        { roles:['admin','deputy','activities'],                 accountant:true,  supervisor:{ configurable:true, label:'🗂️ إدارة المهام والإشراف',    defaultVisible:true  } },
+  'si-studentDirectory': { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🎒 أسماء الطلاب',              defaultVisible:true  } },
+  'si-studentStatus':    { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🔎 بيان حالة طالب',            defaultVisible:true  } },
+  'si-letterheads':      { roles:['admin','deputy','teacher'],                    accountant:false, supervisor:{ configurable:true, label:'🗂️ ديباجات المدرسة',           defaultVisible:true  } },
+  // غير مُدارة بنظام صلاحيات المشرف (supervisor:null) — سلوك حالي محفوظ حرفياً، لا تغيير:
+  // si-circulars تبقى بحالتها الافتراضية (ظاهرة) لكل مشرف بصرف النظر عن pagePerms؛ si-social
+  // يُخفيها _sbApplySupervisor قسراً (قسم social كامل) بمعزل عن هذا الكائن.
+  'si-circulars':        { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:null },
+  'si-social':           { roles:['admin','deputy','activities'],                 accountant:false, supervisor:null },
+  'si-financial':        { roles:['admin'],                                       accountant:true,  supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-visits':           { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-supervisorPerms':  { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-lists-mgmt':       { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-examctrl':         { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-schedSettings':    { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-schoolTemplate':   { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-schoolBrand':      { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  // غير مقيَّدة بالجدول إطلاقاً (roles:null) — ظاهرة للجميع دوماً؛ مذكورة هنا فقط لتوثيق حالة
+  // المحاسب الخاصة بها (allowlist منفصل): si-dashboard مخفية عمداً عن المحاسب (عرض مركّز بلا
+  // لوحة تحكم)، بينما si-profile/si-help ظاهرتان له كبقية الأدوار.
+  'si-dashboard':        { roles:null, accountant:false, supervisor:null },
+  'si-profile':          { roles:null, accountant:true,  supervisor:null },
+  'si-help':             { roles:null, accountant:true,  supervisor:null }
 };
+
+// دوال اشتقاق نقية (بلا حالة) — كل واحدة تبني عرضاً واحداً من المصدر الموحَّد أعلاه فقط.
+function _sbBuildTableRules(manifest) {
+  var out = {};
+  for (var id in manifest) {
+    if (manifest.hasOwnProperty(id) && manifest[id].roles) out[id] = manifest[id].roles.slice();
+  }
+  return out;
+}
+function _sbBuildAccountantAllow(manifest) {
+  var out = {};
+  for (var id in manifest) {
+    if (manifest.hasOwnProperty(id) && manifest[id].accountant) out[id] = 1;
+  }
+  return out;
+}
+function _sbBuildSupervisorCatalog(manifest) {
+  var out = [];
+  for (var id in manifest) {
+    if (!manifest.hasOwnProperty(id)) continue;
+    var sv = manifest[id].supervisor;
+    if (sv && sv.configurable) out.push({ key: id, label: sv.label });
+  }
+  return out;
+}
+function _sbBuildSupervisorDefaultHidden(manifest) {
+  var out = [];
+  for (var id in manifest) {
+    if (!manifest.hasOwnProperty(id)) continue;
+    var sv = manifest[id].supervisor;
+    if (sv && sv.configurable && sv.defaultVisible === false) out.push(id);
+  }
+  return out;
+}
+function _sbBuildSupervisorAlwaysHide(manifest) {
+  var out = [];
+  for (var id in manifest) {
+    if (!manifest.hasOwnProperty(id)) continue;
+    var sv = manifest[id].supervisor;
+    if (sv && sv.alwaysHidden) out.push(id);
+  }
+  return out;
+}
+
+var SIDEBAR_ROLE_RULES = _sbBuildTableRules(SIDEBAR_PERMISSIONS_MANIFEST);
 
 // اشتقاق الدور: يثق بالخادم؛ التراجع الأخير (استنتاج «الأنشطة» من المادة) توافقٌ قديم فقط.
 function _sbResolveRole(u) {
@@ -6500,11 +6563,7 @@ function _sbApplyTable(role) {
 
 // المحاسب: شريط مركّز — المالية/الطلاب/المهام/الملف فقط (بلا لوحة تحكم ولا أكاديميات).
 function _sbApplyAccountant() {
-  var accAllow = {
-    'si-financial': 1, 'si-studentDirectory': 1,
-    'si-studentStatus': 1, 'si-tasksMgmt': 1, 'si-myTasks': 1, 'si-profile': 1,
-    'si-mySchedule': 1, 'si-news': 1, 'si-help': 1
-  };
+  var accAllow = _sbBuildAccountantAllow(SIDEBAR_PERMISSIONS_MANIFEST);
   var secs = document.querySelectorAll('.sidebar-section');
   for (var acx = 0; acx < secs.length; acx++) {
     var items = secs[acx].querySelectorAll('.sidebar-item');
@@ -6526,7 +6585,7 @@ function _sbApplySupervisor(u) {
   var socialSection = document.getElementById('socialSection');
   if (adminSection) adminSection.style.display = 'block';
   if (socialSection) socialSection.style.display = 'none';
-  var alwaysHide = ['si-supervisorPerms', 'si-lists-mgmt', 'si-schedSettings', 'si-financial', 'si-examctrl', 'si-visits', 'si-schoolTemplate', 'si-schoolBrand'];
+  var alwaysHide = _sbBuildSupervisorAlwaysHide(SIDEBAR_PERMISSIONS_MANIFEST);
   for (var i = 0; i < alwaysHide.length; i++) {
     var e = document.getElementById(alwaysHide[i]);
     if (e) e.style.display = 'none';
@@ -6554,32 +6613,9 @@ function initSidebarByRole() {
 
 // ==================== صلاحيات المشرف: فهرس الصفحات + البوابة ====================
 // مفاتيح الصفحات القابلة للضبط لكل مشرف (المفتاح = id عنصر القائمة الجانبية)
-var SUPERVISOR_PAGE_CATALOG = [
-  { key:'si-grades',           label:'📊 الدرجات' },
-  { key:'si-homework',         label:'📝 الواجبات' },
-  { key:'si-violations',       label:'📋 سجل السلوكيات' },
-  { key:'si-mySchedule',       label:'📅 جدول الحصص' },
-  { key:'si-calendar',         label:'🗓️ التقويم المدرسي' },
-  { key:'si-news',             label:'📢 نشر الاخبار' },
-  { key:'si-contentHub',       label:'🎨 إدارة المحتوى والأنشطة' },
-  { key:'si-activitySup',      label:'🗂️ إدارة الأنشطة والإشراف' },
-  { key:'si-reports',          label:'📊 التقارير' },
-  { key:'si-notes',            label:'💬 ملاحظات أولياء الأمور' },
-  { key:'si-attendance',       label:'📋 الغياب اليومي' },
-  { key:'si-teacher-absence',  label:'🧑‍🏫 غياب المعلمين' },
-  { key:'si-teachers-mgmt',    label:'👥 إدارة المعلمين' },
-  { key:'si-adminStudents',    label:'🔒 الحجب المالي' },
-  { key:'si-adminActivities',  label:'📋 جميع الأنشطة' },
-  { key:'si-certificates',     label:'🏅 الشهادات' },
-  { key:'si-scoresheets',      label:'📋 الكشوفات' },
-  { key:'si-myTasks',          label:'✅ مهامي' },
-  { key:'si-tasksMgmt',        label:'🗂️ إدارة المهام والإشراف' },
-  { key:'si-studentDirectory', label:'🎒 أسماء الطلاب' },
-  { key:'si-studentStatus',    label:'🔎 بيان حالة طالب' },
-  { key:'si-letterheads',      label:'🗂️ ديباجات المدرسة' }
-];
+var SUPERVISOR_PAGE_CATALOG = _sbBuildSupervisorCatalog(SIDEBAR_PERMISSIONS_MANIFEST);
 // الصفحات المخفية افتراضياً للمشرف عند غياب الإعداد (سلوك «كما كان سابقاً»)
-function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-teachers-mgmt','si-adminStudents']; }
+function _supDefaultHidden(){ return _sbBuildSupervisorDefaultHidden(SIDEBAR_PERMISSIONS_MANIFEST); }
 
 // ==================== كتالوج مواضيع "التعليمات" ====================
 // id يطابق مفتاح renders (Teacher Dashboard.html) أو اسم أحد الأقسام الثابتة الخمسة
