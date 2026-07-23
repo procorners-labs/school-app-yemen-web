@@ -244,6 +244,35 @@
       animation: iconFloat 3s ease-in-out infinite;
     }
     @keyframes iconFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+    /* مقدّمة ظهور الشعار — تُشغَّل مرة واحدة فقط لكل تحميل صفحة عبر class تُضاف من JS (applyBrand) */
+    @keyframes logoRevealScale { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+    @keyframes logoRevealGlow {
+      0%,100%{box-shadow:0 8px 32px rgba(79,70,229,.4)}
+      50%{box-shadow:0 8px 32px rgba(79,70,229,.4), 0 0 26px 6px var(--primary-glow-strong, rgba(79,70,229,.45))}
+    }
+    @keyframes logoShineSweep {
+      0%{transform:translateX(-40%) rotate(8deg);opacity:0}
+      15%{opacity:1} 60%{opacity:1}
+      100%{transform:translateX(260%) rotate(8deg);opacity:0}
+    }
+    .login-icon-wrap.logo-reveal-play {
+      position:relative; overflow:hidden;
+      animation: iconFloat 3s ease-in-out infinite,
+                 logoRevealScale .6s cubic-bezier(.34,1.56,.64,1) both,
+                 logoRevealGlow 1.1s ease-out .15s 1;
+    }
+    .login-icon-wrap.logo-reveal-play::after {
+      content:''; position:absolute; top:-20%; left:-60%; width:60%; height:140%;
+      background:linear-gradient(115deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%);
+      animation: logoShineSweep .9s ease-out .5s 1;
+      pointer-events:none;
+    }
+    .login-school-name.name-reveal-play { animation: fadeUp .5s ease .15s both; }
+    @media (prefers-reduced-motion: reduce) {
+      .login-icon-wrap.logo-reveal-play,
+      .login-icon-wrap.logo-reveal-play::after,
+      .login-school-name.name-reveal-play { animation: none !important; }
+    }
     .login-school-name {
       color:#fff; font-size:1.4rem; font-weight:800; line-height:1.3;
       text-shadow:0 2px 8px rgba(0,0,0,.3); margin-bottom:6px;
@@ -2922,6 +2951,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       'دورك اليوم يصنع فرقاً في مستقبل طلاب {SCHOOL} 🎯'
     ];
     var _tcTaglineIdx = Math.floor(Math.random() * _tcLoginTaglines.length);
+    // مقدّمة ظهور الشعار/اسم المدرسة — تُشغَّل مرة واحدة فقط لكل تحميل صفحة (علم منفصل عن التاغلاين).
+    var _tcLogoRevealed = false;
+    function _tcPlayLoginReveal() {
+      if (_tcLogoRevealed) return;
+      _tcLogoRevealed = true;
+      try {
+        var lw = document.getElementById('tchLoginLogo');
+        if (lw) lw.classList.add('logo-reveal-play');
+        var nm = document.querySelector('.login-school-name');
+        if (nm) nm.classList.add('name-reveal-play');
+      } catch (eRv) {}
+    }
     function _tcRenderLoginWelcome(schoolName) {
       try {
         var elw = document.getElementById('loginWelcomeText');
@@ -3009,6 +3050,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           var lg = document.getElementById(ids[k]);
           if (lg) lg.innerHTML = '<img src="' + b.logo + '" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:10px;" />';
         }
+        _tcPlayLoginReveal();
       }
     }
     // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
