@@ -1943,6 +1943,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .smm-qr-mini { background:#fff;border-radius:10px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,.07);text-align:center; }
 .smm-qr-mini img { width:120px;height:120px;border-radius:8px;margin:0 auto 8px; }
 .smm-qr-mini .qmtitle { font-size:12px;font-weight:600;color:#0F2C5C;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+/* ─── مركز التعليمات: محتوى نصّي مُصنَّف (p/ul/tip/note) داخل كل بطاقة موضوع ─── */
+.help-p{margin:6px 0;font-size:.88rem;line-height:1.9;color:var(--text);}
+.help-ul{margin:6px 0;padding-inline-start:20px;font-size:.85rem;line-height:1.9;color:var(--text);}
+.help-callout{background:var(--surface2);border-inline-start:3px solid #D4A537;border-radius:10px;padding:10px 12px;margin:8px 0;}
+.help-callout-t{font-weight:700;color:var(--text);font-size:.86rem;line-height:1.8;}
+.help-note{background:var(--surface2);border-inline-start:3px solid var(--brand,#1a237e);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:.85rem;color:var(--text);line-height:1.8;}
   </style>
 </head>
 <body>
@@ -6589,41 +6595,159 @@ function _supDefaultHidden(){ return ['si-certificates','si-scoresheets','si-tea
 // SIDEBAR_ROLE_RULES بمرور الوقت. إضافة قسم/صفحة جديدة مستقبلاً: (1) سطر هنا، (2) زر
 // _helpOpen('id') داخل section-header الخاص بالقسم الجديد — راجع teacher/CLAUDE.md.
 var HELP_TOPICS_CATALOG = [
-  { id:'dashboard',         label:'لوحة التحكم',                 icon:'🏠', category:'الرئيسية' },
-  { id:'grades',            label:'الدرجات',                     icon:'📊', category:'الأدوات الأكاديمية' },
-  { id:'homework',          label:'الواجبات',                    icon:'📝', category:'الأدوات الأكاديمية' },
-  { id:'violations',        label:'سجل السلوكيات',               icon:'📋', category:'الأدوات الأكاديمية' },
-  { id:'mySchedule',        label:'جدول الحصص',                  icon:'📅', category:'الأدوات الأكاديمية' },
-  { id:'calendar',          label:'التقويم المدرسي',              icon:'🗓️', category:'الأدوات الأكاديمية' },
-  { id:'news',              label:'نشر الاخبار',                 icon:'📢', category:'الأدوات الأكاديمية' },
-  { id:'circulars',         label:'التعاميم الإدارية',            icon:'📜', category:'الأدوات الأكاديمية' },
-  { id:'contentHub',        label:'إدارة المحتوى والأنشطة',       icon:'🎨', category:'الأدوات الأكاديمية' },
-  { id:'activitySup',       label:'إدارة الأنشطة والإشراف',       icon:'🗂️', category:'الأدوات الأكاديمية' },
-  { id:'reports',           label:'التقارير',                    icon:'📊', category:'الأدوات الأكاديمية' },
-  { id:'notes',             label:'ملاحظات أولياء الأمور',        icon:'💬', category:'الأدوات الأكاديمية' },
-  { id:'attendance',        label:'الغياب اليومي',                icon:'📋', category:'الأدوات الأكاديمية' },
-  { id:'teacher-absence',   label:'غياب المعلمين',                icon:'🧑‍🏫', category:'الأدوات الأكاديمية' },
-  { id:'letterheads',       label:'ديباجات المدرسة',              icon:'🗂️', category:'الأدوات الأكاديمية' },
-  { id:'social',            label:'السوشل ميديا والنشر',          icon:'📲', category:'📱 التسويق الاجتماعي' },
-  { id:'financial',         label:'المالية والعمليات',            icon:'💰', category:'إدارة النظام' },
-  { id:'visits',            label:'الزيارات وحركة المرور',        icon:'📈', category:'إدارة النظام' },
-  { id:'teachers-mgmt',     label:'إدارة المعلمين',               icon:'👥', category:'إدارة النظام' },
-  { id:'supervisorPerms',   label:'ضبط صلاحيات المشرف',           icon:'🛡️', category:'إدارة النظام' },
-  { id:'lists-mgmt',        label:'إدارة القوائم',                icon:'📝', category:'إدارة النظام' },
-  { id:'examctrl',          label:'كنترول اختبارات نهاية العام',  icon:'🗂️', category:'إدارة النظام' },
-  { id:'schedSettings',     label:'إعدادات الجدول والتواقيت',     icon:'⚙️', category:'إدارة النظام' },
-  { id:'schoolTemplate',    label:'قالب تزويد المدرسة',           icon:'🏫', category:'إدارة النظام' },
-  { id:'schoolBrand',       label:'بيانات المدرسة',               icon:'🖼️', category:'إدارة النظام' },
-  { id:'adminActivities',   label:'جميع الأنشطة',                 icon:'📋', category:'إدارة النظام' },
-  { id:'adminStudents',     label:'الحجب المالي',                 icon:'🔒', category:'إدارة النظام' },
-  { id:'certificates',      label:'الشهادات',                     icon:'🏅', category:'إدارة النظام' },
-  { id:'scoresheets',       label:'الكشوفات',                     icon:'📋', category:'إدارة النظام' },
-  { id:'myTasks',           label:'مهامي',                        icon:'✅', category:'المهام والإشراف' },
-  { id:'tasksMgmt',         label:'إدارة المهام والإشراف',        icon:'🗂️', category:'المهام والإشراف' },
-  { id:'studentDirectory',  label:'أسماء الطلاب',                 icon:'🎒', category:'شؤون الطلاب' },
-  { id:'studentStatus',     label:'بيان حالة طالب',               icon:'🔎', category:'شؤون الطلاب' },
-  { id:'profile',           label:'الملف الشخصي',                 icon:'👤', category:'الملف الشخصي' }
+  { id:'dashboard', label:'لوحة التحكم', icon:'🏠', category:'الرئيسية', body:[
+    {type:'p', text:"هذه صفحتك الأولى عند الدخول. تجد فيها أزراراً سريعة (إدخال الدرجات، إضافة واجب، تسجيل سلوك، نشر خبر، وأزرار أخرى حسب دورك) — اضغط أي زر منها للذهاب مباشرة إلى تلك المهمة دون تصفّح القوائم."},
+    {type:'p', text:"إن أردت الوصول إلى أي صفحة أخرى غير موجودة كاختصار، اضغط الثلاثة الخطوط (☰) أعلى يمين الشاشة — ستظهر لك كل الصفحات المتاحة لدورك، اختر ما تريد والصفحة تُفتَح فوراً. تجد أيضاً جدول اليوم، التقويم، ومهامك الحالية في نفس الصفحة دفعة واحدة."}
+  ]},
+  { id:'grades', label:'الدرجات', icon:'📊', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"لإدخال درجات طلابك. اختر الشهر، ثم المادة، ثم الفصل، ثم الشعبة، واضغط تحميل."},
+    {type:'p', text:"تظهر لك أعمدة الدرجة حسب نوع الشهر: الشهور العادية (السلوك، الواجبات، الشفوي، التحريري)، أشهر النصفي/آخر الفصل (محصلة محسوبة تلقائياً + درجة اختبار واحدة)، وشهر نهاية العام (أعمدة محسوبة تلقائياً + درجة الاختبار النهائي). كل درجة تُحفَظ تلقائياً بمجرد كتابتها — لا حاجة لزر حفظ منفصل لكل خانة."},
+    {type:'tip', text:"💡 إن كنت تُدرِّس مادة «الاجتماعيات» في صف يقسمها إلى مواد فرعية (المجتمع/التاريخ/الجغرافيا)، ستظهر لك المادة الفرعية مباشرة في القائمة تلقائياً — لا حاجة لإعداد إضافي منك."}
+  ]},
+  { id:'homework', label:'الواجبات', icon:'📝', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"لإضافة واجب جديد أو مراجعة الواجبات السابقة. اضغط «إضافة واجب»، اختر المادة والفصل والشعبة (أو «جميع الشعب» إن كنت تُدرِّس أكثر من شعبة)، اكتب نص الواجب، وحدِّد التاريخ (اليوم افتراضياً)، ثم احفظ."},
+    {type:'p', text:"يمكنك لاحقاً البحث والفرز حسب الفصل/الشعبة أو التاريخ لمراجعة ما نشرته سابقاً."}
+  ]},
+  { id:'violations', label:'سجل السلوكيات', icon:'📋', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"صفحتك لتسجيل تفاعل الطالب اليومي — استخدمها أولاً وبشكل يومي لتحفيز الطلاب المجتهدين والمتفاعلين عبر خيارات إيجابية جاهزة (مجتهد، مشارك، متعاون، وغيرها) — كلما سجَّلت سلوكاً إيجابياً شعر الطالب بالتقدير وتحسَّن أداؤه."},
+    {type:'p', text:"اختر اسم الطالب (يكفي كتابة حرفين من اسمه)، اختر نوع السلوك من القائمة أو اكتب نوعاً مخصَّصاً، ويمكنك أيضاً تسجيل نفس السلوك لعدّة طلاب دفعة واحدة."},
+    {type:'tip', text:"⚠️ الخيارات السلبية (ملاحظة/تنبيه) تبقى متاحة للضرورة فقط — لا تجعلها عادتك الأولى في استخدام هذه الصفحة."}
+  ]},
+  { id:'mySchedule', label:'جدول الحصص', icon:'📅', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"عرض جدول حصصك الأسبوعي كما هو مُعتمَد — صفحة اطّلاع فقط، لا تعديل هنا. يمكنك التبديل بين عرض شبكي وعرض قائمة، والفلترة حسب اليوم أو الحصة."}
+  ]},
+  { id:'calendar', label:'التقويم المدرسي', icon:'🗓️', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"اطّلع على المناسبات والأيام المهمّة المعتمدة من إدارة المدرسة خلال العام الدراسي."}
+  ]},
+  { id:'news', label:'نشر الاخبار', icon:'📢', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"لتوثيق أي حصة أو نشاط أو مناسبة قمت بها — بصورة أو فيديو أو نص فقط."},
+    {type:'p', text:"اضغط «نشر خبر»، اختر الفصل/الفصول والشعب التي يخصّها الخبر (يمكنك اختيار أكثر من فصل وشعبة في نفس النشر)، اكتب نص الخبر، وأرفق صورة أو فيديو إن أردت (حتى 5MB لكل ملف)، ثم انشر. الخبر يظهر فوراً لأولياء أمور الطلاب المعنيّين."},
+    {type:'tip', text:"💡 نشر خبر بصورة أو فيديو يمنحك نقاطاً في تقرير أدائك أعلى من النشر النصي فقط — التوثيق المرئي مُقدَّر."},
+    {type:'note', role:"للمحاسب", text:"يمكنك نشر الأخبار فقط، بدون تعديل أو حذف أخبار الآخرين."}
+  ]},
+  { id:'circulars', label:'التعاميم الإدارية', icon:'📜', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"اقرأ التعاميم الصادرة من الإدارة (عامة، أو موجَّهة للمعلمين تحديداً)."},
+    {type:'note', role:"للمدير/الوكيل", text:"تجد أيضاً زر «تعميم جديد» لكتابة تعميم وتحديد الفئة المستهدَفة (الجميع/المعلمون/الطلاب/المشرفون) ومدّة ظهوره (دائم أو لفترة محدَّدة)."}
+  ]},
+  { id:'contentHub', label:'إدارة المحتوى والأنشطة', icon:'🎨', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"ارفع صوراً وفيديوهات توثّق أنشطتك لمراجعتها واعتمادها قبل نشرها رسمياً على وسائل التواصل الخاصة بالمدرسة."}
+  ]},
+  { id:'activitySup', label:'إدارة الأنشطة والإشراف', icon:'🗂️', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"كلِّف معلماً بمهمة محتوى محدَّدة (عنوان، وصف، موعد نهائي)، وراجع ما قدَّمه من محتوى (اعتماد/رفض)، واطّلع على نظرة عامة لكل المحتوى المُقدَّم عبر المدرسة مصنَّفاً حسب حالته ومنصّة نشره."}
+  ]},
+  { id:'reports', label:'التقارير', icon:'📊', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"إحصائياتك الشخصية — عدد طلابك، حصصك الأسبوعية، عدد الواجبات والأخبار والسلوكيات التي سجَّلتها، ومتوسط درجات طلابك، بالإضافة إلى نقاطك وترتيبك بين زملائك (يُحتسَب من نشاطك: واجبات، أخبار موثَّقة بصورة/فيديو، سلوكيات إيجابية، والرد على ملاحظات أولياء الأمور)."},
+    {type:'p', text:"يمكنك مشاركة ملخّص تقريرك عبر واتساب بضغطة زر."},
+    {type:'note', role:"للمدير/الوكيل", text:"تشاهدون لوحة شاملة لكل معلّمي المدرسة، قائمة «الأكثر تفاعلاً»، وقائمة «معلّمون بحاجة لمتابعة» (غياب متكرّر غير مبرَّر خلال آخر 30 يوماً)."}
+  ]},
+  { id:'notes', label:'ملاحظات أولياء الأمور', icon:'💬', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"ملاحظات يرسلها أولياء الأمور من منصّة الطالب موجَّهة إليك مباشرة. رد عليها من هنا بضغطة واحدة — الرد يظهر لولي الأمر فوراً. الملاحظات الحرجة أو المتأخرة تظهر بشارة تنبيه واضحة لتُعطى الأولوية."}
+  ]},
+  { id:'attendance', label:'الغياب اليومي', icon:'📋', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"لتسجيل حضور/غياب/تأخّر الطلاب يومياً. اختر الفصل والشعبة والتاريخ، ثم حدِّد حالة كل طالب (حاضر تلقائياً إن لم تُغيِّرها)."},
+    {type:'p', text:"يمكنك تحديد الكل غائب بضغطة واحدة عند الحاجة، ثم إرسال رسالة واتساب جاهزة لأولياء أمور الغائبين والمتأخرين مباشرة من نفس الصفحة."}
+  ]},
+  { id:'teacher-absence', label:'غياب المعلمين', icon:'🧑‍🏫', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"تسجيل غياب أحد المعلمين لليوم لأغراض المتابعة الإدارية والتعويض."}
+  ]},
+  { id:'letterheads', label:'ديباجات المدرسة', icon:'🗂️', category:'الأدوات الأكاديمية', body:[
+    {type:'p', text:"قوالب طباعة جاهزة تحمل شعار وبيانات المدرسة (خطابات، إشعارات...) — اختر القالب المناسب واطبعه مباشرة، بلا حفظ بيانات."}
+  ]},
+  { id:'social', label:'السوشل ميديا والنشر', icon:'📲', category:'📱 التسويق الاجتماعي', body:[
+    {type:'p', text:"لوحة متابعة نشر المدرسة على منصات التواصل الاجتماعي. تعرض شريحة الإحصاء أعلى الصفحة عدد المنشورات حسب حالتها (مسودة، قيد المراجعة، مجدول، منشور، فشل) — اضغط أي رقم للانتقال مباشرة لتلك القائمة مفلترة."},
+    {type:'p', text:"من التبويبات: «📊 القيادة» نظرة عامة سريعة، «📅 خطة المحتوى» قائمة كل المنشورات وحالتها، «✏️ إنشاء منشور» لإضافة منشور جديد، «📲 QR Codes» رموز جاهزة للطباعة/المشاركة، و«⚙️ الحسابات» لربط/إدارة حسابات التواصل الاجتماعي."}
+  ]},
+  { id:'financial', label:'المالية والعمليات', icon:'💰', category:'إدارة النظام', body:[
+    {type:'p', text:"سجِّل سندات القبض والمصروفات والرواتب، وتابع حسابات الطلاب والأقساط الشهرية والصندوق اليومي. زر «تحديث» يُزامن أحدث بيانات من جهاز المحاسبة المحلي بالمدرسة خلال دقيقة تقريباً."},
+    {type:'note', role:"للمحاسب", text:"تشاهد نفس الصفحة بعرض مُركَّز على عملك اليومي (تسجيل سندات/مصروفات) بدون الإجماليات المدرسية الشاملة أو التصدير — هذه محجوزة للمدير."}
+  ]},
+  { id:'visits', label:'الزيارات وحركة المرور', icon:'📈', category:'إدارة النظام', body:[
+    {type:'p', text:"إحصائيات زيارة صفحات المنصة (من زارها ومتى) — لأغراض المتابعة والتحليل الإداري."}
+  ]},
+  { id:'teachers-mgmt', label:'إدارة المعلمين', icon:'👥', category:'إدارة النظام', body:[
+    {type:'p', text:"أضف/عدِّل/احذف حسابات المعلمين (الاسم، كلمة المرور، المادة، الفصل، الشعبة)، أو استورد قائمة معلّمين دفعة واحدة من ملف Excel."}
+  ]},
+  { id:'supervisorPerms', label:'ضبط صلاحيات المشرف', icon:'🛡️', category:'إدارة النظام', body:[
+    {type:'p', text:"اختر مشرفاً، وحدِّد الفصول والشعب التي يُشرف عليها والصفحات التي يمكنه الاطّلاع عليها من هذه القائمة. التغيير يسري في دخول المشرف التالي للمنصة."}
+  ]},
+  { id:'lists-mgmt', label:'إدارة القوائم', icon:'📝', category:'إدارة النظام', body:[
+    {type:'p', text:"تحكّم بالقوائم الأساسية المستخدَمة عبر المنصة (أنواع السلوكيات، بيانات المناهج وغيرها)."}
+  ]},
+  { id:'examctrl', label:'كنترول اختبارات نهاية العام', icon:'🗂️', category:'إدارة النظام', body:[
+    {type:'p', text:"أداة شاملة لإدارة اختبارات نهاية العام: جدول الاختبارات (اسحب كل مادة إلى يومها وحدِّد تاريخ أول اختبار فقط، والباقي يُحتسَب تلقائياً)، اللجان (توزيع تلقائي أو يدوي)، أرقام الجلوس والطباعة، ورصد الدرجات بعدّة طرق (رقم سرّي، بالاسم، للفصول الصغيرة)."}
+  ]},
+  { id:'schedSettings', label:'إعدادات الجدول والتواقيت', icon:'⚙️', category:'إدارة النظام', body:[
+    {type:'p', text:"توزيع الحصص على المعلمين والفصول وضبط توقيت كل حصة لبناء الجدول الدراسي المعتمَد."}
+  ]},
+  { id:'schoolTemplate', label:'قالب تزويد المدرسة', icon:'🏫', category:'إدارة النظام', body:[
+    {type:'p', text:"أداة إعداد/تزويد بيانات المدرسة الأساسية عند التهيئة الأولى أو التحديث الشامل."}
+  ]},
+  { id:'schoolBrand', label:'بيانات المدرسة', icon:'🖼️', category:'إدارة النظام', body:[
+    {type:'p', text:"عدِّل شعار مدرستك وروابط التواصل الاجتماعي (واتساب/فيسبوك/انستغرام/يوتيوب) ولون الثيم — تظهر هذه البيانات في دليل المدارس العام."},
+    {type:'p', text:"يمكنك أيضاً ربط حساب فيسبوك المدرسة مباشرة من نفس الصفحة."}
+  ]},
+  { id:'adminActivities', label:'جميع الأنشطة', icon:'📋', category:'إدارة النظام', body:[
+    {type:'p', text:"سجلّ شامل لكل ما نشره معلّمو المدرسة (واجبات/أخبار/سلوكيات) في مكان واحد، مع إمكانية التعديل أو الحذف عند الحاجة."}
+  ]},
+  { id:'adminStudents', label:'الحجب المالي', icon:'🔒', category:'إدارة النظام', body:[
+    {type:'p', text:"إعدادات حجب الطلاب المتأخرين عن السداد (نسبة الحجب والاستثناءات)، بجانب جدول قائمة الطلاب ذات الصلة."}
+  ]},
+  { id:'certificates', label:'الشهادات', icon:'🏅', category:'إدارة النظام', body:[
+    {type:'p', text:"طباعة شهادات تقدير/تفوّق جاهزة للطلاب."}
+  ]},
+  { id:'scoresheets', label:'الكشوفات', icon:'📋', category:'إدارة النظام', body:[
+    {type:'p', text:"طباعة كشوفات درجات جاهزة للفصول/الشُّعب."}
+  ]},
+  { id:'myTasks', label:'مهامي', icon:'✅', category:'المهام والإشراف', body:[
+    {type:'p', text:"قائمة مهامك الشخصية المُسندة إليك (إشراف، اجتماعات، مهام إدارية) — اطّلع عليها وحدِّث حالتها."}
+  ]},
+  { id:'tasksMgmt', label:'إدارة المهام والإشراف', icon:'🗂️', category:'المهام والإشراف', body:[
+    {type:'p', text:"أسند مهام للمعلمين وتابع حالتها، وسجِّل حضور الاجتماعات (الجميع حاضر افتراضياً، وتُحدَّد فقط حالات الغياب/التأخر)."}
+  ]},
+  { id:'studentDirectory', label:'أسماء الطلاب', icon:'🎒', category:'شؤون الطلاب', body:[
+    {type:'p', text:"بحث سريع عن أي طالب بالاسم للاطّلاع على بياناته الأساسية."}
+  ]},
+  { id:'studentStatus', label:'بيان حالة طالب', icon:'🔎', category:'شؤون الطلاب', body:[
+    {type:'p', text:"تقرير مُفصَّل عن طالب واحد (حضوره، درجاته، سلوكياته) في صفحة واحدة."}
+  ]},
+  { id:'profile', label:'الملف الشخصي', icon:'👤', category:'الملف الشخصي', body:[
+    {type:'p', text:"بياناتك الشخصية وكلمة مرورك — يمكنك تحديثها من هنا."}
+  ]}
 ];
+
+// عناصر si-* تبقى في الـDOM بلا تغيير بعد initSidebarByRole الأولي؛ offsetParent يعكس إخفاء أي
+// حاوية أب (sidebar-section/adminSection) لا يعكسه فحص style.display على العنصر وحده — لا تعليمات
+// عن صفحة لا يصل إليها المستخدم (قيد صريح، راجع teacher/CLAUDE.md).
+function _helpVisibleTopics() {
+  var out = [], i, t, el;
+  for (i = 0; i < HELP_TOPICS_CATALOG.length; i++) {
+    t = HELP_TOPICS_CATALOG[i];
+    el = document.getElementById('si-' + t.id);
+    if (el && el.offsetParent !== null) out.push(t);
+  }
+  return out;
+}
+
+// كتل مصنَّفة (p/ul/tip/note) لا HTML خام — تُبقي كل صياغة الوسوم في مكان واحد مضبوط.
+function _helpRenderBlocks(blocks) {
+  var html = '', i, j, b;
+  if (!blocks || !blocks.length) return '';
+  for (i = 0; i < blocks.length; i++) {
+    b = blocks[i];
+    if (b.type === 'p') {
+      html += '<p class="help-p">' + b.text + '</p>';
+    } else if (b.type === 'ul') {
+      html += '<ul class="help-ul">';
+      for (j = 0; j < b.items.length; j++) html += '<li>' + b.items[j] + '</li>';
+      html += '</ul>';
+    } else if (b.type === 'tip') {
+      html += '<div class="help-callout"><div class="help-callout-t">' + b.text + '</div></div>';
+    } else if (b.type === 'note') {
+      html += '<div class="help-note"><b>' + (b.role || 'ملاحظة') + ':</b> ' + b.text + '</div>';
+    }
+  }
+  return html;
+}
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
 function _applySupervisorPagePerms(u){
@@ -9491,10 +9615,13 @@ function _helpOpen(topicId) { showSection('help', topicId); }
 function renderHelp(topicId) {
   var el = document.getElementById('dynamicContent');
   var canEdit = isFullAdmin(); // admin فقط — راجع ملاحظة session.role مقابل isAdmin في CLAUDE.md
+  // لا تعليمات عن صفحة لا يصل إليها المستخدم — الفلترة آلية من حالة الشريط الجانبي الفعلية،
+  // لا قائمة أدوار موازية (راجع _helpVisibleTopics أعلاه وteacher/CLAUDE.md).
+  var visibleTopics = _helpVisibleTopics();
   var cats = [];
   var byCat = {};
-  for (var i = 0; i < HELP_TOPICS_CATALOG.length; i++) {
-    var t = HELP_TOPICS_CATALOG[i];
+  for (var i = 0; i < visibleTopics.length; i++) {
+    var t = visibleTopics[i];
     if (!byCat[t.category]) { byCat[t.category] = []; cats.push(t.category); }
     byCat[t.category].push(t);
   }
@@ -9502,7 +9629,10 @@ function renderHelp(topicId) {
     '<div class="section-header-icon" style="background:rgba(79,70,229,.12)">❓</div>' +
     '<div class="section-header-title">التعليمات</div></div>' +
     '<div class="section-body">' +
-    '<div class="alert alert-info" style="margin-bottom:14px">دليل مختصر لكل قسم بالمنصة — يُستكمل تباعاً بنصوص وفيديوهات تعليمية.</div>';
+    '<div class="alert alert-info" style="margin-bottom:14px">دليل مختصر لكل قسم بالمنصة — يُستكمل تباعاً بفيديوهات تعليمية.</div>';
+  if (!visibleTopics.length) {
+    html += '<div class="empty-state"><div class="es-icon">❓</div><div class="es-title">لا توجد مواضيع تعليمات متاحة حالياً</div></div>';
+  }
   for (var c = 0; c < cats.length; c++) {
     var cat = cats[c];
     html += '<div class="filter-bar-title" style="margin:18px 0 8px">' + escapeHtml(cat) + '</div>';
@@ -9511,7 +9641,7 @@ function renderHelp(topicId) {
       var tp = topics[j];
       html += '<div id="help-topic-' + tp.id + '" style="padding:12px 0;border-bottom:1px solid var(--border)">' +
         '<div style="font-weight:700;font-size:.95rem;margin-bottom:4px">' + tp.icon + ' ' + escapeHtml(tp.label) + '</div>' +
-        '<div style="color:var(--text-muted);font-size:.85rem">المحتوى التفصيلي لهذا القسم قيد الإعداد.</div>' +
+        _helpRenderBlocks(tp.body) +
         '<div id="help-video-wrap-' + tp.id + '"></div>';
       if (canEdit) {
         html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
@@ -9524,7 +9654,7 @@ function renderHelp(topicId) {
   }
   html += '</div></div>';
   el.innerHTML = html;
-  _helpInit(topicId);
+  _helpInit(topicId, visibleTopics);
 }
 
 // نفس قائمة teacher/HelpCenter.js::HELP_VIDEO_HOST_ALLOWLIST حرفياً — دفاع بعمق فقط، الحارس
@@ -9554,7 +9684,7 @@ function _helpRenderVideo(topicId, url) {
     : '';
 }
 
-function _helpInit(topicId) {
+function _helpInit(topicId, visibleTopics) {
   callServer('getHelpTopicVideosProtected', {}, function (res) {
     if (!res || !res.ok) return;
     var videos = res.videos || {};
@@ -9565,11 +9695,19 @@ function _helpInit(topicId) {
       var input = document.getElementById('help-video-input-' + id);
       if (input && url) input.value = url;
     }
-    if (topicId) {
-      var target = document.getElementById('help-topic-' + topicId);
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
   });
+  // رابط عميق لموضوع غير موجود ضمن المواضيع الظاهرة فعلاً (معرّف خاطئ، أو دور فقد الوصول)
+  // لا يُعطِّل الصفحة — تُعرَض القائمة الكاملة المتاحة بلا فتح مسبق + رسالة توست محايدة.
+  if (topicId) {
+    var isVisible = false;
+    for (var k = 0; k < (visibleTopics || []).length; k++) { if (visibleTopics[k].id === topicId) { isVisible = true; break; } }
+    var target = isVisible ? document.getElementById('help-topic-' + topicId) : null;
+    if (target) {
+      setTimeout(function () { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+    } else if (typeof toast === 'function') {
+      toast('لم يتم العثور على هذا الموضوع — إليك كل التعليمات المتاحة لك', 'info');
+    }
+  }
 }
 
 // حفظ/مسح رابط فيديو موضوع — admin فقط (تحقّق مُكرَّر خادمياً في saveHelpTopicVideoProtected).
