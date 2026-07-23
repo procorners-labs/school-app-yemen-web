@@ -57,6 +57,7 @@
 
   <base target="_top">
   <meta charset="UTF-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام إدارة السوشيال ميديا</title>
   <style>
@@ -206,13 +207,25 @@
       .withFailureHandler(function (err) { if (msgEl) { msgEl.style.color = '#dc2626'; msgEl.textContent = 'خطأ: ' + err.message; } })
       .handleCmsLogin({ username: user, password: pass, clientId: _cmsClientId(), schoolId: window.SCHOOL_ID || '' });
   }
+  // 2026-07-24: دخول تلقائي عبر توكن teacher حيّ يصل ضمن الرابط (?teacherToken=…) — يُغني عن
+  // شاشة الدخول اليدوية عند الفتح من زر «فتح لوحة CMS الكاملة» بمنصة المعلم. عند غياب التوكن
+  // أو فشل التحقق، الاحتياط الآمن كما كان دوماً: شاشة الدخول اليدوية.
+  function _cmsUrlTeacherToken() { try { return new URLSearchParams(window.location.search).get('teacherToken') || ''; } catch (e) { return ''; } }
+  function _cmsTryAutoLogin(onSuccess, onFail) {
+    var tt = _cmsUrlTeacherToken();
+    if (!tt) { onFail(); return; }
+    google.script.run
+      .withSuccessHandler(function (res) { if (res && res.success) { _cmsSetToken(res.token); onSuccess(); } else onFail(); })
+      .withFailureHandler(onFail)
+      .handleCmsAutoLogin({ teacherToken: tt, schoolId: window.SCHOOL_ID || '' });
+  }
   function _cmsRequireAuth(onReady) {
     var token = _cmsToken();
-    if (!token) { _cmsShowGate(); _cmsPendingAction = onReady; return; }
+    if (!token) { _cmsTryAutoLogin(onReady, function () { _cmsShowGate(); _cmsPendingAction = onReady; }); return; }
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.valid) { onReady(); }
-        else { _cmsSetToken(''); _cmsShowGate(); _cmsPendingAction = onReady; }
+        else { _cmsSetToken(''); _cmsTryAutoLogin(onReady, function () { _cmsShowGate(); _cmsPendingAction = onReady; }); }
       })
       .withFailureHandler(function () { _cmsShowGate(); _cmsPendingAction = onReady; })
       .checkCmsSession({ token: token });

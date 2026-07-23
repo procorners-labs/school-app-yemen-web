@@ -2393,6 +2393,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           </div>
         </div>
         <button type="button" title="مساعدة" onclick="_helpOpen('social')" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:13px;font-family:inherit;">❓</button>
+        <button onclick="smm_openFullCmsApp()" title="فتح لوحة CMS الكاملة في تبويب جديد — دخول تلقائي بلا كلمة مرور" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-family:inherit;">🔗 فتح لوحة CMS الكاملة</button>
         <button onclick="smm_reload()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-family:inherit;">🔄 تحديث</button>
       </div>
 
@@ -20241,6 +20242,18 @@ function _cmsEndpoint() {
   }
   // في وضع GAS المباشر أو أي وضع آخر → الرابط المطلق للـ Worker
   return _CMS_WORKER_URL;
+}
+
+// 2026-07-24: فتح لوحة CMS الكاملة (index.html) بتبويب جديد، بدخول تلقائي (SSO) عبر توكن
+// teacher الحيّ في الرابط — يقرأه handleCmsAutoLogin (cms/CMSAuth.js) بدل شاشة دخول منفصلة.
+// نفس مسارَي التوجيه المُستخدَمين أصلاً لباقي نداءات CMS (_cmsEndpoint/_CMS_WORKER_URL) —
+// ديناميكي عبر وضعَي Worker وGAS المباشر معاً.
+function smm_openFullCmsApp() {
+  var sid = window.SCHOOL_ID || (App && App.user && App.user.schoolId) || '';
+  var tok = (App && App.user && App.user.token) || '';
+  var base = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '/cms/index.html' : _CMS_WORKER_URL;
+  var qs = 'school=' + encodeURIComponent(sid) + (tok ? '&teacherToken=' + encodeURIComponent(tok) : '');
+  window.open(base + '?' + qs, '_blank', 'noopener');
 }
 
 function callCMS(fnName, args, callback) {
