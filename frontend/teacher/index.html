@@ -1975,7 +1975,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div class="login-subtitle">منصة المعلمين الإلكترونية</div>
     </div>
     <div class="login-body">
-      <p class="login-welcome">أهلاً بك! 👋 يرجى إدخال بيانات الدخول</p>
+      <p class="login-welcome" id="loginWelcomeText">أهلاً بك! 👋 يرجى إدخال بيانات الدخول</p>
       <div class="input-group-custom">
         <span class="input-icon">👤</span>
         <input type="text" id="loginUsername" class="login-input" placeholder="اسم المستخدم (اسم المدرس)" autocomplete="username">
@@ -2913,6 +2913,22 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       var _tcbRaw = window.localStorage && localStorage.getItem(_tcBrandCacheKey);
       if (_tcbRaw) _tcCachedBrand = JSON.parse(_tcbRaw);
     } catch (eCB) {}
+    // عبارات ترحيب دوّارة لشاشة الدخول — تُختار مرّة واحدة فقط لكل تحميل صفحة (لا تتبدّل
+    // عند كل تحديث صامت لبيانات الهوية)، مع إدراج اسم المدرسة الحقيقي حيثما يلزم.
+    var _tcLoginTaglines = [
+      'أهلاً بك! 👋 يرجى إدخال بيانات الدخول',
+      'معاً نرتقي بمستوى التعليم ونبني جيلاً مبدعاً ومتميزاً 🌱',
+      'دورك اليوم يصنع فرقاً في مستقبل طلاب {SCHOOL} 🎯'
+    ];
+    var _tcTaglineIdx = Math.floor(Math.random() * _tcLoginTaglines.length);
+    function _tcRenderLoginWelcome(schoolName) {
+      try {
+        var elw = document.getElementById('loginWelcomeText');
+        if (!elw) return;
+        elw.textContent = _tcLoginTaglines[_tcTaglineIdx].replace('{SCHOOL}', schoolName || 'مدرستي');
+      } catch (eWlc) {}
+    }
+    _tcRenderLoginWelcome('مدرستي');
     if (_tcCachedBrand) {
       // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
       applyBrand(_tcCachedBrand);
@@ -2967,6 +2983,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         for (var i = 0; i < els.length; i++) els[i].textContent = b.name;
         var smm = document.getElementById('smm-school-label');
         if (smm) smm.textContent = b.name;
+        _tcRenderLoginWelcome(b.name);
         try { document.title = document.title.replace(/مدارس الإبداع والتميز(\s*الدولية)?|المدرسة/g, b.name); } catch (eT) {}
         // قالب واتساب لأولياء الأمور: بدّل هوية الإبداع الثابتة (اسم/هاتف) بهوية المدرسة الفعلية،
         // فقط إن كان القالب لا يزال بالقيمة الافتراضية (كي لا نطمس تعديل المستخدم).
