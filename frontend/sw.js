@@ -82,6 +82,13 @@ self.addEventListener('fetch', function (event) {
     return; // اترك المتصفّح يتعامل معه افتراضياً
   }
 
+  // طلبات عابرة للأصل (صور Drive، خطوط/CDN، GTM...) — لا علاقة لها بمنطق تخزين هذا
+  // الموقع؛ تُترَك للمتصفّح مباشرة بدل اعتراضها هنا (يمنع أخطاء استجابة مبهمة/فاشلة
+  // على موارد خارجية بحتة).
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // التنقّل بين الصفحات: شبكة أولاً ثم الكاش ثم صفحة بديلة.
   var isNavigation = req.mode === 'navigate' ||
     (req.headers.get('accept') || '').indexOf('text/html') !== -1;
@@ -94,11 +101,22 @@ self.addEventListener('fetch', function (event) {
         caches.open(CACHE).then(function (c) { c.put(req, copy); });
         return res;
       })['catch'](function () {
+        // سلسلة احتياطات متتابعة فعلياً (caches.match ترجع وعداً "صادقاً" دوماً، فـ||
+        // بين وعود لا يجرّب الاحتياط التالي عند فشل الأول — يجب سلسلة .then صريحة)،
+        // مع ضمان نهائي: Response صريحة بدل undefined إن فشلت كل المحاولات.
         return caches.match(req).then(function (hit) {
-          return hit ||
-                 caches.match('/' + ((url.pathname.split('/')[1]) || '') + '/index.html') ||
-                 caches.match('/offline.html') ||
-                 caches.match('/index.html');
+          if (hit) return hit;
+          return caches.match('/' + ((url.pathname.split('/')[1]) || '') + '/index.html').then(function (h2) {
+            if (h2) return h2;
+            return caches.match('/offline.html').then(function (h3) {
+              return h3 || caches.match('/index.html');
+            });
+          });
+        }).then(function (finalHit) {
+          return finalHit || new Response(
+            '<h1>غير متصل بالإنترنت</h1>',
+            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
         });
       })
     );
@@ -114,7 +132,11 @@ self.addEventListener('fetch', function (event) {
           caches.open(CACHE).then(function (c) { c.put(req, copy); });
         }
         return res;
-      })['catch'](function () { return hit; });
+      })['catch'](function () {
+        // hit نفسها قد تكون undefined (لا كاش سابق) — بدونها event.respondWith يستلم
+        // undefined فيرمي "Failed to convert value to 'Response'"؛ اضمن Response دوماً.
+        return hit || new Response('', { status: 504, statusText: 'offline' });
+      });
       return hit || revalidate;
     })
   );
