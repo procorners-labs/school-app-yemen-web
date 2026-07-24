@@ -15776,6 +15776,7 @@ function _schedPrintWindow(bodyHtml, title, page) {
   var w = window.open('', '_blank');
   if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
   var safeT = title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var _bc = _extDocBrandColor();
   // شريط علوي ثابت (مخفي عند الطباعة)
   var tb = '.sPT{position:fixed;inset:0 0 auto 0;z-index:9999;background:#1e3a5f;color:#fff;' +
     'display:flex;align-items:center;gap:8px;padding:8px 14px;direction:rtl;' +
@@ -15786,14 +15787,15 @@ function _schedPrintWindow(bodyHtml, title, page) {
     '.sPTc{background:#374151;color:#d1d5db;}.sPTc:hover{background:#dc2626;color:#fff;}' +
     '.sPTbd{margin-top:54px;}' +
     '@media print{.sPT{display:none!important}.sPTbd{margin-top:0!important}}';
-  var css = 'body{font-family:"Tahoma","Segoe UI",sans-serif;direction:rtl;padding:6mm;color:#111}' +
+  var css = (_bc ? (':root{--primary:'+_bc+';}') : '') +
+    'body{font-family:"Tahoma","Segoe UI",sans-serif;direction:rtl;padding:6mm;color:#111}' +
     '.sched-head{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 4px}' +
     '.sched-head img{height:34px;max-width:64px;object-fit:contain}' +
     'h2{text-align:center;margin:0;font-size:18px}' +
     'h4{text-align:center;margin:0 0 12px;color:#555;font-weight:500;font-size:13px}' +
     'table{width:100%;border-collapse:collapse;font-size:12px}' +
     'th,td{border:1px solid #444;padding:5px;text-align:center;vertical-align:top}' +
-    'thead th{background:#1f2937;color:#fff}' +
+    'thead th{background:var(--primary,#1f2937);color:#fff}' +
     'td.day{background:#374151;color:#fff;font-weight:700}' +
     '.subj{font-weight:700}.meta{font-size:10px;color:#374151}.tch{font-size:9px;color:#666}' +
     '.sched-page{page-break-after:always}.sched-page:last-child{page-break-after:auto}' +
@@ -19656,7 +19658,8 @@ function rep_printAllTeacherActivity() {
     ' · نشطون: ' + (s.activeTeachers || 0) + ' · بلا نشاط: ' + (s.inactiveTeachers || 0) +
     ' · متوسط النشاط/معلم: ' + (s.avgPerTeacher || 0) + '</p>';
   var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  var _bc = _extDocBrandColor();
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -19757,7 +19760,8 @@ function rep_printTasks() {
   var sn = ((document.querySelector('.school-brand-name') || {}).textContent) || '';
   var _repLogo = window._schoolLogo ? ('<img src="' + escapeHtml(window._schoolLogo) + '" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />') : '';
   var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير أداء المهام</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير أداء المهام والإشراف — ' + sn + '</h2><table><thead><tr><th>المعلم</th><th>الإجمالي</th><th>منفّذ</th><th>مؤكّد</th><th>متأخر</th><th>لم يُنفّذ</th><th>الالتزام</th><th>الرسوم</th><th>الخصومات</th><th>الصافي</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  var _bc = _extDocBrandColor();
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير أداء المهام</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير أداء المهام والإشراف — ' + sn + '</h2><table><thead><tr><th>المعلم</th><th>الإجمالي</th><th>منفّذ</th><th>مؤكّد</th><th>متأخر</th><th>لم يُنفّذ</th><th>الالتزام</th><th>الرسوم</th><th>الخصومات</th><th>الصافي</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -19788,7 +19792,8 @@ function rep_printTeacherAbsence(){
   var sn=((document.querySelector('.school-brand-name')||{}).textContent)||'';
   var _repLogo=window._schoolLogo?('<img src="'+escapeHtml(window._schoolLogo)+'" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />'):'';
   var w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة للطباعة','warning'); return; }
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}h2{text-align:center}</style></head><body><h2>'+_repLogo+'تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
+  var _bc = _extDocBrandColor();
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>'+_repLogo+'تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
