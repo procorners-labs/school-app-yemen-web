@@ -2028,9 +2028,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <button class="btn-login" id="loginBtn" onclick="doLogin()">🚪 دخول إلى المنصة</button>
       <div class="login-error" id="loginError"></div>
-      <!-- ✅ زر العودة للموقع الرئيسي العام -->
+      <!-- ✅ زر العودة للموقع الرئيسي العام — href الثابت احتياط أولي فقط؛ يُصحَّح فوراً
+           بجافاسكربت أدناه (نفس منطق تفرّع shareNews) لأن هذا الملف يُخدَم أيضاً كنسخة
+           frontend/ ثابتة لا تُقيَّم فيها سكربتلتات قوالب GAS إطلاقاً. -->
       <div style="text-align:center; margin-top:14px;">
-        <a href="/home/index.html"
+        <a id="returnHomeLink" href="/home/index.html"
            style="display:inline-block;padding:9px 18px;border:1px solid rgba(255,255,255,.4);border-radius:10px;color:#fff;text-decoration:none;font-size:13px;font-weight:600;">
           ← العودة للموقع الرئيسي
         </a>
@@ -2938,6 +2940,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 </div>
 <script>
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
+
+  // ✅ وجهة زر "العودة للموقع الرئيسي" — نفس منطق تفرّع shareNews (مدرسة الإبداع تبقى على
+  // home/ المخصّصة، أي مدرسة أخرى تذهب لبوابة / العامة). يعمل هنا عبر JS لا سكربتلت مباشر
+  // في href لأن هذا الملف يُخدَم أيضاً كنسخة frontend/ ثابتة (window.SCHOOL_ID فقط هناك).
+  (function () {
+    var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+    var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
+              : (window.SCHOOL_ID || '');
+    var el = document.getElementById('returnHomeLink');
+    if (el) el.href = (!sid || sid === OWNER_SCHOOL_ID) ? '/home/index.html' : '/';
+  })();
 
   /* هوية المدرسة ديناميكيًا (اسم/شعار حسب schoolId) — يطبّق على كل .school-brand-name
      (تستخدمها دوال الطباعة/الشهادات/الكشوفات) والشعارات وعنوان الصفحة */

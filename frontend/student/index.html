@@ -1978,13 +1978,27 @@ a { color: var(--pr); text-decoration: none; }
     <div id="stuLoginAddress" style="text-align:center;font-size:11px;color:var(--muted);margin-top:4px;"></div>
     <div id="stuLoginSocial" class="psd-social" style="justify-content:center;margin-top:8px;"></div>
 
-    <!-- ✅ زر العودة للموقع الرئيسي العام -->
+    <!-- ✅ زر العودة للموقع الرئيسي العام — href الثابت احتياط أولي فقط؛ يُصحَّح فوراً
+         بجافاسكربت أدناه (نفس منطق تفرّع nsShareNews) لأن هذا الملف يُخدَم أيضاً كنسخة
+         frontend/ ثابتة لا تُقيَّم فيها سكربتلتات قوالب GAS إطلاقاً. -->
     <div style="text-align:center; margin-top:16px;">
-      <a href="/home/index.html"
+      <a id="returnHomeLink" href="/home/index.html"
          style="display:inline-block;padding:9px 18px;border:1px solid var(--muted,#cbd5e1);border-radius:10px;color:var(--muted,#64748b);text-decoration:none;font-size:13px;font-weight:600;">
         ← العودة للموقع الرئيسي
       </a>
     </div>
+    <script>
+      // ✅ وجهة الزر أعلاه — نفس منطق تفرّع nsShareNews (مدرسة الإبداع تبقى على home/
+      // المخصّصة، أي مدرسة أخرى تذهب لبوابة / العامة). قراءة schoolId مباشرة من الرابط
+      // (نفس أسلوب السطر ~2900) بلا سكربتلت GAS — يعمل حرفياً عبر مسارَي doGet الحيّ
+      // ونسخة frontend/ الثابتة معاً بلا حاجة لأي منطق مختلف بينهما.
+      (function () {
+        var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+        var sid = window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '';
+        var el = document.getElementById('returnHomeLink');
+        if (el) el.href = (!sid || sid === OWNER_SCHOOL_ID) ? '/home/index.html' : '/';
+      })();
+    </script>
 
     <!-- 🆘 زر المساعدة والتواصل مع الدعم الفني (IT) -->
     <style>
