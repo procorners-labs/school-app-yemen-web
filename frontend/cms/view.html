@@ -340,7 +340,6 @@
     <div class="tab active" data-section="news">📰 الأخبار</div>
     <div class="tab" data-section="videos">🎬 الفيديوهات</div>
     <div class="tab" data-section="images">🖼️ الصور</div>
-    <div class="tab" data-section="schedule">📅 جدول النشر</div>
     <div class="tab" data-section="sheets">📑 جداول الشيت</div>
   </div>
 
@@ -358,9 +357,6 @@
   </div>
   <div id="images" class="section">
     <div class="grid" id="imagesGrid"><div class="loading-spinner">⏳ جاري تحميل الصور...</div></div>
-  </div>
-  <div id="schedule" class="section">
-    <div class="grid" id="scheduleGrid"><div class="loading-spinner">⏳ جاري تحميل جدول النشر...</div></div>
   </div>
   <div id="sheets" class="section">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
@@ -531,24 +527,6 @@
     _lib.images = data; libAttachConvert(grid, 'image', data);
   }
 
-  // عرض جدول النشر
-  function displaySchedule(data) {
-    var grid = document.getElementById('scheduleGrid');
-    if (!data || data.length === 0) { grid.innerHTML = '<div class="empty-state">📅 لا توجد منشورات مجدولة</div>'; return; }
-    data.sort(function(a,b){ return new Date(a.scheduledDate) - new Date(b.scheduledDate); });
-    var html = '';
-    for (var i = 0; i < data.length; i++) {
-      var r = data[i]; if (!r) continue;
-      html += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><h3>' + esc(r.platform) + '</h3><span class="badge">' + esc(r.postType) + '</span></div>';
-      html += '<p>' + esc(r.content) + '</p>';
-      if (r.mediaURL) html += '<img src="' + esc(r.mediaURL) + '" loading="lazy">';
-      html += '<div style="margin-top:18px;"><div><strong>📅 موعد النشر:</strong> ' + (r.scheduledDate ? formatDate(r.scheduledDate) : 'غير محدد') + '</div>';
-      html += '<div><strong>📌 الحالة:</strong> ' + esc(r.status) + '</div></div>';
-      html += '<div class="meta"><span>🕒 أُضيف: ' + formatDate(r.timestamp) + '</span><span class="badge">👤 ' + esc(r.userName || r.userEmail || 'مجهول') + '</span></div></div>';
-    }
-    grid.innerHTML = html;
-  }
-
   // جلب المحتوى
   function fetchContent(fnName, gridId, displayFn) {
     var grid = document.getElementById(gridId);
@@ -646,7 +624,6 @@
     fetchContent('getNewsData', 'newsGrid', displayNews);
     fetchContent('getVideosData', 'videosGrid', displayVideos);
     fetchContent('getImagesData', 'imagesGrid', displayImages);
-    fetchContent('getScheduleData', 'scheduleGrid', displaySchedule);
   }
 
   window.refreshAllContent = function() {
