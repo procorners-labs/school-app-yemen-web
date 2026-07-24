@@ -12360,7 +12360,7 @@ function saveAllGrades() {
   });
 }
 function clearAllGrades() { confirmAction('مسح الدرجات', 'سيتم مسح الدرجات المعروضة (لن يتأثر الشيت حتى تحفظ من جديد)', '🗑️', function() { var inputs = document.querySelectorAll('#gradesTable .grade-input'); for (var i = 0; i < inputs.length; i++) { inputs[i].value = ''; inputs[i].classList.remove('has-grade', 'error', 'saving'); } toast('تم المسح من الشاشة', 'info', 2000); }); }
-function exportGrades() { if (!GS.month || !GS.subject) { toast('اختر الشهر والمادة أولاً', 'warning'); return; } if (!GS.students.length) { toast('لا يوجد طلاب', 'warning'); return; } showLoading('جاري التصدير...'); callServer('exportGradesDataProtected', { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section }, function(r) { hideLoading(); if (!r.success) { showError(r.error); return; } _tcExportAoa(r.data, r.fileName, 'الدرجات'); }); }
+function exportGrades() { if (!GS.month || !GS.subject) { toast('اختر الشهر والمادة أولاً', 'warning'); return; } if (!GS.students.length) { toast('لا يوجد طلاب', 'warning'); return; } showLoading('جاري التصدير...'); callServer('exportGradesDataProtected', { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section }, function(r) { hideLoading(); if (!r.success) { showError(r.error); return; } _tcExportAoa(r.data, r.fileName, 'الدرجات', {brandHeader:true}); }); }
 function importGradesPrompt() { document.getElementById('importArea').classList.toggle('hidden'); }
 function doImportGrades(inp) { var file = inp.files[0]; if (!file) return; showLoading('جاري قراءة الملف...'); _tcReadImportFile(file, function(json) { callServer('importGradesDataProtected', { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section, excelData: json }, function(r) { hideLoading(); inp.value = ''; if (r.success) { toast(r.message, 'success'); loadStudentsGrades(); } else showError(r.error); }); }); }
 
@@ -16741,7 +16741,7 @@ function exportStudentsList() {
       showError(r && r.error ? r.error : 'فشل تصدير القائمة');
       return;
     }
-    _tcExportAoa(r.data, r.fileName, 'الطلاب');
+    _tcExportAoa(r.data, r.fileName, 'الطلاب', {brandHeader:true});
   });
 }
 // ==================== PROFILE ====================
@@ -17348,7 +17348,8 @@ function att_setStatus(msg,color){ var el=document.getElementById('att-status');
 function att_exportAbsent(){
   var absent=_attStudents.filter(function(s){return s.status!=='حاضر';});
   if(absent.length===0){ alert('لا يوجد غائبون لتصديرهم'); return; }
-  var lines=['سجل الغياب — '+_attDate+' — '+_attGrade+'/'+_attSection,''];
+  var brandName=(window._schoolBrand&&window._schoolBrand.name)?window._schoolBrand.name+' — ':'';
+  var lines=[brandName+'سجل الغياب — '+_attDate+' — '+_attGrade+'/'+_attSection,''];
   for(var i=0;i<absent.length;i++){ var s=absent[i]; lines.push((i+1)+'. '+s.name+' — '+s.status+(s.phone?' — 📞 '+s.phone:' — (بلا رقم)')); }
   lines.push(''); lines.push('إجمالي: '+absent.length+' طالب');
   var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/plain;charset=utf-8'});
@@ -17669,18 +17670,37 @@ function _tcCsvToAoa(text) {
   if (cur !== '' || row.length) { row.push(cur); aoa.push(row); }
   return aoa;
 }
+// صفوف عنوان الهوية (اسم المدرسة + هاتف/عنوان إن وُجدا + تاريخ التصدير) لتصديرات AOA — نصّية فقط
+// (SheetJS نسخة مجتمعية بلا دعم صور)؛ تُرجع مصفوفة فارغة إن لم تكن window._schoolBrand جاهزة بعد.
+function _tcBrandTitleRows() {
+  var b = window._schoolBrand || {};
+  if (!b.name) return [];
+  var rows = [[b.name]];
+  var contact = [b.phone, b.address].filter(function (x) { return x; }).join(' — ');
+  if (contact) rows.push([contact]);
+  rows.push(['تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn')]);
+  rows.push([]);
+  return rows;
+}
 // تصدير مصفوفة صفوف: xlsx إن أمكن، وإلا CSV — يُنزَّل عبر الجسر/المتصفّح.
-function _tcExportAoa(aoa, fileName, sheetName) {
+// opts.brandHeader=true يُدرج صفوف هوية المدرسة قبل رأس الأعمدة — اختياري (بعض المستهلكين لهذه
+// الدالة له مستورِد إعادة استيراد بموضع صف ثابت، فلا يُفعَّل تلقائياً — راجع ملاحظة تشغيلية جديدة).
+function _tcExportAoa(aoa, fileName, sheetName, opts) {
   fileName = fileName || 'export.xlsx';
+  var outAoa = aoa || [];
+  if (opts && opts.brandHeader) {
+    var titleRows = _tcBrandTitleRows();
+    if (titleRows.length) outAoa = titleRows.concat(outAoa);
+  }
   function csvFallback() {
-    var csv = _tcAoaToCsv(aoa || []);
+    var csv = _tcAoaToCsv(outAoa);
     var name = fileName.replace(/\.xlsx?$/i, '') + '.csv';
     _tcDownloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), name, 'text/csv;charset=utf-8');
   }
   _loadXlsx(function () {
     try {
       var wb = XLSX.utils.book_new();
-      var ws = XLSX.utils.aoa_to_sheet(aoa || []);
+      var ws = XLSX.utils.aoa_to_sheet(outAoa);
       XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
       var ab = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       _tcDownloadBlob(new Blob([ab], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -23642,9 +23662,17 @@ function _tfDrawStuTable(){
 }
 
 // ── تصدير CSV (مع BOM لدعم العربية في Excel) ──
+// أسطر عنوان هوية المدرسة (اسم + تاريخ التصدير) لتصديرات CSV — تُدرَج دوماً، بلا استثناء (لا
+// مستورِد إعادة استيراد مقابل لأي مستهلك حالي لـ_tfExportCsv). نصّية فقط، بلا شعار (راجع
+// _tcBrandTitleRows أعلاه لنفس السبب).
+function _tfBrandTitleLines(){
+  var b = window._schoolBrand || {};
+  if(!b.name) return [];
+  return [b.name, 'تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn'), ''];
+}
 function _tfExportCsv(filename, headers, rows){
   if((App.user||{}).role==='accountant') return;
-  var sep=',', lines=[headers.join(sep)];
+  var sep=',', lines=_tfBrandTitleLines().concat([headers.join(sep)]);
   function cell(v){ v=(v===null||v===undefined)?'':(''+v); if(/[",\n]/.test(v)) v='"'+v.replace(/"/g,'""')+'"'; return v; }
   for(var r=0;r<rows.length;r++){ var line=[]; for(var c=0;c<rows[r].length;c++) line.push(cell(rows[r][c])); lines.push(line.join(sep)); }
   var blob=new Blob(['﻿'+lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
