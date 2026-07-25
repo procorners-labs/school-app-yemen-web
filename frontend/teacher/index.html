@@ -23165,10 +23165,13 @@ function _tfRender(res){
 
   // ── محاسبة الطلاب (متوقّع/مدفوع/متبقّي لكل طالب — فلترة + بحث + تصدير) ──
   h+='<div class="tf-pane" id="tf-pane-stuacc">'+
-     ((res.topDebtors&&res.topDebtors.length) ? ('<div class="tf-card"><h3>🔺 أعلى المتأخّرين عن السداد ('+res.topDebtors.length+')</h3>'+
-       _tfTable(['الكود','الاسم','الصف','الرسوم','المدفوع','المتبقّي'], res.topDebtors.map(function(s){
-         return [_tfEsc(s.code),_tfEsc(s.name),_tfEsc(s.grade),_tfComma(s.expected),_tfComma(s.paid),'<span class="tf-amt" style="color:var(--tf-red);">'+_tfComma(s.remaining)+'</span>'];
-       }))+'</div>') : '')+
+     '<div class="tf-card"><h3>🔺 المتأخّرون عن السداد (<span id="tf-debtors-count">0</span>)</h3>'+
+       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'+
+         '<input id="tf-debtor-thr" type="number" min="0" max="100" placeholder="نسبة السداد % أقل من..." style="width:190px;padding:8px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;font-size:13px;">'+
+         '<button class="tf-abtn" onclick="_tfDrawDebtorsTable()">تصفية</button>'+
+       '</div>'+
+       '<div style="font-size:12px;color:var(--text-muted);margin:0 2px 10px;line-height:1.6;">أدخل نسبة سداد (مثال 50) لإظهار الطلاب دون هذه النسبة فقط، ثم اضغط «تصفية». اترك الحقل فارغاً لعرض كل المتأخّرين مرتّبين حسب المتبقّي.</div>'+
+       '<div id="tf-debtors-table"></div></div>'+
      '<div class="tf-card"><h3>🧾 محاسبة الطلاب — '+(k.students||0)+' طالب'+
        (_accV ? '' : (' · متوقّع '+_tfComma(k.expected)+' · محصّل '+_tfComma(k.feesPaid)+' · متبقٍّ '+_tfComma(k.outstanding)))+
      '</h3>'+
@@ -23276,6 +23279,7 @@ function _tfRender(res){
   _tfDrawExpTable();   // تعبئة جدول المصروفات المفلتر بعد الرسم
   _tfInitStuGrades();  // تعبئة قائمة الصفوف
   _tfDrawStuTable();   // تعبئة جدول محاسبة الطلاب
+  _tfDrawDebtorsTable(); // تعبئة قائمة المتأخّرين عن السداد (فلتر نسبة% + واتساب admin/deputy)
   _tfDrawFamTable();   // تعبئة جدول حسابات العائلات
   _tfDrawInstLists();  // تعبئة قوائم متابعة الأقساط
   _tfDrawRecTable();   // تعبئة جدول السندات المفلتر
@@ -23916,6 +23920,54 @@ function _tfDrawStuTable(){
   if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
     ? ('المعروض: <strong>'+filt.length+'</strong> طالب')
     : ('المعروض: <strong>'+filt.length+'</strong> طالب · الرسوم <strong>'+_tfComma(te)+'</strong> · المدفوع <strong>'+_tfComma(tp)+'</strong> · المتبقّي <strong>'+_tfComma(tr)+'</strong>');
+}
+
+// ── المتأخّرون عن السداد: فلتر نسبة% + تذكير واتساب ──
+// زر/عمود الواتساب هنا حرِج أمنياً: يكشف رقم جوال ولي الأمر مباشرة (أشدّ حساسية من الأرقام
+// المالية المجرَّدة التي يراها المحاسب أصلاً) — الحارس هنا يفحص role النصّي حرفياً (admin/deputy)
+// لا isAdmin (accountant/supervisor أيضاً isAdmin=true — راجع بند 13/CLAUDE.md لهذا الفخّ)، والخادم
+// يحذف حقل phone فعلياً من الاستجابة لدور accountant (_tfinRedactForAccountant)، لا إخفاء واجهي فقط.
+function _tfCanDebtorWa(){ var r=(App.user&&App.user.role)||''; return r==='admin'||r==='deputy'; }
+function _tfDebtorsFiltered(){
+  var res=window._tfRes||{}, acc=(res.studentAccounts||[]);
+  var thrRaw=((document.getElementById('tf-debtor-thr')||{}).value||'');
+  var thr=parseFloat(thrRaw);
+  var list=acc.filter(function(s){ return (s.remaining||0)>0; });
+  if(!isNaN(thr)) list=list.filter(function(s){ return (s.paidPct||0)<thr; });
+  list=list.slice().sort(function(a,b){ return (b.remaining||0)-(a.remaining||0); });
+  return list;
+}
+function _tfDrawDebtorsTable(){
+  var list=_tfDebtorsFiltered();
+  var canWa=_tfCanDebtorWa();
+  var cnt=document.getElementById('tf-debtors-count'); if(cnt) cnt.textContent=list.length;
+  var headers=['الكود','الاسم','الصف','الرسوم','المدفوع','المتبقّي','نسبة'];
+  if(canWa) headers.push('واتساب');
+  var tbl=document.getElementById('tf-debtors-table');
+  if(!tbl) return;
+  tbl.innerHTML=_tfTable(headers, list.map(function(s){
+    var row=[_tfEsc(s.code),_tfEsc(s.name),_tfEsc(s.grade),_tfComma(s.expected),_tfComma(s.paid),
+      '<span class="tf-amt" style="color:var(--tf-red);">'+_tfComma(s.remaining)+'</span>',
+      (s.paidPct||0)+'%'];
+    if(canWa){
+      row.push(s.phone ? ('<button class="tf-abtn" onclick="_tfDebtorWaSend(\''+(''+s.code).replace(/'/g,'')+'\')">📱 تذكير</button>') : '—');
+    }
+    return row;
+  }));
+}
+function _tfDebtorWaLink(phone,name,remaining,paidPct){
+  phone=(phone||'').replace(/[^0-9]/g,'');
+  if(phone.charAt(0)==='0') phone='967'+phone.substring(1); else if(phone.indexOf('967')!==0 && phone.length>=9) phone='967'+phone;
+  var schoolName=(window._schoolBrand&&window._schoolBrand.name)||'إدارة المدرسة';
+  var msg='السيد/ة ولي أمر الطالب/ة '+name+' المحترم،\nنفيدكم بأن المتبقّي على الطالب/ة من الرسوم الدراسية '+_tfComma(remaining)+' (نسبة السداد الحالية '+(paidPct||0)+'%).\nنأمل التكرم بسداد المتبقّي في أقرب وقت ممكن.\nمع خالص التقدير،\nإدارة '+schoolName+'.';
+  return 'https://wa.me/'+(phone||'')+'?text='+encodeURIComponent(msg);
+}
+function _tfDebtorWaSend(code){
+  if(!_tfCanDebtorWa()) return;
+  var list=_tfDebtorsFiltered(), s=null,i;
+  for(i=0;i<list.length;i++){ if((''+list[i].code)===(''+code)){ s=list[i]; break; } }
+  if(!s || !s.phone){ toast('لا يوجد رقم جوال لهذا الطالب في صفحة الطلاب','warning'); return; }
+  window.open(_tfDebtorWaLink(s.phone,s.name,s.remaining,s.paidPct),'_blank');
 }
 
 // ── تصدير CSV (مع BOM لدعم العربية في Excel) ──
