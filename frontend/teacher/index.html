@@ -19467,11 +19467,13 @@ function loadReports(force) {
     '</div>' +
     '<div id="rpt-teachers-activity" style="margin-top:14px;"></div>' +
     '<div id="rpt-absence" style="margin-top:14px;"></div>' +
+    '<div id="rpt-student-attendance" style="margin-top:14px;"></div>' +
     '<div id="rpt-tasks" style="margin-top:14px;"></div>';
 
   var _rptScope = _rpt_clientScope();
   rep_loadAllTeacherActivity(_rptScope);
   rep_loadTeacherAbsence(_rptScope);
+  rep_loadStudentAttendanceStats(_rptScope);
   rep_loadTaskPerformance(_rptScope);
 
   if (!force && _RPT_CACHE && (Date.now() - _RPT_CACHE_TS) < _RPT_CACHE_TTL_MS) {
@@ -19814,6 +19816,73 @@ function rep_printTeacherAbsence(){
   var _bc = _extDocBrandColor();
   w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>'+_repLogo+'تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
+}
+
+// ── تقرير نسبة حضور الطلاب (للمدير/الوكيل فقط) ──────────
+// النسبة تُحسَب خادمياً من ورقة «جلسات_الحضور» (الأيام المرصودة فعلياً لصف+شعبة
+// الطالب) لا من عدّ صفوف «الغياب» وحدها — راجع getAttendanceStatsProtected.
+function rep_loadStudentAttendanceStats(scope) {
+  var box = document.getElementById('rpt-student-attendance');
+  if (!box) return;
+  if (scope !== 'admin' && scope !== 'deputy') { box.innerHTML = ''; return; }
+  var grades = (App.lists && App.lists.grades) || [];
+  var secs   = getMySectionsForGradeSubject('', '');
+  var filters = '<div class="form-row mb-3">' +
+    '<div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="attStatsGrade" onchange="filterGradeCascade(\'attStatsGrade\',\'attStatsSection\',\'rep_applyAttStats\',\'كل الشعب\')">' + buildSelectOptions(grades, 'كل الفصول', '', true) + '</select></div>' +
+    '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="attStatsSection" onchange="rep_applyAttStats()">' + buildSelectOptions(secs, 'كل الشعب', '', true) + '</select></div>' +
+    '<div class="form-group"><label class="form-label">من تاريخ</label><input type="date" class="form-control" id="attStatsFrom" onchange="rep_applyAttStats()"></div>' +
+    '<div class="form-group"><label class="form-label">إلى تاريخ</label><input type="date" class="form-control" id="attStatsTo" onchange="rep_applyAttStats()"></div>' +
+    '</div>' +
+    '<div id="attStatsBody"><p style="color:var(--text-light);">⏳ جارٍ التحميل...</p></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+    '<button class="btn btn-secondary" onclick="rep_exportAttStats()">📊 تصدير CSV</button></div>';
+  box.innerHTML = _rpt_card('📋', 'نسبة حضور الطلاب', filters);
+  rep_applyAttStats();
+}
+window._repAttStats = [];
+function rep_applyAttStats() {
+  var bodyEl = document.getElementById('attStatsBody');
+  if (!bodyEl) return;
+  bodyEl.innerHTML = '<p style="color:var(--text-light);">⏳ جارٍ التحميل...</p>';
+  var p = {
+    grade:     ((document.getElementById('attStatsGrade')   || {}).value) || '',
+    section:   ((document.getElementById('attStatsSection') || {}).value) || '',
+    startDate: ((document.getElementById('attStatsFrom')    || {}).value) || '',
+    endDate:   ((document.getElementById('attStatsTo')      || {}).value) || ''
+  };
+  callServer('getAttendanceStatsProtected', p, function (res) {
+    if (!res || !res.success) { bodyEl.innerHTML = '<p style="color:var(--danger);">⚠️ ' + ((res && res.error) || 'تعذّر تحميل التقرير') + '</p>'; return; }
+    window._repAttStats = res.stats || [];
+    bodyEl.innerHTML = rep_attStatsTable(window._repAttStats);
+  }, function () { bodyEl.innerHTML = '<p style="color:var(--danger);">⚠️ خطأ في الاتصال بالخادم</p>'; });
+}
+function rep_attStatsTable(list) {
+  if (!list.length) return '<p style="color:var(--text-light);">لا توجد سجلات غياب/تأخر ضمن هذا النطاق</p>';
+  var h = '<div style="overflow-x:auto"><table class="att-table" style="min-width:640px"><thead><tr>' +
+    '<th>الطالب</th><th>الفصل</th><th>الشعبة</th><th>غياب</th><th>تأخر</th><th>نسبة الحضور</th></tr></thead><tbody>';
+  for (var i = 0; i < list.length; i++) {
+    var s = list[i];
+    var hasRate = (s.attendanceRate !== null && s.attendanceRate !== undefined);
+    var rateTxt = hasRate ? (s.attendanceRate + '%') : '—';
+    var rateCol = !hasRate ? 'var(--text-muted)' :
+      (s.attendanceRate >= 90 ? 'var(--success)' : (s.attendanceRate >= 75 ? 'var(--warning)' : 'var(--danger)'));
+    h += '<tr><td style="font-weight:600">' + escapeHtml(s.name) + '</td>' +
+      '<td style="text-align:center">' + escapeHtml(s.grade) + '</td>' +
+      '<td style="text-align:center">' + escapeHtml(s.section) + '</td>' +
+      '<td style="text-align:center;color:var(--danger)">' + s.absent + '</td>' +
+      '<td style="text-align:center;color:var(--warning)">' + s.late + '</td>' +
+      '<td style="text-align:center;font-weight:700;color:' + rateCol + '">' + rateTxt + '</td></tr>';
+  }
+  h += '</tbody></table></div>';
+  return h;
+}
+function rep_exportAttStats() {
+  var list = window._repAttStats || [];
+  _tfExportCsv('نسبة_حضور_الطلاب.csv', ['الطالب', 'الفصل', 'الشعبة', 'غياب', 'تأخر', 'نسبة الحضور%'],
+    list.map(function (s) {
+      return [s.name, s.grade, s.section, s.absent, s.late,
+        (s.attendanceRate === null || s.attendanceRate === undefined) ? '' : s.attendanceRate];
+    }));
 }
 
 // ── Admin/Deputy ────────────────────────────────────────
