@@ -193,19 +193,19 @@ export default {
         '<meta name="viewport" content="width=device-width, initial-scale=1">' +
         '<title>' + prTitle + '</title>' +
         '<meta name="description" content="' + prDesc + '">' +
-        '<link rel="canonical" href="https://school.procorners.com/pricing">' +
+        '<link rel="canonical" href="https://yemenschoolz.com/pricing">' +
         '<meta property="og:type" content="website">' +
         '<meta property="og:site_name" content="سكولز اليمن | Schoolz Yemen">' +
         '<meta property="og:title" content="' + prTitle + '">' +
         '<meta property="og:description" content="' + prDesc + '">' +
-        '<meta property="og:url" content="https://school.procorners.com/pricing">' +
-        '<meta property="og:image" content="https://school.procorners.com/assets/schoolz-yemen-og.png">' +
+        '<meta property="og:url" content="https://yemenschoolz.com/pricing">' +
+        '<meta property="og:image" content="https://yemenschoolz.com/assets/schoolz-yemen-og.png">' +
         '<meta property="og:image:width" content="1200">' +
         '<meta property="og:image:height" content="630">' +
         '<meta name="twitter:card" content="summary_large_image">' +
         '<meta name="twitter:title" content="' + prTitle + '">' +
         '<meta name="twitter:description" content="' + prDesc + '">' +
-        '<meta name="twitter:image" content="https://school.procorners.com/assets/schoolz-yemen-og.png">' +
+        '<meta name="twitter:image" content="https://yemenschoolz.com/assets/schoolz-yemen-og.png">' +
         '<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#060e1e}' +
         'iframe{width:100%;height:100vh;border:0;display:block}</style></head><body>' +
         '<iframe src="' + prSrc + '" title="سكولز اليمن — خطط الأسعار" allowfullscreen></iframe>' +
