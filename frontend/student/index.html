@@ -92,6 +92,7 @@
   --ok-bg   : #dcfce7;
   --warn    : #d97706;
   --warn-bg : #fef3c7;
+  --warn-text: #92400e;  /* نص/شارات فوق --warn-bg — --warn وحده يعطي ~2.86:1 فقط (دون AA 4.5:1) */
   --err     : #dc2626;
   --err-bg  : #fee2e2;
   --info    : #0891b2;
@@ -921,7 +922,7 @@ a { color: var(--pr); text-decoration: none; }
 }
 .q-stat.g .ic-wrap { background: var(--ok-bg); color: var(--ok); }
 .q-stat.b .ic-wrap { background: var(--pr-bg); color: var(--pr); }
-.q-stat.w .ic-wrap { background: var(--warn-bg); color: var(--warn); }
+.q-stat.w .ic-wrap { background: var(--warn-bg); color: var(--warn-text); }
 .q-stat.r .ic-wrap { background: var(--err-bg); color: var(--err); }
 .q-stat .num { font-size: 20px; font-weight: 700; line-height: 1.2; }
 .q-stat .lbl { font-size: 12px; color: var(--muted); }
@@ -1034,7 +1035,7 @@ a { color: var(--pr); text-decoration: none; }
   min-width: 36px;
 }
 .gr-cell.high   { background: var(--ok-bg);   color: var(--ok); }
-.gr-cell.mid    { background: var(--warn-bg); color: var(--warn); }
+.gr-cell.mid    { background: var(--warn-bg); color: var(--warn-text); }
 .gr-cell.low    { background: var(--err-bg);  color: var(--err); }
 .gr-cell.none   { background: var(--bdr);     color: var(--muted); font-weight: 500; }
 
@@ -1158,8 +1159,8 @@ a { color: var(--pr); text-decoration: none; }
   padding: 3px 10px; border-radius: 12px;
 }
 .hw-status.overdue   { background: var(--err-bg);  color: var(--err); }
-.hw-status.due-today { background: var(--warn-bg); color: var(--warn); }
-.hw-status.due-soon  { background: var(--warn-bg); color: var(--warn); }
+.hw-status.due-today { background: var(--warn-bg); color: var(--warn-text); }
+.hw-status.due-soon  { background: var(--warn-bg); color: var(--warn-text); }
 .hw-status.future    { background: var(--ok-bg);   color: var(--ok); }
 .hw-status.no-date   { background: var(--bg-2);    color: var(--muted); }
 
@@ -1834,7 +1835,7 @@ a { color: var(--pr); text-decoration: none; }
   font-weight: 700;
 }
 .att-item .status.absent { background: var(--err-bg); color: var(--err); }
-.att-item .status.late   { background: var(--warn-bg); color: var(--warn); }
+.att-item .status.late   { background: var(--warn-bg); color: var(--warn-text); }
 
 /* ═══════════════════════════════════════════════
    Modal
@@ -3176,7 +3177,7 @@ function switchSibling(targetCode, chip) {
     .withSuccessHandler(function (r) {
       if (chip) chip.classList.remove('loading');
 
-      if (!r) { alert('لم يتم استلام رد من الخادم. حاول مرة أخرى.'); return; }
+      if (!r) { toast('لم يتم استلام رد من الخادم. حاول مرة أخرى.', 'e'); return; }
 
       if (r.blocked) {
         $('app').classList.remove('show');
@@ -3185,11 +3186,11 @@ function switchSibling(targetCode, chip) {
         return;
       }
       if (r.rateLimited) {
-        alert(r.error || 'تم تجاوز عدد المحاولات. حاول لاحقاً.');
+        toast(r.error || 'تم تجاوز عدد المحاولات. حاول لاحقاً.', 'e');
         return;
       }
       if (!r.ok) {
-        alert(r.error || 'تعذّر التبديل');
+        toast(r.error || 'تعذّر التبديل', 'e');
         return;
       }
 
@@ -3227,7 +3228,7 @@ function switchSibling(targetCode, chip) {
     })
     .withFailureHandler(function (e) {
       if (chip) chip.classList.remove('loading');
-      alert('تعذّر الاتصال بالخادم: ' + (e.message || e));
+      toast('تعذّر الاتصال بالخادم: ' + (e.message || e), 'e');
     })
     .switchStudentAccount(targetCode, APP.user.schoolId, APP.user.id, APP.user.switchToken, getClientId());
 }

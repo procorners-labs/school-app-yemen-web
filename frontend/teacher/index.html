@@ -7495,8 +7495,8 @@ function ec_runInferGenders() {
     if (res.needsReview && res.needsReview.length) msg += ' | ⚠️ ' + res.needsReview.length + ' حالة تحتاج مراجعة يدوية';
     toast(msg, 'success');
     if (res.needsReview && res.needsReview.length) {
-      var lines = res.needsReview.map(function (r) { return '• ' + r.name + ' (' + r.grade + (r.section ? ' - ' + r.section : '') + '): ' + r.reason; }).join('\n');
-      alert('حالات تحتاج مراجعة يدوية (' + res.needsReview.length + '):\n' + lines);
+      var lines = res.needsReview.map(function (r) { return '• ' + escapeHtml(r.name) + ' (' + escapeHtml(r.grade) + (r.section ? ' - ' + escapeHtml(r.section) : '') + '): ' + escapeHtml(r.reason); }).join('<br>');
+      toast('حالات تحتاج مراجعة يدوية (' + res.needsReview.length + '):<br>' + lines, 'warning', 12000);
     }
     ec_loadStudents();
   }, function (err) { toast('❌ ' + err.message, 'error'); });
@@ -17435,7 +17435,7 @@ function att_updateSummary(){
 function att_setStatus(msg,color){ var el=document.getElementById('att-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+(color||'#1149a3')+'1a;border-right:4px solid '+(color||'#1149a3')+';padding:10px 14px;border-radius:8px;font-size:14px;color:'+(color||'#1149a3')+';">'+msg+'</div>'; }
 function att_exportAbsent(){
   var absent=_attStudents.filter(function(s){return s.status!=='حاضر';});
-  if(absent.length===0){ alert('لا يوجد غائبون لتصديرهم'); return; }
+  if(absent.length===0){ toast('لا يوجد غائبون لتصديرهم', 'warning'); return; }
   var brandName=(window._schoolBrand&&window._schoolBrand.name)?window._schoolBrand.name+' — ':'';
   var lines=[brandName+'سجل الغياب — '+_attDate+' — '+_attGrade+'/'+_attSection,''];
   for(var i=0;i<absent.length;i++){ var s=absent[i]; lines.push((i+1)+'. '+s.name+' — '+s.status+(s.phone?' — 📞 '+s.phone:' — (بلا رقم)')); }
@@ -17624,9 +17624,9 @@ function tabs_recDelete(rowIndex){
   var r=_tabsRecMap[rowIndex]; if(!r) return;
   if(!confirm('هل تريد إلغاء سجلّ الغياب التالي؟\n'+r.date+' — '+(r.kind==='يوم'?'يوم كامل':'حصة '+r.period)+' — '+r.type)) return;
   callServer('deleteTeacherAbsenceProtected', {rowIndex:rowIndex, teacherName:r.teacher}, function(res){
-    if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; }
+    if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; }
     toast('✅ '+res.message,'success'); tabs_loadSummary();
-  }, function(err){ alert('❌ '+err.message); });
+  }, function(err){ toast('❌ '+err.message, 'error'); });
 }
 
 // محرّر تعديل مضمّن (النوع + الملاحظات) — بلا prompt لتوافق WebView
@@ -17650,9 +17650,9 @@ function tabs_recSave(rowIndex){
   var p={ rowIndex:rowIndex, teacherName:r.teacher,
           absType:(typeEl?typeEl.value:r.type), notes:(notesEl?notesEl.value:r.notes) };
   callServer('updateTeacherAbsenceProtected', p, function(res){
-    if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; }
+    if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; }
     toast('✅ '+res.message,'success'); tabs_loadSummary();
-  }, function(err){ alert('❌ '+err.message); });
+  }, function(err){ toast('❌ '+err.message, 'error'); });
 }
 
 // ==================== LOAD XLSX (للاستيراد/التصدير) – نسخة محسنة ومتوافقة مع التطبيق ====================
@@ -17843,10 +17843,10 @@ function tm_addAssignment(data){ var list=document.getElementById('tm-assignment
   list.appendChild(div); }
 function tm_onSecAllToggle(chk){ var row=chk.closest('.asgn-row'); if(!row) return; var opts=row.querySelectorAll('.asgn-sec-opt'); for(var i=0;i<opts.length;i++){ opts[i].disabled=chk.checked; if(chk.checked) opts[i].checked=false; } }
 function tm_onSecOptToggle(chk){ if(!chk.checked) return; var row=chk.closest('.asgn-row'); if(!row) return; var allBox=row.querySelector('.asgn-sec-all'); if(allBox&&allBox.checked) allBox.checked=false; }
-function tm_removeAssignment(btn){ var row=btn.parentElement; if(document.getElementById('tm-assignments-list').children.length<=1){ alert('يجب أن يبقى تعيين واحد على الأقل'); return; } row.remove(); }
+function tm_removeAssignment(btn){ var row=btn.parentElement; if(document.getElementById('tm-assignments-list').children.length<=1){ toast('يجب أن يبقى تعيين واحد على الأقل', 'warning'); return; } row.remove(); }
 function tm_collectAssignments(){ var rows=document.getElementById('tm-assignments-list').children; var asgns=[]; for(var i=0;i<rows.length;i++){ var subj=rows[i].querySelector('.asgn-subject').value; var grd=rows[i].querySelector('.asgn-grade').value; var allBox=rows[i].querySelector('.asgn-sec-all'); if(allBox&&allBox.checked){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:'جميع الشعب'}); } else { var opts=rows[i].querySelectorAll('.asgn-sec-opt:checked'); if(opts.length===0){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:''}); } else { for(var k=0;k<opts.length;k++){ asgns.push({subject:subj, grade:grd, section:opts[k].value}); } } } } return asgns; }
 function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); tm_load(); },1200); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments}}); }
-function tm_deleteTeacher(name){ if(!confirm('هل أنت متأكد من حذف المعلم "'+name+'"؟\nسيتم حذف جميع تعييناته.')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ alert('❌ '+(res?res.error:'خطأ')); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ alert('❌ '+err.message); }).adminDeleteTeacherByName({token:App.user.token, name:name}); }
+function tm_deleteTeacher(name){ if(!confirm('هل أنت متأكد من حذف المعلم "'+name+'"؟\nسيتم حذف جميع تعييناته.')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ toast('❌ '+err.message, 'error'); }).adminDeleteTeacherByName({token:App.user.token, name:name}); }
 function tm_closeModal(){ document.getElementById('tm-modal').style.display='none'; _tmEditingName=null; }
 function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';font-size:14px;">'+msg+'</div>'; }
 
@@ -17857,7 +17857,7 @@ function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid)
 function lm_findRowIndex(rawRows,type,value){ if(!rawRows) return -1; var colMap={grade:'grade',subject:'subject',section:'section',violation:'violation'}; var col=colMap[type]; for(var i=0;i<rawRows.length;i++) if(rawRows[i][col]===value) return rawRows[i].rowIndex; return -1; }
 function lm_showAddModal(type,title){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
 function lm_editItem(type,rowIdx,currentVal){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
-function lm_deleteItem(type,rowIdx){ if(rowIdx<0){ alert('تعذر تحديد الصف'); return; } if(!confirm('هل أنت متأكد من الحذف؟')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx}); }
+function lm_deleteItem(type,rowIdx){ if(rowIdx<0){ toast('تعذر تحديد الصف', 'error'); return; } if(!confirm('هل أنت متأكد من الحذف؟')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx}); }
 function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val}); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected({token:App.user.token, listType:_lmCurrentType, value:val}); } }
 function lm_closeModal(){ document.getElementById('lm-modal').style.display='none'; }
 function lm_setStatus(msg,color){ var el=document.getElementById('lm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';">'+msg+'</div>'; }
@@ -23528,7 +23528,7 @@ function _tfBrandHeader(big){
 }
 function _tfPrintWin(title, css, body){
   var w=window.open('','_blank','width=900,height=700');
-  if(!w){ alert('فضلاً اسمح بالنوافذ المنبثقة لإتمام الطباعة.'); return; }
+  if(!w){ toast('فضلاً اسمح بالنوافذ المنبثقة لإتمام الطباعة.', 'warning'); return; }
   var html='<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+_tfEsc(title)+'</title><style>'+css+'</style></head><body>'+body+
     '<scr'+'ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};</scr'+'ipt></body></html>';
   w.document.open(); w.document.write(html); w.document.close();
@@ -23690,7 +23690,7 @@ function _tfPrintNotices(){
   // يحترم فلاتر «محاسبة الطلاب» إن وُجدت، ثم المتأخّرون فقط (متبقّي > 0)
   try { list=_tfStuFiltered(); } catch(e){ list=(res.studentAccounts||[]); }
   list=(list||[]).filter(function(s){ return (s.remaining||0)>0; }).sort(function(a,b){ return (b.remaining||0)-(a.remaining||0); });
-  if(!list.length){ alert('لا يوجد طلاب متأخّرون (بمتبقٍّ) ضمن التصفية الحالية.'); return; }
+  if(!list.length){ toast('لا يوجد طلاب متأخّرون (بمتبقٍّ) ضمن التصفية الحالية.', 'warning'); return; }
   var today=_tfTodayIso(), body='', i;
   for(i=0;i<list.length;i+=4){
     body+='<div class="page">';
