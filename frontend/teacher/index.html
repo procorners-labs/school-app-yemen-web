@@ -2214,8 +2214,10 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول اختبارات نهاية العام</button>
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول والتواقيت</button>
+  <button class="sidebar-item" id="si-auditLog"        onclick="showSection('auditLog')" style="display:none;"><span class="si-icon">🕵️</span> سجل التدقيق</button>
   <button class="sidebar-item" id="si-schoolTemplate"  onclick="showSection('schoolTemplate')" style="display:none;"><span class="si-icon">🏫</span> قالب تزويد المدرسة</button>
   <button class="sidebar-item" id="si-schoolBrand"     onclick="showSection('schoolBrand')" style="display:none;"><span class="si-icon">🖼️</span> بيانات المدرسة</button>
+  <button class="sidebar-item" id="si-myPortals"       onclick="showSection('myPortals')" style="display:none;"><span class="si-icon">🔗</span> منصاتي</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🔒</span> الحجب المالي</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
@@ -6425,8 +6427,10 @@ function showSection(name, opt) {
       studentDirectory: renderStudentDirectory,
       studentStatus: renderStudentStatus,
       schedSettings: renderScheduleSettings,
+      auditLog: renderAuditLog,
       schoolTemplate: renderSchoolTemplateBridge,
       schoolBrand: renderSchoolBrand,
+      myPortals: renderMyPortals,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
@@ -6549,8 +6553,10 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-lists-mgmt':       { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-examctrl':         { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schedSettings':    { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-auditLog':         { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schoolTemplate':   { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schoolBrand':      { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-myPortals':        { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   // غير مقيَّدة بالجدول إطلاقاً (roles:null) — ظاهرة للجميع دوماً؛ مذكورة هنا فقط لتوثيق حالة
   // المحاسب الخاصة بها (allowlist منفصل): si-dashboard مخفية عمداً عن المحاسب (عرض مركّز بلا
   // لوحة تحكم)، بينما si-profile/si-help ظاهرتان له كبقية الأدوار.
@@ -21671,6 +21677,170 @@ function sstat_print() {
     '<style>' + (_bc?(':root{--primary:'+_bc+';}'):'') + 'body{font-family:Tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #ccc;padding:6px;font-size:13px;text-align:right}th{background:var(--primary,#0F2C5C);color:#fff}</style>' +
     '</head><body>' + c.innerHTML + '</body></html>');
   w.document.close(); w.focus(); w.print();
+}
+
+// ==================== سجل التدقيق (مدير/وكيل فقط، قراءة فقط) ====================
+// يستدعي getSchoolAuditLogProtected (TeacherCore.js) — تقرأ ورقة Audit_Master بالسجل المركزي،
+// مُصفّاة خادمياً بمدرسة الجلسة الحالية عبر _resolveActiveSchoolId(). لا كتابة من هنا إطلاقاً.
+var _auditLogRows = [];
+
+function renderAuditLog() {
+  var u = App.user || {};
+  var box = document.getElementById('dynamicContent');
+  if (!box) return;
+  if (!(u.role === 'admin' || u.role === 'deputy')) {
+    box.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">صلاحية مدير/نائب مطلوبة</div></div>';
+    return;
+  }
+  box.innerHTML =
+    '<div class="page-head"><h2 style="margin:0;">🕵️ سجل التدقيق</h2>' +
+    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">آخر العمليات المسجَّلة لهذه المدرسة — قراءة فقط.</p></div>' +
+    '<div class="section-card">' +
+    '<input type="text" id="auditLogSearch" placeholder="🔍 ابحث بالمستخدم/الإجراء/الوحدة/التفاصيل..." oninput="_auditLogFilter(this.value)" style="width:100%;padding:8px 10px;margin-bottom:10px;border:1px solid #e2e8f0;border-radius:8px;box-sizing:border-box;">' +
+    '<div id="auditLogContent">جاري التحميل...</div>' +
+    '</div>';
+  _loadAuditLog();
+}
+
+function _loadAuditLog() {
+  var c = document.getElementById('auditLogContent');
+  callServer('getSchoolAuditLogProtected', { limit: 200 }, function(r) {
+    if (!r || !r.success) {
+      showError(r ? r.error : 'خطأ');
+      if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل السجل</div></div>';
+      return;
+    }
+    _auditLogRows = r.logs || [];
+    _auditLogRenderTable(_auditLogRows);
+  }, function(err) {
+    showError((err && err.message) || 'فشل الاتصال');
+    if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل السجل</div></div>';
+  });
+}
+
+function _auditLogRenderTable(list) {
+  var c = document.getElementById('auditLogContent');
+  if (!c) return;
+  if (!list || !list.length) {
+    c.innerHTML = '<div class="empty-state"><div class="es-title">لا توجد سجلات تدقيق حتى الآن</div></div>';
+    return;
+  }
+  var h = '<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>المستخدم</th><th>الإجراء</th><th>الوحدة</th><th>التفاصيل</th></tr></thead><tbody>';
+  for (var i = 0; i < list.length; i++) {
+    var row = list[i] || {};
+    var q = ((row.userName || '') + ' ' + (row.action || '') + ' ' + (row.module || '') + ' ' + (row.details || '')).toLowerCase();
+    h += '<tr data-q="' + escapeHtml(q) + '">' +
+      '<td>' + escapeHtml(row.timestamp || '—') + '</td>' +
+      '<td>' + escapeHtml(row.userName || '—') + '</td>' +
+      '<td>' + escapeHtml(row.action || '—') + '</td>' +
+      '<td>' + escapeHtml(row.module || '—') + '</td>' +
+      '<td>' + escapeHtml(row.details || '—') + '</td>' +
+      '</tr>';
+  }
+  h += '</tbody></table></div>';
+  c.innerHTML = h;
+}
+
+function _auditLogFilter(q) {
+  q = (q || '').trim().toLowerCase();
+  var rows = document.querySelectorAll('#auditLogContent tr[data-q]');
+  for (var i = 0; i < rows.length; i++) {
+    var hay = rows[i].getAttribute('data-q') || '';
+    rows[i].style.display = (!q || hay.indexOf(q) >= 0) ? '' : 'none';
+  }
+}
+
+// ==================== منصاتي — روابط بوابات المدرسة (مدير/وكيل فقط، قراءة فقط) ====================
+// يستدعي getMyPlatformLinksProtected (_Tenant.js) — يبني رابط كل بوابة (معلم/طالب/CMS/جدول)
+// لمدرسة الجلسة الحالية من سجل Schools المركزي، فقط للبوابات التي معرّف ملفها موجود. لا كتابة
+// من هنا إطلاقاً — نفس بنية renderAuditLog أعلاه.
+function renderMyPortals() {
+  var u = App.user || {};
+  var box = document.getElementById('dynamicContent');
+  if (!box) return;
+  if (!(u.role === 'admin' || u.role === 'deputy')) {
+    box.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">صلاحية مدير/نائب مطلوبة</div></div>';
+    return;
+  }
+  box.innerHTML =
+    '<div class="page-head"><h2 style="margin:0;">🔗 منصاتي</h2>' +
+    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">روابط بوابات مدرستك — افتحها في تبويب جديد أو انسخها لمشاركتها.</p></div>' +
+    '<div id="myPortalsContent" class="section-card">جاري التحميل...</div>';
+  _loadMyPortals();
+}
+
+function _loadMyPortals() {
+  var c = document.getElementById('myPortalsContent');
+  callServer('getMyPlatformLinksProtected', {}, function(r) {
+    if (!r || !r.success) {
+      showError(r ? r.error : 'خطأ');
+      if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل الروابط</div></div>';
+      return;
+    }
+    _myPortalsRenderList(r.links || []);
+  }, function(err) {
+    showError((err && err.message) || 'فشل الاتصال');
+    if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل الروابط</div></div>';
+  });
+}
+
+function _myPortalsRenderList(list) {
+  var c = document.getElementById('myPortalsContent');
+  if (!c) return;
+  if (!list || !list.length) {
+    c.innerHTML = '<div class="empty-state"><div class="es-title">لا توجد بوابات مُهيَّأة لهذه المدرسة</div></div>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < list.length; i++) {
+    var row = list[i] || {};
+    var rawUrl = row.url || '';
+    var dispUrl = escapeHtml(rawUrl);
+    // ترتيب الهروب الصحيح: إزالة/هروب ' أولاً ثم escapeHtml (بند 15 بـCLAUDE.md الجذر) — عكس
+    // الترتيب يترك ' حرفية بعد فكّ المتصفّح لكيانات HTML داخل سمّة onclick.
+    var jsSafeUrl = escapeHtml(rawUrl.replace(/'/g, "\\'"));
+    h += '<div class="filter-bar" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">' +
+      '<div><strong>' + escapeHtml(row.label || row.app || '') + '</strong>' +
+      '<div style="color:var(--text-muted);font-size:12px;word-break:break-all;direction:ltr;text-align:right;">' + dispUrl + '</div></div>' +
+      '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+      '<a class="btn btn-primary btn-sm" href="' + dispUrl + '" target="_blank" rel="noopener">فتح</a>' +
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="_myPortalsCopy(this,\'' + jsSafeUrl + '\')">📋 نسخ الرابط</button>' +
+      '</div></div>';
+  }
+  c.innerHTML = h;
+}
+
+function _myPortalsCopy(btn, url) {
+  var done = function() {
+    if (!btn) return;
+    var old = btn.textContent;
+    btn.textContent = '✅ تم النسخ';
+    setTimeout(function() { btn.textContent = old; }, 1500);
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function() { _myPortalsCopyFallback(url, done); });
+    } else {
+      _myPortalsCopyFallback(url, done);
+    }
+  } catch (e) {
+    _myPortalsCopyFallback(url, done);
+  }
+}
+
+function _myPortalsCopyFallback(url, cb) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (cb) cb();
+  } catch (e) {}
 }
 
 </script>
