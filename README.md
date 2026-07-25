@@ -73,6 +73,14 @@ VPN/الالتفاف، فيُستهدَفان أحياناً بحجب DNS كام
 `workers.dev` يبقى يعمل بالتوازي كاحتياط. التفاصيل الكاملة:
 `school-app-yemen-gas/_docs/2026-07-16-حجب-يمن-نت-workers-dev-ونطاق-مخصص.md`.
 
+منذ 2026-07-25 رُبط أيضاً نطاق ثانٍ `yemenschoolz.com` كـCustom Domain إضافي على **نفس** الـWorker
+(لحل تعارض Google OAuth Console Branding مع `procorners.com` — نطاق جذري لمتجر إلكتروني منفصل "ركن
+التسوق" رفضته مراجعة Google). **لا بديل لـ`school.procorners.com`** — يبقى نطاق التشغيل الأساسي بلا
+أي تغيير. صفحة `/pricing` المبنيّة مباشرة في `worker/school-app-proxy.js` تُصرِّح ذاتياً بهذا النطاق
+في وسوم `canonical`/`og:url`/`og:image`/`twitter:image` منذ PR#105؛ بقية الصفحات (المولَّدة من
+`school-app-yemen-gas`) موثَّقة هناك. التفصيل الكامل:
+`school-app-yemen-gas/_docs/2026-07-25-تعارض-نطاق-مشترك-oauth-branding-ونطاق-مخصص.md`.
+
 ## ملاحظات / قيود معروفة
 - الدالتان `checkSession` (home) و`getStudentsForView` (teacher) تُستدعيان من الواجهة
   لكن **لا تنفيذ خادمي لهما** في الكود الأصلي — سيرد `doPost` بخطأ نظيف يلتقطه معالج
