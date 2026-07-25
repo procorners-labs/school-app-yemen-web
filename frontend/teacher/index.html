@@ -133,6 +133,27 @@
       --font:           'Segoe UI', Tahoma, 'Helvetica Neue', Arial, sans-serif;
       /* ارتفاع شريط التنقل العلوي — يُستخدم بـ sidebar top وapp-body */
       --nav-height:     62px;
+
+      /* ══════════════════════════════════════════════════════════════
+         مقاييس تصميم موحَّدة (Design Tokens) — إضافية بحتة، بلا استبدال
+         لأي قيمة قائمة. تُستهلَك تدريجياً بدل قيم minmax()/max-width
+         inline المتفرقة. breakpoints المرجعية الرسمية الوحيدة لأي صفحة
+         جديدة تبقى 420px/600px/1024px (المستخدَمة أصلاً بالقسم "PATCH-01"
+         أدناه) — لا تُضَف أرقام جديدة بلا داعٍ حقيقي.
+         ══════════════════════════════════════════════════════════════ */
+      /* مقياس مسافات */
+      --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+      --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+      /* مقياس أدنى عرض لبطاقات الشبكة (minmax) — 3 فئات تستوعب المدى
+         الفعلي المستخدَم عبر الصفحات (100-280px بلا نمط سابقاً) */
+      --card-min-sm: 140px;
+      --card-min-md: 180px;
+      --card-min-lg: 220px;
+      /* مقياس عرض حاويات/نوافذ منبثقة */
+      --container-sm: 480px;
+      --container-md: 720px;
+      --container-lg: 960px;
+      --container-xl: 1200px;
     }
 
     /* خط Cairo مُستضاف ذاتياً (بدل CDN) — ملف متغيّر واحد يغطي الأوزان 200-1000 */
@@ -366,7 +387,12 @@
       max-width:1280px; margin:0 auto;
       padding:0 20px; height:62px;
       display:flex; align-items:center; gap:12px;
+      /* شبكة أمان: أي فائض أفقي (تكبير خط نظام/safe-area غير صفري داخل WebView) يصبح
+         قابلاً للوصول بسحبة أفقية هنا، بدل أن يُقصّ بصمت بواسطة body{overflow-x:hidden} */
+      overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+      scrollbar-width:none; -ms-overflow-style:none;
     }
+    .nav-inner::-webkit-scrollbar { display:none; }
     .top-nav {
       backdrop-filter:saturate(180%) blur(8px);
     }
@@ -374,6 +400,7 @@
       display:flex; align-items:center; gap:11px; text-decoration:none;
       background:none; border:none; cursor:pointer; padding:4px 6px;
       border-radius:var(--radius-md); transition:var(--transition);
+      flex-shrink:0;
     }
     .nav-brand:hover { background:var(--surface2); }
     .nav-brand-icon {
@@ -417,6 +444,7 @@
   border: 1.5px solid var(--border);
   background: var(--surface);
   transition: var(--transition);
+  flex-shrink: 0;
   font-family: var(--font);
   color: var(--text);
   text-align: right;
@@ -511,6 +539,7 @@
       font-size:.8rem; color:var(--text-muted); cursor:pointer;
       transition:var(--transition); font-family:var(--font);
       display:flex; align-items:center; gap:5px;
+      flex-shrink:0;
     }
     .btn-nav-logout:hover { background:var(--danger); color:#fff; border-color:var(--danger); }
 
@@ -691,6 +720,7 @@
       transition: var(--transition);
       min-width: 40px; min-height: 40px;
       align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
     .btn-menu-toggle:hover { background: var(--surface2); }
     .btn-menu-toggle:active { transform: scale(.94); }
@@ -3116,7 +3146,19 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     function thmToggleMenu(ev) {
       if (ev && ev.stopPropagation) ev.stopPropagation();
       var m = document.getElementById('thmMenu');
-      if (m) m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
+      var btn = document.getElementById('thmBtn');
+      if (!m) return;
+      var opening = (m.style.display === 'none' || !m.style.display);
+      if (opening && btn) {
+        /* .nav-inner أصبحت overflow-x:auto (شبكة أمان زر الخروج) — أي عنصر
+           position:absolute بداخلها يُقصّ الآن. نحسب موضع القائمة عبر
+           position:fixed + إحداثيات حقيقية بدل الاعتماد على CSS النسبي. */
+        var r = btn.getBoundingClientRect();
+        m.style.position = 'fixed';
+        m.style.top = (r.bottom + 8) + 'px';
+        m.style.left = r.left + 'px';
+      }
+      m.style.display = opening ? 'block' : 'none';
     }
     function thmPick(mode) {
       applyThemeMode(mode);
@@ -21984,7 +22026,7 @@ function _myPortalsCopyFallback(url, cb) {
 <!-- ═══════════ إدارة المحتوى والأنشطة — تبويب المعلم (رفع + أنشطتي + مهام) ═══════════ -->
 <style>
 #ch-root{font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right;
-  --ch-navy:#0F2C5C; --ch-gold:#D4A537; --ch-bg:#f6f8fc; --ch-line:#e3e8f0;}
+  --ch-navy:#0F2C5C; --ch-gold:#D4A537; --ch-bg:var(--surface2); --ch-line:var(--border);}
 #ch-root .ch-card{background:#fff;border:1px solid var(--ch-line);border-radius:14px;
   padding:18px;margin-bottom:18px;box-shadow:0 2px 10px rgba(15,44,92,.06);}
 #ch-root .ch-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
@@ -22487,7 +22529,7 @@ function _myPortalsCopyFallback(url, cb) {
 <!-- ═══════════ إدارة الأنشطة والإشراف — لوحة مشرفة الأنشطة ═══════════ -->
 <style>
 #as-root{font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right;
-  --as-navy:#0F2C5C; --as-gold:#D4A537; --as-line:#e3e8f0;}
+  --as-navy:#0F2C5C; --as-gold:#D4A537; --as-line:var(--border);}
 #as-root .as-stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
 #as-root .as-stat{flex:1;min-width:120px;background:#fff;border:1px solid var(--as-line);
   border-radius:12px;padding:12px;text-align:center;}
