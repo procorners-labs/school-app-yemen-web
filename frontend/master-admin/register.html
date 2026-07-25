@@ -1257,7 +1257,19 @@ function _applyReferralFromUrl() {
   } catch (e) {}
 }
 
+// تحديد الخطة مسبقاً إن وصل المستخدم عبر رابط ?plan=ID (مثال: من صفحة /pricing بعد اختيار شريحة).
+// يُستدعى قبل _loadRegisterConfig كي يقرأ _renderPlans/_applyConfig الاختيار الصحيح فوراً؛
+// معرّف غير مطابق لأي خطة فعلية يبقى بلا أثر — _applyConfig تتراجع لأول خطة متاحة كما كانت.
+function _applyPlanFromUrl() {
+  try {
+    var qs = new URLSearchParams(window.location.search);
+    var p = (qs.get('plan') || '').trim();
+    if (p) _selPlan = p;
+  } catch (e) {}
+}
+
 // تحميل إعدادات التسجيل الديناميكية عند فتح الصفحة (الخطط/التواصل/الدعوة).
+_applyPlanFromUrl();
 _loadRegisterConfig();
 _applyReferralFromUrl();
 </script>
