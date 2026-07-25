@@ -9735,6 +9735,12 @@ function renderSchoolTemplateBridge() {
       '<button class="btn btn-primary btn-sm" onclick="_stbUploadTab()">📤 رفع واستيراد هذه الورقة فقط</button>' +
       '<div id="stbTabUploadStatus" style="margin-top:8px"></div>' +
     '</div>' +
+    '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">📊 رفع سريع من ملف Excel (تبويبَي «الطلاب»/«المعلمون» معاً)</div>' +
+      '<div class="alert alert-info" style="margin-bottom:8px">اختر ملف Excel فيه تبويب «الطلاب» و/أو تبويب «المعلمون» (بنفس رؤوس الأعمدة) — يُقرَأ في متصفّحك مباشرة ثم يُرفَع كصفوف (upsert آمن، بلا حذف).</div>' +
+      '<input type="file" class="form-control" id="stb-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_stbBulkUploadOnFile(event)">' +
+      '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'stb-bulk-file\').click()">📁 اختيار الملف ورفعه</button>' +
+      '<div id="stbBulkUploadStatus" style="margin-top:8px"></div>' +
+    '</div>' +
     '<div id="stbResultPanel"></div>' +
     '<div style="margin-top:12px"><button class="btn btn-outline-danger btn-sm" onclick="_stbClearExamples()">🧹 حذف صفوف الأمثلة الآن</button></div>' +
     '<div style="margin-top:16px;border-top:1px solid var(--border,#e2e8f0);padding-top:12px">' +
@@ -10246,6 +10252,58 @@ function _stbUploadTab() {
   };
   reader.onerror = function () { st.innerHTML = '<span style="color:#c62828">❌ تعذّرت قراءة الملف</span>'; };
   reader.readAsDataURL(file);
+}
+
+// 📊 رفع سريع بملف Excel واحد (تبويبَي «الطلاب»/«المعلمون» معاً) — تحليل محلي بالمتصفح عبر
+// SheetJS (نفس نمط bulkUpload_onFile بـmaster-admin/MasterAdmin.html، مُعاد كتابته هنا لسياق
+// teacher) ثم إرسال JSON عبر جسر teacherBridgeActionProtected/importSchoolWorkbook.
+function _stbBulkUploadOnFile(ev) {
+  var st = document.getElementById('stbBulkUploadStatus');
+  var file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  st.innerHTML = '⏳ جاري تحميل أداة القراءة…';
+  _loadXlsx(function () { _stbBulkUploadReadFile(file, st); ev.target.value = ''; },
+    function () { st.innerHTML = '<span style="color:#c62828">تعذّر تحميل أداة قراءة Excel. تحقّق من الاتصال وأعد المحاولة.</span>'; ev.target.value = ''; });
+}
+function _stbBulkUploadReadFile(file, st) {
+  st.innerHTML = '⏳ جاري قراءة الملف…';
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      var students = _stbBulkUploadSheetRows(wb, ['الطلاب', 'الطلبة', 'Students']);
+      var teachers = _stbBulkUploadSheetRows(wb, ['المعلمون', 'المدرسين', 'المعلمين', 'Teachers']);
+      if (!students.length && !teachers.length) {
+        st.innerHTML = '<span style="color:#c62828">لم يُعثر على تبويب «الطلاب» أو «المعلمون» في الملف.</span>';
+        return;
+      }
+      st.innerHTML = '⏳ جاري رفع ' + students.length + ' طالبًا و' + teachers.length + ' معلّمًا…';
+      callServer('teacherBridgeActionProtected', { action: 'bulkUpload', students: students, teachers: teachers }, function (r) {
+        if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل الرفع') + '</span>'; return; }
+        var msg = '✅ تم بنجاح — الطلاب: +' + r.students.added + ' جديد / ' + r.students.updated + ' محدّث · المعلّمون: +' + r.teachers.added + ' / ' + r.teachers.updated;
+        st.innerHTML = '<span style="color:#2e7d32">' + msg + '</span>' +
+          (r.warnings && r.warnings.length ? '<div style="color:#b26a00;margin-top:4px">⚠️ ' + escapeHtml(r.warnings.join(' · ')) + '</div>' : '');
+      }, function (e2) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e2.message || e2) + '</span>'; });
+    } catch (ex) {
+      st.innerHTML = '<span style="color:#c62828">❌ تعذّرت قراءة الملف: ' + escapeHtml(ex.message || '') + '</span>';
+    }
+  };
+  reader.onerror = function () { st.innerHTML = '<span style="color:#c62828">تعذّرت قراءة الملف.</span>'; };
+  reader.readAsArrayBuffer(file);
+}
+// يحوّل أول تبويب مطابق لأحد الأسماء إلى مصفوفة كائنات مفاتيحها رؤوس الأعمدة (مقصوصة).
+function _stbBulkUploadSheetRows(wb, names) {
+  var i, ws = null;
+  for (i = 0; i < names.length; i++) { if (wb.Sheets[names[i]]) { ws = wb.Sheets[names[i]]; break; } }
+  if (!ws) return [];
+  var arr = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+  var out = [], r, k, obj, clean;
+  for (r = 0; r < arr.length; r++) {
+    obj = arr[r]; clean = {};
+    for (k in obj) { if (obj.hasOwnProperty(k)) clean[('' + k).trim()] = ('' + obj[k]).trim(); }
+    out.push(clean);
+  }
+  return out;
 }
 
 // 🚀 تفعيل المنصة كاملة — استيراد + بذر + توليد/نشر الجدول + فحص صحة، بضغطة واحدة.
