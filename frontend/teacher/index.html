@@ -10245,6 +10245,10 @@ function _stbUploadTab() {
       callServer('teacherBridgeActionProtected', { action: 'importTab', tabKey: tabKey, fileId: r.fileId }, function (r2) {
         if (!r2 || !r2.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r2 && r2.error) || 'فشل الاستيراد') + '</span>'; return; }
         var counts = r2[tabKey] || {};
+        if (counts.error) {
+          st.innerHTML = '<span style="color:#c62828">❌ فشل الاستيراد: ' + escapeHtml(counts.error) + '</span>';
+          return;
+        }
         st.innerHTML = '<span style="color:#2e7d32">✅ تم — أُضيف ' + (counts.added || 0) + ' وحُدِّث ' + (counts.updated || 0) + '</span>' +
           (r2.warnings && r2.warnings.length ? '<div style="color:#b26a00;margin-top:4px">⚠️ ' + escapeHtml(r2.warnings.join(' · ')) + '</div>' : '');
       }, function (e2) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e2.message || e2) + '</span>'; });
@@ -10408,6 +10412,11 @@ function _stbBuildResultPanelHtml(r, adminEmail, adminPass) {
   }
   if (r.steps && r.steps.healthCheck && r.steps.healthCheck.issues && r.steps.healthCheck.issues.length) {
     h += '<div class="alert alert-warning" style="margin-top:6px">⚠️ ' + escapeHtml(r.steps.healthCheck.issues.join(' · ')) + '</div>';
+  }
+  // فشل قسم فردي (طلاب/معلمون/رسوم/مالية/عرض_الجدول) داخل خطوة الاستيراد كان يبتلعه importSchoolWorkbook
+  // صامتاً — لم تكن هذه اللوحة تعرض r.steps.import.warnings إطلاقاً من قبل، فيختفي فشل قسم كامل بلا أثر.
+  if (r.steps && r.steps.import && r.steps.import.warnings && r.steps.import.warnings.length) {
+    h += '<div class="alert alert-warning" style="margin-top:6px">⚠️ ' + escapeHtml(r.steps.import.warnings.join(' · ')) + '</div>';
   }
   h += '<div class="alert alert-warning" style="margin-top:6px">⚠️ كلمات مرور الأمثلة المزروعة تجريبية — غيّرها أو احذف صفوف الأمثلة بزرّ 🧹 قبل الاستخدام الفعلي.</div>';
   h += '</div>';
