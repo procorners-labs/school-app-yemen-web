@@ -73,6 +73,14 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 `school-app-yemen-gas/_docs/2026-07-16-حجب-يمن-نت-workers-dev-ونطاق-مخصص.md`)؛ النطاق القديم
 `school-teacher-proxy.procorners-shop.workers.dev` لا يزال حيّاً بالتوازي (تطبيق أندرويد يعتمده).
 
+**نطاق ثانٍ منذ 2026-07-25 لهوية OAuth فقط — لا بديل:** `https://yemenschoolz.com` Custom Domain
+إضافي على نفس الـWorker (لحل تعارض Google OAuth Console Branding مع `procorners.com`). في هذا
+المستودع تحديداً، الكود يُصرِّح ذاتياً بهذا النطاق **حصراً في صفحة `/pricing`** (الوحيدة التي يبنيها
+`worker/school-app-proxy.js` مباشرة كـHTML، وسوم `canonical`/`og:url`/`og:image`/`twitter:image`،
+PR#105، الأسطر ~196-208) — لا كتحويل توجيه شامل؛ صفحات أخرى (`home-all-school`/`Terms`/`Privacy`)
+تُبنى في `school-app-yemen-gas` وتصريحها لهذا النطاق موثَّق هناك. التفصيل الكامل:
+`school-app-yemen-gas/_docs/2026-07-25-تعارض-نطاق-مشترك-oauth-branding-ونطاق-مخصص.md`.
+
 | المسار | الوظيفة |
 |---|---|
 | `/gas/<app>` | يمرّر POST/GET إلى GAS `/exec` المقابل (home/home-all-school/teacher/student/cms/schedule/master-admin) |
@@ -151,5 +159,7 @@ Before editing, confirm you're editing `worker/school-app-proxy.js` (the real so
 
 - **Worker health (النطاق القانوني):** `https://school.procorners.com/gas/teacher?action=health`
 - **Worker health (workers.dev، لا يزال حيّاً):** `https://school-teacher-proxy.procorners-shop.workers.dev/gas/teacher?action=health`
+- **Worker health (يمن سكولز، نطاق هوية/OAuth ثانوي — لا وصول تشغيلي أساسي):**
+  `https://yemenschoolz.com/gas/teacher?action=health`
 - **GitHub Pages:** `https://procorners-labs.github.io/school-app-yemen-web/`
 - **CI gas repo:** `https://github.com/procorners-labs/school-app-yemen-gas/actions`
