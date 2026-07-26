@@ -4487,6 +4487,12 @@ function doLogin() {
         document.getElementById('loginPassword').value = '';
         bootApp();
       } else {
+        // عطل نظام (وصول للشيت) — ليس خطأ كلمة مرور، لا يُحسَب من عدّاد المحاولات المحلي
+        // ولا يُقرَن برقم مُختلَق (نفس ضمانة _stu_failSystem بمنصة الطالب).
+        if (r && r.systemError) {
+          shakeLoginError(r.error || 'تعذّر الوصول لبيانات المدرسة مؤقتاً، يرجى المحاولة مجدداً');
+          return;
+        }
         _loginAttempts++;
         // القفل من الخادم فقط (rateLimited) — لا قفل مستقل في الواجهة
         if (r && r.rateLimited) {
