@@ -453,6 +453,8 @@
 
     /* MAIN APP LAYOUT */
     #mainApp { display:none; min-height:100vh; }
+    /* انتقال لحظة الدخول (Phase 3) — cross-fade بدل القطع الفوري، مُدار عبر bootApp() */
+    #loginScreen, #mainApp { transition: opacity .32s ease; }
 
     /* TOP NAV */
     .top-nav {
@@ -5014,9 +5016,22 @@ function showLoginScreen() {
 // ⭐ bootApp — مُعدَّلة لاستدعاء loadSchemaConfig أولاً
 // ════════════════════════════════════════════════════════
 function bootApp() {
-  // إخفاء شاشة الدخول وإظهار التطبيق الرئيسي
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('mainApp').style.display = 'block';
+  // انتقال بصري سريع (~320ms، CSS بحت) من شاشة الدخول للوحة التحكم بدل القطع الفوري
+  // السابق (Phase 3) — لا يؤخّر أي منطق لاحق، مجرّد تراكب opacity قبل الإخفاء الفعلي.
+  var _bootLoginEl = document.getElementById('loginScreen');
+  var _bootMainEl = document.getElementById('mainApp');
+  if (_bootMainEl) { _bootMainEl.style.display = 'block'; _bootMainEl.style.opacity = '0'; }
+  if (_bootLoginEl) _bootLoginEl.style.opacity = '1';
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      if (_bootLoginEl) _bootLoginEl.style.opacity = '0';
+      if (_bootMainEl) _bootMainEl.style.opacity = '1';
+    });
+  });
+  setTimeout(function () {
+    if (_bootLoginEl) { _bootLoginEl.style.display = 'none'; _bootLoginEl.style.opacity = ''; }
+    if (_bootMainEl) _bootMainEl.style.opacity = '';
+  }, 340);
 
   // تحديث شريط التنقل العلوي
   updateNavUser();

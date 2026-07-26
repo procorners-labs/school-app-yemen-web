@@ -197,6 +197,44 @@ a { color: var(--pr); text-decoration: none; }
    دوماً، أي لون أفتح (--pr-l) يظهر كومضة عابرة فقط لا تدرّج كامل — تفادياً لأي هبوط
    تباين على بطاقة بيضاء في الوضع الفاتح.) */
 :root { --login-accent-a: var(--pr); --login-accent-b: var(--pr-l); }
+/* بوّابة تحميل جديدة (Phase 3، مُثراة بطلب صريح) — لا تُعلَّق أبداً على شبكة: تظهر لحظة نجاح
+   الدخول/استعادة الجلسة فقط، بلا أي انتظار فعلي (initApp يبني المحتوى فوراً من بيانات معروفة
+   أصلاً)، مدّتها ثابتة (~1100ms — وقت كافٍ لقراءة عبارة تحفيزية) لا تعتمد على أي استجابة شبكة،
+   فلا خطر تعليق (خلافاً لمؤقّتات تراجع بوّابة المعلم). خلفية متدرّجة متحرّكة + حلقة متعدّدة
+   الألوان + شعار نابض — تناسقاً مع هوية شاشة الدخول (لحظة عابرة، الزخرفة مقبولة هنا كما هناك). */
+#loadingOverlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background:
+    radial-gradient(60% 60% at 30% 30%, var(--login-accent-a) 0%, transparent 65%),
+    radial-gradient(55% 55% at 75% 75%, var(--login-accent-b) 0%, transparent 65%),
+    rgba(15,23,42,.7);
+  background-size: 200% 200%, 200% 200%, 100% 100%;
+  animation: stuOverlayBgDrift 3s ease-in-out infinite alternate;
+  backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  opacity: 0; pointer-events: none; transition: opacity .25s ease;
+}
+@keyframes stuOverlayBgDrift {
+  0% { background-position: 20% 20%, 80% 80%, 0 0; }
+  100% { background-position: 40% 35%, 60% 65%, 0 0; }
+}
+#loadingOverlay.show { opacity: 1; pointer-events: auto; }
+.stu-loader-icon {
+  font-size: 34px; line-height: 1; animation: stuLoaderPulse 1.1s ease-in-out infinite;
+}
+@keyframes stuLoaderPulse { 0%,100%{ scale:1; } 50%{ scale:1.18; } }
+.stu-loader-ring {
+  width: 52px; height: 52px; border-radius: 50%; padding: 3px;
+  background: conic-gradient(from 0deg, #ffd166, #06d6a0, #4cc9f0, #c77dff, #ef476f, #ffd166);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: stuLoaderSpin .9s linear infinite;
+}
+@keyframes stuLoaderSpin { to { rotate: 360deg; } }
+#loadingOverlay p { color: #fff; font-size: 14px; font-weight: 700; margin: 0; text-align: center; max-width: 260px; text-shadow: 0 2px 8px rgba(0,0,0,.4); }
+@media (prefers-reduced-motion: reduce) {
+  .stu-loader-ring, .stu-loader-icon, #loadingOverlay { animation: none !important; }
+}
 #loginScreen {
   position: fixed; inset: 0;
   background:
@@ -2032,6 +2070,14 @@ a { color: var(--pr); text-decoration: none; }
 </head>
 <body>
 
+<!-- بوّابة تحميل (Phase 3) — شعار نابض + حلقة متعدّدة الألوان + عبارة تحفيزية عشوائية،
+     تظهر لحظة نجاح الدخول/استعادة الجلسة فقط -->
+<div id="loadingOverlay" aria-hidden="true">
+  <div class="stu-loader-icon">🎓</div>
+  <div class="stu-loader-ring"></div>
+  <p id="loadingOverlayText">جاري تحميل حسابك...</p>
+</div>
+
 <!-- ═════════════════════ شاشة تسجيل الدخول ═════════════════════ -->
 <div id="loginScreen">
   <div class="login-fx-layer" aria-hidden="true">
@@ -3039,6 +3085,25 @@ function stuTogglePw() {
   }
 }
 
+// انتقال موحَّد من شاشة الدخول للتطبيق (Phase 3) — يستبدل القطع الصامت السابق
+// (loginScreen.style.display='none'; app.classList.add('show');) في كِلا مساري الدخول
+// الطازج واستعادة الجلسة. initApp() يُستدعى فوراً بلا أي تأخير — البوّابة زخرفية بحتة
+// بمدّة ثابتة، لا تنتظر أي شبكة فلا خطر تعليق (خلافاً لبوّابة المعلم ذات المؤقّتات).
+function _stuShowApp() {
+  var lg = document.getElementById('loginScreen');
+  var ov = document.getElementById('loadingOverlay');
+  var ovText = document.getElementById('loadingOverlayText');
+  if (ovText && typeof STU_MOTIVATION_PHRASES !== 'undefined' && STU_MOTIVATION_PHRASES.length) {
+    ovText.textContent = STU_MOTIVATION_PHRASES[Math.floor(Math.random() * STU_MOTIVATION_PHRASES.length)];
+  }
+  if (ov) ov.classList.add('show');
+  if (lg) lg.style.display = 'none';
+  var ap = document.getElementById('app');
+  if (ap) ap.classList.add('show');
+  // مدّة ثابتة (لا انتظار شبكة) — كافية لقراءة العبارة التحفيزية، initApp() نفسها تُستدعى
+  // فوراً من المستدعي بلا أي تأخير هنا.
+  setTimeout(function () { if (ov) ov.classList.remove('show'); }, 1100);
+}
 function doLogin() {
   var u = $('username').value;
   var p = $('password').value;
@@ -3109,8 +3174,7 @@ function doLogin() {
         switchToken: r.switchToken || ''
       };
 
-      $('loginScreen').style.display = 'none';
-      $('app').classList.add('show');
+      _stuShowApp();
       initApp();
       _startHeartbeat();
       lsSaveSession(); // حفظ الجلسة في localStorage ليبقى مسجلاً بعد تحديث الصفحة
@@ -6692,8 +6756,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (savedSession && savedSession.user) {
     APP.user = savedSession.user;
-    $('loginScreen').style.display = 'none';
-    $('app').classList.add('show');
+    _stuShowApp();
     initApp();
     _startHeartbeat();
     // تحديث خلفي صامت لقائمة الإخوة: الجلسة المستعادة من localStorage مجمَّدة على لحظة آخر
@@ -6929,6 +6992,26 @@ function initLazyImages() {
   else document.addEventListener('DOMContentLoaded', run);
 })();
 
+/* مصدر مشترك واحد للعبارات التحفيزية + ألوانها — يستهلكه "مطر الكلمات" بشاشة الدخول
+   **و** بوّابة التحميل الجديدة معاً (Phase 3، طلب صريح: "تعمل معاً التطبيق") بدل قائمتين
+   منفصلتين قد تتباعدان. نطاق عالمي (لا IIFE) كي يصل إليه كلا المستهلكين بصرف النظر عن
+   ترتيب كتل الأكواد البرمجية. */
+var STU_MOTIVATION_PHRASES = [
+  'تعرّف على شخصية ابنك وطوّرها معنا',
+  'شريكك الذكي لبناء جيل يواكب المستقبل 🚀',
+  'اكتشف مواهب ابنك وواكب تطوّره أولاً بأول',
+  'كل طفل قصة تميّز تستحق المتابعة ✨',
+  'نرافقك خطوة بخطوة في رحلة تعليم ابنك',
+  'تعليم عصري يواكب متطلبات الغد 🌐',
+  'شراكة حقيقية بين المدرسة والأسرة لأجل مستقبله',
+  'كل التفاصيل التي تهمّك عن مسيرة ابنك، بين يديك 📊',
+  'نستثمر اليوم في قادة الغد 🌟',
+  'معاً نصنع فرقاً حقيقياً في مستقبل أبنائنا',
+  'التميّز رحلة يومية، وابنك يستحق الأفضل 🏆',
+  'واكب كل إنجاز، مهما كان صغيراً 💡'
+];
+var STU_MOTIVATION_COLORS = ['#ffd166', '#06d6a0', '#4cc9f0', '#f4a261', '#c77dff', '#ef476f', '#38bdf8', '#fb923c'];
+
 /* خلفية شاشة الدخول الزخرفية — نجمي هندسي + مطر كلمات (Phase 2، نفس نمط Phase 1/المعلم).
    بناء لمرة واحدة فقط، عناصر CSS/SVG بحتة بلا أي تأثير على منطق تسجيل الدخول. */
 (function () {
@@ -6968,16 +7051,6 @@ function initLazyImages() {
       document.head.appendChild(st);
     }
   }
-  var _ST_RAIN_TEXTS = [
-    'منصة تعليمية ذكية لمتابعة مستوى ابنك',
-    'كن على تواصل دائم مع مدرستك',
-    'تابع مستقبل ابنك خطوة بخطوة',
-    'التميّز رحلة يومية ✨',
-    'نرتقي معاً بمستوى التعليم',
-    'نحو تعليم أفضل 🌟',
-    'كل يوم خطوة نحو التميّز'
-  ];
-  var _ST_RAIN_COLORS = ['#ffd166', '#06d6a0', '#4cc9f0', '#f4a261', '#c77dff', '#ef476f'];
   function _stBuildWordRain() {
     var wrap = document.getElementById('stuLoginWordRain');
     if (!wrap) return;
@@ -6986,7 +7059,7 @@ function initLazyImages() {
     var html = '', count = 9, i, text, color, left, duration, delay, size;
     for (i = 0; i < count; i++) {
       if (i === 0) { text = _stFxEsc(schoolName); color = '#fff'; }
-      else { text = _ST_RAIN_TEXTS[(i - 1) % _ST_RAIN_TEXTS.length]; color = _ST_RAIN_COLORS[(i - 1) % _ST_RAIN_COLORS.length]; }
+      else { text = STU_MOTIVATION_PHRASES[(i - 1) % STU_MOTIVATION_PHRASES.length]; color = STU_MOTIVATION_COLORS[(i - 1) % STU_MOTIVATION_COLORS.length]; }
       left = 6 + (i * 10) % 88;
       duration = 16 + (i % 5) * 3;
       delay = -(Math.random() * duration).toFixed(1);
