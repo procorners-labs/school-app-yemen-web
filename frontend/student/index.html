@@ -191,16 +191,58 @@ a { color: var(--pr); text-decoration: none; }
 .slide-up { animation: slideUp var(--tr-l) both; }
 
 /* ═══════════════════════════════════════════════
-   شاشة تسجيل الدخول
-═══════════════════════════════════════════════ */
+   شاشة تسجيل الدخول — نجمي هندسي فوق تدرّج شبكي متحرّك
+   (نفس اتجاه Phase 1/المعلم، مُعاد ضبطه للون علامة المدرسة الديناميكي --pr/--pr-l؛
+   البطاقة هنا opaque (لا زجاجية) فتدرّجات النص محافظة — --login-title يبقى مسيطراً
+   دوماً، أي لون أفتح (--pr-l) يظهر كومضة عابرة فقط لا تدرّج كامل — تفادياً لأي هبوط
+   تباين على بطاقة بيضاء في الوضع الفاتح.) */
+:root { --login-accent-a: var(--pr); --login-accent-b: var(--pr-l); }
 #loginScreen {
   position: fixed; inset: 0;
-  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-d) 100%);
+  background:
+    radial-gradient(rgba(255,255,255,.12) 1px, transparent 1.4px),
+    radial-gradient(55% 55% at 18% 14%, var(--login-accent-b) 0%, transparent 62%),
+    radial-gradient(50% 50% at 84% 84%, var(--login-accent-a) 0%, transparent 62%),
+    linear-gradient(135deg, var(--pr) 0%, var(--pr-d) 100%);
+  background-size: 26px 26px, 220% 220%, 220% 220%, 100% 100%;
+  animation: loginBgDriftStu 30s ease-in-out infinite alternate;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   padding: 20px; overflow-y: auto;
   z-index: 10;
 }
-.login-stack { margin: auto 0; display: flex; flex-direction: column; align-items: center; width: 100%; }
+@keyframes loginBgDriftStu {
+  0%   { background-position: 0 0, 10% 10%, 90% 90%, 0 0; }
+  100% { background-position: 60px 40px, 38% 26%, 62% 74%, 0 0; }
+}
+.login-stack { margin: auto 0; position:relative; z-index:1; display: flex; flex-direction: column; align-items: center; width: 100%; }
+/* طبقات زخرفية إضافية (نجمي هندسي + أشكال عائمة + مطر كلمات) — زخرفية بحتة،
+   pointer-events:none وaria-hidden كي لا تتداخل مع حارس PTR أو قارئات الشاشة. */
+.login-fx-layer{position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
+.login-constellation{position:absolute; inset:0; width:100%; height:100%; opacity:.5;}
+.login-constellation .lc-line{fill:none; stroke:var(--login-accent-b); stroke-width:1.1; stroke-linecap:round;}
+.login-constellation .lc-node{fill:#fff;}
+.login-constellation .lc-halo{fill:var(--login-accent-a); opacity:.4;}
+.login-shape{position:absolute; border:1.6px solid; opacity:.2; animation-timing-function:ease-in-out; animation-iteration-count:infinite; animation-direction:alternate;}
+.login-shape.ring{border-radius:50%;}
+.login-shape.diamond{border-radius:4px;}
+.lsh1{width:44px; height:44px; top:10%; left:7%; border-color:var(--login-accent-b); animation-name:lsh1; animation-duration:14s;}
+.lsh2{width:24px; height:24px; top:70%; left:12%; border-color:var(--login-accent-a); rotate:45deg; animation-name:lsh2; animation-duration:11s;}
+.lsh3{width:54px; height:54px; top:14%; right:8%; border-color:var(--login-accent-a); animation-name:lsh3; animation-duration:18s;}
+.lsh4{width:18px; height:18px; top:54%; right:14%; border-color:var(--login-accent-b); rotate:45deg; animation-name:lsh4; animation-duration:9s;}
+@keyframes lsh1{ to{ translate:14px -18px; rotate:20deg; } }
+@keyframes lsh2{ to{ translate:-10px 16px; rotate:70deg; } }
+@keyframes lsh3{ to{ translate:-16px 12px; rotate:-25deg; } }
+@keyframes lsh4{ to{ translate:12px -10px; rotate:110deg; } }
+.login-word-rain .lwr-drop{
+  position:absolute; top:-8%; white-space:nowrap; font-weight:700;
+  filter:blur(.3px); text-shadow:0 2px 12px rgba(0,0,0,.35);
+  animation-name:lwrFall; animation-timing-function:linear; animation-iteration-count:infinite;
+}
+@keyframes lwrFall{
+  0%{ translate:0 -10%; opacity:0; }
+  10%{ opacity:.55; } 88%{ opacity:.5; }
+  100%{ translate:0 640px; opacity:0; }
+}
 .login-card {
   background: var(--card);
   border-radius: var(--rad-l);
@@ -209,27 +251,48 @@ a { color: var(--pr); text-decoration: none; }
   max-width: 380px;
   box-shadow: 0 20px 50px rgba(0,0,0,.25);
   animation: slideUp .6s both;
+  position:relative; z-index:1;
 }
+.login-badge-wrap{position:relative; width:80px; height:80px; margin:0 auto 16px;}
+.login-badge-ring{
+  position:absolute; inset:-7px; border-radius:50%; padding:2px; pointer-events:none;
+  background:conic-gradient(from 0deg, var(--login-accent-a), var(--login-accent-b), transparent 45%, var(--login-accent-a));
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  animation:loginRingSpinStu 7s linear infinite; opacity:.75;
+}
+@keyframes loginRingSpinStu{ from{ rotate:0deg; } to{ rotate:360deg; } }
+.login-badge-orbit{position:absolute; inset:-12px; animation:loginOrbitSpinStu linear infinite; pointer-events:none;}
+.login-badge-orbit.o1{animation-duration:6s;}
+.login-badge-orbit.o2{animation-duration:9s; animation-direction:reverse;}
+@keyframes loginOrbitSpinStu{ from{ rotate:0deg; } to{ rotate:360deg; } }
+.login-sparkle{
+  position:absolute; top:-2px; right:50%; width:5px; height:5px; border-radius:50%;
+  background:radial-gradient(circle, #fff, var(--login-accent-b));
+  box-shadow:0 0 8px 2px var(--login-accent-b);
+}
+.login-badge-orbit.o2 .login-sparkle{background:radial-gradient(circle, #fff, var(--login-accent-a)); box-shadow:0 0 8px 2px var(--login-accent-a); width:4px; height:4px;}
 .login-logo {
-  width: 80px; height: 80px;
-  margin: 0 auto 16px;
+  width: 80px; height: 80px; margin:0; position:relative; z-index:1;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--pr) 0%, var(--pr-l) 100%);
   display: flex; align-items: center; justify-content: center;
   font-size: 40px;
   color: #fff;
   box-shadow: var(--sh-h);
+  transition: scale .25s ease, box-shadow .25s ease; cursor:default;
 }
+.login-logo:hover{ scale:1.08; box-shadow:0 10px 28px var(--pr-glow); }
 /* مقدّمة ظهور الشعار — تُشغَّل مرة واحدة فقط لكل تحميل صفحة عبر class تُضاف من JS (applyBrand) */
-@keyframes logoRevealScale { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+@keyframes logoRevealScale { from{scale:.85;opacity:0} to{scale:1;opacity:1} }
 @keyframes logoRevealGlow {
   0%,100%{box-shadow:var(--sh-h)}
   50%{box-shadow:var(--sh-h), 0 0 26px 6px var(--pr-glow)}
 }
 @keyframes logoShineSweep {
-  0%{transform:translateX(-40%) rotate(8deg);opacity:0}
+  0%{translate:-40% 0; rotate:8deg; opacity:0}
   15%{opacity:1} 60%{opacity:1}
-  100%{transform:translateX(260%) rotate(8deg);opacity:0}
+  100%{translate:260% 0; rotate:8deg; opacity:0}
 }
 .login-logo.logo-reveal-play {
   position:relative; overflow:hidden;
@@ -243,20 +306,37 @@ a { color: var(--pr); text-decoration: none; }
   pointer-events:none;
 }
 .school-brand-name.name-reveal-play { animation: slideUp .5s ease .15s both; }
+/* تغطية شاملة لتقليل الحركة — تشمل حركات الدخول الجديدة (Phase 2) وأيضاً دخول
+   البطاقة الأساسي (.login-card { animation: slideUp }) الذي كان خارج التغطية سابقاً
+   (فجوة موثَّقة في خطة إعادة التصميم — لا تغطية جزئية بعد اليوم). */
 @media (prefers-reduced-motion: reduce) {
-  .login-logo.logo-reveal-play,
-  .login-logo.logo-reveal-play::after,
-  .school-brand-name.name-reveal-play { animation: none !important; }
+  #loginScreen,
+  #loginScreen::before, #loginScreen::after,
+  .login-card,
+  .login-logo, .login-logo.logo-reveal-play, .login-logo.logo-reveal-play::after,
+  .login-badge-ring, .login-badge-orbit,
+  .login-card h1, .login-card .subtitle,
+  .login-shape, .login-word-rain .lwr-drop,
+  #stuLoginConstellation *,
+  .school-brand-name.name-reveal-play {
+    animation: none !important;
+  }
 }
 .login-card h1 {
   text-align: center;
   margin: 0 0 4px;
   font-size: 22px;
-  color: var(--login-title);
+  /* --login-title يبقى مسيطراً (84% من عرض التدرّج)؛ --pr-l يظهر كومضة عابرة ضيّقة
+     فقط — يحافظ على تباين WCAG محسوب لكل ثيم بدل تدرّج كامل قد يُضعِف القراءة. */
+  background: linear-gradient(90deg, var(--login-title) 0%, var(--login-title) 42%, var(--pr-l) 50%, var(--login-title) 58%, var(--login-title) 100%);
+  background-size: 300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation: loginTitleFlowStu 6s ease-in-out infinite;
 }
+@keyframes loginTitleFlowStu{ 0%{background-position:0% 50%;} 50%{background-position:100% 50%;} 100%{background-position:0% 50%;} }
 .login-card .subtitle {
   text-align: center;
   color: var(--muted);
+  font-weight: 600;
   font-size: 13px;
   margin-bottom: 22px;
 }
@@ -1954,9 +2034,24 @@ a { color: var(--pr); text-decoration: none; }
 
 <!-- ═════════════════════ شاشة تسجيل الدخول ═════════════════════ -->
 <div id="loginScreen">
+  <div class="login-fx-layer" aria-hidden="true">
+    <svg class="login-constellation" id="stuLoginConstellation" viewBox="0 0 400 560" preserveAspectRatio="xMidYMid slice"></svg>
+  </div>
+  <div class="login-fx-layer" aria-hidden="true">
+    <div class="login-shape ring lsh1"></div>
+    <div class="login-shape diamond lsh2"></div>
+    <div class="login-shape ring lsh3"></div>
+    <div class="login-shape diamond lsh4"></div>
+  </div>
+  <div class="login-fx-layer login-word-rain" id="stuLoginWordRain" aria-hidden="true"></div>
   <div class="login-stack">
   <div class="login-card">
-    <div class="login-logo" id="stuLoginLogo">🎓</div>
+    <div class="login-badge-wrap">
+      <div class="login-badge-ring" aria-hidden="true"></div>
+      <div class="login-badge-orbit o1" aria-hidden="true"><span class="login-sparkle"></span></div>
+      <div class="login-badge-orbit o2" aria-hidden="true"><span class="login-sparkle"></span></div>
+      <div class="login-logo" id="stuLoginLogo">🎓</div>
+    </div>
     <h1>منصة الطالب</h1>
     <div class="subtitle school-brand-name">مدرستي</div>
     <p class="login-welcome-tagline" id="stuLoginWelcomeText"></p>
@@ -6832,6 +6927,82 @@ function initLazyImages() {
   }
   if (document.readyState !== 'loading') run();
   else document.addEventListener('DOMContentLoaded', run);
+})();
+
+/* خلفية شاشة الدخول الزخرفية — نجمي هندسي + مطر كلمات (Phase 2، نفس نمط Phase 1/المعلم).
+   بناء لمرة واحدة فقط، عناصر CSS/SVG بحتة بلا أي تأثير على منطق تسجيل الدخول. */
+(function () {
+  function _stFxEsc(s) {
+    s = (s === null || s === undefined) ? '' : ('' + s);
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function _stBuildConstellation() {
+    var svg = document.getElementById('stuLoginConstellation');
+    if (!svg) return;
+    var hub = { x: 200, y: 230 };
+    var nodes = [
+      { x: 90, y: 120 }, { x: 300, y: 110 }, { x: 340, y: 280 },
+      { x: 250, y: 400 }, { x: 120, y: 410 }, { x: 60, y: 260 }
+    ];
+    var html = '', i, n, len;
+    for (i = 0; i < nodes.length; i++) {
+      n = nodes[i];
+      len = Math.sqrt(Math.pow(n.x - hub.x, 2) + Math.pow(n.y - hub.y, 2)).toFixed(1);
+      html += '<line class="lc-line" x1="' + hub.x + '" y1="' + hub.y + '" x2="' + n.x + '" y2="' + n.y +
+        '" stroke-dasharray="' + len + '" style="stroke-dashoffset:' + len + ';animation:stuLcDraw 1.6s ' +
+        (i * 0.12) + 's ease-out forwards;"></line>';
+    }
+    for (i = 0; i < nodes.length; i++) {
+      n = nodes[i];
+      html += '<circle class="lc-halo" cx="' + n.x + '" cy="' + n.y + '" r="10" style="animation:stuLcHalo 3.2s ' +
+        (1.6 + i * 0.15) + 's ease-in-out infinite alternate;"></circle>';
+      html += '<circle class="lc-node" cx="' + n.x + '" cy="' + n.y + '" r="4"></circle>';
+    }
+    html += '<circle class="lc-node" cx="' + hub.x + '" cy="' + hub.y + '" r="6"></circle>';
+    svg.innerHTML = html;
+    if (!document.getElementById('stuLcKeyframes')) {
+      var st = document.createElement('style');
+      st.id = 'stuLcKeyframes';
+      st.textContent = '@keyframes stuLcDraw{to{stroke-dashoffset:0;}}' +
+        '@keyframes stuLcHalo{0%,100%{opacity:.25;scale:1;}50%{opacity:.55;scale:1.35;}}';
+      document.head.appendChild(st);
+    }
+  }
+  var _ST_RAIN_TEXTS = [
+    'منصة تعليمية ذكية لمتابعة مستوى ابنك',
+    'كن على تواصل دائم مع مدرستك',
+    'تابع مستقبل ابنك خطوة بخطوة',
+    'التميّز رحلة يومية ✨',
+    'نرتقي معاً بمستوى التعليم',
+    'نحو تعليم أفضل 🌟',
+    'كل يوم خطوة نحو التميّز'
+  ];
+  var _ST_RAIN_COLORS = ['#ffd166', '#06d6a0', '#4cc9f0', '#f4a261', '#c77dff', '#ef476f'];
+  function _stBuildWordRain() {
+    var wrap = document.getElementById('stuLoginWordRain');
+    if (!wrap) return;
+    var nameEl = document.querySelector('.login-card .subtitle.school-brand-name');
+    var schoolName = (nameEl && nameEl.textContent) ? nameEl.textContent : 'مدرستي';
+    var html = '', count = 9, i, text, color, left, duration, delay, size;
+    for (i = 0; i < count; i++) {
+      if (i === 0) { text = _stFxEsc(schoolName); color = '#fff'; }
+      else { text = _ST_RAIN_TEXTS[(i - 1) % _ST_RAIN_TEXTS.length]; color = _ST_RAIN_COLORS[(i - 1) % _ST_RAIN_COLORS.length]; }
+      left = 6 + (i * 10) % 88;
+      duration = 16 + (i % 5) * 3;
+      delay = -(Math.random() * duration).toFixed(1);
+      size = (0.7 + (i % 3) * 0.06).toFixed(2);
+      html += '<span class="lwr-drop' + (i === 0 ? ' school-brand-name' : '') + '" style="left:' + left +
+        '%;color:' + color + ';font-size:' + size + 'rem;animation-duration:' + duration +
+        's;animation-delay:' + delay + 's;">' + text + '</span>';
+    }
+    wrap.innerHTML = html;
+  }
+  function _stInitLoginFx() {
+    try { _stBuildConstellation(); } catch (e1) {}
+    try { _stBuildWordRain(); } catch (e2) {}
+  }
+  if (document.readyState !== 'loading') _stInitLoginFx();
+  else document.addEventListener('DOMContentLoaded', _stInitLoginFx);
 })();
 
 /* تبديل وضع العرض (نهاري/ليلي/احترافي) */
