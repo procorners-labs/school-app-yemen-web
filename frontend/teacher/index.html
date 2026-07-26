@@ -22121,9 +22121,13 @@ function _myPortalsCopyFallback(url, cb) {
       <input type="hidden" id="chSubmitTaskId">
       <div id="chSubmitTaskTitle" style="font-weight:700;color:var(--text);margin-bottom:10px"></div>
       <div style="margin-bottom:12px">
-        <label style="display:block;font-size:.85rem;color:var(--text);margin-bottom:5px;font-weight:600">روابط الملفات (افصل بفاصلة أو سطر جديد)</label>
-        <textarea id="chSubmitUrls" style="width:100%;box-sizing:border-box;min-height:80px;border:1px solid #e3e8f0;border-radius:9px;padding:9px;font-family:inherit" placeholder="https://drive.google.com/..."></textarea>
-        <div style="font-size:.78rem;color:#8a93a6;margin-top:4px">يمكنك أيضاً رفع ملف من قسم «رفع محتوى» ونسخ رابطه هنا.</div>
+        <label style="display:block;font-size:.85rem;color:var(--text);margin-bottom:5px;font-weight:600">ارفع ملفات التسليم (صور/فيديو، حتى 25 ميجابايت لكل ملف)</label>
+        <input type="file" id="chSubmitFile" accept="image/*,video/*" multiple onchange="window.chSubmitPickFiles()" style="width:100%;box-sizing:border-box">
+        <div class="ch-files" id="chSubmitFileList"></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:.85rem;color:var(--text);margin-bottom:5px;font-weight:600">أو ألصق روابط جاهزة (افصل بفاصلة أو سطر جديد)</label>
+        <textarea id="chSubmitUrls" style="width:100%;box-sizing:border-box;min-height:60px;border:1px solid #e3e8f0;border-radius:9px;padding:9px;font-family:inherit" placeholder="https://drive.google.com/..."></textarea>
       </div>
       <div style="margin-bottom:8px">
         <label style="display:block;font-size:.85rem;color:var(--text);margin-bottom:5px;font-weight:600">ملاحظة (اختياري)</label>
@@ -22165,6 +22169,35 @@ function _myPortalsCopyFallback(url, cb) {
     var opts = '';
     for (var i = 0; i < cats.length; i++) { opts += '<option value="' + cats[i] + '">' + cats[i] + '</option>'; }
 
+    // المعلّم العادي (role==='teacher') لا يملك رفعاً حراً بالمبادرة — يبقى الرفع الحر
+    // كما هو بلا أي تغيير لبقية الأدوار (admin/deputy/activities/media).
+    var canFreeUpload = !(App.user && App.user.role === 'teacher');
+
+    var helpItems = canFreeUpload
+      ? ('<li>ارفع صور وفيديوهات أنشطتك — يمكنك رفع أكثر من ملف دفعة واحدة.</li>' +
+         '<li>يمكنك الرفع بمبادرتك دون انتظار مهمة، أو تنفيذ مهمة مكلّف بها.</li>')
+      : ('<li>ارفع ملفات أنشطتك من قسم (مهامي) عند تسليم أي مهمة مكلَّف بها.</li>');
+
+    var freeUploadCard = canFreeUpload ? (
+      '<div class="ch-card">' +
+        '<div class="ch-head"><div class="ch-ico">⬆️</div><div class="ch-title">رفع محتوى (بمبادرتك أو لمهمة)</div></div>' +
+        '<div class="ch-row">' +
+          '<div class="ch-field"><label class="ch-lbl">العنوان</label>' +
+            '<input type="text" id="chTitle" class="ch-input" placeholder="عنوان المحتوى"></div>' +
+          '<div class="ch-field"><label class="ch-lbl">الفئة</label>' +
+            '<select id="chCategory" class="ch-select">' + opts + '</select></div>' +
+        '</div>' +
+        '<div class="ch-field"><label class="ch-lbl">الوصف</label>' +
+          '<textarea id="chDesc" class="ch-textarea" placeholder="وصف مختصر"></textarea></div>' +
+        '<div class="ch-field"><label class="ch-lbl">الملفات (صور / فيديوهات — يمكن اختيار أكثر من ملف)</label>' +
+          '<input type="file" id="chFile" class="ch-input" accept="image/*,video/*" multiple onchange="window.chPickFiles()"></div>' +
+        '<div class="ch-files" id="chFileList"></div>' +
+        '<button type="button" class="ch-btn ch-btn-primary" onclick="window.chUpload()" style="margin-top:10px">⬆️ رفع المحتوى</button>' +
+        '<div class="ch-progress" id="chProgress"><div class="ch-bar"></div></div>' +
+        '<div class="ch-status" id="chUploadStatus"></div>' +
+      '</div>'
+    ) : '';
+
     var html = '' +
       '<div id="ch-root">' +
         // ── ترويسة الصفحة ──
@@ -22178,31 +22211,14 @@ function _myPortalsCopyFallback(url, cb) {
         '<div class="ch-help">' +
           '<div class="ch-help-t">📌 ماذا تفعل هنا؟</div>' +
           '<ul>' +
-            '<li>ارفع صور وفيديوهات أنشطتك — يمكنك رفع أكثر من ملف دفعة واحدة.</li>' +
-            '<li>يمكنك الرفع بمبادرتك دون انتظار مهمة، أو تنفيذ مهمة مكلّف بها.</li>' +
+            helpItems +
             '<li>ما ترفعه يصل لمشرفة الأنشطة/الإدارة للمراجعة والاعتماد ثم التصميم والنشر.</li>' +
             '<li>تابع كل ما رفعته وحالته في قسم (أنشطتي).</li>' +
             '<li>الحد الأقصى 25 ميجابايت لكل ملف.</li>' +
           '</ul>' +
         '</div>' +
-        // ── رفع المحتوى (متعدد) ──
-        '<div class="ch-card">' +
-          '<div class="ch-head"><div class="ch-ico">⬆️</div><div class="ch-title">رفع محتوى (بمبادرتك أو لمهمة)</div></div>' +
-          '<div class="ch-row">' +
-            '<div class="ch-field"><label class="ch-lbl">العنوان</label>' +
-              '<input type="text" id="chTitle" class="ch-input" placeholder="عنوان المحتوى"></div>' +
-            '<div class="ch-field"><label class="ch-lbl">الفئة</label>' +
-              '<select id="chCategory" class="ch-select">' + opts + '</select></div>' +
-          '</div>' +
-          '<div class="ch-field"><label class="ch-lbl">الوصف</label>' +
-            '<textarea id="chDesc" class="ch-textarea" placeholder="وصف مختصر"></textarea></div>' +
-          '<div class="ch-field"><label class="ch-lbl">الملفات (صور / فيديوهات — يمكن اختيار أكثر من ملف)</label>' +
-            '<input type="file" id="chFile" class="ch-input" accept="image/*,video/*" multiple onchange="window.chPickFiles()"></div>' +
-          '<div class="ch-files" id="chFileList"></div>' +
-          '<button type="button" class="ch-btn ch-btn-primary" onclick="window.chUpload()" style="margin-top:10px">⬆️ رفع المحتوى</button>' +
-          '<div class="ch-progress" id="chProgress"><div class="ch-bar"></div></div>' +
-          '<div class="ch-status" id="chUploadStatus"></div>' +
-        '</div>' +
+        // ── رفع المحتوى الحر (متعدد) — لا تظهر للمعلّم العادي ──
+        freeUploadCard +
         // ── أنشطتي ──
         '<div class="ch-card">' +
           '<div class="ch-head"><div class="ch-ico">📁</div><div class="ch-title" id="chMyContentTitle">أنشطتي</div>' +
@@ -22495,39 +22511,158 @@ function _myPortalsCopyFallback(url, cb) {
     document.getElementById('chSubmitUrls').value = '';
     document.getElementById('chSubmitNote').value = '';
     document.getElementById('chSubmitStatus').innerHTML = '';
+    window._chSubmitFiles = [];
+    var fileInput = document.getElementById('chSubmitFile');
+    if (fileInput) fileInput.value = '';
+    window.chRenderSubmitFileList();
     if (typeof openModal === 'function') openModal('chSubmitModal');
+  };
+
+  // اختيار ملفات التسليم — نفس فحص النوع/الحجم المستخدَم في بطاقة الرفع الحر
+  window.chSubmitPickFiles = function () {
+    var input = document.getElementById('chSubmitFile');
+    var picked = (input && input.files) ? input.files : [];
+    window._chSubmitFiles = window._chSubmitFiles || [];
+    for (var i = 0; i < picked.length; i++) {
+      var f = picked[i];
+      var entry = { file: f, name: f.name, size: f.size, status: 'wait', msg: '' };
+      if (!_chIsMedia(f)) { entry.status = 'err'; entry.msg = 'نوع غير مدعوم'; }
+      else if (f.size > CH_MAX_BYTES) { entry.status = 'err'; entry.msg = 'يتجاوز 25MB'; }
+      window._chSubmitFiles.push(entry);
+    }
+    if (input) input.value = '';
+    window.chRenderSubmitFileList();
+  };
+
+  window.chRemoveSubmitFile = function (idx) {
+    if (!window._chSubmitFiles) return;
+    window._chSubmitFiles.splice(idx, 1);
+    window.chRenderSubmitFileList();
+  };
+
+  window.chRenderSubmitFileList = function () {
+    var box = document.getElementById('chSubmitFileList');
+    if (!box) return;
+    var files = window._chSubmitFiles || [];
+    if (files.length === 0) { box.innerHTML = ''; return; }
+    var html = '';
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      var stTxt = '⏳ بانتظار', stCls = 'ch-st-wait';
+      if (f.status === 'ok') { stTxt = '✅ تم'; stCls = 'ch-st-ok'; }
+      else if (f.status === 'err') { stTxt = '❌ ' + (f.msg || 'فشل'); stCls = 'ch-st-err'; }
+      else if (f.status === 'uploading') { stTxt = '⏳ جارٍ'; stCls = 'ch-st-wait'; }
+      html += '<div class="ch-file">' +
+        '<span class="ch-fn">' + _chEsc(f.name) + '</span>' +
+        '<span class="ch-fsz">' + _chFmtSize(f.size) + '</span>' +
+        '<span class="ch-fst ' + stCls + '">' + stTxt + '</span>' +
+        '<button type="button" class="ch-fx" onclick="window.chRemoveSubmitFile(' + i + ')" title="إزالة">✕</button>' +
+      '</div>';
+    }
+    box.innerHTML = html;
   };
 
   window.chDoSubmit = function () {
     var token = _chToken();
     var taskId = document.getElementById('chSubmitTaskId').value || '';
-    var urls = (document.getElementById('chSubmitUrls').value || '').trim();
+    var taskTitle = document.getElementById('chSubmitTaskTitle').textContent || '';
+    var urlsText = (document.getElementById('chSubmitUrls').value || '').trim();
     var note = (document.getElementById('chSubmitNote').value || '').trim();
     var st = document.getElementById('chSubmitStatus');
     var btn = document.getElementById('chSubmitBtn');
     function setS(msg, color) { if (st) { st.style.color = color || '#0F2C5C'; st.innerHTML = msg; } }
 
-    if (!urls) { setS('⚠️ أدخل رابطاً واحداً على الأقل', '#c0392b'); return; }
-    if (btn) btn.disabled = true;
-    setS('⏳ جارٍ التسليم...', '#0F2C5C');
+    var files = window._chSubmitFiles || [];
+    var pending = [];
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].status !== 'err') pending.push({ idx: i, entry: files[i] });
+    }
 
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (btn) btn.disabled = false;
-        if (res && res.success) {
-          setS('✅ ' + (res.message || 'تم التسليم'), '#1b7a3d');
-          if (typeof toast === 'function') toast('تم تسليم المهمة', 'success');
-          if (typeof closeModal === 'function') closeModal('chSubmitModal');
-          window.chLoadTasks();
-        } else {
-          setS('❌ ' + ((res && res.error) || 'فشل التسليم'), '#c0392b');
-        }
-      })
-      .withFailureHandler(function (err) {
-        if (btn) btn.disabled = false;
-        setS('❌ ' + (err && err.message ? err.message : 'خطأ في الخادم'), '#c0392b');
-      })
-      .teacherSubmitTaskOutput(token, taskId, urls, note);
+    if (!urlsText && pending.length === 0) {
+      setS('⚠️ ارفع ملفاً واحداً على الأقل أو أدخل رابطاً', '#c0392b');
+      return;
+    }
+
+    function finalizeSubmit(extraUrls) {
+      var allUrls = urlsText;
+      if (extraUrls && extraUrls.length) {
+        allUrls = (allUrls ? allUrls + '\n' : '') + extraUrls.join('\n');
+      }
+      setS('⏳ جارٍ التسليم...', '#0F2C5C');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (btn) btn.disabled = false;
+          if (res && res.success) {
+            setS('✅ ' + (res.message || 'تم التسليم'), '#1b7a3d');
+            if (typeof toast === 'function') toast('تم تسليم المهمة', 'success');
+            if (typeof closeModal === 'function') closeModal('chSubmitModal');
+            window.chLoadTasks();
+          } else {
+            setS('❌ ' + ((res && res.error) || 'فشل التسليم'), '#c0392b');
+          }
+        })
+        .withFailureHandler(function (err) {
+          if (btn) btn.disabled = false;
+          setS('❌ ' + (err && err.message ? err.message : 'خطأ في الخادم'), '#c0392b');
+        })
+        .teacherSubmitTaskOutput(token, taskId, allUrls, note);
+    }
+
+    if (btn) btn.disabled = true;
+
+    if (pending.length === 0) { finalizeSubmit([]); return; }
+
+    // رفع الملفات أولاً (مرتبطة بنفس المهمة عبر task_id)، ثم تسليم الروابط الناتجة
+    setS('⏳ جارٍ رفع ' + pending.length + ' ملفاً...', '#0F2C5C');
+    var payload = new Array(pending.length);
+    var read = 0;
+    function afterRead() {
+      read++;
+      if (read < pending.length) return;
+      var meta = { title: taskTitle, task_id: taskId };
+      google.script.run
+        .withSuccessHandler(function (res) {
+          var results = (res && res.results) ? res.results : [];
+          var links = [];
+          var anyFail = false;
+          for (var k = 0; k < pending.length; k++) {
+            var r = results[k];
+            if (r && r.success) { pending[k].entry.status = 'ok'; links.push(r.link); }
+            else { pending[k].entry.status = 'err'; pending[k].entry.msg = (r && r.error) || 'فشل'; anyFail = true; }
+          }
+          window.chRenderSubmitFileList();
+          if (links.length === 0 && !urlsText) {
+            if (btn) btn.disabled = false;
+            setS('❌ ' + ((res && res.error) || 'فشل رفع كل الملفات'), '#c0392b');
+            return;
+          }
+          if (anyFail) setS('⚠️ فشل رفع بعض الملفات — جارٍ التسليم بالباقي...', '#c0392b');
+          finalizeSubmit(links);
+        })
+        .withFailureHandler(function (err) {
+          if (btn) btn.disabled = false;
+          for (var k = 0; k < pending.length; k++) { pending[k].entry.status = 'err'; pending[k].entry.msg = 'خطأ خادم'; }
+          window.chRenderSubmitFileList();
+          setS('❌ ' + (err && err.message ? err.message : 'خطأ في رفع الملفات'), '#c0392b');
+        })
+        .teacherUploadMedia(token, payload, meta);
+    }
+    for (var p = 0; p < pending.length; p++) {
+      (function (slot, slotIndex) {
+        var file = slot.entry.file;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          payload[slotIndex] = { data: e.target.result, fileName: file.name, mimeType: file.type };
+          afterRead();
+        };
+        reader.onerror = function () {
+          slot.entry.status = 'err'; slot.entry.msg = 'تعذّر القراءة';
+          payload[slotIndex] = { data: '', fileName: file.name, mimeType: file.type };
+          afterRead();
+        };
+        reader.readAsDataURL(file);
+      })(pending[p], p);
+    }
   };
 })();
 </script>
