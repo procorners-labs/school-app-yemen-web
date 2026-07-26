@@ -2856,6 +2856,186 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
+<!-- مودال نشر سوشل ميديا مباشر لخبر (فيسبوك/انستغرام) + دمج الهوية التجارية -->
+<div class="modal-backdrop" id="smpModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>📱 نشر سوشل ميديا للخبر</span>
+      <button class="modal-close" onclick="closeModal('smpModal')">✕</button>
+    </div>
+    <div class="modal-body" style="font-family:'Cairo','Tahoma',sans-serif;direction:rtl;text-align:right">
+      <input type="hidden" id="smpNewsId">
+      <div id="smpPreviewWrap" style="text-align:center;margin-bottom:12px">
+        <canvas id="smpCanvas" style="max-width:100%;max-height:280px;border-radius:10px;border:1px solid var(--border)"></canvas>
+        <div id="smpNoImage" class="hidden" style="padding:16px;color:var(--text-muted);font-size:.85rem">لا توجد صورة لهذا الخبر — سيُنشَر النص فقط (انستغرام يتطلّب صورة، سيُستبعَد تلقائياً).</div>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="display:block;font-size:.85rem;font-weight:600;margin-bottom:5px">المنصّات</label>
+        <label style="margin-left:16px"><input type="checkbox" id="smpFbChk" checked> 📘 فيسبوك</label>
+        <label><input type="checkbox" id="smpIgChk"> 📸 انستغرام</label>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="display:block;font-size:.85rem;font-weight:600;margin-bottom:5px">نص المنشور</label>
+        <textarea id="smpCaption" style="width:100%;box-sizing:border-box;min-height:90px;border:1px solid #e3e8f0;border-radius:9px;padding:9px;font-family:inherit"></textarea>
+      </div>
+      <div id="smpScheduleWrap" style="margin-bottom:10px">
+        <label style="display:block;font-size:.85rem;font-weight:600;margin-bottom:5px">تاريخ الجدولة <span style="font-weight:400;color:var(--text-muted)">(لزرّ "جدولة" فقط — اتركه فارغاً للنشر بأقرب فرصة عبر المُجدوِل التلقائي)</span></label>
+        <input type="date" id="smpScheduleDate" style="width:100%;box-sizing:border-box;border:1px solid #e3e8f0;border-radius:9px;padding:9px">
+      </div>
+      <div id="smpStatus" style="font-size:.88rem;font-weight:600;min-height:18px"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('smpModal')">إلغاء</button>
+      <button type="button" class="btn btn-secondary" id="smpScheduleBtn" onclick="smpDoSchedule()">🗓️ جدولة</button>
+      <button type="button" class="btn btn-primary" id="smpPublishBtn" onclick="smpDoPublishNow()" style="background:#7c3aed">🚀 نشر الآن</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var SMP = { imageDataUrl: '', ready: false };
+
+  function _smpToken() { return (typeof App !== 'undefined' && App.user && App.user.token) ? App.user.token : ''; }
+  function _smpSetStatus(msg, cls) {
+    var el = document.getElementById('smpStatus');
+    if (el) { el.className = cls || ''; el.style.color = (cls === 'err') ? '#c0392b' : (cls === 'ok' ? '#1b7a3d' : '#0F2C5C'); el.textContent = msg || ''; }
+  }
+
+  // يركّب شعار المدرسة + اسمها فوق الصورة الأصلية داخل <canvas> — لا استدعاء لأداة _build/social/
+  // المحلية (Node، غير قابلة للاستدعاء من المتصفّح إطلاقاً)؛ إعادة تصميم بصري مكافئ خفيف بالمتصفّح.
+  function _smpComposite(imageUrl, cb) {
+    var canvas = document.getElementById('smpCanvas');
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      var brand = window._schoolBrand || {};
+      var barH = Math.max(56, Math.round(canvas.height * 0.09));
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
+
+      function drawText() {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold ' + Math.round(barH * 0.38) + 'px Cairo, Tahoma, sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'right';
+        ctx.fillText(brand.name || '', canvas.width - 18, canvas.height - barH / 2);
+        try {
+          canvas.toDataURL('image/jpeg', 0.9); // فحص مبكر: يرمي SecurityError لو تلوَّث الـcanvas الآن
+          cb(canvas.toDataURL('image/jpeg', 0.9), '');
+        } catch (secErr) {
+          cb('', 'تعذّر دمج الهوية مع هذه الصورة (قيد مشاركة الصورة) — سيُنشَر النص بلا صورة');
+        }
+      }
+
+      if (brand.logo) {
+        var logoImg = new Image();
+        logoImg.crossOrigin = 'anonymous';
+        logoImg.onload = function () {
+          var logoH = barH * 0.8, logoW = logoH * (logoImg.naturalWidth / logoImg.naturalHeight || 1);
+          try { ctx.drawImage(logoImg, 14, canvas.height - barH + (barH - logoH) / 2, logoW, logoH); } catch (e) {}
+          drawText();
+        };
+        logoImg.onerror = drawText;
+        logoImg.src = brand.logo;
+      } else {
+        drawText();
+      }
+    };
+    img.onerror = function () { cb('', 'تعذّر تحميل صورة الخبر لدمجها'); };
+    img.src = imageUrl;
+  }
+
+  window.openSocialPublishModal = function (newsId) {
+    var list = window._newsCache || [], item = null;
+    for (var i = 0; i < list.length; i++) { if (String(list[i].id) === String(newsId)) { item = list[i]; break; } }
+    if (!item) { if (typeof toast === 'function') toast('تعذّر العثور على الخبر', 'error'); return; }
+
+    document.getElementById('smpNewsId').value = newsId;
+    document.getElementById('smpCaption').value = item.news || '';
+    document.getElementById('smpFbChk').checked = true;
+    document.getElementById('smpIgChk').checked = false;
+    document.getElementById('smpScheduleDate').value = '';
+    _smpSetStatus('');
+    SMP.imageDataUrl = ''; SMP.ready = false;
+
+    var urls = _newsParseMedia(item.attachments), imgUrl = '';
+    for (var u = 0; u < urls.length; u++) { if (!_newsMediaIsVideo(urls[u])) { imgUrl = urls[u]; break; } }
+
+    var canvasEl = document.getElementById('smpCanvas'), noImgEl = document.getElementById('smpNoImage');
+    if (!imgUrl) {
+      canvasEl.style.display = 'none'; noImgEl.className = '';
+      document.getElementById('smpIgChk').disabled = true;
+      SMP.ready = true;
+    } else {
+      canvasEl.style.display = ''; noImgEl.className = 'hidden';
+      document.getElementById('smpIgChk').disabled = false;
+      _smpSetStatus('⏳ جارٍ تجهيز معاينة الهوية التجارية...');
+      _smpComposite(imgUrl, function (dataUrl, err) {
+        SMP.ready = true;
+        if (err) { _smpSetStatus('⚠️ ' + err, 'err'); SMP.imageDataUrl = ''; document.getElementById('smpIgChk').disabled = true; }
+        else { SMP.imageDataUrl = dataUrl; _smpSetStatus(''); }
+      });
+    }
+    if (typeof openModal === 'function') openModal('smpModal');
+  };
+
+  function _smpCollectPlatforms() {
+    var out = [];
+    if (document.getElementById('smpFbChk').checked) out.push('facebook');
+    if (document.getElementById('smpIgChk').checked && !document.getElementById('smpIgChk').disabled) out.push('instagram');
+    return out;
+  }
+
+  function _smpRun(fnName, extra, btn) {
+    if (!SMP.ready) { _smpSetStatus('⏳ ما زالت الصورة قيد التجهيز — أعد المحاولة بعد لحظات', 'err'); return; }
+    var platforms = _smpCollectPlatforms();
+    if (!platforms.length) { _smpSetStatus('⚠️ اختر منصّة واحدة على الأقل', 'err'); return; }
+    var caption = (document.getElementById('smpCaption').value || '').trim();
+    if (!caption) { _smpSetStatus('⚠️ أدخل نص المنشور', 'err'); return; }
+
+    var data = {
+      teacherToken: _smpToken(), schoolId: (App.user && App.user.schoolId) || '',
+      caption: caption, platforms: platforms, imageDataUrl: SMP.imageDataUrl
+    };
+    for (var k in extra) data[k] = extra[k];
+
+    var fbBtn = document.getElementById('smpPublishBtn'), schBtn = document.getElementById('smpScheduleBtn');
+    fbBtn.disabled = true; schBtn.disabled = true;
+    _smpSetStatus('⏳ جارٍ التنفيذ...');
+    callCMS(fnName, data, function (res, err) {
+      fbBtn.disabled = false; schBtn.disabled = false;
+      if (err || !res) { _smpSetStatus('❌ ' + (err || 'فشل الاتصال'), 'err'); return; }
+      if (res.success) {
+        _smpSetStatus('✅ تم بنجاح', 'ok');
+        if (typeof toast === 'function') toast('تم إرسال المنشور', 'success');
+        setTimeout(function () { if (typeof closeModal === 'function') closeModal('smpModal'); }, 1200);
+      } else {
+        var msgs = [];
+        if (res.results) {
+          for (var p in res.results) {
+            var r = res.results[p];
+            if (r && !r.success) msgs.push(p + ': ' + (r.error || 'فشل'));
+          }
+        }
+        _smpSetStatus('❌ ' + (msgs.length ? msgs.join(' | ') : (res.error || 'فشل التنفيذ')), 'err');
+      }
+    });
+  }
+
+  window.smpDoPublishNow = function () { _smpRun('smmPublishNewsNowProtected', {}, 'publish'); };
+  window.smpDoSchedule = function () {
+    var d = (document.getElementById('smpScheduleDate').value || '').trim();
+    _smpRun('smmScheduleNewsPostProtected', { scheduledDate: d }, 'schedule');
+  };
+})();
+</script>
+
 <!-- مودال تسجيل سلوك -->
 <div class="modal-backdrop" id="violationModal">
   <div class="modal-dialog modal-lg">
@@ -15479,6 +15659,16 @@ function _buildNewsCard_Teacher(n) {
           if (App.user && App.user.teacherName === newsOwner)
             return '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="requestNewsPublic(\'' + n.id + '\')" title="طلب نشر هذا الخبر في الصفحة العامة (يُرسَل للمشرف)">📣 طلب نشر للعامة</button>';
           return '';
+        })() +
+
+        // نشر سوشل ميديا مباشر (فيسبوك/انستغرام) لهذا الخبر — يمرّ عبر مشروع cms المنفصل، الذي
+        // يقبل فقط admin/deputy/activities (CMS_ALLOWED_ROLES في cms/CMSAuth.js) — أضيق من
+        // _newsIsOfficial() (تشمل supervisor أيضاً، صحيحة لزر "نشر للعامة" الذي يبقى داخل teacher
+        // نفسها). إظهار الزر لمشرف هنا كان سيفشل دوماً عند الضغط رغم ظهوره — استُبعِد عمداً.
+        (function () {
+          var r = App.user && App.user.role;
+          if (r !== 'admin' && r !== 'deputy' && r !== 'activities') return '';
+          return '<button class="btn btn-sm" style="background:#7c3aed;color:#fff" onclick="openSocialPublishModal(\'' + n.id + '\')" title="نشر هذا الخبر مباشرة على فيسبوك/انستغرام">📱 نشر سوشل ميديا</button>';
         })() +
 
         // أزرار الإدارة (للمدير أو المالك)
