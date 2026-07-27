@@ -358,6 +358,9 @@ export default {
     // حقن وسوم OG لكل خبر (?news=<id>) كي تُظهر تطبيقات المشاركة (واتساب/فيسبوك) صورة الخبر وعنوانه.
     // /home/ (مدرسة المالك، أحادية المستأجر) تستهدف GAS.home كسابقاً؛ أي مسار آخر (بما فيه الجذر
     // المُعاد كتابته أعلاه إلى home-all-school) يستهدف home-all-school (getNewsOg متعدّدة المستأجرين).
+    // ?t=<توكن> (2026-07-27): توكن معاينة موقَّع (HMAC، home/Code.js::_homeVerifyShareToken) —
+    // مطلوب فقط لأخبار GAS.home الموجَّهة لصفّ/شعبة محدَّدة؛ يُمرَّر بلا ضرر لـhome-all-school أيضاً
+    // (وسيط إضافي يُتجاهَل — getNewsOg هناك بمعاملين فقط).
     var _newsId = url.searchParams.get('news');
     if (_newsId && isHtml) {
       try {
@@ -365,7 +368,7 @@ export default {
         var _ogRes = await fetch(_ogTarget, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, url.searchParams.get('school') || ''] })
+          body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, url.searchParams.get('school') || '', url.searchParams.get('t') || ''] })
         });
         var _ogJson = await _ogRes.json();
         var _og = (_ogJson && _ogJson.result) ? _ogJson.result : _ogJson;
