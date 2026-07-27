@@ -34,9 +34,12 @@
     var xhr = new XMLHttpRequest();
     xhr.open('POST', endpoint, true);
     xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
-    // مهلة أطول لدوال رفع الملفات (قد يصل الفيديو إلى 25MB)؛ والبقية 30 ثانية (شبكات بطيئة).
+    // مهلة أطول لدوال رفع الملفات (قد يصل الفيديو إلى 25MB)؛ والبقية 60 ثانية (كانت 30 — رُفعت
+    // بعد قياس حيّ مباشر أثبت أن GAS/Sheets API لنفس مشروع GCP المشترك قد يستغرق فعلياً 20-30+
+    // ثانية تحت ضغط تزامن حقيقي [استجابة ناجحة لا فاشلة]، فكانت المهلة القديمة (30 ثانية بالضبط)
+    // تُسقِط نداءات كانت لتنجح لو أُمهلت قليلاً أكثر — راجع _docs/…-heartbeat-boot-burst).
     var _isUpload = /upload|media|attach/i.test(fnName);
-    xhr.timeout = _isUpload ? 180000 : 30000;
+    xhr.timeout = _isUpload ? 180000 : 60000;
 
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
@@ -81,8 +84,14 @@
   // ⚠️ للقراءات فقط (idempotent) — لا تُستخدم للكتابات تفاديًا للتنفيذ المزدوج.
   // تكمّل إعادة محاولة الوسيط وطابور offline-sync؛ تقلّل ظهور «تعذر الاتصال» العابر.
   function rawCallWithRetry(fnName, args, onSuccess, onFailure, userObject, retries) {
-    var left = (typeof retries === 'number') ? retries : 2; // محاولتان إضافيتان (3 إجمالًا)
-    var delays = [600, 1500]; // backoff تصاعدي قصير (ms)
+    // محاولة إضافية واحدة (محاولتان إجمالًا) — لا 2: وسيط الـWorker (school-app-proxy.js) يعيد
+    // المحاولة بنفسه حتى 4 مرات قبل إرجاع خطأ نظيف؛ إبقاء محاولتين هنا فوق ذلك كان يُضاعف عدد
+    // نداءات GAS الفعلية خلف الوسيط تحت الضغط (حتى ~12 نداءً خلف نداء منطقي واحد) بلا فائدة تُذكر
+    // في الحالة الشائعة (استجابة بطيئة لكن ناجحة تُحسَب محاولة واحدة فقط، لا تُفعِّل إعادة المحاولة
+    // أصلاً) — خصوصًا عند انفجار نداءات متزامنة عند إقلاع teacher/student معًا (heartbeat + إشعارات
+    // + قوائم).
+    var left = (typeof retries === 'number') ? retries : 1; // محاولة إضافية واحدة (محاولتان إجمالًا)
+    var delays = [900]; // backoff قصير (ms)
     function attempt(n) {
       rawCall(fnName, args, onSuccess, function (err, uo) {
         if (err && err.__network && n < left) {

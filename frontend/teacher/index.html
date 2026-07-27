@@ -4043,7 +4043,10 @@ function _startHeartbeat() {
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') beat();
   });
-  beat();
+  // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات bootApp() (أخبار/تعميمات/
+  // ملاحظات/FCM) التي تُطلَق في نفس اللفة مباشرة بعد _startHeartbeat() — تزامن عدّة XHR على نفس
+  // تطبيق GAS عند الإقلاع كان يرفع احتمال status 0/مهلة (راجع _docs/…-heartbeat-boot-burst).
+  setTimeout(beat, 1200);
 }
 
 'use strict';
@@ -6086,24 +6089,26 @@ function bootApp() {
   // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
   try { _prMaybeNudge(); } catch (ePr) {}
 
-  // طلب تقييم موجَّه من المدير لهذا المعلّم تحديداً — يتجاوز جدولة المطالبة الذكية العادية
-  // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار" (نداء خادم خفيف، لا يؤخّر أي رسم).
-  try {
-    callServer('checkPendingPlatformReviewRequestProtected', {}, function (r) {
-      if (r && r.success && r.pending) {
-        var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
-        openPlatformReviewModal(true);
-      }
-    }, function () {});
-  } catch (ePrReq) {}
-
-  // تحميل عدّاد إشعارات الأخبار (الجرس)
-  loadNewsNotifications();
-  // عدّاد رسائل أولياء الأمور المعلّقة (يبقى حتى الرد)
-  loadNotesNotifications();
-
-  // جسر إشعارات الهاتف (FCM) — تسجيل رمز جهاز الأندرويد
-  _initFcmBridge();
+  // تحميل عدّاد إشعارات الأخبار (الجرس) + التعميمات + رسائل أولياء الأمور + جسر FCM + طلب تقييم
+  // المدير الموجَّه — تُنَظَّم بفواصل زمنية صغيرة بدل الانطلاق كلها في نفس اللفة مع أول heartbeat؛
+  // تفادي انفجار عدّة نداءات XHR متزامنة إلى نفس تطبيق GAS عند الإقلاع (كان يرفع احتمال status
+  // 0/انتهاء مهلة اتصال). لا تأخير على تحميل القوائم/Schema أدناه (حرِج للعرض الأول) — فقط
+  // الطلبات الثانوية هذه.
+  setTimeout(loadNewsNotifications, 300);   // يشمل استدعاء loadCircularsNotifications داخلياً
+  setTimeout(loadNotesNotifications, 600);
+  setTimeout(_initFcmBridge, 900);
+  setTimeout(function () {
+    // طلب تقييم موجَّه من المدير لهذا المعلّم تحديداً — يتجاوز جدولة المطالبة الذكية العادية
+    // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار" (نداء خادم خفيف، لا يؤخّر أي رسم).
+    try {
+      callServer('checkPendingPlatformReviewRequestProtected', {}, function (r) {
+        if (r && r.success && r.pending) {
+          var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
+          openPlatformReviewModal(true);
+        }
+      }, function () {});
+    } catch (ePrReq) {}
+  }, 1200);
 
   // بدء مؤقت الجلسة
   initSessionTimer(App.user.expiresIn || 28800);
