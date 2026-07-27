@@ -255,7 +255,10 @@
     #loginScreen .login-stack{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;}
     /* طبقات زخرفية إضافية (نجمي هندسي + أشكال عائمة + مطر كلمات) — زخرفية بحتة،
        pointer-events:none وaria-hidden كي لا تتداخل مع حارس PTR أو قارئات الشاشة. */
-    .login-fx-layer{position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
+    /* position:fixed لا absolute — يضمن بقاء الزخرفة مثبَّتة على الفيوبورت الفعلي بصرف النظر عن
+       طول محتوى #loginScreen (ليست position:fixed، تكبر مع المحتوى) على شاشة هاتف ضيّقة — بهذا
+       تبقى الزخرفة ظاهرة في أي هامش مرئي أثناء التمرير، لا مثبَّتة عند نقطة تحميل واحدة فقط. */
+    .login-fx-layer{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
     .login-constellation{position:absolute; inset:0; width:100%; height:100%; opacity:.55;}
     .login-constellation .lc-line{fill:none; stroke:var(--login-accent-b); stroke-width:1.1; stroke-linecap:round;}
     .login-constellation .lc-node{fill:#fff;}
@@ -298,7 +301,7 @@
     @keyframes orb2 { to { translate:-30px 40px; scale:1.15; } }
 
     .login-card {
-      width:100%; max-width:440px; position:relative; z-index:1;
+      width:100%; position:relative; z-index:1;
       background: rgba(255,255,255,.07);
       backdrop-filter: blur(24px);
       border:1px solid rgba(255,255,255,.15);
@@ -308,10 +311,32 @@
       animation: fadeUp .6s cubic-bezier(.4,0,.2,1) both;
     }
     @keyframes fadeUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:none} }
+    /* ضمان ظهور هوية شاشة الدخول حتى لو غطّت البطاقة كامل الشاشة على هاتف ضيّق (بطاقة المعلم
+       طويلة أيضاً: شعار+حقلان+زر+رابط عودة+مساعدة+تذييل). .login-card نفسها overflow:hidden
+       (لقصّ زوايا .login-header)، فالإطار المتوهّج عنصر شقيق منفصل (.login-card-glow) داخل
+       .login-card-wrap بدل ::before داخل البطاقة — وإلا لَقُصّ بنفس overflow:hidden. */
+    .login-card-wrap{ position:relative; width:100%; max-width:440px; }
+    .login-card-glow{
+      position:absolute; inset:-2px; z-index:0; pointer-events:none;
+      border-radius: calc(var(--radius-xl) + 2px);
+      background: linear-gradient(135deg, var(--login-accent-a), var(--login-accent-b));
+      opacity:.45; filter: blur(3px);
+      animation: loginCardGlowPulse 5s ease-in-out infinite alternate;
+    }
+    @keyframes loginCardGlowPulse{ from{opacity:.28;} to{opacity:.52;} }
 
     .login-header {
       padding:42px 36px 28px;
-      background: linear-gradient(145deg, rgba(17,73,163,.5), rgba(6,182,212,.3));
+      /* طبقات نقاط زخرفية ثابتة (جزء من background العادي، لا ::before) فوق التدرّج الأساسي —
+         مضمونة الظهور دوماً بصرف النظر عن أي مشكلة تكديس، لأن الخلفية تُرسَم دوماً خلف كل
+         محتوى العنصر (لا حاجة z-index). تُبقي هوية "النجمي" حاضرة حتى داخل رأس البطاقة نفسه. */
+      background:
+        radial-gradient(circle at 12% 30%, rgba(255,255,255,.35) 0 2px, transparent 2px),
+        radial-gradient(circle at 32% 65%, rgba(255,255,255,.3) 0 1.6px, transparent 1.6px),
+        radial-gradient(circle at 55% 20%, rgba(255,255,255,.3) 0 1.4px, transparent 1.4px),
+        radial-gradient(circle at 78% 55%, rgba(255,255,255,.3) 0 2px, transparent 2px),
+        radial-gradient(circle at 92% 25%, rgba(255,255,255,.3) 0 1.4px, transparent 1.4px),
+        linear-gradient(145deg, rgba(17,73,163,.5), rgba(6,182,212,.3));
       text-align:center; border-bottom:1px solid rgba(255,255,255,.1);
     }
     .login-badge-wrap{position:relative; width:90px; height:90px; margin:0 auto 18px;}
@@ -457,12 +482,21 @@
     #loginScreen, #mainApp { transition: opacity .32s ease; }
 
     /* TOP NAV */
+    /* Phase 5 — لمسة هوية ثابتة/بطيئة جداً (لا مطر كلمات/نجمي متحرك هنا، شاشة عمل يومية طويلة).
+       تدرّج var(--primary-glow) نفسه المُستخدَم أصلاً بأمان في .nav-brand-sub (خلفية صلبة تحمل
+       نصاً مباشرة) — فلا مخاطرة تباين جديدة. دورة 90 ثانية (background-position فقط، لا transform)
+       غير محسوسة كحركة للعين المجرّدة، مغطّاة بقاعدة *,*::before,*::after العامة لتقليل الحركة. */
     .top-nav {
       position:sticky; top:0; z-index:400;
-      background:var(--surface);
+      background:
+        linear-gradient(120deg, var(--primary-glow) 0%, transparent 30%, transparent 70%, var(--primary-glow) 100%),
+        var(--surface);
+      background-size: 260% 100%, 100% 100%;
+      animation: navBgDriftSlow 90s ease-in-out infinite alternate;
       border-bottom:1px solid var(--border);
       box-shadow: var(--shadow-sm);
     }
+    @keyframes navBgDriftSlow{ 0%{background-position:0% 0, 0 0;} 100%{background-position:100% 0, 0 0;} }
     .nav-inner {
       max-width:1280px; margin:0 auto;
       padding:0 20px; height:62px;
@@ -708,7 +742,9 @@
 
     .sidebar {
       width: 240px; flex-shrink: 0;
-      background: var(--surface);
+      /* Phase 5 — نفس مبدأ .top-nav: تدرّج هادئ ثابت (بلا حركة) بلون العلامة بدل الخلفية الصلبة،
+         var(--primary-glow) بنفس الشدّة الآمنة المستخدَمة أصلاً على نصوص مباشرة بالكودبيس. */
+      background: linear-gradient(180deg, var(--primary-glow) 0%, transparent 45%), var(--surface);
       border-left: 1px solid var(--border);
       padding: 16px 10px 24px;
       position: sticky;
@@ -851,8 +887,18 @@
     }
 
     /* DASHBOARD WIDGETS */
+    /* Phase 5 — لمسة نجمي هندسي ثابتة تماماً (بلا أي حركة/نبض) داخل خلفية بطاقة الترحيب —
+       طبقة background إضافية عادية (لا ::before/::after جديد كي لا تتعارض مع الطبقتين
+       الموجودتين أصلاً)، فتُرسَم دوماً خلف كل المحتوى بلا أي مخاطرة تكديس. */
     .dashboard-greeting {
-      background:linear-gradient(135deg,var(--primary) 0%,var(--secondary) 100%);
+      background:
+        radial-gradient(circle at 8% 22%, rgba(255,255,255,.16) 0 2.2px, transparent 2.2px),
+        radial-gradient(circle at 22% 68%, rgba(255,255,255,.12) 0 1.6px, transparent 1.6px),
+        radial-gradient(circle at 40% 30%, rgba(255,255,255,.14) 0 1.4px, transparent 1.4px),
+        radial-gradient(circle at 63% 72%, rgba(255,255,255,.12) 0 2px, transparent 2px),
+        radial-gradient(circle at 78% 34%, rgba(255,255,255,.14) 0 1.4px, transparent 1.4px),
+        radial-gradient(circle at 92% 66%, rgba(255,255,255,.1) 0 1.8px, transparent 1.8px),
+        linear-gradient(135deg,var(--primary) 0%,var(--secondary) 100%);
       border-radius:var(--radius-lg); padding:28px 32px;
       color:#fff; margin-bottom:24px; position:relative; overflow:hidden;
     }
@@ -2167,6 +2213,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
   <div class="login-fx-layer login-word-rain" id="tchLoginWordRain" aria-hidden="true"></div>
   <div class="login-stack">
+  <div class="login-card-wrap">
+  <div class="login-card-glow" aria-hidden="true"></div>
   <div class="login-card">
     <div class="login-header">
       <div class="login-badge-wrap">
@@ -2231,6 +2279,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
       <div class="login-footer">© 2026 جميع الحقوق محفوظة — School App Yemen</div>
     </div>
+  </div>
   </div>
 
   <!-- ═══ دليل المدارس الشريكة (عام، قبل الدخول) — مكوّن PartnerSchoolCard ═══ -->

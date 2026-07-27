@@ -255,7 +255,11 @@ a { color: var(--pr); text-decoration: none; }
 .login-stack { margin: auto 0; position:relative; z-index:1; display: flex; flex-direction: column; align-items: center; width: 100%; }
 /* طبقات زخرفية إضافية (نجمي هندسي + أشكال عائمة + مطر كلمات) — زخرفية بحتة،
    pointer-events:none وaria-hidden كي لا تتداخل مع حارس PTR أو قارئات الشاشة. */
-.login-fx-layer{position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
+/* position:fixed لا absolute — يضمن بقاء الزخرفة مثبَّتة على الفيوبورت الفعلي بصرف النظر عن
+   تمرير #loginScreen الداخلي (overflow-y:auto) عند طول محتوى البطاقة (شعار+هاتف+عنوان+رابط
+   عودة) على شاشة هاتف ضيّقة — لولا هذا لبقيت الزخرفة عند نقطة التمرير الأولى فقط، فتختفي
+   خلف الجزء السفلي من البطاقة عند التمرير لأسفل. */
+.login-fx-layer{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}
 .login-constellation{position:absolute; inset:0; width:100%; height:100%; opacity:.5;}
 .login-constellation .lc-line{fill:none; stroke:var(--login-accent-b); stroke-width:1.1; stroke-linecap:round;}
 .login-constellation .lc-node{fill:#fff;}
@@ -290,6 +294,31 @@ a { color: var(--pr); text-decoration: none; }
   box-shadow: 0 20px 50px rgba(0,0,0,.25);
   animation: slideUp .6s both;
   position:relative; z-index:1;
+}
+/* ضمان ظهور هوية شاشة الدخول حتى لو غطّت البطاقة كامل الشاشة على هاتف ضيّق (بطاقة الطالب
+   طويلة: شعار+حقلان+زر+تواصل+عنوان+رابط عودة) — إطار متوهّج حول حواف البطاقة نفسها (::before)
+   يبقى مرئياً عند حدّها الخارجي بصرف النظر عن ارتفاع المحتوى الداخلي، وشريط زخرفي مصغَّر أعلى
+   البطاقة (::after) جزء فعلي من تخطيطها فيُعرَض دوماً من أول رسم للصفحة. كلاهما z-index:-1
+   داخل سياق تكديس .login-card فيُرسَمان فوق خلفيتها الصلبة وتحت محتواها الطبيعي (الشعار/العنوان). */
+.login-card::before{
+  content:''; position:absolute; inset:-2px; z-index:-1;
+  border-radius: calc(var(--rad-l) + 2px);
+  background: linear-gradient(135deg, var(--login-accent-a), var(--login-accent-b));
+  opacity:.5; filter: blur(2px);
+  animation: loginCardGlowPulseStu 5s ease-in-out infinite alternate;
+}
+@keyframes loginCardGlowPulseStu{ from{opacity:.32;} to{opacity:.58;} }
+.login-card::after{
+  content:''; position:absolute; top:0; left:0; right:0; height:52px; z-index:-1;
+  border-radius: var(--rad-l) var(--rad-l) 0 0;
+  background:
+    radial-gradient(circle at 10% 35%, var(--login-accent-a) 0 2px, transparent 2px),
+    radial-gradient(circle at 28% 65%, var(--login-accent-b) 0 1.6px, transparent 1.6px),
+    radial-gradient(circle at 50% 22%, var(--login-accent-a) 0 1.4px, transparent 1.4px),
+    radial-gradient(circle at 72% 58%, var(--login-accent-b) 0 2px, transparent 2px),
+    radial-gradient(circle at 90% 30%, var(--login-accent-a) 0 1.4px, transparent 1.4px),
+    linear-gradient(180deg, var(--login-accent-a) 0%, transparent 100%);
+  opacity:.16;
 }
 .login-badge-wrap{position:relative; width:80px; height:80px; margin:0 auto 16px;}
 .login-badge-ring{
@@ -350,13 +379,14 @@ a { color: var(--pr); text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   #loginScreen,
   #loginScreen::before, #loginScreen::after,
-  .login-card,
+  .login-card, .login-card::before, .login-card::after,
   .login-logo, .login-logo.logo-reveal-play, .login-logo.logo-reveal-play::after,
   .login-badge-ring, .login-badge-orbit,
   .login-card h1, .login-card .subtitle,
   .login-shape, .login-word-rain .lwr-drop,
   #stuLoginConstellation *,
-  .school-brand-name.name-reveal-play {
+  .school-brand-name.name-reveal-play,
+  .navbar {
     animation: none !important;
   }
 }
@@ -489,15 +519,24 @@ a { color: var(--pr); text-decoration: none; }
 #app.show { display: block; }
 
 /* ── Navbar علوي ── */
+/* Phase 5 — لمسة هوية ثابتة/بطيئة جداً (بلا مطر كلمات/نجمي متحرك — شاشة عمل تُستخدَم لساعات،
+   لا شاشة دخول عابرة). لا شريط جانبي/شاشة "رئيسية" منفصلة بمنصة الطالب بخلاف المعلم (بنية أبسط)
+   فطُبِّقت اللمسة على العنصر الدائم الوحيد المكافئ: الشريط العلوي. تدرّج var(--pr-glow) الديناميكي
+   نفسه (يتغيّر تلقائياً مع لون علامة كل مدرسة عبر applyTheme) بدورة 90 ثانية غير محسوسة. */
 .navbar {
   position: sticky; top: 0; z-index: 5;
-  background: linear-gradient(135deg, var(--pr) 0%, var(--pr-d) 100%);
+  background:
+    linear-gradient(120deg, var(--pr-glow) 0%, transparent 30%, transparent 70%, var(--pr-glow) 100%),
+    linear-gradient(135deg, var(--pr) 0%, var(--pr-d) 100%);
+  background-size: 260% 100%, 100% 100%;
+  animation: navBgDriftSlowStu 90s ease-in-out infinite alternate;
   color: #fff;
   height: var(--nav-h);
   display: flex; align-items: center;
   padding: 0 16px;
   box-shadow: var(--sh-2);
 }
+@keyframes navBgDriftSlowStu{ 0%{background-position:0% 0, 0 0;} 100%{background-position:100% 0, 0 0;} }
 .nav-brand {
   display: flex; align-items: center; gap: 10px;
   flex: 1; min-width: 0;
