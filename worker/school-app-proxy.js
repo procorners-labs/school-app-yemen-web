@@ -47,10 +47,24 @@ function jsonResponse(obj, status) {
 function _AttrSet(attr, val) { this.attr = attr; this.val = val; }
 _AttrSet.prototype.element = function (el) { if (this.val) el.setAttribute(this.attr, this.val); };
 
+// نطاق فرعي احترافي لكل مدرسة (<slug>.yemenschoolz.com) — يُعيد slug من hostname (لا يمسّ
+// النطاقين الصريحين الحاليين school.procorners.com/yemenschoolz.com بلا نطاق فرعي، ولا يمسّ
+// وكيل الـ API /gas/<app> إطلاقاً — فقط مسار خدمة الموقع الثابت أدناه). لا نطاق فرعي/نطاق فرعي
+// غير حقيقي (www/فارغ) ⇒ ''. slug متعدّد المستويات (نقطة إضافية) يُرفَض احترازاً — يبقى apex.
+function _schoolSlugFromHost(hostname) {
+  var h = String(hostname || '').toLowerCase();
+  var suffix = '.yemenschoolz.com';
+  if (h.indexOf(suffix, h.length - suffix.length) === -1) return '';
+  var sub = h.slice(0, h.length - suffix.length);
+  if (!sub || sub === 'www' || sub.indexOf('.') !== -1) return '';
+  return sub;
+}
+
 export default {
   async fetch(request) {
     var url = new URL(request.url);
     var path = url.pathname;
+    var schoolSlug = _schoolSlugFromHost(url.hostname);
 
     // ── 1) وكيل الـ API: /gas/<app> ─────────────────────────────
     var match = path.match(/^\/gas\/([a-zA-Z-]+)\/?$/);
@@ -354,6 +368,13 @@ export default {
     // القديمة أحادية الهوية (assets/index.html)، التي تبقى موجودة وتعمل عند طلبها صراحة عبر
     // /index.html، فقط لم تعد الافتراضي عند الجذر. راجع _build/gen-sitemap.js في school-app-yemen-gas.
     if (path === '/' || path === '') path = '/home-all-school/index.html';
+    // نطاق فرعي لمدرسة (<slug>.yemenschoolz.com): يحقن ?school=<slug> تلقائياً لصفحات
+    // home-all-school الثابتة (index/newsarticle) إن لم يُمرَّر school/schoolId صراحةً في الرابط
+    // نفسه (احترام أي معامل صريح) — لا يمسّ أي مسار آخر (/home/, /gas/<app>, إلخ).
+    if (schoolSlug && /^\/home-all-school\//.test(path) &&
+        !url.searchParams.get('school') && !url.searchParams.get('schoolId')) {
+      url.searchParams.set('school', schoolSlug);
+    }
     var ghUrl = GITHUB_BASE + path + url.search;
     var ghResp = await fetch(ghUrl, {
       headers: { 'User-Agent': 'cf-worker-proxy', 'Accept': request.headers.get('Accept') || '*/*' },
