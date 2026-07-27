@@ -5101,6 +5101,7 @@ function doLogin() {
           grade       : r.grade       || (r.classes && r.classes[0])   || '',
           section     : r.section     || (r.sections && r.sections[0]) || '',
           email       : r.email       || '',
+          allSubjectsNonGraded: !!r.allSubjectsNonGraded,
           expiresIn   : r.expiresIn   || 28800
         };
         saveSession(App.user);
@@ -6211,6 +6212,12 @@ function _newsCollectGradeSections() {
  * @param {string} [id] - معرّف الخبر للتعديل
  */
 function openNewsModal(id) {
+  // معلّم مادة تخصصية (أو أي معلّم) بلا أي فصل/شعبة مُكلَّف بها فعلياً: لا نفتح نموذجاً
+  // فارغاً مربكاً — تنبيه واضح بدل ذلك. لا تعيين تلقائي لـ"جميع الفصول" هنا إطلاقاً.
+  if (!id && !isAdmin() && myGrades().length === 0) {
+    toast('لم يُحدَّد لك نطاق فصل/شعبة — تواصل مع إدارة المدرسة', 'warning', 6000);
+    return;
+  }
   document.getElementById('newsEditId').value = id || '';
   document.getElementById('newsModalTitle').textContent = id ? '✏️ تعديل خبر' : '📢 إضافة خبر / إشعار';
 
@@ -7334,6 +7341,14 @@ function _sbApplyTable(role) {
     var el = document.getElementById(id);
     if (!el) continue;
     el.style.display = (SIDEBAR_ROLE_RULES[id].indexOf(role) >= 0) ? '' : 'none';
+  }
+  // ★ معلّم مادة تخصصية غير مرصودة بدرجات بالكامل (رياضة/مكتبة/تدبير منزلي وأمثالها) —
+  //   لا يُدخل درجات إطلاقاً (محكوم أصلاً خادمياً عبر _tcAssertGradableSubject)، فإخفاء
+  //   التبويب هنا إصلاح تجربة استخدام فقط، لا صلاحية. لا يمسّ admin/deputy/activities
+  //   (لا يُفحَص إلا عند role==='teacher' تحديداً).
+  if (role === 'teacher' && App.user && App.user.allSubjectsNonGraded) {
+    var gradesEl = document.getElementById('si-grades');
+    if (gradesEl) gradesEl.style.display = 'none';
   }
   _sbSyncSections();
 }
@@ -20126,6 +20141,7 @@ window.onload = function() {
             grade       : r.grade       || (r.classes   && r.classes[0])   || '',
             section     : r.section     || (r.sections  && r.sections[0])  || '',
             email       : r.email       || saved.email || '',
+            allSubjectsNonGraded: (r.allSubjectsNonGraded !== undefined) ? !!r.allSubjectsNonGraded : !!saved.allSubjectsNonGraded,
             expiresIn   : r.expiresIn   || 28800
           };
           // تحديث الجلسة المحفوظة بالبيانات الجديدة من الخادم
