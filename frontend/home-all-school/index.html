@@ -412,6 +412,11 @@
       // ويُضيف https:// للنطاق المجرّد (بيانات السوشل في الشيت مخزّنة بلا مخطّط مثل facebook.com/x)
       function safeUrl(u) {
         u = (u === null || u === undefined) ? '' : String(u).trim();
+        // يزيل أحرف التحكّم (\t\r\n) قبل فحص بادئة المخطّط — المتصفح يُسقِطها فعلياً قبل تفسير
+        // المخطّط (معيار WHATWG URL)، فقيمة مثل "ja[TAB]vascript:" تبقى تُنفَّذ كـjavascript:
+        // حتى لو فشلت مطابقة الرجيكس أدناه بلا هذه الإزالة أولاً (CLAUDE.md بند 35 — نفس الثغرة
+        // المُصلَحة أصلاً في master-admin/Master_Admin.js::_isSafeSocialLinkValue، مُرحَّلة هنا).
+        u = u.replace(/[\t\r\n]/g, '');
         if (!u) return '';
         if (/^https?:\/\//i.test(u)) return u;          // مخطّط آمن أصلاً
         if (/^\/\//.test(u)) return 'https:' + u;        // بروتوكولي-نسبي //host → https://host
