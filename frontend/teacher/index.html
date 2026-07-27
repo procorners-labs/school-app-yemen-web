@@ -2181,6 +2181,19 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .smm-qr-mini { background:#fff;border-radius:10px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,.07);text-align:center; }
 .smm-qr-mini img { width:120px;height:120px;border-radius:8px;margin:0 auto 8px; }
 .smm-qr-mini .qmtitle { font-size:12px;font-weight:600;color:#0F2C5C;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+
+/* تقييمات المنصة — Phase 1 */
+.pr-stars { display:flex; gap:8px; justify-content:center; margin-bottom:18px; direction:ltr; }
+.pr-star { background:none; border:none; font-size:38px; line-height:1; cursor:pointer; color:#d8dde4; transition:transform .12s ease, color .12s ease; padding:2px; }
+.pr-star:hover { transform:scale(1.12); }
+.pr-star.active { color:#f5a524; }
+.pr-nudge { position:fixed; bottom:18px; left:18px; z-index:900; max-width:340px; background:#fff; border-radius:14px; box-shadow:0 8px 28px rgba(15,23,42,.18); padding:16px; display:flex; flex-direction:column; gap:10px; animation:fadeIn .25s ease; }
+.pr-nudge .pr-nudge-title { font-weight:700; font-size:14px; color:#0F2C5C; display:flex; align-items:center; gap:6px; }
+.pr-nudge .pr-nudge-text { font-size:12.5px; color:#555; line-height:1.6; }
+.pr-nudge .pr-nudge-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.pr-nudge .pr-nudge-actions button { flex:1; border:none; border-radius:8px; padding:8px 10px; font-size:12.5px; cursor:pointer; }
+.pr-nudge .pr-nudge-primary { background:#1149A3; color:#fff; }
+.pr-nudge .pr-nudge-secondary { background:#f1f3f5; color:#444; }
   </style>
 </head>
 <body>
@@ -2202,6 +2215,38 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
 <!-- TOAST CONTAINER -->
 <div id="toastContainer"></div>
+
+<!-- مودال تقييم المنصة (Phase 1) -->
+<div class="modal-backdrop" id="platformReviewModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>⭐ قيّم تجربتك مع المنصة</span>
+      <button class="modal-close" onclick="closeModal('platformReviewModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pr-stars" id="prStars" role="radiogroup" aria-label="التقييم من 1 إلى 5 نجوم">
+        <button type="button" class="pr-star" data-val="5" onclick="_prSetRating(5)" title="5 نجوم">★</button>
+        <button type="button" class="pr-star" data-val="4" onclick="_prSetRating(4)" title="4 نجوم">★</button>
+        <button type="button" class="pr-star" data-val="3" onclick="_prSetRating(3)" title="3 نجوم">★</button>
+        <button type="button" class="pr-star" data-val="2" onclick="_prSetRating(2)" title="نجمتان">★</button>
+        <button type="button" class="pr-star" data-val="1" onclick="_prSetRating(1)" title="نجمة واحدة">★</button>
+      </div>
+      <div class="form-group mb-3">
+        <label class="form-label">تعليقك (اختياري)</label>
+        <textarea class="form-control" id="prComment" placeholder="شاركنا رأيك — ما الذي أعجبك؟ وما الذي يمكننا تحسينه؟" maxlength="1000"></textarea>
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#555;cursor:pointer;">
+        <input type="checkbox" id="prPublicConsent" style="margin-top:3px;">
+        <span>أوافق على استخدام تقييمي (بعد موافقة إدارة المدرسة) كشهادة تسويقية للمنصة على الموقع العام، دون عرض بيانات اتصالي.</span>
+      </label>
+      <div id="prSubmitMsg" style="margin-top:10px;font-size:13px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('platformReviewModal')">إلغاء</button>
+      <button class="btn btn-primary" id="prSubmitBtn" onclick="_prSubmit()">إرسال التقييم</button>
+    </div>
+  </div>
+</div>
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen">
@@ -2472,6 +2517,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 <div class="sidebar-section">
   <button class="sidebar-item" id="si-help" onclick="showSection('help')">
     <span class="si-icon">❓</span> التعليمات
+  </button>
+</div>
+<div class="sidebar-divider"></div>
+<div class="sidebar-section">
+  <button class="sidebar-item" id="si-platformReview" onclick="openPlatformReviewModal()">
+    <span class="si-icon">⭐</span> قيّم تجربتك
   </button>
 </div>
     </aside>
@@ -4725,6 +4776,138 @@ function showAutoSave(msg) {
   el._t = setTimeout(function() { el.classList.remove('show'); }, 2800);
 }
 
+// ==================== تقييمات المنصة (Phase 1) ====================
+var _prRating = 0;
+
+function openPlatformReviewModal() {
+  _prRating = 0;
+  var stars = document.querySelectorAll('#prStars .pr-star');
+  for (var i = 0; i < stars.length; i++) stars[i].classList.remove('active');
+  var c = document.getElementById('prComment'); if (c) c.value = '';
+  var k = document.getElementById('prPublicConsent'); if (k) k.checked = false;
+  var m = document.getElementById('prSubmitMsg'); if (m) m.innerHTML = '';
+  var btn = document.getElementById('prSubmitBtn'); if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
+  openModal('platformReviewModal');
+}
+
+function _prSetRating(n) {
+  _prRating = n;
+  var stars = document.querySelectorAll('#prStars .pr-star');
+  for (var i = 0; i < stars.length; i++) {
+    var v = parseInt(stars[i].getAttribute('data-val'), 10);
+    stars[i].classList.toggle('active', v <= n);
+  }
+}
+
+function _prSubmit() {
+  var msgEl = document.getElementById('prSubmitMsg');
+  if (!_prRating) {
+    if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">يرجى اختيار عدد النجوم أولاً</span>';
+    return;
+  }
+  var btn = document.getElementById('prSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإرسال...'; }
+  if (msgEl) msgEl.innerHTML = '';
+
+  var params = {
+    rating: _prRating,
+    comment: (document.getElementById('prComment') || {}).value || '',
+    publicConsent: !!(document.getElementById('prPublicConsent') || {}).checked
+  };
+
+  callServer('submitPlatformReviewProtected', params, function (r) {
+    if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
+    if (r && r.success) {
+      toast('⭐ ' + (r.message || 'شكراً لتقييمك!'), 'success');
+      closeModal('platformReviewModal');
+      _prNudgeMarkSubmitted();
+    } else if (r && r.cooldown) {
+      if (msgEl) msgEl.innerHTML = '<span style="color:#b26a00">' + escapeHtml(r.error || '') + '</span>';
+    } else {
+      if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">' + escapeHtml((r && r.error) || 'تعذّر إرسال التقييم') + '</span>';
+    }
+  }, function (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
+    if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">تعذّر الاتصال بالخادم — حاول مرة أخرى</span>';
+  });
+}
+
+// ── مطالبة ذكية غير مزعجة (localStorage بحت، بلا أي نداء خادم) ──
+var PR_NUDGE_FIRST_SEEN_DAYS = 14;   // أول ظهور للمطالبة بعد هذه المدة من أول استخدام
+var PR_NUDGE_REPEAT_DAYS     = 30;   // تباعد بين مطالبة وأخرى إن أُجِّلت
+
+function _prNudgeKey() {
+  var sid = (App.user && App.user.schoolId) || 'default';
+  var uname = (App.user && App.user.teacherName) || 'anon';
+  return 'prflt_' + sid + '_' + uname;
+}
+
+function _prNudgeState() {
+  try {
+    var raw = localStorage.getItem(_prNudgeKey());
+    return raw ? JSON.parse(raw) : { firstSeen: null, lastPrompted: null, submitted: false, optOut: false };
+  } catch (e) {
+    return { firstSeen: null, lastPrompted: null, submitted: false, optOut: false };
+  }
+}
+
+function _prNudgeSave(state) {
+  try { localStorage.setItem(_prNudgeKey(), JSON.stringify(state)); } catch (e) {}
+}
+
+function _prNudgeMarkSubmitted() {
+  var st = _prNudgeState();
+  st.submitted = true;
+  _prNudgeSave(st);
+  var el = document.getElementById('prNudgeBanner');
+  if (el) el.remove();
+}
+
+function _prMaybeNudge() {
+  var st = _prNudgeState();
+  var now = Date.now();
+  var DAY = 24 * 60 * 60 * 1000;
+
+  if (!st.firstSeen) { st.firstSeen = now; _prNudgeSave(st); return; } // أول زيارة — لا مطالبة فوراً
+  if (st.submitted || st.optOut) return;
+  if ((now - st.firstSeen) < PR_NUDGE_FIRST_SEEN_DAYS * DAY) return;
+  if (st.lastPrompted && (now - st.lastPrompted) < PR_NUDGE_REPEAT_DAYS * DAY) return;
+
+  st.lastPrompted = now;
+  _prNudgeSave(st);
+  _prShowNudgeBanner();
+}
+
+function _prShowNudgeBanner() {
+  if (document.getElementById('prNudgeBanner')) return;
+  var el = document.createElement('div');
+  el.className = 'pr-nudge';
+  el.id = 'prNudgeBanner';
+  el.innerHTML =
+    '<div class="pr-nudge-title">⭐ ما رأيك بتجربتك مع المنصة؟</div>' +
+    '<div class="pr-nudge-text">تقييمك السريع (نجوم + تعليق اختياري) يساعدنا على التحسين المستمر.</div>' +
+    '<div class="pr-nudge-actions">' +
+      '<button class="pr-nudge-primary" onclick="_prNudgeAccept()">قيّم الآن</button>' +
+      '<button class="pr-nudge-secondary" onclick="_prNudgeLater()">لاحقاً</button>' +
+      '<button class="pr-nudge-secondary" onclick="_prNudgeOptOut()">لا أرغب</button>' +
+    '</div>';
+  document.body.appendChild(el);
+}
+
+function _prNudgeAccept() {
+  var el = document.getElementById('prNudgeBanner'); if (el) el.remove();
+  openPlatformReviewModal();
+}
+function _prNudgeLater() {
+  var el = document.getElementById('prNudgeBanner'); if (el) el.remove();
+}
+function _prNudgeOptOut() {
+  var st = _prNudgeState();
+  st.optOut = true;
+  _prNudgeSave(st);
+  var el = document.getElementById('prNudgeBanner'); if (el) el.remove();
+}
+
 // ==================== SESSION MANAGEMENT ====================
 // ساعة عربية حيّة (12 ساعة): "3:07:45 م"
 function _liveClockStr() {
@@ -5092,6 +5275,9 @@ function bootApp() {
   //   متزامن) كي يستقرّ العرض قبل أول رسم فلا وميض. idempotent. يشمل قسم الإدارة
   //   وتبويبَي الغياب اللذين كانا يُضبطان متفرّقين هنا سابقاً. ──
   initSidebarByRole();
+
+  // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
+  try { _prMaybeNudge(); } catch (ePr) {}
 
   // تحميل عدّاد إشعارات الأخبار (الجرس)
   loadNewsNotifications();
@@ -7063,7 +7249,9 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   // لوحة تحكم)، بينما si-profile/si-help ظاهرتان له كبقية الأدوار.
   'si-dashboard':        { roles:null, accountant:false, supervisor:null },
   'si-profile':          { roles:null, accountant:true,  supervisor:null },
-  'si-help':             { roles:null, accountant:true,  supervisor:null }
+  'si-help':             { roles:null, accountant:true,  supervisor:null },
+  // زر عام يفتح مودالاً (لا showSection) — ظاهر للجميع بنفس منطق si-profile/si-help.
+  'si-platformReview':   { roles:null, accountant:true,  supervisor:null }
 };
 
 // دوال اشتقاق نقية (بلا حالة) — كل واحدة تبني عرضاً واحداً من المصدر الموحَّد أعلاه فقط.

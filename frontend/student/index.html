@@ -2090,10 +2090,37 @@ a { color: var(--pr); text-decoration: none; }
     --bg: #f8fafc; --bg-2: #f1f5f9; --card: #ffffff;
     --txt: #0f172a; --muted: #64748b; --soft: #94a3b8; --bdr: #e2e8f0; --bdr-2: #cbd5e1;
   }
-  .navbar, .tabs-bar, .refresh-btn, .news-filters, .modal-bg { display: none !important; }
+  .navbar, .tabs-bar, .refresh-btn, .news-filters, .modal-bg, .pr-fab, .pr-nudge { display: none !important; }
   body { background: #fff; }
   .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
 }
+/* ═══════════════════════════════════════════════
+   تقييمات المنصة — Phase 1
+═══════════════════════════════════════════════ */
+.field textarea { width: 100%; padding: 11px 14px; border: 1.5px solid var(--bdr); border-radius: var(--rad-s); background: var(--bg); color: var(--txt); font-family: inherit; font-size: 14px; min-height: 74px; resize: vertical; }
+.pr-stars { display: flex; gap: 6px; justify-content: center; margin: 4px 0 16px; direction: ltr; }
+.pr-star { font-size: 34px; line-height: 1; cursor: pointer; color: #d8dde4; transition: transform .12s ease, color .12s ease; user-select: none; }
+.pr-star.active { color: #f5a524; }
+.pr-fab {
+  position: fixed; bottom: 20px; left: 16px; z-index: 60;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--pr), var(--pr-d));
+  color: #fff; font-size: 24px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--sh-3); border: none; cursor: pointer;
+}
+.pr-nudge {
+  position: fixed; bottom: 20px; right: 16px; z-index: 60; max-width: 300px;
+  background: var(--card); border-radius: var(--rad); box-shadow: var(--sh-3);
+  padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  animation: slideUp .3s both;
+}
+.pr-nudge .pr-nudge-title { font-weight: 700; font-size: 13px; color: var(--pr-d); }
+.pr-nudge .pr-nudge-text { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.pr-nudge .pr-nudge-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-nudge .pr-nudge-actions button { flex: 1; border: none; border-radius: var(--rad-s); padding: 7px 8px; font-size: 12px; cursor: pointer; }
+.pr-nudge .pr-nudge-primary { background: var(--pr); color: #fff; }
+.pr-nudge .pr-nudge-secondary { background: var(--bg-2); color: var(--txt); }
 .skeleton {
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200% 100%;
@@ -2378,6 +2405,7 @@ a { color: var(--pr); text-decoration: none; }
           <div class="guide-item" onclick="goTabByName('notes')"><div class="ic">✉️</div><div class="lbl">ملاحظاتي</div></div>
           <div class="guide-item" onclick="goTabByName('reports')"><div class="ic">📈</div><div class="lbl">تقاريري</div></div>
           <div class="guide-item" onclick="goTabByName('attendance')"><div class="ic">📋</div><div class="lbl">الغياب</div></div>
+          <div class="guide-item" onclick="openPlatformReviewModal()"><div class="ic">⭐</div><div class="lbl">قيّم تجربتنا</div></div>
         </div>
       </div>
     </section>
@@ -2626,6 +2654,36 @@ a { color: var(--pr); text-decoration: none; }
   </div>
 </div>
 
+<!-- مودال تقييم المنصة (Phase 1) -->
+<div class="modal-bg" id="platformReviewModal">
+  <div class="modal">
+    <h3>⭐ قيّم تجربتك مع المنصة</h3>
+    <div class="pr-stars" id="prStars">
+      <span class="pr-star" data-val="5" onclick="_prSetRating(5)">★</span>
+      <span class="pr-star" data-val="4" onclick="_prSetRating(4)">★</span>
+      <span class="pr-star" data-val="3" onclick="_prSetRating(3)">★</span>
+      <span class="pr-star" data-val="2" onclick="_prSetRating(2)">★</span>
+      <span class="pr-star" data-val="1" onclick="_prSetRating(1)">★</span>
+    </div>
+    <div class="field">
+      <label>تعليقك (اختياري)</label>
+      <textarea id="prComment" maxlength="1000" placeholder="شاركنا رأيك — ما الذي أعجبك؟ وما الذي يمكننا تحسينه؟"></textarea>
+    </div>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--muted,#64748b);cursor:pointer;margin-top:4px;">
+      <input type="checkbox" id="prPublicConsent" style="margin-top:2px;">
+      <span>أوافق على استخدام تقييمي (بعد موافقة إدارة المدرسة) كشهادة تسويقية للمنصة على الموقع العام، دون عرض بيانات اتصالي.</span>
+    </label>
+    <div id="prSubmitMsg" style="margin-top:8px;font-size:12px;"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('platformReviewModal')">إلغاء</button>
+      <button class="btn-ok" id="prSubmitBtn" onclick="_prSubmit()">إرسال التقييم</button>
+    </div>
+  </div>
+</div>
+
+<!-- زر تقييم المنصة العائم -->
+<button type="button" class="pr-fab" id="prFab" onclick="openPlatformReviewModal()" title="قيّم تجربتك">⭐</button>
+
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <div class="close">✕</div>
@@ -2830,6 +2888,147 @@ function toast(msg, type) {
     t.style.transition = 'opacity .3s';
     setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
   }, 3500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ⭐ تقييمات المنصة (Phase 1) — التقديم + مطالبة ذكية
+// ═══════════════════════════════════════════════════════════
+var _prRating = 0;
+
+function openPlatformReviewModal() {
+  _prRating = 0;
+  var stars = $$('#prStars .pr-star');
+  for (var i = 0; i < stars.length; i++) stars[i].classList.remove('active');
+  var c = $('prComment'); if (c) c.value = '';
+  var k = $('prPublicConsent'); if (k) k.checked = false;
+  var m = $('prSubmitMsg'); if (m) m.innerHTML = '';
+  var btn = $('prSubmitBtn'); if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
+  openModal('platformReviewModal');
+}
+
+function _prSetRating(n) {
+  _prRating = n;
+  var stars = $$('#prStars .pr-star');
+  for (var i = 0; i < stars.length; i++) {
+    var v = parseInt(stars[i].getAttribute('data-val'), 10);
+    stars[i].classList.toggle('active', v <= n);
+  }
+}
+
+function _prSubmit() {
+  var msgEl = $('prSubmitMsg');
+  if (!_prRating) {
+    if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">يرجى اختيار عدد النجوم أولاً</span>';
+    return;
+  }
+  var btn = $('prSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإرسال...'; }
+  if (msgEl) msgEl.innerHTML = '';
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
+      if (r && r.ok) {
+        toast('⭐ ' + (r.message || 'شكراً لتقييمك!'), 's');
+        closeModal('platformReviewModal');
+        _prNudgeMarkSubmitted();
+      } else if (r && r.cooldown) {
+        if (msgEl) msgEl.innerHTML = '<span style="color:#b45309">' + esc(r.error || '') + '</span>';
+      } else {
+        if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">' + esc((r && r.error) || 'تعذّر إرسال التقييم') + '</span>';
+      }
+    })
+    .withFailureHandler(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
+      if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">تعذّر الاتصال بالخادم — حاول مرة أخرى</span>';
+    })
+    .submitPlatformReview({
+      schoolId: APP.user.schoolId,
+      studentId: APP.user.id,
+      studentName: APP.user.name,
+      rating: _prRating,
+      comment: ($('prComment') || {}).value || '',
+      publicConsent: !!($('prPublicConsent') || {}).checked
+    });
+}
+
+// ── مطالبة ذكية غير مزعجة (localStorage بحت، بلا نداء خادم) ──
+// تحذير معماري (student/CLAUDE.md بندي 7-8): المفتاح مُشتَق من studentId النشط
+// فعلياً — لا اسم عام ثابت — كي لا تُطبَّق حالة "رفض" لطالب صمتاً على أخيه بعد
+// تبديل الحساب على نفس الجهاز/المتصفح.
+var PR_NUDGE_FIRST_SEEN_DAYS_STU = 14;
+var PR_NUDGE_REPEAT_DAYS_STU     = 30;
+
+function _prNudgeKeyStu() {
+  var sid = (APP.user && APP.user.schoolId) || 'default';
+  var stid = (APP.user && APP.user.id) || 'anon';
+  return 'stflt_prnudge_' + sid + '_' + stid;
+}
+
+function _prNudgeStateStu() {
+  try {
+    var raw = localStorage.getItem(_prNudgeKeyStu());
+    return raw ? JSON.parse(raw) : { firstSeen: null, lastPrompted: null, submitted: false, optOut: false };
+  } catch (e) {
+    return { firstSeen: null, lastPrompted: null, submitted: false, optOut: false };
+  }
+}
+
+function _prNudgeSaveStu(state) {
+  try { localStorage.setItem(_prNudgeKeyStu(), JSON.stringify(state)); } catch (e) {}
+}
+
+function _prNudgeMarkSubmitted() {
+  var st = _prNudgeStateStu();
+  st.submitted = true;
+  _prNudgeSaveStu(st);
+  var el = $('prNudgeBanner');
+  if (el) el.remove();
+}
+
+function _prMaybeNudge() {
+  var st = _prNudgeStateStu();
+  var now = Date.now();
+  var DAY = 24 * 60 * 60 * 1000;
+
+  if (!st.firstSeen) { st.firstSeen = now; _prNudgeSaveStu(st); return; }
+  if (st.submitted || st.optOut) return;
+  if ((now - st.firstSeen) < PR_NUDGE_FIRST_SEEN_DAYS_STU * DAY) return;
+  if (st.lastPrompted && (now - st.lastPrompted) < PR_NUDGE_REPEAT_DAYS_STU * DAY) return;
+
+  st.lastPrompted = now;
+  _prNudgeSaveStu(st);
+  _prShowNudgeBannerStu();
+}
+
+function _prShowNudgeBannerStu() {
+  if ($('prNudgeBanner')) return;
+  var el = document.createElement('div');
+  el.className = 'pr-nudge';
+  el.id = 'prNudgeBanner';
+  el.innerHTML =
+    '<div class="pr-nudge-title">⭐ ما رأيك بتجربتك مع المنصة؟</div>' +
+    '<div class="pr-nudge-text">تقييمك السريع (نجوم + تعليق اختياري) يساعدنا على التحسين المستمر.</div>' +
+    '<div class="pr-nudge-actions">' +
+      '<button class="pr-nudge-primary" onclick="_prNudgeAcceptStu()">قيّم الآن</button>' +
+      '<button class="pr-nudge-secondary" onclick="_prNudgeLaterStu()">لاحقاً</button>' +
+      '<button class="pr-nudge-secondary" onclick="_prNudgeOptOutStu()">لا أرغب</button>' +
+    '</div>';
+  document.body.appendChild(el);
+}
+
+function _prNudgeAcceptStu() {
+  var el = $('prNudgeBanner'); if (el) el.remove();
+  openPlatformReviewModal();
+}
+function _prNudgeLaterStu() {
+  var el = $('prNudgeBanner'); if (el) el.remove();
+}
+function _prNudgeOptOutStu() {
+  var st = _prNudgeStateStu();
+  st.optOut = true;
+  _prNudgeSaveStu(st);
+  var el = $('prNudgeBanner'); if (el) el.remove();
 }
 
 function emptyHTML(ic, ttl, desc) {
@@ -3335,6 +3534,9 @@ function initApp() {
 
   // Enter في حقول كلمة المرور
   bindPwModalEnter();
+
+  // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
+  try { _prMaybeNudge(); } catch (ePr) {}
 
   // 🆕 تفعيل lazy loading الاحتياطي بعد تحميل التطبيق
   setTimeout(function() { initLazyImages(); }, 500);
