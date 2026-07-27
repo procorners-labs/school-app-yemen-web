@@ -1023,6 +1023,26 @@
         var m = new RegExp('[?&]' + name + '=([^&]+)').exec(location.search);
         return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
       }
+      // رابط مدرسة قصير (yemenschoolz.com/<slug>) — الـWorker يُعيد كتابة المسار داخلياً ليجلب
+      // نفس هذا الملف، لكن عنوان المتصفّح الفعلي (location.pathname) يبقى /<slug> كما طلبه
+      // الزائر؛ لا فائدة من ?school= بالـquery string هنا (لم يُصل أصلاً). قائمة الأسماء المحجوزة
+      // هنا هي المجموعة الوحيدة الممكن أن تصل فعلياً بـlocation.pathname لهذا الملف — مجموعة جزئية
+      // (لا مطابقة حرفية) من قائمة أوسع في worker/school-app-proxy.js (مستودع school-app-yemen-web،
+      // `_RESERVED_TOP_PATHS`)، لأن بقية أسمائها (qr-img/oauth/media/إلخ) تُعترَض هناك بمسارات Worker
+      // مبكرة قبل الوصول لهذا الملف إطلاقاً، وأسماء الملفات فيها (index.html/manifest.webmanifest)
+      // مستبعَدة أصلاً من مطابقة الـregex هنا (لا نقطة ضمن [a-z0-9-]). عند إضافة مسار Worker جديد
+      // بلا اعتراض مبكر، أضِفه هنا أيضاً.
+      function _pathSlug() {
+        var m = /^\/([a-z0-9-]+)\/?$/i.exec(location.pathname);
+        if (!m) return '';
+        var seg = m[1].toLowerCase();
+        var reserved = {
+          'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1,
+          'schedule': 1, 'master-admin': 1, 'pricing': 1, 'gas': 1,
+          'index.html': 1, 'newsarticle.html': 1
+        };
+        return reserved[seg] ? '' : seg;
+      }
       function callServer(fn, args, onOk, onErr) {
         try {
           google.script.run
@@ -1402,7 +1422,7 @@
         initScrollReveal();
         initFaqAccordion();
         loadPartners();
-        var deep = qparam('school') || qparam('schoolId');
+        var deep = qparam('school') || qparam('schoolId') || _pathSlug();
         var def = getDefault();
         var initial = deep || def;
         var newsParam = qparam('news');
