@@ -2194,6 +2194,37 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .pr-nudge .pr-nudge-actions button { flex:1; border:none; border-radius:8px; padding:8px 10px; font-size:12.5px; cursor:pointer; }
 .pr-nudge .pr-nudge-primary { background:#1149A3; color:#fff; }
 .pr-nudge .pr-nudge-secondary { background:#f1f3f5; color:#444; }
+
+/* لوحة إدارة تقييمات المنصة — Phase 2 */
+.pra-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+.pra-stat-card { background:#fff; border:2px solid transparent; border-radius:12px; padding:14px 16px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.06); transition:border-color .15s ease, transform .1s ease; }
+.pra-stat-card:hover { transform:translateY(-2px); }
+.pra-stat-card.active { border-color:#1149A3; }
+.pra-stat-card .pra-stat-num { font-size:1.6rem; font-weight:800; color:#0F2C5C; }
+.pra-stat-card .pra-stat-label { font-size:.78rem; color:#667; margin-top:4px; }
+.pra-filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-end; }
+.pra-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); overflow-x:auto; }
+.pra-table { width:100%; border-collapse:collapse; font-size:13.5px; }
+.pra-table th { text-align:right; padding:10px 12px; background:#f7f9fc; border-bottom:2px solid #e8eef7; white-space:nowrap; color:#334; }
+.pra-table td { padding:10px 12px; border-bottom:1px solid #f0f2f6; vertical-align:top; }
+.pra-submitter { display:flex; align-items:center; gap:8px; }
+.pra-submitter .pra-sub-avatar { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#1149A3,#3B6FD6); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; flex:none; }
+.pra-submitter .pra-sub-name { font-weight:700; color:#1a2440; }
+.pra-submitter .pra-sub-role { font-size:11px; color:#889; }
+.pra-stars-mini { color:#f5a524; letter-spacing:1px; direction:ltr; display:inline-block; }
+.pra-comment { max-width:280px; white-space:pre-wrap; word-break:break-word; color:#334; }
+.pra-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+.pra-badge.pending  { background:#fff4e0; color:#b26a00; }
+.pra-badge.approved { background:#e3f7ea; color:#1a7a3f; }
+.pra-badge.rejected { background:#fde8e8; color:#c62828; }
+.pra-badge.archived { background:#eceff3; color:#555; }
+.pra-row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.pra-row-actions button { border:none; border-radius:7px; padding:5px 9px; font-size:12px; cursor:pointer; white-space:nowrap; }
+.pra-act-approve { background:#e3f7ea; color:#1a7a3f; }
+.pra-act-reject  { background:#fde8e8; color:#c62828; }
+.pra-act-edit    { background:#eaf1ff; color:#1149A3; }
+.pra-act-archive { background:#eceff3; color:#555; }
+.pra-act-restore { background:#eaf1ff; color:#1149A3; }
   </style>
 </head>
 <body>
@@ -2244,6 +2275,48 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('platformReviewModal')">إلغاء</button>
       <button class="btn btn-primary" id="prSubmitBtn" onclick="_prSubmit()">إرسال التقييم</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال تعديل نص تقييم (لوحة إدارة المدير — Phase 2) -->
+<div class="modal-backdrop" id="prAdminEditModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>✏️ تعديل نص التقييم</span>
+      <button class="modal-close" onclick="closeModal('prAdminEditModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-3">
+        <label class="form-label">نص التعليق</label>
+        <textarea class="form-control" id="prAdminEditText" maxlength="1000"></textarea>
+      </div>
+      <div id="prAdminEditMsg" style="font-size:13px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('prAdminEditModal')">إلغاء</button>
+      <button class="btn btn-primary" id="prAdminEditSaveBtn" onclick="prAdmin_saveEdit()">💾 حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال رفض تقييم (سبب داخلي اختياري) -->
+<div class="modal-backdrop" id="prAdminRejectModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>❌ رفض التقييم</span>
+      <button class="modal-close" onclick="closeModal('prAdminRejectModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-3">
+        <label class="form-label">سبب الرفض (داخلي — لا يظهر للمُقيِّم أبداً، اختياري)</label>
+        <textarea class="form-control" id="prAdminRejectNote" maxlength="500"></textarea>
+      </div>
+      <div id="prAdminRejectMsg" style="font-size:13px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('prAdminRejectModal')">إلغاء</button>
+      <button class="btn btn-danger" id="prAdminRejectBtn" onclick="prAdmin_confirmReject()">❌ تأكيد الرفض</button>
     </div>
   </div>
 </div>
@@ -2483,6 +2556,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-myPortals"       onclick="showSection('myPortals')" style="display:none;"><span class="si-icon">🔗</span> منصاتي</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🔒</span> الحجب المالي</button>
+  <button class="sidebar-item" id="si-platformReviewsAdmin" onclick="showSection('platformReviewsAdmin')"> <span class="si-icon">⭐</span> تقييمات المنصة</button>
   <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
   <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
 </div>
@@ -4908,6 +4982,298 @@ function _prNudgeOptOut() {
   var el = document.getElementById('prNudgeBanner'); if (el) el.remove();
 }
 
+// ==================== لوحة إدارة تقييمات المنصة (Phase 2 — admin فقط) ====================
+var PRA = { reviews: [], stats: {}, filterStatus: 'الكل', filterType: 'الكل', search: '', editingId: '', rejectingId: '' };
+
+var PRA_STAT_CARDS = [
+  { key: 'الكل',               label: 'الكل' },
+  { key: 'بانتظار المراجعة',    label: 'بانتظار المراجعة' },
+  { key: 'معتمد',               label: 'معتمد' },
+  { key: 'مرفوض',               label: 'مرفوض' }
+];
+
+function renderPlatformReviewsAdmin() {
+  if (!App.user) { toast('بيانات المستخدم غير متوفرة', 'error'); showSection('dashboard'); return; }
+  if (!isFullAdmin()) {
+    toast('هذه الصفحة للمدير فقط', 'error');
+    showSection('dashboard');
+    return;
+  }
+
+  var el = document.getElementById('dynamicContent');
+  el.innerHTML =
+    '<div class="section-card">' +
+      '<div class="section-header">' +
+        '<div class="section-header-icon" style="background:rgba(245,158,11,.12)">⭐</div>' +
+        '<div class="section-header-title">تقييمات المنصة</div>' +
+        '<span class="badge badge-warning">للمدير فقط</span>' +
+      '</div>' +
+      '<div class="section-body">' +
+        '<div class="pra-stats" id="praStats"></div>' +
+        '<div class="pra-filters">' +
+          '<div class="form-group" style="min-width:170px;">' +
+            '<label class="form-label">الحالة</label>' +
+            '<select class="form-select" id="praFilterStatus" onchange="prAdmin_onFilterChange()">' +
+              '<option value="الكل">الكل (عدا المؤرشف)</option>' +
+              '<option value="بانتظار المراجعة">بانتظار المراجعة</option>' +
+              '<option value="معتمد">معتمد</option>' +
+              '<option value="مرفوض">مرفوض</option>' +
+              '<option value="مؤرشف">مؤرشف</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-group" style="min-width:150px;">' +
+            '<label class="form-label">نوع المُقدِّم</label>' +
+            '<select class="form-select" id="praFilterType" onchange="prAdmin_onFilterChange()">' +
+              '<option value="الكل">الكل</option>' +
+              '<option value="معلم">معلم</option>' +
+              '<option value="ولي أمر">ولي أمر</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-group" style="flex:1;min-width:180px;">' +
+            '<label class="form-label">بحث (الاسم أو التعليق)</label>' +
+            '<input type="text" class="form-control" id="praSearch" placeholder="ابحث..." oninput="prAdmin_onFilterChange()">' +
+          '</div>' +
+          '<button class="btn btn-secondary" onclick="prAdmin_load()" style="height:38px;">🔄 تحديث</button>' +
+        '</div>' +
+        '<div class="pra-table-wrap"><div id="praTableBody" style="padding:20px;text-align:center;color:#889;">جارٍ التحميل...</div></div>' +
+      '</div>' +
+    '</div>';
+
+  prAdmin_load();
+}
+
+function prAdmin_load() {
+  callServer('getPlatformReviewsProtected', {}, function (r) {
+    if (!r || !r.success) {
+      var wrap = document.getElementById('praTableBody');
+      if (wrap) wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#c62828;">' + escapeHtml((r && r.error) || 'تعذّر تحميل التقييمات') + '</div>';
+      return;
+    }
+    PRA.reviews = r.reviews || [];
+    PRA.stats = r.stats || {};
+    prAdmin_renderStats();
+    prAdmin_renderTable();
+  }, function (e) {
+    var wrap = document.getElementById('praTableBody');
+    if (wrap) wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#c62828;">تعذّر الاتصال بالخادم</div>';
+  });
+}
+
+function prAdmin_renderStats() {
+  var box = document.getElementById('praStats');
+  if (!box) return;
+  var s = PRA.stats || {};
+  var counts = {
+    'الكل': (s.pending || 0) + (s.approved || 0) + (s.rejected || 0),
+    'بانتظار المراجعة': s.pending || 0,
+    'معتمد': s.approved || 0,
+    'مرفوض': s.rejected || 0
+  };
+  var html = '';
+  for (var i = 0; i < PRA_STAT_CARDS.length; i++) {
+    var c = PRA_STAT_CARDS[i];
+    var active = (PRA.filterStatus === c.key) ? ' active' : '';
+    html += '<div class="pra-stat-card' + active + '" onclick="prAdmin_setStatusFilter(' + escapeHtml(JSON.stringify(c.key)) + ')">' +
+      '<div class="pra-stat-num">' + counts[c.key] + '</div>' +
+      '<div class="pra-stat-label">' + escapeHtml(c.label) + '</div>' +
+    '</div>';
+  }
+  html += '<div class="pra-stat-card" style="cursor:default;">' +
+    '<div class="pra-stat-num">' + (s.avgRating || 0) + ' ⭐</div>' +
+    '<div class="pra-stat-label">متوسط النجوم</div>' +
+  '</div>';
+  box.innerHTML = html;
+}
+
+function prAdmin_setStatusFilter(status) {
+  PRA.filterStatus = status;
+  var sel = document.getElementById('praFilterStatus');
+  if (sel) sel.value = (status === 'الكل') ? 'الكل' : status;
+  prAdmin_renderStats();
+  prAdmin_renderTable();
+}
+
+function prAdmin_onFilterChange() {
+  var selStatus = document.getElementById('praFilterStatus');
+  var selType   = document.getElementById('praFilterType');
+  var searchEl  = document.getElementById('praSearch');
+  PRA.filterStatus = selStatus ? selStatus.value : 'الكل';
+  PRA.filterType   = selType ? selType.value : 'الكل';
+  PRA.search       = (searchEl ? searchEl.value : '').trim().toLowerCase();
+  prAdmin_renderStats();
+  prAdmin_renderTable();
+}
+
+function _prStarsHtml(n) {
+  n = parseInt(n, 10) || 0;
+  var out = '';
+  for (var i = 0; i < 5; i++) out += (i < n) ? '★' : '☆';
+  return out;
+}
+
+function _prStatusBadgeHtml(status) {
+  var map = {
+    'بانتظار المراجعة': ['pending', 'بانتظار المراجعة'],
+    'معتمد': ['approved', 'معتمد'],
+    'مرفوض': ['rejected', 'مرفوض'],
+    'مؤرشف': ['archived', 'مؤرشف']
+  };
+  var m = map[status] || ['pending', status];
+  return '<span class="pra-badge ' + m[0] + '">' + escapeHtml(m[1]) + '</span>';
+}
+
+function prAdmin_renderTable() {
+  var wrap = document.getElementById('praTableBody');
+  if (!wrap) return;
+
+  var list = PRA.reviews.slice();
+  if (PRA.filterStatus === 'الكل') {
+    list = list.filter(function (r) { return r.status !== 'مؤرشف'; });
+  } else {
+    list = list.filter(function (r) { return r.status === PRA.filterStatus; });
+  }
+  if (PRA.filterType !== 'الكل') {
+    list = list.filter(function (r) { return r.submitterType === PRA.filterType; });
+  }
+  if (PRA.search) {
+    list = list.filter(function (r) {
+      return (r.submitterName || '').toLowerCase().indexOf(PRA.search) !== -1 ||
+             (r.comment || '').toLowerCase().indexOf(PRA.search) !== -1;
+    });
+  }
+
+  if (!list.length) {
+    wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#889;">لا توجد تقييمات مطابقة</div>';
+    return;
+  }
+
+  var html = '<table class="pra-table"><thead><tr>' +
+    '<th>المُقيِّم</th><th>النجوم</th><th>التعليق</th><th>التاريخ</th><th>الحالة</th><th>الإجراءات</th>' +
+    '</tr></thead><tbody>';
+
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    var isTeacher = (r.submitterType === 'معلم');
+    var avatarIcon = isTeacher ? '👨‍🏫' : '👨‍👩‍👧';
+    var roleLabel = isTeacher ? 'معلم' : 'ولي أمر';
+    var idJson = escapeHtml(JSON.stringify(r.id)); // ✅ يمنع تعطّل onclick — راجع مراجعة gas-reviewer
+
+    html += '<tr>' +
+      '<td><div class="pra-submitter">' +
+        '<div class="pra-sub-avatar">' + avatarIcon + '</div>' +
+        '<div><div class="pra-sub-name">' + escapeHtml(r.submitterName || '—') + '</div>' +
+        '<div class="pra-sub-role">' + escapeHtml(roleLabel) + (r.publicConsent ? ' · 📢 وافق على النشر' : '') + '</div></div>' +
+      '</div></td>' +
+      '<td><span class="pra-stars-mini">' + _prStarsHtml(r.rating) + '</span></td>' +
+      '<td><div class="pra-comment">' + (r.comment ? escapeHtml(r.comment) : '<span style="color:#aab">بلا تعليق</span>') + '</div></td>' +
+      '<td>' + escapeHtml((r.submittedDate || '').split(' ')[0]) + '</td>' +
+      '<td>' + _prStatusBadgeHtml(r.status) + '</td>' +
+      '<td><div class="pra-row-actions">';
+
+    if (r.status === 'بانتظار المراجعة') {
+      html += '<button class="pra-act-approve" onclick="prAdmin_approve(' + idJson + ')">✅ اعتماد</button>' +
+              '<button class="pra-act-reject" onclick="prAdmin_openReject(' + idJson + ')">❌ رفض</button>' +
+              '<button class="pra-act-edit" onclick="prAdmin_openEdit(' + idJson + ')">✏️ تعديل</button>' +
+              '<button class="pra-act-archive" onclick="prAdmin_archive(' + idJson + ')">🗄️ أرشفة</button>';
+    } else if (r.status === 'معتمد' || r.status === 'مرفوض') {
+      html += '<button class="pra-act-edit" onclick="prAdmin_openEdit(' + idJson + ')">✏️ تعديل</button>' +
+              '<button class="pra-act-archive" onclick="prAdmin_archive(' + idJson + ')">🗄️ أرشفة</button>';
+    } else { // مؤرشف
+      html += '<button class="pra-act-restore" onclick="prAdmin_restore(' + idJson + ')">↩️ استعادة</button>';
+    }
+
+    html += '</div></td></tr>';
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function _prFindReviewLocal(id) {
+  for (var i = 0; i < PRA.reviews.length; i++) {
+    if (PRA.reviews[i].id === id) return PRA.reviews[i];
+  }
+  return null;
+}
+
+function prAdmin_approve(id) {
+  callServer('setPlatformReviewStatusProtected', { reviewId: id, newStatus: 'معتمد' }, function (r) {
+    if (r && r.success) { toast('✅ تم اعتماد التقييم', 'success'); prAdmin_load(); }
+    else toast((r && r.error) || 'تعذّر الاعتماد', 'error');
+  }, function (e) { toast('تعذّر الاتصال بالخادم', 'error'); });
+}
+
+function prAdmin_archive(id) {
+  if (!confirm('أرشفة هذا التقييم؟ يمكن استعادته لاحقاً من فلتر "مؤرشف".')) return;
+  callServer('setPlatformReviewStatusProtected', { reviewId: id, newStatus: 'مؤرشف' }, function (r) {
+    if (r && r.success) { toast('🗄️ تم الأرشفة', 'success'); prAdmin_load(); }
+    else toast((r && r.error) || 'تعذّرت الأرشفة', 'error');
+  }, function (e) { toast('تعذّر الاتصال بالخادم', 'error'); });
+}
+
+function prAdmin_restore(id) {
+  callServer('setPlatformReviewStatusProtected', { reviewId: id, newStatus: 'بانتظار المراجعة' }, function (r) {
+    if (r && r.success) { toast('↩️ تم الاستعادة', 'success'); prAdmin_load(); }
+    else toast((r && r.error) || 'تعذّرت الاستعادة', 'error');
+  }, function (e) { toast('تعذّر الاتصال بالخادم', 'error'); });
+}
+
+function prAdmin_openReject(id) {
+  PRA.rejectingId = id;
+  var noteEl = document.getElementById('prAdminRejectNote'); if (noteEl) noteEl.value = '';
+  var msgEl = document.getElementById('prAdminRejectMsg'); if (msgEl) msgEl.innerHTML = '';
+  openModal('prAdminRejectModal');
+}
+
+function prAdmin_confirmReject() {
+  var btn = document.getElementById('prAdminRejectBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
+  var note = (document.getElementById('prAdminRejectNote') || {}).value || '';
+  callServer('setPlatformReviewStatusProtected', { reviewId: PRA.rejectingId, newStatus: 'مرفوض', internalNote: note }, function (r) {
+    if (btn) { btn.disabled = false; btn.textContent = '❌ تأكيد الرفض'; }
+    if (r && r.success) {
+      toast('❌ تم رفض التقييم', 'success');
+      closeModal('prAdminRejectModal');
+      prAdmin_load();
+    } else {
+      var msgEl = document.getElementById('prAdminRejectMsg');
+      if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">' + escapeHtml((r && r.error) || 'تعذّر الرفض') + '</span>';
+    }
+  }, function (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '❌ تأكيد الرفض'; }
+    var msgEl = document.getElementById('prAdminRejectMsg');
+    if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">تعذّر الاتصال بالخادم</span>';
+  });
+}
+
+function prAdmin_openEdit(id) {
+  var review = _prFindReviewLocal(id);
+  PRA.editingId = id;
+  var textEl = document.getElementById('prAdminEditText'); if (textEl) textEl.value = review ? (review.comment || '') : '';
+  var msgEl = document.getElementById('prAdminEditMsg'); if (msgEl) msgEl.innerHTML = '';
+  openModal('prAdminEditModal');
+}
+
+function prAdmin_saveEdit() {
+  var btn = document.getElementById('prAdminEditSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
+  var newComment = (document.getElementById('prAdminEditText') || {}).value || '';
+  callServer('updatePlatformReviewTextProtected', { reviewId: PRA.editingId, newComment: newComment }, function (r) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 حفظ'; }
+    if (r && r.success) {
+      toast('✅ تم حفظ التعديل', 'success');
+      closeModal('prAdminEditModal');
+      prAdmin_load();
+    } else {
+      var msgEl = document.getElementById('prAdminEditMsg');
+      if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">' + escapeHtml((r && r.error) || 'تعذّر الحفظ') + '</span>';
+    }
+  }, function (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 حفظ'; }
+    var msgEl = document.getElementById('prAdminEditMsg');
+    if (msgEl) msgEl.innerHTML = '<span style="color:#d32f2f">تعذّر الاتصال بالخادم</span>';
+  });
+}
+
 // ==================== SESSION MANAGEMENT ====================
 // ساعة عربية حيّة (12 ساعة): "3:07:45 م"
 function _liveClockStr() {
@@ -7135,7 +7501,8 @@ function showSection(name, opt) {
       examctrl: renderExamControl,
       profile: renderProfile,
       letterheads: renderLetterheads,
-      help: renderHelp
+      help: renderHelp,
+      platformReviewsAdmin: renderPlatformReviewsAdmin
     };
 
     var fn = renders[name];
@@ -7251,6 +7618,8 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-schoolTemplate':   { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schoolBrand':      { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-myPortals':        { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  // admin فقط حصراً (لا deputy) — بطلب صريح من المالك، صفحة إدارية بحتة لتقييمات المنصة.
+  'si-platformReviewsAdmin': { roles:['admin'],                                   accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   // غير مقيَّدة بالجدول إطلاقاً (roles:null) — ظاهرة للجميع دوماً؛ مذكورة هنا فقط لتوثيق حالة
   // المحاسب الخاصة بها (allowlist منفصل): si-dashboard مخفية عمداً عن المحاسب (عرض مركّز بلا
   // لوحة تحكم)، بينما si-profile/si-help ظاهرتان له كبقية الأدوار.
