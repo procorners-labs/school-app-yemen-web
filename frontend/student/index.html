@@ -4257,6 +4257,77 @@ function renderGradesWithRefresh(r) {
   }
 }
 // ═══════════════════════════════════════════════════════════
+// اختيار "الشهر الدراسي الحالي" افتراضياً — مبني على مدى تواريخ شيت
+// الكنترول (r.monthRanges من getGrades)، لا على new Date() مباشرة ولا
+// أي تقويم هجري فلكي (لا وجود له في المستودع). عند غياب/عدم كفاية
+// البيانات: تراجع كامل للسلوك القديم (آخر شهر فيه درجات) — صفر انحدار
+// لأي مدرسة لم تُدخِل جدول اختبارات بعد.
+// ═══════════════════════════════════════════════════════════
+
+// نفس ترتيب GS_ORDERED_MONTHS (student/GradeSchema.js) — مكرَّرة هنا عمداً
+// لأنها ثابت عميلي بحت (لا مشاركة كود بين الخادم والمتصفح)، بنفس نمط
+// monthOrder المكرَّر أصلاً في StudentLogic.js لغرض مشابه.
+var GRADES_MONTH_ORDER = ['محرم', 'صفر', 'نصف العام', 'جماد اول', 'جماد ثاني', 'نهاية العام'];
+
+// السلوك القديم بلا أي تغيير — خط الدفاع الأخير عند غياب/عدم تطابق monthRanges.
+function _gradesFallbackDefaultIdx(months) {
+  var defaultIdx = 0;
+  for (var k = months.length - 1; k >= 0; k--) {
+    var subs = months[k].subjects || [];
+    for (var s = 0; s < subs.length; s++) {
+      if (subs[s].hasGrades) { defaultIdx = k; break; }
+    }
+    if (defaultIdx === k) break;
+  }
+  return defaultIdx;
+}
+
+// يحسب اسم "الشهر الدراسي الحالي" تقريبياً بمقارنة todayStr بمدى كل شهر
+// في monthRanges (بالترتيب الدراسي). يُعيد null إن تعذّر الحساب بثقة
+// (لا بيانات إطلاقاً، أو اليوم قبل أول مدى، أو بعد آخر مدى) فيتراجع
+// المستدعي فوراً لـ_gradesFallbackDefaultIdx.
+//
+// خوارزمية مرحلتين: (أ) مطابقة مباشرة — هل اليوم داخل مدى أي شهر متتبَّع فعلاً؟
+// (ب) وإلا: أعلى فهرس شهر متتبَّع انتهى مداه فعلاً قبل اليوم (لا أول شهر فارغ يُصادَف —
+// هذا يسمح بتخطّي فجوات وسطى بلا بيانات، مثل "نصف العام" بلا مدى مُدخَل، بدل التوقّف
+// عندها خطأً لو كان هناك شهر لاحق أيضاً منتهٍ فعلاً)، والحالي هو الشهر الذي يليه مباشرة.
+function _gradesComputeCurrentMonthName(monthRanges, todayStr) {
+  for (var i = 0; i < GRADES_MONTH_ORDER.length; i++) {
+    var range = monthRanges[GRADES_MONTH_ORDER[i]];
+    if (range && range.min && range.max && todayStr >= range.min && todayStr <= range.max) {
+      return GRADES_MONTH_ORDER[i];
+    }
+  }
+
+  var lastEndedIdx = -1;
+  for (var j = 0; j < GRADES_MONTH_ORDER.length; j++) {
+    var r2 = monthRanges[GRADES_MONTH_ORDER[j]];
+    if (r2 && r2.max && todayStr > r2.max) lastEndedIdx = j;
+  }
+  if (lastEndedIdx === -1) return null;                              // لم ينتهِ أي شهر متتبَّع بعد
+  if (lastEndedIdx === GRADES_MONTH_ORDER.length - 1) return null;    // آخر شهر انتهى فعلاً (نهاية السنة)
+  return GRADES_MONTH_ORDER[lastEndedIdx + 1];                        // الشهر التالي مباشرة، ولو فارغاً
+}
+
+function _gradesPickDefaultIdx(r, months) {
+  var monthRanges = r && r.monthRanges;
+  if (monthRanges) {
+    var hasAnyRange = false;
+    for (var key in monthRanges) { if (monthRanges.hasOwnProperty(key)) { hasAnyRange = true; break; } }
+
+    if (hasAnyRange) {
+      var currentLabel = _gradesComputeCurrentMonthName(monthRanges, _examTodayYmd());
+      if (currentLabel) {
+        for (var i = 0; i < months.length; i++) {
+          if (months[i].name === currentLabel) return i;
+        }
+      }
+    }
+  }
+  return _gradesFallbackDefaultIdx(months);  // لا بيانات كنترول / لا تطابق → السلوك القديم بلا تغيير
+}
+
+// ═══════════════════════════════════════════════════════════
 // renderGrades — الدالة الأساسية المفقودة (إصلاح ReferenceError)
 // تبني تبويبات الأشهر + المنطقة الفارغة للجدول التي يملؤها renderMonth
 // ═══════════════════════════════════════════════════════════
@@ -4315,15 +4386,9 @@ function renderGrades(r) {
 
   w.innerHTML = html;
 
-  // عرض أول شهر تلقائياً (يفضّل آخر شهر فيه بيانات)
-  var defaultIdx = 0;
-  for (var k = months.length - 1; k >= 0; k--) {
-    var subs = months[k].subjects || [];
-    for (var s = 0; s < subs.length; s++) {
-      if (subs[s].hasGrades) { defaultIdx = k; break; }
-    }
-    if (defaultIdx === k) break;
-  }
+  // عرض الشهر الدراسي الحالي تلقائياً (تقريبياً، من شيت الكنترول)، مع تراجع
+  // كامل لآخر شهر فيه بيانات عند غياب/عدم تطابق بيانات الكنترول.
+  var defaultIdx = _gradesPickDefaultIdx(r, months);
   renderMonth(defaultIdx);
 }
 // استبدل دالة renderMonth الموجودة بهذه النسخة المُصلحة
