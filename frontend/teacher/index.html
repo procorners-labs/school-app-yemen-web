@@ -14543,45 +14543,62 @@ function shareNews(newsId) {
   var HOME_BASE = (!schoolId || schoolId === OWNER_SCHOOL_ID)
     ? 'https://yemenschoolz.com/home/index.html'
     : 'https://yemenschoolz.com/';
-  var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) +
-            (schoolId ? '&school=' + encodeURIComponent(schoolId) : '');
-  var body  = item ? String(item.news || '') : '';
-  var owner = item ? String(item.teacher || '') : '';
-  var title = 'خبر من ' + (owner || 'المدرسة');
-  // النص كاملاً بلا بتر — التطبيقات المستقبلة تتعامل مع النص الطويل بنفسها
-  var text = body + (owner ? '\n— ' + owner : '') + '\n' + url;
-  function _afterShare() {
-    try { callServer('recordNewsShareProtected', { newsId: newsId }, function(){}, function(){}); } catch (e) {}
+
+  // توكن معاينة رابط المشاركة (OG) — يسمح لصفحة home بالتحقّق من الخبر حتى لو كان موجَّهاً لصفّ
+  // محدَّد عند بناء بطاقة المعاينة (راجع home/CLAUDE.md بند 4). فشل جلبه (شبكة/جلسة) لا يمنع
+  // المشاركة إطلاقاً — الرابط يعمل دوماً، فقط بلا صورة معاينة غنية لذلك الخبر تحديداً في تلك الحالة.
+  function _buildUrlAndContinue(shareToken) {
+    var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) +
+              (schoolId ? '&school=' + encodeURIComponent(schoolId) : '') +
+              (shareToken ? '&t=' + encodeURIComponent(shareToken) : '');
+    var body  = item ? String(item.news || '') : '';
+    var owner = item ? String(item.teacher || '') : '';
+    var title = 'خبر من ' + (owner || 'المدرسة');
+    // النص كاملاً بلا بتر — التطبيقات المستقبلة تتعامل مع النص الطويل بنفسها
+    var text = body + (owner ? '\n— ' + owner : '') + '\n' + url;
+    function _afterShare() {
+      try { callServer('recordNewsShareProtected', { newsId: newsId }, function(){}, function(){}); } catch (e) {}
+    }
+
+    // مشاركة الوسائط نفسها كملفات (صور/فيديو/PDF) — لا الرابط. النصّي يُحوَّل لصور غلاف مولّدة.
+    var fileText = body + (owner ? '\n— ' + owner : '');   // نصّ المرافق للملفات (بلا رابط)
+    var canFiles = !!(navigator.share && typeof fetch === 'function' && typeof File === 'function');
+    if (!canFiles) {
+      // WebView بلا navigator.share ⇒ قائمة مشاركة (نص + رابط)
+      _shareSheet(title, text, url, _afterShare);
+      return;
+    }
+    var mediaUrls = item ? _newsParseMedia(item.attachments) : [];
+    if (!mediaUrls.length) {
+      // خبر نصّي: ولّد شرائح الغلاف المصمّم (كاروسيل مرتّب) وشاركها كملفات
+      _tcTextCoverBlob(item, function (blobs) {
+        if (blobs && blobs.length) {
+          var files = [];
+          for (var fi = 0; fi < blobs.length; fi++) {
+            files.push(new File([blobs[fi]], 'news-' + newsId + '-' + (fi + 1) + '.png', { type: 'image/png' }));
+          }
+          _shareFilesOrFallback(files, title, fileText, text, url, _afterShare);
+        } else {
+          _shareTextOnly(title, text, url, _afterShare);
+        }
+      });
+      return;
+    }
+    _collectShareFiles(mediaUrls, function (files) {
+      if (files.length) _shareFilesOrFallback(files, title, fileText, text, url, _afterShare);
+      else _shareTextOnly(title, text, url, _afterShare);   // تعذّر الجلب (CORS/حجم) ⇒ نصّ+رابط
+    });
   }
 
-  // مشاركة الوسائط نفسها كملفات (صور/فيديو/PDF) — لا الرابط. النصّي يُحوَّل لصور غلاف مولّدة.
-  var fileText = body + (owner ? '\n— ' + owner : '');   // نصّ المرافق للملفات (بلا رابط)
-  var canFiles = !!(navigator.share && typeof fetch === 'function' && typeof File === 'function');
-  if (!canFiles) {
-    // WebView بلا navigator.share ⇒ قائمة مشاركة (نص + رابط)
-    _shareSheet(title, text, url, _afterShare);
-    return;
-  }
-  var mediaUrls = item ? _newsParseMedia(item.attachments) : [];
-  if (!mediaUrls.length) {
-    // خبر نصّي: ولّد شرائح الغلاف المصمّم (كاروسيل مرتّب) وشاركها كملفات
-    _tcTextCoverBlob(item, function (blobs) {
-      if (blobs && blobs.length) {
-        var files = [];
-        for (var fi = 0; fi < blobs.length; fi++) {
-          files.push(new File([blobs[fi]], 'news-' + newsId + '-' + (fi + 1) + '.png', { type: 'image/png' }));
-        }
-        _shareFilesOrFallback(files, title, fileText, text, url, _afterShare);
-      } else {
-        _shareTextOnly(title, text, url, _afterShare);
-      }
+  try {
+    callServer('getNewsShareTokenProtected', { newsId: newsId }, function (r) {
+      _buildUrlAndContinue((r && r.success && r.shareToken) ? r.shareToken : '');
+    }, function () {
+      _buildUrlAndContinue('');
     });
-    return;
+  } catch (e) {
+    _buildUrlAndContinue('');
   }
-  _collectShareFiles(mediaUrls, function (files) {
-    if (files.length) _shareFilesOrFallback(files, title, fileText, text, url, _afterShare);
-    else _shareTextOnly(title, text, url, _afterShare);   // تعذّر الجلب (CORS/حجم) ⇒ نصّ+رابط
-  });
 }
 
 // مشاركة ملفات عبر Web Share Level 2 مع سلسلة تراجع كاملة
