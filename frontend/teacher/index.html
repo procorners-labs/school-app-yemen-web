@@ -4055,6 +4055,10 @@ function _startHeartbeat() {
     if (document.visibilityState !== 'visible') return;
     if (!App.user || !App.user.token) return;
     callServer('teacherHeartbeatProtected', {}, function(){}, function(){});
+    // إشعار فوري (لا ينتظر إعادة تحميل الصفحة) — يستفيد من نفس نبضة الـheartbeat القائمة
+    // بدل مؤقّت جديد منفصل (تفادي زيادة عدد النداءات المتزامنة على حصّة الـ30 تنفيذاً، راجع
+    // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
+    try { loadNotifCountsBundle(); } catch (e) {}
   }
   setInterval(beat, 3 * 60 * 1000);
   document.addEventListener('visibilitychange', function() {
@@ -6973,6 +6977,39 @@ function loadNotesNotifications() {
   } catch (e) { /* تجاهل */ }
 }
 
+// تنبيه داخل التطبيق (toast + صوت) عند نشر خبر جديد فعلياً — لا عند أول تحميل (baseline فقط)
+// ولا يتكرّر لنفس الخبر عبر كل نبضة heartbeat (مفتاح lastToasted منفصل عن lastSeen الذي لا
+// يتحدّث إلا بفتح تبويب الأخبار فعلياً).
+function _tcNotifyNewNews(item) {
+  try {
+    var snippet = item && item.news ? String(item.news).replace(/\s+/g, ' ').trim() : '';
+    if (snippet.length > 60) snippet = snippet.substring(0, 57) + '…';
+    var who = item && item.teacher ? (' — ' + escapeHtml(item.teacher)) : '';
+    var msg = '📢 خبر جديد' + (snippet ? ': ' + escapeHtml(snippet) : '') + who;
+    toast(msg, 'info', 7000);
+  } catch (e) {}
+  _tcPlayNotifSound();
+}
+// نغمة تنبيه قصيرة عبر Web Audio API (بلا ملف صوتي خارجي) — محاطة بـtry/catch لأن سياسات
+// تشغيل الصوت التلقائي بالمتصفح قد تمنعها قبل أول تفاعل حقيقي من المستخدم مع الصفحة (قيد
+// متصفّح معروف، لا خلل قابل للإصلاح برمجياً).
+function _tcPlayNotifSound() {
+  try {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!window._tcAudioCtx) window._tcAudioCtx = new Ctx();
+    var ctx = window._tcAudioCtx;
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); g.connect(ctx.destination);
+    var now = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    o.start(now); o.stop(now + 0.4);
+  } catch (e) {}
+}
+
 // يجمع الثلاثة أعلاه (أخبار+تعاميم+ملاحظات) في نداء خادمي واحد (getNotifCountsBundle) بدل ثلاثة
 // نداءات منفصلة عند الإقلاع — تقليل *عدد* التنفيذات المتزامنة الفعلي، لا تفريقها زمنياً فقط.
 // loadNewsNotifications/loadCircularsNotifications/loadNotesNotifications تبقى بلا حذف
@@ -6995,6 +7032,20 @@ function loadNotifCountsBundle() {
           var lastSeenNews = parseInt(storedNews, 10) || 0;
           var unreadNews = total - lastSeenNews;
           window._bellNews = unreadNews < 0 ? 0 : unreadNews;
+        }
+        // تنبيه حيّ (toast+صوت) — مقارنة بمفتاح توست منفصل عن lastSeen كي لا يتكرّر لنفس
+        // الخبر عبر كل نبضة heartbeat (كل 3 دقائق) طالما المستخدم لم يفتح تبويب الأخبار بعد.
+        var storedToasted = null;
+        try { storedToasted = localStorage.getItem('teacher_lastToastedNewsTotal'); } catch (e) {}
+        if (storedToasted === null) {
+          try { localStorage.setItem('teacher_lastToastedNewsTotal', String(total)); } catch (e) {}
+        } else {
+          var lastToasted = parseInt(storedToasted, 10) || 0;
+          if (total > lastToasted) {
+            var _latestItem = (rNews.news && rNews.news.length) ? rNews.news[0] : null;
+            _tcNotifyNewNews(_latestItem);
+            try { localStorage.setItem('teacher_lastToastedNewsTotal', String(total)); } catch (e) {}
+          }
         }
       }
       var rCirc = bundle.circulars;
@@ -15379,9 +15430,11 @@ function shareNews(newsId) {
   var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
   var schoolId = (typeof App !== 'undefined' && App.user && App.user.schoolId) ? App.user.schoolId : '';
   // schoolId فارغ = رابط بلا معرّف مدرسة، يسقط على مدرسة المالك افتراضياً (نفس اصطلاح _setActiveTenant) — يُعامَل معاملة مدرسة المالك.
+  // صفحة مقال مخصّصة خفيفة (NewsArticle.html) بدل الصفحة الرئيسية — تعرض الخبر المحدَّد فعلياً
+  // (بما فيه الموجَّه لصفّ محدَّد، عبر التوكن) بدل الاكتفاء بتمييزه إن ظهر ضمن أعلى 6 أخبار عامة.
   var HOME_BASE = (!schoolId || schoolId === OWNER_SCHOOL_ID)
-    ? 'https://yemenschoolz.com/home/index.html'
-    : 'https://yemenschoolz.com/';
+    ? 'https://yemenschoolz.com/home/newsarticle.html'
+    : 'https://yemenschoolz.com/home-all-school/newsarticle.html';
 
   // توكن معاينة رابط المشاركة (OG) — يسمح لصفحة home بالتحقّق من الخبر حتى لو كان موجَّهاً لصفّ
   // محدَّد عند بناء بطاقة المعاينة (راجع home/CLAUDE.md بند 4). فشل جلبه (شبكة/جلسة) لا يمنع

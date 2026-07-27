@@ -7395,6 +7395,7 @@ function loadNotificationBadges() {
       setBadge('badge-violations', b.violations);
       setBadge('badge-notes', b.notes);
       setBadge('badge-homework', b.homework);
+      _stuMaybeNotifyNews(b.news);
     })
     .withFailureHandler(function () { _badgeInFlight = false; /* صامت */ })
     .getStudentNotificationBadge(
@@ -7413,6 +7414,45 @@ function setBadge(id, count) {
   } else {
     el.classList.remove('show');
   }
+}
+
+// تنبيه حيّ (toast + صوت) عند نشر خبر جديد فعلياً — يستفيد من نفس استطلاع البادج القائم
+// (loadNotificationBadges، كل 90 ثانية) بدل مؤقّت جديد منفصل. يقارن بمفتاح توست مستقل محفوظ
+// محلياً كي لا يتكرّر التنبيه لنفس الخبر عند كل استطلاع طالما لم يزد عدد "badge-news".
+function _stuMaybeNotifyNews(newsCount) {
+  try {
+    var n = parseInt(newsCount, 10) || 0;
+    var stored = null;
+    try { stored = localStorage.getItem('student_lastToastedNewsCount'); } catch (e) {}
+    if (stored === null) {
+      try { localStorage.setItem('student_lastToastedNewsCount', String(n)); } catch (e) {}
+      return; // أول تشغيل: لا تنبيه لأخبار متراكمة سابقاً
+    }
+    var lastToasted = parseInt(stored, 10) || 0;
+    if (n > lastToasted) {
+      toast('📢 لديك خبر جديد من المدرسة', 'info');
+      _stuPlayNotifSound();
+      try { localStorage.setItem('student_lastToastedNewsCount', String(n)); } catch (e) {}
+    }
+  } catch (e) {}
+}
+// نغمة تنبيه قصيرة عبر Web Audio API (بلا ملف صوتي خارجي) — محاطة بـtry/catch لأن سياسات
+// تشغيل الصوت التلقائي بالمتصفح قد تمنعها قبل أول تفاعل حقيقي من المستخدم (قيد متصفّح معروف).
+function _stuPlayNotifSound() {
+  try {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!window._stuAudioCtx) window._stuAudioCtx = new Ctx();
+    var ctx = window._stuAudioCtx;
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); g.connect(ctx.destination);
+    var now = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    o.start(now); o.stop(now + 0.4);
+  } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════

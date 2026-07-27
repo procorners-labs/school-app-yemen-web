@@ -1865,7 +1865,7 @@ function _homeVideoEmbed(url) {
 
 /* بثّ فيديو Drive عبر وسيط الـWorker (نفس أصل الصفحة عند خدمتها من الـWorker) */
 function _homeDrvVideoSrc(fileId) {
-  var base = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '' : 'https://school.procorners.com';
+  var base = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '' : 'https://yemenschoolz.com';
   return base + '/media/drive/' + fileId;
 }
 /* تراجع: عند تعذّر بثّ الوسيط، استخدم مشغّل Drive /preview */
@@ -2160,6 +2160,16 @@ function loadSplitData(){
 /* ══════════════════════════════════════════
    INIT
 ══════════════════════════════════════════ */
+// إعادة توجيه روابط مشاركة الأخبار القديمة (?news=...) إلى الصفحة المخصّصة الجديدة
+// newsarticle.html — تحافظ على عمل الروابط المُشارَكة فعلياً مع أشخاص حقيقيين قبل هذا الإصلاح
+// دون كسرها، بدل الاكتفاء بتمييز الخبر إن ظهر ضمن أعلى 6 أخبار عامة فقط (السلوك القديم).
+(function(){
+  try {
+    var qs = new URLSearchParams(location.search);
+    if (qs.get('news')) { location.replace('newsarticle.html' + location.search); }
+  } catch (e) {}
+})();
+
 document.addEventListener('DOMContentLoaded',function(){
   try { window._homeNewsDeep = (new URLSearchParams(location.search)).get('news') || ''; }
   catch(e){ window._homeNewsDeep = ''; }
