@@ -2236,6 +2236,22 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .pra-act-restore { background:var(--surface2); color:var(--tf-blue); }
 .pra-bulk-bar { display:none; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px 12px; margin-bottom:12px; font-size:13px; color:var(--text); }
 .pra-bulk-bar.show { display:flex; }
+
+/* جدول تقييمات المنصة الإداري يتحوّل إلى بطاقات مكدَّسة بلا أي تحريك أفقي على الشاشات الضيّقة —
+   بديل عن الاعتماد فقط على overflow-x:auto لـ.pra-table-wrap (كان يسمح بتحريك داخلي جانبي). */
+@media (max-width:860px){
+  .pra-table-wrap { overflow-x:hidden; }
+  .pra-table thead { display:none; }
+  .pra-table, .pra-table tbody, .pra-table tr, .pra-table td { display:block; width:100%; }
+  .pra-table { border-collapse:separate; }
+  .pra-table tr { border:1px solid var(--border); border-radius:10px; margin:10px; padding:6px 10px; }
+  .pra-table td { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:8px 2px; border-bottom:1px dashed var(--border); white-space:normal !important; max-width:none; }
+  .pra-table td:last-child { border-bottom:none; }
+  .pra-table td::before { content:attr(data-label); flex:none; font-weight:700; font-size:11px; color:var(--text-muted); padding-top:2px; }
+  .pra-table td[data-label="تحديد"] { justify-content:flex-end; }
+  .pra-comment { max-width:none; text-align:start; }
+  .pra-row-actions { justify-content:flex-end; }
+}
 .pra-bulk-bar button { border:none; border-radius:7px; padding:6px 11px; font-size:12.5px; cursor:pointer; white-space:nowrap; }
 /* أزرار الطلب/المشاركة الجديدة تعيد استخدام أزرار الإجراءات الجماعية أعلاه بلا CSS إضافي مكرَّر */
 .pr-req-tabs { display:flex; gap:8px; margin-bottom:12px; }
@@ -2289,7 +2305,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div class="form-group mb-3">
         <label class="form-label">تعليقك (اختياري)</label>
-        <textarea class="form-control" id="prComment" placeholder="شاركنا رأيك — ما الذي أعجبك؟ وما الذي يمكننا تحسينه؟" maxlength="1000"></textarea>
+        <textarea class="form-control" id="prComment" placeholder="شاركنا رأيك بالمنصة" maxlength="1000"></textarea>
       </div>
       <div id="prSubmitMsg" style="margin-top:10px;font-size:13px;"></div>
     </div>
@@ -4794,6 +4810,20 @@ function _fmtDateAr(iso) {
   return parseInt(m[3], 10) + ' ' + (months[parseInt(m[2], 10) - 1] || m[2]) + ' ' + m[1];
 }
 
+// تنسيق تاريخ+وقت بالعربية: "2026-07-27 18:51:07" → "27 يوليو 2026 - 6:51 م". مبنية على
+// regex فقط بلا new Date()/Intl — محصَّنة بنيوياً من تسرّب لغة نظام/تنفيذ افتراضية غريبة داخل
+// النص المعروض (راجع teacher/PlatformReviews.js::_prCellToDateString لسبب الحاجة الكامل).
+function _fmtDateTimeAr(str) {
+  if (!str) return '—';
+  var m = String(str).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return _fmtDateAr(str);
+  var datePart = _fmtDateAr(m[1] + '-' + m[2] + '-' + m[3]);
+  var h = parseInt(m[4], 10);
+  var period = h >= 12 ? 'م' : 'ص';
+  var h12 = h % 12; if (h12 === 0) h12 = 12;
+  return datePart + ' - ' + h12 + ':' + m[5] + ' ' + period;
+}
+
 // ── مُطبِّع بحث عربي مشترك: تجاهل التشكيل + توحيد الألف/الياء/التاء المربوطة + المسافات ──
 // يجعل البحث أكثر تسامحاً ودقة عبر كل الصفحات (أداء عالٍ: عملية واحدة على النص).
 function _tcNorm(s) {
@@ -5335,7 +5365,7 @@ function prAdmin_renderTable() {
 
     var noteFlag = r.internalNote ? '<span class="pra-note-flag" title="' + escapeHtml(r.internalNote) + '">🗒️</span>' : '';
     var reviewedCell = r.reviewedBy
-      ? '<div class="pra-reviewed"><span class="pra-reviewed-by">' + escapeHtml(r.reviewedBy) + '</span><br>' + escapeHtml(r.reviewedDate || '') + '</div>'
+      ? '<div class="pra-reviewed"><span class="pra-reviewed-by">' + escapeHtml(r.reviewedBy) + '</span><br>' + escapeHtml(_fmtDateTimeAr(r.reviewedDate)) + '</div>'
       : '<span style="color:var(--text-muted);">—</span>';
 
     var marketingCell = '<span style="color:var(--text-muted);">—</span>';
@@ -5346,19 +5376,19 @@ function prAdmin_renderTable() {
     }
 
     html += '<tr>' +
-      '<td><input type="checkbox"' + checked + ' onchange="prAdmin_toggleRowSelect(' + idJson + ', this.checked)"></td>' +
-      '<td><div class="pra-submitter">' +
+      '<td data-label="تحديد"><input type="checkbox"' + checked + ' onchange="prAdmin_toggleRowSelect(' + idJson + ', this.checked)"></td>' +
+      '<td data-label="المُقيِّم"><div class="pra-submitter">' +
         '<div class="pra-sub-avatar">' + avatarIcon + '</div>' +
         '<div><div class="pra-sub-name">' + escapeHtml(r.submitterName || '—') + '</div>' +
         '<div class="pra-sub-role">' + escapeHtml(roleLabel) + (r.publicConsent ? ' · 🏅 شهادة تسويقية معتمَدة' : '') + '</div></div>' +
       '</div></td>' +
-      '<td><span class="pra-stars-mini">' + _prStarsHtml(r.rating) + '</span></td>' +
-      '<td><div class="pra-comment">' + (r.comment ? escapeHtml(r.comment) : '<span style="color:var(--text-muted);">بلا تعليق</span>') + ' ' + noteFlag + '</div></td>' +
-      '<td style="white-space:nowrap;">' + escapeHtml(r.submittedDate || '') + '</td>' +
-      '<td>' + _prStatusBadgeHtml(r.status) + '</td>' +
-      '<td>' + reviewedCell + '</td>' +
-      '<td>' + marketingCell + '</td>' +
-      '<td><div class="pra-row-actions">';
+      '<td data-label="النجوم"><span class="pra-stars-mini">' + _prStarsHtml(r.rating) + '</span></td>' +
+      '<td data-label="التعليق"><div class="pra-comment">' + (r.comment ? escapeHtml(r.comment) : '<span style="color:var(--text-muted);">بلا تعليق</span>') + ' ' + noteFlag + '</div></td>' +
+      '<td data-label="التاريخ" style="white-space:nowrap;">' + escapeHtml(_fmtDateTimeAr(r.submittedDate)) + '</td>' +
+      '<td data-label="الحالة">' + _prStatusBadgeHtml(r.status) + '</td>' +
+      '<td data-label="روجعت بواسطة">' + reviewedCell + '</td>' +
+      '<td data-label="تسويقي">' + marketingCell + '</td>' +
+      '<td data-label="الإجراءات"><div class="pra-row-actions">';
 
     if (r.status === 'بانتظار المراجعة') {
       html += '<button class="pra-act-approve" onclick="prAdmin_approve(' + idJson + ')">✅ اعتماد</button>' +
