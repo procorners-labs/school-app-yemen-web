@@ -81,7 +81,24 @@ export default {
       // فواصل تصاعدية (كانت ثابتة 200ms) — تمتصّ اعتراض/برود GAS المتقطّع (~6%) قبل
       // إرجاع HTML للجسر. 4 محاولات ضمن حدود CF subrequests.
       var delays = [250, 600, 1200];
+      // ميزانية زمنية إجمالية للحلقة بأكملها — أقل بأمان من مهلة XHR الحالية للعميل (60 ثانية،
+      // بعد إصلاح heartbeat-perf-boot-burst في school-app-yemen-gas). بلا هذا الحدّ، محاولة
+      // واحدة بطيئة (مُشاهَد فعلياً 14-30+ ثانية تحت ضغط حقيقي على مشروع GCP المشترك — سجلّات
+      // Workers Observability أظهرت إلغاءات عميل حقيقية "canceled" متجمّعة عند 30 و60 ثانية
+      // بالضبط) تجعل مجموع حتى 4 محاولات يتجاوز مهلة العميل نفسها، فيُلغي الاتصال صامتاً
+      // (status 0) قبل أن يصله أي ردّ JSON مفيد — نفس عرَض 2026-07-27 يتكرّر عند سقف أعلى فقط.
+      // بهذا الحدّ: الـWorker يتوقّف عن إعادة المحاولة ويُعيد آخر نتيجة معروفة (JSON خطأ واضح
+      // عادةً) بوقت كافٍ ليصل للعميل قبل أن يُلغي اتصاله من تلقاء نفسه.
+      var loopStart = Date.now();
+      var TOTAL_BUDGET_MS = 45000;
+      var PER_ATTEMPT_TIMEOUT_MS = 20000;
       for (attempt = 0; attempt < 4; attempt++) {
+        var elapsedBeforeAttempt = Date.now() - loopStart;
+        if (elapsedBeforeAttempt >= TOTAL_BUDGET_MS) break;
+        var attemptTimeoutMs = Math.min(PER_ATTEMPT_TIMEOUT_MS, TOTAL_BUDGET_MS - elapsedBeforeAttempt);
+        var controller = new AbortController();
+        var abortTimer = setTimeout(function () { controller.abort(); }, attemptTimeoutMs);
+        init.signal = controller.signal;
         try {
           var gasResp = await fetch(fullTarget, init);
           lastText = await gasResp.text();
@@ -92,8 +109,12 @@ export default {
         } catch (err) {
           lastStatus = 502;
           lastText = JSON.stringify({ ok: false, error: 'تعذّر الوصول إلى الخادم: ' + String(err) });
+        } finally {
+          clearTimeout(abortTimer);
         }
-        if (attempt < 3) { await new Promise(function (r) { setTimeout(r, delays[attempt]); }); }
+        if (attempt < 3 && (Date.now() - loopStart) < TOTAL_BUDGET_MS) {
+          await new Promise(function (r) { setTimeout(r, delays[attempt]); });
+        }
       }
       // عند استنفاد المحاولات لطلب JSON (POST) باستجابة غير صالحة (HTML/4xx):
       // أعِد JSON خطأ واضح بدل تمرير HTML يفشل JSON.parse في الجسر (netError مضلِّل «رد غير صالح»).
