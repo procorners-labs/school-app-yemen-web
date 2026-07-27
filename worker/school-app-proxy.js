@@ -47,24 +47,28 @@ function jsonResponse(obj, status) {
 function _AttrSet(attr, val) { this.attr = attr; this.val = val; }
 _AttrSet.prototype.element = function (el) { if (this.val) el.setAttribute(this.attr, this.val); };
 
-// نطاق فرعي احترافي لكل مدرسة (<slug>.yemenschoolz.com) — يُعيد slug من hostname (لا يمسّ
-// النطاقين الصريحين الحاليين school.procorners.com/yemenschoolz.com بلا نطاق فرعي، ولا يمسّ
-// وكيل الـ API /gas/<app> إطلاقاً — فقط مسار خدمة الموقع الثابت أدناه). لا نطاق فرعي/نطاق فرعي
-// غير حقيقي (www/فارغ) ⇒ ''. slug متعدّد المستويات (نقطة إضافية) يُرفَض احترازاً — يبقى apex.
-function _schoolSlugFromHost(hostname) {
-  var h = String(hostname || '').toLowerCase();
-  var suffix = '.yemenschoolz.com';
-  if (h.indexOf(suffix, h.length - suffix.length) === -1) return '';
-  var sub = h.slice(0, h.length - suffix.length);
-  if (!sub || sub === 'www' || sub.indexOf('.') !== -1) return '';
-  return sub;
+// رابط مدرسة قصير احترافي: yemenschoolz.com/<slug> (مسار بعد الدومين، لا نطاق فرعي قبله —
+// قرار مالك صريح 2026-07-28، يُلغي أي حاجة لسجلّ DNS فرعي/Workers Route خارجي؛ يعمل فوراً عبر
+// مسار خدمة الموقع الثابت أدناه بلا أي إعداد Cloudflare إضافي). أي قطعة مسار واحدة فقط (بلا
+// امتداد ملف، بلا مسار إضافي بعدها) وليست من الأسماء المحجوزة أدناه تُعامَل كـslug مدرسة.
+var _RESERVED_TOP_PATHS = {
+  'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1, 'schedule': 1,
+  'master-admin': 1, 'pricing': 1, 'gas': 1, 'qr-img': 1, 'qr-download': 1, 'oauth': 1,
+  'drive-upload': 1, 'media': 1, 'assets': 1, 'index.html': 1, 'manifest.webmanifest': 1,
+  'sw.js': 1, 'robots.txt': 1, 'sitemap.xml': 1, 'favicon.ico': 1
+};
+function _schoolSlugFromPath(path) {
+  var m = /^\/([a-z0-9-]+)\/?$/i.exec(path);
+  if (!m) return '';
+  var seg = m[1].toLowerCase();
+  if (_RESERVED_TOP_PATHS[seg]) return '';
+  return seg;
 }
 
 export default {
   async fetch(request) {
     var url = new URL(request.url);
     var path = url.pathname;
-    var schoolSlug = _schoolSlugFromHost(url.hostname);
 
     // ── 1) وكيل الـ API: /gas/<app> ─────────────────────────────
     var match = path.match(/^\/gas\/([a-zA-Z-]+)\/?$/);
@@ -368,12 +372,17 @@ export default {
     // القديمة أحادية الهوية (assets/index.html)، التي تبقى موجودة وتعمل عند طلبها صراحة عبر
     // /index.html، فقط لم تعد الافتراضي عند الجذر. راجع _build/gen-sitemap.js في school-app-yemen-gas.
     if (path === '/' || path === '') path = '/home-all-school/index.html';
-    // نطاق فرعي لمدرسة (<slug>.yemenschoolz.com): يحقن ?school=<slug> تلقائياً لصفحات
-    // home-all-school الثابتة (index/newsarticle) إن لم يُمرَّر school/schoolId صراحةً في الرابط
-    // نفسه (احترام أي معامل صريح) — لا يمسّ أي مسار آخر (/home/, /gas/<app>, إلخ).
-    if (schoolSlug && /^\/home-all-school\//.test(path) &&
-        !url.searchParams.get('school') && !url.searchParams.get('schoolId')) {
-      url.searchParams.set('school', schoolSlug);
+    // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته لصفحة home-all-school العامة مع
+    // ?school=<slug> محقونة تلقائياً — ما لم يُمرَّر school/schoolId صراحةً أصلاً (احترام أي
+    // معامل صريح). فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة (تطبيقات GAS السبعة +
+    // المسارات الخاصة الأخرى) فلا يتعارض مع أي مسار قائم. لا نداء GAS للتحقّق من وجود المدرسة
+    // هنا — slug غير حقيقي يُرجِع خطأً واضحاً من _schoolRowById خادمياً، لا عطلاً بالـWorker.
+    var schoolSlug = _schoolSlugFromPath(path);
+    if (schoolSlug) {
+      path = '/home-all-school/index.html';
+      if (!url.searchParams.get('school') && !url.searchParams.get('schoolId')) {
+        url.searchParams.set('school', schoolSlug);
+      }
     }
     var ghUrl = GITHUB_BASE + path + url.search;
     var ghResp = await fetch(ghUrl, {
