@@ -89,15 +89,21 @@ export default {
       // (status 0) قبل أن يصله أي ردّ JSON مفيد — نفس عرَض 2026-07-27 يتكرّر عند سقف أعلى فقط.
       // بهذا الحدّ: الـWorker يتوقّف عن إعادة المحاولة ويُعيد آخر نتيجة معروفة (JSON خطأ واضح
       // عادةً) بوقت كافٍ ليصل للعميل قبل أن يُلغي اتصاله من تلقاء نفسه.
+      //
+      // ⚠️ قيمة أوّلية (45000/20000) اختُبِرت حيّاً وأظهرت زمناً فعلياً ~63.6 ثانية (تجاوز مهلة
+      // العميل 60 ثانية) — على الأرجح بسبب زمن غير محسوب لاتّباع Google لإعادة توجيه HTTP على
+      // مسار /exec (`redirect:'follow'`) لا يُحسَب بدقّة داخل مهلة كل محاولة. القيم الحالية
+      // أقلّ بكثير (مجموع أقصى نظري ≈ 24 ثانية لثلاث محاولات) لضمان هامش أمان واسع تحت 60 ثانية
+      // حتى مع نفس الزمن غير المحسوب — مهلة كل محاولة ثابتة (لا تتقلّص مع الميزانية المتبقّية،
+      // تبسيطاً يزيل مصدر خطأ محتملاً).
       var loopStart = Date.now();
-      var TOTAL_BUDGET_MS = 45000;
-      var PER_ATTEMPT_TIMEOUT_MS = 20000;
+      var TOTAL_BUDGET_MS = 24000;
+      var PER_ATTEMPT_TIMEOUT_MS = 8000;
       for (attempt = 0; attempt < 4; attempt++) {
         var elapsedBeforeAttempt = Date.now() - loopStart;
         if (elapsedBeforeAttempt >= TOTAL_BUDGET_MS) break;
-        var attemptTimeoutMs = Math.min(PER_ATTEMPT_TIMEOUT_MS, TOTAL_BUDGET_MS - elapsedBeforeAttempt);
         var controller = new AbortController();
-        var abortTimer = setTimeout(function () { controller.abort(); }, attemptTimeoutMs);
+        var abortTimer = setTimeout(function () { controller.abort(); }, PER_ATTEMPT_TIMEOUT_MS);
         init.signal = controller.signal;
         try {
           var gasResp = await fetch(fullTarget, init);
