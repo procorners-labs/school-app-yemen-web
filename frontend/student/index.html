@@ -2185,6 +2185,7 @@ a { color: var(--pr); text-decoration: none; }
       </div>
     </div>
     <button class="btn-primary" id="loginBtn" onclick="doLogin()">تسجيل الدخول 🚪</button>
+    <div id="biomLoginBtnWrap"></div>
 
     <div style="text-align:center; margin-top:8px; font-size:11px; color:var(--muted);" id="stuLoginContact"></div>
     <div id="stuLoginAddress" style="text-align:center;font-size:11px;color:var(--muted);margin-top:2px;"></div>
@@ -2304,6 +2305,7 @@ a { color: var(--pr); text-decoration: none; }
       </div>
       <button class="nav-btn" title="البريد الإلكتروني" onclick="openMyEmailModal()">📧</button>
       <button class="nav-btn" title="تغيير كلمة المرور" onclick="openModal('pwModal')">🔑</button>
+      <button class="nav-btn" id="biomNavBtn" title="الدخول بالبصمة" onclick="_biomOpenModal()" style="display:none">🔒</button>
       <button class="nav-btn" title="تسجيل الخروج" onclick="doLogout()">🚪</button>
     </div>
   </header>
@@ -2624,6 +2626,17 @@ a { color: var(--pr); text-decoration: none; }
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('pwModal')">إلغاء</button>
       <button class="btn-ok" id="pwSaveBtn" onclick="changeMyPassword()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="biomModal">
+  <div class="modal">
+    <h3>🔒 الدخول بالبصمة</h3>
+    <div id="biomActivateWrap" style="margin-bottom:10px;"></div>
+    <div id="biomDevicesList"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('biomModal')">إغلاق</button>
     </div>
   </div>
 </div>
@@ -3397,24 +3410,7 @@ function doLogin() {
       }
 
       // نجح الدخول
-      APP.user = {
-        id: r.studentId,
-        name: r.name,
-        firstName: r.firstName,
-        class: r.class || '',
-        section: r.section || '',
-        role: r.role,
-        schoolId: schoolId,   // ✅ يُخزَّن لاستخدامه في باقي الطلبات
-        email: r.email || '',
-        birthdate: r.birthdate || '',
-        siblings: r.siblings || [],
-        switchToken: r.switchToken || ''
-      };
-
-      _stuShowApp();
-      initApp();
-      _startHeartbeat();
-      lsSaveSession(); // حفظ الجلسة في localStorage ليبقى مسجلاً بعد تحديث الصفحة
+      _finishStudentLoginSuccess(r, schoolId);
     })
     .withFailureHandler(function (e) {
       btn.disabled = false;
@@ -3423,6 +3419,335 @@ function doLogin() {
       errEl.style.display = 'block';
     })
     .loginStudent(u, p, getClientId(), schoolId); // ✅ تمرير schoolId للخادم
+}
+
+// بناء APP.user وحفظ الجلسة وإقلاع التطبيق — مُستخرَجة من doLogin (بلا تغيير سلوكي) كي يُعاد
+// استخدامها من مسار الدخول بالبصمة (_biomLoginWithDevice أدناه).
+function _finishStudentLoginSuccess(r, schoolId) {
+  APP.user = {
+    id: r.studentId,
+    name: r.name,
+    firstName: r.firstName,
+    class: r.class || '',
+    section: r.section || '',
+    role: r.role,
+    schoolId: schoolId,
+    email: r.email || '',
+    birthdate: r.birthdate || '',
+    siblings: r.siblings || [],
+    switchToken: r.switchToken || ''
+  };
+  _stuShowApp();
+  initApp();
+  _startHeartbeat();
+  lsSaveSession();
+  try { _biomUpdateNavBtn(); } catch (eBiom) {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  تسجيل الدخول بالبصمة — "سرّ جهاز" (لا WebAuthn/FIDO2 حقيقي يُتحقَّق منه خادمياً، راجع
+//  student/BiometricAuth.js). نسخة مطابقة لمنطق teacher/Teacher Dashboard.html (GAS لا تشارك
+//  كوداً بين مشروعين، فالتكرار هنا مقصود).
+//  ⚠️ قرار مالك صريح: بيانات اعتماد البصمة تبقى صالحة عبر تسجيل الخروج دائماً — لا مسحها من
+//  confirmLogout(). خط الدفاع الوحيد لسيناريو حاسوب مشترك هو عرض اسم صاحب الجهاز على الزرّ.
+// ═══════════════════════════════════════════════════════════════════════════
+var BIOM_LS_PREFIX = 'biomDevice_student_';
+function _biomLsKey(schoolId) { return BIOM_LS_PREFIX + (schoolId || 'default'); }
+function _biomLoadDevice(schoolId) {
+  try { var raw = localStorage.getItem(_biomLsKey(schoolId)); return raw ? JSON.parse(raw) : null; }
+  catch (e) { return null; }
+}
+function _biomSaveDevice(schoolId, obj) {
+  try { localStorage.setItem(_biomLsKey(schoolId), JSON.stringify(obj)); } catch (e) {}
+}
+function _biomClearDevice(schoolId) {
+  try { localStorage.removeItem(_biomLsKey(schoolId)); } catch (e) {}
+}
+function _biomSupported() {
+  return !!(window.PublicKeyCredential &&
+    typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function');
+}
+function _biomBufToB64url(buf) {
+  var bytes = new Uint8Array(buf);
+  var bin = '';
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function _biomB64urlToBuf(s) {
+  var b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+function _biomRandomHex(numBytes) {
+  var arr = new Uint8Array(numBytes);
+  crypto.getRandomValues(arr);
+  var hex = '';
+  for (var i = 0; i < arr.length; i++) {
+    var h = arr[i].toString(16);
+    hex += (h.length === 1 ? '0' : '') + h;
+  }
+  return hex;
+}
+function _biomGenDeviceId() {
+  if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'dev-' + _biomRandomHex(16);
+}
+var BIOM_PRF_SALT_HEX = '73636f6f6c7a2d62696f6d2d707266';
+function _biomHexToB64url(hex) {
+  var bytes = new Uint8Array(hex.length / 2);
+  for (var i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return _biomBufToB64url(bytes.buffer);
+}
+function _biomPrfSaltBuf() { return _biomB64urlToBuf(_biomHexToB64url(BIOM_PRF_SALT_HEX)); }
+function _biomDeriveKeyFromPrf(prfBytes) {
+  return crypto.subtle.importKey('raw', prfBytes, { name: 'HKDF' }, false, ['deriveKey'])
+    .then(function (baseKey) {
+      return crypto.subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode('biom-device-secret') },
+        baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+      );
+    });
+}
+function _biomEncryptSecret(plainHex, prfBytes) {
+  return _biomDeriveKeyFromPrf(prfBytes).then(function (key) {
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var data = new TextEncoder().encode(plainHex);
+    return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, data).then(function (cipher) {
+      return _biomBufToB64url(iv) + '.' + _biomBufToB64url(cipher);
+    });
+  });
+}
+function _biomDecryptSecret(encStr, prfBytes) {
+  var parts = encStr.split('.');
+  if (parts.length !== 2) return Promise.reject(new Error('bad enc format'));
+  return _biomDeriveKeyFromPrf(prfBytes).then(function (key) {
+    var iv = new Uint8Array(_biomB64urlToBuf(parts[0]));
+    var cipher = _biomB64urlToBuf(parts[1]);
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, cipher).then(function (plainBuf) {
+      return new TextDecoder().decode(plainBuf);
+    });
+  });
+}
+
+// تفعيل البصمة — يتطلّب إعادة إدخال كلمة المرور (منصّة الطالب بلا توكن جلسة خادمي حقيقي)
+function biomActivateOnThisDevice() {
+  if (!_biomSupported() || !APP.user) return;
+  PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function (avail) {
+    if (!avail) { _biomToast('هذا الجهاز لا يملك مستشعر بصمة/وجه مدعوماً'); return; }
+    var pwd = window.prompt('لتفعيل البصمة، أدخل كلمة المرور الحالية للتأكيد:');
+    if (!pwd) return;
+    var challenge = crypto.getRandomValues(new Uint8Array(32));
+    var userId = crypto.getRandomValues(new Uint8Array(16));
+    var label = APP.user.name || APP.user.firstName || 'طالب';
+    navigator.credentials.create({
+      publicKey: {
+        challenge: challenge,
+        rp: { name: 'سكولز اليمن' },
+        user: { id: userId, name: label, displayName: label },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+        extensions: { prf: { eval: { first: _biomPrfSaltBuf() } } },
+        timeout: 60000
+      }
+    }).then(function (cred) {
+      var deviceId = _biomGenDeviceId();
+      var deviceSecretHex = _biomRandomHex(32);
+      var credentialIdB64 = _biomBufToB64url(cred.rawId);
+      var ext = cred.getClientExtensionResults ? cred.getClientExtensionResults() : {};
+      var prfResult = (ext && ext.prf && ext.prf.results && ext.prf.results.first) ? ext.prf.results.first : null;
+
+      function saveLocalAndRegister(encrypted, storedSecretValue) {
+        google.script.run
+          .withSuccessHandler(function (r) {
+            if (r && r.ok) {
+              _biomSaveDevice(APP.user.schoolId, {
+                deviceId: deviceId, credentialId: credentialIdB64, label: label,
+                encrypted: encrypted, secret: storedSecretValue
+              });
+              _biomToast('✅ تم تفعيل الدخول بالبصمة على هذا الجهاز');
+              try { _biomRenderProfileSection(); } catch (eR) {}
+            } else {
+              _biomToast((r && r.error) || 'تعذّر تفعيل البصمة الآن');
+            }
+          })
+          .withFailureHandler(function () { _biomToast('تعذّر الاتصال بالخادم لتفعيل البصمة'); })
+          .registerBiometricDeviceStudent({
+            username: APP.user.id, password: pwd, clientId: getClientId(), schoolId: APP.user.schoolId,
+            deviceId: deviceId, deviceLabel: label, deviceSecret: deviceSecretHex
+          });
+      }
+
+      if (prfResult) {
+        _biomEncryptSecret(deviceSecretHex, prfResult).then(function (encStr) {
+          saveLocalAndRegister(true, encStr);
+        }).catch(function () {
+          _biomToast('تعذّر تفعيل التشفير الكامل — سيُستخدَم اختصار راحة بلا تشفير إضافي على هذا الجهاز');
+          saveLocalAndRegister(false, deviceSecretHex);
+        });
+      } else {
+        _biomToast('ℹ️ جهازك يفعِّل البصمة كاختصار راحة على هذا الجهاز تحديداً — بلا تشفير إضافي');
+        saveLocalAndRegister(false, deviceSecretHex);
+      }
+    }).catch(function (err) {
+      console.error('biomActivateOnThisDevice:', err);
+      _biomToast('لم يكتمل تفعيل البصمة (أُلغيت أو فشلت)');
+    });
+  });
+}
+
+function biomLoginWithDevice(schoolId) {
+  var dev = _biomLoadDevice(schoolId);
+  if (!dev) return;
+  navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ id: _biomB64urlToBuf(dev.credentialId), type: 'public-key' }],
+      userVerification: 'required',
+      extensions: dev.encrypted ? { prf: { eval: { first: _biomPrfSaltBuf() } } } : undefined,
+      timeout: 60000
+    }
+  }).then(function (assertion) {
+    function proceedWithSecret(secretHex) {
+      var btn = $('loginBtn');
+      var errEl = $('loginErr');
+      if (btn) btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function (r) {
+          if (btn) btn.disabled = false;
+          if (r && r.ok) {
+            errEl.style.display = 'none';
+            _finishStudentLoginSuccess(r, schoolId);
+          } else {
+            errEl.textContent = (r && r.error) || 'تعذّر الدخول بالبصمة — استخدم كلمة المرور';
+            errEl.style.display = 'block';
+          }
+        })
+        .withFailureHandler(function () {
+          if (btn) btn.disabled = false;
+          errEl.textContent = 'تعذّر الاتصال بالخادم — استخدم كلمة المرور';
+          errEl.style.display = 'block';
+        })
+        .loginStudentByDeviceProtected({ deviceId: dev.deviceId, deviceSecret: secretHex, schoolId: schoolId, clientId: getClientId() });
+    }
+    if (dev.encrypted) {
+      var ext = assertion.getClientExtensionResults ? assertion.getClientExtensionResults() : {};
+      var prfResult = (ext && ext.prf && ext.prf.results && ext.prf.results.first) ? ext.prf.results.first : null;
+      if (!prfResult) { _biomLoginError('تعذّر فتح بيانات الجهاز — استخدم كلمة المرور'); return; }
+      _biomDecryptSecret(dev.secret, prfResult).then(proceedWithSecret).catch(function () {
+        _biomLoginError('تعذّر فتح بيانات الجهاز — استخدم كلمة المرور');
+      });
+    } else {
+      proceedWithSecret(dev.secret);
+    }
+  }).catch(function (err) {
+    console.error('biomLoginWithDevice:', err);
+    _biomLoginError('لم تُكمَل بصمة الدخول — استخدم كلمة المرور');
+  });
+}
+function _biomLoginError(msg) {
+  var errEl = $('loginErr');
+  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+}
+function _biomToast(msg) {
+  try { if (typeof toast === 'function') { toast(msg); return; } } catch (e) {}
+  var errEl = $('loginErr');
+  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+}
+
+// يُستدعى عند عرض شاشة الدخول — يعرض زرّ الدخول بالبصمة فقط إن وُجد جهاز مسجَّل محلياً لنفس
+// المدرسة، ويُظهر اسم صاحبه دوماً قبل الضغط (خط الدفاع الوحيد لسيناريو حاسوب مشترك).
+function _biomRenderLoginButton() {
+  var wrap = $('biomLoginBtnWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!_biomSupported()) return;
+  var schoolId = window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '';
+  var dev = _biomLoadDevice(schoolId);
+  if (!dev) return;
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-primary';
+  btn.style.marginTop = '8px';
+  btn.style.background = 'rgba(255,255,255,.14)';
+  btn.textContent = '🔓 دخول بالبصمة — ' + dev.label;
+  btn.onclick = function () { biomLoginWithDevice(schoolId); };
+  wrap.appendChild(btn);
+}
+
+// إظهار/إخفاء زرّ "🔒" في الشريط العلوي حسب دعم الجهاز — تُستدعى بعد دخول ناجح
+function _biomUpdateNavBtn() {
+  var navBtn = $('biomNavBtn');
+  if (!navBtn) return;
+  navBtn.style.display = _biomSupported() ? '' : 'none';
+}
+
+function _biomOpenModal() {
+  openModal('biomModal');
+  _biomRenderProfileSection();
+}
+
+// قسم إدارة البصمة داخل modal biomModal — زرّ تفعيل (إن لم يكن هذا الجهاز مسجَّلاً بعد لهذا
+// الطالب) + قائمة الأجهزة المسجَّلة لهذا الطالب.
+function _biomRenderProfileSection() {
+  var actWrap = $('biomActivateWrap');
+  if (!actWrap || !APP.user) return;
+  if (!_biomSupported()) {
+    actWrap.innerHTML = '<div style="font-size:13px;color:var(--muted)">جهازك/متصفّحك الحالي لا يدعم الدخول بالبصمة</div>';
+    $('biomDevicesList').innerHTML = '';
+    return;
+  }
+  PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function (avail) {
+    if (!avail) {
+      actWrap.innerHTML = '<div style="font-size:13px;color:var(--muted)">جهازك الحالي لا يملك مستشعر بصمة/وجه</div>';
+      return;
+    }
+    var dev = _biomLoadDevice(APP.user.schoolId);
+    if (dev) {
+      actWrap.innerHTML = '<div style="font-size:13px;color:var(--muted)">✅ البصمة مفعَّلة على هذا الجهاز.</div>';
+    } else {
+      actWrap.innerHTML = '<button class="btn-ok" onclick="biomActivateOnThisDevice()">🔒 فعِّل الدخول بالبصمة على هذا الجهاز</button>';
+    }
+  });
+  biomLoadDevicesList();
+}
+
+function biomLoadDevicesList() {
+  var box = $('biomDevicesList');
+  if (!box || !APP.user) return;
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">تعذّر تحميل الأجهزة</div>'; return; }
+      if (!r.devices.length) { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">لا أجهزة بصمة مفعَّلة بعد</div>'; return; }
+      var html = '';
+      for (var i = 0; i < r.devices.length; i++) {
+        var d = r.devices[i];
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2,#f1f5f9);padding:10px 12px;border-radius:8px;margin-bottom:8px">' +
+          '<div><div style="font-weight:700">' + esc(d.label) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">آخر استخدام: ' + esc(d.lastUsedAt || '—') + '</div></div>' +
+          '<button class="btn-cancel" onclick="biomRevokeDevice(\'' + esc(d.deviceId.replace(/'/g, "\\'")) + '\')">🗑️ إزالة</button></div>';
+      }
+      box.innerHTML = html;
+    })
+    .withFailureHandler(function () { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">تعذّر الاتصال بالخادم</div>'; })
+    .listMyBiometricDevicesStudent({ studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken });
+}
+function biomRevokeDevice(deviceId) {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (r && r.ok) {
+        _biomToast('تم إلغاء الجهاز');
+        var dev = _biomLoadDevice(APP.user.schoolId);
+        if (dev && dev.deviceId === deviceId) _biomClearDevice(APP.user.schoolId);
+        biomLoadDevicesList();
+      } else {
+        _biomToast((r && r.error) || 'تعذّر إلغاء الجهاز');
+      }
+    })
+    .withFailureHandler(function () { _biomToast('تعذّر الاتصال بالخادم'); })
+    .revokeBiometricDeviceStudent({ studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken, deviceId: deviceId });
 }
 function doLogout() {
   openModal('logoutModal');
@@ -3448,11 +3773,13 @@ function confirmLogout() {
   $('password').value = '';
   $('loginErr').style.display = 'none';
   $('loginScreen').style.display = 'flex';
+  try { _biomRenderLoginButton(); } catch (eBiom) {}
 }
 
 function resetLogin() {
   $('blockedMsg').classList.remove('show');
   $('loginScreen').style.display = 'flex';
+  try { _biomRenderLoginButton(); } catch (eBiom) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7035,6 +7362,7 @@ document.addEventListener('DOMContentLoaded', function () {
     _stuShowApp();
     initApp();
     _startHeartbeat();
+    try { _biomUpdateNavBtn(); } catch (eBiom) {}
     // تحديث خلفي صامت لقائمة الإخوة: الجلسة المستعادة من localStorage مجمَّدة على لحظة آخر
     // دخول حقيقي (حتى 8 ساعات) — بلا هذا النداء لا يظهر أي تعديل بيانات/مطابقة لاحق إلا بعد
     // تسجيل خروج/دخول يدوي. لا يؤخّر الظهور الأولي (العرض من الكاش فوري، هذا يلحق به بصمت).
@@ -7070,6 +7398,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
   }
+
+  try { _biomRenderLoginButton(); } catch (eBiomInit) {}
 
   // Enter في حقول تسجيل الدخول
   var u = $('username'), p = $('password');
