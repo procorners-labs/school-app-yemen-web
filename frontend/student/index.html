@@ -3848,8 +3848,10 @@ function initApp() {
   loadHomeCirculars();   // التعاميم الإدارية الموجَّهة للطالب
   loadHomeToday();   // جدول اليوم + الساعة اللحظية
 
-  // تحميل قائمة معلمي صف الطالب (لصفحة ملاحظاتي) في الخلفية
-  loadTeachersList();
+  // ملاحظة: قائمة معلمي صف الطالب (لصفحة ملاحظاتي) لم تعد تُحمَّل هنا عند الإقلاع —
+  // انتقلت إلى loadNotes() (تُستدعى فقط عند فتح تبويب "ملاحظاتي" فعلياً عبر goTab) لتقليل
+  // عدد التنفيذات الخادمية المتزامنة عند الإقلاع (راجع _docs/2026-07-27-حصة-تنفيذ-متزامن-30-
+  // وتقليل-حمل-الاقلاع.md) — بيانات لا تُستخدَم أصلاً قبل فتح ذلك التبويب.
 
   // Badges تلقائية
   loadNotificationBadges();
@@ -6297,26 +6299,25 @@ function _startHomeClock() {
 function loadHomeToday() {
   _startHomeClock();
   if (!$('homeTodayBody')) return;
-  // الإعدادات وبيانات الجدول تُجلبان بالتوازي (كانتا متسلسلتين فيتضاعف زمن أول عرض)
-  // والعرض ينتظر اكتمالهما لأن renderHomeToday يعتمد على تواقيت الإعدادات
-  var cfgDone = false, schedDone = false, schedRes = null, schedFailed = false;
-  function finish() {
-    if (!cfgDone || !schedDone) return;
-    if (schedFailed) {
+  // إعدادات الجدول + بيانات الجدول تُجلَبان الآن بنداء واحد مركَّب (getHomeScheduleBundle) بدل
+  // تنفيذَين منفصلَين متوازيَين — تقليل عدد التنفيذات المتزامنة عند فتح "الرئيسية" (راجع
+  // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
+  callServerSmart('getHomeScheduleBundle',
+    { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+    'sched_bundle_' + APP.user.class + '_' + APP.user.section, 600,
+    function (bundle) {
+      if (bundle && bundle.settings) _applySchedSettings(bundle.settings);
+      if (bundle && bundle.schedule && bundle.schedule.ok) {
+        renderHomeToday(bundle.schedule);
+      } else {
+        var b = $('homeTodayBody');
+        if (b) b.innerHTML = '<div class="ht-banner info">📅 تعذّر تحميل الجدول.</div>';
+      }
+    },
+    function () {
       var b = $('homeTodayBody');
       if (b) b.innerHTML = '<div class="ht-banner info">📅 تعذّر تحميل الجدول.</div>';
-      return;
-    }
-    renderHomeToday(schedRes);
-  }
-  callServerSmart('getScheduleSettings', { schoolId: APP.user.schoolId }, 'sched_settings', 600,
-    function (cfg) { _applySchedSettings(cfg); cfgDone = true; finish(); },
-    function () { cfgDone = true; finish(); });
-  callServerSmart('getSchedule',
-    { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-    'schedule_' + APP.user.class + '_' + APP.user.section, 600,
-    function (r) { schedRes = r; schedDone = true; finish(); },
-    function () { schedFailed = true; schedDone = true; finish(); });
+    });
 }
 
 // تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد).
@@ -6904,6 +6905,11 @@ function loadNotes(force) {
   var w = $('notesHistory');
   w.innerHTML = loaderHTML('جارٍ تحميل الملاحظات...');
 
+  // قائمة معلمي صف الطالب (لقائمة <select> اختيار المعلم) — انتقلت من initApp() إلى هنا
+  // (تُحمَّل فقط عند فتح هذا التبويب فعلياً، لا عند كل إقلاع) — راجع _docs/2026-07-27-
+  // حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md.
+  loadTeachersList();
+
   // force=true (بعد إرسال ناجح مثلاً): تجاوز الكاش لتظهر الرسالة الجديدة فوراً
   if (force) ClientCache.remove('notes_' + APP.user.id);
 
@@ -7357,7 +7363,10 @@ function _startHeartbeat() {
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') beat();
   });
-  beat();
+  // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات initApp() الأخرى التي تُطلَق
+  // في نفس اللفة — نفس إصلاح teacher/Teacher Dashboard.html (راجع _docs/2026-07-27-heartbeat-
+  // perf-and-boot-burst.md) المطبَّق هناك فقط سابقاً وليس هنا.
+  setTimeout(beat, 1200);
 }
 
 // ═══════════════════════════════════════════════════════════

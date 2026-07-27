@@ -4120,6 +4120,32 @@ function loadSchemaConfig(callback) {
     if (typeof callback === 'function') callback();
   });
 }
+
+// يجمع getSchemaConfig+getV3Config في نداء واحد (getBootConfigBundle) بدل نداءَين منفصلَين —
+// تقليل التنفيذات المتزامنة عند الإقلاع (راجع _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-
+// الاقلاع.md). غير مؤجَّلة (تحجب أول عرض عبر _bootTryShow تماماً مثل loadSchemaConfig سلفها) —
+// لا حذف لـ loadSchemaConfig نفسها.
+function loadBootConfig(callback) {
+  var DEF_MONTHS = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
+  var DEF_TERM   = ['نصف العام','نهاية العام'];
+  callServer('getBootConfigBundle', {}, 'boot_config_v1', 600, function(bundle) {
+    var res = bundle && bundle.schema;
+    if (res && res.success) {
+      ALL_MONTHS   = res.orderedMonths || DEF_MONTHS;
+      TERM_MONTHS  = res.termMonths   || DEF_TERM;
+      GRADE_SCHEMA = res;
+    } else {
+      ALL_MONTHS  = DEF_MONTHS;
+      TERM_MONTHS = DEF_TERM;
+    }
+    if (bundle && bundle.v3 && bundle.v3.success !== false) V3_CONFIG = bundle.v3;
+    if (typeof callback === 'function') callback();
+  }, function() {
+    ALL_MONTHS  = DEF_MONTHS;
+    TERM_MONTHS = DEF_TERM;
+    if (typeof callback === 'function') callback();
+  });
+}
 // ════════════════════════════════════════════════════
 
 // ── متغيرات الحفظ التلقائي للدرجات ──
@@ -6393,13 +6419,14 @@ function bootApp() {
   // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
   try { _prMaybeNudge(); } catch (ePr) {}
 
-  // تحميل عدّاد إشعارات الأخبار (الجرس) + التعميمات + رسائل أولياء الأمور + جسر FCM + طلب تقييم
-  // المدير الموجَّه — تُنَظَّم بفواصل زمنية صغيرة بدل الانطلاق كلها في نفس اللفة مع أول heartbeat؛
-  // تفادي انفجار عدّة نداءات XHR متزامنة إلى نفس تطبيق GAS عند الإقلاع (كان يرفع احتمال status
-  // 0/انتهاء مهلة اتصال). لا تأخير على تحميل القوائم/Schema أدناه (حرِج للعرض الأول) — فقط
-  // الطلبات الثانوية هذه.
-  setTimeout(loadNewsNotifications, 300);   // يشمل استدعاء loadCircularsNotifications داخلياً
-  setTimeout(loadNotesNotifications, 600);
+  // تحميل عدّادات إشعارات الأخبار+التعميمات+الملاحظات (الجرس) + جسر FCM + طلب تقييم المدير
+  // الموجَّه — تُنَظَّم بفواصل زمنية صغيرة بدل الانطلاق كلها في نفس اللفة مع أول heartbeat؛ تفادي
+  // انفجار عدّة نداءات XHR متزامنة إلى نفس تطبيق GAS عند الإقلاع (كان يرفع احتمال status
+  // 0/انتهاء مهلة اتصال). الثلاثة الأولى مدموجة الآن في نداء خادمي واحد (getNotifCountsBundle) بدل
+  // نداءين منفصلين سابقاً — تقليل *عدد* التنفيذات المتزامنة الفعلي لا التفريق الزمني فقط، راجع
+  // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md. لا تأخير على تحميل القوائم/Schema
+  // أدناه (حرِج للعرض الأول) — فقط الطلبات الثانوية هذه.
+  setTimeout(loadNotifCountsBundle, 300);
   setTimeout(_initFcmBridge, 900);
   setTimeout(function () {
     // طلب تقييم موجَّه من المدير لهذا المعلّم تحديداً — يتجاوز جدولة المطالبة الذكية العادية
@@ -6451,7 +6478,7 @@ function bootApp() {
   // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadSchemaConfig
   // (GRADE_SCHEMA يبقى null، ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية).
   _bootFallbackTimer = setTimeout(function() { _bootTryShow(true); }, 9000);
-  loadSchemaConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
+  loadBootConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
   var afterLists = function() {
     _bootListsDone = true;
     _bootTryShow();
@@ -6475,14 +6502,11 @@ function bootApp() {
   }
 
   // (عرض القائمة الجانبية حُسِم مبكراً أعلاه عبر initSidebarByRole — لا تكرار هنا)
-
-  // ⭐ v3: تحميل إعدادات v3 من الخادم (بكاش ومعالج فشل — فشله كان صامتاً بلا معالج)
-  callServer('getV3Config', {}, 'v3_config', 600, function(cfg) {
-    if (cfg && cfg.success !== false) V3_CONFIG = cfg;
-  }, function() { /* تعذّر الجلب: نُبقي افتراضات V3_CONFIG */ });
+  // (⭐ v3 config أصبحت مدمَجة داخل loadBootConfig أعلاه — لا نداء getV3Config منفصل بعد الآن)
 
   // 🆕 شريط النقاط العلوي الدائم — بعد bootApp لا ضمنه (غير حاجب لبوّابة الإقلاع، بند 11 بـCLAUDE.md)
-  _loadMyPointsHeader();
+  // مؤجَّل قليلاً لنفس سبب getV3Config أعلاه — لا يحجب أي عرض، فتأجيله بلا أثر على تجربة المستخدم.
+  setTimeout(_loadMyPointsHeader, 550);
 }
 
 // 🆕 يجلب نقاط/ترتيب المعلم صاحب الجلسة ويعرضها في الشريط العلوي — بكاش عميلي 3 دقائق
@@ -6896,8 +6920,10 @@ function loadNewsNotifications() {
         refreshBellBadge();
       });
   } catch (e) { /* تجاهل */ }
-  // عدّاد التعاميم الإدارية الجديدة (يُدمج في نفس الجرس)
-  loadCircularsNotifications();
+  // عدّاد التعاميم الإدارية الجديدة (يُدمج في نفس الجرس) — مؤجَّل قليلاً (لا فورياً) كي لا
+  // يتزامن تنفيذه مع تنفيذ getAllNewsProtected أعلاه في نفس اللفة (راجع _docs/2026-07-27-
+  // حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
+  setTimeout(loadCircularsNotifications, 150);
 }
 
 /* ── عدّاد التعاميم الإدارية غير المقروءة (جزء من الجرس) ── */
@@ -6942,6 +6968,60 @@ function loadNotesNotifications() {
     callServer('getUnreadNotesCountProtected', {}, 'notes_pending', 90, function (r) {
       if (!r || !r.success) return;
       window._bellNotes = parseInt((r.unread != null ? r.unread : r.count) || 0, 10) || 0;
+      refreshBellBadge();
+    });
+  } catch (e) { /* تجاهل */ }
+}
+
+// يجمع الثلاثة أعلاه (أخبار+تعاميم+ملاحظات) في نداء خادمي واحد (getNotifCountsBundle) بدل ثلاثة
+// نداءات منفصلة عند الإقلاع — تقليل *عدد* التنفيذات المتزامنة الفعلي، لا تفريقها زمنياً فقط.
+// loadNewsNotifications/loadCircularsNotifications/loadNotesNotifications تبقى بلا حذف
+// (loadNotesNotifications لها مستدعٍ آخر حقيقي بعد الردّ على ملاحظة، خارج مسار الإقلاع). راجع
+// _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md.
+function loadNotifCountsBundle() {
+  try {
+    if (typeof App === 'undefined' || !App || !App.user) return;
+    callServer('getNotifCountsBundle', {}, 'notif_bundle', 120, function (bundle) {
+      if (!bundle || !bundle.success) return;
+      var rNews = bundle.news;
+      if (rNews && rNews.success) {
+        var total = (typeof rNews.total === 'number') ? rNews.total : (rNews.news ? rNews.news.length : 0);
+        App._newsTotal = total;
+        var storedNews = null;
+        try { storedNews = localStorage.getItem('teacher_lastSeenNewsTotal'); } catch (e) {}
+        if (storedNews === null) {
+          markNewsRead();
+        } else {
+          var lastSeenNews = parseInt(storedNews, 10) || 0;
+          var unreadNews = total - lastSeenNews;
+          window._bellNews = unreadNews < 0 ? 0 : unreadNews;
+        }
+      }
+      var rCirc = bundle.circulars;
+      if (rCirc && rCirc.success) {
+        var list = rCirc.circulars || [], maxId = 0;
+        for (var i = 0; i < list.length; i++) {
+          var n = parseInt(list[i].id, 10);
+          if (!isNaN(n) && n > maxId) maxId = n;
+        }
+        window._circMaxId = maxId;
+        var storedCirc = null;
+        try { storedCirc = localStorage.getItem('teacher_lastSeenCircId'); } catch (e) {}
+        if (storedCirc === null) {
+          markCircularsRead();
+        } else {
+          var lastSeenCirc = parseInt(storedCirc, 10) || 0, unreadCirc = 0;
+          for (var j = 0; j < list.length; j++) {
+            var cid = parseInt(list[j].id, 10);
+            if (!isNaN(cid) && cid > lastSeenCirc) unreadCirc++;
+          }
+          window._bellCirc = unreadCirc;
+        }
+      }
+      var rNotes = bundle.notes;
+      if (rNotes && rNotes.success) {
+        window._bellNotes = parseInt((rNotes.unread != null ? rNotes.unread : rNotes.count) || 0, 10) || 0;
+      }
       refreshBellBadge();
     });
   } catch (e) { /* تجاهل */ }
