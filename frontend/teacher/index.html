@@ -7695,28 +7695,45 @@ function saveNews() {
     }
   }
 
-  // ★ رفع كل ملف على حدة (يتجنّب طلباً ضخماً يتجاوز حدود الوكيل/الخادم → status 0/مهلة)،
-  //   ثم إنشاء/تحديث الخبر بالروابط فقط (طلب صغير لا يفشل).
-  var newUrls = [], i = 0;
+  // ★ رفع الملفات بتقطيع (chunked resumable، راجع _newsChunkedUpload) مع توازي محدود بين
+  //   الملفات (_TNEWS_CONCURRENT_UPLOADS) — يتفادى إعادة رفع الملف كاملاً من الصفر عند أي
+  //   انقطاع شبكة عابر، ويقلّص زمن انتظار المنشورات متعددة المرفقات. الترتيب النهائي للروابط
+  //   يطابق ترتيب اختيار الملفات الأصلي (لا ترتيب الاكتمال).
+  var newUrls = new Array(files.length);
   var saveBtn = document.getElementById('newsSaveBtn');
   if (saveBtn) saveBtn.disabled = true;
-  function _newsUploadNext() {
-    if (i >= files.length) {
-      if (saveBtn) saveBtn.disabled = false;
-      var payload2 = { id: id, news: news, date: date, attachments: keptUrls.concat(newUrls).join('\n') };
-      for (var k2 in scopeData) payload2[k2] = scopeData[k2];
-      sendSaveNews(payload2, id);
-      return;
-    }
-    var file = files[i];
-    showLoading('جارٍ رفع الملفات ' + (i + 1) + '/' + files.length + '...');
-    // رفع Resumable مباشر إلى Drive (يدعم الصور حتى 30MB والفيديو حتى 300MB، بلا base64).
+
+  var _newsUpNext = 0, _newsUpDone = 0, _newsUpFailed = false;
+  function _newsUploadFinishAll() {
+    if (saveBtn) saveBtn.disabled = false;
+    var payload2 = { id: id, news: news, date: date, attachments: keptUrls.concat(newUrls).join('\n') };
+    for (var k2 in scopeData) payload2[k2] = scopeData[k2];
+    sendSaveNews(payload2, id);
+  }
+  function _newsUploadStartSlot() {
+    if (_newsUpFailed || _newsUpNext >= files.length) return;
+    var idx = _newsUpNext++;
+    var file = files[idx];
+    showLoading('جارٍ رفع الملفات (' + (_newsUpDone + 1) + '..' + Math.min(_newsUpNext, files.length) + ')/' + files.length + '...');
+    // رفع Resumable مقطَّع إلى Drive (يدعم الصور حتى 30MB والفيديو حتى 300MB، بلا base64).
     _newsResumableUpload(file,
-      function (url) { newUrls.push(url); i++; _newsUploadNext(); },
-      function (errMsg) { hideLoading(); if (saveBtn) saveBtn.disabled = false; toast('تعذّر رفع «' + file.name + '»: ' + errMsg, 'error'); }
+      function (url) {
+        newUrls[idx] = url;
+        _newsUpDone++;
+        if (_newsUpFailed) return;
+        if (_newsUpDone >= files.length) { _newsUploadFinishAll(); } else { _newsUploadStartSlot(); }
+      },
+      function (errMsg) {
+        if (_newsUpFailed) return;
+        _newsUpFailed = true;
+        hideLoading();
+        if (saveBtn) saveBtn.disabled = false;
+        toast('تعذّر رفع «' + file.name + '»: ' + errMsg, 'error');
+      }
     );
   }
-  _newsUploadNext();
+  var _newsUpSlots = Math.min(_TNEWS_CONCURRENT_UPLOADS, files.length);
+  for (var _su = 0; _su < _newsUpSlots; _su++) _newsUploadStartSlot();
 }
 
 // غلاف retry محدود (خطوتا التنسيق القصيرتان مع الخادم فقط، لا نقل الملف الثقيل) — يُعاد
@@ -7739,6 +7756,22 @@ function _callServerWithRetry(fnName, params, callback, errorCallback, maxRetrie
   tryOnce();
 }
 
+// ── ثوابت الرفع المقطَّع (chunked resumable) لمرفقات الأخبار ──────────────────────────
+// حجم الشريحة ديناميكي: يبدأ معتدلاً ويكبر مع النجاح المتتالي حتى سقف، ويصغر عند الفشل — كل
+// حجم مضاعف لـ256KiB إلزامياً (قيد بروتوكول Google لكل شريحة عدا الأخيرة). عدد الملفات المتزامنة
+// افتراضي بداية للتحقّق التجريبي على اتصال حقيقي بطيء، لا رقماً نهائياً.
+var _TNEWS_CONCURRENT_UPLOADS = 2;
+var _TNEWS_CHUNK_UNIT = 256 * 1024;
+var _TNEWS_CHUNK_START = 8 * 1024 * 1024;
+var _TNEWS_CHUNK_MAX = 32 * 1024 * 1024;
+var _TNEWS_CHUNK_MIN = 1 * 1024 * 1024;
+var _TNEWS_CHUNK_RETRY_DELAYS = [1000, 2000, 4000, 8000, 15000];
+
+function _tnewsRoundDownToChunkUnit(n) {
+  var u = Math.floor(n / _TNEWS_CHUNK_UNIT) * _TNEWS_CHUNK_UNIT;
+  return u > 0 ? u : _TNEWS_CHUNK_UNIT;
+}
+
 // ── رفع Resumable لمرفق خبر عبر وسيط /drive-upload ثم تسجيله وإرجاع رابط العرض ──
 // onDone(url) عند النجاح · onFail(msg) عند الفشل. نموذج مطابق لـ CMS AddForm.
 function _newsResumableUpload(file, onDone, onFail) {
@@ -7748,7 +7781,7 @@ function _newsResumableUpload(file, onDone, onFail) {
       if (!res || !res.success || !res.sessionUri) { onFail((res && res.error) || 'تعذّر بدء الرفع'); return; }
       var workerBase = (window.GAS_ENDPOINT && window.GAS_ENDPOINT.charAt(0) === '/') ? '' : 'https://school.procorners.com';
       var proxyUrl = workerBase + '/drive-upload?sessionUri=' + encodeURIComponent(res.sessionUri);
-      _newsResumablePut(proxyUrl, res.sessionUri, file, function (fileId) {
+      _newsChunkedUpload(proxyUrl, res.sessionUri, file, function (fileId) {
         _callServerWithRetry('registerNewsMediaProtected',
           { fileId: fileId, mimeType: file.type },
           function (r2) {
@@ -7757,36 +7790,110 @@ function _newsResumableUpload(file, onDone, onFail) {
           },
           function (e2) { onFail(e2.message || e2); }
         );
-      }, onFail, false);
+      }, onFail);
     },
     function (err) { onFail(err.message || err); }
   );
 }
 
-// PUT بايتات الملف عبر الوسيط، مع تراجع مرّة واحدة للرفع المباشر إلى googleapis عند فشل الوسيط.
-function _newsResumablePut(url, sessionUri, file, onId, onFail, isFallback) {
-  var xhr = new XMLHttpRequest();
-  xhr.open('PUT', url, true);
-  xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-  xhr.upload.onprogress = function (e) {
-    if (e.lengthComputable) { showLoading('جارٍ رفع «' + file.name + '» … ' + Math.round((e.loaded / e.total) * 100) + '%'); }
-  };
-  xhr.onload = function () {
-    if (xhr.status >= 200 && xhr.status < 300) {
-      var fileId = '';
-      try { fileId = JSON.parse(xhr.responseText).id; } catch (e) {}
-      if (!fileId) { onFail('اكتمل الرفع لكن تعذّر قراءة معرّف الملف'); return; }
-      onId(fileId);
+// رفع مقطَّع (chunked resumable) لبايتات الملف — بديل عن PUT واحد ضخم:
+// - يبدأ بحجم شريحة معتدل ويُضاعفه عند نجاح متتالٍ حتى سقف، ويُنصِّفه عند الفشل.
+// - عند فشل شريحة: يجرّب فوراً مرّة واحدة عبر الرابط المباشر لـ googleapis (تراجع الوسيط)، ثم
+//   يُعيد المحاولة حتى 5 مرّات بتأخير تصاعدي — مستعلماً في كل مرّة عن آخر بايت قبِلَه Google
+//   فعلياً لهذه الجلسة (Content-Range: bytes */total فارغ) بدل افتراض إعادة الإرسال من الصفر.
+// onId(fileId) عند اكتمال آخر شريحة · onFail(msg) عند فشل نهائي (استنفاد المحاولات أو جلسة منتهية).
+function _newsChunkedUpload(proxyUrl, sessionUri, file, onId, onFail) {
+  var total = file.size;
+  var offset = 0;
+  var chunkSize = _TNEWS_CHUNK_START;
+  var useProxy = true;
+
+  function currentUrl() { return useProxy ? proxyUrl : sessionUri; }
+
+  function reportProgress(extra) {
+    var done = offset + (extra || 0);
+    if (done > total) done = total;
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    showLoading('جارٍ رفع «' + file.name + '» … ' + pct + '%');
+  }
+
+  // يستعلم عن آخر بايت قبِلَه Google فعلياً لهذه الجلسة قبل إعادة محاولة شريحة فاشلة — لا يفترض
+  // إعادة الإرسال من الصفر أو من بداية الشريحة الفاشلة.
+  function queryResumeOffset(cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', currentUrl(), true);
+    xhr.setRequestHeader('Content-Range', 'bytes */' + total);
+    xhr.onload = function () {
+      if (xhr.status === 308) {
+        var range = xhr.getResponseHeader('Range');
+        var m = range && /bytes=0-(\d+)/.exec(range);
+        cb(m ? (parseInt(m[1], 10) + 1) : 0, null, false);
+      } else if (xhr.status === 200 || xhr.status === 201) {
+        var fid = '';
+        try { fid = JSON.parse(xhr.responseText).id; } catch (e) {}
+        cb(null, fid || null, false);
+      } else if (xhr.status === 404) {
+        cb(null, null, true);
+      } else {
+        cb(0, null, false);
+      }
+    };
+    xhr.onerror = function () { cb(0, null, false); };
+    xhr.send(null);
+  }
+
+  function handleChunkFailure(attempt) {
+    // أولاً: مرّة واحدة عبر الرابط المباشر قبل اعتبارها فشلاً حقيقياً لهذه المحاولة.
+    if (useProxy) { useProxy = false; sendChunk(attempt); return; }
+    useProxy = true;
+    if (attempt >= _TNEWS_CHUNK_RETRY_DELAYS.length) {
+      onFail('تعذّر رفع الملف بعد عدّة محاولات — تحقّق من الاتصال وأعد المحاولة');
       return;
     }
-    if (!isFallback && url !== sessionUri) { _newsResumablePut(sessionUri, sessionUri, file, onId, onFail, true); return; }
-    onFail('فشل رفع البايتات (status ' + xhr.status + ')');
-  };
-  xhr.onerror = function () {
-    if (!isFallback && url !== sessionUri) { _newsResumablePut(sessionUri, sessionUri, file, onId, onFail, true); return; }
-    onFail('فشل الاتصال أثناء الرفع');
-  };
-  xhr.send(file);
+    chunkSize = Math.max(_tnewsRoundDownToChunkUnit(Math.floor(chunkSize / 2)), _TNEWS_CHUNK_MIN);
+    setTimeout(function () {
+      queryResumeOffset(function (resumeOffset, fileId, expired) {
+        if (expired) { onFail('انتهت صلاحية جلسة الرفع — أعد المحاولة من البداية'); return; }
+        if (fileId) { onId(fileId); return; }
+        if (typeof resumeOffset === 'number') offset = resumeOffset;
+        sendChunk(attempt + 1);
+      });
+    }, _TNEWS_CHUNK_RETRY_DELAYS[attempt]);
+  }
+
+  function sendChunk(attempt) {
+    var end = Math.min(offset + chunkSize, total);
+    if (end < total) end = offset + _tnewsRoundDownToChunkUnit(end - offset);
+    var blob = file.slice(offset, end);
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', currentUrl(), true);
+    xhr.setRequestHeader('Content-Range', 'bytes ' + offset + '-' + (end - 1) + '/' + total);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) reportProgress(e.loaded);
+    };
+    xhr.onload = function () {
+      if (xhr.status === 308) {
+        offset = end;
+        chunkSize = Math.min(chunkSize * 2, _TNEWS_CHUNK_MAX);
+        reportProgress(0);
+        sendChunk(0);
+        return;
+      }
+      if (xhr.status === 200 || xhr.status === 201) {
+        var fileId = '';
+        try { fileId = JSON.parse(xhr.responseText).id; } catch (e) {}
+        if (!fileId) { onFail('اكتمل الرفع لكن تعذّر قراءة معرّف الملف'); return; }
+        onId(fileId);
+        return;
+      }
+      handleChunkFailure(attempt);
+    };
+    xhr.onerror = function () { handleChunkFailure(attempt); };
+    xhr.send(blob);
+  }
+
+  sendChunk(0);
 }
 
 /**
