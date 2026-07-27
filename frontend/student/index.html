@@ -2658,6 +2658,7 @@ a { color: var(--pr); text-decoration: none; }
 <div class="modal-bg" id="platformReviewModal">
   <div class="modal">
     <h3>⭐ قيّم تجربتك مع المنصة</h3>
+    <div id="prRequestBanner" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:10px;">🙏 طلب منك مدير المدرسة تقييم تجربتك مع المنصة.</div>
     <div class="pr-stars" id="prStars">
       <span class="pr-star" data-val="5" onclick="_prSetRating(5)">★</span>
       <span class="pr-star" data-val="4" onclick="_prSetRating(4)">★</span>
@@ -2669,10 +2670,6 @@ a { color: var(--pr); text-decoration: none; }
       <label>تعليقك (اختياري)</label>
       <textarea id="prComment" maxlength="1000" placeholder="شاركنا رأيك — ما الذي أعجبك؟ وما الذي يمكننا تحسينه؟"></textarea>
     </div>
-    <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--muted,#64748b);cursor:pointer;margin-top:4px;">
-      <input type="checkbox" id="prPublicConsent" style="margin-top:2px;">
-      <span>أوافق على استخدام تقييمي (بعد موافقة إدارة المدرسة) كشهادة تسويقية للمنصة على الموقع العام، دون عرض بيانات اتصالي.</span>
-    </label>
     <div id="prSubmitMsg" style="margin-top:8px;font-size:12px;"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('platformReviewModal')">إلغاء</button>
@@ -2895,13 +2892,13 @@ function toast(msg, type) {
 // ═══════════════════════════════════════════════════════════
 var _prRating = 0;
 
-function openPlatformReviewModal() {
+function openPlatformReviewModal(requested) {
   _prRating = 0;
   var stars = $$('#prStars .pr-star');
   for (var i = 0; i < stars.length; i++) stars[i].classList.remove('active');
   var c = $('prComment'); if (c) c.value = '';
-  var k = $('prPublicConsent'); if (k) k.checked = false;
   var m = $('prSubmitMsg'); if (m) m.innerHTML = '';
+  var bn = $('prRequestBanner'); if (bn) bn.style.display = requested ? 'block' : 'none';
   var btn = $('prSubmitBtn'); if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
   openModal('platformReviewModal');
 }
@@ -2947,8 +2944,7 @@ function _prSubmit() {
       studentId: APP.user.id,
       studentName: APP.user.name,
       rating: _prRating,
-      comment: ($('prComment') || {}).value || '',
-      publicConsent: !!($('prPublicConsent') || {}).checked
+      comment: ($('prComment') || {}).value || ''
     });
 }
 
@@ -3537,6 +3533,20 @@ function initApp() {
 
   // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
   try { _prMaybeNudge(); } catch (ePr) {}
+
+  // طلب تقييم موجَّه من المدير لهذا الطالب تحديداً — يتجاوز جدولة المطالبة الذكية العادية
+  // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار" (نداء خفيف، لا يؤخّر أي رسم).
+  try {
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (r && r.ok && r.pending) {
+          var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
+          openPlatformReviewModal(true);
+        }
+      })
+      .withFailureHandler(function () {})
+      .checkPendingPlatformReviewRequest({ schoolId: APP.user.schoolId, studentId: APP.user.id });
+  } catch (ePrReq) {}
 
   // 🆕 تفعيل lazy loading الاحتياطي بعد تحميل التطبيق
   setTimeout(function() { initLazyImages(); }, 500);
