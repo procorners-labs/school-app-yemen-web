@@ -372,18 +372,15 @@ export default {
     // القديمة أحادية الهوية (assets/index.html)، التي تبقى موجودة وتعمل عند طلبها صراحة عبر
     // /index.html، فقط لم تعد الافتراضي عند الجذر. راجع _build/gen-sitemap.js في school-app-yemen-gas.
     if (path === '/' || path === '') path = '/home-all-school/index.html';
-    // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته لصفحة home-all-school العامة مع
-    // ?school=<slug> محقونة تلقائياً — ما لم يُمرَّر school/schoolId صراحةً أصلاً (احترام أي
-    // معامل صريح). فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة (تطبيقات GAS السبعة +
-    // المسارات الخاصة الأخرى) فلا يتعارض مع أي مسار قائم. لا نداء GAS للتحقّق من وجود المدرسة
-    // هنا — slug غير حقيقي يُرجِع خطأً واضحاً من _schoolRowById خادمياً، لا عطلاً بالـWorker.
-    var schoolSlug = _schoolSlugFromPath(path);
-    if (schoolSlug) {
-      path = '/home-all-school/index.html';
-      if (!url.searchParams.get('school') && !url.searchParams.get('schoolId')) {
-        url.searchParams.set('school', schoolSlug);
-      }
-    }
+    // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته لصفحة home-all-school العامة —
+    // فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة (تطبيقات GAS السبعة + المسارات الخاصة
+    // الأخرى) فلا يتعارض مع أي مسار قائم. لا نداء GAS للتحقّق من وجود المدرسة هنا — slug غير حقيقي
+    // يُرجِع خطأً واضحاً من _schoolRowById خادمياً، لا عطلاً بالـWorker.
+    // ⚠️ لا حقن ?school= هنا (كان بلا فائدة): هذا يُغيِّر فقط رابط الجلب الداخلي من GitHub Pages —
+    // عنوان المتصفّح الفعلي (location.search) يبقى فارغاً كما طلبه الزائر، فلا يصل أي شيء لكود
+    // العميل عبره. الحلّ الصحيح: `home-all-school/Index.html` (school-app-yemen-gas) تقرأ
+    // location.pathname مباشرة كاحتياط — يبقى بلا تغيير هنا بصرف النظر عن هذا المسار.
+    if (_schoolSlugFromPath(path)) path = '/home-all-school/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;
     var ghResp = await fetch(ghUrl, {
       headers: { 'User-Agent': 'cf-worker-proxy', 'Accept': request.headers.get('Accept') || '*/*' },
