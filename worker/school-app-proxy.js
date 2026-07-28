@@ -29,6 +29,97 @@ var GAS = {
   pricing:  'https://script.google.com/macros/s/AKfycbz11yUbrix4F1lE_GbiAFqE3EClGpoRvAb19LoLoABQX_Xo3i2U25jlQpOFcN9S_yLC/exec'
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  منظّم التزاحم (bulkhead) — المرحلة أ: حَكْم داخل العامل الواحد
+// ═══════════════════════════════════════════════════════════════════════════
+//  المشكلة: حصة Google = 30 تنفيذاً متزامناً **لكل حساب**، مشتركة بين التطبيقات
+//  الثمانية كلها (كلها Execute-as-Me بنفس procorners.shop@gmail.com). الوسيط كان
+//  يُطلق نحو GAS بلا أي وعي بعدد ما أطلقه هو نفسه للتوّ، فيُساهم في إغراق الحصة
+//  ذاتياً — الطبقة الثالثة من حادثة 2026-07-28 (راجع التعليق داخل حلقة إعادة
+//  المحاولة أدناه؛ الطبقتان الأوليان: استنفاد الحصة نفسه، وتضخيم إعادة المحاولة).
+//
+//  مضخّمات حمل مؤكَّدة في الواجهة تُبرّر **الطابور** لا مجرّد الرفض:
+//    • assets/offline-sync.js — Promise.all بلا حدّ على كل القراءات المتتبَّعة عند
+//      عودة الاتصال ⇒ انفجار متزامن من عميل واحد.
+//    • teacher — setInterval(_visitsPollOnline, 18000): نبض دائم لكل تبويب مفتوح.
+//    • assets/gas-bridge.js — كل رفض *قراءة* يعود كموجة ثانية بعد 900ms.
+//
+//  ⚠️ حدود هذه الطبقة (مُصرَّح بها عمداً، لا تُنسَ عند قراءة السجلّات):
+//   1) الحالة على مستوى الوحدة ⇒ عمرها عمر الـisolate. لا ترى isolates أخرى،
+//      فالسقف الفعلي = (عدد الـisolates النشطة × BH_ISO_GLOBAL). تكبح أسوأ تضخيم
+//      بصفر تكلفة وصفر زمن مضاف، لكنها **لا تفرض** حدّاً عالمياً صلباً. فرضُه
+//      يتطلّب حالة مشتركة (Durable Object) — المرحلة ب، مشروطة بالقياس أدناه.
+//   2) لا تتسرّب أبداً: موت الـisolate يمحو العدّاد معه (بخلاف عدّاد مركزي الذي
+//      يحتاج إيجاراً بمهلة + كنساً).
+//   3) نداءات GAS→GAS (جسر teacher→schedule في activateSchoolPlatformProtected،
+//      وجسر teacher→master-admin في createSchoolBranchProtected) تخرج من GAS
+//      مباشرةً إلى /exec ولا تمرّ بهذا الوسيط إطلاقاً ⇒ غير مرئية لهذا المنظّم،
+//      وكل واحد منها يحجز مقعدين (المُستدعي محجوز منتظِراً + المُستدعَى يعمل).
+//      محسوبة ضمن الهامش المتروك من الثلاثين، لا ضمن السقوف أدناه.
+//
+//  القياس الذي يقرّر المرحلة ب — قانون Little من سجلّات ev:'bulkhead':
+//      N ≈ λ × W   (λ = نداءات/ثانية، W = متوسط زمن النداء بالثواني)
+//  إن بقي p99(N) عبر أسبوع (شامل ذروة الإقلاع الصباحي) دون ~12 فالمرحلة أ كافية.
+var BH_ISO_GLOBAL  = 8;      // أقصى تزامن نحو GAS داخل عامل واحد (كل التطبيقات)
+var BH_ISO_APP     = 5;      // سقف فرعي لكل تطبيق داخل عامل واحد (منع الاحتكار)
+var BH_MAX_WAIT_MS = 8000;   // أقصى انتظار في الطابور قبل رفض نظيف بـ503
+var _bhN   = 0;              // المُستخدَم حالياً (عالمي داخل هذا الـisolate)
+var _bhApp = {};             // app -> المُستخدَم حالياً
+var _bhQ   = [];             // طابور FIFO: [{ app, resolve, deadline, timer }]
+
+function _bhCan(app) {
+  return _bhN < BH_ISO_GLOBAL && (_bhApp[app] || 0) < BH_ISO_APP;
+}
+function _bhTake(app) {
+  _bhN++;
+  _bhApp[app] = (_bhApp[app] || 0) + 1;
+}
+
+// مسح الطابور بترتيب الوصول (FIFO) مع **تجاوز مقيَّد** لرأس الطابور:
+//  • رأس محجوز بسقفه الفرعي فقط ⇒ نتجاوزه لمن خلفه (تفادي حجب رأس الطابور:
+//    تطبيق بلغ سقفه الفرعي كان سيُجمّد الطابور كله خلفه).
+//  • رأس محجوز بالسقف العالمي ⇒ نتوقّف فوراً (لا أحد خلفه يستطيع المرور أصلاً).
+// الترتيب داخل كل تطبيق يبقى صارماً، فلا تجويع.
+function _bhPump() {
+  var now = Date.now(), i = 0;
+  while (i < _bhQ.length) {
+    var w = _bhQ[i];
+    if (w.deadline <= now) {                       // انتهت مهلته أثناء الانتظار
+      _bhQ.splice(i, 1); clearTimeout(w.timer); w.resolve(false); continue;
+    }
+    if (!_bhCan(w.app)) {
+      if (_bhN >= BH_ISO_GLOBAL) break;             // السقف العالمي ⇒ لا فائدة من المتابعة
+      i++; continue;                                // سقف فرعي ⇒ تجاوز إلى من خلفه
+    }
+    _bhQ.splice(i, 1); clearTimeout(w.timer); _bhTake(w.app); w.resolve(true);
+  }
+}
+
+// يُرجِع Promise<boolean>. maxWaitMs = 0 ⇒ وضع «افتحْ الآن أو تخطَّ» بلا انتظار.
+function _bhAcquire(app, maxWaitMs) {
+  if (_bhCan(app)) { _bhTake(app); return Promise.resolve(true); }
+  if (!(maxWaitMs > 0)) return Promise.resolve(false);
+  return new Promise(function (resolve) {
+    var entry = { app: app, resolve: resolve, deadline: Date.now() + maxWaitMs, timer: 0 };
+    entry.timer = setTimeout(function () {
+      var ix = _bhQ.indexOf(entry);
+      if (ix !== -1) { _bhQ.splice(ix, 1); resolve(false); }
+    }, maxWaitMs);
+    _bhQ.push(entry);
+  });
+}
+
+function _bhRelease(app) {
+  if (_bhN > 0) _bhN--;
+  if (_bhApp[app] > 0) _bhApp[app]--;
+  _bhPump();
+}
+
+// سطر JSON منظّم واحد — قابل للترشيح في Cloudflare Workers Observability.
+function _bhLog(o) {
+  try { console.log(JSON.stringify(o)); } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
+}
+
 function withCors(resp) {
   resp.headers.set('Access-Control-Allow-Origin', '*');
   resp.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -66,7 +157,7 @@ function _schoolSlugFromPath(path) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env, ctx) {
     var url = new URL(request.url);
     var path = url.pathname;
 
@@ -90,6 +181,39 @@ export default {
         init.body = await request.text();
       }
 
+      // ── حَجز مقعد قبل إطلاق أي محاولة نحو GAS (منظّم التزاحم) ───────────────
+      // فحوصات الصحّة مُعفاة عمداً: ?action=health أداة تشخيص يجب أن تُخبرنا عن حال
+      // GAS نفسه لا عن حال المنظّم — حَكْمها يُخفي بالضبط الحالة التي نُشخّصها بها.
+      // حجمها ضئيل (استدعاء يدوي/تشغيلي) فتُحتسَب ضمن الهامش المتروك من الثلاثين.
+      var _bhMode   = (env && env.BULKHEAD_MODE) || 'on';
+      var _bhExempt = url.searchParams.get('action') === 'health';
+      var _bhOn     = (_bhMode !== 'off') && !_bhExempt;
+      var _bhT0     = Date.now();
+      var _bhHeld   = false;
+      if (_bhOn) {
+        // وضع الظلّ لا ينتظر إطلاقاً (انتظاره كان سيكون تغيير سلوك بحدّ ذاته): يحاول
+        // الحَجز بلا انتظار، ثم يأخذ المقعد على أي حال ويُكمل. فائدته أن العدّاد n في
+        // السجلّ يصبح **التزامن الحقيقي المُشاهَد** بلا سقف يقيّده — وهو بالضبط الرقم
+        // المطلوب لمعايرة السقوف قبل تفعيل الرفض الفعلي.
+        _bhHeld = await _bhAcquire(app, _bhMode === 'shadow' ? 0 : BH_MAX_WAIT_MS);
+      }
+      var _bhWaited = _bhOn ? (Date.now() - _bhT0) : 0;
+      if (_bhOn && !_bhHeld) {
+        _bhLog({ ev: 'bulkhead', act: _bhMode === 'shadow' ? 'would_block' : 'reject',
+                 app: app, mode: _bhMode, waitMs: _bhWaited, n: _bhN, q: _bhQ.length });
+        if (_bhMode === 'shadow') {
+          _bhHeld = true; _bhTake(app);   // يبقى الحساب متوازناً مع التحرير في finally
+        } else {
+          // 503 نظيف بنفس نصّ سطر الرفض القائم حرفياً — لا 502 خام من هذا المسار أبداً.
+          // ملاحظة سلوكية: assets/gas-bridge.js لا يقرأ الجسم إطلاقاً عند status ≥ 400،
+          // فالـstatus وحده هو ما يقود السلوك ⇒ القراءات تتراجع لكاش IndexedDB، والكتابات
+          // تدخل طابور outbox وتُكمل تفاؤلياً. الجسم يبقى مطابقاً حرفياً لأن مستهلكاً آخر
+          // (تطبيق أندرويد على نطاق workers.dev) قد يقرؤه. jsonResponse يُطبّق withCors أصلاً.
+          return jsonResponse({ ok: false, error: 'تعذّر تنفيذ الطلب حالياً (اعتراض مؤقّت من الخادم). حاول مجدداً بعد لحظات.' }, 503);
+        }
+      }
+
+      try {
       // تطبيقات GAS تُرجع أحيانًا 404 أو صفحة HTML اعتراضية بشكل متقطّع (~6%) بدل تنفيذ الدالة.
       // نعيد المحاولة: نعدّ 404 (أو جسمًا HTML في طلبات POST التي تتوقّع JSON) قابلًا
       // لإعادة المحاولة، فلا يظهر خلل GAS العابر للمستخدم كفشل. طلبات GET (مثل الصفحة) يُقبل HTML فيها.
@@ -125,7 +249,15 @@ export default {
       // الزمن غير المحسوب — مهلة كل محاولة ثابتة (لا تتقلّص مع الميزانية المتبقّية، تبسيطاً يزيل
       // مصدر خطأ محتملاً).
       var loopStart = Date.now();
-      var TOTAL_BUDGET_MS = 24000;
+      // ⚠️ زمن انتظار الطابور **يُخصَم** من الميزانية ولا يُضاف فوقها. إضافته كانت
+      // ستُعيد إنتاج الفشل الموثَّق أعلاه بالضبط: القيمة الأوّلية (45000/20000) أعطت
+      // ~63.6 ثانية فعلية وتجاوزت مهلة العميل، لأن ثمّة زمناً غير محسوب لاتّباع
+      // إعادة توجيه Google لا يدخل في مهلة المحاولة (ويؤكّده أن فحص الميزانية أدناه
+      // يحرس **بداية** المحاولة لا نهايتها) — أي أن 24000 ليست سقفاً صلباً أصلاً.
+      // بالخصم: أسوأ زمن إجمالي يبقى كما هو اليوم حرفياً. الثمن أن طلباً انتظر طويلاً
+      // قد يحصل على محاولة واحدة بدل اثنتين — وهو السلوك الصحيح لا تدهور: تحت إشباع
+      // الحصة، إعادة المحاولة تضاعف الحمل بلا فائدة (نفس درس حادثة 2026-07-28).
+      var TOTAL_BUDGET_MS = 24000 - _bhWaited;
       var PER_ATTEMPT_TIMEOUT_MS = 11500;
       for (attempt = 0; attempt < 2; attempt++) {
         var elapsedBeforeAttempt = Date.now() - loopStart;
@@ -162,6 +294,20 @@ export default {
         status: lastStatus,
         headers: { 'Content-Type': 'application/json; charset=utf-8' }
       }));
+      } finally {
+        // سطر واحد لكل نداء مكتمل — هو **مصدر القياس** الذي تُبنى عليه المرحلة ب:
+        //   قانون Little:  N ≈ λ × W   (λ = عدد سجلّات ev:'gas' في الثانية،
+        //   W = متوسط gasMs/1000)  ⇒ N = التزامن العالمي الفعلي المُقدَّر.
+        // إن بقي p99(N) عبر أسبوع دون ~12 فالمرحلة أ (هذه) كافية ولا حاجة لـDurable
+        // Object. عمداً سطر واحد فقط لكل نداء (لا سطر عند كل منح) كي لا يُغرَق السجل.
+        _bhLog({ ev: 'gas', app: app, ms: Date.now() - _bhT0, waitMs: _bhWaited,
+                 gasMs: Date.now() - _bhT0 - _bhWaited, n: _bhN, q: _bhQ.length,
+                 st: lastStatus, ok: good });
+        // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
+        // (الرفض 503 يخرج قبل الـtry ولا يحجز مقعداً أصلاً). بلا هذا، أي مسار خروج
+        // منسيّ يُسرّب مقعداً إلى الأبد ويُجمّد السقف تدريجياً.
+        if (_bhHeld) _bhRelease(app);
+      }
     }
 
     // ── 1ب) عرض صورة QR عبر Proxy (inline): /qr-img?url=... ──────
@@ -427,13 +573,32 @@ export default {
     // (وسيط إضافي يُتجاهَل — getNewsOg هناك بمعاملين فقط).
     var _newsId = url.searchParams.get('news');
     if (_newsId && isHtml) {
-      try {
+      var _ogApp = /^\/home\//.test(path) ? 'home' : 'home-all-school';
+      // «افتحْ الآن أو تخطَّ» (maxWait = 0): وسوم OG لزائر مشاركة يجب ألّا تُزاحم تسجيل
+      // دخول معلّم في الطابور أبداً. عند عدم توفّر مقعد فوراً نتخطّى الحقن ونخدم الصفحة
+      // بوسوم الهوية العامة — وهو بالضبط ما يفعله الـcatch أدناه اليوم عند أي فشل.
+      // (هذا النداء يستهلك من حصة الثلاثين أيضاً ولم يكن محكوماً إطلاقاً قبل اليوم.)
+      var _ogMode = (env && env.BULKHEAD_MODE) || 'on';
+      var _ogHeld = (_ogMode !== 'off') ? await _bhAcquire(_ogApp, 0) : false;
+      if (_ogMode !== 'off' && !_ogHeld) {
+        _bhLog({ ev: 'bulkhead', act: 'skip_og', app: _ogApp, mode: _ogMode, n: _bhN, q: _bhQ.length });
+      }
+      // التخطّي الفعلي في وضع 'on' فقط: وضع 'shadow' يُسجّل ولا يغيّر السلوك إطلاقاً،
+      // ووضع 'off' لا يحكم أصلاً. والتحرير مشروط بـ_ogHeld وحده — تحرير مقعد لم نأخذه
+      // كان سيخصم مقعد طلب متزامن آخر ويُفسد العدّاد.
+      if (_ogHeld || _ogMode !== 'on') try {
         var _ogTarget = /^\/home\//.test(path) ? GAS.home : GAS['home-all-school'];
+        // ⚠️ إصلاح خلل قائم: هذا النداء كان بلا أي مهلة إطلاقاً — يمكن أن يعلق طويلاً
+        // ويحتجز مقعداً من حصة GAS بينما الزائر ينتظر صفحة ثابتة أصلاً.
+        var _ogAbort = new AbortController();
+        var _ogTimer = setTimeout(function () { _ogAbort.abort(); }, 8000);
         var _ogRes = await fetch(_ogTarget, {
           method: 'POST',
+          signal: _ogAbort.signal,
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, url.searchParams.get('school') || '', url.searchParams.get('t') || ''] })
         });
+        clearTimeout(_ogTimer);
         var _ogJson = await _ogRes.json();
         var _og = (_ogJson && _ogJson.result) ? _ogJson.result : _ogJson;
         if (_og && _og.ok && (_og.image || _og.title)) {
@@ -445,6 +610,12 @@ export default {
             .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
         }
       } catch (_ogErr) { /* تجاهل — نُعيد الصفحة بوسوم الهوية العامة */ }
+      finally {
+        // إلزامي أن يكون finally: مسار النجاح يخرج بـreturn HTMLRewriter().transform()
+        // من **داخل** الـtry، فأي تحرير بعد الكتلة لن يُنفَّذ في الحالة الشائعة.
+        clearTimeout(_ogTimer);
+        if (_ogHeld) _bhRelease(_ogApp);
+      }
     }
 
     return new Response(ghResp.body, {
