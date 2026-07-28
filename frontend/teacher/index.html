@@ -2395,12 +2395,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div class="pr-share-option">
         <div class="pr-share-option-title">📊 مشاركة الإحصاءات العامة</div>
         <div class="pr-share-option-text" id="prShareStatsPreview"></div>
+        <div style="margin:10px 0;text-align:center;"><canvas id="prShareStatsCanvas" style="max-width:100%;width:220px;height:auto;border-radius:14px;box-shadow:0 4px 16px rgba(0,0,0,.2);"></canvas></div>
         <button class="btn btn-primary" onclick="prShare_stats()">مشاركة الإحصاءات</button>
         <button class="btn btn-secondary" onclick="prShare_copyStats()">📋 نسخ النص</button>
+        <button class="btn btn-secondary" onclick="prShare_downloadStats()">⬇️ تنزيل الصورة</button>
       </div>
       <div style="height:16px;"></div>
       <div class="pra-chart-title">⭐ مشاركة تقييم مُعتمَد كشهادة تسويقية</div>
       <div id="prShareTestimonialList" class="pr-req-list"><div style="padding:12px;text-align:center;color:var(--text-muted);font-size:13px;">لا توجد تقييمات مُعتمَدة كشهادة تسويقية بعد</div></div>
+      <div id="prShareTestimonialPreviewWrap" style="display:none;margin-top:12px;text-align:center;">
+        <canvas id="prShareTestimonialCanvas" style="max-width:100%;width:220px;height:auto;border-radius:14px;box-shadow:0 4px 16px rgba(0,0,0,.2);"></canvas>
+        <div style="margin-top:8px;"><button class="btn btn-secondary" onclick="prShare_downloadTestimonialPreview()">⬇️ تنزيل الصورة</button></div>
+      </div>
       <div id="prShareMsg" style="font-size:13px;margin-top:8px;"></div>
     </div>
     <div class="modal-footer">
@@ -5709,6 +5715,9 @@ function prReq_loadSentList() {
 // ==================== مشاركة تقييمات المنصة ====================
 var PR_SHARE_STATS_TEXT = '';
 
+var _prLastStatsCanvas = null;
+var _prLastTestimonialCanvas = null;
+
 function prShare_open() {
   openModal('prShareModal');
   var s = PRA.stats || {};
@@ -5716,11 +5725,28 @@ function prShare_open() {
   PR_SHARE_STATS_TEXT = '⭐ منصتنا حصلت على تقييم ' + (s.avgRating || 0) + ' من 5 عبر ' + count + ' تقييماً من معلمينا وأولياء أمورنا! 🎉';
   var prev = document.getElementById('prShareStatsPreview'); if (prev) prev.textContent = PR_SHARE_STATS_TEXT;
   var msgEl = document.getElementById('prShareMsg'); if (msgEl) msgEl.innerHTML = '';
+  try {
+    _prLastStatsCanvas = _prBuildStatsCanvas(s);
+    _prRenderCanvasInto('prShareStatsCanvas', _prLastStatsCanvas);
+  } catch (eCard) { _prLastStatsCanvas = null; }
+  var twrap = document.getElementById('prShareTestimonialPreviewWrap');
+  if (twrap) twrap.style.display = 'none';
   prShare_renderTestimonials();
 }
 
 function prShare_stats() {
-  _prShareText(PR_SHARE_STATS_TEXT);
+  var canvas;
+  try { canvas = _prLastStatsCanvas || _prBuildStatsCanvas(PRA.stats); }
+  catch (eCard) { canvas = null; }
+  _prShareCanvasCard(canvas, 'تقييم-منصة-سكولز-اليمن.png', 'تقييم منصّة سكولز اليمن', PR_SHARE_STATS_TEXT);
+}
+
+function prShare_downloadStats() {
+  var canvas;
+  try { canvas = _prLastStatsCanvas || _prBuildStatsCanvas(PRA.stats); }
+  catch (eCard) { canvas = null; }
+  if (!canvas) { toast('تعذّر إنشاء بطاقة الصورة على هذا الجهاز', 'error'); return; }
+  _prSavePng(canvas, 'تقييم-منصة-سكولز-اليمن.png');
 }
 
 function prShare_copyStats() {
@@ -5741,9 +5767,26 @@ function prShare_renderTestimonials() {
     var idJson = escapeHtml(JSON.stringify(r.id));
     var roleLabel = r.submitterType === 'معلم' ? 'معلم' : 'ولي أمر';
     html += '<div class="pr-req-item"><span>' + _prStarsHtml(r.rating) + ' <span class="pr-req-status">(' + escapeHtml(roleLabel) + ')</span></span>' +
-      '<button onclick="prShare_testimonial(' + idJson + ')">مشاركة</button></div>';
+      '<span><button onclick="prShare_previewTestimonial(' + idJson + ')" title="معاينة البطاقة">👁️</button> ' +
+      '<button onclick="prShare_testimonial(' + idJson + ')">مشاركة</button></span></div>';
   }
   box.innerHTML = html;
+}
+
+function prShare_previewTestimonial(id) {
+  var r = _prFindReviewLocal(id);
+  if (!r) return;
+  try {
+    _prLastTestimonialCanvas = _prBuildTestimonialCanvas(r);
+    _prRenderCanvasInto('prShareTestimonialCanvas', _prLastTestimonialCanvas);
+    var wrap = document.getElementById('prShareTestimonialPreviewWrap');
+    if (wrap) wrap.style.display = '';
+  } catch (eCard) { _prLastTestimonialCanvas = null; }
+}
+
+function prShare_downloadTestimonialPreview() {
+  if (!_prLastTestimonialCanvas) return;
+  _prSavePng(_prLastTestimonialCanvas, 'شهادة-معلم-سكولز-اليمن.png');
 }
 
 function prShare_testimonial(id) {
@@ -5751,7 +5794,11 @@ function prShare_testimonial(id) {
   if (!r) return;
   var roleLabel = r.submitterType === 'معلم' ? 'أحد معلمينا' : 'أحد أولياء الأمور';
   var text = _prStarsHtml(r.rating) + '\n' + (r.comment ? '"' + r.comment + '"' : '') + '\n— ' + roleLabel + ' في منصتنا';
-  _prShareText(text.replace(/\n+/g, '\n').trim());
+  text = text.replace(/\n+/g, '\n').trim();
+  var canvas;
+  try { canvas = _prBuildTestimonialCanvas(r); _prLastTestimonialCanvas = canvas; }
+  catch (eCard) { canvas = null; }
+  _prShareCanvasCard(canvas, 'شهادة-معلم-سكولز-اليمن.png', 'شهادة تقييم — سكولز اليمن', text);
 }
 
 // آلية مشاركة موحَّدة: Web Share API أولاً (تفتح قائمة تطبيقات المشاركة الحقيقية في الجهاز)،
@@ -5776,6 +5823,161 @@ function _prCopyText(text, msgElId) {
   } catch (e) {
     if (msgEl) msgEl.innerHTML = '<span style="color:var(--tf-red);">تعذّر النسخ</span>';
   }
+}
+
+// ==================== بطاقات مشاركة تصميمية لتقييمات المنصة (Canvas) ====================
+// عائلة تصميم واحدة (خلفية تدرّج + نجوم ذهبية + تذييل هوية "سكولز اليمن") لبطاقتَي الإحصائيات
+// والاقتباس الفردي معاً — بلا تحميل أي صورة/شعار خارجي (يتفادى تلطيخ الـcanvas عبر CORS)، بنفس
+// نمط المشاركة القائم أصلاً في _schedShareAsImage/_schedBuildCanvas (جدول الحصص) واللف النصّي
+// العربي القائم في _lhWrapText (محرّك الديباجات/الشهادات).
+function _prCardPalette() {
+  return { bgTop: '#1e3a5f', bgBottom: '#0f2138', gold: '#f5b942', white: '#ffffff', sub: 'rgba(255,255,255,.72)' };
+}
+
+function _prDrawCardFooter(ctx, W, H, pal) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = pal.gold;
+  ctx.font = '700 24px Tahoma';
+  ctx.fillText('⭐ سكولز اليمن', W / 2, H - 90);
+  ctx.fillStyle = pal.sub;
+  ctx.font = '18px Tahoma';
+  ctx.fillText('yemenschoolz.com', W / 2, H - 58);
+}
+
+function _prCardBaseCanvas(W, H) {
+  var pal = _prCardPalette();
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  var canvas = document.createElement('canvas');
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+  ctx.direction = 'rtl';
+  var grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, pal.bgTop);
+  grad.addColorStop(1, pal.bgBottom);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(245,185,66,.55)';
+  ctx.lineWidth = 3;
+  _lhRoundRect(ctx, 40, 40, W - 80, H - 80, 28);
+  ctx.stroke();
+  ctx.restore();
+  return { canvas: canvas, ctx: ctx, pal: pal, W: W, H: H };
+}
+
+function _prBuildStatsCanvas(stats) {
+  var s = stats || {};
+  var count = (s.pending || 0) + (s.approved || 0) + (s.rejected || 0);
+  var b = _prCardBaseCanvas(900, 900);
+  var ctx = b.ctx, pal = b.pal, W = b.W, H = b.H;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = pal.gold;
+  ctx.font = '600 30px Tahoma';
+  ctx.fillText('⭐ تقييم منصّتنا', W / 2, 150);
+
+  ctx.fillStyle = pal.white;
+  ctx.font = '800 190px Tahoma';
+  ctx.fillText(String(s.avgRating || 0), W / 2, 400);
+
+  ctx.font = '40px Tahoma';
+  ctx.fillStyle = pal.gold;
+  ctx.fillText(_prStarsHtml(Math.round(s.avgRating || 0)), W / 2, 480);
+
+  ctx.font = '26px Tahoma';
+  ctx.fillStyle = pal.sub;
+  ctx.fillText('من ' + count + ' تقييماً من معلمينا وأولياء أمورنا', W / 2, 540);
+
+  _prDrawCardFooter(ctx, W, H, pal);
+  return b.canvas;
+}
+
+function _prBuildTestimonialCanvas(review) {
+  var r = review || {};
+  var b = _prCardBaseCanvas(900, 1125); // عمودي (4:5) يناسب واتساب/حالة انستغرام
+  var ctx = b.ctx, pal = b.pal, W = b.W, H = b.H;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = pal.gold;
+  ctx.font = '600 28px Tahoma';
+  ctx.fillText('💬 من آراء فريقنا', W / 2, 130);
+
+  ctx.font = '44px Tahoma';
+  ctx.fillText(_prStarsHtml(parseInt(r.rating, 10) || 0), W / 2, 210);
+
+  ctx.fillStyle = 'rgba(255,255,255,.18)';
+  ctx.font = '900 130px Georgia, Tahoma';
+  ctx.fillText('"', W / 2, 330);
+
+  var comment = String(r.comment || '').trim();
+  var font1 = '500 34px Tahoma';
+  var maxW = W - 160;
+  var lines = _lhWrapText(comment, maxW, font1);
+  var MAX_LINES = 7;
+  if (lines.length > MAX_LINES) {
+    lines = lines.slice(0, MAX_LINES);
+    var mctx = _lhMeasureCtx(); mctx.font = font1;
+    var last = lines[lines.length - 1];
+    while (last.length && mctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+    lines[lines.length - 1] = last + '…';
+  }
+  ctx.font = font1;
+  ctx.fillStyle = pal.white;
+  var lh = 46;
+  var startY = H / 2 - (lines.length * lh) / 2;
+  for (var i = 0; i < lines.length; i++) ctx.fillText(lines[i], W / 2, startY + i * lh);
+
+  var roleLabel = r.submitterType === 'معلم' ? '— أحد معلمينا' : '— أحد أولياء الأمور';
+  ctx.font = '400 26px Tahoma';
+  ctx.fillStyle = pal.sub;
+  ctx.fillText(roleLabel, W / 2, startY + lines.length * lh + 50);
+
+  _prDrawCardFooter(ctx, W, H, pal);
+  return b.canvas;
+}
+
+function _prRenderCanvasInto(elId, srcCanvas) {
+  var el = document.getElementById(elId);
+  if (!el || !srcCanvas) return;
+  el.width = srcCanvas.width;
+  el.height = srcCanvas.height;
+  var ctx = el.getContext('2d');
+  ctx.clearRect(0, 0, el.width, el.height);
+  ctx.drawImage(srcCanvas, 0, 0);
+}
+
+// مشاركة/تنزيل موحَّدة لبطاقة صورة: نفس نمط _schedShareAsImage (جدول الحصص) — toBlob→File→
+// navigator.canShare({files})→navigator.share، وإلا تنزيل PNG مباشر (_prSavePng)، وإلا (غياب
+// toBlob نفسه على متصفح قديم جداً) رجوع نهائي للمشاركة النصّية القائمة (_prShareText).
+function _prShareCanvasCard(canvas, fname, title, textFallback) {
+  if (!canvas || !canvas.toBlob) { _prShareText(textFallback); return; }
+  canvas.toBlob(function (blob) {
+    if (!blob) { _prShareText(textFallback); return; }
+    var file;
+    try { file = new File([blob], fname, { type: 'image/png' }); } catch (eF) { _prSavePng(canvas, fname); return; }
+    var canShare = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+    if (canShare) {
+      navigator.share({ files: [file], title: title, text: title }).catch(function () { _prSavePng(canvas, fname); });
+    } else {
+      _prSavePng(canvas, fname);
+    }
+  }, 'image/png');
+}
+
+function _prSavePng(canvas, fname) {
+  try {
+    var a = document.createElement('a');
+    a.download = fname;
+    a.href = canvas.toDataURL('image/png');
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { try { document.body.removeChild(a); } catch (e2) {} }, 200);
+    toast('تم حفظ الصورة ✓', 'success');
+  } catch (e) { toast('تعذّر حفظ الصورة على هذا الجهاز', 'error'); }
 }
 
 // ==================== SESSION MANAGEMENT ====================
