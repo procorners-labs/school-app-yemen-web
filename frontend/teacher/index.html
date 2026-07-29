@@ -21953,6 +21953,7 @@ function loadReports(force) {
     '<div id="rpt-teachers-activity" style="margin-top:14px;"></div>' +
     '<div id="rpt-absence" style="margin-top:14px;"></div>' +
     '<div id="rpt-student-attendance" style="margin-top:14px;"></div>' +
+    '<div id="rpt-grades-compliance" style="margin-top:14px;"></div>' +
     '<div id="rpt-tasks" style="margin-top:14px;"></div>';
 
   var _rptScope = _rpt_clientScope();
@@ -21960,6 +21961,8 @@ function loadReports(force) {
   rep_loadTeacherAbsence(_rptScope);
   rep_loadStudentAttendanceStats(_rptScope);
   rep_loadTaskPerformance(_rptScope);
+  // ⚠️ لا تجلب شيئاً — ترسم بطاقة بزرّ فقط (راجع تعليق القسم أدناه: حصّة الثلاثين).
+  rep_loadGradesCompliance();
 
   if (!force && _RPT_CACHE && (Date.now() - _RPT_CACHE_TS) < _RPT_CACHE_TTL_MS) {
     _renderReportsBody(_RPT_CACHE);
@@ -22863,7 +22866,157 @@ function drawTerm1SummaryTable(students) {
   }
 }
 // تنظيف الكاش عند تسجيل الخروج (اختياري)
-function _rpt_clearCache() { _RPT_CACHE = null; _RPT_CACHE_TS = 0; }
+function _rpt_clearCache() { _RPT_CACHE = null; _RPT_CACHE_TS = 0; _GEC_DATA = null; _GEC_TS = 0; }
+
+// ════════════════════════════════════════════════════════════════════
+//  متابعة رصد الدرجات مقابل جدول الاختبارات — قسم داخل تبويب «التقارير»
+//  الخادم: teacher/GradesEntryCompliance.js
+//
+//  ⚠️ يُحمَّل **عند الطلب فقط**: فتح تبويب التقارير يُطلق خمسة نداءات متوازية أصلاً،
+//  وحصّة Google «30 تنفيذاً متزامناً لكل حساب» هي السقف الحقيقي (بند 55 بالجذر).
+//  لذلك هذا القسم يرسم بطاقة بزرّ فقط، ولا يلمس الشبكة حتى يضغط المستخدم.
+// ════════════════════════════════════════════════════════════════════
+
+var _GEC_DATA = null, _GEC_TS = 0, _GEC_TTL = 180000, _GEC_FILTER = 'all';
+
+function rep_loadGradesCompliance() {
+  var box = document.getElementById('rpt-grades-compliance');
+  if (!box) return;
+  // الحارس الواجهي يطابق الحارس الخادمي حرفياً. ملاحظة: _rpt_clientScope() يطوي
+  // 'activities' داخل 'supervisor' — فنقرأ الدور الخام هنا وإلّا ظهر القسم لدور
+  // يرفضه الخادم (نفس فخّ بند 29/30: قائمة العرض ≠ حارس الخادم).
+  var role = (App.user && App.user.role) || 'teacher';
+  if (role !== 'admin' && role !== 'deputy' && role !== 'supervisor') { box.innerHTML = ''; return; }
+  box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
+    '<div class="rpt-empty" style="text-align:right;padding:4px 2px 10px;">' +
+      'مقارنة جدول الاختبارات بورقة الدرجات: مَن رصد درجات اختباره ومَن تأخّر ' +
+      '(مهلة ' + 3 + ' أيام بعد تاريخ الاختبار).' +
+    '</div>' +
+    '<button class="btn btn-primary" onclick="gec_open(false)">📋 عرض متابعة الرصد</button>');
+}
+
+function gec_open(force) {
+  var box = document.getElementById('rpt-grades-compliance');
+  if (!box) return;
+  if (!force && _GEC_DATA && (Date.now() - _GEC_TS) < _GEC_TTL) { _gec_render(_GEC_DATA); return; }
+  box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
+    '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div>');
+  callServer('getGradesEntryComplianceProtected', { section: _RPT_SECTION || '' }, function (r) {
+    if (!r || !r.success) {
+      box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
+        '<div class="rpt-empty">⚠️ ' + _tfEsc((r && r.error) || 'تعذّر تحميل متابعة الرصد') + '</div>' +
+        '<button class="btn btn-secondary" onclick="gec_open(true)">إعادة المحاولة</button>');
+      return;
+    }
+    _GEC_DATA = r.data; _GEC_TS = Date.now();
+    _gec_render(r.data);
+  }, function () {
+    box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
+      '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>' +
+      '<button class="btn btn-secondary" onclick="gec_open(true)">إعادة المحاولة</button>');
+  });
+}
+
+function _gec_render(d) {
+  var box = document.getElementById('rpt-grades-compliance');
+  if (!box) return;
+  var s = d.summary || {};
+
+  if (d.note) {
+    box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
+      '<div class="rpt-empty">' + _tfEsc(d.note) + '</div>' +
+      '<button class="btn btn-secondary" onclick="gec_open(true)">🔄 تحديث</button>');
+    return;
+  }
+
+  var stats = '<div class="rpt-stats">' +
+    _rpt_stat('✅', s.done,    'مكتمل',          'rgba(16,185,129,0.15)', 'var(--success)') +
+    _rpt_stat('🟠', s.partial, 'رصد جزئي',       'rgba(245,158,11,0.15)', 'var(--warning)') +
+    _rpt_stat('🔴', s.late,    'متأخر',          'rgba(239,68,68,0.15)',  'var(--danger)') +
+    _rpt_stat('🟡', s.waiting, 'ضمن المهلة',     'rgba(245,158,11,0.12)', 'var(--warning)') +
+    _rpt_stat('⏳', s.notDue,  'لم يحن موعده',   'rgba(148,163,184,0.15)', 'var(--text-light)') +
+    _rpt_stat('📊', d.coveragePct + '%', 'نسبة الاكتمال', 'var(--primary-glow)', 'var(--primary)') +
+    '</div>';
+
+  var charts = '<div class="rpt-grid-2" style="margin-top:12px;">' +
+    '<div><div class="rpt-card-title" style="font-size:13px;">📅 نسبة الاكتمال حسب الشهر</div>' +
+      (d.byMonth && d.byMonth.length ? _rpt_barChart(d.byMonth, 'value', 100, 'success')
+                                     : '<div class="rpt-empty">لا توجد بيانات</div>') + '</div>' +
+    '<div><div class="rpt-card-title" style="font-size:13px;">📚 المواد الأكثر تأخّراً</div>' +
+      (d.bySubject && d.bySubject.length ? _rpt_barChart(d.bySubject, 'value', 0, 'danger')
+                                         : '<div class="rpt-empty">لا توجد حالات تأخّر 🎉</div>') + '</div>' +
+    '</div>';
+
+  var chips = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 8px;">' +
+    _gec_chip('all', 'الكل', d.totalRows) +
+    _gec_chip('late', '🔴 المتأخر', s.late) +
+    _gec_chip('partial', '🟠 الجزئي', s.partial) +
+    _gec_chip('grace', '🟡 ضمن المهلة', s.waiting) +
+    '</div>';
+
+  var foot = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">' +
+    '<button class="btn btn-secondary" onclick="gec_open(true)">🔄 تحديث</button>' +
+    '<span class="rpt-empty" style="padding:0;font-size:12px;">آخر تحديث: ' + _tfEsc(d.generatedAt || '') + '</span>' +
+    (d.truncated ? '<span class="rpt-empty" style="padding:0;font-size:12px;color:var(--warning);">' +
+       'عُرِض أول ' + (d.rows || []).length + ' من ' + d.totalRows + ' سجلاً</span>' : '') +
+    (d.unmapped ? '<span class="rpt-empty" style="padding:0;font-size:12px;">' + d.unmapped +
+       ' مادة في جدول الاختبارات بلا عمود مطابق في «الدرجات»</span>' : '') +
+    '</div>';
+
+  box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
+    stats + charts + chips + '<div id="gecTableWrap">' + _gec_table(d.rows || []) + '</div>' + foot);
+}
+
+function _gec_chip(key, label, count) {
+  var on = (_GEC_FILTER === key);
+  return '<button class="assign-chip" onclick="gec_setFilter(\'' + key + '\')" style="cursor:pointer;border:1px solid ' +
+    (on ? 'var(--primary)' : 'var(--border)') + ';background:' + (on ? 'var(--primary-glow)' : 'transparent') +
+    ';color:' + (on ? 'var(--primary)' : 'var(--text-muted)') + ';font-weight:' + (on ? '700' : '500') + ';">' +
+    label + ' (' + (count || 0) + ')</button>';
+}
+
+function gec_setFilter(f) {
+  _GEC_FILTER = f;
+  if (_GEC_DATA) _gec_render(_GEC_DATA);
+}
+
+function _gec_statusColor(st) {
+  if (st === 'done')    return 'var(--success)';
+  if (st === 'late')    return 'var(--danger)';
+  if (st === 'partial') return 'var(--warning)';
+  if (st === 'grace')   return 'var(--warning)';
+  return 'var(--text-light)';
+}
+
+function _gec_table(rows) {
+  var list = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (_GEC_FILTER === 'all' || rows[i].status === _GEC_FILTER) list.push(rows[i]);
+  }
+  if (!list.length) return '<div class="rpt-empty">لا توجد سجلات مطابقة لهذا الفلتر</div>';
+
+  var h = '<div style="overflow-x:auto;"><table class="att-table" style="min-width:820px;">' +
+    '<thead><tr><th>المعلم</th><th>الصف/الشعبة</th><th>المادة</th><th>الشهر</th>' +
+    '<th>تاريخ الاختبار</th><th>التأخّر</th><th>المرصود</th><th>الحالة</th></tr></thead><tbody>';
+  for (var j = 0; j < list.length; j++) {
+    var r = list[j];
+    var lateCell = (r.status === 'late' || r.status === 'partial')
+      ? '<span style="color:var(--danger);font-weight:700;">' + r.daysLate + ' يوم</span>'
+      : '<span style="color:var(--text-light);">—</span>';
+    h += '<tr>' +
+      '<td style="font-weight:600;">' + _tfEsc(r.teacher) + '</td>' +
+      '<td style="text-align:center;">' + _tfEsc(r.grade) + (r.section ? ' / ' + _tfEsc(r.section) : '') + '</td>' +
+      '<td style="text-align:center;">' + _tfEsc(r.subject) + '</td>' +
+      '<td style="text-align:center;">' + _tfEsc(r.month) + '</td>' +
+      '<td style="text-align:center;">' + _tfEsc(r.examDate) + '</td>' +
+      '<td style="text-align:center;">' + lateCell + '</td>' +
+      '<td style="text-align:center;">' + r.scored + ' / ' + r.total + '</td>' +
+      '<td style="text-align:center;color:' + _gec_statusColor(r.status) + ';font-weight:700;">' +
+        _tfEsc(r.statusLabel) + '</td>' +
+    '</tr>';
+  }
+  return h + '</tbody></table></div>';
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  السوشل ميديا والنشر — Social Media Control Panel
