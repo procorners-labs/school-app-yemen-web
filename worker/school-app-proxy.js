@@ -181,6 +181,19 @@ export default {
         init.body = await request.text();
       }
 
+      // ── اسم الدالة المطلوبة — لإسناد الأداء في السجل فقط ────────────────────
+      // بدونه يقول السجل «teacher بطيء» ولا يقول **أي دالة**. الجسم يبدأ دائماً بـ
+      // {"fn":"...","args":[...]} فيكفي مسح أول 200 حرف — بلا JSON.parse على حمولات
+      // قد تكون ضخمة. مجموعة الأحرف مطابقة لما يفرضه الخادم في _apiIsBlocked
+      // (/^[A-Za-z][A-Za-z0-9]*$/) فلا يمكن حقن شيء في السجل. **لا يُسجَّل أي شيء
+      // آخر من الجسم إطلاقاً** — args تحمل توكنات وأسماء طلاب.
+      var _bhFn = '';
+      try {
+        var _bhHead = (init.body || '').slice(0, 200);
+        var _bhM = _bhHead.match(/"fn"\s*:\s*"([A-Za-z][A-Za-z0-9]{0,63})"/);
+        if (_bhM) _bhFn = _bhM[1];
+      } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
+
       // ── حَجز مقعد قبل إطلاق أي محاولة نحو GAS (منظّم التزاحم) ───────────────
       // فحوصات الصحّة مُعفاة عمداً: ?action=health أداة تشخيص يجب أن تُخبرنا عن حال
       // GAS نفسه لا عن حال المنظّم — حَكْمها يُخفي بالضبط الحالة التي نُشخّصها بها.
@@ -200,7 +213,7 @@ export default {
       var _bhWaited = _bhOn ? (Date.now() - _bhT0) : 0;
       if (_bhOn && !_bhHeld) {
         _bhLog({ ev: 'bulkhead', act: _bhMode === 'shadow' ? 'would_block' : 'reject',
-                 app: app, mode: _bhMode, waitMs: _bhWaited, n: _bhN, q: _bhQ.length });
+                 app: app, fn: _bhFn, mode: _bhMode, waitMs: _bhWaited, n: _bhN, q: _bhQ.length });
         if (_bhMode === 'shadow') {
           _bhHeld = true; _bhTake(app);   // يبقى الحساب متوازناً مع التحرير في finally
         } else {
@@ -300,7 +313,7 @@ export default {
         //   W = متوسط gasMs/1000)  ⇒ N = التزامن العالمي الفعلي المُقدَّر.
         // إن بقي p99(N) عبر أسبوع دون ~12 فالمرحلة أ (هذه) كافية ولا حاجة لـDurable
         // Object. عمداً سطر واحد فقط لكل نداء (لا سطر عند كل منح) كي لا يُغرَق السجل.
-        _bhLog({ ev: 'gas', app: app, ms: Date.now() - _bhT0, waitMs: _bhWaited,
+        _bhLog({ ev: 'gas', app: app, fn: _bhFn, ms: Date.now() - _bhT0, waitMs: _bhWaited,
                  gasMs: Date.now() - _bhT0 - _bhWaited, n: _bhN, q: _bhQ.length,
                  st: lastStatus, ok: good });
         // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
