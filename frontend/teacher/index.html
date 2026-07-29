@@ -2140,6 +2140,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 .ec-tt-grade[open] > summary::before { transform:rotate(90deg); }
 .ec-tt-grade-body { padding:12px 14px;border-top:1px solid #e8eef7; }
 .ec-tt-toolbar { display:flex;justify-content:flex-end;margin-bottom:8px; }
+
+/* أقسام التقارير القابلة للطي — تُجلَب عند أوّل فتح فقط (نفس مبدأ .ec-tt-grade، بمتغيّرات
+   الثيم لا ألوان ثابتة كي تعمل في الأوضاع الثلاثة: راجع بند 8 عن تباين الوضع الليلي). */
+.rpt-sec { margin-top:14px;border:1px solid var(--border,#e2e8f0);border-radius:12px;background:var(--card,#fff);overflow:hidden; }
+.rpt-sec > summary { list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:800;color:var(--text,#1e293b);font-size:14px;user-select:none; }
+.rpt-sec > summary::-webkit-details-marker { display:none; }
+.rpt-sec > summary::before { content:'▶';font-size:11px;color:var(--brand,#1149a3);transition:transform .2s ease;flex:0 0 auto; }
+.rpt-sec[open] > summary::before { transform:rotate(90deg); }
+.rpt-sec[open] > summary { border-bottom:1px solid var(--border,#e2e8f0); }
+.rpt-sec-hint { margin-inline-start:auto;font-size:11.5px;font-weight:600;color:var(--text-muted,#64748b);white-space:nowrap; }
+.rpt-sec-body { padding:12px 16px; }
 .smm-stat-chip {
   display:flex;flex-direction:column;align-items:center;
   background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;
@@ -21969,7 +21980,10 @@ function loadReports(force) {
     return;
   }
 
-  callServer('getTeacherReportsProtected', { section: _RPT_SECTION || '' }, function(r) {
+  // 🆕 نواة التقرير فقط — الأقسام الثقيلة (الحضور · الصدارة · الدرجات) تُجلَب عند أوّل
+  // فتح لقسمها عبر rep_secToggle. لا تُطلَق تلقائياً: التبويب يُطلق أصلاً خمسة نداءات
+  // متوازية، وإضافة المزيد تنقل الكمون بدل خفضه (حصّة الثلاثين — بند 55).
+  callServer('getReportsCoreProtected', { section: _RPT_SECTION || '' }, function(r) {
     if (!r || !r.success) {
       var mainEl = document.getElementById('rpt-main');
       if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
@@ -21984,6 +21998,126 @@ function loadReports(force) {
     var mainEl = document.getElementById('rpt-main');
     if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
   });
+}
+
+// ══════════════════════════════════════════════════════
+//  الأقسام القابلة للطي — تُجلَب عند أوّل فتح فقط
+//
+//  نفس مبدأ `ec_timetableGradeToggle`: الجسم يُبنى فارغاً في HTML، ويُملأ عند أوّل
+//  `toggle`. عند فشل الجلب نُزيل `data-loaded` كي يُعاد المحاولة عند فتح تالٍ.
+//  الناتج يُدمَج في `_RPT_CACHE` أيضاً كي يبقى زرّ المشاركة صحيحاً بعد فتح القسم.
+// ══════════════════════════════════════════════════════
+var _RPT_SEC_CACHE = {};   // sectionKey → payload (لكل شعبة مختارة على حدة)
+
+function _rpt_secBox(key, icon, title, hint) {
+  return '<details class="rpt-sec" data-sec="' + key + '" ontoggle="rep_secToggle(this)">' +
+           '<summary>' + icon + ' ' + title +
+             '<span class="rpt-sec-hint">' + (hint || 'اضغط للعرض') + '</span>' +
+           '</summary>' +
+           '<div class="rpt-sec-body"><div class="sk-line skeleton"></div>' +
+             '<div class="sk-line skeleton w75"></div></div>' +
+         '</details>';
+}
+
+function rep_secToggle(el) {
+  if (!el.open || el.getAttribute('data-loaded') === '1') return;
+  var key = el.getAttribute('data-sec');
+  var body = el.querySelector('.rpt-sec-body');
+  var sec = _RPT_SECTION || '';
+  var ck = key + '|' + sec;
+
+  if (_RPT_SEC_CACHE[ck]) {
+    el.setAttribute('data-loaded', '1');
+    if (body) body.innerHTML = _rpt_secRender(key, _RPT_SEC_CACHE[ck]);
+    return;
+  }
+  el.setAttribute('data-loaded', '1');
+  if (body) body.innerHTML = '<p style="text-align:center;color:var(--text-muted,#64748b);padding:14px;">⏳ جارٍ الحساب…</p>';
+
+  var fnMap = {
+    attendance: 'getReportsAttendanceProtected',
+    trend     : 'getReportsTrendProtected',
+    academic  : 'getReportsTeacherAcademicProtected'
+  };
+  var fn = fnMap[key];
+  if (!fn) return;
+
+  callServer(fn, { section: sec }, function(r) {
+    if (!r || r.success !== true) {
+      el.removeAttribute('data-loaded');   // يُعاد المحاولة عند فتح تالٍ
+      if (body) body.innerHTML = '<div class="rpt-empty">⚠️ ' +
+        _tfEsc((r && r.error) || 'تعذّر الحساب') + '</div>';
+      return;
+    }
+    _RPT_SEC_CACHE[ck] = r;
+    _rpt_mergeSectionIntoCache(key, r);
+    if (body) body.innerHTML = _rpt_secRender(key, r);
+  }, function() {
+    el.removeAttribute('data-loaded');
+    if (body) body.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
+  });
+}
+
+// يُبقي `_RPT_CACHE` مكتملاً بعد فتح أي قسم، كي يظلّ ملخّص زرّ «مشاركة» صحيحاً.
+function _rpt_mergeSectionIntoCache(key, r) {
+  if (!_RPT_CACHE) return;
+  _RPT_CACHE.summary = _RPT_CACHE.summary || {};
+  _RPT_CACHE.charts  = _RPT_CACHE.charts  || {};
+  _RPT_CACHE.lists   = _RPT_CACHE.lists   || {};
+  if (key === 'attendance') {
+    _RPT_CACHE.summary.attendanceRate = r.attendanceRate;
+    _RPT_CACHE.charts.attendanceBars  = r.attendanceBars || [];
+  } else if (key === 'trend') {
+    _RPT_CACHE.lists.trendingTeachers       = r.trendingTeachers || [];
+    _RPT_CACHE.lists.needsAttentionTeachers = r.needsAttentionTeachers || [];
+  } else if (key === 'academic') {
+    _RPT_CACHE.summary.avgGrade       = r.avgGrade;
+    _RPT_CACHE.summary.weeklyPeriods  = r.weeklyPeriods;
+    _RPT_CACHE.charts.gradesBySubject = r.gradesBySubject || [];
+  }
+}
+
+function _rpt_secRender(key, r) {
+  var html = '';
+  if (key === 'attendance') {
+    var rate = parseFloat(r.attendanceRate);
+    var col = isNaN(rate) ? '#22c55e' : (rate >= 80 ? '#22c55e' : (rate >= 60 ? '#f59e0b' : '#ef4444'));
+    html += '<div class="rpt-stats">';
+    html += _rpt_stat('📋', (isNaN(rate) ? 0 : rate) + '%', 'نسبة الحضور العامة', 'rgba(34,197,94,.12)', col);
+    html += '</div>';
+    // 🆕 عمود لكل صف — كان الخادم يحسبه ويُرسله ولا يعرضه أحد إطلاقاً.
+    if (r.attendanceBars && r.attendanceBars.length) {
+      html += _rpt_card('🏫', 'نسبة الحضور حسب الصف',
+        _rpt_barChart(r.attendanceBars, 'value', 100, 'success'));
+    } else {
+      html += '<div class="rpt-empty">لا توجد جلسات حضور مرصودة بعد</div>';
+    }
+    return html;
+  }
+  if (key === 'trend') {
+    window._rptTrendData = r.trendingTeachers || [];
+    html += '<div id="rptTrendTableBox">' +
+      _rpt_trendTableRender(window._rptTrendData, 'trendScore', true) + '</div>';
+    if (r.needsAttentionTeachers && r.needsAttentionTeachers.length) {
+      html += _rpt_card('⚠️', 'معلمون بحاجة لمتابعة',
+        _rpt_needsAttentionList(r.needsAttentionTeachers));
+    }
+    return html;
+  }
+  if (key === 'academic') {
+    html += '<div class="rpt-stats">';
+    if (r.avgGrade) html += _rpt_stat('📊', r.avgGrade, 'متوسط درجات طلابي', 'rgba(139,92,246,.12)', '#8b5cf6');
+    html += _rpt_stat('📅', (r.weeklyPeriods || 0), 'حصص أسبوعية', 'rgba(6,182,212,.12)', '#06b6d4');
+    html += '</div>';
+    if (r.gradesBySubject && r.gradesBySubject.length) {
+      html += _rpt_card('📊', 'متوسط الدرجات حسب المادة',
+        _rpt_barChart(r.gradesBySubject, 'value', 100, 'success'));
+    } else {
+      html += '<div class="rpt-empty">لا توجد درجات مرصودة لموادك بعد</div>';
+    }
+    return html;
+  }
+  return '';
 }
 
 // زر المشاركة التفاعلي — يبني ملخصاً نصياً للتقرير المعروض ويشاركه
@@ -22391,12 +22525,8 @@ function _rpt_renderAdmin(d) {
   html += _rpt_stat('⚠️', s.totalViolations,'المخالفات',         'rgba(239,68,68,.12)', '#ef4444');
   html += _rpt_stat('⭐', (s.totalMerits || 0), 'تعزيزات إيجابية', 'rgba(34,197,94,.12)', '#22c55e');
   html += _rpt_stat('✉️', s.totalNotes,     'الملاحظات',         'rgba(20,184,166,.12)', '#14b8a6');
-  if (s.attendanceRate) {
-    var _rptAttRate = parseFloat(s.attendanceRate);
-    var _rptAttColor = isNaN(_rptAttRate) ? '#22c55e' :
-      (_rptAttRate >= 80 ? '#22c55e' : (_rptAttRate >= 60 ? '#f59e0b' : '#ef4444'));
-    html += _rpt_stat('📋', s.attendanceRate + '%', 'نسبة الحضور', 'rgba(34,197,94,.12)', _rptAttColor);
-  }
+  // 📋 نسبة الحضور انتقلت إلى قسم «الحضور» القابل للطي أدناه: حسابها يقرأ ثلاث أوراق
+  // كاملة («جلسات_الحضور»/«الغياب»/«الطلاب») ولا داعي لدفع ثمنها عند كل فتح للتبويب.
   html += '</div>';
 
   // Charts
@@ -22423,16 +22553,11 @@ function _rpt_renderAdmin(d) {
       function(it) { return (it.class || '') + ' ' + (it.section || ''); }));
   html += '</div>';
 
-  // 🆕 جدول ترند نقاط المعلمين — كل معلمي المدرسة (لا Top-N)، نقاط مُرجَّحة بالحداثة عبر كل
-  // تاريخ المعلم + تفصيل مصدر النقاط لكل معلم. window._rptTrendData لخدمة إعادة الفرز عند الضغط.
-  window._rptTrendData = d.lists.trendingTeachers || [];
-  html += _rpt_card('🔥', 'ترند نقاط المعلمين (كل النشاط، الأحدث أثقل وزناً)',
-    '<div id="rptTrendTableBox">' + _rpt_trendTableRender(window._rptTrendData, 'trendScore', true) + '</div>');
-
-  // 🆕 «معلمون بحاجة لمتابعة» — غياب بدون عذر خلال آخر 30 يوماً (مستقل عن نقاط الترند)
-  if (d.lists.needsAttentionTeachers && d.lists.needsAttentionTeachers.length) {
-    html += _rpt_card('⚠️', 'معلمون بحاجة لمتابعة', _rpt_needsAttentionList(d.lists.needsAttentionTeachers));
-  }
+  // 🆕 قسمان قابلان للطي — أثقل ما في هذا التقرير، ولا يُحسبان إلا عند فتحهما فعلياً.
+  // «الحضور» يقرأ ثلاث أوراق كاملة، و«الصدارة» جدولٌ بكل معلمي المدرسة بلا حدّ.
+  html += _rpt_secBox('attendance', '📋', 'نسبة الحضور (عامة وحسب الصف)', 'اضغط للحساب');
+  html += _rpt_secBox('trend', '🔥', 'ترند نقاط المعلمين + من يحتاج متابعة',
+    'جدول كامل — اضغط للعرض');
 
   // Latest activities
   html += '<div class="rpt-grid-2">';
@@ -22512,22 +22637,16 @@ function _rpt_renderTeacher(d) {
 
   html += '<div class="rpt-stats">';
   html += _rpt_stat('🎒', s.myStudents,    'طلابي',              'rgba(17,73,163,.12)', '#1149a3');
-  html += _rpt_stat('📅', s.weeklyPeriods, 'حصص أسبوعية',         'rgba(6,182,212,.12)', '#06b6d4');
   html += _rpt_stat('📝', s.myHomework,    'واجبات نشرتها',       'rgba(16,185,129,.12)', '#10b981');
   html += _rpt_stat('📢', s.myNews,        'أخبار نشرتها',        'rgba(245,158,11,.12)', '#f59e0b');
   html += _rpt_stat('⚠️', s.myViolations,  'مخالفات سجّلتها',     'rgba(239,68,68,.12)', '#ef4444');
   html += _rpt_stat('⭐', (s.myMerits || 0), 'تعزيزات سجّلتها',    'rgba(34,197,94,.12)', '#22c55e');
-  if (s.avgGrade) {
-    html += _rpt_stat('📊', s.avgGrade,    'متوسط درجات طلابي',   'rgba(139,92,246,.12)', '#8b5cf6');
-  }
+  // 📊 متوسط الدرجات و📅 الحصص الأسبوعية انتقلا إلى القسم الأكاديمي القابل للطي أدناه:
+  // حسابهما يقرأ ورقة «الدرجات» (~290 عموداً) وورقة «الجدول» كاملةً.
   html += '</div>';
 
-  html += '<div class="rpt-grid-2">';
-  html += _rpt_card('📊', 'متوسط الدرجات حسب المادة',
-    _rpt_barChart(d.charts.gradesBySubject, 'value', 100, 'success'));
   html += _rpt_card('📋', 'السجل السلوكي حسب الفصل',
     _rpt_barChart(d.charts.violationsByClass, 'value', null, 'danger'));
-  html += '</div>';
 
   html += _rpt_card('📈', 'نشاطي خلال 7 أيام',
     _rpt_weekChart(d.charts.activityTimeline));
@@ -22536,6 +22655,10 @@ function _rpt_renderTeacher(d) {
   // Recent activities
   html += _rpt_card('🕐', 'آخر 5 أنشطة',
     _rpt_recentActivities(d.lists.recentActivities));
+
+  // 🆕 القسم الأكاديمي القابل للطي — أثقل قراءتين في نطاق المعلم («الدرجات» ~290 عموداً
+  // و«الجدول» كاملة)، فلا تُدفَعان إلا عند فتح القسم فعلياً.
+  html += _rpt_secBox('academic', '📊', 'متوسط درجاتي وحصصي الأسبوعية', 'اضغط للحساب');
 
   // 🆕 «نقاطي وترتيبي» — لمسة تحفيزية شخصية، بلا كشف أسماء/نقاط أي زميل آخر
   if (d.myTrend) {
@@ -22866,7 +22989,7 @@ function drawTerm1SummaryTable(students) {
   }
 }
 // تنظيف الكاش عند تسجيل الخروج (اختياري)
-function _rpt_clearCache() { _RPT_CACHE = null; _RPT_CACHE_TS = 0; _GEC_DATA = null; _GEC_TS = 0; }
+function _rpt_clearCache() { _RPT_CACHE = null; _RPT_CACHE_TS = 0; _GEC_DATA = null; _GEC_TS = 0; _RPT_SEC_CACHE = {}; }
 
 // ════════════════════════════════════════════════════════════════════
 //  متابعة رصد الدرجات مقابل جدول الاختبارات — قسم داخل تبويب «التقارير»
