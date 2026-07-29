@@ -3178,7 +3178,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
   // يركّب شعار المدرسة + اسمها فوق الصورة الأصلية داخل <canvas> — لا استدعاء لأداة _build/social/
   // المحلية (Node، غير قابلة للاستدعاء من المتصفّح إطلاقاً)؛ إعادة تصميم بصري مكافئ خفيف بالمتصفّح.
-  function _smpComposite(imageUrl, cb) {
+  function _smpComposite(imageUrl, cb, dsgnMeta) {
     var canvas = document.getElementById('smpCanvas');
     var img = new Image();
     img.crossOrigin = 'anonymous';
@@ -3192,6 +3192,20 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       var barH = Math.max(56, Math.round(canvas.height * 0.09));
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
+
+      /* لون القالب المختار من معرض التصميم (🎨) — يُرسَم **فوق** الشريط الأسود لا بدلاً منه.
+         المصدر دائماً g[0] وهو الطرف الغامق في كل مدخلات السجل، وبعتامة 0.45، فالشريط يبقى
+         غامقاً ويبقى تباين النص الأبيض كما هو أو أفضل — لا يُخاطَر به لأجل الهوية
+         (فخّ التباين، الجذر بند 24). مع خطّ لهجة رفيع علوي زخرفي بحت. */
+      if (dsgnMeta && dsgnMeta.ph && dsgnMeta.g && dsgnMeta.g[0]) {
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = dsgnMeta.g[0];
+        ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
+        ctx.restore();
+        ctx.fillStyle = dsgnMeta.c || dsgnMeta.g[1];
+        ctx.fillRect(0, canvas.height - barH, canvas.width, Math.max(2, Math.round(barH * 0.045)));
+      }
 
       function drawText() {
         ctx.fillStyle = '#ffffff';
@@ -3250,11 +3264,21 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       canvasEl.style.display = ''; noImgEl.className = 'hidden';
       document.getElementById('smpIgChk').disabled = false;
       _smpSetStatus('⏳ جارٍ تجهيز معاينة الهوية التجارية...');
+      /* القالب المختار من معرض التصميم (🎨) لهذا الخبر — لقطة v2 فيها t=مفتاح القالب.
+         غيابها أو كونها لقالب غير مصوَّر ⇒ dsgn=null والتركيب يبقى كما كان حرفياً. */
+      var _smpDsgn = null;
+      try {
+        var _d = (typeof _tcNewsDesign === 'function') ? _tcNewsDesign(item) : null;
+        if (_d && !_d.none && _d.t && typeof _tcDsgnByKey === 'function') {
+          var _m = _tcDsgnByKey(_d.t);
+          if (_m && _m.ph) _smpDsgn = _m;
+        }
+      } catch (eD) { _smpDsgn = null; }
       _smpComposite(imgUrl, function (dataUrl, err) {
         SMP.ready = true;
         if (err) { _smpSetStatus('⚠️ ' + err, 'err'); SMP.imageDataUrl = ''; document.getElementById('smpIgChk').disabled = true; }
         else { SMP.imageDataUrl = dataUrl; _smpSetStatus(''); }
-      });
+      }, _smpDsgn);
     }
     if (typeof openModal === 'function') openModal('smpModal');
   };
@@ -16266,6 +16290,16 @@ var _TC_DSGN_REGISTRY = [
   { k:'event',       l:'فعالية',   c:'#C2410C', g:['#431407','#c2410c'], re:/حفل|فعالية|احتفال|مسابقة|رحلة|زيارة|معرض|بازار|تكريم/, i:'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18' },
   { k:'announcement',l:'إعلان',    c:'#6D28D9', g:['#2e1065','#6d28d9'], re:/دوام|إجازة|اجازة|توزيع الكتب|الكتب|تعميم|جدول|موعد|تعلن|إعلان/, i:'M3 11l14-7v16L3 13zM17 8a3 3 0 0 1 0 8M6 13v5' },
   { k:'emergency',   l:'تنبيه',    c:'#B91C1C', g:['#450a0a','#b91c1c'], re:null, i:'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01' },
+  /* قوالب دمج مع صورة الخبر (ph:1). ثلاثة قيود مقصودة:
+     • re:null ⇒ لا تُقترَح تلقائياً من نصّ الخبر أبداً — اختيار يدوي فقط.
+     • تُعرَض في المعرض حين يحمل الخبر صورة فعلية فقط (_dpRenderGrid يتخطّاها بغيرها).
+     • ov = عتامة طبقة التعتيم فوق الصورة. أدنى قيمة 0.45 مُختارة كي يبقى النصّ الأبيض
+       مقروءاً فوق الصور الفاتحة (فخّ التباين — الجذر بند 24 و8).
+     مُدرَجة **قبل** 'news' عمداً: _tcDsgnByKey يرجع آخر عنصر كافتراضي، فإلحاقها بالنهاية
+     كان سيغيّر الافتراضي صامتاً لكل خبر قديم بلا لقطة. */
+  { k:'photo_soft', l:'صورة — تعتيم خفيف', c:'#185FA5', g:['#0f2545','#1149a3'], re:null, ph:1, ov:0.45, i:'M3 5h4l2-2h6l2 2h4v14H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
+  { k:'photo_deep', l:'صورة — تعتيم عميق', c:'#0B1930', g:['#060f1e','#0f2545'], re:null, ph:1, ov:0.68, i:'M3 5h4l2-2h6l2 2h4v14H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
+  { k:'photo_warm', l:'صورة — دافئ',       c:'#C2410C', g:['#431407','#c2410c'], re:null, ph:1, ov:0.55, i:'M3 5h4l2-2h6l2 2h4v14H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
   { k:'news',        l:'خبر',      c:'#185FA5', g:['#0f2545','#1149a3'], re:null, i:'M4 6h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 6l0-1M8 10h8M8 14h5' }
 ];
 /* مقاسات النشر (مطابقة لمقاسات قالب _build/social): نسبة العرض + أبعاد صورة المشاركة */
@@ -16637,7 +16671,9 @@ function _tcDrawMotif(ctx, id, x, y, w, h, rotDeg, color) {
    (_tcTextCoverBlob)، فلا قصّ بالحرف ولا تخمين لحجم الخط: النافذة تُبنى ببكسل التصميم
    الحقيقي (نفس إحداثيات W×H) ثم تُصغَّر بصرياً بـtransform:scale محسوبة بعد الإدراج في DOM
    (_tcWireCoverScale) — أزرار التنقّل أشقاء للطبقة المُصغَّرة كي لا تتقلّص مساحة اللمس. */
-function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gender, gid) {
+/* imgUrl (اختياري، أُضيف أخيراً كي تبقى كل الاستدعاءات التسعية القديمة صالحة كما هي):
+   يُستعمَل فقط مع قوالب الصورة (meta.ph) — تُرسَم الصورة كطبقة سفلى تحت الإطار والنافذة. */
+function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gender, gid, imgUrl) {
   var st = (stage === 'early' || stage === 'middle' || stage === 'secondary' || stage === 'all') ? stage : 'all';
   var typeKey = meta.k || meta.t || 'news';
   var cs = _tcComputeCoverSlides(text, sizeKey);
@@ -16722,9 +16758,24 @@ function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gen
   var nameChip = schoolName ? ('<span style="background:rgba(6,20,40,.4);color:#fff;font-size:.62rem;font-weight:600;padding:4px 12px;border-radius:999px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(schoolName) + '</span>') : '';
   var botbar = (compact || (!dateChip && !nameChip)) ? '' : ('<div style="position:absolute;bottom:0;left:0;right:0;height:' + botPct + '%;display:flex;align-items:center;justify-content:' + (dateChip && nameChip ? 'space-between' : 'center') + ';padding:0 ' + sidePct + '%;z-index:3;">' + dateChip + nameChip + '</div>');
 
+  /* طبقة صورة الخبر — قوالب ph فقط. تُوضَع قبل frameSvg بـz-index:0 فتبقى تحت الإطار
+     (z-index تلقائي) والنافذة (2) والشريطين (3). تدرّج الحاوية يبقى كما هو خلف الصورة،
+     فإن فشل تحميلها ظهر الغلاف بشكله المعتاد بلا قفزة تخطيط (تدهور آمن).
+     التعتيم بـopacity على تدرّج صلب — لا تحويل hex→rgba يدوي. */
+  var photoHtml = '';
+  if (meta.ph && imgUrl) {
+    var ov = (typeof meta.ov === 'number') ? meta.ov : 0.55;
+    photoHtml =
+      '<img src="' + esc(imgUrl) + '" alt="" referrerpolicy="no-referrer" ' +
+        'style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0;" ' +
+        'onerror="this.style.display=\'none\'">' +
+      '<div style="position:absolute;top:0;left:0;right:0;bottom:0;z-index:0;opacity:' + ov + ';' +
+        'background:linear-gradient(150deg,' + meta.g[0] + ',' + meta.g[1] + ');"></div>';
+  }
+
   return '<div style="' + shell +
       'background:linear-gradient(150deg,' + meta.g[0] + ',' + meta.g[1] + ');">' +
-    frameSvg + topbar + windowHtml + botbar +
+    photoHtml + frameSvg + topbar + windowHtml + botbar +
   '</div>';
 }
 
@@ -17178,9 +17229,16 @@ function _dpOpen(opts) {
     decor     : (pre && !pre.none && pre.dc) ? pre.dc : 'balanced',
     stage     : (pre && !pre.none && pre.st) ? pre.st : 'auto',
     gender    : (pre && !pre.none && pre.gn) ? pre.gn : 'neutral',
+    img       : opts.img || '',   // صورة الخبر — تفعّل قوالب ph وتُرسَم داخلها
     sel       : pre ? (pre.none ? '__none' : pre.t) : _tcNewsCardType(opts.text),
     manual    : !!pre     // لقطة سابقة = اختيار يدوي مثبَّت لا يتزحزح بالكتابة
   };
+  /* لقطة قديمة تشير لقالب صورة بينما الخبر لم يعد يحمل صورة (حُذف المرفق مثلاً) ⇒ البطاقة
+     المختارة لن تُعرَض في الشبكة إطلاقاً فيبدو المعرض بلا تحديد. تراجُع صريح للافتراضي. */
+  if (!_dpState.img && _dpState.sel !== '__none') {
+    var _selMeta = _tcDsgnByKey(_dpState.sel);
+    if (_selMeta && _selMeta.ph) { _dpState.sel = _tcNewsCardType(opts.text); _dpState.manual = false; }
+  }
   var ta = document.getElementById('dpText');
   ta.value = String(opts.text || '');
   ta.readOnly = (_dpState.mode === 'retro');   // رجعياً: النص للعرض لا للتحرير
@@ -17281,9 +17339,11 @@ function _dpRenderGrid() {
   var h = '';
   for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
     var m = _TC_DSGN_REGISTRY[i];
+    // قوالب الصورة تُعرَض للأخبار المصوَّرة فقط — بلا صورة تُنتِج غلافاً مطابقاً للتدرّج العادي
+    if (m.ph && !_dpState.img) continue;
     h += '<div class="dp-card' + (m.k === _dpState.sel ? ' sel' : '') +
          '" onclick="_dpSelect(\'' + m.k + '\')">' +
-      _tcCoverHtml(text, '', m, _dpState.size, true, stage, decor, gender, 'tc-cv-dp-' + m.k) +
+      _tcCoverHtml(text, '', m, _dpState.size, true, stage, decor, gender, 'tc-cv-dp-' + m.k, _dpState.img) +
       '<div class="dp-lbl">' + esc(m.l) +
         (m.k === sug ? ' <span class="dp-sug">مقترح تلقائياً</span>' : '') + '</div>' +
     '</div>';
@@ -17329,6 +17389,7 @@ function _dpOpenRetroNews(newsId) {
   try {
     _dpOpen({
       mode: 'retro', text: item.news, date: item.date, grade: item.grade, design: item.design || '',
+      img: _tcFirstNewsImage(item.attachments),
       onConfirm: function (designStr) {
         showLoading('جارٍ حفظ التصميم...');
         callServer('setNewsDesignProtected', { id: newsId, design: designStr }, function (r) {
@@ -17428,6 +17489,27 @@ function _tcNewsMediaHtml(rawAttach, newsId) {
   return '<div class="tcm-gal" id="' + gid + '" data-cur="0" data-count="' + items.length + '" ' +
     'style="position:relative;overflow:hidden;background:#0b1220;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:min(45vh,320px)">' +
     slides + nav + '</div>';
+}
+
+/* أول صورة في مرفقات الخبر، أو '' إن لم توجد.
+   يعكس **فرعَي الصورة وحدهما** من _tcNewsMediaHtml أعلاه (Drive ⇒ lh3 بمقاس w1000،
+   ورابط مباشر كما هو)، ويتخطّى يوتيوب/الفيديو/PDF بنفس ترتيب الفحص هناك.
+   _tcNewsMediaHtml تبقى مصدر الحقيقة لقواعد التصنيف الكاملة — أي تغيير في فرعَي الصورة
+   هناك يجب أن يُعكَس هنا. lh3 إلزامي: drive.google.com/thumbnail يفشل داخل WebView
+   أندرويد (الجذر بند 25). */
+function _tcFirstNewsImage(rawAttach) {
+  var parts = String(rawAttach || '').split(/[\r\n]+|\s*\|\s*/);
+  for (var i = 0; i < parts.length; i++) {
+    var u = (parts[i] || '').trim();
+    if (u.indexOf('http') !== 0) continue;
+    var low = u.toLowerCase();
+    if (/youtube\.com|youtu\.be/.test(low)) continue;
+    if (low.indexOf('/preview') !== -1 || /\.(mp4|webm|mov|avi|mkv)(\?|$)/.test(low)) continue;
+    if (/\.pdf(\?|$)/.test(low)) continue;
+    var drive = u.match(/[?&]id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    return (drive && drive[1]) ? ('https://lh3.googleusercontent.com/d/' + drive[1] + '=w1000') : u;
+  }
+  return '';
 }
 
 function _buildNewsCard_Teacher(n) {
@@ -17539,11 +17621,13 @@ function _buildNewsCard_Teacher(n) {
           ? '<div class="btn-group">' +
               // المحاسب: نشر فقط — بلا تعديل/حذف/تغيير غلاف (isAdmin()===true له أيضاً، فيُستثنى صراحةً هنا)
               ((App.user && App.user.role === 'accountant') ? '' :
-                // معالجة رجعية: خبر نصّي (قديم بلا لقطة أو لتغيير التصميم) — نفس معرض النشر
-                (isTextOnly
-                  ? '<button class="btn btn-sm btn-secondary" onclick="_dpOpenRetroNews(\'' + n.id + '\')" title="' +
-                    (_tcNewsDesign(n) ? 'تغيير تصميم الغلاف' : 'أضف تصميماً لهذا الخبر النصّي') + '">🎨</button>'
-                  : '') +
+                // معرض التصميم — لكل خبر. النصّي يختار غلافاً مولَّداً، والمصوَّر يختار
+                // قالب دمج مع صورته (قوالب ph) يُطبَّق عند النشر للسوشل ميديا.
+                '<button class="btn btn-sm btn-secondary" onclick="_dpOpenRetroNews(\'' + n.id + '\')" title="' +
+                  (_tcNewsDesign(n)
+                    ? 'تغيير تصميم الغلاف'
+                    : (isTextOnly ? 'أضف تصميماً لهذا الخبر النصّي' : 'اختر قالب دمج مع صورة الخبر')) +
+                  '">🎨</button>' +
                 '<button class="btn btn-sm btn-warning" onclick="editNews(\'' + n.id + '\')" title="تعديل الخبر">✏️</button>' +
                 '<button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\'' + n.id + '\')" title="حذف الخبر">🗑️</button>') +
               '<button class="btn btn-sm btn-secondary" onclick="showNewsViewers(\'' + n.id + '\',\'' + newsOwner + '\')" title="إحصائيات الخبر (من شاهد ومن أعجب)">📊</button>' +
