@@ -1472,6 +1472,10 @@ img,video,iframe{max-width:100%;display:block}
     <div class="fbot">
       <p>© 2026 جميع الحقوق محفوظة لـ <strong>مدارس الإبداع والتميز الدولية</strong></p>
       <p>تطوير وتصميم: <strong>جلال قاسم</strong> <i class="fas fa-heart"></i></p>
+      <!-- تبعيّة مرئية للمنصّة الحاوية: تُطابق isPartOf في JSON-LD وتمنع قراءة هذه الصفحة
+           كعلامة مستقلّة تنافس اسم الموقع. unicode-bidi:isolate إلزامي — الاسم اللاتيني داخل
+           dir="rtl" يُعرَض معكوساً بدونه. -->
+      <p>مستضافة على منصّة <a href="/" style="unicode-bidi:isolate;color:inherit;font-weight:700">Schoolz Yemen</a> — نظام إدارة المدارس</p>
     </div>
   </div>
 </footer>
@@ -2303,6 +2307,11 @@ document.addEventListener('DOMContentLoaded',function(){
     setMeta('meta[property="og:site_name"]', p.name);
     if(p.logo){ setMeta('meta[property="og:image"]', p.logo); setMeta('meta[name="twitter:image"]', p.logo); }
 
+    // هوية الموقع الحاوي (المنصّة) — تُحسَب مبكراً لأن كيان المدرسة يشير إليها بـisPartOf.
+    // مصدر الحقيقة لاسم العلامة هو الجذر (home-all-school)؛ هذه الصفحة مدرسة **مستضافة**.
+    var siteUrl = (window.location && window.location.origin) ? (window.location.origin + '/') : p.url;
+    var siteId = siteUrl + '#website';
+
     // Schema.org — يساعد ظهور المدرسة في نتائج Google الغنية ورسم المعرفة
     var ld = {
       '@context':'https://schema.org',
@@ -2329,13 +2338,21 @@ document.addEventListener('DOMContentLoaded',function(){
       ld.geo = { '@type':'GeoCoordinates', latitude: p.latitude, longitude: p.longitude };
     }
     if(p.hasMap) ld.hasMap = p.hasMap;
+    // تبعيّة صريحة: هذه المدرسة جزء من موقع المنصّة، لا هي الموقع نفسه.
+    ld.isPartOf = { '@id': siteId };
     injectLd('ld-school', ld);
 
-    // WebSite — يجعل Google يعرض اسم المدرسة كـ«اسم الموقع» بدل نطاق Cloudflare
-    var siteUrl = (window.location && window.location.origin) ? (window.location.origin + '/') : p.url;
+    // WebSite — هوية **المنصّة** لا المدرسة.
+    // كان هذا الكيان يحمل name: p.name (اسم المدرسة) مع url = أصل النطاق + '/' ⇒ يُصرِّح
+    // للزاحف أن اسم الصفحة الرئيسية للنطاق هو «مدارس الإبداع والتميز الدولية»، بينما شاشة
+    // موافقة OAuth مُهيَّأة باسم «Schoolz Yemen» — وهو تعارضٌ يُنتج حرفياً رسالة الرفض
+    // «app name … does not match the app name on your home page». الاسم هنا ثابت أحادي
+    // اللغة عمداً (لا يُشتق من المدرسة) — لا تُعِده إلى p.name.
     injectLd('ld-website', {
       '@context':'https://schema.org', '@type':'WebSite',
-      name: p.name, alternateName: p.alternateName || 'الإبداع والتميز',
+      '@id': siteId,
+      name: 'Schoolz Yemen',
+      alternateName: ['سكولز اليمن', 'Yemen Schoolz'],
       url: siteUrl, inLanguage:'ar'
     });
   }
