@@ -90,6 +90,7 @@ PR#105، الأسطر ~196-208) — لا كتحويل توجيه شامل؛ صف
 | `/pricing` | عرض HTML صفحة التسعيرة من GAS منفصل |
 | `/media/drive/<fileId>` | بثّ فيديو Google Drive كـ `video/mp4` مع دعم Range requests (بثّ مباشر بلا تخزين، يتجاوز فحص الفيروسات لملفات Drive الكبيرة) |
 | `/drive-upload` | وسيط رفع resumable إلى جلسة Drive (PUT مباشر)، مع تحقّق SSRF مقيَّد بنطاق `*.googleapis.com` فقط |
+| `/app` · `/download` | 302 إلى صفحة التطبيق على Google Play (`no-store`، ويمرّر `?ref=` كـ`referrer`) — رابط قصير ثابت يُرسَل في واتساب/الإشعارات ويُطبَع، فنقطة تغييره واحدة هنا. الاسمان محجوزان في `_RESERVED_TOP_PATHS` وإلا عُوملا كـslug مدرسة |
 | `/*` | يخدم الصفحات من GitHub Pages (`procorners-labs.github.io/school-app-yemen-web`) — يحقن أيضاً وسوم OG لكل خبر عبر `?news=<id>` |
 
 عند إضافة مسار جديد: أضفه قبل قسم «خدمة الموقع الثابت» (ابحث عن العنوان — لا تعتمد رقم سطر ثابت، الملف ينمو).

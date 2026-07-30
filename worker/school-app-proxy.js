@@ -146,7 +146,10 @@ var _RESERVED_TOP_PATHS = {
   'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1, 'schedule': 1,
   'master-admin': 1, 'pricing': 1, 'gas': 1, 'qr-img': 1, 'qr-download': 1, 'oauth': 1,
   'drive-upload': 1, 'media': 1, 'assets': 1, 'index.html': 1, 'manifest.webmanifest': 1,
-  'sw.js': 1, 'robots.txt': 1, 'sitemap.xml': 1, 'favicon.ico': 1
+  'sw.js': 1, 'robots.txt': 1, 'sitemap.xml': 1, 'favicon.ico': 1,
+  // روابط تحميل التطبيق القصيرة (2026-07-30) — محجوزة **قبل** أي شيء آخر: بلا حجزها هنا كان
+  // /app يُعامَل كـslug مدرسة فيُخدَم home-all-school بدل التوجيه إلى Play Store.
+  'app': 1, 'download': 1
 };
 function _schoolSlugFromPath(path) {
   var m = /^\/([a-z0-9-]+)\/?$/i.exec(path);
@@ -534,6 +537,27 @@ export default {
       } catch (upErr) {
         return duCors(jsonResponse({ ok: false, error: 'تعذّر رفع الملف إلى Drive: ' + String(upErr) }, 502));
       }
+    }
+
+    // ── 1هـ) رابط تحميل/تحديث التطبيق القصير: /app (ومرادفه /download) ──
+    //   لماذا يعيش في الوسيط لا كصفحة: رابط يُرسَل في واتساب/الإشعارات ويُطبَع على ورق، فيجب
+    //   أن يبقى قصيراً وثابتاً حتى لو تغيّر معرّف الحزمة أو انتقل التطبيق لمتجر آخر لاحقاً —
+    //   نقطة تغيير واحدة هنا بدل تعديل كل مكان نُشِر فيه الرابط.
+    //   302 (لا 301) عمداً: التوجيه الدائم يُخبَّأ في المتصفّح للأبد فيُصعِّب أي تغيير لاحق.
+    //   ?ref= يُمرَّر إلى Play كـ`referrer` عند وجوده (يفيد قياس مصدر التحميل، وبلا أي أثر إن غاب).
+    if (path === '/app' || path === '/app/' || path === '/download' || path === '/download/') {
+      var apPkg = 'com.proconrers.schoolappyemen';
+      var apRef = url.searchParams.get('ref') || '';
+      var apTarget = 'https://play.google.com/store/apps/details?id=' + apPkg +
+        (apRef ? '&referrer=' + encodeURIComponent(apRef) : '');
+      return new Response(null, {
+        status: 302,
+        headers: {
+          'Location': apTarget,
+          // لا تخبئة: يجب أن يسري أي تغيير للهدف فوراً على كل من نسخ الرابط سابقاً.
+          'Cache-Control': 'no-store'
+        }
+      });
     }
 
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
