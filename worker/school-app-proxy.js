@@ -396,7 +396,12 @@ export default {
         '<meta name="description" content="' + prDesc + '">' +
         '<link rel="canonical" href="https://yemenschoolz.com/pricing">' +
         '<meta property="og:type" content="website">' +
-        '<meta property="og:site_name" content="سكولز اليمن | Schoolz Yemen">' +
+        // أحادي اللغة عمداً (ملاحظة تشغيلية #66 + #75 بمستودع GAS): الاسم المختلط
+        // يُعرَض معكوساً داخل dir="rtl"، والحقول التي تقرأها محرّكات البحث لتحديد
+        // اسم الموقع يجب أن تبقى سلسلة واحدة لا لبس فيها عبر كل الصفحات.
+        // ⚠️ هذا الغلاف هو ما يراه الزاحف على /pricing — الصفحة الحقيقية داخل
+        // <iframe>، فتعديل pricing/Index.html بمستودع GAS لا يظهر هنا إطلاقاً.
+        '<meta property="og:site_name" content="Schoolz Yemen">' +
         '<meta property="og:title" content="' + prTitle + '">' +
         '<meta property="og:description" content="' + prDesc + '">' +
         '<meta property="og:url" content="https://yemenschoolz.com/pricing">' +
