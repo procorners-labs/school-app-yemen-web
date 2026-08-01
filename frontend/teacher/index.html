@@ -12096,8 +12096,106 @@ function renderSchoolBrand() {
       '<div id="sbFbStatus" style="margin-bottom:8px">⏳ جاري التحقّق…</div>' +
       '<button class="btn btn-secondary btn-sm" onclick="sbConnectFacebook()">🔗 اتصل بفيسبوك</button>' +
     '</div>' +
+    '<div class="filter-bar" style="margin-top:16px"><div class="filter-bar-title">🌐 صفحة المدرسة العامة</div>' +
+      '<div class="alert alert-info" style="margin-bottom:10px">هذه الحقول تُبنى منها صفحة مدرستك العامّة على الإنترنت. كلّها اختيارية — أي حقل تتركه فارغاً يُخفى قسمه من الصفحة بدل عرضه فارغاً.</div>' +
+      '<div class="form-group"><label class="form-label">الاسم المختصر (slug)</label>' +
+        '<input class="form-control" id="spcSlug" dir="ltr" readonly disabled style="max-width:280px;background:var(--bg-muted,#f1f5f9);cursor:not-allowed">' +
+        '<div style="font-size:12px;color:var(--text-muted,#64748b);margin-top:4px">🔒 يُحدِّده مالك المنصّة ولا يمكن تعديله من هنا — تغييره يكسر كل الروابط المنشورة.</div></div>' +
+      '<div class="form-group"><label class="form-label">الرابط العام</label>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<input class="form-control" id="spcPublicUrl" dir="ltr" readonly style="max-width:340px" value="—">' +
+          '<button type="button" class="btn btn-secondary btn-sm" onclick="_spcCopyUrl()">📋 نسخ</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm" onclick="_spcOpenUrl()">↗ فتح</button>' +
+        '</div><div id="spcCopyMsg" style="font-size:12px;margin-top:4px"></div></div>' +
+      '<div id="spcFields"></div>' +
+      '<button class="btn btn-primary btn-sm" onclick="spcSave()">💾 حفظ محتوى الصفحة</button>' +
+      '<div id="spcSaveStatus" style="margin-top:8px"></div>' +
+      '<div style="font-size:12px;color:var(--text-muted,#64748b);margin-top:6px">⏱️ قد يستغرق ظهور التعديل على الصفحة العامّة حتى ٥ دقائق (كاش الخادم).</div>' +
+    '</div>' +
     '</div></div>';
   _sbInit();
+  _spcInit();
+}
+
+// ── محتوى الصفحة العامّة: تحميل/عرض/حفظ ──
+// الحقول تُبنى ديناميكياً من `fields` القادمة من الخادم (نفس قائمة السماح حرفياً) — فإضافة
+// مفتاح جديد خادمياً تظهر تلقائياً بلا تعديل واجهة، ولا يمكن للواجهة اختراع مفتاح غير مسموح.
+var _spcFieldSpecs = [];
+
+function _spcInit() {
+  callServer('getSchoolPageContentProtected', {}, function (r) {
+    if (!r || !r.success) return;
+    _spcFieldSpecs = r.fields || [];
+    var slugEl = document.getElementById('spcSlug');
+    if (slugEl) slugEl.value = r.slug || '(لم يُحدَّد بعد)';
+    var urlEl = document.getElementById('spcPublicUrl');
+    if (urlEl) urlEl.value = r.publicUrl || '—';
+    var box = document.getElementById('spcFields');
+    if (!box) return;
+    var content = r.content || {};
+    var html = '';
+    for (var i = 0; i < _spcFieldSpecs.length; i++) {
+      var f = _spcFieldSpecs[i];
+      var val = escapeHtml(content[f.key] || '');
+      var id = 'spc_' + f.key;
+      var isLong = (f.key === 'about_text');
+      html += '<div class="form-group"><label class="form-label">' + escapeHtml(f.label) + '</label>';
+      if (isLong) {
+        html += '<textarea class="form-control" id="' + id + '" rows="5" maxlength="' + f.max + '">' + val + '</textarea>';
+      } else {
+        var dir = (f.type === 'email' || f.type === 'url') ? ' dir="ltr"' : '';
+        var typ = (f.type === 'int' || f.type === 'year') ? 'number' : 'text';
+        html += '<input class="form-control" type="' + typ + '" id="' + id + '"' + dir +
+                ' maxlength="' + f.max + '" value="' + val + '">';
+      }
+      html += '</div>';
+    }
+    box.innerHTML = html;
+  }, function () {});
+}
+
+function _spcCopyUrl() {
+  var el = document.getElementById('spcPublicUrl');
+  var msg = document.getElementById('spcCopyMsg');
+  var url = (el && el.value) || '';
+  if (!url || url === '—') { if (msg) msg.innerHTML = '<span style="color:#c62828">لا يوجد رابط بعد</span>'; return; }
+  function done() { if (msg) msg.innerHTML = '<span style="color:#2e7d32">✅ نُسخ الرابط</span>'; }
+  function fallback() {
+    // تراجع لمتصفّحات/سياقات بلا clipboard API (WebView أندرويد قديم، أو أصل غير آمن).
+    try { el.removeAttribute('readonly'); el.select(); document.execCommand('copy'); el.setAttribute('readonly', 'readonly'); done(); }
+    catch (e) { if (msg) msg.innerHTML = '<span style="color:#c62828">تعذّر النسخ — انسخه يدوياً</span>'; }
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done)['catch'](fallback);
+    } else { fallback(); }
+  } catch (e) { fallback(); }
+}
+
+function _spcOpenUrl() {
+  var el = document.getElementById('spcPublicUrl');
+  var url = (el && el.value) || '';
+  if (url && url !== '—') window.open(url, '_blank', 'noopener');
+}
+
+function spcSave() {
+  var st = document.getElementById('spcSaveStatus');
+  if (st) st.innerHTML = '⏳ جاري الحفظ…';
+  var content = {};
+  for (var i = 0; i < _spcFieldSpecs.length; i++) {
+    var k = _spcFieldSpecs[i].key;
+    var el = document.getElementById('spc_' + k);
+    content[k] = el ? el.value : '';
+  }
+  callServer('saveSchoolPageContentProtected', { content: content }, function (r) {
+    if (!r || !r.success) {
+      if (st) st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل الحفظ') + '</span>';
+      return;
+    }
+    if (st) st.innerHTML = '<span style="color:#2e7d32">✅ تم حفظ ' + (r.changed || 0) + ' حقلاً</span>';
+  }, function (e) {
+    if (st) st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>';
+  });
 }
 
 // تحميل القيم الحالية: getTeacherSchoolBrand عامة بلا حارس جلسة (مصمَّمة أصلاً لعرض واجهة قبل
