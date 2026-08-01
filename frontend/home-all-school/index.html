@@ -315,6 +315,56 @@
     /* School view — يستهلك لون هوية المدرسة الديناميكي (--sv-*) عبر applySchoolTheme، مع
        fallback إلزامي على --brand/--brand2 العامّين كي لا ينكسر الشكل قبل وصول استجابة الخادم */
     #schoolView{display:none}
+
+    /* ── وضع «صفحة المدرسة» (`/<slug>`) — يُفعّله السكربت المتزامن بصنف html.school-page ──
+       أقسام المنصّة تُخفى، وقسم المدرسة يظهر عند أول طلاء بلا انتظار أي استجابة خادم.
+       `.sp-full` (الأقسام الموسّعة) مخفيّة افتراضياً كي يبقى سلوك الجذر `/` — الذي يعرض بانر
+       المدرسة المحفوظة محلياً — **كما هو حرفياً** بلا أقسام إضافية. */
+    html.school-page > body > header.hero,
+    html.school-page #about-app,
+    html.school-page #features,
+    html.school-page #platform-details,
+    html.school-page #faq,
+    html.school-page #partners{display:none!important}
+    html.school-page #schoolView{display:block}
+    #schoolView .sp-full{display:none}
+    html.school-page #schoolView .sp-full{display:block}
+    /* 🔴 لا `opacity:0` كحالة أساسية لأي قسم هنا (بند 66): الإخفاء بـ`display` صريح ويُلغيه
+       JS فور وصول البيانات؛ قسم بلا محتوى يبقى مخفياً كلياً بدل عنوان فوق فراغ. */
+    .sp-sec{display:none;margin-top:38px}
+    .sp-sec > h2{font-size:clamp(20px,2.4vw,27px);margin:0 0 6px;color:var(--sv-primary-ink,var(--brand))}
+    .sp-sec > .sp-lead{color:var(--muted);margin:0 0 18px;font-size:15px}
+    .sp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+    .sp-stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:18px 14px;text-align:center;box-shadow:var(--shadow)}
+    .sp-stat b{display:block;font-size:clamp(24px,3.4vw,34px);line-height:1.15;
+      color:var(--sv-primary-ink,var(--brand));font-weight:900}
+    .sp-stat span{display:block;margin-top:4px;color:var(--muted);font-size:13.5px}
+    .sp-about{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:22px;box-shadow:var(--shadow);white-space:pre-line;line-height:1.95;font-size:15.5px}
+    .sp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+    .sp-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:18px;box-shadow:var(--shadow);border-top:4px solid var(--sv-primary,var(--brand))}
+    .sp-card h3{margin:0 0 6px;font-size:17px}
+    .sp-card p{margin:0;color:var(--muted);font-size:14px;line-height:1.8}
+    .sp-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+    .sp-gal a{display:block;aspect-ratio:4/3;border-radius:12px;overflow:hidden;
+      border:1px solid var(--line);background:#0b1220}
+    .sp-gal img{width:100%;height:100%;object-fit:cover;transition:scale var(--t2) var(--ease-out)}
+    .sp-gal a:hover img{scale:1.06}
+    .sp-vids{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+    .sp-vid{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:14px;box-shadow:var(--shadow)}
+    .sp-vid a{display:inline-flex;align-items:center;gap:8px;color:var(--sv-primary-ink,var(--brand));
+      font-weight:700;text-decoration:none}
+    .sp-vid .cap{display:block;margin-top:6px;color:var(--muted);font-size:13px}
+    .sp-contact{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+    .sp-contact .row{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:16px;box-shadow:var(--shadow);font-size:14.5px;word-break:break-word}
+    .sp-contact .row a{color:var(--sv-primary-ink,var(--brand))}
+    .sp-hosted{margin:42px 0 8px;text-align:center;color:var(--muted);font-size:14px}
+    .sp-hosted a{color:var(--sv-primary-ink,var(--brand));font-weight:700}
+
     .school-banner{
       background:linear-gradient(135deg,var(--sv-primary,var(--brand)) 0%,var(--sv-primary-dark,var(--brand2)) 100%);
       border:1px solid var(--line);border-radius:var(--radius);padding:24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;box-shadow:var(--shadow);
@@ -442,6 +492,42 @@
        فبيئة بلا JavaScript ترى الصفحة كاملة بدل صفحة بيضاء. يجب أن يبقى هذا أول سطر داخل <body>. -->
   <script>document.documentElement.className += ' js';</script>
 
+  <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+       بوّابة المسار — **متزامنة عمداً، قبل أي طلاء**، لا مؤجَّلة إلى boot().
+       على `/<slug>` تُبدِّل الصفحة من «بوّابة المنصّة» إلى «صفحة المدرسة»، وتصحّح canonical
+       وog:url فوراً. لماذا متزامنة: لو أُجِّلت إلى DOMContentLoaded لطُلِيت أقسام المنصّة أولاً
+       ثم اختفت (وميض)، والأهمّ أن أي زاحف/أداة لقطة تقرأ canonical قبل تنفيذ السكربتات
+       المؤجَّلة كانت سترى الأربع صفحات كلّها تعلن `canonical=/` فيوحّدها Google ويُسقِط صفحات
+       المدارس (بند 68/75). صمّام `_revealSafetyValve` يعمل بعد ٦ ثوانٍ — أبطأ من أن يُعتمَد هنا.
+       ⚠️ قائمة المحجوزات مُعرَّفة **مرّة واحدة** هنا ويعيد `_pathSlug()` أدناه استخدامها —
+       لا تُنشئ نسخة ثانية (نسختان تنحرفان صامتاً؛ يحرسه test-regression-guards.js).
+       ═══════════════════════════════════════════════════════════════════════════════════════ -->
+  <script>
+    window.__hasPathSlug = function () {
+      var m = /^\/([a-z0-9-]+)\/?$/i.exec(location.pathname);
+      if (!m) return '';
+      var seg = m[1].toLowerCase();
+      var reserved = {
+        'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1,
+        'schedule': 1, 'master-admin': 1, 'pricing': 1, 'gas': 1, 'assets': 1,
+        'index.html': 1, 'newsarticle.html': 1
+      };
+      return reserved[seg] ? '' : seg;
+    };
+    (function () {
+      var slug = window.__hasPathSlug();
+      if (!slug) return;
+      document.documentElement.className += ' school-page';
+      var url = 'https://yemenschoolz.com/' + slug;
+      var c = document.querySelector('link[rel="canonical"]');
+      if (c) c.setAttribute('href', url);
+      var o = document.querySelector('meta[property="og:url"]');
+      if (o) o.setAttribute('content', url);
+      // ⚠️ `og:site_name` لا يُلمَس هنا ولا في أي مسار — يبقى «Schoolz Yemen» ثابتاً.
+      // كتابة اسم مدرسة فوقه كانت سبب ظهور اسم غريب في نتائج البحث (بند 75).
+    })();
+  </script>
+
   <header class="hero">
     <div class="hero-net" aria-hidden="true"></div>
     <svg class="hero-constellation" viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
@@ -522,8 +608,57 @@
   <!-- عرض المدرسة المختارة (يظهر عند اختيار مدرسة افتراضية) -->
   <section id="schoolView" class="wrap" style="padding-top:38px">
     <div id="schoolBanner"></div>
+
+    <!-- الأقسام الموسّعة لصفحة `/<slug>` — مخفيّة على الجذر `/` عبر `.sp-full` كي يبقى سلوكه
+         حرفياً كما كان. كل قسم يبقى `display:none` حتى تصله بيانات فعلية: قسم بعنوان بلا محتوى
+         = محتوى رقيق أمام الزاحف (بند 66/75)، والإخفاء بـ`display` لا بـ`opacity`. -->
+    <div class="sp-full">
+      <section id="spStats" class="sp-sec" aria-labelledby="spStatsH">
+        <h2 id="spStatsH">أرقام تتحدّث عنّا</h2>
+        <div class="sp-stats" id="spStatsGrid"></div>
+      </section>
+
+      <section id="spAbout" class="sp-sec" aria-labelledby="spAboutH">
+        <h2 id="spAboutH">عن المدرسة</h2>
+        <div class="sp-about" id="spAboutBody"></div>
+      </section>
+
+      <section id="spStages" class="sp-sec" aria-labelledby="spStagesH">
+        <h2 id="spStagesH">المراحل الدراسية</h2>
+        <p class="sp-lead">المراحل التي تخدمها المدرسة</p>
+        <div class="sp-cards" id="spStagesGrid"></div>
+      </section>
+
+      <section id="spFeatures" class="sp-sec" aria-labelledby="spFeaturesH">
+        <h2 id="spFeaturesH">لماذا مدرستنا؟</h2>
+        <div class="sp-cards" id="spFeaturesGrid"></div>
+      </section>
+    </div>
+
     <div class="sec-head" style="margin:34px 0 0"><h2>أخبار المدرسة</h2><p>آخر الأخبار والفعاليات المنشورة</p></div>
     <div id="schoolNews" class="grid news"></div>
+
+    <div class="sp-full">
+      <section id="spGallery" class="sp-sec" aria-labelledby="spGalleryH">
+        <h2 id="spGalleryH">من ألبوم المدرسة</h2>
+        <p class="sp-lead">صور من الأخبار والفعاليات المنشورة</p>
+        <div class="sp-gal" id="spGalleryGrid"></div>
+      </section>
+
+      <section id="spVideos" class="sp-sec" aria-labelledby="spVideosH">
+        <h2 id="spVideosH">فيديوهات</h2>
+        <div class="sp-vids" id="spVideosGrid"></div>
+      </section>
+
+      <section id="spContact" class="sp-sec" aria-labelledby="spContactH">
+        <h2 id="spContactH">تواصل معنا</h2>
+        <div class="sp-contact" id="spContactGrid"></div>
+      </section>
+
+      <div class="sp-hosted">
+        مستضافة على منصّة <a href="/">Schoolz Yemen — سكولز اليمن</a>
+      </div>
+    </div>
   </section>
 
   <section id="features">
@@ -1103,16 +1238,13 @@
       // مبكرة قبل الوصول لهذا الملف إطلاقاً، وأسماء الملفات فيها (index.html/manifest.webmanifest)
       // مستبعَدة أصلاً من مطابقة الـregex هنا (لا نقطة ضمن [a-z0-9-]). عند إضافة مسار Worker جديد
       // بلا اعتراض مبكر، أضِفه هنا أيضاً.
+      // مصدر واحد للحقيقة: التعريف الفعلي (والقائمة المحجوزة) في السكربت المتزامن أعلى <body>،
+      // لأن بوّابة المسار تحتاجه **قبل** تحميل هذه الكتلة. نسخة ثانية هنا كانت ستنحرف صامتاً.
       function _pathSlug() {
-        var m = /^\/([a-z0-9-]+)\/?$/i.exec(location.pathname);
-        if (!m) return '';
-        var seg = m[1].toLowerCase();
-        var reserved = {
-          'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1,
-          'schedule': 1, 'master-admin': 1, 'pricing': 1, 'gas': 1,
-          'index.html': 1, 'newsarticle.html': 1
-        };
-        return reserved[seg] ? '' : seg;
+        return (typeof window.__hasPathSlug === 'function') ? window.__hasPathSlug() : '';
+      }
+      function _isSchoolPage() {
+        return document.documentElement.classList.contains('school-page');
       }
       function callServer(fn, args, onOk, onErr) {
         try {
@@ -1246,28 +1378,115 @@
 
       // applySeo: تُمرَّر true فقط عند نيّة صريحة (رابط عميق ?school=/slug، أو نقر المستخدم على
       // مدرسة). الاستعادة الصامتة من localStorage عند الإقلاع تُمرِّر false — راجع applySchoolSeo.
+      // على `/<slug>` نستدعي `getSchoolPageData` (حزمة كاملة بنداء **واحد**: هوية + محتوى +
+      // إحصائيات + أخبار + معرض + فيديو)، وعلى الجذر `/` تبقى `getSchoolPublicData` كما كانت
+      // حرفياً — لا تغيير سلوك للمسار القديم. نداء واحد لا اثنان: حصّة الـ30 تنفيذاً (بند 55/62).
       function loadSchoolView(id, applySeo) {
+        var full = _isSchoolPage();
         $('schoolView').style.display = 'block';
         applyCachedTheme(id);
         $('schoolBanner').innerHTML = '<div class="state">جارٍ تحميل بيانات المدرسة…</div>';
         $('schoolNews').innerHTML = '';
-        callServer('getSchoolPublicData', [id], function (res) {
-          if (!res || !res.success) {
-            $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>';
-            return;
+        function fail() { $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>'; }
+        callServer(full ? 'getSchoolPageData' : 'getSchoolPublicData', [id], function (res) {
+          if (!res || !res.success) { fail(); return; }
+          if (full) {
+            _spPage = res.page || null;
+            renderBanner(res.brand, applySeo);
+            renderPageSections(res);
+          } else {
+            renderBanner(res.brand, applySeo);
           }
-          renderBanner(res.brand, applySeo);
           renderNews(res.news || []);
           if (_pendingNewsHighlight) {
             var target = _pendingNewsHighlight;
             _pendingNewsHighlight = '';
             setTimeout(function () { highlightSharedNews(target); }, 60);
-          } else {
+          } else if (!full) {
+            // على صفحة السلاگ الزائر وصل لتوّه من رابط خارجي — لا تخطف تمريره لأعلى.
             try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
           }
-        }, function () {
-          $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>';
-        });
+        }, fail);
+      }
+
+      // ── أقسام صفحة المدرسة الموسّعة ──
+      // القاعدة الثابتة: `_spShow(id, html)` تُظهر القسم **فقط** عند وجود محتوى فعلي، وتُبقيه
+      // `display:none` عند الفراغ — لا عنوان فوق شبكة فارغة ولا «لا توجد صور» (محتوى رقيق).
+      function _spShow(secId, gridId, html) {
+        var sec = $(secId), grid = gridId ? $(gridId) : null;
+        if (!sec) return;
+        if (!html) { sec.style.display = 'none'; return; }
+        if (grid) grid.innerHTML = html; else sec.innerHTML = html;
+        sec.style.display = 'block';
+      }
+
+      function renderPageSections(res) {
+        var page = res.page || {};
+
+        // (١) إحصائيات — من بيانات حقيقية فقط (الخادم لا يُرسِل بلاطة بلا مصدر).
+        var stats = res.stats || [], sHtml = '';
+        for (var i = 0; i < stats.length; i++) {
+          sHtml += '<div class="sp-stat"><b>' + esc(stats[i].value) + esc(stats[i].suffix || '') + '</b>'
+                +  '<span>' + esc(stats[i].label) + '</span></div>';
+        }
+        _spShow('spStats', 'spStatsGrid', sHtml);
+
+        // (٢) عن المدرسة — العنوان من المحتوى إن وُجد، والقسم يختفي كلياً بلا نصّ.
+        if (page.aboutText) {
+          var h = $('spAboutH');
+          if (h && page.aboutTitle) h.textContent = page.aboutTitle;
+          _spShow('spAbout', 'spAboutBody', esc(page.aboutText));
+        } else { _spShow('spAbout', null, ''); }
+
+        // (٣) المراحل الدراسية · (٤) لماذا مدرستنا
+        _spShow('spStages', 'spStagesGrid', _spCards(page.stages));
+        _spShow('spFeatures', 'spFeaturesGrid', _spCards(page.features));
+
+        // (٥) المعرض — الصور مطبَّعة إلى lh3 خادمياً؛ لا تُعِد تطبيعها، اضبط الحجم بـCSS.
+        var gal = res.gallery || [], gHtml = '';
+        for (var g = 0; g < gal.length; g++) {
+          var gu = safeUrl(gal[g].url);
+          if (!gu) continue;
+          gHtml += '<a href="' + attr(gu) + '" target="_blank" rel="noopener" title="' + attr(gal[g].title || '') + '">'
+                +  '<img src="' + attr(gu) + '" alt="' + attr(gal[g].title || 'صورة من المدرسة') + '" loading="lazy"'
+                +  ' onerror="this.parentNode.style.display=\'none\'"></a>';
+        }
+        _spShow('spGallery', 'spGalleryGrid', gHtml);
+
+        // (٦) الفيديوهات — رابط خارجي لا مشغّل مضمّن (تفادي إطارات ثقيلة على شبكة ضعيفة).
+        var vids = res.videos || [], vHtml = '';
+        for (var v = 0; v < vids.length; v++) {
+          var vu = safeUrl(vids[v].url);
+          if (!vu) continue;
+          vHtml += '<div class="sp-vid"><a href="' + attr(vu) + '" target="_blank" rel="noopener">▶️ '
+                +  esc(vids[v].title || 'فيديو') + '</a>'
+                +  (vids[v].date ? '<span class="cap">' + esc(vids[v].date) + '</span>' : '')
+                +  '</div>';
+        }
+        _spShow('spVideos', 'spVideosGrid', vHtml);
+
+        // (٧) تواصل معنا — كل سطر يظهر فقط إن كانت قيمته موجودة فعلاً.
+        var b = res.brand || {}, cHtml = '';
+        if (page.address) cHtml += '<div class="row">📍 ' + esc(page.address) + '</div>';
+        if (page.phone)   cHtml += '<div class="row">📞 <a href="tel:' + attr(page.phone) + '" dir="ltr">' + esc(page.phone) + '</a></div>';
+        if (page.email)   cHtml += '<div class="row">✉️ <a href="mailto:' + attr(page.email) + '" dir="ltr">' + esc(page.email) + '</a></div>';
+        var wa = String(b.whatsapp || '').replace(/[^0-9]/g, '');
+        if (wa) cHtml += '<div class="row">🟢 <a href="https://wa.me/' + attr(wa) + '" target="_blank" rel="noopener">واتساب</a></div>';
+        var mp = safeUrl(page.mapUrl);
+        if (mp) cHtml += '<div class="row">🗺️ <a href="' + attr(mp) + '" target="_blank" rel="noopener">الموقع على الخريطة</a></div>';
+        var soc = socialHtml(b);
+        if (soc) cHtml += '<div class="row">' + soc + '</div>';
+        _spShow('spContact', 'spContactGrid', cHtml);
+      }
+
+      function _spCards(list) {
+        if (!list || !list.length) return '';
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+          html += '<div class="sp-card"><h3>' + esc(list[i].title) + '</h3>'
+               +  (list[i].desc ? '<p>' + esc(list[i].desc) + '</p>' : '') + '</div>';
+        }
+        return html;
       }
 
       // ── لون هوية المدرسة الديناميكي (نطاقه محدود لقسم #schoolView فقط — بلا مسّ --brand العام) ──
@@ -1323,6 +1542,10 @@
       // الجذر «/» يجب أن يبقى دائماً صفحة المنصّة Schoolz Yemen لأي زائر أو مراجِع Google يصلها
       // بلا رابط عميق — وإلا ظهر اسم مدرسة واحدة مكان اسم التطبيق وتكرّر رفض «الاسم لا يطابق»
       // (بند 64). البانر البصري للمدرسة يُعرَض كما هو في كل الحالات؛ الوسوم وحدها هي المحميّة.
+      // بيانات المحتوى المعروضة حالياً (email/foundingDate/mapUrl) — تُثري JSON-LD للمدرسة.
+      // مفصولة عن `b` لأن `renderBanner` يُستدعى من مسارَي الجذر وصفحة السلاگ، والثاني وحده
+      // يملك حزمة `page`.
+      var _spPage = null;
       function applySchoolSeo(b, applySeo) {
         if (!applySeo) return;
         b = b || {};
@@ -1338,6 +1561,12 @@
         setMeta('meta[name="twitter:description"]', desc);
         setMeta('meta[name="twitter:image"]', image);
         if (b.schoolId) {
+          // عنوان الكيان = الرابط القانوني القصير `/​<slug>` متى وُجد slug — وهو نفسه
+          // canonical الذي يضبطه السكربت المتزامن. القديم `/?school=<id>` كان يُعلن الجذر
+          // مع query، فيتنافس مع كيان المنصّة على نفس العنوان (بند 68).
+          var pg = _spPage || {};
+          var canon = b.slug ? ('https://yemenschoolz.com/' + encodeURIComponent(b.slug))
+                             : ('https://yemenschoolz.com/?school=' + encodeURIComponent(b.schoolId));
           injectLd('ld-school', {
             '@context': 'https://schema.org',
             '@type': ['School', 'EducationalOrganization'],
@@ -1347,10 +1576,13 @@
             provider: { '@id': 'https://yemenschoolz.com/#organization' },
             name: b.name,
             description: desc,
-            url: 'https://yemenschoolz.com/?school=' + encodeURIComponent(b.slug || b.schoolId),
+            url: canon,
             logo: image,
             image: image,
             telephone: b.phone || undefined,
+            email: pg.email || undefined,
+            foundingDate: pg.foundedYear || undefined,
+            hasMap: safeUrl(pg.mapUrl) || undefined,
             address: b.address ? { '@type': 'PostalAddress', streetAddress: b.address } : undefined,
             sameAs: [b.facebook, b.instagram, b.youtube].filter(function (u) { return !!u; })
           });
@@ -1378,7 +1610,13 @@
         s.setProperty('--sv-primary', '#' + _thHex2(rgb[0]) + _thHex2(rgb[1]) + _thHex2(rgb[2]));
         s.setProperty('--sv-primary-dark', _thShade(rgb, -0.30));
         s.setProperty('--sv-glow', 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.18)');
-        s.setProperty('--sv-on-primary', _thLuma(rgb) >= 128 ? '#1a2233' : '#ffffff');
+        // العتبة 150 لا 128: لون متوسط السطوع (luma≈135) كان يُنتِج نصّاً أبيض فوقه بتباين دون
+        // WCAG AA. رفعها يُرجِّح النصّ الداكن في المنطقة الرمادية — أكثر أماناً لأي لون مستقبلي.
+        s.setProperty('--sv-on-primary', _thLuma(rgb) >= 150 ? '#1a2233' : '#ffffff');
+        // نسخة داكنة من لون الهوية للنصّ الملوَّن **فوق خلفية بيضاء** (عناوين/أرقام/روابط).
+        // استخدام `--sv-primary` نفسه هناك يفشل AA لأي لون فاتح (بند 24) — التغميق 45٪ يضمن
+        // تجاوز 4.5:1 على أبيض لكامل مدى الألوان الممكنة.
+        s.setProperty('--sv-primary-ink', _thShade(rgb, -0.45));
       }
       function resetSchoolTheme() {
         var sv = $('schoolView');
@@ -1388,6 +1626,7 @@
         s.removeProperty('--sv-primary-dark');
         s.removeProperty('--sv-glow');
         s.removeProperty('--sv-on-primary');
+        s.removeProperty('--sv-primary-ink');
       }
       // تطبيق فوري من آخر لون مخزَّن محلياً (قبل وصول استجابة الخادم) — يمنع وميض لون مدرسة سابقة.
       function applyCachedTheme(schoolId) {
@@ -1410,15 +1649,23 @@
         var meta = '';
         if (b.address) meta += '📍 ' + esc(b.address) + '  ';
         if (b.phone) meta += '📞 ' + esc(b.phone);
+        // السطر التعريفي يأتي من حزمة `page` (صفحة السلاگ وحدها) — غيابه على الجذر متعمَّد.
+        var tagline = (_spPage && _spPage.tagline) ? _spPage.tagline : '';
+        // «تغيير المدرسة» يمسح الاختيار المحلي ويعود لدليل المنصّة — بلا معنى على `/<slug>`
+        // (الرابط نفسه هو المدرسة)، فيُستبدَل هناك برابط صريح لبوّابة المنصّة.
+        var lastAction = _isSchoolPage()
+          ? '<a class="btn btn-ghost btn-sm" href="/">بوّابة المنصّة</a>'
+          : '<button class="btn btn-ghost btn-sm" id="btnChange">تغيير المدرسة</button>';
         $('schoolBanner').innerHTML =
           '<div class="school-banner">' + logo
           + '<div><h2>' + esc(b.name || 'المدرسة') + '</h2>'
+          +   (tagline ? '<div class="sb-meta" style="font-size:15.5px;opacity:.95">' + esc(tagline) + '</div>' : '')
           +   (meta ? '<div class="sb-meta">' + meta + '</div>' : '')
           + '</div>'
           + '<div class="sb-actions">'
           +   '<a class="btn btn-primary btn-sm" href="/teacher/index.html?school=' + encodeURIComponent(b.schoolId) + '">دخول المعلمين</a>'
           +   '<a class="btn btn-ghost btn-sm" href="/student/index.html?school=' + encodeURIComponent(b.schoolId) + '">دخول الطلاب</a>'
-          +   '<button class="btn btn-ghost btn-sm" id="btnChange">تغيير المدرسة</button>'
+          +   lastAction
           + '</div></div>';
         var bc = $('btnChange');
         if (bc) bc.addEventListener('click', clearDefault);
@@ -1526,7 +1773,9 @@
         // تعمل حتى لو تأخّر تحميل السكربت، وتبقى "autoplay" حقيقية بلا اعتماد على مراقب التمرير.
         initScrollReveal();
         initFaqAccordion();
-        loadPartners();
+        // على `/<slug>` قسم «مدارسنا الشريكة» مخفيّ بالكامل ⇒ استدعاء `listPartnerSchoolsPublic`
+        // كان سيحجز تنفيذاً كاملاً من حصّة الثلاثين لبيانات لا تُعرَض إطلاقاً (بند 55/62/74).
+        if (!_isSchoolPage()) loadPartners();
         var deep = qparam('school') || qparam('schoolId') || _pathSlug();
         var def = getDefault();
         var initial = deep || def;
