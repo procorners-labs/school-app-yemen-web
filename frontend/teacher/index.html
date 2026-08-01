@@ -4123,6 +4123,9 @@ var App = {
   lists          : { grades:[], subjects:[], sections:[], violations:[] },
   currentSection : 'dashboard',
   autoSaveTimers : {},
+  gradeBuf       : {},      /* تجميع حفظ الدرجات: code|subject|month → إدخال مؤقّت */
+  gradeQueue     : [],      /* إدخالات جاهزة للإرسال بالتسلسل */
+  gradeBusy      : false,   /* بوّابة: نداء درجات طائر واحد في كل لحظة */
   vioSelectedStudent: null,
   sessionExpiry  : null,
   sessionInterval: null,
@@ -6580,6 +6583,7 @@ function doLogout() {
     App.sessionInterval = null;
   }
   clearSession();
+  resetGradeBatchState();   /* لا تترك درجات مؤجَّلة تحاول الإرسال بتوكن مفقود */
   App.user = null;
   App.initDone = false;
   if (token && typeof google !== 'undefined' && google.script && google.script.run) {
@@ -6600,6 +6604,7 @@ function forceLogout(msg) {
     App.sessionInterval = null;
   }
   clearSession();
+  resetGradeBatchState();   /* لا تترك درجات مؤجَّلة تحاول الإرسال بتوكن مفقود */
   App.user = null;
   App.initDone = false;
   toast(msg || 'انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مجدداً.', 'warning', 6000);
@@ -14362,6 +14367,11 @@ function loadStudentsGrades() {
     return;
   }
 
+  // ⚠️ إفراغ أي درجات مؤجَّلة **قبل** تبديل السياق. لا انتظار للشبكة: كل إدخال
+  // يحمل لقطة ctx الخاصة به فيكتب في الشهر/المادة الصحيحين مهما تغيّرت GS بعدها
+  // (بند 16 — هذا الفخّ سبق أن كتب درجات في خانة مادة/شهر خاطئة).
+  flushPendingGrades();
+
   // حفظ الحالة
   GS.month       = m;
   GS.subject     = sub;
@@ -14623,7 +14633,13 @@ function onGradeInput(inp) {
 
   if (val === '') {
     inp.classList.remove('has-grade', 'error', 'pending-save', 'saving');
-    triggerAutoSave(inp, { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section });
+    var ctxClr = { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section };
+    // 🔴 المسار المفرد القديم كان محصَّناً ضمنياً: مؤقّته يقرأ inp.value **حيّاً** وقت
+    // الإطلاق فيجد الحقل فارغاً فلا يحفظ. المخزن الجديد يلتقط القيمة **نسخاً**، فمسح
+    // الحقل خلال نافذة الدمج كان سيُبقي القيمة القديمة ويكتبها في ورقة درجات طالب حقيقي.
+    // لذلك يُلغى الحقل من المخزن صراحةً (نفس دلالة القديم: المسح لا يحفظ شيئاً).
+    if (GRADE_BATCH_FIELDS[type] === 1) { cancelGradeSave(code, type, ctxClr); return; }
+    triggerAutoSave(inp, ctxClr);
     return;
   }
 
@@ -14684,14 +14700,23 @@ function onGradeInput(inp) {
   // (المعلّم قد يبدّل الشهر/المادة/الصف/الشعبة خلال 500ms، فتصبح قراءة GS الحيّة عندها خاطئة
   //  وتُرسِل الدرجة المكتوبة هنا إلى خانة مادة/شهر مختلفة تماماً لنفس الطالب)
   var ctx = { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section };
-  var key = ctx.subject + '_' + ctx.month + '_' + code + '_' + type;
-  if (App.autoSaveTimers[key]) clearTimeout(App.autoSaveTimers[key]);
+
   inp.classList.add('pending-save');
   inp.classList.remove('saving');
 
+  // الحقول القابلة للتجميع تمرّ بالمخزن المؤقّت لكل طالب (نداء واحد لكل طالب بدل
+  // نداء لكل خلية). أي نوع آخر (final_grade مثلاً) يبقى على المسار المفرد القديم
+  // حرفياً — لا نغيّر سلوكاً قائماً خارج المسار الساخن.
+  if (GRADE_BATCH_FIELDS[type] === 1) {
+    queueGradeSave(code, type, inp.value.trim(), ctx);
+    return;
+  }
+
+  var key = ctx.subject + '_' + ctx.month + '_' + code + '_' + type;
+  if (App.autoSaveTimers[key]) clearTimeout(App.autoSaveTimers[key]);
   App.autoSaveTimers[key] = setTimeout(function() {
     triggerAutoSave(inp, ctx);
-  }, 500);   /* أسرع: 500ms بدل 1200ms */
+  }, 500);
 }
 
 /* ✅ تنقّل سلس بين حقول الدرجات بلوحة المفاتيح:
@@ -14713,6 +14738,183 @@ function onGradeInput(inp) {
     if (nx >= 0 && nx < list.length) { list[nx].focus(); if (list[nx].select) list[nx].select(); }
   });
 })();
+
+/* ══════════════════════════════════════════════════════════════════════════
+   تجميع حفظ الدرجات لكل طالب — إزالة الجذر المقيس لـ84٪ من أخطاء 502
+   ══════════════════════════════════════════════════════════════════════════
+   كان كل حقل يُطلق تنفيذ GAS مستقلاً، وكلٌّ يأخذ getScriptLock() العالمي على
+   المشروع كلّه. معلّم يرصد 30 طالباً × 4 حقول = حتى 120 تنفيذاً تتسلسل خلف قفل
+   واحد فتتجاوز ميزانية الوسيط (24 ثانية) وتلتهم حصّة الثلاثين تنفيذاً المتزامنة.
+   قياس ٢٤ ساعة: 844 من 1,197 نداء (≈70٪) ارتطمت بالجدار.
+
+   ثلاث آليات هنا:
+   (١) مخزن مؤقّت لكل طالب بمفتاح code|subject|month — الحقول الأربعة تُدمَج في نداء واحد.
+   (٢) بوّابة تسلسل: نداء طائر واحد فقط في كل لحظة — تمنع انفجار التزامن **بنيوياً**.
+   (٣) إفراغ فوري عند تبديل السياق — لا انتظار للشبكة، لأن كل إدخال يحمل لقطة
+       ctx الخاصة به فيكتب في الشهر/المادة الصحيحين مهما تغيّرت GS بعدها (بند 16:
+       هذا الفخّ سبق أن كتب درجات طلاب حقيقيين في خانة مادة/شهر خاطئة).            */
+
+var GRADE_BATCH_FIELDS = { behavior: 1, homework: 1, oral: 1, written: 1, exam_score: 1 };
+var GRADE_MERGE_MS     = 1200;   /* نافذة الدمج — الدمج يعوّض الإحساس بالبطء */
+
+function _gradeKey(code, ctx) { return code + '|' + ctx.subject + '|' + ctx.month; }
+
+function _gradeInputEl(code, type) {
+  return document.querySelector('input.grade-input[data-code="' + code + '"][data-type="' + type + '"]');
+}
+
+/* جدولة حفظ حقل ضمن مخزن الطالب. السياق يُلتقط وقت الكتابة لا وقت الإطلاق. */
+function queueGradeSave(code, type, value, ctx) {
+  var k = _gradeKey(code, ctx);
+  var e = App.gradeBuf[k];
+  if (!e) { e = App.gradeBuf[k] = { ctx: ctx, code: code, values: {}, timer: null }; }
+  e.values[type] = value;
+  if (e.timer) clearTimeout(e.timer);
+  e.timer = setTimeout(function () { _sendGradeEntry(k); }, GRADE_MERGE_MS);
+}
+
+/* نقل إدخال من المخزن إلى الطابور. إن كان له نظير مُنتظِر لم يُرسَل بعد، تُدمَج
+   القيَم فيه بدل مضاعفة النداءات. */
+function _sendGradeEntry(k) {
+  var e = App.gradeBuf[k];
+  if (!e) return;
+  if (e.timer) { clearTimeout(e.timer); e.timer = null; }
+  delete App.gradeBuf[k];
+
+  for (var i = 0; i < App.gradeQueue.length; i++) {
+    if (App.gradeQueue[i]._k === k) {
+      for (var f in e.values) { if (e.values.hasOwnProperty(f)) App.gradeQueue[i].values[f] = e.values[f]; }
+      _pumpGradeQueue();
+      return;
+    }
+  }
+  e._k = k;
+  App.gradeQueue.push(e);
+  _pumpGradeQueue();
+}
+
+/* إلغاء حقل مؤجَّل بعد مسحه — يعيد دلالة المسار المفرد القديم (المسح لا يحفظ شيئاً).
+   يشمل الطابور أيضاً: إدخال انتقل إليه ولم يُرسَل بعد يجب أن يفقد الحقل الملغى. */
+function cancelGradeSave(code, type, ctx) {
+  var k = _gradeKey(code, ctx);
+  var e = App.gradeBuf[k];
+  if (e && e.values.hasOwnProperty(type)) {
+    delete e.values[type];
+    var still = false;
+    for (var f in e.values) { if (e.values.hasOwnProperty(f)) { still = true; break; } }
+    if (!still) {
+      if (e.timer) clearTimeout(e.timer);
+      delete App.gradeBuf[k];
+    }
+  }
+  for (var i = 0; i < App.gradeQueue.length; i++) {
+    if (App.gradeQueue[i]._k === k && App.gradeQueue[i].values.hasOwnProperty(type)) {
+      delete App.gradeQueue[i].values[type];
+    }
+  }
+}
+
+/* تفريغ كل حالة التجميع — يُستدعى عند الخروج/انتهاء الجلسة كي لا يبقى إدخال
+   مؤجَّل يحاول الإرسال بتوكن مفقود. */
+function resetGradeBatchState() {
+  for (var k in App.gradeBuf) {
+    if (App.gradeBuf.hasOwnProperty(k) && App.gradeBuf[k].timer) clearTimeout(App.gradeBuf[k].timer);
+  }
+  App.gradeBuf   = {};
+  App.gradeQueue = [];
+  App.gradeBusy  = false;
+}
+
+/* إفراغ فوري لكل ما في المخزن — يُستدعى قبل أي تبديل سياق. */
+function flushPendingGrades() {
+  var keys = [];
+  for (var k in App.gradeBuf) { if (App.gradeBuf.hasOwnProperty(k)) keys.push(k); }
+  for (var i = 0; i < keys.length; i++) _sendGradeEntry(keys[i]);
+}
+
+/* بوّابة التسلسل — نداء واحد طائر، والباقي ينتظر دوره. */
+function _pumpGradeQueue() {
+  if (App.gradeBusy || !App.gradeQueue.length) return;
+
+  // 🔴 الجلسة قد تنتهي (مؤقّت 8 ساعات) أو يخرج المستخدم بينما مؤقّت الدمج يعمل —
+  // والتطبيق صفحة واحدة فلا إعادة تحميل تُصفّر الحالة. بلا هذا الحارس يرمي
+  // App.user.token استثناءً **بعد** رفع gradeBusy فتعلَق البوّابة true إلى الأبد،
+  // فتُصفّ كل درجات المعلّم لاحقاً بصمت ولا تُرسَل أبداً حتى بعد دخول جديد.
+  if (!App.user || !App.user.token) { resetGradeBatchState(); return; }
+
+  var e = App.gradeQueue.shift();
+  App.gradeBusy = true;
+
+  for (var f in e.values) {
+    if (!e.values.hasOwnProperty(f)) continue;
+    var el = _gradeInputEl(e.code, f);
+    if (el) { el.classList.remove('pending-save'); el.classList.add('saving'); }
+  }
+
+  try {
+    callServer('autoSaveStudentGradesProtected', {
+      token      : App.user.token,
+      month      : e.ctx.month,
+      subject    : e.ctx.subject,
+      grade      : e.ctx.grade,
+      section    : e.ctx.section,
+      studentCode: e.code,
+      values     : e.values
+    }, function (r) {
+      App.gradeBusy = false;
+      _applyGradeBatchResult(e, r);
+      _pumpGradeQueue();
+    }, function (err) {
+      App.gradeBusy = false;
+      _applyGradeBatchResult(e, { success: false, error: (err && err.message) ? err.message : 'تعذّر الاتصال' });
+      _pumpGradeQueue();
+    });
+  } catch (ex) {
+    // أي رمي متزامن (توكن مفقود، تشوّه حمولة) يجب ألّا يترك البوّابة مرفوعة
+    App.gradeBusy = false;
+    _applyGradeBatchResult(e, { success: false, error: (ex && ex.message) ? ex.message : 'تعذّر الحفظ' });
+    _pumpGradeQueue();
+  }
+}
+
+/* توزيع نتيجة النداء الواحد على حقوله — بما فيها الفشل الجزئي (حقلان ينجحان
+   وحقلان يفشلان في نفس الردّ). رسالة خطأ واحدة لا أربع. */
+function _applyGradeBatchResult(e, r) {
+  var results  = (r && r.success && r.results) ? r.results : null;
+  var firstErr = '';
+
+  for (var f in e.values) {
+    if (!e.values.hasOwnProperty(f)) continue;
+    var el = _gradeInputEl(e.code, f);
+    if (!el) continue;                      /* قد يكون المعلّم بدّل العرض */
+    el.classList.remove('saving', 'pending-save');
+
+    var fr = results ? results[f] : null;
+    if (fr && fr.success) {
+      el.classList.add('has-grade');
+      el.classList.remove('error');
+    } else {
+      el.classList.add('error');
+      if (!firstErr) {
+        firstErr = (fr && fr.error) ? fr.error
+                 : ((r && r.error) ? r.error : 'تعذّر حفظ الدرجة');
+      }
+    }
+  }
+
+  if (firstErr) toast('خطأ: ' + firstErr, 'error');
+
+  if (r && r.calculated) {
+    var msCell = document.querySelector('[data-locked-monthly="' + e.code + '"]');
+    if (msCell && r.calculated.monthly !== undefined && r.calculated.monthly !== null && r.calculated.monthly !== '') {
+      msCell.textContent = r.calculated.monthly;
+    }
+    var tsSpan = document.querySelector('.row-total-final[data-code="' + e.code + '"]');
+    if (tsSpan && r.calculated.total !== undefined && r.calculated.total !== null && r.calculated.total !== '') {
+      tsSpan.textContent = r.calculated.total;
+    }
+  }
+}
 
 function triggerAutoSave(inp, ctx) {
   // ctx: { month, subject, grade, section } — السياق المُلتقَط وقت الكتابة (onGradeInput)،
