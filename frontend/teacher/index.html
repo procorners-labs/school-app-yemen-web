@@ -27337,7 +27337,7 @@ function _visitsBuildHighlights(res){
   var items=[], d=res.deltas||{}, wk=d.weekVsPrevWeek, mo=d.monthVsPrevMonth;
   var SIG=15; // عتبة اعتبار التغيّر "ملحوظاً" (٪) — تفادياً لإبراز ضجيج إحصائي على أرقام صغيرة
   if(wk){
-    if(wk.pct===null && wk.cur>0) items.push('🆕 نشاط جديد هذا الأسبوع ('+wk.cur+' زيارة) — لا يوجد أساس مقارنة من الأسبوع السابق.');
+    if(wk.pct===null && wk.cur>0) items.push('🆕 نشاط جديد هذا الأسبوع ('+wk.cur+' جلسة) — لا يوجد أساس مقارنة من الأسبوع السابق.');
     else if(wk.pct!==null && wk.pct>=SIG) items.push('📈 ارتفع نشاط هذا الأسبوع بنسبة '+wk.pct+'٪ مقارنةً بالأسبوع السابق ('+wk.prev+' ← '+wk.cur+').');
     else if(wk.pct!==null && wk.pct<=-SIG) items.push('📉 تراجع نشاط هذا الأسبوع بنسبة '+Math.abs(wk.pct)+'٪ مقارنةً بالأسبوع السابق ('+wk.prev+' ← '+wk.cur+').');
   }
@@ -27345,7 +27345,7 @@ function _visitsBuildHighlights(res){
     items.push((mo.pct>=0?'📈 المتوسط الشهري ارتفع':'📉 المتوسط الشهري تراجع')+' بنسبة '+Math.abs(mo.pct)+'٪ مقارنةً بالفترة السابقة.');
   }
   var top=(res.topUsers||[])[0];
-  if(top && top.count>0) items.push('🏆 الأكثر نشاطاً مؤخراً: '+top.name+' ('+(VT_ROLE_LABELS[top.role]||top.role)+') بـ'+top.count+' زيارة.');
+  if(top && top.count>0) items.push('🏆 الأكثر نشاطاً مؤخراً: '+top.name+' ('+(VT_ROLE_LABELS[top.role]||top.role)+') بـ'+top.count+' جلسة.');
   if(!items.length) items.push('لا توجد تغيّرات ملحوظة حالياً مقارنةً بالفترة السابقة.');
   return items;
 }
@@ -27465,13 +27465,16 @@ function _visitsRender(res, initialTab){
 
   h+='<div class="tf-pane active" id="tf-pane-overview">'+
      '<div class="tf-kpis">'+
-       _tfKpi(String(res.todayTotal||0),'زيارات اليوم','','var(--tf-blue)',false)+
-       _tfKpi(String(res.yesterdayTotal||0),'زيارات الأمس','','var(--tf-orange)',false)+
-       _tfKpi(String(res.weekTotal||0),'زيارات الأسبوع',_visitsDeltaSubText((res.deltas||{}).weekVsPrevWeek,'عن الأسبوع السابق'),'var(--tf-purple)',false)+
-       _tfKpi(String(res.avgDaily||0),'متوسط يومي (30 يوماً)',_visitsDeltaSubText((res.deltas||{}).monthVsPrevMonth,'عن الفترة السابقة'),'var(--tf-teal)',false)+
+       _tfKpi(String(res.todayTotal||0),'جلسات اليوم','','var(--tf-blue)',false)+
+       _tfKpi(String(res.yesterdayTotal||0),'جلسات الأمس','','var(--tf-orange)',false)+
+       _tfKpi(String(res.weekTotal||0),'جلسات الأسبوع',_visitsDeltaSubText((res.deltas||{}).weekVsPrevWeek,'عن الأسبوع السابق'),'var(--tf-purple)',false)+
+       _tfKpi(String(res.avgDaily||0),'متوسط الجلسات يومياً (30 يوماً)',_visitsDeltaSubText((res.deltas||{}).monthVsPrevMonth,'عن الفترة السابقة'),'var(--tf-teal)',false)+
        '<div class="tf-kpi big" id="vt-online-kpi"><div class="tf-kpi-v" style="color:var(--tf-green);" id="vt-online-count">…</div>'+
        '<div class="tf-kpi-l"><span class="vt-pulse"></span>متصلين الآن</div></div>'+
      '</div>'+
+     _visitsInfoBanner('ℹ️ الأرقام أعلاه <b>جلسات</b> لا محاولات دخول: دخول المستخدم نفسه أكثر من مرّة '+
+       'خلال <b>30 دقيقة</b> يُحتسَب جلسة واحدة. لذلك قد تكون أقلّ من عدّاد «الإجمالي التراكمي» '+
+       'الذي يعدّ كل تسجيل دخول على حدة.')+
      _visitsCard('👥 من متصل الآن', '<div id="vt-online-list">'+_visitsEmptyState('جارٍ التحميل...','⏳')+'</div>')+
      _visitsCard('🌟 بارز هذا الأسبوع', _visitsBuildHighlightsHtml(res))+
      '</div>';
@@ -27482,7 +27485,7 @@ function _visitsRender(res, initialTab){
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-hourly">'+
-     _visitsCard('🕐 توزيع الدخول حسب الساعة', (res.hourly&&res.hourly.length)?_visitsHourlySvg(res.hourly):_visitsEmptyState())+
+     _visitsCard('🕐 توزيع الجلسات حسب الساعة', (res.hourly&&res.hourly.length)?_visitsHourlySvg(res.hourly):_visitsEmptyState())+
      '</div>';
 
   h+='<div class="tf-pane" id="tf-pane-roles">'+
@@ -27492,7 +27495,7 @@ function _visitsRender(res, initialTab){
      '</div></div>';
 
   h+='<div class="tf-pane" id="tf-pane-log">'+
-     _visitsCard('📋 سجلّ الزيارات التفصيلي',
+     _visitsCard('📋 سجلّ الجلسات التفصيلي',
        '<div class="vt-filter vt-filter-bar">'+
        '<select id="vt-log-filter" onchange="_visitsRenderLog()">'+
          '<option value="all">كل الأدوار</option><option value="student">الطلاب فقط</option><option value="staff">الطاقم فقط</option>'+
