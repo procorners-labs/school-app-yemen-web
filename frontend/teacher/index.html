@@ -10776,7 +10776,8 @@ function ec_timetablePrintMatrix(ev, size) {
 function ec_timetableRenderPage() {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
   var grades = _ecGrades || [];
-  var h = '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
+  var h = '<div id="ec-tt-grademonth-panel">' + ec_timetableGradeMonthHtml() + '</div>' +
+    '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
     '<div id="ec-tt-instructions-panel">' + ec_timetableInstructionsHtml() + '</div>' +
     '<div id="ec-tt-holidays-panel">' + ec_timetableHolidaysHtml() + '</div>' +
     '<details id="ec-tt-matrix-details" style="margin-bottom:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;" ontoggle="ec_timetableMatrixToggle(this)">' +
@@ -11236,6 +11237,62 @@ function ec_timetableVisibilityHtml() {
     '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#1e40af;">👁️ عرض الجدول على منصة الطالب — لكل شهر</summary>' +
     '<div style="margin-top:8px;">' + rows + '</div>' +
     '</details>';
+}
+
+// لوحة "فتح استثنائي لرصد الدرجات" — تعرض الحالة المحسوبة من جدول الاختبارات لكل شهر،
+// وتتيح للمدير تجاوزها. **دلالة مختلفة تماماً عن لوحة الرؤية أعلاه**: تلك تحكم عرض *جدول
+// الاختبارات* على منصة الطالب، وهذه تحكم السماح للمعلّم بحفظ *الدرجات*.
+// المصدر: MONTHS_STATE (تُملأ عند الإقلاع) — وتُحدَّث فوراً من استجابة التبديل.
+function ec_timetableGradeMonthHtml() {
+  var rows = '';
+  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
+    var month = EC_EXAM_TYPES[i];
+    var st = _gmsClientState(month);
+    var overridden = !!(MONTHS_STATE && MONTHS_STATE.overrides && MONTHS_STATE.overrides[month]);
+    var hint = (MONTHS_STATE && MONTHS_STATE.hint && MONTHS_STATE.hint[month]) || '';
+    var badge = overridden ? '🔓 مفتوح استثنائياً'
+              : (st === 'locked' ? '🔒 مقفل' : (st === 'pending' ? '⏳ لم يبدأ' : '✅ نشط'));
+    // ترتيب الهروب مقصود: إزالة ' أولاً ثم escapeHtml — القيمة تدخل سمة onclick (بند 15).
+    var monthEsc = escapeHtml(month.replace(/'/g, "\\'"));
+    var btn = overridden
+      ? '<button class="btn btn-sm btn-secondary" onclick="ec_timetableToggleGradeMonth(\'' + monthEsc + '\', false, this)">إرجاع للتلقائي</button>'
+      : (st === 'open'
+          ? '<span style="color:var(--text-light);font-size:11px;">—</span>'
+          : '<button class="btn btn-sm btn-warning" onclick="ec_timetableToggleGradeMonth(\'' + monthEsc + '\', true, this)">فتح استثنائي</button>');
+    rows += '<div style="display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12px;flex-wrap:wrap;">' +
+      '<b style="min-width:78px;">' + escapeHtml(month) + '</b>' +
+      '<span style="min-width:120px;">' + badge + '</span>' +
+      '<span style="color:var(--text-light);flex:1;min-width:140px;">' + escapeHtml(hint) + '</span>' +
+      btn + '</div>';
+  }
+  var note = (MONTHS_STATE && MONTHS_STATE.failOpen)
+    ? '<div style="font-size:11px;color:var(--text-light);margin-top:6px;">لا يوجد جدول اختبارات بعد — كل الشهور مفتوحة للرصد تلقائياً.</div>'
+    : '';
+  return '<details style="margin-bottom:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 12px;">' +
+    '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#9a3412;">🔓 فتح استثنائي لرصد الدرجات — لكل شهر</summary>' +
+    '<div style="margin-top:8px;">' + rows + note + '</div>' +
+    '</details>';
+}
+
+function ec_timetableToggleGradeMonth(month, open, btnEl) {
+  if (btnEl) btnEl.disabled = true;
+  callServer('setGradeMonthOverrideProtected', { month: month, open: open }, function (res) {
+    if (btnEl) btnEl.disabled = false;
+    if (!res || !res.success) {
+      toast('❌ ' + (res ? res.error : 'تعذّر التحديث'), 'error');
+      return;   // لا تغيير بصري — الحالة الخادمية لم تتغيّر
+    }
+    // الخادم يُعيد الحمولة الكاملة المُعاد قراءتها ⇒ نستبدل حالتنا بها ونُعيد الرسم.
+    MONTHS_STATE = res.monthsState || MONTHS_STATE;
+    // كاش الإقلاع العميلي (600ث) صار قديماً ⇒ احذفه كي تعكس صفحة الدرجات التغيير فوراً.
+    try { ClientCache.del(_bootConfigCacheKey()); } catch (e) {}
+    var panel = document.getElementById('ec-tt-grademonth-panel');
+    if (panel) panel.innerHTML = ec_timetableGradeMonthHtml();
+    toast(open ? ('🔓 فُتح ' + month + ' استثنائياً للرصد') : ('↩️ عاد ' + month + ' للتلقائي'), 'success');
+  }, function (err) {
+    if (btnEl) btnEl.disabled = false;
+    toast('❌ ' + err.message, 'error');
+  });
 }
 
 // لوحة "تعليمات الاختبار" — نص حرّ يُعرَض في منصة الطالب أعلى تبويب جدول الاختبارات إن لم يكن
@@ -14440,8 +14497,10 @@ function onGradeFilterChange() { var m = document.getElementById('gradeMonth'); 
  * أي تبويب قديم/كونسول يتجاوز الواجهة (بند 13: الإخفاء الواجهي ليس إخفاءً).
  * يُبقي «📤 تصدير» متاحاً: تصدير شهر مقفل مشروع تماماً.
  */
-function _gmsApplyReadOnly() {
-  var locked = !!(GS && GS.month) && !_gmsClientWritable(GS.month);
+// `forceLock` يتجاوز الحالة العميلية: يُستخدَم عند رفض خادمي صريح، حيث تكون الحالة
+// المحلية **قديمة بالتعريف** (لو كانت محدَّثة لَما وصل الحفظ للخادم أصلاً).
+function _gmsApplyReadOnly(forceLock) {
+  var locked = forceLock === true || (!!(GS && GS.month) && !_gmsClientWritable(GS.month));
   var tbl = document.getElementById('gradesTable');
   if (tbl) {
     var inputs = tbl.querySelectorAll('input, select, textarea');
@@ -15051,7 +15110,23 @@ function _applyGradeBatchResult(e, r) {
     }
   }
 
-  if (firstErr) toast('خطأ: ' + firstErr, 'error');
+  if (firstErr) {
+    // تصحيح ذاتي لتبويب قديم: الإخفاء الواجهي ليس إخفاءً (بند 13)، فقد يصل حفظٌ من صفحة
+    // فُتِحت قبل قفل الشهر. رفضُ الخادم هو مصدر الحقيقة ⇒ نُعيد الصفحة لوضع القراءة فوراً
+    // بدل ترك المعلّم يكتب في حقول لا تُحفَظ. البادئة «شهر «» هي عقد رسالة _gmsAssertWritable.
+    if (firstErr.indexOf('شهر «') === 0) {
+      toast(firstErr, 'warning', 6000);
+      if (GS && GS.month) {
+        var nb = document.getElementById('gmsMonthNotice');
+        if (nb) {
+          nb.innerHTML = '<div class="alert alert-warning mb-3">' + _tfEsc(firstErr) + '</div>';
+        }
+        _gmsApplyReadOnly(true);   // رفض الخادم يحكم — لا الحالة العميلية القديمة
+      }
+    } else {
+      toast('خطأ: ' + firstErr, 'error');
+    }
+  }
 
   if (r && r.calculated) {
     var msCell = document.querySelector('[data-locked-monthly="' + e.code + '"]');
@@ -22415,22 +22490,28 @@ function loadReports(force) {
         '<div class="sk-line skeleton w50"></div>' +
       '</div>' +
     '</div>' +
+    // 🔼 «متابعة رصد الدرجات» ثانياً بعد النواة مباشرةً (كان خامساً): هو التقرير الوحيد
+    //    الذي يُنتج إجراءً فورياً (مَن تأخّر ⇒ أبلِغه)، فبقاؤه أسفل الصفحة كان يُخفيه.
+    '<div id="rpt-grades-compliance" style="margin-top:14px;"></div>' +
     '<div id="rpt-teachers-activity" style="margin-top:14px;"></div>' +
     '<div id="rpt-absence" style="margin-top:14px;"></div>' +
     '<div id="rpt-student-attendance" style="margin-top:14px;"></div>' +
-    '<div id="rpt-grades-compliance" style="margin-top:14px;"></div>' +
     '<div id="rpt-tasks" style="margin-top:14px;"></div>';
 
+  _RPT_AFTER_CORE_DONE = false;   // كل فتح للتبويب يُعيد السماح بإطلاقة واحدة
   var _rptScope = _rpt_clientScope();
   rep_loadAllTeacherActivity(_rptScope);
   rep_loadTeacherAbsence(_rptScope);
   rep_loadStudentAttendanceStats(_rptScope);
   rep_loadTaskPerformance(_rptScope);
-  // ⚠️ لا تجلب شيئاً — ترسم بطاقة بزرّ فقط (راجع تعليق القسم أدناه: حصّة الثلاثين).
+  // ترسم هيكلاً عظمياً فقط — لا تلمس الشبكة. الجلب الفعلي في _rptAfterCore أدناه.
   rep_loadGradesCompliance();
 
   if (!force && _RPT_CACHE && (Date.now() - _RPT_CACHE_TS) < _RPT_CACHE_TTL_MS) {
     _renderReportsBody(_RPT_CACHE);
+    // ⚠️ هذا المسار **لا يستدعي الخادم إطلاقاً** ⇒ لا callback يُطلق _rptAfterCore.
+    //    بدون هذا السطر كان القسم يبقى هيكلاً عظمياً للأبد عند إعادة فتح التبويب خلال 3 دقائق.
+    _rptAfterCore();
     return;
   }
 
@@ -22442,16 +22523,38 @@ function loadReports(force) {
       var mainEl = document.getElementById('rpt-main');
       if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
         ((r && r.error) || 'خطأ غير معروف') + '</div>';
+      _rptAfterCore();   // فشل النواة لا يجوز أن يمنع قسماً مستقلاً عنها
       return;
     }
     _RPT_CACHE = r.data;
     _RPT_CACHE_TS = Date.now();
     _renderReportsBody(r.data);
     rep_fillSectionPicker(r.data);
+    _rptAfterCore();
   }, function(err) {
     var mainEl = document.getElementById('rpt-main');
     if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
+    _rptAfterCore();
   });
+}
+
+/**
+ * يُطلق «متابعة رصد الدرجات» **بعد** عودة نداء النواة — سادسٌ **متسلسل** لا متوازٍ،
+ * فتبقى ذروة التزامن خمسة نداءات كما هي (حصّة الثلاثين — بند 55).
+ *
+ * ثلاثة شروط، كلٌّ منها أسقط تصميماً أبسط:
+ *  • علَم `once`: النواة لها ثلاثة مخارج (نجاح · فشل منطقي · فشل شبكة) وكلها تستدعيها.
+ *  • يُستدعى من مسار الكاش السريع أيضاً (لا خادم هناك ⇒ لا callback).
+ *  • الدور **الخام** من `App.user.role` لا `_rpt_clientScope()` — الأخير يطوي 'activities'
+ *    داخل 'supervisor'، فيُطلق نداءً يرفضه الخادم = إهدار من الحصّة (فخّ بند 29/30).
+ */
+var _RPT_AFTER_CORE_DONE = false;
+function _rptAfterCore() {
+  if (_RPT_AFTER_CORE_DONE) return;
+  _RPT_AFTER_CORE_DONE = true;
+  var role = (App.user && App.user.role) || 'teacher';
+  if (role !== 'admin' && role !== 'deputy' && role !== 'supervisor') return;
+  gec_open(false);   // يحترم كاش _GEC_TTL (3 دقائق) فلا يُعيد الجلب بلا داعٍ
 }
 
 // ══════════════════════════════════════════════════════
@@ -23464,12 +23567,14 @@ function rep_loadGradesCompliance() {
   // يرفضه الخادم (نفس فخّ بند 29/30: قائمة العرض ≠ حارس الخادم).
   var role = (App.user && App.user.role) || 'teacher';
   if (role !== 'admin' && role !== 'deputy' && role !== 'supervisor') { box.innerHTML = ''; return; }
+  // هيكل عظمي لا زرّ: القسم يُحمَّل تلقائياً عبر _rptAfterCore بعد عودة النواة.
+  // الزرّ السابق كان يعني أن أهمّ تقرير عملي في الصفحة لا يراه أحد بلا نقرة إضافية.
   box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
     '<div class="rpt-empty" style="text-align:right;padding:4px 2px 10px;">' +
       'مقارنة جدول الاختبارات بورقة الدرجات: مَن رصد درجات اختباره ومَن تأخّر ' +
       '(مهلة ' + 3 + ' أيام بعد تاريخ الاختبار).' +
     '</div>' +
-    '<button class="btn btn-primary" onclick="gec_open(false)">📋 عرض متابعة الرصد</button>');
+    '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>');
 }
 
 function gec_open(force) {
@@ -23531,8 +23636,17 @@ function _gec_render(d) {
     _gec_chip('grace', '🟡 ضمن المهلة', s.waiting) +
     '</div>';
 
+  // أزرار الإبلاغ تظهر فقط عند وجود متأخّر فعلاً — وللمدير/الوكيل (الخادم يرفض غيرهما).
+  var lateCount = (s.late || 0) + (s.partial || 0);
+  var myRole = (App.user && App.user.role) || 'teacher';
+  var canNotify = (myRole === 'admin' || myRole === 'deputy');
+  var actions = (lateCount > 0)
+    ? ('<button class="btn btn-secondary" onclick="gec_shareLate()">📤 مشاركة قائمة المتأخرين</button>' +
+       (canNotify ? '<button class="btn btn-warning" onclick="gec_notifyLate()">🔔 تنبيه داخل المنصّة (' + lateCount + ')</button>' : ''))
+    : '';
+
   var foot = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">' +
-    '<button class="btn btn-secondary" onclick="gec_open(true)">🔄 تحديث</button>' +
+    '<button class="btn btn-secondary" onclick="gec_open(true)">🔄 تحديث</button>' + actions +
     '<span class="rpt-empty" style="padding:0;font-size:12px;">آخر تحديث: ' + _tfEsc(d.generatedAt || '') + '</span>' +
     (d.truncated ? '<span class="rpt-empty" style="padding:0;font-size:12px;color:var(--warning);">' +
        'عُرِض أول ' + (d.rows || []).length + ' من ' + d.totalRows + ' سجلاً</span>' : '') +
@@ -23572,9 +23686,9 @@ function _gec_table(rows) {
   }
   if (!list.length) return '<div class="rpt-empty">لا توجد سجلات مطابقة لهذا الفلتر</div>';
 
-  var h = '<div style="overflow-x:auto;"><table class="att-table" style="min-width:820px;">' +
+  var h = '<div style="overflow-x:auto;"><table class="att-table" style="min-width:900px;">' +
     '<thead><tr><th>المعلم</th><th>الصف/الشعبة</th><th>المادة</th><th>الشهر</th>' +
-    '<th>تاريخ الاختبار</th><th>التأخّر</th><th>المرصود</th><th>الحالة</th></tr></thead><tbody>';
+    '<th>تاريخ الاختبار</th><th>التأخّر</th><th>المرصود</th><th>الحالة</th><th>تنبيه</th></tr></thead><tbody>';
   for (var j = 0; j < list.length; j++) {
     var r = list[j];
     var lateCell = (r.status === 'late' || r.status === 'partial')
@@ -23590,9 +23704,130 @@ function _gec_table(rows) {
       '<td style="text-align:center;">' + r.scored + ' / ' + r.total + '</td>' +
       '<td style="text-align:center;color:' + _gec_statusColor(r.status) + ';font-weight:700;">' +
         _tfEsc(r.statusLabel) + '</td>' +
+      '<td style="text-align:center;">' + _gec_alertCell(r, j) + '</td>' +
     '</tr>';
   }
   return h + '</tbody></table></div>';
+}
+
+/**
+ * خليّة التنبيه — للصفوف المتأخّرة/الجزئية فقط (الخادم لا يُرفِق جهات اتصال لغيرها).
+ * رقم موجود ⇒ رابط wa.me مباشر. لا رقم ⇒ زرّ يضيفه فوراً، فلا يبقى زرّ ميّت.
+ */
+function _gec_alertCell(r, idx) {
+  if (r.status !== 'late' && r.status !== 'partial') return '<span style="color:var(--text-light);">—</span>';
+  var cs = r.contacts || [];
+  if (!cs.length) return '<span style="color:var(--text-light);font-size:11px;">غير محدَّد</span>';
+
+  var out = [];
+  for (var i = 0; i < cs.length; i++) {
+    var c = cs[i];
+    if (c.phone) {
+      var href = 'https://wa.me/' + encodeURIComponent(c.phone) + '?text=' + encodeURIComponent(_gecWaText(r, c.name));
+      out.push('<a class="btn btn-sm btn-success" target="_blank" rel="noopener" href="' +
+        escapeHtml(href) + '" title="تنبيه ' + escapeHtml(c.name) + ' عبر واتساب">📱</a>');
+    } else {
+      // ⚠️ الاسم يدخل سمة onclick ⇒ إزالة ' **قبل** escapeHtml (بند 15). و_tfEsc لا تصلح
+      //    هنا إطلاقاً: لا تهرّب ' فينكسر السياق أو يُحقَن.
+      var nameArg = escapeHtml(String(c.name).replace(/'/g, "\\'"));
+      out.push('<button class="btn btn-sm btn-secondary" onclick="gec_promptPhone(\'' + nameArg + '\')" ' +
+        'title="لا يوجد رقم مسجَّل — أضِفه الآن">📱＋</button>');
+    }
+  }
+  return out.join(' ');
+}
+
+// نصّ رسالة واتساب — عربي، يذكر ما يحتاجه المعلّم للتصرّف فوراً بلا فتح المنصّة.
+function _gecWaText(r, name) {
+  var lines = [];
+  lines.push('السلام عليكم' + (name ? (' أ. ' + name) : '') + '،');
+  lines.push('تذكير برصد درجات الاختبار:');
+  lines.push('• المادة: ' + r.subject);
+  lines.push('• الصف/الشعبة: ' + r.grade + (r.section ? (' / ' + r.section) : ''));
+  lines.push('• الشهر: ' + r.month);
+  lines.push('• تاريخ الاختبار: ' + r.examDate + ' (متأخر ' + r.daysLate + ' يوم)');
+  lines.push('• المرصود: ' + r.scored + ' من ' + r.total);
+  lines.push('');
+  lines.push('نأمل استكمال الرصد في أقرب وقت. شكراً لك.');
+  return lines.join('\n');
+}
+
+// إضافة رقم غائب فوراً من داخل التقرير — مسار تصحيح بدل زرّ لا يفعل شيئاً.
+function gec_promptPhone(teacherName) {
+  var v = prompt('رقم جوال المعلّم «' + teacherName + '» (مثال: 771234567):', '');
+  if (v === null) return;
+  v = String(v).replace(/[^0-9+]/g, '');
+  if (!v) { toast('لم يُدخَل رقم', 'warning'); return; }
+  showLoading('جاري الحفظ...');
+  callServer('updateMyPhoneProtected', { teacherName: teacherName, phone: v }, function (r) {
+    hideLoading();
+    if (!r || !r.success) { showError((r && r.error) || 'تعذّر حفظ الرقم'); return; }
+    toast('✅ حُفِظ رقم ' + teacherName, 'success');
+    gec_open(true);   // إعادة الجلب كي يظهر زرّ واتساب مكان زرّ الإضافة
+  }, function (err) { hideLoading(); showError(err.message); });
+}
+
+// مشاركة قائمة المتأخرين — نفس ثلاثية rep_shareReport لكن من _GEC_DATA لا _RPT_CACHE
+// (الفجوة القائمة: زرّ المشاركة العام لا يرى بيانات هذا القسم إطلاقاً).
+var GEC_SHARE_MAX_LINES = 40;
+function gec_shareLate() {
+  var d = _GEC_DATA;
+  if (!d || !d.rows) { toast('لا توجد بيانات — حدِّث التقرير أولاً', 'warning'); return; }
+  var sn = ((document.querySelector('.school-brand-name') || {}).textContent || '').trim();
+  var lines = [];
+  lines.push('📋 متابعة رصد الدرجات' + (sn ? (' — ' + sn) : ''));
+  lines.push('نسبة الاكتمال: ' + (d.coveragePct || 0) + '%');
+  lines.push('');
+  var n = 0, extra = 0;
+  for (var i = 0; i < d.rows.length; i++) {
+    var r = d.rows[i];
+    if (r.status !== 'late' && r.status !== 'partial') continue;
+    if (n >= GEC_SHARE_MAX_LINES) { extra++; continue; }
+    lines.push('• ' + r.teacher + ' — ' + r.subject + ' — ' + r.grade +
+      (r.section ? ('/' + r.section) : '') + ' — ' + r.month +
+      ' — متأخر ' + r.daysLate + ' يوم (' + r.scored + '/' + r.total + ')');
+    n++;
+  }
+  if (!n) { toast('لا يوجد متأخرون 🎉', 'success'); return; }
+  if (extra) lines.push('… و' + extra + ' آخرون');
+  lines.push('');
+  lines.push('— عبر منصة المعلم');
+  var text = lines.join('\n');
+
+  if (navigator.share) {
+    navigator.share({ title: 'متابعة رصد الدرجات', text: text }).then(function () {}, function () {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      function () { toast('📋 تم نسخ قائمة المتأخرين — يمكنك لصقها ومشاركتها', 'success'); },
+      function () { _repShareFallback(text); });
+  } else {
+    _repShareFallback(text);
+  }
+}
+
+// تنبيه داخل المنصّة عبر «التعميمات» — يصل لمن لا رقم جوال له.
+function gec_notifyLate() {
+  var d = _GEC_DATA;
+  if (!d || !d.rows) { toast('لا توجد بيانات — حدِّث التقرير أولاً', 'warning'); return; }
+  var names = [], seen = {}, month = '';
+  for (var i = 0; i < d.rows.length; i++) {
+    var r = d.rows[i];
+    if (r.status !== 'late' && r.status !== 'partial') continue;
+    if (!month) month = r.month;
+    if (r.teacher && r.teacher !== 'غير محدَّد' && !seen[r.teacher]) {
+      seen[r.teacher] = true;
+      names.push(r.teacher);
+    }
+  }
+  if (!names.length) { toast('لا يوجد معلمون متأخرون', 'success'); return; }
+  if (!confirm('سيُرسَل تنبيه داخل المنصّة إلى ' + names.length + ' معلّماً. متابعة؟')) return;
+
+  showLoading('جاري الإرسال...');
+  callServer('notifyLateGradeEntryProtected', { teachers: names, month: month }, function (r) {
+    hideLoading();
+    if (!r || !r.success) { showError((r && r.error) || 'تعذّر إرسال التنبيه'); return; }
+    toast('🔔 ' + r.message, 'success');
+  }, function (err) { hideLoading(); showError(err.message); });
 }
 
 // ════════════════════════════════════════════════════════════════════
