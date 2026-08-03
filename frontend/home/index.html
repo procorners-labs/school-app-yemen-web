@@ -12,6 +12,11 @@
   gtag('config', 'G-06QS5PMS6F');
 </script>
 <!-- ▲▲ نهاية وسم Google ▲▲ -->
+<!-- ▼▼ حُقِن آلياً: هوية الموقع ▼▼ -->
+<meta name="application-name" content="Yemen Schoolz" />
+<meta name="apple-mobile-web-app-title" content="يمن سكولز" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","url":"https://yemenschoolz.com/home/index.html","isPartOf":{"@id":"https://yemenschoolz.com/#website"}}</script>
+<!-- ▲▲ نهاية هوية الموقع ▲▲ -->
 <!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
 <link rel="manifest" href="/manifest.webmanifest">
 <script>
@@ -58,10 +63,15 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#060f1e"/>
-<meta name="description" content="مدارس الإبداع والتميز الدولية – منصة تعليمية ذكية متكاملة"/>
+<!-- الوسوم الساكنة تحمل هوية **المنتج** لا اسم مدرسة بعينها: هذا ما يقرأه الزاحف
+     أولاً وبضمان (بلا اعتماد على تنفيذ JS)، فلا يستنتج أن اسم النطاق هو اسم مدرسة
+     واحدة — وهو التعارض الذي أنتج حرفياً رسالة الرفض «app name … does not match the
+     app name on your home page». اسم المدرسة الفعلي يُطبَّق وقت التشغيل في
+     `applySeo()` على og:title و<title> وكيان School — راجع التعليق هناك. -->
+<meta name="description" content="يمن سكولز — نظام إدارة مدارس متكامل: الأخبار والصور والفيديوهات والإحصاءات ونتائج الطلاب والتواصل."/>
 <meta property="og:type" content="website"/>
-<meta property="og:site_name" content="Schoolz Yemen"/>
-<meta property="og:title" content="مدارس الإبداع والتميز الدولية"/>
+<meta property="og:site_name" content="Yemen Schoolz"/>
+<meta property="og:title" content="يمن سكولز | Yemen Schoolz — بوّابة المدرسة"/>
 <meta property="og:description" content="منصة تعليمية ذكية متكاملة: الأخبار والصور والفيديوهات والإحصاءات والتواصل."/>
 <meta property="og:locale" content="ar_AR"/>
 <meta property="og:url" content="https://yemenschoolz.com/home/index.html"/>
@@ -71,9 +81,9 @@
 <!-- الموقع الجغرافي (يساعد البحث المحلي) -->
 <meta name="geo.region" content="YE-SA"/>
 <meta name="geo.placename" content="صنعاء"/>
-<meta name="keywords" content="مدارس الإبداع والتميز الدولية, مدرسة صنعاء, مدرسة أهلية اليمن, رياض أطفال صنعاء, مدرسة ابتدائية صنعاء, مدرسة متوسطة صنعاء, مدرسة ثانوية صنعاء, مدارس بنين, مدارس بنات, بوابة الطالب, لوحة المعلم, نتائج الطلاب, منصة تعليمية"/>
+<meta name="keywords" content="يمن سكولز, Yemen Schoolz, نظام إدارة المدارس, مدرسة صنعاء, مدرسة أهلية اليمن, رياض أطفال صنعاء, مدرسة ابتدائية صنعاء, مدرسة متوسطة صنعاء, مدرسة ثانوية صنعاء, مدارس بنين, مدارس بنات, بوابة الطالب, لوحة المعلم, نتائج الطلاب, منصة تعليمية"/>
 <link rel="canonical" href="https://yemenschoolz.com/home/index.html"/>
-<title>مدارس الإبداع والتميز الدولية</title>
+<title>يمن سكولز | Yemen Schoolz — بوّابة المدرسة</title>
 <!-- خط Cairo مُستضاف ذاتياً (بدل CDN) — ملف متغيّر واحد يغطي الأوزان 200-1000، font-display:swap
      يحقّق نفس هدف عدم حجب العرض الذي كانت خدعة media=print/onload تؤمّنه سابقاً. -->
 <style>
@@ -1475,7 +1485,7 @@ img,video,iframe{max-width:100%;display:block}
       <!-- تبعيّة مرئية للمنصّة الحاوية: تُطابق isPartOf في JSON-LD وتمنع قراءة هذه الصفحة
            كعلامة مستقلّة تنافس اسم الموقع. unicode-bidi:isolate إلزامي — الاسم اللاتيني داخل
            dir="rtl" يُعرَض معكوساً بدونه. -->
-      <p>مستضافة على منصّة <a href="/" style="unicode-bidi:isolate;color:inherit;font-weight:700">Schoolz Yemen</a> — نظام إدارة المدارس</p>
+      <p>مستضافة على منصّة <a href="/" style="unicode-bidi:isolate;color:inherit;font-weight:700">Yemen Schoolz</a> — نظام إدارة المدارس</p>
     </div>
   </div>
 </footer>
@@ -2332,11 +2342,14 @@ document.addEventListener('DOMContentLoaded',function(){
     if(!p || !p.name) return;
     p.phoneDisplay = (p.telephone || '').replace(/^\+967/, '');
     applyContacts(p);
-    document.title = p.name + (p.tagline ? ' — ' + p.tagline : '');
+    // اسم المدرسة أولاً (هو ما يبحث عنه الزائر) ولاحقة المنتج ثابتة بعده — فيبقى
+    // انتماء الصفحة للمنصّة ظاهراً في تبويب المتصفّح وفي عنوان نتيجة البحث معاً،
+    // بينما الوسم الساكن في <head> يضمن الهوية حتى بلا تنفيذ JS.
+    document.title = p.name + (p.tagline ? ' — ' + p.tagline : '') + ' | يمن سكولز';
     setMeta('meta[name="description"]', p.description);
     setMeta('meta[property="og:title"]', p.name);
     setMeta('meta[property="og:description"]', p.description);
-    // og:site_name يبقى «Schoolz Yemen» عمداً — لا يُكتب باسم المدرسة.
+    // og:site_name يبقى «Yemen Schoolz» عمداً — لا يُكتب باسم المدرسة.
     // هذه الصفحة مدرسة **مستضافة** على المنصّة (راجع التعليق أدناه: مصدر الحقيقة
     // لاسم العلامة هو الجذر)، واسم المدرسة مكانه og:title وكيان School بـisPartOf.
     // كان هذا السطر يكتب p.name فوق اسم الموقع **وقت التشغيل** — وGooglebot يُنفّذ
@@ -2382,14 +2395,14 @@ document.addEventListener('DOMContentLoaded',function(){
     // WebSite — هوية **المنصّة** لا المدرسة.
     // كان هذا الكيان يحمل name: p.name (اسم المدرسة) مع url = أصل النطاق + '/' ⇒ يُصرِّح
     // للزاحف أن اسم الصفحة الرئيسية للنطاق هو «مدارس الإبداع والتميز الدولية»، بينما شاشة
-    // موافقة OAuth مُهيَّأة باسم «Schoolz Yemen» — وهو تعارضٌ يُنتج حرفياً رسالة الرفض
+    // موافقة OAuth مُهيَّأة باسم «Yemen Schoolz» — وهو تعارضٌ يُنتج حرفياً رسالة الرفض
     // «app name … does not match the app name on your home page». الاسم هنا ثابت أحادي
     // اللغة عمداً (لا يُشتق من المدرسة) — لا تُعِده إلى p.name.
     injectLd('ld-website', {
       '@context':'https://schema.org', '@type':'WebSite',
       '@id': siteId,
-      name: 'Schoolz Yemen',
-      alternateName: ['سكولز اليمن', 'Yemen Schoolz'],
+      name: 'Yemen Schoolz',
+      alternateName: ['يمن سكولز'],
       url: siteUrl, inLanguage:'ar'
     });
   }
