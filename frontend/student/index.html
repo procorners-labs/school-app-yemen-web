@@ -6159,8 +6159,53 @@ function nsToggleLike(newsId, btn) {
 });
 }
 
+/* ★ مانع تكرار تسجيل المشاهدة — لم يكن موجوداً إطلاقاً، فكان كل عرض للخبر (وكل إعادة
+   تحميل للصفحة) يُطلق نداء خادم جديداً رغم أن الخادم يُرجِع `alreadyViewed` ويتجاهله.
+   نداءات كهذه تتنافس على حصّة «30 تنفيذاً متزامناً لكل حساب» مع تسجيل الدخول نفسه
+   (بنود 55/60/62). المفتاح يضمّ معرّف الطالب كي لا يرث حسابٌ آخر مشاهدات سابقه
+   (تبديل حسابات الإخوة — راجع student/CLAUDE.md بند 7). */
+var _STU_VIEWED_KEY = 'stnv_viewed_v1';
+var _STU_VIEWED_MAX = 400;
+
+function _stuViewedKey() {
+  return _STU_VIEWED_KEY + '_' + ((APP.user && APP.user.id) ? APP.user.id : '0');
+}
+/* ★ خريطة الذاكرة **مفهرسة بنفس مفتاح المستخدم** لا مسطَّحة.
+   الإصدار الأول جعلها كائناً واحداً للصفحة كلها، فكان تبديل حساب الإخوة أو الخروج
+   (‏`ssClearAll()` بثلاثة مواضع، بلا `location.reload`) يترك مشاهدات الطالب السابق
+   في الذاكرة ⇒ أول مشاهدة حقيقية للطالب التالي **لا تُسجَّل أبداً**. الفهرسة تجعل
+   العزل بنيوياً فلا يعتمد على تذكّر المسح في كل موضع تبديل (فخّ بند 76-د). */
+function _stuViewedMem() {
+  if (!window._stuViewedMemAll) window._stuViewedMemAll = {};
+  var k = _stuViewedKey();
+  if (!window._stuViewedMemAll[k]) window._stuViewedMemAll[k] = {};
+  return window._stuViewedMemAll[k];
+}
+function _stuViewedHas(newsId) {
+  if (_stuViewedMem()[newsId]) return true;
+  try {
+    var raw = localStorage.getItem(_stuViewedKey());
+    var ids = raw ? JSON.parse(raw) : null;
+    return !!(ids && ids[newsId]);
+  } catch (e) { return false; }
+}
+function _stuViewedAdd(newsId) {
+  _stuViewedMem()[newsId] = 1;
+  try {
+    var k = _stuViewedKey();
+    var raw = localStorage.getItem(k);
+    var ids = raw ? JSON.parse(raw) : null;
+    if (!ids || typeof ids !== 'object') ids = {};
+    if (Object.keys(ids).length > _STU_VIEWED_MAX) ids = {};
+    ids[newsId] = 1;
+    localStorage.setItem(k, JSON.stringify(ids));
+  } catch (e) {}
+}
+
 function markNewsViewed(newsId) {
   if (!APP.user || !APP.user.id || !newsId) return;
+  if (_stuViewedHas(newsId)) return;
+  _stuViewedAdd(newsId);
   google.script.run
     .withSuccessHandler(function () {})
     .withFailureHandler(function () {})

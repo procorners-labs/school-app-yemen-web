@@ -1775,15 +1775,47 @@ function _homeVisitorId() {
     return v;
   } catch (e) { return 'v0'; }
 }
+/* ★ مانع التكرار يُحفَظ في localStorage لا في الذاكرة وحدها.
+   كان `window._pubViewed` كائناً يُصفَّر مع **كل إعادة تحميل**، فيُعاد إطلاق نداء خادم لكل
+   خبر معروض في كل فتح للصفحة — وهو ما جعل `recordPublicNewsView` أعلى مستهلك لحصّة
+   «30 تنفيذاً متزامناً لكل حساب» بالقياس الحيّ (1029 تنفيذاً/3.5 ساعة)، فيُسقِط تسجيل
+   الدخول في تطبيقات أخرى تتنافس على نفس المجمّع (بنود 55/60/62).
+   الذاكرة تبقى طبقة أولى رخيصة داخل نفس اللفة. */
+var _PUB_VIEWED_KEY = 'home_pub_viewed_v1';
+var _PUB_VIEWED_MAX = 400;   /* سقف يمنع نموّ التخزين بلا حدّ */
+
+function _pubViewedLoad(vid) {
+  try {
+    var raw = localStorage.getItem(_PUB_VIEWED_KEY);
+    var obj = raw ? JSON.parse(raw) : null;
+    /* تغيّر معرّف الزائر ⇒ ابدأ من جديد (لا نُسقِط مشاهدات زائر آخر) */
+    if (!obj || obj.vid !== vid || !obj.ids) return { vid: vid, ids: {} };
+    return obj;
+  } catch (e) { return { vid: vid, ids: {} }; }
+}
+
+function _pubViewedSave(obj) {
+  try {
+    var keys = Object.keys(obj.ids);
+    if (keys.length > _PUB_VIEWED_MAX) obj = { vid: obj.vid, ids: {} };
+    localStorage.setItem(_PUB_VIEWED_KEY, JSON.stringify(obj));
+  } catch (e) {}
+}
+
 function _homeRecordViews(list) {
   if (!window._pubViewed) window._pubViewed = {};
   var vid = _homeVisitorId();
+  var store = _pubViewedLoad(vid);
+  var dirty = false;
   for (var i = 0; i < list.length; i++) {
     var id = String(list[i].id || '');
-    if (!id || window._pubViewed[id]) continue;
+    if (!id || window._pubViewed[id] || store.ids[id]) continue;
     window._pubViewed[id] = 1;
+    store.ids[id] = 1;
+    dirty = true;
     try { google.script.run.recordPublicNewsView(id, vid); } catch (e) {}
   }
+  if (dirty) _pubViewedSave(store);
 }
 
 /* بناء شرائح الوسائط داخل بطاقة الخبر (الفيديو افتراضيّ أولًا) */

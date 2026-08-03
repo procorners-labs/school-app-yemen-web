@@ -4097,19 +4097,28 @@ var _hbTimerStarted = false;
 function _startHeartbeat() {
   if (_hbTimerStarted) return;
   _hbTimerStarted = true;
+  var _lastBeatAt = 0;
   function beat() {
     if (document.visibilityState !== 'visible') return;
     if (!App.user || !App.user.token) return;
+    _lastBeatAt = Date.now();
     callServer('teacherHeartbeatProtected', {}, function(){}, function(){});
     // إشعار فوري (لا ينتظر إعادة تحميل الصفحة) — يستفيد من نفس نبضة الـheartbeat القائمة
     // بدل مؤقّت جديد منفصل (تفادي زيادة عدد النداءات المتزامنة على حصّة الـ30 تنفيذاً، راجع
     // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
     try { loadNotifCountsBundle(); } catch (e) {}
   }
+  /* ★ خنق نبضة العودة للتبويب: كانت كل عودة تُطلق `beat()` فوراً بلا أي حدّ، و`beat()`
+     يُطلق **نداءين** خادميَّين — فتبديل التبويبات المتكرّر يُنتج رشقات على حصّة
+     «30 تنفيذاً متزامناً لكل حساب» (بنود 55/60/62). الحدّ الأدنى 60 ثانية بين نبضتين. */
+  var _BEAT_MIN_GAP_MS = 60 * 1000;
+  function _beatOnVisible() {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - _lastBeatAt < _BEAT_MIN_GAP_MS) return;
+    beat();
+  }
   setInterval(beat, 3 * 60 * 1000);
-  document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible') beat();
-  });
+  document.addEventListener('visibilitychange', _beatOnVisible);
   // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات bootApp() (أخبار/تعميمات/
   // ملاحظات/FCM) التي تُطلَق في نفس اللفة مباشرة بعد _startHeartbeat() — تزامن عدّة XHR على نفس
   // تطبيق GAS عند الإقلاع كان يرفع احتمال status 0/مهلة (راجع _docs/…-heartbeat-boot-burst).
@@ -7265,7 +7274,10 @@ function _tcPlayNotifSound() {
 function loadNotifCountsBundle() {
   try {
     if (typeof App === 'undefined' || !App || !App.user) return;
-    callServer('getNotifCountsBundle', {}, 'notif_bundle', 120, function (bundle) {
+    /* ★ TTL 300 لا 120: النبضة كل 180 ثانية، فـTTL أقصر منها يجعل الكاش **منتهياً دائماً**
+       قبل النداء التالي ⇒ نسبة إصابة صفر، وكل نداء يقرأ ~5 أوراق كاملة على الخادم.
+       الشرط الصحيح هو TTL **>** فترة النبضة، لا قيمة بعينها — يحرسه اختبار انحدار. */
+    callServer('getNotifCountsBundle', {}, 'notif_bundle', 300, function (bundle) {
       if (!bundle || !bundle.success) return;
       var rNews = bundle.news;
       if (rNews && rNews.success) {
