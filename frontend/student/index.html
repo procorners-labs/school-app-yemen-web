@@ -4329,7 +4329,27 @@ function _gradesComputeCurrentMonthName(monthRanges, todayStr) {
   return GRADES_MONTH_ORDER[lastEndedIdx + 1];                        // الشهر التالي مباشرة، ولو فارغاً
 }
 
+// حالة الشهر من الحمولة الموحَّدة (نفس مصدر منصّة المعلم). متسامحة تماماً:
+// حمولة مخزَّنة في sessionStorage قبل هذه الميزة لا تحمل الحقل ⇒ 'open' (بند 80-ج).
+function _stGradesMonthState(r, monthName) {
+  var st = r && r.monthsState && r.monthsState.state;
+  if (!st) return 'open';
+  var v = st[monthName];
+  return (v === 'locked' || v === 'pending') ? v : 'open';
+}
+
 function _gradesPickDefaultIdx(r, months) {
+  // ① الشهر النشط المحسوب خادمياً — مصدر واحد مع منصّة المعلم، فلا يفترق التبويب
+  //    الافتراضي هنا عن الشهر المفتوح هناك. يُقبَل فقط إن كان له بيانات فعلاً
+  //    (لا نفتح الصفحة على تبويب فارغ — نفس شرط المسار القديم أدناه).
+  var srvDefault = r && r.monthsState && r.monthsState.defaultMonth;
+  if (srvDefault) {
+    for (var d = 0; d < months.length; d++) {
+      if (months[d].name === srvDefault && _gradesMonthHasData(months[d])) return d;
+    }
+  }
+
+  // ② تراجع للسلسلة القائمة بلا أي تغيير (مدى التواريخ ⇒ آخر شهر فيه بيانات).
   var monthRanges = r && r.monthRanges;
   if (monthRanges) {
     var hasAnyRange = false;
@@ -4402,7 +4422,14 @@ function renderGrades(r) {
     var extraStyle = isTerm ? 'border:2px solid #f59e0b;font-weight:700' : '';
     // شهر لم يُرصد بعد: يبقى ظاهراً (لا يختفي) لكن بوسم بصري واضح
     if (!hasData) extraStyle += ';border:1px dashed var(--muted);opacity:.62;font-weight:400';
-    var ttl = hasData ? '' : ' title="لم تُرصد درجات هذا الشهر بعد"';
+    // يفصل سببَين كانا مدموجَين في نصّ واحد: «الاختبار لم يبدأ أصلاً» (pending، مشتقّ من
+    // جدول الاختبارات) مقابل «بدأ ولم تُرصد الدرجات بعد». الأول ليس تأخّراً من أحد.
+    var ttl = '';
+    if (!hasData) {
+      ttl = (_stGradesMonthState(r, nm) === 'pending')
+        ? ' title="لم تبدأ اختبارات هذا الشهر بعد"'
+        : ' title="لم تُرصد درجات هذا الشهر بعد"';
+    }
     html += '<button type="button" class="month-chip" ' +
             'data-idx="' + i + '" ' +
             'onclick="renderMonth(' + i + ')" ' + ttl + ' ' +
