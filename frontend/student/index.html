@@ -4277,6 +4277,17 @@ function renderGradesWithRefresh(r) {
 var GRADES_MONTH_ORDER = ['محرم', 'صفر', 'نصف العام', 'جماد اول', 'جماد ثاني', 'نهاية العام'];
 
 // السلوك القديم بلا أي تغيير — خط الدفاع الأخير عند غياب/عدم تطابق monthRanges.
+// هل لهذا الشهر درجات مرصودة فعلاً؟
+// 🔴 لا تقرأ m.hasAnyGrades مباشرةً: الصفحة تستعيد حمولة من sessionStorage (وكاش
+// خادمي 30ث)، وحمولة ما قبل هذا الإصلاح **لا تحوي الحقل إطلاقاً** ⇒ undefined
+// (falsy) كان سيَسِم كل الشهور «قيد الرصد» خطأً. الحمولة القديمة لا تحوي إلا
+// شهوراً مرصودة أصلاً، فالاشتقاق من subjects يعطي true صحيحاً. (فخّ بند 9.)
+function _gradesMonthHasData(m) {
+  if (!m) return false;
+  if (m.hasAnyGrades !== undefined) return !!m.hasAnyGrades;
+  return !!(m.subjects && m.subjects.length > 0);
+}
+
 function _gradesFallbackDefaultIdx(months) {
   var defaultIdx = 0;
   for (var k = months.length - 1; k >= 0; k--) {
@@ -4326,7 +4337,11 @@ function _gradesPickDefaultIdx(r, months) {
       var currentLabel = _gradesComputeCurrentMonthName(monthRanges, _examTodayYmd());
       if (currentLabel) {
         for (var i = 0; i < months.length; i++) {
-          if (months[i].name === currentLabel) return i;
+          // الشهور غير المرصودة صارت تُرسَل أيضاً، فقد يُرشِّح الكنترول شهراً فارغاً.
+          // لا نفتح الصفحة على تبويب فارغ — نتراجع لآخر شهر فيه بيانات.
+          if (months[i].name === currentLabel) {
+            return _gradesMonthHasData(months[i]) ? i : _gradesFallbackDefaultIdx(months);
+          }
         }
       }
     }
@@ -4375,18 +4390,38 @@ function renderGrades(r) {
   html += '<div id="monthChipsBar" style="display:flex;flex-wrap:wrap;gap:8px;' +
               'margin-bottom:14px;overflow-x:auto;padding-bottom:6px">';
 
+  var pendingCount = 0;
   for (var i = 0; i < months.length; i++) {
     var nm = months[i].name || '';
     var isTerm = !!(months[i].isFinal || months[i].isTermMonth);
-    var ic = isTerm ? '🏆' : '📅';
+    var hasData = _gradesMonthHasData(months[i]);
+    if (!hasData) pendingCount++;
+    var ic = hasData ? (isTerm ? '🏆' : '📅') : '⏳';
     var extraStyle = isTerm ? 'border:2px solid #f59e0b;font-weight:700' : '';
+    // شهر لم يُرصد بعد: يبقى ظاهراً (لا يختفي) لكن بوسم بصري واضح
+    if (!hasData) extraStyle += ';border:1px dashed var(--muted);opacity:.62;font-weight:400';
+    var ttl = hasData ? '' : ' title="لم تُرصد درجات هذا الشهر بعد"';
     html += '<button type="button" class="month-chip" ' +
             'data-idx="' + i + '" ' +
-            'onclick="renderMonth(' + i + ')" ' +
+            'onclick="renderMonth(' + i + ')" ' + ttl + ' ' +
             'style="' + extraStyle + '">' +
             ic + ' ' + esc(nm) + '</button>';
   }
   html += '</div>';
+
+  // ملاحظة توضيحية تظهر فقط عند وجود شهر واحد غير مرصود على الأقل — كي يفهم
+  // الطالب/ولي الأمر أن النقص مؤقّت وأن الدرجات تكتمل تباعاً لا أنها ضائعة.
+  if (pendingCount > 0) {
+    html += '<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;' +
+                'line-height:1.7;color:var(--muted);background:var(--card);' +
+                'border:1px solid var(--line,#e2e8f0);border-right:3px solid #f59e0b;' +
+                'border-radius:10px;padding:9px 12px;margin-bottom:14px">' +
+              '<span style="flex-shrink:0">⏳</span>' +
+              '<span>الأشهر الموسومة بـ<b>⏳</b> لم تُرصد درجاتها بعد وستظهر فور إدخالها من معلّميك. ' +
+                'ودرجتا <b>نصف العام</b> و<b>نهاية العام</b> تُحتسبان تلقائياً من درجات الأشهر، ' +
+                'فتكتملان عند اكتمال رصد بقية الأشهر.</span>' +
+            '</div>';
+  }
 
   // ── منطقة عرض جدول الشهر ──
   html += '<div id="monthGradesBox"></div>';
@@ -4409,8 +4444,20 @@ function renderMonth(idx) {
   if (chips[idx]) chips[idx].classList.add('active');
 
   var box = $('monthGradesBox');
+  // هذا الفرع كان غير قابل للوصول عملياً (الخادم لم يكن يُرسل شهراً فارغاً أصلاً).
+  // صار الآن المسار الفعلي لكل شهر مُزوَّد لم تُرصد درجاته بعد.
   if (!m || !m.subjects || m.subjects.length === 0) {
-    box.innerHTML = emptyHTML('📊', 'لا توجد درجات لهذا الشهر', '');
+    var mn = (m && m.name) ? m.name : '';
+    var ttl = '⏳ لم تُرصد درجات هذا الشهر بعد';
+    var sub = 'ستظهر هنا فور إدخالها من معلّميك';
+    if (mn === 'نصف العام') {
+      ttl = '⏳ درجة نصف العام تُحتسب تلقائياً';
+      sub = 'من درجات «محرم» و«صفر» — تكتمل عند رصد درجات الشهرين';
+    } else if (mn === 'نهاية العام') {
+      ttl = '⏳ درجة نهاية العام تُحتسب تلقائياً';
+      sub = 'من درجات «جماد اول» و«جماد ثاني» مع الاختبار النهائي — تكتمل في نهاية العام الدراسي';
+    }
+    box.innerHTML = emptyHTML('📊', ttl, sub);
     return;
   }
 
