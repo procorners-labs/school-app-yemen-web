@@ -1,6 +1,6 @@
 /**
  * school-app-proxy — Cloudflare Worker
- * إتقان — نظام إدارة المدارس
+ * يمن سكولز | Yemen Schoolz — نظام إدارة المدارس
  *
  * الغرض: تشغيل الموقع بدون VPN في المناطق التي يُحجب فيها github.io.
  *  - يخدم صفحات الواجهة الثابتة بجلبها من GitHub Pages نيابةً عن المتصفّح
@@ -398,8 +398,8 @@ export default {
     //     (يظهر فقط عند التنقّل المباشر، لا داخل iframe).
     if (path === '/pricing' || path === '/pricing/') {
       var prSrc = (GAS.pricing + url.search).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-      var prTitle = 'سكولز اليمن | Schoolz Yemen — خطط الأسعار';
-      var prDesc = 'خطط أسعار منصّة سكولز اليمن لإدارة المدارس: اختر الخطّة المناسبة لمدرستك — لوحات المعلمين والطلاب، إدارة المحتوى والجداول، التقارير المالية، ودعم فني كامل.';
+      var prTitle = 'يمن سكولز | Yemen Schoolz — خطط الأسعار';
+      var prDesc = 'خطط أسعار منصّة يمن سكولز لإدارة المدارس: اختر الخطّة المناسبة لمدرستك — لوحات المعلمين والطلاب، إدارة المحتوى والجداول، التقارير المالية، ودعم فني كامل.';
       // meta/OG/Twitter ثابتة (لا ديناميكية — صفحة تسويقية عامة بلا بيانات مدرسة بعينها).
       // ملاحظة: محتوى الـiframe نفسه (من script.google.com) لا يُفهرَس كجزء من هذه الصفحة —
       // هذه الوسوم تُحسِّن فقط عنوان/وصف/مشاركة نتيجة البحث والروابط الاجتماعية للغلاف الخارجي.
@@ -414,7 +414,11 @@ export default {
         // اسم الموقع يجب أن تبقى سلسلة واحدة لا لبس فيها عبر كل الصفحات.
         // ⚠️ هذا الغلاف هو ما يراه الزاحف على /pricing — الصفحة الحقيقية داخل
         // <iframe>، فتعديل pricing/Index.html بمستودع GAS لا يظهر هنا إطلاقاً.
-        '<meta property="og:site_name" content="Schoolz Yemen">' +
+        // «Yemen Schoolz» تطابق سلسلة النطاق yemenschoolz.com حرفياً، وتطابق
+        // App name في كونسول Google OAuth. تغييرها هنا يلزمه تغييرهما معاً.
+        '<meta property="og:site_name" content="Yemen Schoolz">' +
+        '<meta name="application-name" content="Yemen Schoolz">' +
+        '<meta name="apple-mobile-web-app-title" content="يمن سكولز">' +
         '<meta property="og:title" content="' + prTitle + '">' +
         '<meta property="og:description" content="' + prDesc + '">' +
         '<meta property="og:url" content="https://yemenschoolz.com/pricing">' +
@@ -427,7 +431,7 @@ export default {
         '<meta name="twitter:image" content="https://yemenschoolz.com/assets/schoolz-yemen-og.png">' +
         '<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#060e1e}' +
         'iframe{width:100%;height:100vh;border:0;display:block}</style></head><body>' +
-        '<iframe src="' + prSrc + '" title="سكولز اليمن — خطط الأسعار" allowfullscreen></iframe>' +
+        '<iframe src="' + prSrc + '" title="يمن سكولز — خطط الأسعار" allowfullscreen></iframe>' +
         '</body></html>';
       var prHeaders = new Headers();
       prHeaders.set('Content-Type', 'text/html; charset=utf-8');
