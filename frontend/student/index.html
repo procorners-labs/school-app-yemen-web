@@ -7789,6 +7789,11 @@ function initLazyImages() {
   // safeUrl المُثبَت في home/Index.html وhome-all-school/Index.html.
   function _stSafeUrl(u) {
     u = (u === null || u === undefined) ? '' : String(u).trim();
+    // حذف أحرف التحكّم قبل فحص بادئة المخطّط — توحيد مع الست الأخريات (CLAUDE.md بند 35).
+    // هذه الدالّة تحديداً كانت محصَّنة بنيوياً حتى بدونه (مسار الفلات يُرجِع 'https://' + u
+    // فتصير "ja\tvascript:" هي https://javascript: بمخطّط https)، فالتوحيد للاتساق ومنع
+    // نسخ النمط غير المنظَّف مستقبلاً — لا إصلاح ثغرة. راجع بند 35-ب.
+    u = u.replace(/[\t\r\n]/g, '');
     if (!u) return '';
     if (/^https?:\/\//i.test(u)) return u;
     if (/^\/\//.test(u)) return 'https:' + u;
