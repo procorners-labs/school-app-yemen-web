@@ -4284,6 +4284,43 @@ function _bootConfigCacheKey() {
   return 'boot_config_v2_' + ((typeof App !== 'undefined' && App.user && App.user.schoolId) || '');
 }
 
+/* حزمة الإقلاع (نمط getStudentBootBundle بمنصّة الطالب، PR#826): نداء خادمي واحد
+   يملأ مفاتيح كاش الأعضاء الثلاثة (schema/إشعارات/نقاط) ثم تصيبها المحمّلات القائمة
+   — كود العرض لا يتغيّر حرفاً. كل المفاتيح دافئة ⇒ لا نداء إطلاقاً. فشل الحزمة أو
+   عضو منها ⇒ done() فتعمل المحمّلات الفردية كتراجع تلقائي (السلوك القديم حرفياً).
+   مؤقّت أمان 8ث: ردّ معلّق لا يحجب الإقلاع (بوّابة العرض 9ث تبقى الحاكم النهائي). */
+function _teacherBootBundlePrefetch(done) {
+  var finished = false;
+  var finish = function () { if (!finished) { finished = true; try { done(); } catch (eD) {} } };
+  try {
+    var sid = (App.user && App.user.schoolId) || '';
+    var haveBoot   = !!ClientCache.get(_bootConfigCacheKey());
+    var haveNotif  = !!ClientCache.get('notif_bundle_' + sid);
+    var havePoints = !!ClientCache.get('my_points_header_' + sid);
+    if (haveBoot && haveNotif && havePoints) { finish(); return; }
+    setTimeout(finish, 8000);
+    callServer('getTeacherBootBundle', {}, function (r) {
+      try {
+        if (r && r.ok) {
+          // يُبذَر العضو فقط عند نجاحه **وبرودة مفتاحه**: ردّ حزمة متأخّر (تجاوز مؤقّت
+          // الأمان فجلبت المحمّلات الفردية بياناتها بنفسها) يجب ألّا يطمس الأحدث
+          // بقيمة أقدم (رصدته المراجعة). عضو فاشل (null/success:false) يُترَك بارداً.
+          if (r.bootConfig && r.bootConfig.success !== false && !ClientCache.get(_bootConfigCacheKey())) {
+            ClientCache.set(_bootConfigCacheKey(), r.bootConfig, 600);
+          }
+          if (r.notifCounts && r.notifCounts.success !== false && !ClientCache.get('notif_bundle_' + sid)) {
+            ClientCache.set('notif_bundle_' + sid, r.notifCounts, 300);
+          }
+          if (r.myPointsHeader && r.myPointsHeader.success !== false && !ClientCache.get('my_points_header_' + sid)) {
+            ClientCache.set('my_points_header_' + sid, r.myPointsHeader, 180);
+          }
+        }
+      } catch (eSeed) {}
+      finish();
+    }, function () { finish(); });
+  } catch (eB) { finish(); }
+}
+
 function loadBootConfig(callback) {
   var DEF_MONTHS = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
   var DEF_TERM   = ['نصف العام','نهاية العام'];
@@ -6769,7 +6806,8 @@ function bootApp() {
   // نداءين منفصلين سابقاً — تقليل *عدد* التنفيذات المتزامنة الفعلي لا التفريق الزمني فقط، راجع
   // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md. لا تأخير على تحميل القوائم/Schema
   // أدناه (حرِج للعرض الأول) — فقط الطلبات الثانوية هذه.
-  setTimeout(loadNotifCountsBundle, 300);
+  // (loadNotifCountsBundle و_loadMyPointsHeader يُطلقان الآن بعد اكتمال حزمة الإقلاع
+  //  أدناه — يصيبان الكاش المبذور فلا نداء شبكة لهما عند نجاح الحزمة)
   setTimeout(_initFcmBridge, 900);
   setTimeout(function () {
     // طلب تقييم موجَّه من المدير لهذا المعلّم تحديداً — يتجاوز جدولة المطالبة الذكية العادية
@@ -6839,7 +6877,13 @@ function bootApp() {
   // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadSchemaConfig
   // (GRADE_SCHEMA يبقى null، ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية).
   _bootFallbackTimer = setTimeout(function() { _bootTryShow(true); }, 9000);
-  loadBootConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
+  // حزمة الإقلاع أولاً: نداء واحد يبذر كاش الأعضاء الثلاثة، ثم تصيبه المحمّلات —
+  // 3 تنفيذات GAS عند الإقلاع البارد ⇒ 1 (نمط PR#826 بمنصّة الطالب).
+  _teacherBootBundlePrefetch(function () {
+    loadBootConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
+    setTimeout(loadNotifCountsBundle, 50);
+    setTimeout(_loadMyPointsHeader, 150);
+  });
   var afterLists = function() {
     _bootListsDone = true;
     _bootTryShow();
@@ -6865,9 +6909,7 @@ function bootApp() {
   // (عرض القائمة الجانبية حُسِم مبكراً أعلاه عبر initSidebarByRole — لا تكرار هنا)
   // (⭐ v3 config أصبحت مدمَجة داخل loadBootConfig أعلاه — لا نداء getV3Config منفصل بعد الآن)
 
-  // 🆕 شريط النقاط العلوي الدائم — بعد bootApp لا ضمنه (غير حاجب لبوّابة الإقلاع، بند 11 بـCLAUDE.md)
-  // مؤجَّل قليلاً لنفس سبب getV3Config أعلاه — لا يحجب أي عرض، فتأجيله بلا أثر على تجربة المستخدم.
-  setTimeout(_loadMyPointsHeader, 550);
+  // (شريط النقاط العلوي يُطلَق الآن بعد اكتمال حزمة الإقلاع أعلاه — يصيب الكاش المبذور)
 }
 
 // 🆕 يجلب نقاط/ترتيب المعلم صاحب الجلسة ويعرضها في الشريط العلوي — بكاش عميلي 3 دقائق
@@ -6875,7 +6917,9 @@ function bootApp() {
 function _loadMyPointsHeader() {
   var btn = document.getElementById('navPointsBtn');
   if (!btn) return;
-  callServer('getMyPointsHeaderProtected', {}, 'my_points_header', 180, function(r) {
+  // المفتاح مبصوم بـschoolId (بند 85-ب) — كان خاماً فيعرض نقاط مدرسة سابقة عند
+  // التنقّل بـ?school= في نفس التبويب (رصدته المراجعة، إصلاح فرصة طبيعية).
+  callServer('getMyPointsHeaderProtected', {}, 'my_points_header_' + ((App.user && App.user.schoolId) || ''), 180, function(r) {
     if (!r || !r.success) return; // فشل صامت — الشريط يبقى مخفياً بلا إزعاج المستخدم
     var scoreEl = document.getElementById('navPointsScore');
     if (scoreEl) scoreEl.textContent = r.score + ' • #' + r.rank + '/' + r.totalTeachers;
@@ -27961,7 +28005,9 @@ function renderVisitsTraffic(initialTab){
   // كاش عميلي 180ث (أقل من كاش الخادم 240ث) + دمج النداءات المتزامنة — كل دخول
   // للقسم كان تنفيذ GAS كاملاً (71 فشلاً/24س تحت حصّة الثلاثين) رغم كاش الخادم،
   // لأن مواضع الجلب الثلاثة لم تمرّر cacheKey أصلاً. زر 🔄 يبقى مساره noCache.
-  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, 'visits_rpt_' + _visitsCurrentRange, 180, function(res){
+  // المفتاح مبصوم بـschoolId (بند 85-ب): مدير متعدّد المدارس يتنقّل بـ?school= في
+  // نفس التبويب — بلا البصمة يرى زيارات مدرسة A تحت اسم مدرسة B (رصدته المراجعة).
+  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, _visitsRptCacheKey(), 180, function(res){
     if(!res || !res.success){
       var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
       var el=document.getElementById('dynamicContent');
@@ -27972,13 +28018,18 @@ function renderVisitsTraffic(initialTab){
   });
 }
 
+/* مفتاح كاش تقرير الزيارات — مبصوم بالمدرسة ثم النطاق (بند 85-ب). */
+function _visitsRptCacheKey(){
+  return 'visits_rpt_' + ((typeof App !== 'undefined' && App.user && App.user.schoolId) || '') + '_' + _visitsCurrentRange;
+}
+
 function _visitsRefreshNow(){
   // تحديث قسري: يمسح كاش العميل لكل النطاقات ويطلب تجاوز كاش الخادم، ثم يبذر
   // الكاش العميلي بالنتيجة كي تبقى تنقّلات التبويب التالية دافئة.
   try { ClientCache.clear('visits_rpt_'); } catch(eVC){}
   callServer('getVisitsTrafficProtected', {noCache:true, range:_visitsCurrentRange}, function(res){
     if(res && res.success){
-      try { ClientCache.set('visits_rpt_' + _visitsCurrentRange, res, 180); } catch(eVS){}
+      try { ClientCache.set(_visitsRptCacheKey(), res, 180); } catch(eVS){}
       _visitsRender(res);
     }
   });
@@ -28027,7 +28078,7 @@ function _visitsApplyCustomRange(){
   _visitsRefetchRanged();
 }
 function _visitsRefetchRanged(){
-  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, 'visits_rpt_' + _visitsCurrentRange, 180, function(res){
+  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, _visitsRptCacheKey(), 180, function(res){
     if(!res || !res.success) return;
     if(res.range) _visitsCurrentRange=res.range; // قد يُطبَّق نطاق مُقصوص فعلياً غير المطلوب حرفياً
     _visitsUpdateRangedPanes(res);
