@@ -27958,7 +27958,10 @@ function renderVisitsTraffic(initialTab){
   var host=document.getElementById('dynamicContent');
   if(!host) return;
   host.innerHTML=_visitsLoadingSkeleton();
-  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, function(res){
+  // كاش عميلي 180ث (أقل من كاش الخادم 240ث) + دمج النداءات المتزامنة — كل دخول
+  // للقسم كان تنفيذ GAS كاملاً (71 فشلاً/24س تحت حصّة الثلاثين) رغم كاش الخادم،
+  // لأن مواضع الجلب الثلاثة لم تمرّر cacheKey أصلاً. زر 🔄 يبقى مساره noCache.
+  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, 'visits_rpt_' + _visitsCurrentRange, 180, function(res){
     if(!res || !res.success){
       var msg=(res && res.error) ? res.error : 'تعذّر تحميل البيانات';
       var el=document.getElementById('dynamicContent');
@@ -27970,8 +27973,14 @@ function renderVisitsTraffic(initialTab){
 }
 
 function _visitsRefreshNow(){
+  // تحديث قسري: يمسح كاش العميل لكل النطاقات ويطلب تجاوز كاش الخادم، ثم يبذر
+  // الكاش العميلي بالنتيجة كي تبقى تنقّلات التبويب التالية دافئة.
+  try { ClientCache.clear('visits_rpt_'); } catch(eVC){}
   callServer('getVisitsTrafficProtected', {noCache:true, range:_visitsCurrentRange}, function(res){
-    if(res && res.success) _visitsRender(res);
+    if(res && res.success){
+      try { ClientCache.set('visits_rpt_' + _visitsCurrentRange, res, 180); } catch(eVS){}
+      _visitsRender(res);
+    }
   });
 }
 
@@ -28018,7 +28027,7 @@ function _visitsApplyCustomRange(){
   _visitsRefetchRanged();
 }
 function _visitsRefetchRanged(){
-  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, function(res){
+  callServer('getVisitsTrafficProtected', {range:_visitsCurrentRange}, 'visits_rpt_' + _visitsCurrentRange, 180, function(res){
     if(!res || !res.success) return;
     if(res.range) _visitsCurrentRange=res.range; // قد يُطبَّق نطاق مُقصوص فعلياً غير المطلوب حرفياً
     _visitsUpdateRangedPanes(res);
@@ -28247,13 +28256,35 @@ function _visitsPollOnline(){
   callServer('getOnlineNowProtected', {}, function(res){ _visitsRenderOnline(res); }, function(){});
 }
 
+/* المؤقّت كان يبقى دائراً والتبويب مخفي (فحص visibilityState داخل النداء يمنع النداء
+   لا العدّاد) — الآن الإخفاء يوقف العدّاد نفسه، والعودة تستأنف باستطلاع فوري
+   بدل انتظار حتى 18ث. العلَم _visitsPollActive يميّز «القسم نشط» عن «العدّاد دائر». */
+var _visitsPollActive = false;
+var _visitsVisBound   = false;
+
+function _visitsBindVisibility(){
+  if (_visitsVisBound) return;
+  _visitsVisBound = true;
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'hidden') {
+      // إيقاف العدّاد فقط — العلَم يبقى كي يُستأنف عند العودة
+      if (_visitsPollTimer) { clearInterval(_visitsPollTimer); _visitsPollTimer = null; }
+    } else if (_visitsPollActive) {
+      _visitsStartPolling();   // استطلاع فوري + عدّاد جديد
+    }
+  });
+}
+
 function _visitsStartPolling(){
   _visitsStopPolling();
+  _visitsPollActive = true;
+  _visitsBindVisibility();
   _visitsPollOnline();
   _visitsPollTimer = setInterval(_visitsPollOnline, 18000);
 }
 
 function _visitsStopPolling(){
+  _visitsPollActive = false;
   if(_visitsPollTimer){ clearInterval(_visitsPollTimer); _visitsPollTimer=null; }
 }
 
