@@ -15088,15 +15088,25 @@ function onGradeInput(inp) {
    واحد فتتجاوز ميزانية الوسيط (24 ثانية) وتلتهم حصّة الثلاثين تنفيذاً المتزامنة.
    قياس ٢٤ ساعة: 844 من 1,197 نداء (≈70٪) ارتطمت بالجدار.
 
-   ثلاث آليات هنا:
+   خمس آليات هنا:
    (١) مخزن مؤقّت لكل طالب بمفتاح code|subject|month — الحقول الأربعة تُدمَج في نداء واحد.
    (٢) بوّابة تسلسل: نداء طائر واحد فقط في كل لحظة — تمنع انفجار التزامن **بنيوياً**.
    (٣) إفراغ فوري عند تبديل السياق — لا انتظار للشبكة، لأن كل إدخال يحمل لقطة
        ctx الخاصة به فيكتب في الشهر/المادة الصحيحين مهما تغيّرت GS بعدها (بند 16:
-       هذا الفخّ سبق أن كتب درجات طلاب حقيقيين في خانة مادة/شهر خاطئة).            */
+       هذا الفخّ سبق أن كتب درجات طلاب حقيقيين في خانة مادة/شهر خاطئة).
+   (٤) و(٥) تصريف دفعة متعدّد الطلاب + إعادة محاولة على فشل النقل — عند الثوابت أدناه. */
 
 var GRADE_BATCH_FIELDS = { behavior: 1, homework: 1, oral: 1, written: 1, exam_score: 1 };
 var GRADE_MERGE_MS     = 1200;   /* نافذة الدمج — الدمج يعوّض الإحساس بالبطء */
+/* (٤) تصريف دفعة متعدّد الطلاب: بينما نداء واحد طائر تتراكم بقية عناصر الطابور،
+   فتخرج كلّها (لنفس السياق مادة|شهر|صف|شعبة) في نداء `autoSaveGradesBatchProtected`
+   واحد تالٍ بدل N نداءات متسلسلة — قياس 2026-08-04: المسار المتسلسل أخفق 646/946
+   نداءً (68٪) تحت حصّة الثلاثين تنفيذاً. السقف يطابق GRADES_BATCH_MAX الخادمي. */
+var GRADE_BATCH_MAX_CLIENT = 25;
+/* (٥) إعادة محاولة على فشل **النقل** فقط (شبكة/502/مهلة — err.__network) لا الرفض
+   المنطقي: القيَم ملتقطة في المخزن أصلاً فالإعادة آمنة ومتكرّرة النتيجة (idempotent). */
+var GRADE_RETRY_MAX      = 2;
+var GRADE_RETRY_DELAY_MS = 4000;
 
 function _gradeKey(code, ctx) { return code + '|' + ctx.subject + '|' + ctx.month; }
 
@@ -15173,7 +15183,53 @@ function flushPendingGrades() {
   for (var i = 0; i < keys.length; i++) _sendGradeEntry(keys[i]);
 }
 
-/* بوّابة التسلسل — نداء واحد طائر، والباقي ينتظر دوره. */
+/* توقيع سياق العنصر — الدفعة الواحدة لا تخلط سياقين أبداً (بند 16: كل عنصر يحمل
+   لقطة ctx وقت الكتابة، والخلط بين سياقين هو فخّ «درجة في خانة خاطئة» بعينه). */
+function _gradeCtxSig(e) {
+  return e.ctx.subject + '|' + e.ctx.month + '|' + e.ctx.grade + '|' + e.ctx.section;
+}
+
+/* استعادة وسم «بانتظار الحفظ» لحقول عنصر أُعيد للطابور بعد فشل نقل. */
+function _gradeMarkPending(e) {
+  for (var f in e.values) {
+    if (!e.values.hasOwnProperty(f)) continue;
+    var el = _gradeInputEl(e.code, f);
+    if (el) { el.classList.remove('saving'); el.classList.add('pending-save'); }
+  }
+}
+
+/* إعادة عناصر دفعة فشل نقلُها إلى الطابور (بحدّ GRADE_RETRY_MAX لكل عنصر).
+   إن ظهر لعنصرٍ نظيرٌ أحدث بنفس المفتاح (كتب المعلّم فوقه أثناء الطيران) تُدمَج قيمه
+   القديمة تحت الأحدث — قيمة المعلّم الأخيرة تفوز دوماً. */
+function _requeueGradeBatch(batch, errMsg) {
+  for (var i = batch.length - 1; i >= 0; i--) {
+    var e = batch[i];
+    e._retry = (e._retry || 0) + 1;
+    if (e._retry > GRADE_RETRY_MAX) {
+      _applyGradeBatchResult(e, { success: false, error: errMsg });
+      continue;
+    }
+    var merged = false;
+    for (var qi = 0; qi < App.gradeQueue.length; qi++) {
+      if (App.gradeQueue[qi]._k === e._k) {
+        for (var f in e.values) {
+          if (e.values.hasOwnProperty(f) && !App.gradeQueue[qi].values.hasOwnProperty(f)) {
+            App.gradeQueue[qi].values[f] = e.values[f];
+          }
+        }
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) { App.gradeQueue.unshift(e); _gradeMarkPending(e); }
+  }
+  /* الضخّ التالي يأتي حصراً عبر هذا المؤقّت (لا ضخّ فوري بعد فشل نقل) — وإلا أُعيد
+     الإرسال في نفس اللحظة وضاعت مهلة التراجع. يُجدوَل حتى مع صفر إعادة: قد تبقى
+     عناصر سياق آخر في الطابور تنتظر دورها. */
+  setTimeout(_pumpGradeQueue, GRADE_RETRY_DELAY_MS);
+}
+
+/* بوّابة التسلسل — نداء واحد طائر، يصرّف كل عناصر السياق الواحد المتراكمة دفعةً. */
 function _pumpGradeQueue() {
   if (App.gradeBusy || !App.gradeQueue.length) return;
 
@@ -15183,37 +15239,68 @@ function _pumpGradeQueue() {
   // فتُصفّ كل درجات المعلّم لاحقاً بصمت ولا تُرسَل أبداً حتى بعد دخول جديد.
   if (!App.user || !App.user.token) { resetGradeBatchState(); return; }
 
-  var e = App.gradeQueue.shift();
+  var first  = App.gradeQueue.shift();
+  var ctxSig = _gradeCtxSig(first);
+  var batch  = [first];
+  for (var qi = 0; qi < App.gradeQueue.length && batch.length < GRADE_BATCH_MAX_CLIENT; ) {
+    if (_gradeCtxSig(App.gradeQueue[qi]) === ctxSig) {
+      batch.push(App.gradeQueue[qi]);
+      App.gradeQueue.splice(qi, 1);
+    } else {
+      qi++;   /* سياق مختلف يبقى بترتيبه للنداء التالي — لا خلط سياقين بدفعة واحدة */
+    }
+  }
+
   App.gradeBusy = true;
 
-  for (var f in e.values) {
-    if (!e.values.hasOwnProperty(f)) continue;
-    var el = _gradeInputEl(e.code, f);
-    if (el) { el.classList.remove('pending-save'); el.classList.add('saving'); }
+  var students = [];
+  for (var bi = 0; bi < batch.length; bi++) {
+    var be = batch[bi];
+    students.push({ code: be.code, values: be.values });
+    for (var f in be.values) {
+      if (!be.values.hasOwnProperty(f)) continue;
+      var el = _gradeInputEl(be.code, f);
+      if (el) { el.classList.remove('pending-save'); el.classList.add('saving'); }
+    }
+  }
+
+  /* توزيع ردّ الدفعة على عناصرها — عقد كل طالب مطابق لردّ المسار المفرد */
+  function _applyBatchOutcome(r) {
+    var perStudent = (r && r.success && r.students) ? r.students : null;
+    for (var ai = 0; ai < batch.length; ai++) {
+      var en = batch[ai];
+      var rr = perStudent ? perStudent[en.code] : null;
+      _applyGradeBatchResult(en, rr || { success: false, error: (r && r.error) ? r.error : 'تعذّر الحفظ' });
+    }
   }
 
   try {
-    callServer('autoSaveStudentGradesProtected', {
-      token      : App.user.token,
-      month      : e.ctx.month,
-      subject    : e.ctx.subject,
-      grade      : e.ctx.grade,
-      section    : e.ctx.section,
-      studentCode: e.code,
-      values     : e.values
+    callServer('autoSaveGradesBatchProtected', {
+      token   : App.user.token,
+      month   : first.ctx.month,
+      subject : first.ctx.subject,
+      grade   : first.ctx.grade,
+      section : first.ctx.section,
+      students: students
     }, function (r) {
       App.gradeBusy = false;
-      _applyGradeBatchResult(e, r);
+      _applyBatchOutcome(r);
       _pumpGradeQueue();
     }, function (err) {
+      // فشل النقل وحده يُعاد — الرفض المنطقي يصل عبر مسار النجاح ولا يُكرَّر أبداً
       App.gradeBusy = false;
-      _applyGradeBatchResult(e, { success: false, error: (err && err.message) ? err.message : 'تعذّر الاتصال' });
-      _pumpGradeQueue();
+      if (err && err.__network) {
+        // الضخّ التالي عبر مؤقّت التراجع داخل _requeueGradeBatch — لا ضخّ فوري هنا
+        _requeueGradeBatch(batch, (err && err.message) ? err.message : 'تعذّر الاتصال');
+      } else {
+        _applyBatchOutcome({ success: false, error: (err && err.message) ? err.message : 'تعذّر الاتصال' });
+        _pumpGradeQueue();
+      }
     });
   } catch (ex) {
     // أي رمي متزامن (توكن مفقود، تشوّه حمولة) يجب ألّا يترك البوّابة مرفوعة
     App.gradeBusy = false;
-    _applyGradeBatchResult(e, { success: false, error: (ex && ex.message) ? ex.message : 'تعذّر الحفظ' });
+    _applyBatchOutcome({ success: false, error: (ex && ex.message) ? ex.message : 'تعذّر الحفظ' });
     _pumpGradeQueue();
   }
 }
