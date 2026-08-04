@@ -12111,6 +12111,8 @@ function renderScheduleSettings() {
         '<button class="btn btn-success btn-sm" onclick="schedDist_autoAll()">🚀 توزيع تلقائي للكل</button>' +
         '<select class="form-select form-select-sm" id="sd-auto-teacher" style="width:auto;min-width:130px"><option value="">— معلّم —</option></select>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_autoOne()">🎯 توزيع تلقائي لمعلّم</button>' +
+        '<button class="btn btn-secondary btn-sm" onclick="schedDist_redistributeOne()">🔄 إعادة توزيع معلّم</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="schedDist_redistributeAll()">♻️ إعادة توزيع كاملة</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_checkConflicts()">🔍 فحص تعارضات شامل</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
         '<button class="btn btn-info btn-sm" onclick="schedDist_openPublish()">📢 مراجعة ونشر التغييرات</button>' +
@@ -13022,7 +13024,12 @@ function _stbBuildResultPanelHtml(r, adminEmail, adminPass) {
 
 // ── توزيع الحصص (مدير/وكيل) — قسم مدمَج داخل تبويب «إعدادات الجدول والتواقيت»
 //    (لا تبويب منفصل) — تعيين/تعديل/حذف/تراجع، فحص التعارض من الخادم ──
-var SCHED_DIST = { className: '', options: null, classTeacherOptions: [], grid: null, editCurrentTeacher: '', suggestions: null };
+var SCHED_DIST = { className: '', options: null, classTeacherOptions: [], grid: null, editCurrentTeacher: '', suggestions: null, modalClassName: '' };
+// فصل المودال عن فصل العرض: النقر من الشبكة الكاملة يضبط modalClassName دون
+// المساس بـclassName (الذي يحمل 'الكل' هناك) — فيعمل نفس المودال من المنظورين.
+function _sdModalClass() { return SCHED_DIST.modalClassName || SCHED_DIST.className; }
+// وضع «تبديل الحصص»: نقرة أولى تحدد الخانة الأولى، والثانية تنفذ التبديل ذرّياً.
+var SD_SWAP = { active: false, first: null };
 // ترتيب المنهج الطبيعي (نفس تسلسل SM_CLASS_NAME_MAP بـScheduleManager.js) —
 // يُستخدَم لترتيب قائمة "الصف" فقط؛ أي صفّ حقيقي غير مذكور هنا (اسم غير
 // معياري) يُضاف أبجدياً في النهاية كاحتياط آمن، لا يختفي أبداً.
@@ -13126,6 +13133,9 @@ function schedDist_loadFullGrid() {
 }
 function schedDist_setFullGridView(v) {
   SD_FULL_GRID.view = v;
+  // تبديل المنظور يمسح تمييز btn-warning بصرياً بإعادة الرسم — إبقاء الاختيار
+  // الأول حياً بلا مؤشر كان يجعل نقرة لاحقة تكمل تبديلاً غير مقصود (ملاحظة مراجعة)
+  SD_SWAP.first = null;
   schedDist_renderFullGrid();
 }
 function schedDist_renderFullGrid() {
@@ -13137,25 +13147,34 @@ function schedDist_renderFullGrid() {
     return;
   }
   var byTeacher = SD_FULL_GRID.view === 'teacher';
-  // فهرسة الصفوف حسب (المفتاح، اليوم، الحصة) لبناء شبكة واحدة لكل معلّم/فصل
+  // فهرسة الصفوف حسب (المفتاح، اليوم، الحصة) لبناء شبكة واحدة لكل معلّم/فصل.
+  // كل خلية كائن {text, classKey, teacher, subject} لا نصاً — الخلايا صارت أزراراً
+  // تفتح مودال التعديل/التبديل وتحتاج سياق الفصل الخام (classKey من الخادم، لا
+  // اشتقاقاً من نص العرض — مفتاح _joinClass الملاصق داخلي لا يُعاد بناؤه عميلياً).
   var keyOf = function (r) { return byTeacher ? r.teacher : _sdClassLabel(r.grade, r.section); };
-  var index = {}; // key -> {day_period: 'فصل (مادة)' أو 'معلّم (مادة)'}
+  var index = {};
+  var keyMeta = {}; // بمنظور الفصل: عنوان الجدول ⇒ classKey (لخلاياه الفارغة)
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     var k = keyOf(r);
     if (!index[k]) index[k] = {};
+    if (!byTeacher && r.classKey && !keyMeta[k]) keyMeta[k] = r.classKey;
     var dayIdx = days.indexOf(r.day);
     if (dayIdx === -1) continue;
     var cellText = byTeacher ? (_sdClassLabel(r.grade, r.section) + ' (' + r.subject + ')')
                              : (r.teacher + ' (' + r.subject + ')');
-    index[k][dayIdx + '_' + r.period] = cellText;
+    index[k][dayIdx + '_' + r.period] = {
+      text: cellText, classKey: r.classKey || '', teacher: r.teacher, subject: r.subject
+    };
   }
   var keys = Object.keys(index).sort(function (a, b) { return a.localeCompare(b, 'ar'); });
   var h = '<div class="filter-bar" style="margin-bottom:8px"><div class="filter-bar-title">📋 الجدول الكامل للمدرسة</div>' +
-    '<div style="display:flex;gap:6px">' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
       '<button class="btn btn-sm ' + (byTeacher ? 'btn-primary' : 'btn-secondary') + '" onclick="schedDist_setFullGridView(\'teacher\')">👨‍🏫 حسب المعلّم</button>' +
       '<button class="btn btn-sm ' + (!byTeacher ? 'btn-primary' : 'btn-secondary') + '" onclick="schedDist_setFullGridView(\'class\')">🏫 حسب الفصل</button>' +
-    '</div></div>';
+      '<button class="btn btn-sm ' + (SD_SWAP.active ? 'btn-warning' : 'btn-secondary') + '" id="sdSwapToggle" onclick="schedDist_toggleSwapMode()">🔁 ' + (SD_SWAP.active ? 'إلغاء وضع التبديل' : 'وضع التبديل') + '</button>' +
+    '</div></div>' +
+    (SD_SWAP.active ? '<div class="alert alert-info" style="margin-bottom:8px">🔁 وضع التبديل نشط: انقر الخانة الأولى (المشغولة) ثم الخانة الثانية — تُبدَّل الحصتان (أو تُنقَل لخانة فارغة) بفحص تعارض كامل.</div>' : '');
   for (var ki = 0; ki < keys.length; ki++) {
     var key = keys[ki];
     h += '<div class="table-wrap" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:4px">' + escapeHtml(key) + '</div><table><thead><tr><th>اليوم \\ الحصة</th>';
@@ -13164,8 +13183,25 @@ function schedDist_renderFullGrid() {
     for (var d = 0; d < days.length; d++) {
       h += '<tr><td><b>' + escapeHtml(days[d]) + '</b></td>';
       for (var pi = 0; pi < periods.length; pi++) {
-        var cell = index[key][d + '_' + periods[pi]];
-        h += '<td>' + (cell ? escapeHtml(cell) : '') + '</td>';
+        var meta = index[key][d + '_' + periods[pi]];
+        var cellText = meta ? meta.text : '';
+        // الفصل معروف من بيانات الخلية نفسها (لا اشتقاقاً من النص المعروض):
+        // خلية مشغولة تحمل classKey صفّها؛ الفارغة تعرفه فقط بمنظور «حسب الفصل»
+        // (مفتاح الجدول). فارغة بمنظور المعلّم = بلا سياق فصل ⇒ غير قابلة للنقر.
+        var ck = meta ? meta.classKey : (byTeacher ? '' : (keyMeta[key] || ''));
+        var clickable = !!ck;
+        var occ = meta ? '1' : '0';
+        var btnCls = meta ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+        if (clickable) {
+          h += '<td><button class="' + btnCls + '" style="width:100%" data-sdf-cell' +
+               ' data-ck="' + escapeHtml(ck) + '" data-day="' + d + '" data-pidx="' + (periods[pi] - 1) + '"' +
+               ' data-teacher="' + escapeHtml(meta ? meta.teacher : '') + '"' +
+               ' data-subject="' + escapeHtml(meta ? meta.subject : '') + '" data-occ="' + occ + '"' +
+               ' title="' + (meta ? 'تعديل/تبديل الحصة' : 'تعيين حصة') + '"' +
+               ' onclick="schedDist_fullCellClick(this)">' + (cellText ? escapeHtml(cellText) : '+') + '</button></td>';
+        } else {
+          h += '<td>' + (cellText ? escapeHtml(cellText) : '') + '</td>';
+        }
       }
       h += '</tr>';
     }
@@ -13330,9 +13366,100 @@ function schedDist_parseCellValue(cellVal) {
   return { teacherName: s, subject: '' };
 }
 function schedDist_cellClick(dayIdx, periodIdx, wasEmpty) {
+  SCHED_DIST.modalClassName = ''; // شبكة فصل واحد: السياق هو className المختار
   if (wasEmpty) { schedDist_openAssign(dayIdx, periodIdx); return; }
   var cellVal = (SCHED_DIST.grid && SCHED_DIST.grid[dayIdx]) ? SCHED_DIST.grid[dayIdx][periodIdx] : '';
   schedDist_openEdit(dayIdx, periodIdx, schedDist_parseCellValue(cellVal));
+}
+// نقر خلية من الشبكة الكاملة (بكلا المنظورين): وضع التبديل ⇒ التقاط الخانة؛
+// وإلا ⇒ فتح مودال التعديل/التعيين القائم بسياق فصل الخلية نفسه.
+function schedDist_fullCellClick(btn) {
+  var ck = btn.getAttribute('data-ck') || '';
+  var dayIdx = parseInt(btn.getAttribute('data-day'), 10);
+  var periodIdx = parseInt(btn.getAttribute('data-pidx'), 10);
+  var teacher = btn.getAttribute('data-teacher') || '';
+  var subject = btn.getAttribute('data-subject') || '';
+  var occupied = btn.getAttribute('data-occ') === '1';
+  if (SD_SWAP.active) { schedDist_swapPick(btn, ck, dayIdx, periodIdx, occupied); return; }
+  if (!ck) return;
+  SCHED_DIST.modalClassName = ck;
+  schedDist_openModal(dayIdx, periodIdx, occupied ? { teacherName: teacher, subject: subject } : null);
+}
+function schedDist_toggleSwapMode() {
+  SD_SWAP.active = !SD_SWAP.active;
+  SD_SWAP.first = null;
+  schedDist_renderFullGrid();
+}
+function schedDist_swapPick(btn, ck, dayIdx, periodIdx, occupied) {
+  if (!SD_SWAP.first) {
+    if (!occupied) { toast('اختر خانة مشغولة أولاً — هي الحصة التي ستُبدَّل/تُنقَل', 'info'); return; }
+    if (!ck) { toast('تعذّر تحديد فصل الخانة', 'error'); return; }
+    SD_SWAP.first = { ck: ck, dayIdx: dayIdx, periodIdx: periodIdx, label: btn.textContent };
+    btn.classList.add('btn-warning');
+    toast('✅ اختيرت الخانة الأولى (' + btn.textContent + ') — انقر الخانة الثانية', 'info');
+    return;
+  }
+  var f = SD_SWAP.first;
+  if (f.dayIdx === dayIdx && f.periodIdx === periodIdx && f.ck === ck) {
+    SD_SWAP.first = null; schedDist_renderFullGrid(); return; // إلغاء الاختيار
+  }
+  // الخانة الثانية الفارغة بمنظور الفصل تحمل مفتاح جدولها؛ الفارغة بمنظور
+  // المعلّم بلا سياق فصل — النقل إليها يعني «نفس فصل الحصة المنقولة بتوقيت جديد»
+  var ckB = ck || f.ck;
+  if (!confirm('تبديل/نقل الحصة:\n' + f.label + '\n⇄\n' + (btn.textContent === '+' ? 'خانة فارغة' : btn.textContent) + '\nمتابعة؟')) return;
+  var st = document.getElementById('sdStatus');
+  st.innerHTML = '<div class="alert alert-info">⏳ جاري تبديل الحصتين…</div>';
+  callServer('swapPeriodsProtected', {
+    classNameA: f.ck, dayIdxA: f.dayIdx, periodIdxA: f.periodIdx,
+    classNameB: ckB, dayIdxB: dayIdx, periodIdxB: periodIdx
+  }, function (r) {
+    SD_SWAP.first = null;
+    if (r && r.success) {
+      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+      toast('✅ ' + r.message, 'success');
+      schedDist_refreshView();
+    } else {
+      st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+      schedDist_renderFullGrid();
+    }
+  }, function (e) {
+    SD_SWAP.first = null;
+    st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>';
+    schedDist_renderFullGrid();
+  });
+}
+// إعادة التوزيع الكاملة — عملية هدّامة بتأكيد مزدوج (confirm بالعدد الفعلي +
+// كتابة «نعم» حرفياً) فوق confirmToken الخادمي. لا تراجع عنها.
+function schedDist_redistributeAll() {
+  var total = (SD_FULL_GRID.rows || []).length;
+  if (!confirm('⚠️ إعادة التوزيع الكاملة ستمحو كل الحصص الحالية (' + total + ' حصة — اليدوية والتلقائية معاً) ثم توزع من الصفر.\nلا يمكن التراجع عن هذه العملية.\nمتابعة؟')) return;
+  var typed = prompt('للتأكيد النهائي اكتب: نعم');
+  if (typed !== 'نعم') { toast('أُلغيت العملية', 'info'); return; }
+  var st = document.getElementById('sdStatus');
+  st.innerHTML = '<div class="alert alert-info">⏳ جاري المسح وإعادة التوزيع…</div>';
+  callServer('redistributeAllProtected', { confirmToken: 'REDISTRIBUTE' }, function (r) {
+    if (r && r.success) {
+      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+      toast('✅ ' + r.message, 'success');
+      schedDist_loadProgress();
+      schedDist_refreshView();
+    } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+  }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+}
+function schedDist_redistributeOne() {
+  var teacherName = document.getElementById('sd-auto-teacher').value;
+  if (!teacherName) { toast('اختر معلّماً أولاً', 'error'); return; }
+  if (!confirm('إعادة توزيع حصص ' + teacherName + '؟\nستُمحى حصصه الحالية ثم يُعاد توزيعها تلقائياً.')) return;
+  var st = document.getElementById('sdStatus');
+  st.innerHTML = '<div class="alert alert-info">⏳ جاري إعادة توزيع حصص ' + escapeHtml(teacherName) + '…</div>';
+  callServer('redistributeTeacherProtected', { teacherName: teacherName }, function (r) {
+    if (r && r.success) {
+      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+      toast('✅ ' + r.message, 'success');
+      schedDist_loadProgress();
+      schedDist_refreshView();
+    } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+  }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
 function schedDist_openAssign(dayIdx, periodIdx) {
   schedDist_openModal(dayIdx, periodIdx, null);
@@ -13364,7 +13491,7 @@ function schedDist_openModal(dayIdx, periodIdx, current) {
   }
   // قائمة المعلمين مقيَّدة ديناميكياً بمن هو مكلَّف فعلياً بمادة في هذا الفصل
   // تحديداً (من ورقة «المدرسين» الحقيقية) — لا كل الأسماء بلا تمييز.
-  callServer('getClassTeacherOptionsProtected', { className: SCHED_DIST.className }, function (r) {
+  callServer('getClassTeacherOptionsProtected', { className: _sdModalClass() }, function (r) {
     if (!r || !r.success) { tSel.innerHTML = '<option value="">تعذّر التحميل</option>'; return; }
     SCHED_DIST.classTeacherOptions = r.teachers || [];
     tSel.innerHTML = '<option value="">— اختر —</option>';
@@ -13420,13 +13547,14 @@ function schedDist_submitAssign() {
   if (!teacherName) { st.innerHTML = '<span style="color:#c62828">اختر المعلم</span>'; return; }
   var isEdit = !!SCHED_DIST.editCurrentTeacher;
   st.innerHTML = '<span style="color:var(--text)">⏳ ' + (isEdit ? 'جاري حفظ التعديل…' : 'جاري التعيين…') + '</span>';
-  var params = { teacherName: teacherName, className: SCHED_DIST.className, subject: subject, dayIdx: dayIdx, periodIdx: periodIdx };
+  var params = { teacherName: teacherName, className: _sdModalClass(), subject: subject, dayIdx: dayIdx, periodIdx: periodIdx };
   if (isEdit) params.currentTeacherName = SCHED_DIST.editCurrentTeacher;
   callServer(isEdit ? 'editAssignmentProtected' : 'assignPeriodProtected', params, function (r) {
     if (r && r.success) {
       toast('✅ ' + r.message, 'success');
       closeModal('sdAssignModal');
-      schedDist_loadClass();
+      SCHED_DIST.modalClassName = '';
+      schedDist_refreshView();
       schedDist_loadProgress();
     } else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
@@ -13437,8 +13565,8 @@ function schedDist_deleteFromModal() {
   var periodIdx = parseInt(document.getElementById('sdAssignPeriod').value, 10);
   var st = document.getElementById('sdAssignStatus');
   st.innerHTML = '<span style="color:var(--text)">⏳ جاري الحذف…</span>';
-  callServer('deleteClassSessionProtected', { className: SCHED_DIST.className, dayIdx: dayIdx, periodIdx: periodIdx }, function (r) {
-    if (r && r.success) { toast('✅ ' + r.message, 'success'); closeModal('sdAssignModal'); schedDist_loadClass(); schedDist_loadProgress(); }
+  callServer('deleteClassSessionProtected', { className: _sdModalClass(), dayIdx: dayIdx, periodIdx: periodIdx }, function (r) {
+    if (r && r.success) { toast('✅ ' + r.message, 'success'); closeModal('sdAssignModal'); SCHED_DIST.modalClassName = ''; schedDist_refreshView(); schedDist_loadProgress(); }
     else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
 }
