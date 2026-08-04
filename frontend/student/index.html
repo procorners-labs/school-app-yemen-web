@@ -2830,7 +2830,12 @@ var APP = {
 var SS_KEY = 'studentPortal_v2';     // مفتاح sessionStorage
 var LS_SESSION_KEY = 'studentSession_v1'; // مفتاح localStorage للجلسة الدائمة
 var SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 ساعات بالملي ثانية
-var BADGE_INTERVAL_MS = 90 * 1000;   // تحديث Badges كل 1.5 دقيقة
+/* ★ 180ث لا 90ث، والاستطلاع يتوقّف كلياً عند إخفاء التبويب.
+   كان `getStudentNotificationBadge` ثاني أعلى دالّة حجماً بالمنصّة (2,902 تنفيذاً/٢٤س)
+   وأثقلها تنفيذياً: **بلا كاش خادمي** وتستدعي داخلياً أربع قارئات أوراق. والاستطلاع
+   كان يعمل والتبويب مغلق — خلافاً لـ`studentHeartbeat` المجاور الذي يفحص الرؤية
+   (والتعليق فوقه كان يوحي أن الشرط يشمل الاثنين، وهو لا يشمله — بند 82-ب). */
+var BADGE_INTERVAL_MS = 180 * 1000;  // تحديث Badges كل 3 دقائق (تبويب مرئي فقط)
 
 // ─── حفظ جلسة الطالب في localStorage ───
 function lsSaveSession() {
@@ -3870,18 +3875,35 @@ function initApp() {
   // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
   try { _prMaybeNudge(); } catch (ePr) {}
 
-  // طلب تقييم موجَّه من المدير لهذا الطالب تحديداً — يتجاوز جدولة المطالبة الذكية العادية
-  // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار" (نداء خفيف، لا يؤخّر أي رسم).
+  /* طلب تقييم موجَّه من المدير لهذا الطالب تحديداً — يتجاوز جدولة المطالبة الذكية العادية
+     ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار".
+
+     ★ مخنوق بـ`localStorage` (مرّة كل 6 ساعات لكل طالب). كان يُنادى في **كل** إقلاع بلا
+     أي كاش عميل ولا خادم — 1,542 تنفيذاً/٢٤س، وهو الرقم الذي يساوي عملياً عدد إقلاعات
+     تطبيق الطالب. وطلبُ التقييم حدث نادر جداً يُنشئه المدير يدوياً، فتأخّر ظهوره ساعات
+     مقبول تماماً مقابل خفض ~٨٥٪ من نداءاته. */
   try {
-    google.script.run
-      .withSuccessHandler(function (r) {
-        if (r && r.ok && r.pending) {
-          var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
-          openPlatformReviewModal(true);
-        }
-      })
-      .withFailureHandler(function () {})
-      .checkPendingPlatformReviewRequest({ schoolId: APP.user.schoolId, studentId: APP.user.id });
+    var _prKey = 'pr_req_ck_' + (APP.user.id || '');
+    var _prLast = 0;
+    try { _prLast = parseInt(localStorage.getItem(_prKey) || '0', 10) || 0; } catch (ePrLs) {}
+    if (!(Date.now() - _prLast < 6 * 60 * 60 * 1000)) {
+      try { localStorage.setItem(_prKey, String(Date.now())); } catch (ePrLs2) {}
+      google.script.run
+        .withSuccessHandler(function (r) {
+          if (r && r.ok && r.pending) {
+            /* طلب وُجد فعلاً ⇒ أزِل الخنق كي يُعاد الفحص في الإقلاع التالي مباشرة
+               (المدير قد يُرسل طلباً آخر، ولا نريد كتمه ست ساعات). */
+            try { localStorage.removeItem(_prKey); } catch (ePrLs3) {}
+            var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
+            openPlatformReviewModal(true);
+          }
+        })
+        .withFailureHandler(function () {
+          /* فشل النداء لا يستهلك نافذة الخنق — وإلا ضاع الطلب ست ساعات بسبب عطل عابر */
+          try { localStorage.removeItem(_prKey); } catch (ePrLs4) {}
+        })
+        .checkPendingPlatformReviewRequest({ schoolId: APP.user.schoolId, studentId: APP.user.id });
+    }
   } catch (ePrReq) {}
 
   // 🆕 تفعيل lazy loading الاحتياطي بعد تحميل التطبيق
@@ -7474,6 +7496,8 @@ function saveMyBirthdate(value) {
 // عمود "مدة الاستخدام" التراكمي بالخادم (studentHeartbeat). نفس مبدأ heartbeat
 // تطبيق teacher — نسخة موازية مستقلة. لا نداء عند الإغلاق (فشله مقبول، بلا تعقيد إضافي).
 var _hbTimerStarted = false;
+var _BEAT_MIN_GAP_MS = 60 * 1000;   /* حدّ أدنى بين نبضتَي «عودة للتبويب» (نظير teacher) */
+var _lastBeatAt = 0;
 function _startHeartbeat() {
   if (_hbTimerStarted) return;
   _hbTimerStarted = true;
@@ -7486,8 +7510,17 @@ function _startHeartbeat() {
       .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
   }
   setInterval(beat, 3 * 60 * 1000);
+  /* ★ نبضة العودة مخنوقة بحدّ أدنى دقيقة — نقلاً عن نظيرها المُطبَّق في teacher
+     (`_BEAT_MIN_GAP_MS`). بلا خنق، تبديل التبويبات المتكرّر يُطلق نبضة لكل عودة
+     (وهو سلوك شائع جداً على الجوال) فيتحوّل مؤقّت الثلاث دقائق إلى رشقة. */
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') beat();
+    if (document.visibilityState !== 'visible') return;
+    var now = Date.now();
+    if (now - _lastBeatAt < _BEAT_MIN_GAP_MS) return;
+    _lastBeatAt = now;
+    beat();
+    /* الشارات تُحدَّث عند العودة أيضاً — يعوّض إيقاف الاستطلاع أثناء الإخفاء */
+    try { loadNotificationBadges(); } catch (eB) {}
   });
   // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات initApp() الأخرى التي تُطلَق
   // في نفس اللفة — نفس إصلاح teacher/Teacher Dashboard.html (راجع _docs/2026-07-27-heartbeat-
@@ -7501,7 +7534,11 @@ function _startHeartbeat() {
 var _badgeInFlight = false;
 function loadNotificationBadges() {
   if (!APP.user || !APP.user.id) return;
-  // حارس طلب واحد: الاستطلاع الدوري (كل 90ث) كان قد يتراكب مع طلب سابق لم يكتمل
+  /* ★ تبويب مخفيّ ⇒ لا نداء إطلاقاً. الشارات لا تُرى أصلاً وهو مخفيّ، وأول إظهار
+     يُحدِّثها فوراً عبر مستمع visibilitychange أدناه. هذا وحده أكبر بند خفض في
+     المنصّة (‏−2,100 تنفيذاً/٢٤س تقديرياً). */
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  // حارس طلب واحد: الاستطلاع الدوري كان قد يتراكب مع طلب سابق لم يكتمل
   // بعدُ على الشبكات البطيئة (المهلة مع إعادة المحاولة قد تتجاوز الفاصل الزمني)
   if (_badgeInFlight) return;
   _badgeInFlight = true;
