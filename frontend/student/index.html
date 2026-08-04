@@ -3855,9 +3855,8 @@ function initApp() {
   $('welcomeGreet').textContent = greet + '،';
 
   // تحميل أولي للرئيسية
-  loadHomeNews();
+  _stuBootLoad();        // أخبار + تعاميم + شارات في تنفيذ خادمي واحد
   loadQuickStats();
-  loadHomeCirculars();   // التعاميم الإدارية الموجَّهة للطالب
   loadHomeToday();   // جدول اليوم + الساعة اللحظية
 
   // ملاحظة: قائمة معلمي صف الطالب (لصفحة ملاحظاتي) لم تعد تُحمَّل هنا عند الإقلاع —
@@ -7532,6 +7531,103 @@ function _startHeartbeat() {
 // 17. شارات الإشعارات (Badges)
 // ═══════════════════════════════════════════════════════════
 var _badgeInFlight = false;
+/* ★ حزمة الإقلاع — ثلاثة تنفيذات خادمية تصير واحداً عند أول فتح.
+   `loadHomeNews`+`loadHomeCirculars`+`loadNotificationBadges` كانت ثلاثة نداءات مستقلّة عند
+   كل إقلاع؛ القياس الحيّ يقول ~٨٠٪ من الإقلاعات تصل الخادم فعلاً (كاش عميلي بارد).
+
+   ⚠️ الثابت الذي لا يُكسَر: **كاش دافئ = صفر نداء خادم اليوم**، فلا يجوز أن تُحوّل الحزمة
+   إقلاعاً كان مجانياً إلى نداء. لذلك تُفحَص حرارة الكاش أولاً: إن كان الاثنان دافئَين نسلك
+   المسار القديم حرفياً (المحمّلان يرسمان من الكاش فوراً + نداء الشارات وحده — وهو نفس عدد
+   اليوم بالضبط). الحزمة تنطلق **فقط** إن كان أحدهما بارداً، وهناك تكون ١ بدل ٢ أو ٣.
+
+   وأي إخفاق — كليّ أو جزئي — يسقط إلى المحمّلات المفردة، فلا تتحوّل الحزمة إلى نقطة فشل
+   واحدة تُفرغ الشاشة الرئيسية (الأعضاء معزولون خادمياً بـtry/catch لكلٍّ على حدة). */
+function _stuBootLoad() {
+  if (!APP.user || !APP.user.id) return;
+
+  var newsKey = 'home_news_' + APP.user.class + '_' + APP.user.section;
+  var circKey = 'circ_' + APP.user.class + '_' + APP.user.section + '_' + APP.user.id;
+
+  var newsWarm = false, circWarm = false;
+  try { newsWarm = !!ClientCache.get(newsKey); } catch (eNw) {}
+  try { circWarm = !!ClientCache.get(circKey); } catch (eCw) {}
+
+  /* الاثنان دافئان ⇒ لا مكسب من الحزمة، والمسار القديم أسرع بصرياً (رسم فوري من الكاش) */
+  if (newsWarm && circWarm) {
+    loadHomeNews();
+    loadHomeCirculars();
+    loadNotificationBadges();
+    return;
+  }
+
+  /* تبويب مخفيّ ⇒ نحترم حارس الشارات القائم ولا نُطلق حزمة لا يراها أحد */
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    loadHomeNews();
+    loadHomeCirculars();
+    return;
+  }
+
+  /* طلب شارات جارٍ بالفعل ⇒ لا نُضاعفه */
+  if (_badgeInFlight) { loadHomeNews(); loadHomeCirculars(); return; }
+  _badgeInFlight = true;
+
+  if (!newsWarm) {
+    var wn = $('homeNews');
+    if (wn) wn.innerHTML = loaderHTML('جارٍ تحميل الإشعارات...');
+  }
+
+  var lastLogin = ssGet('lastLogin');
+  if (!lastLogin) lastLogin = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      _badgeInFlight = false;
+      if (!r || !r.ok) { loadHomeNews(); loadHomeCirculars(); loadNotificationBadges(); return; }
+
+      // ── الأخبار ──
+      if (r.news && !r.newsFailed) {
+        try { ClientCache.set(newsKey, r.news, 180); } catch (eNs) {}
+        renderHomeNews(r.news.length ? r.news.slice(0, 3) : []);
+      } else {
+        loadHomeNews();
+      }
+
+      /* ── التعاميم ──
+         ⚠️ `success !== false` شرط **إلزامي** لا تجميل: `getStudentCircularsFiltered`
+         تبتلع استثناءها داخلياً وتُرجِع `{success:false, circulars:[]}` بدل أن ترمي،
+         فعلَم `circularsFailed` لا يُرفَع أصلاً في تلك الحالة. وتخزين تلك الاستجابة
+         يُجمِّد «لا تعاميم» ١٢٠ ثانية على عطل عابر — بينما `callServerSmart` ترفض
+         تخزينها بنفس الشرط حرفياً. حذفُه = انحدار صامت من عائلة بند 71. */
+      if (r.circulars && !r.circularsFailed && r.circulars.success !== false) {
+        try { ClientCache.set(circKey, r.circulars, 120); } catch (eCs) {}
+        renderHomeCirculars(r.circulars.circulars || []);
+      } else {
+        loadHomeCirculars();
+      }
+
+      // ── الشارات ── (نفس منطق loadNotificationBadges حرفياً)
+      if (r.badge && r.badge.ok && r.badge.badge) {
+        var b = r.badge.badge;
+        setBadge('badge-news', b.news);
+        setBadge('badge-violations', b.violations);
+        setBadge('badge-notes', b.notes);
+        setBadge('badge-homework', b.homework);
+        _stuMaybeNotifyNews(b.news);
+      }
+    })
+    .withFailureHandler(function () {
+      _badgeInFlight = false;
+      loadHomeNews();
+      loadHomeCirculars();
+      loadNotificationBadges();
+    })
+    .getStudentBootBundle({
+      klass: APP.user.class, section: APP.user.section,
+      studentId: APP.user.id, studentName: APP.user.name,
+      lastLoginDate: lastLogin, schoolId: APP.user.schoolId
+    });
+}
+
 function loadNotificationBadges() {
   if (!APP.user || !APP.user.id) return;
   /* ★ تبويب مخفيّ ⇒ لا نداء إطلاقاً. الشارات لا تُرى أصلاً وهو مخفيّ، وأول إظهار
