@@ -6773,14 +6773,32 @@ function bootApp() {
   setTimeout(_initFcmBridge, 900);
   setTimeout(function () {
     // طلب تقييم موجَّه من المدير لهذا المعلّم تحديداً — يتجاوز جدولة المطالبة الذكية العادية
-    // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار" (نداء خادم خفيف، لا يؤخّر أي رسم).
+    // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار".
+    //
+    // ★ مخنوق بـlocalStorage (مرّة كل 6 ساعات لكل معلّم) — نفس نمط منصّة الطالب حرفياً.
+    // كان يُنادى في **كل** إقلاع معلّم بلا أي كاش (455 تنفيذاً/٢٤س بقياس بند 82) بينما
+    // طلب التقييم حدث نادر يُنشئه المدير يدوياً، فتأخّر ظهوره ساعات مقبول تماماً.
     try {
-      callServer('checkPendingPlatformReviewRequestProtected', {}, function (r) {
-        if (r && r.success && r.pending) {
-          var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
-          openPlatformReviewModal(true);
-        }
-      }, function () {});
+      var _prtKey = 'pr_req_ck_t_' + ((App.user && App.user.schoolId) || '') + '_' +
+                    ((App.user && (App.user.id || App.user.name)) || '');
+      var _prtLast = 0;
+      try { _prtLast = parseInt(localStorage.getItem(_prtKey) || '0', 10) || 0; } catch (ePrtLs) {}
+      if (!(Date.now() - _prtLast < 6 * 60 * 60 * 1000)) {
+        // الطابع يُكتَب قبل النداء كي لا تُطلق إقلاعات متسارعة نداءات متوازية
+        try { localStorage.setItem(_prtKey, String(Date.now())); } catch (ePrtLs2) {}
+        callServer('checkPendingPlatformReviewRequestProtected', {}, function (r) {
+          if (r && r.success && r.pending) {
+            // وُجد طلب فعلاً ⇒ أزِل الخنق كي يُعاد الفحص في الإقلاع التالي مباشرة
+            // (المدير قد يُرسل طلباً آخر، ولا نريد كتمه ست ساعات)
+            try { localStorage.removeItem(_prtKey); } catch (ePrtLs3) {}
+            var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
+            openPlatformReviewModal(true);
+          }
+        }, function () {
+          // فشل النداء لا يستهلك نافذة الخنق — وإلا ضاع الطلب ست ساعات بسبب عطل عابر
+          try { localStorage.removeItem(_prtKey); } catch (ePrtLs4) {}
+        });
+      }
     } catch (ePrReq) {}
   }, 1200);
 
@@ -7245,7 +7263,7 @@ function loadNewsNotifications() {
   try {
     if (typeof App === 'undefined' || !App || !App.user) return;
     callServer('getAllNewsProtected', { page: 1, pageSize: 1 },
-      'news_notif_total', 120, function (r) {
+      'news_notif_total_' + ((App.user && App.user.schoolId) || ''), 120, function (r) {
         if (!r || !r.success) return;
         var total = (typeof r.total === 'number') ? r.total
                     : (r.news ? r.news.length : 0);
@@ -7359,8 +7377,10 @@ function loadNotifCountsBundle() {
     if (typeof App === 'undefined' || !App || !App.user) return;
     /* ★ TTL 300 لا 120: النبضة كل 180 ثانية، فـTTL أقصر منها يجعل الكاش **منتهياً دائماً**
        قبل النداء التالي ⇒ نسبة إصابة صفر، وكل نداء يقرأ ~5 أوراق كاملة على الخادم.
-       الشرط الصحيح هو TTL **>** فترة النبضة، لا قيمة بعينها — يحرسه اختبار انحدار. */
-    callServer('getNotifCountsBundle', {}, 'notif_bundle', 300, function (bundle) {
+       الشرط الصحيح هو TTL **>** فترة النبضة، لا قيمة بعينها — يحرسه اختبار انحدار.
+       والمفتاح مبصوم بـschoolId (بند 85-ب) — كان ثابتاً فيتسرّب عند تبديل ?school=
+       داخل نفس التبويب دون خروج. */
+    callServer('getNotifCountsBundle', {}, 'notif_bundle_' + ((App.user && App.user.schoolId) || ''), 300, function (bundle) {
       if (!bundle || !bundle.success) return;
       var rNews = bundle.news;
       if (rNews && rNews.success) {
@@ -16185,10 +16205,13 @@ function loadNewsPage(isFirst) {
   // لا تُحفَظ محلياً كي لا تعلق صامتة بين الجلسات
   _fltSave('news', ['nfGrade', 'nfSection', 'nfSort', 'nfTeacher']);
 
-  // مفتاح الكاش يشمل الفلاتر — كان «news_page_N» فقط فيعيد نتائج فلاتر قديمة لنفس الصفحة
+  // مفتاح الكاش يشمل الفلاتر — كان «news_page_N» فقط فيعيد نتائج فلاتر قديمة لنفس الصفحة.
+  // وschoolId في ذيله (بند 85-ب) لعزل المستأجرين عند تبديل ?school= بنفس التبويب —
+  // البادئة تبقى news_p حرفياً لأن الإبطال بعد النشر يعتمدها (ClientCache.clear('news_p')).
   var _ck = 'news_p' + _newsCurrentPage + '_' +
             [reqParams.grade, reqParams.section, reqParams.sortOrder, reqParams.dateFrom,
-             reqParams.dateTo, reqParams.teacher, reqParams.pageSize].join('|');
+             reqParams.dateTo, reqParams.teacher, reqParams.pageSize,
+             ((App.user && App.user.schoolId) || '')].join('|');
   callServer('getAllNewsProtected', reqParams, _ck, 120, function(r){
     if (!r || !r.success) {
       if (area) area.innerHTML =
