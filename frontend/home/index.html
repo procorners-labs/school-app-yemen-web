@@ -1777,11 +1777,47 @@ function renderNews(items) {
   _homeRecordViews(list);
 }
 
-/* تسجيل مشاهدة عامّة لكل خبر معروض (مرّة/زائر عبر localStorage) — يدخل إحصائيات الخبر */
-function _homeVisitorId() {
+/* تسجيل مشاهدة عامّة لكل خبر معروض (مرّة/زائر عبر التخزين) — يدخل إحصائيات الخبر */
+
+/* ★ مخزن متدرّج: localStorage ← sessionStorage ← لا شيء.
+   `localStorage` يرمي فعلياً في متصفّحات داخل التطبيقات (WhatsApp/Facebook WebView) وفي
+   وضع التصفّح الخاص — وهو **المسار الطبيعي** لروابط الأخبار المُشارَكة. بلا هذا التدرّج
+   كان `_homeVisitorId` يسقط إلى `'v0'` و`_pubViewedLoad` إلى كائن فارغ ⇒ مانع التكرار
+   ينهار كلياً ويُعاد إطلاق نداء لكل خبر في **كل** فتح للصفحة. */
+function _pubStorage() {
+  if (window._pubStoreResolved !== undefined) return window._pubStoreResolved;
+  var probe = '__pub_probe__';
+  var picked = null;
   try {
-    var v = localStorage.getItem('home_visitor');
-    if (!v) { v = 'v' + Date.now() + '' + Math.floor(Math.random() * 100000); localStorage.setItem('home_visitor', v); }
+    if (window.localStorage) {
+      window.localStorage.setItem(probe, '1');
+      window.localStorage.removeItem(probe);
+      picked = window.localStorage;
+    }
+  } catch (e1) { picked = null; }
+  if (!picked) {
+    try {
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(probe, '1');
+        window.sessionStorage.removeItem(probe);
+        picked = window.sessionStorage;
+      }
+    } catch (e2) { picked = null; }
+  }
+  window._pubStoreResolved = picked;
+  return picked;
+}
+
+function _homeVisitorId() {
+  var st = _pubStorage();
+  if (!st) {
+    /* بلا تخزين إطلاقاً: معرّف ثابت داخل عمر الصفحة، فتبقى طبقة الذاكرة فعّالة */
+    if (!window._pubVidMem) window._pubVidMem = 'v' + Date.now() + '' + Math.floor(Math.random() * 100000);
+    return window._pubVidMem;
+  }
+  try {
+    var v = st.getItem('home_visitor');
+    if (!v) { v = 'v' + Date.now() + '' + Math.floor(Math.random() * 100000); st.setItem('home_visitor', v); }
     return v;
   } catch (e) { return 'v0'; }
 }
@@ -1795,8 +1831,10 @@ var _PUB_VIEWED_KEY = 'home_pub_viewed_v1';
 var _PUB_VIEWED_MAX = 400;   /* سقف يمنع نموّ التخزين بلا حدّ */
 
 function _pubViewedLoad(vid) {
+  var st = _pubStorage();
+  if (!st) return { vid: vid, ids: {} };
   try {
-    var raw = localStorage.getItem(_PUB_VIEWED_KEY);
+    var raw = st.getItem(_PUB_VIEWED_KEY);
     var obj = raw ? JSON.parse(raw) : null;
     /* تغيّر معرّف الزائر ⇒ ابدأ من جديد (لا نُسقِط مشاهدات زائر آخر) */
     if (!obj || obj.vid !== vid || !obj.ids) return { vid: vid, ids: {} };
@@ -1805,27 +1843,36 @@ function _pubViewedLoad(vid) {
 }
 
 function _pubViewedSave(obj) {
+  var st = _pubStorage();
+  if (!st) return;
   try {
     var keys = Object.keys(obj.ids);
     if (keys.length > _PUB_VIEWED_MAX) obj = { vid: obj.vid, ids: {} };
-    localStorage.setItem(_PUB_VIEWED_KEY, JSON.stringify(obj));
+    st.setItem(_PUB_VIEWED_KEY, JSON.stringify(obj));
   } catch (e) {}
 }
 
+/* ★ نداء **دفعي واحد** بدل نداء لكل خبر.
+   الحلقة القديمة كانت تُطلق `recordPublicNewsView` لكل خبر معروض (6 افتراضياً) بالتوازي،
+   فبلغت 3,436 تنفيذاً/24س = 11.8٪ من حركة المنصّة كاملةً وأعلى دالّة حجماً على الإطلاق
+   (بند 86 بالجذر). مانع التكرار في التخزين يمنع التكرار عبر إعادة التحميل لكنه **لا**
+   يمنع رشقة الزائر الجديد — وهي الحصّة الأكبر. النداء الدفعي يحوّل الرشقة إلى تنفيذ
+   واحد، ويقرأ ورقة المشاهدات مرّة واحدة بدل مرّة لكل خبر. */
 function _homeRecordViews(list) {
   if (!window._pubViewed) window._pubViewed = {};
   var vid = _homeVisitorId();
   var store = _pubViewedLoad(vid);
-  var dirty = false;
+  var fresh = [];
   for (var i = 0; i < list.length; i++) {
     var id = String(list[i].id || '');
     if (!id || window._pubViewed[id] || store.ids[id]) continue;
     window._pubViewed[id] = 1;
     store.ids[id] = 1;
-    dirty = true;
-    try { google.script.run.recordPublicNewsView(id, vid); } catch (e) {}
+    fresh.push(id);
   }
-  if (dirty) _pubViewedSave(store);
+  if (!fresh.length) return;
+  _pubViewedSave(store);
+  try { google.script.run.recordPublicNewsViewBatch(fresh, vid); } catch (e) {}
 }
 
 /* بناء شرائح الوسائط داخل بطاقة الخبر (الفيديو افتراضيّ أولًا) */
