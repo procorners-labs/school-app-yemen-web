@@ -4358,25 +4358,6 @@ var _hwTotalPages    = 1;
 var _hwDebounceTimer = null;
 var _hwSortOrder     = 'newest';
 
-// ── الكاش المحلي للعميل (Client Cache) — يبقى فقط لأجل clientCacheInvalidate('news_v3_') ──
-// callServerSmart (الغلاف القديم الذي كان يملأ هذا الكاش عبر clientCacheSet/clientCacheGet) أُزيل
-// 2026-07-18 — كان مكافئاً مكرَّراً وأضعف من callServer القائم فعلياً في هذا الملف (توقيع مختلف
-// عن نظيره بنفس الاسم في student/Student Portal.html، ودالّة الحجب فيه تُسقِط النداء المتزامن
-// الثاني صامتاً بدل ضمّه لطابور الانتظار كما يفعل callServer). موقع الاستدعاء الوحيد
-// (loadHomework) يستخدم callServer مباشرة الآن.
-var _clientCache = {};
-var _clientCacheTTL = {};
-
-function clientCacheInvalidate(prefix) {
-  var keys = Object.keys(_clientCache);
-  for (var i = 0; i < keys.length; i++) {
-    if (keys[i].indexOf(prefix) === 0) {
-      delete _clientCache[keys[i]];
-      delete _clientCacheTTL[keys[i]];
-    }
-  }
-}
-
 // ==================== HELPER FUNCTIONS ====================
 
 function todayDate() {
@@ -5107,7 +5088,7 @@ function toggleNewsLike(newsId) {
         likersEl.style.display = 'none';
       }
     }
-    clientCacheInvalidate('news_v3_');
+    ClientCache.clear('news_p');
   });
 }
 
@@ -8336,6 +8317,10 @@ function sendSaveNews(data, id) {
       window._newsKeepMedia = [];
       document.getElementById('newsDropZone').innerHTML = '📎 انقر لاختيار ملف أو اسحبه هنا...';
       document.getElementById('newsFileInfo').classList.add('hidden');
+      // إبطال كاش صفحات الأخبار (news_p*، TTL 120ث) وإلا بقي الخبر المنشور للتو غير
+      // ظاهر لناشره حتى انقضاء الكاش — يُبطَل دوماً لا فقط عند فتح تبويب الأخبار،
+      // كي لا يلتقط الفتح اللاحق للتبويب صفحة قديمة من sessionStorage
+      ClientCache.clear('news_p');
       if (App.currentSection === 'news') {
         applyNewsFilters();
       }
@@ -17936,6 +17921,9 @@ function _dpOpenRetroNews(newsId) {
           hideLoading();
           if (r && r.success) {
             item.design = (r.design !== undefined && r.design !== null) ? r.design : designStr;
+            // بلا هذا الإبطال يعيد فتحُ التبويب خلال TTL حمولةَ news_p* القديمة
+            // فوق _newsCache فيرتدّ الغلاف المحفوظ للتو حتى انقضاء الكاش
+            ClientCache.clear('news_p');
             toast('تم حفظ تصميم الغلاف', 'success');
             renderNewsList(_newsCache, true);
           } else {
@@ -18370,7 +18358,7 @@ function showNewsViewers(newsId, newsTeacherName) {
    عدم إرسال الصور (تقرأ files[0] بينما المعالج الجديد يُفرّغ input ويراكم في window._newsNewFiles).
    النسخ المعتمدة الآن: openNewsModal@~4291 · saveNews@~4403 · sendSaveNews@~4526. */
 function editNews(id) { openNewsModal(id); }
-function deleteNewsItem(id) { confirmAction('حذف الخبر', 'هل تريد حذف هذا الخبر؟', '🗑️', function() { showLoading(); callServer('deleteNewsProtected', { id: id }, function(r) { hideLoading(); if (r.success) { toast(r.message, 'success'); applyNewsFilters(); } else showError(r.error); }); }); }
+function deleteNewsItem(id) { confirmAction('حذف الخبر', 'هل تريد حذف هذا الخبر؟', '🗑️', function() { showLoading(); callServer('deleteNewsProtected', { id: id }, function(r) { hideLoading(); if (r.success) { toast(r.message, 'success'); ClientCache.clear('news_p'); applyNewsFilters(); } else showError(r.error); }); }); }
 
 // ==================== NOTES ====================
 function renderNotes() { var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(139,92,246,.1)">💬</div><div class="section-header-title">ملاحظات أولياء الأمور</div><span class="badge badge-info" style="margin-right: 12px;">المرسلة من منصة الطلاب</span><button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'notes\')" style="padding:4px 8px">❓</button></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="notesFilterGrade" onchange="applyParentNotesFilters()">' + buildSelectOptions(myGrades(), 'الكل', '', true) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="notesFilterSection" onchange="applyParentNotesFilters()">' + buildSelectOptions(mySections(), 'الكل', '', true) + '</select></div><div class="form-group flex-1"><label class="form-label">بحث</label><input type="text" class="form-control" id="notesSearch" placeholder="🔍 اسم الطالب..." oninput="filterParentNotes()"></div></div><div id="notesListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; _fltRestore('notes', ['notesFilterGrade', 'notesFilterSection', 'notesSearch']); loadParentNotesForUI(); }
