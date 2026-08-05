@@ -19123,7 +19123,7 @@ function _schedPrintWindow(bodyHtml, title, page) {
     '<html dir="rtl"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>' + safeT + '</title><style>' + tb + css + '</style></head>' +
-    '<body>' + toolbar + '<div class="sPTbd">' + bodyHtml + '</div>' + script + '</body></html>'
+    '<body>' + toolbar + '<div class="sPTbd">' + bodyHtml + _printBrandFooter() + '</div>' + script + '</body></html>'
   );
   w.document.close();
   w.focus();
@@ -21045,7 +21045,11 @@ function _tcBrandTitleRows() {
   var rows = [[b.name]];
   var contact = [b.phone, b.address].filter(function (x) { return x; }).join(' — ');
   if (contact) rows.push([contact]);
-  rows.push(['تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn')]);
+  /* عبارة المنصّة تُدمَج في سطر التاريخ لا في سطر جديد: عدد صفوف الهوية يحكمه
+     حارس في `_build/test-regression-guards.js` مقابل نافذة البحث عن صف الرأس في
+     المستورِدَين الهدّامَين — وإبقاء العدد كما هو يُبقي الهامش كاملاً. ولا لوجو
+     هنا: SheetJS المجتمعية لا تدعم تضمين الصور (بند 41). */
+  rows.push(['تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn') + ' — ' + PRINT_BRAND_TEXT]);
   rows.push([]);
   return rows;
 }
@@ -21168,7 +21172,7 @@ function _docPrintWindow(title, sizeCss, bodyCss, bodyHtml){
     '<html dir="rtl"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>' + safeT + '</title><style>' + tb + sizeCss + bodyCss + '</style></head>' +
-    '<body>' + toolbar + '<div class="sPTbd">' + bodyHtml + '</div>' + script + '</body></html>'
+    '<body>' + toolbar + '<div class="sPTbd">' + bodyHtml + _printBrandFooter() + '</div>' + script + '</body></html>'
   );
   w.document.close();
   w.focus();
@@ -21362,8 +21366,11 @@ function _lhDrawFooter(ctx, W, H) {
   ctx.font = font1;
   var ty = y + 24;
   for (var i = 0; i < lines.length; i++) { ctx.fillText(lines[i], W / 2, ty); ty += lineH; }
+  /* نصّ فقط — لا لوجو هنا: الرسم على Canvas يحتاج تحميل صورة غير متزامن، وتذييل
+     الديباجات يُرسَم داخل مسار متزامن. والأهم: `_LH_FOOTER_RESERVE` (130) تعتمد
+     عليه ستّ حسابات ارتفاع، فلا يُغيَّر ولا يُوسَّع ارتفاع هذه الكتلة. */
   ctx.font = '400 12px ' + _LH_FONT;
-  ctx.fillText('تم إنشاؤه عبر نظام يمن سكولز — ' + new Date().toLocaleDateString('ar-EG'), W / 2, ty + 4);
+  ctx.fillText('تم إنشاؤه عبر منصة يمن سكولز — yemenschoolz.com — ' + new Date().toLocaleDateString('ar-EG'), W / 2, ty + 4);
 }
 function _lhDrawFrame(ctx, W, H, brandColor) {
   _lhRoundRect(ctx, 24, 24, W - 48, H - 48, 16);
@@ -21937,6 +21944,42 @@ function _extDocBrandColor(){
   var c=((window._schoolBrand||{}).color||'').toString().replace(/^\s+|\s+$/g,'');
   return /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '';
 }
+/* ── تذييل العلامة الموحَّد لكل مطبوعات المنصّة ─────────────────────────────────
+   سطر واحد: حقوق المدرسة (ديناميكي) + عبارة المنصّة + اللوجو.
+   لماذا دالّة واحدة: نوافذ الطباعة ثلاث (`_docPrintWindow`/`_tfPrintWin`/
+   `_schedPrintWindow`) وأربعة مواضع تبني HTML بنفسها — تكرار النصّ فيها يضمن
+   انحرافها عن بعضها مع أول تعديل.
+   قيود مقصودة:
+    • اسم المدرسة **ديناميكي حصراً** عبر `cert_schoolName` — وهي تقرأ عنصر
+      `.school-brand-name` من DOM (تملؤه `applyBrand` وقت الإقلاع من هوية
+      المدرسة، مع مسار سريع من `localStorage`) وتتراجع إلى «المدرسة» في نافذة
+      ما قبل المصادقة القصيرة. لا اسم مدرسة ثابت في الكود أبداً.
+      (‏ملاحظة دقّة: لا تقرأ `window._schoolBrand.name` مباشرةً — هذا نمط قائم
+      في ~15 موضعاً بالملف، ذُكر هنا كي لا يبني محرّر لاحق على مسار غير موجود.)
+    • الخطّ مُصرَّح هنا: نوافذ الطباعة `about:blank` لا ترث خطّ الصفحة، و`ss_winCss`
+      بلا `font-family` إطلاقاً بينما CSS المالية تُقدِّم Segoe UI.
+    • اللوجو صورة خارجية ⇒ `onerror` يُخفيها فلا تظهر أيقونة مكسورة عند انقطاع
+      الشبكة (المنصّة تعمل داخل اليمن على شبكات متقطّعة).
+    • `print-color-adjust:exact` كي لا يُسقِط المتصفّح اللون عند الطباعة. */
+var PRINT_BRAND_MARK  = 'https://yemenschoolz.com/assets/yemenschoolz-mark.png';
+var PRINT_BRAND_TEXT  = 'منصة يمن سكولز — yemenschoolz.com';
+/* صيغة قصيرة للأسطر ذات ميزانية عرض صلبة (تذييل الشهادة داخل ارتفاع 143mm). */
+var PRINT_BRAND_SHORT = 'يمن سكولز';
+function _printBrandFooter(){
+  var school = escapeHtml(cert_schoolName());
+  var contact = _extDocContactLine();   // مُهرَّب أصلاً داخل الدالّة
+  return '' +
+    '<div class="pbf" dir="rtl" style="margin-top:10px;padding-top:6px;border-top:1px dashed #cbd5e1;' +
+      'text-align:center;font-family:Tahoma,Arial,sans-serif;font-size:9.5px;line-height:1.7;' +
+      'color:#64748b;-webkit-print-color-adjust:exact;print-color-adjust:exact">' +
+      '<span>جميع الحقوق محفوظة لـ' + school + '</span>' +
+      (contact ? '<span> · ' + contact + '</span>' : '') +
+      '<span style="margin:0 6px">|</span>' +
+      '<img src="' + PRINT_BRAND_MARK + '" alt="" width="14" height="14" ' +
+        'style="vertical-align:-2px;margin-left:4px" onerror="this.style.display=\'none\'">' +
+      '<span>' + PRINT_BRAND_TEXT + '</span>' +
+    '</div>';
+}
 function cert_hijriDate(){
   try { return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura',{day:'numeric',month:'long',year:'numeric'}).format(new Date()) + ' هـ'; }
   catch(e){ try { return new Date().toLocaleDateString('ar'); } catch(_){ return ''; } }
@@ -22140,7 +22183,16 @@ function cert_certHtml(stu){
       '<div><div class="cs-role">مدير المدرسة</div><div class="cs-line"></div></div>' +
       '<div><div class="cs-role">رائد الصف</div><div class="cs-line"></div></div>' +
     '</div>' +
-    '<div class="cert-foot">صدرت هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(sn)+'</div>' +
+    /* سطر واحد فقط: `.cert` مثبَّتة 143mm مع overflow:hidden وشهادتان لكل A4
+       (‏287mm) ⇒ الفائض 1mm، فأي سطر تذييل إضافي يُقصّ ولا يُعاد تدفّقه.
+       لذلك تُدمج عبارة المنصّة واللوجو داخل نفس السطر لا تحته.
+       وتُستعمل هنا الصيغة **القصيرة** بلا نطاق: قياس عرض الطباعة الفعلي
+       (‏A4 بهامش 5mm ⇒ ~186mm مفيدة عند 8.5px) يترك ميزانية سطر واحد لا تتّسع
+       لاسم مدرسة طويل + التاريخ + العبارة الكاملة معاً. النطاق يظهر كاملاً على
+       بقية المطبوعات عبر `_printBrandFooter`. */
+    '<div class="cert-foot">صدرت هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(sn)+
+      '<img src="'+PRINT_BRAND_MARK+'" alt="" width="11" height="11" style="vertical-align:-1px;margin:0 5px 0 3px" onerror="this.style.display=\'none\'">'+
+      escapeHtml(PRINT_BRAND_SHORT)+'</div>' +
   '</div>';
 }
 
@@ -22180,7 +22232,13 @@ function cert_cssRules(){
      فارغاً فانزاح التوقيعان عن منتصف الشهادة. */
   '.cert-sign{position:relative;display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:16px 14px 0;text-align:center}' +
   '.cs-role{font-weight:700;font-size:11.5px;color:var(--cv-navy)}.cs-line{margin-top:24px;border-top:1.5px dotted #94a3b8}' +
-  '.cert-foot{position:relative;margin:12px 14px 0;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px}' +
+  /* `white-space:nowrap` ليس تجميلاً بل حماية: `.cert` مثبَّتة 143mm مع
+     `overflow:hidden` بفائض 1mm، فلو التفّ هذا السطر لسطرين (اسم مدرسة طويل +
+     عبارة المنصّة) لخرج عن الارتفاع و**قُصَّ صامتاً** — فيضيع أوّل ما يضيع
+     التذييل نفسه. مع nowrap يبقى سطراً واحداً دائماً، و`text-overflow:ellipsis`
+     يجعل أي تجاوز تدهوراً مرئياً مهذّباً بدل قصٍّ عمودي غير مرئي. */
+  '.cert-foot{position:relative;margin:12px 14px 0;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px;' +
+    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
   '.cert,.cert *{-webkit-print-color-adjust:exact;print-color-adjust:exact}';
 }
 
@@ -22206,7 +22264,7 @@ function cert_styleBlock(){
     '.cs-v{font-size:13px}.cs-l{font-size:9px}' +
     '.cert-sign{margin:6px 7mm 0;gap:10px}' +
     '.cs-line{margin-top:18px}' +
-    '.cert-foot{margin:4px 7mm 0;font-size:9.5px}' +
+    '.cert-foot{margin:4px 7mm 0;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
     '@page{size:A4 portrait;margin:5mm}' +
   '}' +
   '</style>';
@@ -22245,7 +22303,7 @@ function cert_winCss(){
   // التوقيعات والتذييل
   '.cert-sign{margin:6px 7mm 0;gap:10px}' +
   '.cs-role{font-size:10.5px}.cs-line{margin-top:18px}' +
-  '.cert-foot{margin:4px 7mm 0;font-size:9.5px}';
+  '.cert-foot{margin:4px 7mm 0;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 }
 
 // ════════════════════════════════════════════════════════
@@ -23183,7 +23241,7 @@ function rep_printAllTeacherActivity() {
     ' · متوسط النشاط/معلم: ' + (s.avgPerTeacher || 0) + '</p>';
   var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
   var _bc = _extDocBrandColor();
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير نشاط المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير نشاط المعلمين الموسّع — ' + sn + '</h2>' + head + '<table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الواجبات</th><th>الأخبار</th><th>السلوكي</th><th>الإجمالي</th><th>آخر نشاط</th></tr></thead><tbody>' + rows + '</tbody></table>' + _printBrandFooter() + '</body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -23285,7 +23343,7 @@ function rep_printTasks() {
   var _repLogo = window._schoolLogo ? ('<img src="' + escapeHtml(window._schoolLogo) + '" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />') : '';
   var w = window.open('', '_blank'); if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return; }
   var _bc = _extDocBrandColor();
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير أداء المهام</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير أداء المهام والإشراف — ' + sn + '</h2><table><thead><tr><th>المعلم</th><th>الإجمالي</th><th>منفّذ</th><th>مؤكّد</th><th>متأخر</th><th>لم يُنفّذ</th><th>الالتزام</th><th>الرسوم</th><th>الخصومات</th><th>الصافي</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير أداء المهام</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>' + _repLogo + 'تقرير أداء المهام والإشراف — ' + sn + '</h2><table><thead><tr><th>المعلم</th><th>الإجمالي</th><th>منفّذ</th><th>مؤكّد</th><th>متأخر</th><th>لم يُنفّذ</th><th>الالتزام</th><th>الرسوم</th><th>الخصومات</th><th>الصافي</th></tr></thead><tbody>' + rows + '</tbody></table>' + _printBrandFooter() + '</body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -23317,7 +23375,7 @@ function rep_printTeacherAbsence(){
   var _repLogo=window._schoolLogo?('<img src="'+escapeHtml(window._schoolLogo)+'" alt="" style="height:32px;max-width:60px;object-fit:contain;vertical-align:middle;margin-inline-end:8px" />'):'';
   var w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة للطباعة','warning'); return; }
   var _bc = _extDocBrandColor();
-  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>'+_repLogo+'تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تقرير غياب المعلمين</title><style>' + (_bc ? (':root{--primary:'+_bc+';}') : '') + 'body{font-family:sans-serif;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:center}thead th{background:var(--primary,#1f2937);color:#fff}h2{text-align:center}</style></head><body><h2>'+_repLogo+'تقرير غياب المعلمين — '+sn+'</h2><table><thead><tr><th>المعلم</th><th>حصص/أسبوع</th><th>أيام الغياب</th><th>حصص الغياب</th><th>بعذر</th><th>بدون عذر</th><th>مكلّف</th></tr></thead><tbody>'+rows+'</tbody></table>'+_printBrandFooter()+'</body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -25520,7 +25578,7 @@ function sstat_print() {
   var _bc = _extDocBrandColor();
   w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>بيان حالة الطالب</title>' +
     '<style>' + (_bc?(':root{--primary:'+_bc+';}'):'') + 'body{font-family:Tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #ccc;padding:6px;font-size:13px;text-align:right}th{background:var(--primary,#0F2C5C);color:#fff}</style>' +
-    '</head><body>' + c.innerHTML + '</body></html>');
+    '</head><body>' + c.innerHTML + _printBrandFooter() + '</body></html>');
   w.document.close(); w.focus(); w.print();
 }
 
@@ -27412,7 +27470,7 @@ function _tfBrandHeader(big){
 function _tfPrintWin(title, css, body){
   var w=window.open('','_blank','width=900,height=700');
   if(!w){ toast('فضلاً اسمح بالنوافذ المنبثقة لإتمام الطباعة.', 'warning'); return; }
-  var html='<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+_tfEsc(title)+'</title><style>'+css+'</style></head><body>'+body+
+  var html='<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+_tfEsc(title)+'</title><style>'+css+'</style></head><body>'+body+_printBrandFooter()+
     '<scr'+'ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350);};</scr'+'ipt></body></html>';
   w.document.open(); w.document.write(html); w.document.close();
 }
@@ -27963,7 +28021,9 @@ function _tfDebtorWaSend(code){
 function _tfBrandTitleLines(){
   var b = window._schoolBrand || {};
   if(!b.name) return [];
-  return [b.name, 'تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn'), ''];
+  return [b.name,
+          'تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn') + ' — ' + PRINT_BRAND_TEXT,
+          ''];
 }
 function _tfExportCsv(filename, headers, rows){
   if((App.user||{}).role==='accountant') return;
