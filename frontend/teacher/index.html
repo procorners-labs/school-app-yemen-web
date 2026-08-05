@@ -19547,6 +19547,28 @@ function switchActivitiesTab(tab, btn) {
   btn.classList.add('active');
   if (_adminActivitiesCache) renderAdminActivitiesTab(tab);
 }
+// ترقيم عميلي لتبويبات أنشطة المشرف (قوائم مدرسة كاملة تتراكم عبر السنة) — 50/صفحة،
+// حالة مستقلة لكل تبويب، الشريط يختفي تحت الحد (نفس نمط _stlRenderPager)
+var _aaPage = {};
+var _AA_PAGE_SIZE = 50;
+function _aaGoPage(tab, n) {
+  _aaPage[tab] = n;
+  renderAdminActivitiesTab(tab);
+}
+function _aaPagerHtml(tab, page, pages, from, to, total) {
+  if (total <= _AA_PAGE_SIZE) return '';
+  var pbtn = function (label, target, disabled, title) {
+    return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' + (disabled ? 'disabled ' : '') +
+      (title ? ('title="' + title + '" ') : '') +
+      'onclick="_aaGoPage(\'' + tab + '\',' + target + ')">' + label + '</button>';
+  };
+  return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px">' +
+    pbtn('⏮', 1, page <= 1, 'الأولى') + pbtn('‹ السابق', page - 1, page <= 1) +
+    '<span style="font-size:13px;color:var(--text-muted);white-space:nowrap">صفحة ' + page + ' / ' + pages +
+      ' · <span style="color:var(--text-light)">' + from + '–' + to + ' من ' + total + '</span></span>' +
+    pbtn('التالي ›', page + 1, page >= pages) + pbtn('⏭', pages, page >= pages, 'الأخيرة') +
+    '</div>';
+}
 function renderAdminActivitiesTab(tab) {
   var c = document.getElementById('adminActivitiesContent');
   if (!_adminActivitiesCache) { c.innerHTML = ''; return; }
@@ -19557,30 +19579,37 @@ function renderAdminActivitiesTab(tab) {
   }
   // الأحدث أولاً افتراضياً في كل التبويبات
   data.sort(_tcByNewest);
+  var aaTotal = data.length;
+  var aaPages = Math.max(1, Math.ceil(aaTotal / _AA_PAGE_SIZE));
+  if (!_aaPage[tab] || _aaPage[tab] < 1) _aaPage[tab] = 1;
+  if (_aaPage[tab] > aaPages) _aaPage[tab] = aaPages;
+  var aaStart = (_aaPage[tab] - 1) * _AA_PAGE_SIZE;
+  data = data.slice(aaStart, aaStart + _AA_PAGE_SIZE);
+  var aaPager = _aaPagerHtml(tab, _aaPage[tab], aaPages, aaStart + 1, aaStart + data.length, aaTotal);
   var html = '';
   if (tab === 'homework') {
     html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>الواجب</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var i = 0; i < data.length; i++) {
       var h = data[i];
-      html += '<tr><td>' + (i+1) + '</td><td>' + (h.teacher||'') + '</td><td><span class="badge badge-primary">' + (h.subject||'') + '</span></td><td>' + (h.grade||'') + '</td><td>' + (h.section||'') + '</td><td style="text-align:right;max-width:200px">' + (h.homework||'') + '</td><td>' + formatDate(h.date) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editHomework(\''+h.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteHomeworkItem(\''+h.id+'\')">🗑️</button></div></td></tr>';
+      html += '<tr><td>' + (aaStart+i+1) + '</td><td>' + (h.teacher||'') + '</td><td><span class="badge badge-primary">' + (h.subject||'') + '</span></td><td>' + (h.grade||'') + '</td><td>' + (h.section||'') + '</td><td style="text-align:right;max-width:200px">' + (h.homework||'') + '</td><td>' + formatDate(h.date) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editHomework(\''+h.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteHomeworkItem(\''+h.id+'\')">🗑️</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
   } else if (tab === 'news') {
     html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>المعلم</th><th>الفصل</th><th>الشعبة</th><th>الخبر</th><th>مرفق</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var j = 0; j < data.length; j++) {
       var n = data[j];
-      html += '<tr><td>' + (j+1) + '</td><td>' + (n.teacher||'') + '</td><td>' + (n.grade||'') + '</td><td>' + (n.section||'') + '</td><td style="text-align:right;max-width:200px">' + (n.news||'') + '</td><td>' + (n.attachments ? '<a href="'+n.attachments+'" target="_blank" class="btn btn-sm btn-info">📎</a>' : '—') + '</td><td>' + formatDate(n.date) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editNews(\''+n.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\''+n.id+'\')">🗑️</button></div></td></tr>';
+      html += '<tr><td>' + (aaStart+j+1) + '</td><td>' + (n.teacher||'') + '</td><td>' + (n.grade||'') + '</td><td>' + (n.section||'') + '</td><td style="text-align:right;max-width:200px">' + (n.news||'') + '</td><td>' + (n.attachments ? '<a href="'+n.attachments+'" target="_blank" class="btn btn-sm btn-info">📎</a>' : '—') + '</td><td>' + formatDate(n.date) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editNews(\''+n.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\''+n.id+'\')">🗑️</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
   } else {
     html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>الطالب</th><th>الفصل</th><th>الشعبة</th><th>المخالفة</th><th>المعلم</th><th>الرد</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var k = 0; k < data.length; k++) {
       var v = data[k];
-      html += '<tr><td>' + (k+1) + '</td><td style="font-weight:500">' + (v.name||'') + '</td><td>' + (v.grade||'') + '</td><td>' + (v.section||'') + '</td><td><span class="badge badge-danger">' + (v.violation||'') + '</span></td><td>' + (v.teacher||'') + '</td><td>' + (v.reply||'—') + '</td><td>' + formatDate(v.date) + '</td><td><button class="btn btn-sm btn-danger" onclick="deleteViolationItem(' + v.rowIndex + ')">🗑️</button></td></tr>';
+      html += '<tr><td>' + (aaStart+k+1) + '</td><td style="font-weight:500">' + (v.name||'') + '</td><td>' + (v.grade||'') + '</td><td>' + (v.section||'') + '</td><td><span class="badge badge-danger">' + (v.violation||'') + '</span></td><td>' + (v.teacher||'') + '</td><td>' + (v.reply||'—') + '</td><td>' + formatDate(v.date) + '</td><td><button class="btn btn-sm btn-danger" onclick="deleteViolationItem(' + v.rowIndex + ')">🗑️</button></td></tr>';
     }
     html += '</tbody></table></div>';
   }
-  c.innerHTML = html;
+  c.innerHTML = html + aaPager;
 }
 // ==================== ADMIN STUDENTS (نسخة مصححة لـ ES5) ====================
 
@@ -25513,25 +25542,45 @@ function _loadAuditLog() {
       return;
     }
     _auditLogRows = r.logs || [];
-    _auditLogRenderTable(_auditLogRows);
+    _auditLogPage = 1;
+    _auditLogRenderTable(_auditLogFiltered());
   }, function(err) {
     showError((err && err.message) || 'فشل الاتصال');
     if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل السجل</div></div>';
   });
 }
 
+var _auditLogPage = 1;
+var _auditLogQuery = '';
+var _AUDIT_PAGE_SIZE = 50;
+
+function _auditLogFiltered() {
+  if (!_auditLogQuery) return _auditLogRows;
+  var out = [], i, row, hay;
+  for (i = 0; i < _auditLogRows.length; i++) {
+    row = _auditLogRows[i] || {};
+    hay = ((row.userName || '') + ' ' + (row.action || '') + ' ' + (row.module || '') + ' ' + (row.details || '')).toLowerCase();
+    if (hay.indexOf(_auditLogQuery) >= 0) out.push(row);
+  }
+  return out;
+}
+
 function _auditLogRenderTable(list) {
   var c = document.getElementById('auditLogContent');
   if (!c) return;
   if (!list || !list.length) {
-    c.innerHTML = '<div class="empty-state"><div class="es-title">لا توجد سجلات تدقيق حتى الآن</div></div>';
+    c.innerHTML = '<div class="empty-state"><div class="es-title">لا توجد سجلات تدقيق' + (_auditLogQuery ? ' مطابقة للبحث' : ' حتى الآن') + '</div></div>';
     return;
   }
+  var pages = Math.max(1, Math.ceil(list.length / _AUDIT_PAGE_SIZE));
+  if (!_auditLogPage || _auditLogPage < 1) _auditLogPage = 1;
+  if (_auditLogPage > pages) _auditLogPage = pages;
+  var start = (_auditLogPage - 1) * _AUDIT_PAGE_SIZE;
+  var pageRows = list.slice(start, start + _AUDIT_PAGE_SIZE);
   var h = '<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>المستخدم</th><th>الإجراء</th><th>الوحدة</th><th>التفاصيل</th></tr></thead><tbody>';
-  for (var i = 0; i < list.length; i++) {
-    var row = list[i] || {};
-    var q = ((row.userName || '') + ' ' + (row.action || '') + ' ' + (row.module || '') + ' ' + (row.details || '')).toLowerCase();
-    h += '<tr data-q="' + escapeHtml(q) + '">' +
+  for (var i = 0; i < pageRows.length; i++) {
+    var row = pageRows[i] || {};
+    h += '<tr>' +
       '<td>' + escapeHtml(row.timestamp || '—') + '</td>' +
       '<td>' + escapeHtml(row.userName || '—') + '</td>' +
       '<td>' + escapeHtml(row.action || '—') + '</td>' +
@@ -25540,16 +25589,31 @@ function _auditLogRenderTable(list) {
       '</tr>';
   }
   h += '</tbody></table></div>';
+  if (list.length > _AUDIT_PAGE_SIZE) {
+    var pbtn = function (label, target, disabled, title) {
+      return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' + (disabled ? 'disabled ' : '') +
+        (title ? ('title="' + title + '" ') : '') +
+        'onclick="_auditLogGoPage(' + target + ')">' + label + '</button>';
+    };
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px">' +
+      pbtn('⏮', 1, _auditLogPage <= 1, 'الأولى') + pbtn('‹ السابق', _auditLogPage - 1, _auditLogPage <= 1) +
+      '<span style="font-size:13px;color:var(--text-muted);white-space:nowrap">صفحة ' + _auditLogPage + ' / ' + pages +
+        ' · <span style="color:var(--text-light)">' + (start + 1) + '–' + (start + pageRows.length) + ' من ' + list.length + '</span></span>' +
+      pbtn('التالي ›', _auditLogPage + 1, _auditLogPage >= pages) + pbtn('⏭', pages, _auditLogPage >= pages, 'الأخيرة') +
+      '</div>';
+  }
   c.innerHTML = h;
 }
 
+function _auditLogGoPage(n) {
+  _auditLogPage = n;
+  _auditLogRenderTable(_auditLogFiltered());
+}
+
 function _auditLogFilter(q) {
-  q = (q || '').trim().toLowerCase();
-  var rows = document.querySelectorAll('#auditLogContent tr[data-q]');
-  for (var i = 0; i < rows.length; i++) {
-    var hay = rows[i].getAttribute('data-q') || '';
-    rows[i].style.display = (!q || hay.indexOf(q) >= 0) ? '' : 'none';
-  }
+  _auditLogQuery = (q || '').replace(/^\s+|\s+$/g, '').toLowerCase();
+  _auditLogPage = 1;
+  _auditLogRenderTable(_auditLogFiltered());
 }
 
 // ==================== منصاتي — روابط بوابات المدرسة (مدير/وكيل فقط، قراءة فقط) ====================
@@ -27738,14 +27802,49 @@ function _tfExportExp(){
     filt.map(function(r){ return [r.date,r.label,r.amount,r.categoryName]; }));
 }
 
-function _tfTable(headers, rows){
+// ترقيم عميلي اختياري للجداول المالية الكبيرة (قوائم مدرسة كاملة) — نفس نمط _stlRenderPager
+// (50/صفحة، الشريط يختفي تحت الحد). المستدعون بلا opts لا يتأثرون إطلاقاً.
+var _tfPagerState = {};
+function _tfPagerGo(key, n){
+  var ps = _tfPagerState[key]; if(!ps) return;
+  ps.page = n;
+  if (ps.redraw && typeof window[ps.redraw] === 'function') window[ps.redraw]();
+}
+function _tfTable(headers, rows, opts){
   if(!rows||!rows.length) return '<div class="tf-empty">لا توجد بيانات</div>';
+  var pageRows = rows, pagerHtml = '';
+  if (opts && opts.pagerKey) {
+    var ps = _tfPagerState[opts.pagerKey] || (_tfPagerState[opts.pagerKey] = { page: 1 });
+    ps.redraw = opts.redraw || ps.redraw;
+    var size = opts.pageSize || 50;
+    // تغيّر طول القائمة (فلترة) ⇒ عودة للصفحة الأولى كي لا يعلق المستخدم وسط نتائج مختلفة
+    if (ps.lastTotal !== undefined && ps.lastTotal !== rows.length) ps.page = 1;
+    ps.lastTotal = rows.length;
+    var pages = Math.max(1, Math.ceil(rows.length / size));
+    if (!ps.page || ps.page < 1) ps.page = 1;
+    if (ps.page > pages) ps.page = pages;
+    var start = (ps.page - 1) * size;
+    pageRows = rows.slice(start, start + size);
+    if (rows.length > size) {
+      var pbtn = function(label, target, disabled, title){
+        return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' + (disabled ? 'disabled ' : '') +
+          (title ? ('title="' + title + '" ') : '') +
+          'onclick="_tfPagerGo(\'' + opts.pagerKey + '\',' + target + ')">' + label + '</button>';
+      };
+      pagerHtml = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px">' +
+        pbtn('⏮', 1, ps.page <= 1, 'الأولى') + pbtn('‹ السابق', ps.page - 1, ps.page <= 1) +
+        '<span style="font-size:13px;color:var(--text-muted);white-space:nowrap">صفحة ' + ps.page + ' / ' + pages +
+          ' · <span style="color:var(--text-light)">' + (start + 1) + '–' + (start + pageRows.length) + ' من ' + rows.length + '</span></span>' +
+        pbtn('التالي ›', ps.page + 1, ps.page >= pages) + pbtn('⏭', pages, ps.page >= pages, 'الأخيرة') +
+        '</div>';
+    }
+  }
   var h='<div class="tf-scroll"><table class="tf-t"><thead><tr>';
   for(var i=0;i<headers.length;i++) h+='<th>'+_tfEsc(headers[i])+'</th>';
   h+='</tr></thead><tbody>';
-  for(var r=0;r<rows.length;r++){ h+='<tr>'; for(var c=0;c<rows[r].length;c++) h+='<td>'+rows[r][c]+'</td>'; h+='</tr>'; }
+  for(var r=0;r<pageRows.length;r++){ h+='<tr>'; for(var c=0;c<pageRows[r].length;c++) h+='<td>'+pageRows[r][c]+'</td>'; h+='</tr>'; }
   h+='</tbody></table></div>';
-  return h;
+  return h + pagerHtml;
 }
 
 // ── محاسبة الطلاب: قائمة الصفوف + الفلترة + الرسم ──
@@ -27787,7 +27886,7 @@ function _tfDrawStuTable(){
       _tfComma(s.expected), _tfComma(s.paid), '<span class="tf-amt">'+_tfComma(s.remaining)+'</span>',
       '<span style="color:'+pc+';font-weight:700;">'+(s.paidPct||0)+'%</span>',
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(s.status)+'</span>'];
-  }));
+  }), {pagerKey:'stu', redraw:'_tfDrawStuTable'});
   var tot=document.getElementById('tf-stu-total');
   if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
     ? ('المعروض: <strong>'+filt.length+'</strong> طالب')
@@ -27825,7 +27924,7 @@ function _tfDrawDebtorsTable(){
       row.push(s.phone ? ('<button class="tf-abtn" onclick="_tfDebtorWaSend(\''+(''+s.code).replace(/'/g,'')+'\')">📱 تذكير</button>') : '—');
     }
     return row;
-  }));
+  }), {pagerKey:'debtors', redraw:'_tfDrawDebtorsTable'});
 }
 function _tfDebtorWaLink(phone,name,remaining,paidPct){
   phone=(phone||'').replace(/[^0-9]/g,'');
@@ -27892,7 +27991,7 @@ function _tfDrawFamTable(){
     return [_tfEsc(a.account),_tfEsc(a.holder),a.members,_tfEsc(a.grades),
       _tfComma(a.expected),_tfComma(a.paid),'<span class="tf-amt">'+_tfComma(a.remaining)+'</span>',
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(a.status)+'</span>'];
-  }));
+  }), {pagerKey:'fam', redraw:'_tfDrawFamTable'});
   var tot=document.getElementById('tf-fam-total');
   if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
     ? ('المعروض: <strong>'+filt.length+'</strong> حساب')

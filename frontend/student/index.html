@@ -3982,6 +3982,8 @@ function switchSibling(targetCode, chip) {
       var keepTab = APP.currentTab || 'home';
       if (APP.badgeInterval) { clearInterval(APP.badgeInterval); APP.badgeInterval = null; }
       try { ssClearAll(); } catch (eSS2) {}
+      // حالة «عرض المزيد» خارج APP — تُفرَّغ هنا صراحةً وإلا ورث الأخ الجديد عدّ الكشف السابق
+      _lmShown = {}; _lmData = {};
       APP = {
         user: {
           id: r.studentId,
@@ -4731,6 +4733,37 @@ callServerSmart(
 );
 }
 
+// ── «عرض المزيد» عميلي موحَّد للقوائم المتراكمة (واجبات/سلوكيات/غياب/تعاميم) ──
+// القائمة الكاملة تصل من الخادم أصلاً؛ هذا يقصّ الرسم الأولي فقط (DOM أخف على الجوال)
+// ويحتفظ بآخر معطى مرَّره المستدعي كي يعيد زرّ المزيد الرسم بلا أي نداء خادمي جديد.
+var LM_STEP = 30;
+var _lmShown = {};
+var _lmData = {};
+var _lmRerender = {};
+function _lmTake(key, arg, list) {
+  _lmData[key] = arg;
+  var n = _lmShown[key] || LM_STEP;
+  if (n > list.length) n = list.length;
+  _lmShown[key] = n;
+  _lmShown[key + '_total'] = list.length;
+  return list.slice(0, n);
+}
+function _lmMoreHtml(key) {
+  var total = _lmShown[key + '_total'] || 0;
+  var n = _lmShown[key] || 0;
+  if (total <= n) return '';
+  return '<div style="text-align:center;margin-top:10px">' +
+    '<button class="load-more" onclick="_lmMore(\'' + key + '\')">عرض المزيد (' + (total - n) + ' متبقٍّ) ⬇</button></div>';
+}
+function _lmMore(key) {
+  _lmShown[key] = (_lmShown[key] || 0) + LM_STEP;
+  if (_lmRerender[key]) _lmRerender[key](_lmData[key]);
+}
+_lmRerender.hw   = function (a) { renderHomework(a); };
+_lmRerender.vio  = function (a) { renderViolations(a); };
+_lmRerender.att  = function (a) { renderAttendance(a); };
+_lmRerender.circ = function (a) { renderCirculars(a); };
+
 function renderHomework(data) {
   var w = $('hwWrap');
   if (!data || data.length === 0) {
@@ -4751,8 +4784,9 @@ function renderHomework(data) {
   // رأس عدد الواجبات
   var h = '<div class="hw-header"><span class="hw-count">📚 ' + sorted.length + ' واجب</span></div>';
 
-  for (var i = 0; i < sorted.length; i++) {
-    var hw = sorted[i];
+  var vis = _lmTake('hw', data, sorted);
+  for (var i = 0; i < vis.length; i++) {
+    var hw = vis[i];
 
     // تحديد الحالة (استناداً للتاريخ)
     var dueSrc = hw.dueDate || hw.date || '';
@@ -4783,7 +4817,7 @@ function renderHomework(data) {
          '<div class="body">' + nl2br(hw.details) + '</div>' +
          '</div>';
   }
-  w.innerHTML = h;
+  w.innerHTML = h + _lmMoreHtml('hw');
 }
 // ═══════════════════════════════════════════════════════════
 // 10. الأخبار (نظام محسّن مع فلاتر و pagination)
@@ -4833,8 +4867,9 @@ function renderCirculars(items) {
   if (!card || !list) return;
   if (!items || !items.length) { card.style.display = 'none'; list.innerHTML = ''; return; }
   var h = '';
-  for (var i = 0; i < items.length; i++) {
-    var c = items[i];
+  var vis = _lmTake('circ', items, items);
+  for (var i = 0; i < vis.length; i++) {
+    var c = vis[i];
     var scope = '';
     if (c.grade && c.grade !== 'الجميع') scope = esc(c.grade);
     if (c.section && c.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(c.section);
@@ -4848,7 +4883,7 @@ function renderCirculars(items) {
            '</div>' +
          '</div>';
   }
-  list.innerHTML = h;
+  list.innerHTML = h + _lmMoreHtml('circ');
   card.style.display = 'block';
 }
 
@@ -6367,8 +6402,9 @@ function renderViolations(data) {
           '<div class="stat violation"><div class="num">⚠️ ' + violations + '</div><div class="lbl">ملاحظات تحتاج إلى متابعة</div></div>' +
           '</div>';
 
-  for (var i = 0; i < data.length; i++) {
-    var v = data[i];
+  var vis = _lmTake('vio', data, data);
+  for (var i = 0; i < vis.length; i++) {
+    var v = vis[i];
     var cls = v._isMerit ? ' merit' : '';
     var bcls = v._isMerit ? 'm' : 'v';
     var blbl = v._isMerit ? 'تعزيز' : 'ملاحظة';
@@ -6383,7 +6419,7 @@ function renderViolations(data) {
          '</div>';
   }
 
-  w.innerHTML = h;
+  w.innerHTML = h + _lmMoreHtml('vio');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7297,8 +7333,9 @@ function renderAttendance(r) {
   var h = '<div style="margin-bottom:12px; padding:12px; background:var(--err-bg); border-radius:var(--rad-s); text-align:center; color:var(--err); font-weight:700;">' +
           '📋 إجمالي السجلات: ' + r.total + '</div>';
 
-  for (var i = 0; i < r.records.length; i++) {
-    var rec = r.records[i];
+  var vis = _lmTake('att', r, r.records);
+  for (var i = 0; i < vis.length; i++) {
+    var rec = vis[i];
     var cls = rec.status === 'متأخر' ? ' late' : '';
     var stCls = rec.status === 'متأخر' ? 'late' : 'absent';
     h += '<div class="att-item' + cls + '">' +
@@ -7309,7 +7346,7 @@ function renderAttendance(r) {
          '<span class="status ' + stCls + '">' + esc(rec.status) + '</span>' +
          '</div>';
   }
-  w.innerHTML = h;
+  w.innerHTML = h + _lmMoreHtml('att');
 }
 
 // ═══════════════════════════════════════════════════════════
