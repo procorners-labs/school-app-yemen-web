@@ -2482,22 +2482,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div class="login-school-name school-brand-name">يمن سكولز</div>
       <div class="login-subtitle">منصة المعلمين الإلكترونية</div>
     </div>
-    <!-- شارة المنصّة — موضع مستقلّ أسفل ترويسة المدرسة عمداً، لا بجوار اسمها،
-         كي يتمايز «اسم المدرسة» عن «النظام الذي تستخدمه».
-         🔴 لا تُعطِ أياً من عناصرها الصنف `school-brand-name`: دالّة `applyBrand`
-         تكتب اسم المدرسة فوق **كل** عنصر يحمله، و~15 موضع طباعة تقرأ **أول**
-         مطابقة له عبر `querySelector` لبناء ترويساتها — فإضافة عنصر جديد بذلك
-         الصنف قبل الموجود تُفسِد اسم المدرسة في كل مخرَج مطبوع.
-         النصّ ساكن لأن اسم المنتج ثابت لا يتغيّر بالمستأجر. -->
-    <div class="login-platform-note">
-      <span class="lpn-line">
-        <img class="lpn-mark" src="https://yemenschoolz.com/assets/yemenschoolz-mark.png"
-             alt="" width="16" height="16" onerror="this.style.display='none'">
-        هذه المدرسة تستخدم نظام <b>يمن سكولز</b>
-      </span>
-      <span class="lpn-slogan">المنصة التي تجعل المستحيل ممكناً</span>
-      <a class="lpn-contact" dir="ltr" href="https://wa.me/967778505751" target="_blank" rel="noopener">+967 778 505 751</a>
-    </div>
+    <!-- 🔴 شارة المنصّة أُزيلت من شاشة الدخول بقرار مالك (2026-08-06). موضعها
+         الآن **المطبوعات وحدها** عبر `PRINT_BRAND_NOTE` — شاشة الدخول تبقى لاسم
+         المدرسة وحده. لا تُعِد إدراجها هنا دون قرار جديد. -->
     <div class="login-body">
       <p class="login-welcome" id="loginWelcomeText">أهلاً بك! 👋 يرجى إدخال بيانات الدخول</p>
       <div class="input-group-custom">
@@ -2527,18 +2514,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
       <!-- 🆘 زر المساعدة والتواصل مع الدعم الفني (IT) -->
       <style>
-        /* شارة المنصّة — مفصولة بصرياً عن ترويسة المدرسة بخطّ فاصل وتباعد،
-           كي يُقرأ «اسم المدرسة» و«النظام المستخدَم» ككيانين مختلفين. */
-        .login-platform-note{margin:10px 14px 0;padding-top:10px;border-top:1px solid rgba(255,255,255,.16);
-          display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;}
-        .login-platform-note .lpn-line{display:flex;align-items:center;gap:6px;font-size:12.5px;
-          color:rgba(255,255,255,.88);line-height:1.6;}
-        .login-platform-note .lpn-line b{font-weight:800;color:#fff;}
-        .login-platform-note .lpn-mark{border-radius:4px;flex:0 0 auto;}
-        .login-platform-note .lpn-slogan{font-size:11.5px;color:rgba(255,255,255,.66);font-style:italic;}
-        .login-platform-note .lpn-contact{font-size:12px;font-weight:700;color:#25D366;text-decoration:none;
-          letter-spacing:.3px;}
-        .login-platform-note .lpn-contact:hover{text-decoration:underline;}
+        /* (‏أنماط شارة المنصّة أُزيلت مع الشارة نفسها — 2026-08-06. لا تُذكَر
+           صنفها حرفياً هنا: حارس «لا CSS ميت» يقيس النصّ الخام فيلتقط التعليق
+           نفسه — بند 90-ب.) */
         .login-help{margin-top:8px;border:1px solid rgba(255,255,255,.25);border-radius:12px;background:rgba(255,255,255,.06);overflow:hidden;text-align:right;}
         .login-help>summary{list-style:none;cursor:pointer;padding:11px 14px;font-size:13.5px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;justify-content:center;user-select:none;}
         .login-help>summary::-webkit-details-marker{display:none;}
@@ -21077,7 +21055,7 @@ function _tcBrandTitleRows() {
      حارس في `_build/test-regression-guards.js` مقابل نافذة البحث عن صف الرأس في
      المستورِدَين الهدّامَين — وإبقاء العدد كما هو يُبقي الهامش كاملاً. ولا لوجو
      هنا: SheetJS المجتمعية لا تدعم تضمين الصور (بند 41). */
-  rows.push(['تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn') + ' — ' + PRINT_BRAND_TEXT]);
+  rows.push(['تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn') + ' — ' + PRINT_BRAND_NOTE + ' — ' + PRINT_BRAND_TEXT]);
   rows.push([]);
   return rows;
 }
@@ -21397,8 +21375,11 @@ function _lhDrawFooter(ctx, W, H) {
   /* نصّ فقط — لا لوجو هنا: الرسم على Canvas يحتاج تحميل صورة غير متزامن، وتذييل
      الديباجات يُرسَم داخل مسار متزامن. والأهم: `_LH_FOOTER_RESERVE` (130) تعتمد
      عليه ستّ حسابات ارتفاع، فلا يُغيَّر ولا يُوسَّع ارتفاع هذه الكتلة. */
+  /* 🔴 **استبدال** لا إضافة: السطر الثاني هو كل ما تسمح به `_LH_FOOTER_RESERVE`
+     (130) التي تعتمد عليها ستّ حسابات ارتفاع — سطر ثالث يكسرها. لذلك تحلّ جملة
+     الانتماء محلّ نصّ «تم إنشاؤه عبر…» بدل أن تُضاف تحته، والتاريخ يُلحَق بها. */
   ctx.font = '400 12px ' + _LH_FONT;
-  ctx.fillText('تم إنشاؤه عبر منصة يمن سكولز — yemenschoolz.com — ' + new Date().toLocaleDateString('ar-EG'), W / 2, ty + 4);
+  ctx.fillText(PRINT_BRAND_NOTE + ' — ' + new Date().toLocaleDateString('ar-EG'), W / 2, ty + 4);
 }
 function _lhDrawFrame(ctx, W, H, brandColor) {
   _lhRoundRect(ctx, 24, 24, W - 48, H - 48, 16);
@@ -21991,8 +21972,15 @@ function _extDocBrandColor(){
     • `print-color-adjust:exact` كي لا يُسقِط المتصفّح اللون عند الطباعة. */
 var PRINT_BRAND_MARK  = 'https://yemenschoolz.com/assets/yemenschoolz-mark.png';
 var PRINT_BRAND_TEXT  = 'منصة يمن سكولز — yemenschoolz.com';
-/* صيغة قصيرة للأسطر ذات ميزانية عرض صلبة (تذييل الشهادة داخل ارتفاع 143mm). */
-var PRINT_BRAND_SHORT = 'يمن سكولز';
+/* (‏كان هنا ثابت «صيغة قصيرة» لتذييل الشهادة — حُذف 2026-08-06 لأن الشهادة صارت
+   تحمل الجملة الكاملة، فبقي بصفر مستهلك. رصدته مراجعة `gas-reviewer`.) */
+/* جملة الانتماء + رقم التواصل — تظهر على **كل** ما يُطبَع أو يُصدَّر من المنصّة
+   (قرار مالك 2026-08-05). مصدر حقيقة واحد: أي تعديل نصّي هنا يسري على الأسطح
+   الأربعة دفعةً (نوافذ الطباعة · تذييل الشهادة · تذييل الديباجات Canvas ·
+   ترويسات تصدير Excel/CSV) — ويحرس العدّ `n/n` حارسُ التراجع.
+   ⚠️ الرقم بلا مسافات ولا `+967`: يُعرَض داخل `dir="rtl"` وأي فاصل يقلب ترتيبه
+   بصرياً؛ وهو نصّ مطبوع لا رابط، فلا فائدة من `wa.me` على ورق. */
+var PRINT_BRAND_NOTE  = 'هذه المدرسة تستخدم نظام يمن سكولز — المنصة التي تجعل المستحيل ممكناً · 775189922';
 function _printBrandFooter(){
   var school = escapeHtml(cert_schoolName());
   var contact = _extDocContactLine();   // مُهرَّب أصلاً داخل الدالّة
@@ -22006,6 +21994,10 @@ function _printBrandFooter(){
       '<img src="' + PRINT_BRAND_MARK + '" alt="" width="14" height="14" ' +
         'style="vertical-align:-2px;margin-left:4px" onerror="this.style.display=\'none\'">' +
       '<span>' + PRINT_BRAND_TEXT + '</span>' +
+      /* سطر الانتماء منفصل عن سطر الحقوق: هذه نافذة طباعة حرّة الارتفاع (خلافاً
+         للشهادة والديباجات) فالسطر الثاني لا يُقصّ، والفصل يمنع خلط «حقوق
+         المدرسة» بـ«النظام الذي تستخدمه». */
+      '<div style="margin-top:3px;font-size:9px;opacity:.9">' + escapeHtml(PRINT_BRAND_NOTE) + '</div>' +
     '</div>';
 }
 function cert_hijriDate(){
@@ -22220,9 +22212,16 @@ function cert_certHtml(stu){
        (‏A4 بهامش 5mm ⇒ ~186mm مفيدة عند 8.5px) يترك ميزانية سطر واحد لا تتّسع
        لاسم مدرسة طويل + التاريخ + العبارة الكاملة معاً. النطاق يظهر كاملاً على
        بقية المطبوعات عبر `_printBrandFooter`. */
-    '<div class="cert-foot">صدرت هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(sn)+
-      '<img src="'+PRINT_BRAND_MARK+'" alt="" width="11" height="11" style="vertical-align:-1px;margin:0 5px 0 3px" onerror="this.style.display=\'none\'">'+
-      escapeHtml(PRINT_BRAND_SHORT)+'</div>' +
+    /* 🔴 ترتيب مقصود: اللوجو ثم جملة الانتماء **أولاً**، والتاريخ/الحقوق بعدهما.
+       السطر `nowrap` مع `text-overflow:ellipsis`، والقصّ يأكل **النهاية** — فما
+       يُوضَع أولاً هو ما ينجو. جملة الانتماء مطلوبة على كل ورقة (قرار مالك)،
+       بينما اسم المدرسة مكرَّر أصلاً في ترويسة الشهادة نفسها فوق هذا السطر.
+       والجملة الكاملة تحمل اسم المنتج بداخلها، فلا حاجة لصيغة قصيرة منفصلة. */
+    '<div class="cert-foot">' +
+      '<img src="'+PRINT_BRAND_MARK+'" alt="" width="10" height="10" style="vertical-align:-1px;margin:0 0 0 4px" onerror="this.style.display=\'none\'">'+
+      escapeHtml(PRINT_BRAND_NOTE)+
+      ' — صدرت هذه الشهادة بتاريخ '+escapeHtml(cert_hijriDate())+' — جميع الحقوق محفوظة لـ'+escapeHtml(sn)+
+    '</div>' +
   '</div>';
 }
 
@@ -22267,8 +22266,11 @@ function cert_cssRules(){
      عبارة المنصّة) لخرج عن الارتفاع و**قُصَّ صامتاً** — فيضيع أوّل ما يضيع
      التذييل نفسه. مع nowrap يبقى سطراً واحداً دائماً، و`text-overflow:ellipsis`
      يجعل أي تجاوز تدهوراً مرئياً مهذّباً بدل قصٍّ عمودي غير مرئي. */
+  /* قاعدة الأساس (المعاينة على الشاشة) **تلتفّ بحرّية**: لا ارتفاع ثابت هنا،
+     فالقصّ يكون تشويهاً بلا سبب. حصر `nowrap` بقواعد `@media print` وحدها —
+     هناك فقط توجد ميزانية الـ143mm التي تجعل القصّ أهون من الفيض. */
   '.cert-foot{position:relative;margin:12px 14px 0;text-align:center;font-size:10px;color:#94a3b8;border-top:1px dashed #e2e8f0;padding-top:8px;' +
-    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    'line-height:1.5}' +
   '.cert,.cert *{-webkit-print-color-adjust:exact;print-color-adjust:exact}';
 }
 
@@ -22294,7 +22296,7 @@ function cert_styleBlock(){
     '.cs-v{font-size:13px}.cs-l{font-size:9px}' +
     '.cert-sign{margin:6px 7mm 0;gap:10px}' +
     '.cs-line{margin-top:18px}' +
-    '.cert-foot{margin:4px 7mm 0;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '.cert-foot{margin:4px 7mm 0;font-size:7.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
     '@page{size:A4 portrait;margin:5mm}' +
   '}' +
   '</style>';
@@ -22333,7 +22335,7 @@ function cert_winCss(){
   // التوقيعات والتذييل
   '.cert-sign{margin:6px 7mm 0;gap:10px}' +
   '.cs-role{font-size:10.5px}.cs-line{margin-top:18px}' +
-  '.cert-foot{margin:4px 7mm 0;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
+  '.cert-foot{margin:4px 7mm 0;font-size:7.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 }
 
 // ════════════════════════════════════════════════════════
@@ -28052,7 +28054,7 @@ function _tfBrandTitleLines(){
   var b = window._schoolBrand || {};
   if(!b.name) return [];
   return [b.name,
-          'تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn') + ' — ' + PRINT_BRAND_TEXT,
+          'تاريخ التصدير: ' + new Date().toLocaleDateString('ar-EG-u-nu-latn') + ' — ' + PRINT_BRAND_NOTE + ' — ' + PRINT_BRAND_TEXT,
           ''];
 }
 function _tfExportCsv(filename, headers, rows){
