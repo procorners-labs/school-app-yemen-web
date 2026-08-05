@@ -2274,6 +2274,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   .pra-table td[data-label="تحديد"] { justify-content:flex-end; }
   .pra-comment { max-width:none; text-align:start; }
   .pra-row-actions { justify-content:flex-end; }
+
+  /* تعميم نمط بطاقات .pra-table أعلاه عبر صنف تفعيل صريح rt-cards — يتطلّب data-label على كل
+     خلية (يولّدها _tfTable تلقائياً من الرؤوس عند opts.cards، وتُكتب يدوياً في جداول أنشطة
+     المشرف). min-width:0 يبطل قاعدة table{min-width:640px} العامة كي لا تتمدّد البطاقات. */
+  table.rt-cards thead { display:none; }
+  table.rt-cards, table.rt-cards tbody, table.rt-cards tr, table.rt-cards td { display:block; width:100%; }
+  table.rt-cards { border-collapse:separate; min-width:0 !important; }
+  table.rt-cards tr { border:1px solid var(--border); border-radius:10px; margin:10px 0; padding:6px 10px; background:var(--surface); }
+  table.rt-cards td { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:8px 2px; border-bottom:1px dashed var(--border); white-space:normal !important; max-width:none; text-align:start; }
+  table.rt-cards td:last-child { border-bottom:none; }
+  table.rt-cards td::before { content:attr(data-label); flex:none; font-weight:700; font-size:11px; color:var(--text-muted); padding-top:2px; }
+  table.rt-cards .btn-group { justify-content:flex-end; }
 }
 .pra-bulk-bar button { border:none; border-radius:7px; padding:6px 11px; font-size:12.5px; cursor:pointer; white-space:nowrap; }
 /* أزرار الطلب/المشاركة الجديدة تعيد استخدام أزرار الإجراءات الجماعية أعلاه بلا CSS إضافي مكرَّر */
@@ -19588,24 +19600,24 @@ function renderAdminActivitiesTab(tab) {
   var aaPager = _aaPagerHtml(tab, _aaPage[tab], aaPages, aaStart + 1, aaStart + data.length, aaTotal);
   var html = '';
   if (tab === 'homework') {
-    html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>الواجب</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
+    html = '<div class="table-wrap"><table class="rt-cards"><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>الواجب</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var i = 0; i < data.length; i++) {
       var h = data[i];
-      html += '<tr><td>' + (aaStart+i+1) + '</td><td>' + (h.teacher||'') + '</td><td><span class="badge badge-primary">' + (h.subject||'') + '</span></td><td>' + (h.grade||'') + '</td><td>' + (h.section||'') + '</td><td style="text-align:right;max-width:200px">' + (h.homework||'') + '</td><td>' + formatDate(h.date) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editHomework(\''+h.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteHomeworkItem(\''+h.id+'\')">🗑️</button></div></td></tr>';
+      html += '<tr><td data-label="#">' + (aaStart+i+1) + '</td><td data-label="المعلم">' + (h.teacher||'') + '</td><td data-label="المادة"><span class="badge badge-primary">' + (h.subject||'') + '</span></td><td data-label="الفصل">' + (h.grade||'') + '</td><td data-label="الشعبة">' + (h.section||'') + '</td><td data-label="الواجب" style="text-align:right;max-width:200px">' + (h.homework||'') + '</td><td data-label="التاريخ">' + formatDate(h.date) + '</td><td data-label="إجراءات"><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editHomework(\''+h.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteHomeworkItem(\''+h.id+'\')">🗑️</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
   } else if (tab === 'news') {
-    html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>المعلم</th><th>الفصل</th><th>الشعبة</th><th>الخبر</th><th>مرفق</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
+    html = '<div class="table-wrap"><table class="rt-cards"><thead><tr><th>#</th><th>المعلم</th><th>الفصل</th><th>الشعبة</th><th>الخبر</th><th>مرفق</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var j = 0; j < data.length; j++) {
       var n = data[j];
-      html += '<tr><td>' + (aaStart+j+1) + '</td><td>' + (n.teacher||'') + '</td><td>' + (n.grade||'') + '</td><td>' + (n.section||'') + '</td><td style="text-align:right;max-width:200px">' + (n.news||'') + '</td><td>' + (n.attachments ? '<a href="'+n.attachments+'" target="_blank" class="btn btn-sm btn-info">📎</a>' : '—') + '</td><td>' + formatDate(n.date) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editNews(\''+n.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\''+n.id+'\')">🗑️</button></div></td></tr>';
+      html += '<tr><td data-label="#">' + (aaStart+j+1) + '</td><td data-label="المعلم">' + (n.teacher||'') + '</td><td data-label="الفصل">' + (n.grade||'') + '</td><td data-label="الشعبة">' + (n.section||'') + '</td><td data-label="الخبر" style="text-align:right;max-width:200px">' + (n.news||'') + '</td><td data-label="مرفق">' + (n.attachments ? '<a href="'+n.attachments+'" target="_blank" class="btn btn-sm btn-info">📎</a>' : '—') + '</td><td data-label="التاريخ">' + formatDate(n.date) + '</td><td data-label="إجراءات"><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editNews(\''+n.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\''+n.id+'\')">🗑️</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
   } else {
-    html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>الطالب</th><th>الفصل</th><th>الشعبة</th><th>المخالفة</th><th>المعلم</th><th>الرد</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
+    html = '<div class="table-wrap"><table class="rt-cards"><thead><tr><th>#</th><th>الطالب</th><th>الفصل</th><th>الشعبة</th><th>المخالفة</th><th>المعلم</th><th>الرد</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var k = 0; k < data.length; k++) {
       var v = data[k];
-      html += '<tr><td>' + (aaStart+k+1) + '</td><td style="font-weight:500">' + (v.name||'') + '</td><td>' + (v.grade||'') + '</td><td>' + (v.section||'') + '</td><td><span class="badge badge-danger">' + (v.violation||'') + '</span></td><td>' + (v.teacher||'') + '</td><td>' + (v.reply||'—') + '</td><td>' + formatDate(v.date) + '</td><td><button class="btn btn-sm btn-danger" onclick="deleteViolationItem(' + v.rowIndex + ')">🗑️</button></td></tr>';
+      html += '<tr><td data-label="#">' + (aaStart+k+1) + '</td><td data-label="الطالب" style="font-weight:500">' + (v.name||'') + '</td><td data-label="الفصل">' + (v.grade||'') + '</td><td data-label="الشعبة">' + (v.section||'') + '</td><td data-label="المخالفة"><span class="badge badge-danger">' + (v.violation||'') + '</span></td><td data-label="المعلم">' + (v.teacher||'') + '</td><td data-label="الرد">' + (v.reply||'—') + '</td><td data-label="التاريخ">' + formatDate(v.date) + '</td><td data-label="إجراءات"><button class="btn btn-sm btn-danger" onclick="deleteViolationItem(' + v.rowIndex + ')">🗑️</button></td></tr>';
     }
     html += '</tbody></table></div>';
   }
@@ -27839,10 +27851,11 @@ function _tfTable(headers, rows, opts){
         '</div>';
     }
   }
-  var h='<div class="tf-scroll"><table class="tf-t"><thead><tr>';
+  var cards = !!(opts && opts.cards);
+  var h='<div class="tf-scroll"><table class="tf-t'+(cards?' rt-cards':'')+'"><thead><tr>';
   for(var i=0;i<headers.length;i++) h+='<th>'+_tfEsc(headers[i])+'</th>';
   h+='</tr></thead><tbody>';
-  for(var r=0;r<pageRows.length;r++){ h+='<tr>'; for(var c=0;c<pageRows[r].length;c++) h+='<td>'+pageRows[r][c]+'</td>'; h+='</tr>'; }
+  for(var r=0;r<pageRows.length;r++){ h+='<tr>'; for(var c=0;c<pageRows[r].length;c++) h+='<td'+(cards?(' data-label="'+_tfEsc(headers[c]||'')+'"'):'')+'>'+pageRows[r][c]+'</td>'; h+='</tr>'; }
   h+='</tbody></table></div>';
   return h + pagerHtml;
 }
@@ -27886,7 +27899,7 @@ function _tfDrawStuTable(){
       _tfComma(s.expected), _tfComma(s.paid), '<span class="tf-amt">'+_tfComma(s.remaining)+'</span>',
       '<span style="color:'+pc+';font-weight:700;">'+(s.paidPct||0)+'%</span>',
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(s.status)+'</span>'];
-  }), {pagerKey:'stu', redraw:'_tfDrawStuTable'});
+  }), {pagerKey:'stu', redraw:'_tfDrawStuTable', cards:true});
   var tot=document.getElementById('tf-stu-total');
   if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
     ? ('المعروض: <strong>'+filt.length+'</strong> طالب')
@@ -27924,7 +27937,7 @@ function _tfDrawDebtorsTable(){
       row.push(s.phone ? ('<button class="tf-abtn" onclick="_tfDebtorWaSend(\''+(''+s.code).replace(/'/g,'')+'\')">📱 تذكير</button>') : '—');
     }
     return row;
-  }), {pagerKey:'debtors', redraw:'_tfDrawDebtorsTable'});
+  }), {pagerKey:'debtors', redraw:'_tfDrawDebtorsTable', cards:true});
 }
 function _tfDebtorWaLink(phone,name,remaining,paidPct){
   phone=(phone||'').replace(/[^0-9]/g,'');
@@ -27991,7 +28004,7 @@ function _tfDrawFamTable(){
     return [_tfEsc(a.account),_tfEsc(a.holder),a.members,_tfEsc(a.grades),
       _tfComma(a.expected),_tfComma(a.paid),'<span class="tf-amt">'+_tfComma(a.remaining)+'</span>',
       '<span style="color:'+stc+';font-weight:700;">'+_tfEsc(a.status)+'</span>'];
-  }), {pagerKey:'fam', redraw:'_tfDrawFamTable'});
+  }), {pagerKey:'fam', redraw:'_tfDrawFamTable', cards:true});
   var tot=document.getElementById('tf-fam-total');
   if(tot) tot.innerHTML=((App.user||{}).role==='accountant')
     ? ('المعروض: <strong>'+filt.length+'</strong> حساب')
