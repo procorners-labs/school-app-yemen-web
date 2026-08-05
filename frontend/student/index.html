@@ -3808,13 +3808,22 @@ function resetLogin() {
 // ═══════════════════════════════════════════════════════════
 /* ── جسر إشعارات الهاتف (FCM) مع تطبيق الأندرويد الأصلي ──────────────────
    التطبيق الأصلي يستدعي window.registerFcmToken(token) بعد الحصول على رمز
-   جهاز FCM، فنخزّنه في «أجهزة_الإشعارات» بملف المدرسة ليصله بثّ الأخبار. */
+   جهاز FCM، فنخزّنه في «أجهزة_الإشعارات» بملف المدرسة ليصله بثّ الأخبار.
+
+   🔴 معرّف فارغ = مدرسة المالك، لا "معرّف مفقود": كان هنا `|| ''` ثم خروج مبكر
+   `if (!sid) return;` — والمستهلك الوحيد لـFCM (تطبيق SchoolAppyemen، `AppConfig.kt`
+   ‏`DEFAULT_STUDENT`) يفتح هذه الصفحة **بلا `?school=`**، و`loginStudent` يُرجِع
+   `schoolId: ''` للحساب الافتراضي، و`window.SCHOOL_ID` يبقى فارغاً على `student`
+   عمداً (تطبيع `build-frontend.js` مقصور على `/gas/teacher` — بند 97). فكان الخروج
+   المبكر يقع دوماً ⇒ أولياء أمور مدرسة المالك وحدهم بلا أي رمز جهاز مسجَّل، بصمت.
+   التطبيع هنا **عميلي موضعي** بنفس نمط `returnHomeLink` (أعلاه) و`nsShareNews` (أدناه): صفر أثر
+   على فضاء مفاتيح الكاش (فلا خروج قسري لأحد) وصفر مساس بقرار بند 97 وحارسه. */
 window.registerFcmToken = function (deviceToken) {
   try {
     if (!deviceToken) return;
+    var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
     var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID ||
-      (new URLSearchParams(window.location.search)).get('school') || '';
-    if (!sid) return; // ننتظر توفّر معرّف المدرسة (بعد الدخول)
+      (new URLSearchParams(window.location.search)).get('school') || OWNER_SCHOOL_ID;
     google.script.run
       .withSuccessHandler(function () {})
       .withFailureHandler(function () {})
