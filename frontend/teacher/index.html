@@ -24762,26 +24762,12 @@ function smm_statusBadge(s) {
   return '<span class="smm-status-badge ' + cls + '">' + smm_escHtml(s || '—') + '</span>';
 }
 
-/* ── عرض اسم مدرسة الحساب ديناميكيًا (حسب schoolId) بدل الاسم الثابت ── */
-(function () {
-  if (!window.SCHOOL_ID) return;
-  function applyName(name) {
-    if (!name) return;
-    var els = document.querySelectorAll('.school-brand-name');
-    for (var i = 0; i < els.length; i++) els[i].textContent = name;
-    try { document.title = 'يمن سكولز | Yemen Schoolz — ' + name; } catch (e) {}
-  }
-  function run() {
-    try {
-      google.script.run
-        .withSuccessHandler(function (res) { if (res && res.ok && res.name) applyName(res.name); })
-        .withFailureHandler(function () {})
-        .getSchoolName(window.SCHOOL_ID);
-    } catch (e) {}
-  }
-  if (document.readyState !== 'loading') run();
-  else document.addEventListener('DOMContentLoaded', run);
-})();
+/* ── اسم المدرسة يصل عبر getTeacherSchoolBrand وحدها (2026-08-06) ──
+   كان هنا IIFE ينادي getSchoolName عند DOMContentLoaded — نسخة فرعية حرفياً مما
+   تفعله applyBrand (نفس .school-brand-name ونفس صيغة document.title)، أي نداء
+   ثانٍ يفتح Master عند **كل** فتح صفحة. صار يُطلق دوماً بعد تثبيت معرّف المالك
+   للرابط العاري (بند 97) فحُذف — دالة الخادم getSchoolName باقية (صفحات مخبَّأة
+   قديمة تناديها ساعات بعد النشر). */
 
 // ═══════════════════════════════════════════════════════════════════
 //  🎒 أسماء الطلاب + 🔎 بيان حالة طالب  (واجهة)
