@@ -6852,6 +6852,25 @@ function bootApp() {
   //   وتبويبَي الغياب اللذين كانا يُضبطان متفرّقين هنا سابقاً. ──
   initSidebarByRole();
 
+  // ── رابط عميق: ?open=<قسم> ──
+  // يُستهلَك هنا تحديداً — **بعد** initSidebarByRole — كي يُقاس الإذن على القائمة بعد
+  // استقرارها بالدور، لا على قائمة سماح مستقلة تنحرف عنها لاحقاً (بندا 28/29: ظهور عنصر
+  // في قائمة العرض لا يعني أن الحارس يسمح، والعكس). الشرط الفعلي هو زرّ القسم نفسه:
+  // غائب أو مخفيّ ⇒ لا تبديل إطلاقاً، فيبقى المستخدم على اللوحة الافتراضية بصمت.
+  // القراءة من عنوان الصفحة الثابتة (frontend/) لا من قالب doGet: الرابط الذي يبنيه
+  // teacher/_Tenant.js::getMyPlatformLinksProtected يشير إلى /teacher/index.html عبر
+  // الوسيط، فالمعامل حاضر في window.location.search فعلياً.
+  try {
+    var _dlQs = new URLSearchParams(window.location.search);
+    var _dlOpen = (_dlQs.get('open') || '').trim();
+    // قائمة سماح صريحة: أي قيمة أخرى تُتجاهَل بصمت — لا نمرّر نصّاً حرّاً إلى showSection.
+    var _DL_ALLOWED = { financial: 'si-financial' };
+    if (_dlOpen && _DL_ALLOWED.hasOwnProperty(_dlOpen)) {
+      var _dlBtn = document.getElementById(_DL_ALLOWED[_dlOpen]);
+      if (_dlBtn && _dlBtn.style.display !== 'none') showSection(_dlOpen);
+    }
+  } catch (eDl) {}
+
   // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
   try { _prMaybeNudge(); } catch (ePr) {}
 
