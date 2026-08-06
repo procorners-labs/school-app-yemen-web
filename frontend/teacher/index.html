@@ -4096,7 +4096,9 @@ function callServer(fnName, params, a3, a4, a5, a6) {
       }
     })
     .withFailureHandler(function(err) {
-      console.error('[callServer] ' + fnName + ' failed:', err);
+      // نداءات best-effort (كالنبضة) فشلها المتوقَّع وقت الذروة ليس حدثاً يستحق
+      // console.error — كان أول ما يراه المالك في الكونسول فيُقرأ كعطل (بلاغ 2026-08-06).
+      if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' failed:', err);
       if (cacheKey) {
         var queue = _pendingCalls[cacheKey] || [];
         delete _pendingCalls[cacheKey];
@@ -4124,20 +4126,46 @@ function callServer(fnName, params, a3, a4, a5, a6) {
 // عمود "مدة الاستخدام" التراكمي بالخادم (teacherHeartbeatProtected). لا نداء عند
 // الإغلاق (sendBeacon غير عملي هنا لأن google.script.run ليس رابطاً مباشراً قابلاً
 // للاستخدام مع sendBeacon) — فقدان آخر دقائق نادرة عند الإغلاق المفاجئ مقبول.
+//
+// دوال best-effort لا يُطبع فشلها في الكونسول (قياس 2026-08-06: النبضة فشلت 218/543
+// وقت الذروة — عرَض حمل معروف لا عطل، وطباعته كانت مصدر بلاغ «فشل الاتصال 502»).
+var CS_QUIET_FNS = { teacherHeartbeatProtected: 1 };
 var _hbTimerStarted = false;
 function _startHeartbeat() {
   if (_hbTimerStarted) return;
   _hbTimerStarted = true;
   var _lastBeatAt = 0;
+  /* ★ تراجع تكيّفي (2026-08-06): فشل النبضة المتتالي = ذروة على حصّة الثلاثين —
+     الإصرار على إيقاع 3 دقائق وقتها يزيد الضغط على الجذر نفسه. النجاح يعيد الإيقاع
+     الأساسي فوراً. سلسلة setTimeout ذاتية الجدولة بدل setInterval كي يتحكم كل ردّ
+     بموعد النبضة التالية. */
+  var _HB_BASE_MS = 3 * 60 * 1000;
+  var _HB_MAX_MS  = 12 * 60 * 1000;
+  var _hbDelayMs  = _HB_BASE_MS;
+  var _hbTimer    = null;
+  function _scheduleNextBeat() {
+    if (_hbTimer) { try { clearTimeout(_hbTimer); } catch (e) {} }
+    _hbTimer = setTimeout(beat, _hbDelayMs);
+  }
   function beat() {
-    if (document.visibilityState !== 'visible') return;
-    if (!App.user || !App.user.token) return;
+    if (document.visibilityState !== 'visible') { _scheduleNextBeat(); return; }
+    if (!App.user || !App.user.token) { _scheduleNextBeat(); return; }
     _lastBeatAt = Date.now();
-    callServer('teacherHeartbeatProtected', {}, function(){}, function(){});
-    // إشعار فوري (لا ينتظر إعادة تحميل الصفحة) — يستفيد من نفس نبضة الـheartbeat القائمة
-    // بدل مؤقّت جديد منفصل (تفادي زيادة عدد النداءات المتزامنة على حصّة الـ30 تنفيذاً، راجع
-    // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
-    try { loadNotifCountsBundle(); } catch (e) {}
+    // رمي متزامن (لن يقع نظرياً) يجب ألا يقتل سلسلة الجدولة — فخّ بند 78-أ.
+    try {
+      callServer('teacherHeartbeatProtected', {}, function () {
+        _hbDelayMs = _HB_BASE_MS;
+        // إشعار فوري — عند **نجاح** النبضة فقط: نبضة فاشلة كانت تكلف نداءين خادميَّين
+        // (النبضة + العدّادات) في اللحظة التي تكون فيها الحصّة مستنفدة أصلاً.
+        try { loadNotifCountsBundle(); } catch (e) {}
+        _scheduleNextBeat();
+      }, function () {
+        _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
+        _scheduleNextBeat();
+      });
+    } catch (eBeat) {
+      _scheduleNextBeat();
+    }
   }
   /* ★ خنق نبضة العودة للتبويب: كانت كل عودة تُطلق `beat()` فوراً بلا أي حدّ، و`beat()`
      يُطلق **نداءين** خادميَّين — فتبديل التبويبات المتكرّر يُنتج رشقات على حصّة
@@ -4148,7 +4176,6 @@ function _startHeartbeat() {
     if (Date.now() - _lastBeatAt < _BEAT_MIN_GAP_MS) return;
     beat();
   }
-  setInterval(beat, 3 * 60 * 1000);
   document.addEventListener('visibilitychange', _beatOnVisible);
   // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات bootApp() (أخبار/تعميمات/
   // ملاحظات/FCM) التي تُطلَق في نفس اللفة مباشرة بعد _startHeartbeat() — تزامن عدّة XHR على نفس
