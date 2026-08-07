@@ -1,0 +1,493 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════
+     مكتبة أخبار وأنشطة المدارس — الصفحة العامّة لكل المنشورات.
+     المصدر **ورقة «الاخبار» بملف منصّة المعلمين** (‏`getHomePageBundle(schoolId,'library')`)
+     — لا CMS (تعليمات مالك صريحة 2026-08-07).
+     نداء واحد لكل فتح صفحة؛ **كل** التصفية عميلية على تلك الحمولة (بند 88: العلاج خفض عدد
+     التنفيذات لا تسريعها).
+     ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>مكتبة الأخبار والأنشطة | Yemen Schoolz</title>
+<meta name="description" content="مكتبة أخبار وأنشطة مدارس منصّة يمن سكولز — صور وفيديوهات ومنشورات كل مدرسة، مصنّفة بالصف والشعبة."/>
+<meta name="application-name" content="Yemen Schoolz"/>
+<meta property="og:site_name" content="Yemen Schoolz"/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="مكتبة الأخبار والأنشطة | Yemen Schoolz"/>
+<meta property="og:description" content="صور وفيديوهات ومنشورات المدارس، مصنّفة بالصف والشعبة."/>
+<meta property="og:image" content="https://yemenschoolz.com/assets/icon-192.png"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://yemenschoolz.com/assets/icon-192.png"/>
+<!-- 🔴 `noindex` عمداً: الصفحة تعرض **نفس** منشورات صفحات المدارس المفهرَسة أصلاً، ففهرستها
+     تُنتج محتوى مكرَّراً ينافس هوية الجذر — نفس درس بندَي 68/75. الرابط المُشارَك يعمل تماماً
+     (‏`follow` يمرّر ثقل الروابط)، والزاحف يصل للمحتوى من صفحة المدرسة نفسها. -->
+<meta name="robots" content="noindex, follow"/>
+<link rel="icon" href="/assets/favicon-32.png" sizes="32x32"/>
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="preconnect" href="https://lh3.googleusercontent.com"/>
+
+<style>
+  /* لوحة الألوان مطابقة لـ`home/Index.html` — التوكنات نفسها بالأسماء نفسها كي تبقى
+     صفحة المكتبة جزءاً من نفس الهوية البصرية، وتقبل إعادة ضبط لون المدرسة بلا تعديل CSS. */
+  :root{
+    --cobalt:#0F5C8C; --cobalt-v:#0b476d; --teal:#1dbfa6;
+    --ink:#0f172a; --txt:#334155; --soft:#64748b;
+    --bg:#f6f9fc; --card:#ffffff; --border:#e2e8f0; --border2:#cbd5e1;
+    --g-cobalt:linear-gradient(135deg,#0F5C8C 0%,#0b476d 100%);
+    --g-brand:linear-gradient(135deg,#0F5C8C 0%,#1dbfa6 100%);
+    --glow-cobalt:0 10px 30px rgba(15,92,140,.18);
+    --r:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;overscroll-behavior-y:contain}
+  body{
+    font-family:"Segoe UI",Tahoma,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg); color:var(--txt); direction:rtl; line-height:1.7;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+  a{color:inherit;text-decoration:none}
+
+  /* ── الترويسة ── */
+  .lb-head{background:var(--g-cobalt);color:#fff;padding:26px 0 22px;box-shadow:var(--glow-cobalt)}
+  .lb-head .wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .lb-logo{width:52px;height:52px;border-radius:14px;background:#fff;object-fit:contain;padding:5px;flex:0 0 auto}
+  .lb-ttl{font-size:1.32rem;font-weight:800;margin:0}
+  .lb-sub{font-size:.9rem;opacity:.92;margin:2px 0 0}
+  .lb-back{margin-inline-start:auto;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.32);
+    color:#fff;border-radius:999px;padding:9px 16px;font-size:.9rem;font-weight:700;cursor:pointer}
+  .lb-back:hover{background:rgba(255,255,255,.26)}
+
+  /* ── أشرطة الفلاتر ── */
+  .lb-filters{background:var(--card);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:20;padding:12px 0 4px}
+  .lb-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .lb-lbl{font-size:.8rem;color:var(--soft);font-weight:700;min-width:52px}
+  .chip{border:1px solid var(--border2);background:#fff;color:var(--txt);border-radius:999px;
+    padding:7px 14px;font-size:.86rem;font-weight:700;cursor:pointer;font-family:inherit;
+    transition:background .15s,color .15s,border-color .15s}
+  .chip:hover{border-color:var(--cobalt)}
+  .chip.on{background:var(--g-cobalt);color:#fff;border-color:transparent}
+  .chip .n{opacity:.68;font-size:.78rem;margin-inline-start:5px;font-variant-numeric:tabular-nums}
+  .lb-search{flex:1 1 220px;min-width:180px;border:1px solid var(--border2);border-radius:999px;
+    padding:9px 16px;font-size:.9rem;font-family:inherit;color:var(--txt);background:#fff}
+  .lb-search:focus{outline:2px solid var(--cobalt);outline-offset:1px}
+
+  /* ── الشبكة ── */
+  .lb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:16px;padding:20px 0}
+  .nc{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;
+    display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(15,23,42,.05)}
+  .nc.hl{outline:3px solid var(--teal);outline-offset:2px}
+  .nc-media{position:relative;aspect-ratio:16/10;background:#0b1220;overflow:hidden}
+  .nc-media img{width:100%;height:100%;object-fit:cover;display:block}
+  .nc-badge{position:absolute;inset-block-start:8px;inset-inline-start:8px;background:rgba(15,23,42,.78);
+    color:#fff;border-radius:999px;padding:3px 10px;font-size:.75rem;font-weight:700}
+  .nc-body{padding:13px 15px 15px;display:flex;flex-direction:column;gap:7px;flex:1}
+  .nc-ttl{font-weight:800;color:var(--ink);font-size:1rem;margin:0;line-height:1.45}
+  .nc-txt{font-size:.88rem;color:var(--txt);margin:0;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .nc-meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:auto;padding-top:8px;
+    font-size:.78rem;color:var(--soft)}
+  .nc-tag{background:#eef4f9;border-radius:999px;padding:2px 9px;font-weight:700;color:var(--cobalt-v)}
+  .lb-more{display:block;margin:6px auto 34px;background:var(--g-brand);color:#fff;border:0;
+    border-radius:999px;padding:12px 30px;font-size:.95rem;font-weight:800;cursor:pointer;font-family:inherit}
+  .lb-state{text-align:center;color:var(--soft);padding:52px 16px;font-size:.98rem}
+
+  /* ── كتلة التسويق + النافذة (للزائر العام حصراً) ── */
+  .promo{background:var(--g-brand);color:#fff;border-radius:var(--r);padding:26px 22px;margin:8px 0 26px}
+  .promo h2{margin:0 0 6px;font-size:1.24rem;font-weight:800}
+  .promo p{margin:0 0 14px;opacity:.95;font-size:.95rem}
+  .promo ul{margin:0 0 16px;padding-inline-start:20px;display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:5px 18px}
+  .promo li{font-size:.9rem}
+  .promo .cta{display:inline-block;background:#fff;color:var(--cobalt-v);border-radius:999px;
+    padding:11px 26px;font-weight:800;font-size:.95rem}
+  .pop{position:fixed;inset:0;background:rgba(8,15,30,.62);display:none;align-items:center;
+    justify-content:center;z-index:60;padding:18px}
+  .pop.on{display:flex}
+  .pop-box{background:var(--card);border-radius:20px;max-width:430px;width:100%;padding:26px 22px;
+    text-align:center;box-shadow:0 24px 60px rgba(8,15,30,.4)}
+  .pop-box h3{margin:0 0 8px;color:var(--ink);font-size:1.16rem;font-weight:800}
+  .pop-box p{margin:0 0 18px;color:var(--txt);font-size:.93rem}
+  .pop-act{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+  .pop-act .cta{background:var(--g-cobalt);color:#fff;border-radius:999px;padding:11px 24px;
+    font-weight:800;font-size:.92rem;border:0;cursor:pointer;font-family:inherit}
+  .pop-act .gh{background:transparent;color:var(--soft);border:1px solid var(--border2);
+    border-radius:999px;padding:11px 20px;font-weight:700;font-size:.92rem;cursor:pointer;font-family:inherit}
+
+  @media (max-width:560px){
+    .lb-ttl{font-size:1.08rem}
+    .lb-grid{grid-template-columns:1fr;gap:13px}
+    .lb-lbl{min-width:100%}
+  }
+</style>
+
+<header class="lb-head">
+<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->
+<meta name="google-site-verification" content="fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc" />
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-06QS5PMS6F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-06QS5PMS6F');
+</script>
+<!-- ▲▲ نهاية وسم Google ▲▲ -->
+<!-- ▼▼ حُقِن آلياً: هوية الموقع ▼▼ -->
+<meta name="apple-mobile-web-app-title" content="يمن سكولز" />
+<!-- ▲▲ نهاية هوية الموقع ▲▲ -->
+<!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
+<link rel="manifest" href="/manifest.webmanifest">
+<script>
+  (function(){
+    var qs = new URLSearchParams(window.location.search);
+    window.GAS_ENDPOINT = '/gas/home';
+    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
+  })();
+</script>
+<!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
+<script src="../assets/offline-db.js"></script>
+<script src="../assets/offline-sync.js"></script>
+<script src="../assets/gas-bridge.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function(){});
+    });
+  }
+</script>
+<!-- حارس الإقلاع: إن تجمّدت الشبكة ولم يكتمل التحميل خلال 15s، أظهِر زرّ
+     إعادة المحاولة بدل شاشة بيضاء لا نهائية (بلا أي اعتماد خارجي).
+     يُحتسب اكتمال DOM (وليس load الكامل) نجاحاً — الصور البطيئة تؤخّر load
+     على شبكات 2G/3G فكان الإنذار يظهر فوق تطبيقٍ يعمل («الشبكة محجوبة» الكاذبة). -->
+<script>
+  (function(){
+    var SHOWN=false;
+    function dismiss(){clearTimeout(TID);var x=document.getElementById("__bootfail");if(x)x.parentNode.removeChild(x);}
+    var TID=setTimeout(function(){
+      if(SHOWN||!document.body||document.getElementById("__bootfail"))return;
+      if(document.readyState!=="loading")return;
+      SHOWN=true;
+      var d=document.createElement("div");d.id="__bootfail";
+      d.setAttribute("style","position:fixed;inset:0;z-index:2147483647;background:#0b1930;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,system-ui,sans-serif;text-align:center;padding:24px");
+      d.innerHTML='<div style="font-size:46px">📡</div><div style="font-size:18px;font-weight:700;margin:12px 0">تعذّر تحميل التطبيق</div><div style="opacity:.85;max-width:330px;line-height:1.8">يبدو أن الاتصال بطيء أو محجوب على هذه الشبكة. جرّب إعادة المحاولة أو شبكة أخرى.</div><button onclick="location.reload()" style="margin-top:18px;background:#1a5ec7;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:15px;cursor:pointer">🔄 إعادة المحاولة</button>';
+      document.body.appendChild(d);
+    },25000);
+    document.addEventListener("DOMContentLoaded",dismiss);
+    window.addEventListener("load",dismiss);
+  })();
+</script>
+<!-- ▲▲ نهاية الحقن ▲▲ -->
+
+  <div class="wrap">
+    <img id="lbLogo" class="lb-logo" alt="" hidden/>
+    <div>
+      <h1 class="lb-ttl" id="lbTitle">مكتبة الأخبار والأنشطة</h1>
+      <p class="lb-sub" id="lbSub">جارٍ التحميل…</p>
+    </div>
+    <button class="lb-back" id="lbBack" type="button">← صفحة المدرسة</button>
+  </div>
+</header>
+
+<div class="lb-filters">
+  <div class="wrap">
+    <div class="lb-row"><span class="lb-lbl">النوع</span><span id="fType"></span>
+      <input class="lb-search" id="fSearch" type="search" placeholder="ابحث في المنشورات…" aria-label="بحث"/></div>
+    <div class="lb-row"><span class="lb-lbl">الصف</span><span id="fGrade"></span></div>
+    <div class="lb-row" id="rowSection" hidden><span class="lb-lbl">الشعبة</span><span id="fSection"></span></div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section id="promo" class="promo" hidden>
+    <h2>منصّة يمن سكولز — مدرستك بالكامل على الإنترنت</h2>
+    <p>نظام متكامل يربط الإدارة والمعلّم وولي الأمر في مكان واحد.</p>
+    <ul>
+      <li>✅ درجات وحضور لحظية لولي الأمر</li>
+      <li>✅ جدول حصص وتوزيع تلقائي</li>
+      <li>✅ أخبار وأنشطة بصور وفيديو</li>
+      <li>✅ متابعة مالية وسندات قبض</li>
+      <li>✅ شهادات وتقارير جاهزة للطباعة</li>
+      <li>✅ تطبيق أندرويد وإشعارات فورية</li>
+    </ul>
+    <a class="cta" href="/pricing">اعرف الأسعار والخدمات ←</a>
+  </section>
+
+  <div id="lbGrid" class="lb-grid"></div>
+  <div id="lbState" class="lb-state">جارٍ تحميل المنشورات…</div>
+  <button id="lbMore" class="lb-more" type="button" hidden>عرض المزيد</button>
+</main>
+
+<div class="pop" id="pop" role="dialog" aria-modal="true" aria-labelledby="popTtl">
+  <div class="pop-box">
+    <h3 id="popTtl">🎓 مدرستك تستحق منصّة كاملة</h3>
+    <p>يمن سكولز تُدير الدرجات والحضور والجدول والمالية والأخبار — بتطبيق أندرويد وإشعارات لولي الأمر.</p>
+    <div class="pop-act">
+      <a class="cta" href="/pricing">استعرض الخدمات</a>
+      <button class="gh" id="popNo" type="button">لاحقاً</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ سياق الفتح — قبل أي عرض ═══
+   سياقان لا ثلاثة: **داخل تطبيق** مقابل **متصفّح**.
+   القياس ألغى الحاجة لتمييز التطبيقين: كلاهما يحمل `wv` و`SchoolAppYemen` حرفياً (‏«يمن
+   سكولز» نُسخة من الأصل ولم يُغيَّر وسمه)، لكن الوجهة الموحَّدة تحمل `?school=<المعرّف>`
+   فتعرض **مدرسة الخبر الصحيحة في كلا التطبيقين** — فالتمييز بلا أثر سلوكي.
+   🔴 وفرعٌ بلا أثر أسوأ من غيابه: يوحي بتغطية لا توجد ويمرّ فوقه أي حارس (بند 88-ب).
+   متى يلزم الوسم فعلاً: إن أُريد لاحقاً سلوكٌ **مختلف** لكل تطبيق (شاشة اختيار مدرسة
+   بمتعدّد المدارس مثلاً) ⇒ يُضاف `YemenSchoolz/1.0` **إضافةً** لوسم الأصل كي تبقى كل
+   فحوص `/SchoolAppYemen/` القائمة عاملة. مسجَّل كمتابعة، لا يُنفَّذ بلا حاجة مقيسة. */
+function _lbCtx(){
+  var ua = '';
+  try{ ua = String(navigator.userAgent || ''); }catch(e){}
+  return (/SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua)) ? 'app' : 'web';
+}
+function _lbQ(k){
+  try{
+    var m = new RegExp('[?&]' + k + '=([^&]*)').exec(location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : '';
+  }catch(e){ return ''; }
+}
+/* 🔴 التوجيه **قبل** أي جلب بيانات: نداء GAS ثم إعادة توجيه = تنفيذ مُهدَر على حصّة
+   الثلاثين لكل فتح رابط داخل تطبيق (بند 88). */
+(function(){
+  var ctx = _lbCtx();
+  if(ctx === 'web') return;
+  var school = _lbQ('school'), news = _lbQ('news'), t = _lbQ('t');
+  if(!news) return;                       // بلا خبر محدَّد: المكتبة نفسها هي المقصودة
+  var qs = '?news=' + encodeURIComponent(news) +
+           (school ? '&school=' + encodeURIComponent(school) : '') +
+           (t ? '&t=' + encodeURIComponent(t) : '');
+  /* 🔴 الوجهة `newsarticle.html` لا `index.html`: الأخيرة تُعيد توجيه أي `?news=` إلى
+     صفحة المقال أصلاً (‏`home/Index.html`، إعادة توجيه قائمة منذ إصلاح الروابط المُشارَكة)
+     ⇒ استهدافها كان يُنتج **قفزتين** بلا فائدة. وصفحة المقال هي سياق المدرسة الحقيقي:
+     تعرض الخبر المحدَّد فعلياً بما فيه الموجَّه لصفّ عبر التوكن، وصارت متعدّدة المستأجرين
+     بعد جعل `getSharedNewsFull` تحلّ المستأجر (PR#931). */
+  location.replace('/home/newsarticle.html' + qs);
+})();
+
+/* ═══ حالة الصفحة ═══ */
+var LB = { all:[], view:[], type:'all', grade:'all', section:'all', q:'', shown:0, focus:'' };
+var LB_PAGE = 24;
+
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function $(id){ return document.getElementById(id); }
+
+/* مخزن متدرّج — `localStorage` يرمي فعلياً داخل متصفّحات التطبيقات، وهي المسار الطبيعي
+   لروابط الأخبار المُشارَكة (نفس نمط `_pubStorage` بالصفحة العامة). */
+var _lbMem = {};
+function _lbStore(k, v){
+  if(v === undefined){
+    try{ return localStorage.getItem(k); }catch(e){}
+    try{ return sessionStorage.getItem(k); }catch(e){}
+    return _lbMem[k] || null;
+  }
+  try{ localStorage.setItem(k, v); return; }catch(e){}
+  try{ sessionStorage.setItem(k, v); return; }catch(e){}
+  _lbMem[k] = v;
+}
+
+/* ═══ التصفية — دالّة **نقيّة** تُستخرَج ويُشغَّلها الاختبار السلوكي ═══ */
+function _lbFilter(items, f){
+  var out = [], i, it, q = (f.q || '').trim().toLowerCase();
+  for(i = 0; i < (items || []).length; i++){
+    it = items[i]; if(!it) continue;
+    if(f.type !== 'all' && it.kind !== f.type) continue;
+    /* «عام» فئة صريحة لا غياب: خبرٌ بلا صفّ يجب أن يكون قابلاً للعثور عليه، لا أن
+       يختفي بين الفلاتر (بند 80-أ: «غياب بنيوي» ≠ «لا بيانات»). */
+    if(f.grade === 'general'){ if(it.scoped) continue; }
+    else if(f.grade !== 'all'){ if(it.grade !== f.grade) continue; }
+    if(f.section !== 'all' && f.grade !== 'all' && f.grade !== 'general'){
+      if(it.section !== f.section) continue;
+    }
+    if(q){
+      var hay = ((it.title || '') + ' ' + (it.content || '') + ' ' + (it.teacher || '')).toLowerCase();
+      if(hay.indexOf(q) === -1) continue;
+    }
+    out.push(it);
+  }
+  return out;
+}
+/* الشُّعب المتاحة **لصفّ بعينه** — مشتقّة من الحمولة لا من قائمة ثابتة، فلا تظهر شعبة
+   بلا منشور ولا تختفي شعبة موجودة. */
+function _lbSectionsOf(items, grade){
+  var seen = {}, out = [], i;
+  for(i = 0; i < (items || []).length; i++){
+    var it = items[i];
+    if(!it || !it.scoped || it.grade !== grade) continue;
+    var s = it.section || '';
+    if(!s || seen[s]) continue;
+    seen[s] = 1; out.push(s);
+  }
+  return out.sort();
+}
+function _lbGradesOf(items){
+  var seen = {}, out = [], i;
+  for(i = 0; i < (items || []).length; i++){
+    var it = items[i];
+    if(!it || !it.scoped) continue;
+    var g = it.grade || '';
+    if(!g || seen[g]) continue;
+    seen[g] = 1; out.push(g);
+  }
+  return out.sort();
+}
+
+/* ═══ العرض ═══ */
+function _lbChip(label, val, active, count){
+  return '<button class="chip' + (active ? ' on' : '') + '" data-v="' + esc(val) + '" type="button">' +
+    esc(label) + (count === undefined ? '' : '<span class="n">' + count + '</span>') + '</button>';
+}
+function _lbCount(f){ return _lbFilter(LB.all, f).length; }
+
+function renderFilters(){
+  var base = { type:LB.type, grade:LB.grade, section:LB.section, q:LB.q };
+  function withKey(k, v){
+    var c = { type:base.type, grade:base.grade, section:base.section, q:base.q };
+    c[k] = v; if(k === 'grade') c.section = 'all';
+    return c;
+  }
+  var types = [['all','الكل'],['image','🖼️ صور'],['video','🎬 فيديو'],['text','📝 نصّية']], h = '', i;
+  for(i = 0; i < types.length; i++){
+    h += _lbChip(types[i][1], types[i][0], LB.type === types[i][0], _lbCount(withKey('type', types[i][0])));
+  }
+  $('fType').innerHTML = h;
+
+  var grades = _lbGradesOf(LB.all);
+  h = _lbChip('الكل', 'all', LB.grade === 'all', _lbCount(withKey('grade','all')));
+  h += _lbChip('عام', 'general', LB.grade === 'general', _lbCount(withKey('grade','general')));
+  for(i = 0; i < grades.length; i++){
+    h += _lbChip(grades[i], grades[i], LB.grade === grades[i], _lbCount(withKey('grade', grades[i])));
+  }
+  $('fGrade').innerHTML = h;
+
+  var secs = (LB.grade !== 'all' && LB.grade !== 'general') ? _lbSectionsOf(LB.all, LB.grade) : [];
+  if(secs.length){
+    h = _lbChip('كل الشعب', 'all', LB.section === 'all');
+    for(i = 0; i < secs.length; i++){
+      var c = { type:base.type, grade:base.grade, section:secs[i], q:base.q };
+      h += _lbChip(secs[i], secs[i], LB.section === secs[i], _lbCount(c));
+    }
+    $('fSection').innerHTML = h;
+    $('rowSection').hidden = false;
+  } else {
+    $('rowSection').hidden = true;
+  }
+}
+
+function _lbCard(it){
+  var media = '';
+  if(it.kind === 'image' && it.imageUrls && it.imageUrls.length){
+    media = '<div class="nc-media"><img loading="lazy" src="' + esc(it.imageUrls[0]) +
+            '" alt=""/><span class="nc-badge">🖼️ صورة</span></div>';
+  } else if(it.kind === 'video'){
+    media = '<div class="nc-media"><span class="nc-badge">🎬 فيديو</span></div>';
+  }
+  var tags = '';
+  if(it.scoped && it.grade){
+    tags += '<span class="nc-tag">' + esc(it.grade) + (it.section ? ' — ' + esc(it.section) : '') + '</span>';
+  } else {
+    tags += '<span class="nc-tag">عام</span>';
+  }
+  if(it.teacher) tags += '<span>' + esc(it.teacher) + '</span>';
+  if(it.date)    tags += '<span>' + esc(it.date) + '</span>';
+  return '<article class="nc' + (LB.focus && String(it.id) === LB.focus ? ' hl' : '') +
+    '" id="nc_' + esc(it.id) + '">' + media +
+    '<div class="nc-body"><h2 class="nc-ttl">' + esc(it.title) + '</h2>' +
+    '<p class="nc-txt">' + esc(it.content) + '</p>' +
+    '<div class="nc-meta">' + tags + '</div></div></article>';
+}
+
+function renderGrid(reset){
+  if(reset) LB.shown = 0;
+  LB.view = _lbFilter(LB.all, { type:LB.type, grade:LB.grade, section:LB.section, q:LB.q });
+  if(!LB.view.length){
+    $('lbGrid').innerHTML = '';
+    $('lbState').textContent = 'لا توجد منشورات مطابقة لهذه الفلاتر.';
+    $('lbState').hidden = false;
+    $('lbMore').hidden = true;
+    return;
+  }
+  $('lbState').hidden = true;
+  LB.shown = Math.min(LB.view.length, (LB.shown || 0) + LB_PAGE);
+  var h = '', i;
+  for(i = 0; i < LB.shown; i++) h += _lbCard(LB.view[i]);
+  $('lbGrid').innerHTML = h;
+  $('lbMore').hidden = LB.shown >= LB.view.length;
+  $('lbMore').textContent = 'عرض المزيد (' + (LB.view.length - LB.shown) + ')';
+}
+
+function _lbApply(reset){ renderFilters(); renderGrid(reset !== false); }
+
+/* ═══ الإقلاع ═══ */
+function _lbSchoolId(){
+  var s = _lbQ('school');
+  if(s) return s;
+  try{ if(window.SCHOOL_ID) return String(window.SCHOOL_ID); }catch(e){}
+  return '';
+}
+var LB_TYPES = { all:1, image:1, video:1, text:1 };
+function lbBoot(){
+  LB.focus = _lbQ('news');
+  // فلتر ابتدائي من الرابط — زرّ «مكتبة أنشطة المدرسة» يفتح على الصور مباشرةً.
+  // 🔴 قائمة سماح لا قيمة خام: `?type=` مُدخَل زائر، وإسناده بلا فحص يُنتج فلتراً لا
+  // يطابق أي عنصر ⇒ صفحة فارغة بلا سبب ظاهر (فئة بند 80-أ).
+  var t0 = _lbQ('type');
+  if(t0 && LB_TYPES[t0] === 1) LB.type = t0;
+  var sid = _lbSchoolId();
+  $('lbBack').onclick = function(){ location.href = sid ? ('/' + encodeURIComponent(sid)) : '/home/index.html'; };
+
+  // التسويق للزائر العام حصراً — مستخدم التطبيق عميلٌ أصلاً (وقد وُجِّه بعيداً قبل هنا).
+  if(_lbCtx() === 'web'){
+    $('promo').hidden = false;
+    if(!_lbStore('lb_promo_seen')){
+      setTimeout(function(){ $('pop').className = 'pop on'; _lbStore('lb_promo_seen', '1'); }, 6000);
+    }
+  }
+  $('popNo').onclick = function(){ $('pop').className = 'pop'; };
+
+  google.script.run
+    .withSuccessHandler(function(b){
+      if(!b || b.ok !== true){
+        $('lbState').textContent = 'تعذّر تحميل المنشورات — تحقّق من الرابط أو أعد المحاولة.';
+        return;
+      }
+      LB.all = b.news || [];
+      if(b.brand){
+        if(b.brand.name){ $('lbTitle').textContent = 'مكتبة ' + b.brand.name; document.title = 'مكتبة ' + b.brand.name + ' | Yemen Schoolz'; }
+        if(b.brand.logo){ $('lbLogo').src = b.brand.logo; $('lbLogo').hidden = false; }
+      }
+      $('lbSub').textContent = LB.all.length + ' منشوراً — صور وفيديوهات وأخبار';
+      _lbApply(true);
+      if(LB.focus){
+        var el = document.getElementById('nc_' + LB.focus);
+        if(el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+      }
+    })
+    .withFailureHandler(function(){
+      $('lbState').textContent = 'تعذّر الاتصال — تحقّق من الشبكة وأعد المحاولة.';
+    })
+    .getHomePageBundle(_lbSchoolId(), 'library');
+}
+
+document.addEventListener('click', function(e){
+  var b = e.target.closest ? e.target.closest('.chip') : null;
+  if(!b) return;
+  var host = b.parentNode.id, v = b.getAttribute('data-v');
+  if(host === 'fType')    LB.type = v;
+  if(host === 'fGrade'){  LB.grade = v; LB.section = 'all'; }
+  if(host === 'fSection') LB.section = v;
+  _lbApply(true);
+});
+$('fSearch').addEventListener('input', function(){ LB.q = this.value; _lbApply(true); });
+$('lbMore').addEventListener('click', function(){ renderGrid(false); });
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', lbBoot);
+else lbBoot();
+</script>

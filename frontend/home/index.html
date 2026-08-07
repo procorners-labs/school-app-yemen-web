@@ -1391,6 +1391,17 @@ img,video,iframe{max-width:100%;display:block}
     <div class="cg" id="dynamicNewsGrid">
       <div class="st-loading"><div class="ld-ring"></div><div class="ld-txt">جاري تحميل الأخبار…</div></div>
     </div>
+    <!-- مدخلا المكتبة: الصفحة تعرض ٦ بطاقات من كل المنشورات، وهذه وجهة البقيّة —
+         بالصفّ والشعبة والنوع. الرابط يُبنى بـ`_homeLibraryUrl()` من المعرّف النشِط،
+         فيعمل تلقائياً على صفحة **كل** مدرسة لأن الملف واحد. -->
+    <div class="reveal" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:26px">
+      <a id="lbNewsLink" class="btn btn-primary" href="/home/news.html">
+        <i class="fas fa-book-open"></i> مكتبة أخبار المدرسة
+      </a>
+      <a id="lbActsLink" class="btn btn-ghost" href="/home/news.html?type=image">
+        <i class="fas fa-photo-film"></i> مكتبة أنشطة المدرسة
+      </a>
+    </div>
   </div>
 </section>
 
@@ -2485,6 +2496,24 @@ var HOME_NEWS_CARDS_MAX = 6;
  * لا يُحذف: متصفّح بصفحة مخبَّأة ينادي الشكل القديم ساعات بعد النشر (فخّ بند 9).
  */
 /**
+ * رابط المكتبة للمدرسة النشِطة. يُبنى من `_homeActiveSchoolId()` **لا** من `location`:
+ * الصفحة تُخدَم على ثلاثة مسارات (`/home/index.html` · `/<slug>` · `/exec`)، فاشتقاق
+ * المعرّف من المسار وحده كان يُسقِطه على اثنين منها.
+ * 🔴 مسار مطلق `/home/news.html`: نسبيٌّ يتكسّر على `/<slug>` (يحلّ إلى `/news.html`).
+ */
+function _homeLibraryUrl(extra){
+  var sid = _homeActiveSchoolId();
+  var q = sid ? ('?school=' + encodeURIComponent(sid)) : '';
+  if(extra) q += (q ? '&' : '?') + extra;
+  return '/home/news.html' + q;
+}
+function _homeWireLibraryLinks(){
+  var a = document.getElementById('lbNewsLink'), b = document.getElementById('lbActsLink');
+  if(a) a.href = _homeLibraryUrl('');
+  if(b) b.href = _homeLibraryUrl('type=image');
+}
+
+/**
  * يعزل خطوة عرض واحدة: استثناء في إحداها لا يُسقِط ما بعدها.
  * 🔴 **لا يستدعي `loadSplitData()`** — البيانات وصلت صحيحةً وفشلت *خطوة عرض* فقط؛ التراجع
  * هنا كان سيدهس محتوى المدرسة الصحيح ببيانات CMS القديمة (أسوأ من القسم المفقود).
@@ -2520,6 +2549,7 @@ function loadHomeBundle(){
         _homeSafeApply('hero',    function(){ _homeApplyHeroSlides(b); });
         _homeSafeApply('theme',   function(){ _homeApplyBrandTheme(b); });
         _homeSafeApply('reviews', function(){ _homeRenderReviews(b.reviews || []); });
+        _homeSafeApply('library', function(){ _homeWireLibraryLinks(); });
         if(b.brand && b.brand.logo) window._homeLogo = b.brand.logo;
         if(window.applySchoolSeo && b.brand) _homeSafeApply('seo', function(){
           var m={},k; for(k in window.SCHOOL_PROFILE) m[k]=window.SCHOOL_PROFILE[k];
