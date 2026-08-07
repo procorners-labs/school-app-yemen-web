@@ -1118,6 +1118,12 @@ img,video,iframe{max-width:100%;display:block}
         <span><i class="fab fa-whatsapp"></i> <span id="tbWa">775189922</span></span>
       </div>
       <div class="tb-socials">
+        <!-- رابط بوّابة المنصّة — يظهر لصفحة **مدرسة** فقط، لا على الجذر الافتراضي.
+             يُفعَّله `_homeWirePlatformLink()` بعد حلّ المستأجر؛ يبقى مخفيّاً بلا JS.
+             🔴 مسار مطلق `/` لا نسبي: النسبي يتكسّر على `/‌<slug>` (نفس درس `_homeLibraryUrl`). -->
+        <a id="tbPlatform" href="/" hidden
+           style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:3px 12px;font-weight:700;font-size:.82rem;margin-inline-end:8px"
+           aria-label="الذهاب إلى الصفحة الرئيسية لمنصّة يمن سكولز"><i class="fas fa-home"></i> الصفحة الرئيسية</a>
         <a id="tbFb" href="https://www.facebook.com/abdaawatmuaz.school" target="_blank" rel="noopener" aria-label="فيسبوك"><i class="fab fa-facebook-f"></i></a>
         <a id="tbIg" href="https://www.instagram.com/albdaawatmuazschool" target="_blank" rel="noopener" aria-label="إنستغرام"><i class="fab fa-instagram"></i></a>
         <a id="tbYt" href="https://youtube.com/@albdaawatmuazschool" target="_blank" rel="noopener" aria-label="يوتيوب"><i class="fab fa-youtube"></i></a>
@@ -2514,6 +2520,18 @@ function _homeWireLibraryLinks(){
 }
 
 /**
+ * رابط بوّابة المنصّة — يظهر على صفحة **مدرسة** ولا يظهر على الجذر الافتراضي.
+ * 🔴 المعيار `isOwner` من الخادم لا `_homeActiveSchoolId()`: الأخير غير فارغ أيضاً حين
+ * يفتح المالكُ صفحتَه بـ`?school=<معرّفه>` أو بـslugها — وهي **نفس** مدرسة الجذر، فيظهر
+ * زرٌّ يقود الزائر إلى حيث هو (بند 99: الفارغ = المالك، فالمعرّف وحده لا يميّز الحالتين).
+ */
+function _homeWirePlatformLink(b){
+  var el = document.getElementById('tbPlatform');
+  if(!el) return;
+  el.hidden = !!(b && b.isOwner === true);
+}
+
+/**
  * يعزل خطوة عرض واحدة: استثناء في إحداها لا يُسقِط ما بعدها.
  * 🔴 **لا يستدعي `loadSplitData()`** — البيانات وصلت صحيحةً وفشلت *خطوة عرض* فقط؛ التراجع
  * هنا كان سيدهس محتوى المدرسة الصحيح ببيانات CMS القديمة (أسوأ من القسم المفقود).
@@ -2549,7 +2567,8 @@ function loadHomeBundle(){
         _homeSafeApply('hero',    function(){ _homeApplyHeroSlides(b); });
         _homeSafeApply('theme',   function(){ _homeApplyBrandTheme(b); });
         _homeSafeApply('reviews', function(){ _homeRenderReviews(b.reviews || []); });
-        _homeSafeApply('library', function(){ _homeWireLibraryLinks(); });
+        _homeSafeApply('library',  function(){ _homeWireLibraryLinks(); });
+        _homeSafeApply('platform', function(){ _homeWirePlatformLink(b); });
         if(b.brand && b.brand.logo) window._homeLogo = b.brand.logo;
         if(window.applySchoolSeo && b.brand) _homeSafeApply('seo', function(){
           var m={},k; for(k in window.SCHOOL_PROFILE) m[k]=window.SCHOOL_PROFILE[k];
