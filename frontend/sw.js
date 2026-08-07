@@ -20,7 +20,7 @@
    إلى ما لا نهاية عملياً — وكل نداء منها تنفيذ GAS كامل من حصّة «٣٠ تنفيذاً متزامناً».
    معالج `activate` أدناه يحذف كل كاش لا يطابق هذه السلسلة، و`skipWaiting()` يُفعّله فوراً
    ⇒ تغيير السلسلة وحده يُجبر إعادة الجلب. **لا تُرجِعها إلى v5.** */
-var CACHE = 'creativity-shell-v6';
+var CACHE = 'creativity-shell-v7';
 
 // مهلة قصوى لانتظار الشبكة قبل الرجوع للكاش (يمنع «الشاشة البيضاء» على
 // الشبكات التي تتجمّد دون أن تفشل — الاتصال يبقى معلّقاً بلا رد).
@@ -50,7 +50,7 @@ var PRECACHE = [
   '/assets/offline-db.js',
   '/assets/offline-sync.js',
   '/home/index.html',
-  '/home-all-school/index.html',
+  '/home/schools.html',
   '/student/index.html',
   '/teacher/index.html',
   '/cms/index.html',
