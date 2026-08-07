@@ -563,15 +563,20 @@ export default {
     // القديمة أحادية الهوية (assets/index.html)، التي تبقى موجودة وتعمل عند طلبها صراحة عبر
     // /index.html، فقط لم تعد الافتراضي عند الجذر. راجع _build/gen-sitemap.js في school-app-yemen-gas.
     if (path === '/' || path === '') path = '/home-all-school/index.html';
-    // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته لصفحة home-all-school العامة —
-    // فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة (تطبيقات GAS السبعة + المسارات الخاصة
-    // الأخرى) فلا يتعارض مع أي مسار قائم. لا نداء GAS للتحقّق من وجود المدرسة هنا — slug غير حقيقي
-    // يُرجِع خطأً واضحاً من _schoolRowById خادمياً، لا عطلاً بالـWorker.
-    // ⚠️ لا حقن ?school= هنا (كان بلا فائدة): هذا يُغيِّر فقط رابط الجلب الداخلي من GitHub Pages —
-    // عنوان المتصفّح الفعلي (location.search) يبقى فارغاً كما طلبه الزائر، فلا يصل أي شيء لكود
-    // العميل عبره. الحلّ الصحيح: `home-all-school/Index.html` (school-app-yemen-gas) تقرأ
-    // location.pathname مباشرة كاحتياط — يبقى بلا تغيير هنا بصرف النظر عن هذا المسار.
-    if (_schoolSlugFromPath(path)) path = '/home-all-school/index.html';
+    // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته إلى **`/home/index.html`**
+    // منذ 2026-08-07 (بند 104) — بدل `home-all-school`. السبب: قرار مالك بأن تكون صفحة كل
+    // مدرسة **نفس تصميم `/home/index.html` بالضبط**، والمطابقة الحقيقية أن يخدمهما ملف واحد
+    // لا أن يُصان تصميمان متطابقان يدوياً. `home` صار متعدّد المستأجرين بالكامل
+    // (‏`getHomePageBundle` + مسار المشاركة/OG) في school-app-yemen-gas #916→#931.
+    // فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة فلا يتعارض مع أي مسار قائم. لا نداء
+    // GAS للتحقّق من وجود المدرسة هنا — slug غير حقيقي يُرجِع `not_found` خادمياً لا عطلاً.
+    // ⚠️ لا حقن ?school= في المسار (كان بلا فائدة): إعادة الكتابة تخصّ الجلب الداخلي من
+    // GitHub Pages فقط؛ `location.search` بالمتصفّح يبقى كما طلبه الزائر. لذلك
+    // `home/Index.html::__hasPathSlug()` تقرأ `location.pathname` مباشرةً.
+    // 🔴 لكن حقن OG أدناه **يحتاج** المعرّف صراحةً — فيُلتقَط هنا **قبل** إعادة الكتابة،
+    // وإلّا صار `?school=` فارغاً بعدها فتُعرَض معاينة مدرسة المالك لكل مدرسة.
+    var _pathSlug = _schoolSlugFromPath(path);
+    if (_pathSlug) path = '/home/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;
     var ghResp = await fetch(ghUrl, {
       headers: { 'User-Agent': 'cf-worker-proxy', 'Accept': request.headers.get('Accept') || '*/*' },
@@ -631,7 +636,10 @@ export default {
           method: 'POST',
           signal: _ogAbort.signal,
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, url.searchParams.get('school') || '', url.searchParams.get('t') || ''] })
+          // 🔴 `_pathSlug` أولاً ثم `?school=`: على صفحة مدرسة (`/‌<slug>?news=…`) لا وجود
+        // لـ`?school=` إطلاقاً، فالاكتفاء به كان يُمرِّر فراغاً = **مدرسة المالك** (بند 99)
+        // ⇒ معاينة واتساب لكل مدرسة تعرض خبر الإبداع. التُقِط قبل إعادة كتابة المسار أعلاه.
+        body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, _pathSlug || url.searchParams.get('school') || '', url.searchParams.get('t') || ''] })
         });
         clearTimeout(_ogTimer);
         var _ogJson = await _ogRes.json();
