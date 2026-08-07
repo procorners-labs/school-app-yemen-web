@@ -1,0 +1,280 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════
+     بوّابة المدارس — قائمة كل المدارس المفعّلة على منصّة يمن سكولز.
+     المصدر `listPartnerSchoolsPublic()` (‏`home/_PublicPage.js`) — نُقلت إلى `home` بـ#933،
+     وهي وحدها التي تُرجِع حقل `slug` (نسخة `home-all-school` لا تُرجِعه).
+     نداء واحد لكل فتح صفحة؛ **كل** التصفية عميلية (بند 88: خفض عدد التنفيذات).
+
+     🔴 هذه الصفحة **لا تُبدِّل الجذر**. الجذر `/` يبقى على `home-all-school/Index.html` كما
+     هو — توجيه الـWorker في مستودع منفصل (`C:\Users\osama\SchoolApp`) وخارج نطاق هذا العمل
+     بقرار مالك. التحقّق هنا على `/home/schools.html` مباشرةً.
+     ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>مدارس المنصّة | Yemen Schoolz</title>
+<meta name="description" content="دليل مدارس منصّة يمن سكولز — كل مدرسة بصفحتها العامّة: الأخبار والأنشطة وبيانات التواصل."/>
+<meta name="application-name" content="Yemen Schoolz"/>
+<meta property="og:site_name" content="Yemen Schoolz"/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="مدارس المنصّة | Yemen Schoolz"/>
+<meta property="og:description" content="دليل مدارس منصّة يمن سكولز — كل مدرسة بصفحتها العامّة."/>
+<meta property="og:image" content="https://yemenschoolz.com/assets/icon-192.png"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://yemenschoolz.com/assets/icon-192.png"/>
+<!-- 🔴 `noindex` عمداً **ما دامت ليست الجذر**: الجذر `/` يخدم اليوم قائمة المدارس نفسها
+     وهو المفهرَس بأولوية 1.0. فهرسة نسخة ثانية من نفس القائمة تُنتج كياناً منافساً لهوية
+     الجذر — وهو حرفياً ما كلّف رفضَي OAuth Branding ببندَي 68/75. متى بُدِّل توجيه الجذر
+     إلى هذه الصفحة، تُصبح هي الجذر فترث فهرسته ويُراجَع هذا السطر في نفس الـPR. -->
+<meta name="robots" content="noindex, follow"/>
+<link rel="icon" href="/assets/favicon-32.png" sizes="32x32"/>
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="preconnect" href="https://lh3.googleusercontent.com"/>
+
+<style>
+  /* لوحة الألوان مطابقة لـ`home/Index.html` و`home/News.html` — التوكنات نفسها بالأسماء
+     نفسها، فلا يحتاج أي سطح جديد إعادة تعريف. */
+  :root{
+    --cobalt:#0F5C8C; --cobalt-v:#0b476d; --teal:#1dbfa6;
+    --ink:#0f172a; --txt:#334155; --soft:#64748b;
+    --bg:#f6f9fc; --card:#ffffff; --border:#e2e8f0; --border2:#cbd5e1;
+    --g-cobalt:linear-gradient(135deg,#0F5C8C 0%,#0b476d 100%);
+    --g-brand:linear-gradient(135deg,#0F5C8C 0%,#1dbfa6 100%);
+    --glow-cobalt:0 10px 30px rgba(15,92,140,.18);
+    --r:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:'Cairo',system-ui,-apple-system,'Segoe UI',sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+
+  .sp-head{background:var(--g-cobalt);color:#fff;padding:26px 0 22px;box-shadow:var(--glow-cobalt)}
+  .sp-head .wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .sp-logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:5px;object-fit:contain}
+  .sp-ttl{font-size:1.32rem;font-weight:800;margin:0}
+  .sp-sub{font-size:.9rem;opacity:.92;margin:2px 0 0}
+
+  .sp-bar{background:var(--card);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:20;padding:12px 0}
+  .sp-search{width:100%;border:1px solid var(--border2);border-radius:999px;
+    padding:10px 18px;font-size:.92rem;font-family:inherit;color:var(--txt);background:#fff}
+  .sp-search:focus{outline:2px solid var(--cobalt);outline-offset:1px}
+
+  .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px;padding:22px 0 34px}
+  .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--r);
+    padding:18px;display:flex;flex-direction:column;gap:11px;
+    box-shadow:0 2px 10px rgba(15,23,42,.05);text-decoration:none;color:inherit;
+    transition:box-shadow .15s,border-color .15s,translate .15s}
+  .sc:hover{border-color:var(--cobalt);box-shadow:var(--glow-cobalt);translate:0 -2px}
+  .sc-top{display:flex;align-items:center;gap:12px}
+  .sc-logo{width:54px;height:54px;border-radius:13px;object-fit:contain;background:#f1f5f9;
+    padding:4px;flex:0 0 auto}
+  .sc-ph{width:54px;height:54px;border-radius:13px;background:var(--g-brand);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:1.32rem;font-weight:800;flex:0 0 auto}
+  .sc-nm{font-weight:800;color:var(--ink);font-size:1.02rem;margin:0;line-height:1.4}
+  .sc-addr{font-size:.83rem;color:var(--soft);margin:3px 0 0}
+  .sc-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--soft);
+    margin-top:auto;padding-top:6px;align-items:center}
+  .sc-chip{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;color:var(--cobalt-v)}
+  .sc-go{margin-inline-start:auto;color:var(--cobalt);font-weight:800}
+
+  .sp-state{text-align:center;color:var(--soft);padding:56px 16px;font-size:.98rem}
+  .sp-empty{max-width:430px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:9px}
+  .sp-empty-ic{font-size:2.6rem;line-height:1}
+  .sp-empty-ttl{font-size:1.06rem;font-weight:800;color:var(--ink);margin:0}
+  .sp-empty-sub{font-size:.9rem;color:var(--soft);margin:0;line-height:1.75}
+  .sp-empty-btn{margin-top:5px;background:var(--g-cobalt);color:#fff;border:0;border-radius:999px;
+    padding:10px 24px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit}
+
+  @media (max-width:560px){
+    .sp-ttl{font-size:1.08rem}
+    .sp-grid{grid-template-columns:1fr;gap:13px}
+  }
+</style>
+
+<header class="sp-head">
+<!-- ▼▼ حُقِن آلياً: وسم Google (GA4) + إثبات ملكية Search Console ▼▼ -->
+<meta name="google-site-verification" content="fjhRDb9pvQoo43UDBQ67zdYlTADcSdyabBmD6i_xUXc" />
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-06QS5PMS6F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-06QS5PMS6F');
+</script>
+<!-- ▲▲ نهاية وسم Google ▲▲ -->
+<!-- ▼▼ حُقِن آلياً: هوية الموقع ▼▼ -->
+<meta name="apple-mobile-web-app-title" content="يمن سكولز" />
+<!-- ▲▲ نهاية هوية الموقع ▲▲ -->
+<!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
+<link rel="manifest" href="/manifest.webmanifest">
+<script>
+  (function(){
+    var qs = new URLSearchParams(window.location.search);
+    window.GAS_ENDPOINT = '/gas/home';
+    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
+  })();
+</script>
+<!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
+<script src="../assets/offline-db.js"></script>
+<script src="../assets/offline-sync.js"></script>
+<script src="../assets/gas-bridge.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function(){});
+    });
+  }
+</script>
+<!-- حارس الإقلاع: إن تجمّدت الشبكة ولم يكتمل التحميل خلال 15s، أظهِر زرّ
+     إعادة المحاولة بدل شاشة بيضاء لا نهائية (بلا أي اعتماد خارجي).
+     يُحتسب اكتمال DOM (وليس load الكامل) نجاحاً — الصور البطيئة تؤخّر load
+     على شبكات 2G/3G فكان الإنذار يظهر فوق تطبيقٍ يعمل («الشبكة محجوبة» الكاذبة). -->
+<script>
+  (function(){
+    var SHOWN=false;
+    function dismiss(){clearTimeout(TID);var x=document.getElementById("__bootfail");if(x)x.parentNode.removeChild(x);}
+    var TID=setTimeout(function(){
+      if(SHOWN||!document.body||document.getElementById("__bootfail"))return;
+      if(document.readyState!=="loading")return;
+      SHOWN=true;
+      var d=document.createElement("div");d.id="__bootfail";
+      d.setAttribute("style","position:fixed;inset:0;z-index:2147483647;background:#0b1930;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Tahoma,system-ui,sans-serif;text-align:center;padding:24px");
+      d.innerHTML='<div style="font-size:46px">📡</div><div style="font-size:18px;font-weight:700;margin:12px 0">تعذّر تحميل التطبيق</div><div style="opacity:.85;max-width:330px;line-height:1.8">يبدو أن الاتصال بطيء أو محجوب على هذه الشبكة. جرّب إعادة المحاولة أو شبكة أخرى.</div><button onclick="location.reload()" style="margin-top:18px;background:#1a5ec7;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:15px;cursor:pointer">🔄 إعادة المحاولة</button>';
+      document.body.appendChild(d);
+    },25000);
+    document.addEventListener("DOMContentLoaded",dismiss);
+    window.addEventListener("load",dismiss);
+  })();
+</script>
+<!-- ▲▲ نهاية الحقن ▲▲ -->
+
+  <div class="wrap">
+    <img class="sp-logo" src="/assets/yemenschoolz-mark.png" alt=""/>
+    <div>
+      <h1 class="sp-ttl">مدارس منصّة يمن سكولز</h1>
+      <p class="sp-sub" id="spSub">جارٍ التحميل…</p>
+    </div>
+  </div>
+</header>
+
+<div class="sp-bar">
+  <div class="wrap">
+    <input class="sp-search" id="spSearch" type="search"
+           placeholder="ابحث باسم المدرسة أو المدينة…" aria-label="بحث عن مدرسة"/>
+  </div>
+</div>
+
+<main class="wrap">
+  <div id="spGrid" class="sp-grid"></div>
+  <div id="spState" class="sp-state">جارٍ تحميل المدارس…</div>
+</main>
+
+<script>
+var SP = { all: [], q: '' };
+
+function spEsc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function spEl(id){ return document.getElementById(id); }
+
+/**
+ * رابط صفحة المدرسة. دالّة **نقيّة** — الـslug يُفضَّل لأنه المسار العام المفهرَس،
+ * والمعرّف تراجعٌ لمدرسة لم يُضبَط slugها بعد (وقعت فعلاً بالبيانات الحيّة).
+ * 🔴 مسار **مطلق** لا نسبي: الصفحة قد تُخدَم لاحقاً على الجذر، والنسبي يتكسّر هناك.
+ */
+function _spSchoolHref(s){
+  if(!s) return '/';
+  var slug = String(s.slug || '').trim();
+  if(slug) return '/' + encodeURIComponent(slug);
+  var sid = String(s.schoolId || '').trim();
+  return sid ? '/home/index.html?school=' + encodeURIComponent(sid) : '/';
+}
+
+/** تصفية نقيّة بالاسم والعنوان — تُستخرَج ويُشغّلها الاختبار السلوكي. */
+function _spFilter(list, q){
+  var needle = String(q == null ? '' : q).trim().toLowerCase();
+  if(!needle) return (list || []).slice();
+  var out = [], i;
+  for(i = 0; i < (list || []).length; i++){
+    var s = list[i]; if(!s) continue;
+    var hay = ((s.name || '') + ' ' + (s.address || '')).toLowerCase();
+    if(hay.indexOf(needle) !== -1) out.push(s);
+  }
+  return out;
+}
+
+function _spCard(s){
+  var nm = String(s.name || '').trim();
+  var logo = String(s.logo || '').trim();
+  var head = logo
+    ? '<img class="sc-logo" loading="lazy" src="' + spEsc(logo) + '" alt=""/>'
+    : '<div class="sc-ph">' + spEsc(nm.charAt(0) || '؟') + '</div>';
+  var meta = '';
+  if(s.address) meta += '<span class="sc-chip">' + spEsc(s.address) + '</span>';
+  if(s.phone)   meta += '<span>' + spEsc(s.phone) + '</span>';
+  return '<a class="sc" href="' + spEsc(_spSchoolHref(s)) + '">' +
+    '<div class="sc-top">' + head +
+      '<div><h2 class="sc-nm">' + spEsc(nm) + '</h2>' +
+      (s.address ? '<p class="sc-addr">' + spEsc(s.address) + '</p>' : '') + '</div>' +
+    '</div>' +
+    '<div class="sc-meta">' + meta + '<span class="sc-go">عرض الصفحة ←</span></div>' +
+    '</a>';
+}
+
+/* حالة الفراغ تفصل السببين كما بالمكتبة (بند 80-أ): «لا مدارس مفعّلة» غيابٌ بنيويّ بلا
+   زرّ مسح، و«لا نتيجة للبحث» فلترٌ ضيّق يُتاح مسحه. */
+function _spEmptyHtml(){
+  if(!SP.all.length){
+    return '<div class="sp-empty"><div class="sp-empty-ic">🏫</div>' +
+      '<p class="sp-empty-ttl">لا توجد مدارس مفعّلة حالياً</p>' +
+      '<p class="sp-empty-sub">لم تُفعَّل أي مدرسة على المنصّة بعد.</p></div>';
+  }
+  return '<div class="sp-empty"><div class="sp-empty-ic">🔍</div>' +
+    '<p class="sp-empty-ttl">لا توجد مدرسة بهذا الاسم</p>' +
+    '<p class="sp-empty-sub">المنصّة تضمّ ' + SP.all.length + ' مدرسة — امسح البحث لعرضها كلّها.</p>' +
+    '<button class="sp-empty-btn" id="spClear" type="button">مسح البحث</button></div>';
+}
+
+function spRender(){
+  var view = _spFilter(SP.all, SP.q);
+  if(!view.length){
+    spEl('spGrid').innerHTML = '';
+    spEl('spState').innerHTML = _spEmptyHtml();
+    spEl('spState').hidden = false;
+    return;
+  }
+  spEl('spState').hidden = true;
+  var h = '', i;
+  for(i = 0; i < view.length; i++) h += _spCard(view[i]);
+  spEl('spGrid').innerHTML = h;
+}
+
+function spBoot(){
+  google.script.run
+    .withSuccessHandler(function(r){
+      if(!r || r.success !== true){
+        spEl('spState').textContent = 'تعذّر تحميل قائمة المدارس — أعد المحاولة.';
+        return;
+      }
+      SP.all = r.schools || [];
+      spEl('spSub').textContent = SP.all.length + ' مدرسة على المنصّة';
+      spRender();
+    })
+    .withFailureHandler(function(){
+      spEl('spState').textContent = 'تعذّر الاتصال — تحقّق من الشبكة وأعد المحاولة.';
+    })
+    .listPartnerSchoolsPublic();
+}
+
+document.addEventListener('click', function(e){
+  if(e.target.closest && e.target.closest('#spClear')){
+    SP.q = ''; spEl('spSearch').value = ''; spRender();
+  }
+});
+spEl('spSearch').addEventListener('input', function(){ SP.q = this.value; spRender(); });
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', spBoot);
+else spBoot();
+</script>
