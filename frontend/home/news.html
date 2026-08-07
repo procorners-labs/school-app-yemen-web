@@ -60,16 +60,28 @@
 
   /* ── أشرطة الفلاتر ── */
   .lb-filters{background:var(--card);border-bottom:1px solid var(--border);
-    position:sticky;top:0;z-index:20;padding:12px 0 4px}
-  .lb-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
-  .lb-lbl{font-size:.8rem;color:var(--soft);font-weight:700;min-width:52px}
-  .chip{border:1px solid var(--border2);background:#fff;color:var(--txt);border-radius:999px;
+    position:sticky;top:0;z-index:20;padding:10px 0 2px}
+  .lb-row{display:flex;gap:8px;align-items:center;margin-bottom:7px;min-width:0}
+  .lb-lbl{font-size:.8rem;color:var(--soft);font-weight:700;min-width:52px;flex:0 0 auto}
+  /* شريط رقائق يُمرَّر أفقياً بدل أن يلتفّ: الالتفاف كان يدفع الشبكة تحت الطيّة كلّما
+     كثرت الصفوف/الشُّعب (والشريط لاصق، فارتفاعه يُقتطع من كل تمريرة). النمط منقول من
+     `.tf-tabs` بلوحة المعلّم — نفس المستودع، nowrap + scroll-snap + flex:0 0 auto. */
+  .lb-track{display:flex;gap:8px;align-items:center;flex:1 1 auto;min-width:0;
+    flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    scroll-snap-type:x proximity;scroll-padding-inline-start:4px;padding-bottom:4px;
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
+  .lb-track::-webkit-scrollbar{height:5px}
+  .lb-track::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+  .lb-track::-webkit-scrollbar-track{background:transparent}
+  .chip{flex:0 0 auto;white-space:nowrap;scroll-snap-align:start;
+    border:1px solid var(--border2);background:#fff;color:var(--txt);border-radius:999px;
     padding:7px 14px;font-size:.86rem;font-weight:700;cursor:pointer;font-family:inherit;
+    -webkit-tap-highlight-color:transparent;
     transition:background .15s,color .15s,border-color .15s}
   .chip:hover{border-color:var(--cobalt)}
   .chip.on{background:var(--g-cobalt);color:#fff;border-color:transparent}
   .chip .n{opacity:.68;font-size:.78rem;margin-inline-start:5px;font-variant-numeric:tabular-nums}
-  .lb-search{flex:1 1 220px;min-width:180px;border:1px solid var(--border2);border-radius:999px;
+  .lb-search{width:100%;border:1px solid var(--border2);border-radius:999px;
     padding:9px 16px;font-size:.9rem;font-family:inherit;color:var(--txt);background:#fff}
   .lb-search:focus{outline:2px solid var(--cobalt);outline-offset:1px}
 
@@ -92,6 +104,15 @@
   .lb-more{display:block;margin:6px auto 34px;background:var(--g-brand);color:#fff;border:0;
     border-radius:999px;padding:12px 30px;font-size:.95rem;font-weight:800;cursor:pointer;font-family:inherit}
   .lb-state{text-align:center;color:var(--soft);padding:52px 16px;font-size:.98rem}
+  /* حالة الفراغ: تفصل «لا منشورات بعد» (غياب بنيوي) عن «لا نتائج لهذا الاختيار»
+     (فلتر ضيّق) — الاختفاء الصامت بلا سبب يُقرأ كضياع بيانات (بند 80-أ). */
+  .lb-empty{max-width:430px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:9px}
+  .lb-empty-ic{font-size:2.6rem;line-height:1}
+  .lb-empty-ttl{font-size:1.06rem;font-weight:800;color:var(--ink);margin:0}
+  .lb-empty-sub{font-size:.9rem;color:var(--soft);margin:0;line-height:1.75}
+  .lb-empty-sub b{color:var(--cobalt-v);font-weight:800}
+  .lb-empty-btn{margin-top:5px;background:var(--g-cobalt);color:#fff;border:0;border-radius:999px;
+    padding:10px 24px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit}
 
   /* ── كتلة التسويق + النافذة (للزائر العام حصراً) ── */
   .promo{background:var(--g-brand);color:#fff;border-radius:var(--r);padding:26px 22px;margin:8px 0 26px}
@@ -118,7 +139,10 @@
   @media (max-width:560px){
     .lb-ttl{font-size:1.08rem}
     .lb-grid{grid-template-columns:1fr;gap:13px}
-    .lb-lbl{min-width:100%}
+    /* لا `min-width:100%` بعد الآن: كانت تدفع كل تسمية لسطر مستقلّ فيتضخّم الشريط
+       اللاصق إلى ستة أسطر على الجوال. التمرير الأفقي يُغني عنها. */
+    .lb-lbl{min-width:42px;font-size:.76rem}
+    .chip{padding:6px 12px;font-size:.82rem}
   }
 </style>
 
@@ -191,10 +215,10 @@
 
 <div class="lb-filters">
   <div class="wrap">
-    <div class="lb-row"><span class="lb-lbl">النوع</span><span id="fType"></span>
-      <input class="lb-search" id="fSearch" type="search" placeholder="ابحث في المنشورات…" aria-label="بحث"/></div>
-    <div class="lb-row"><span class="lb-lbl">الصف</span><span id="fGrade"></span></div>
-    <div class="lb-row" id="rowSection" hidden><span class="lb-lbl">الشعبة</span><span id="fSection"></span></div>
+    <div class="lb-row"><input class="lb-search" id="fSearch" type="search" placeholder="ابحث في المنشورات…" aria-label="بحث"/></div>
+    <div class="lb-row"><span class="lb-lbl">النوع</span><span class="lb-track" id="fType"></span></div>
+    <div class="lb-row"><span class="lb-lbl">الصف</span><span class="lb-track" id="fGrade"></span></div>
+    <div class="lb-row" id="rowSection" hidden><span class="lb-lbl">الشعبة</span><span class="lb-track" id="fSection"></span></div>
   </div>
 </div>
 
@@ -369,7 +393,9 @@ function renderFilters(){
 
   var secs = (LB.grade !== 'all' && LB.grade !== 'general') ? _lbSectionsOf(LB.all, LB.grade) : [];
   if(secs.length){
-    h = _lbChip('كل الشعب', 'all', LB.section === 'all');
+    /* عدّاد «كل الشعب» كان غائباً وحده بين كل الرقائق — فيقرأ كزرّ من نوع آخر. */
+    h = _lbChip('كل الشعب', 'all', LB.section === 'all',
+                _lbCount({ type:base.type, grade:base.grade, section:'all', q:base.q }));
     for(i = 0; i < secs.length; i++){
       var c = { type:base.type, grade:base.grade, section:secs[i], q:base.q };
       h += _lbChip(secs[i], secs[i], LB.section === secs[i], _lbCount(c));
@@ -404,12 +430,49 @@ function _lbCard(it){
     '<div class="nc-meta">' + tags + '</div></div></article>';
 }
 
+/* وصف الفلاتر النشطة نصّياً — دالّة **نقيّة** تقرأ `LB` وتُرجِع مصفوفة عناوين. */
+function _lbActiveFilters(){
+  var out = [], types = { image:'صور', video:'فيديو', text:'نصّية' };
+  if(LB.type !== 'all')  out.push('النوع: ' + (types[LB.type] || LB.type));
+  if(LB.grade === 'general')  out.push('الصف: عام');
+  else if(LB.grade !== 'all') out.push('الصف: ' + LB.grade);
+  if(LB.section !== 'all' && LB.grade !== 'all' && LB.grade !== 'general'){
+    out.push('الشعبة: ' + LB.section);
+  }
+  if((LB.q || '').trim()) out.push('البحث: «' + LB.q.trim() + '»');
+  return out;
+}
+
+/* حالة الفراغ: **مصدران مختلفان لنفس الشاشة الفارغة**، ولكلٍّ رسالته وإجراؤه.
+   `LB.all.length === 0` غيابٌ بنيويّ (المدرسة لم تنشر شيئاً) ⇒ لا زرّ مسح، فمسح
+   الفلاتر لن يُظهر شيئاً. غير ذلك فلترٌ ضيّق ⇒ اذكر الفلاتر النشطة وأتِح مسحها. */
+function _lbEmptyHtml(){
+  if(!LB.all.length){
+    return '<div class="lb-empty"><div class="lb-empty-ic">📭</div>' +
+      '<p class="lb-empty-ttl">لا توجد منشورات بعد</p>' +
+      '<p class="lb-empty-sub">لم تُنشَر أي أخبار أو أنشطة على هذه المكتبة حتى الآن.</p></div>';
+  }
+  var f = _lbActiveFilters(), chips = '', i;
+  for(i = 0; i < f.length; i++) chips += (i ? ' · ' : '') + '<b>' + esc(f[i]) + '</b>';
+  return '<div class="lb-empty"><div class="lb-empty-ic">🔍</div>' +
+    '<p class="lb-empty-ttl">لا توجد نتائج لهذا الاختيار</p>' +
+    '<p class="lb-empty-sub">' + (chips ? chips + '<br/>' : '') +
+    'المكتبة تحوي ' + LB.all.length + ' منشوراً — وسِّع الفلاتر للعثور عليها.</p>' +
+    '<button class="lb-empty-btn" id="lbClearF" type="button">مسح كل الفلاتر</button></div>';
+}
+
+function _lbClearFilters(){
+  LB.type = 'all'; LB.grade = 'all'; LB.section = 'all'; LB.q = '';
+  $('fSearch').value = '';
+  _lbApply(true);
+}
+
 function renderGrid(reset){
   if(reset) LB.shown = 0;
   LB.view = _lbFilter(LB.all, { type:LB.type, grade:LB.grade, section:LB.section, q:LB.q });
   if(!LB.view.length){
     $('lbGrid').innerHTML = '';
-    $('lbState').textContent = 'لا توجد منشورات مطابقة لهذه الفلاتر.';
+    $('lbState').innerHTML = _lbEmptyHtml();
     $('lbState').hidden = false;
     $('lbMore').hidden = true;
     return;
@@ -477,6 +540,8 @@ function lbBoot(){
 }
 
 document.addEventListener('click', function(e){
+  /* زرّ المسح مُحقَن بـinnerHTML عند كل رسم ⇒ التفويض على المستند لا مستمع مباشر. */
+  if(e.target.closest && e.target.closest('#lbClearF')){ _lbClearFilters(); return; }
   var b = e.target.closest ? e.target.closest('.chip') : null;
   if(!b) return;
   var host = b.parentNode.id, v = b.getAttribute('data-v');
