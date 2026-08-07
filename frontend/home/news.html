@@ -317,6 +317,79 @@ function _lbStore(k, v){
   _lbMem[k] = v;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   تفكيك نطاق الخبر — القياس الحيّ فرض هذا كلّه (660 منشوراً، مدرسة الإبداع)
+   ─────────────────────────────────────────────────────────────────────
+   ورقة «الاخبار» تخزّن نطاقاً **متعدّداً** بنصّ واحد، بفاصلين مختلفين:
+     الفصل  : 'الخامس؛السادس'      · 'الأول؛الثاني؛…؛الثامن'   (فاصل ؛)
+     الشعبة : 'أ،ب،ج'              (فاصل ، داخل الصفّ الواحد)
+              'أ،ب،ج؛ج'            (فاصل ؛ بين مجموعات الصفوف)
+   والاقتران **موضعيّ**: مجموعة الشعب رقم i تخصّ الصفّ رقم i — مؤكَّد على البيانات
+   الحيّة ('الثالث؛…؛الثامن' ستّة صفوف مع 'أ،ب؛أ،ب،ج؛أ،ب؛أ،ب؛أ،ب؛ب' ستّ مجموعات).
+
+   قبل هذا كان النصّ المركَّب يُعامَل **قيمةً واحدة**: رقاقة اسمها «الخامس؛السادس»،
+   وخبرٌ لصفّين لا يظهر عند الضغط على أيٍّ منهما — أي فلترة معطوبة صامتة لا رسالة لها.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ترتيب مدرسيّ لا أبجديّ: `.sort()` كان يضع «الثالث ثانوي» قبل «الأول». */
+var LB_GRADE_ORDER = ['KG1','KG2','الأول','الثاني','الثالث','الرابع','الخامس','السادس',
+                      'السابع','الثامن','التاسع','الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
+/* قيَم «كل الصفوف» — تُسقَط من قائمة الرقائق لأنها ليست صفّاً (يمثّلها فلتر «عام»). */
+var LB_ALL_GRADES  = { '':1, 'الجميع':1, 'جميع الفصول':1, 'عام':1, 'الكل':1, 'جميع الصفوف':1 };
+/* قيَم «كل الشعب» — تعني «الخبر يخصّ كل شعب هذا الصفّ» لا شعبةً باسم كذلك. */
+var LB_ALL_SECS    = { '':1, 'جميع الشعب':1, 'الجميع':1, 'كل الشعب':1, 'الكل':1 };
+
+function _lbSplitList(s, sep){
+  var parts = String(s == null ? '' : s).split(sep), out = [], i, p;
+  for(i = 0; i < parts.length; i++){
+    p = parts[i].replace(/\s+/g, ' ').trim();
+    if(p) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * نطاق الخبر مفكَّكاً: `{ grades:[…], secByGrade:{ صفّ:[شُعب] } }`.
+ * دالّة **نقيّة**، ونتيجتها تُخزَّن على العنصر (`it._sc`) فلا تُعاد الحسبة لكل رقاقة.
+ * شعبة فارغة/«جميع الشعب» ⇒ مصفوفة فارغة = «كل شعب هذا الصفّ» (لا شعبة باسم فارغ).
+ */
+function _lbScope(it){
+  if(!it) return { grades:[], secByGrade:{} };
+  if(it._sc) return it._sc;
+  var gAll = _lbSplitList(it.grade, /[؛;]/);
+  var grades = [], i;
+  for(i = 0; i < gAll.length; i++){ if(!LB_ALL_GRADES[gAll[i]]) grades.push(gAll[i]); }
+
+  var groups = _lbSplitList(it.section, /[؛;]/);
+  var secByGrade = {};
+  for(i = 0; i < grades.length; i++){
+    /* اقتران موضعيّ عند تطابق العدد؛ ومجموعةٌ واحدة تُطبَّق على كل الصفوف.
+       أي شكل آخر (عدد لا يطابق ولا يساوي واحداً) ⇒ اتحاد كل الشعب لكل صفّ —
+       تراجعٌ **متساهل** عمداً: إسقاط الشعبة يُبقي الخبر ظاهراً تحت صفّه، بينما
+       اقتران خاطئ يُخفيه تحت شعبة لا يخصّها (نفس منطق fail-open ببقيّة الملف). */
+    var raw = (groups.length === grades.length) ? groups[i]
+            : (groups.length === 1)             ? groups[0]
+            : groups.join('،');
+    var secs = _lbSplitList(raw, /[،,]/), keep = [], k;
+    for(k = 0; k < secs.length; k++){ if(!LB_ALL_SECS[secs[k]]) keep.push(secs[k]); }
+    secByGrade[grades[i]] = keep;
+  }
+  it._sc = { grades: grades, secByGrade: secByGrade };
+  return it._sc;
+}
+
+/** هل الخبر يخصّ هذا الصفّ؟ (عضوية في المجموعة لا مطابقة نصّ مركَّب) */
+function _lbHasGrade(it, grade){
+  var g = _lbScope(it).grades, i;
+  for(i = 0; i < g.length; i++){ if(g[i] === grade) return true; }
+  return false;
+}
+
+/** شُعب الخبر **ضمن صفّ بعينه**؛ الفراغ = كل شعب ذلك الصفّ. */
+function _lbSecsOfItem(it, grade){
+  return _lbScope(it).secByGrade[grade] || [];
+}
+
 /* ═══ التصفية — دالّة **نقيّة** تُستخرَج ويُشغَّلها الاختبار السلوكي ═══ */
 function _lbFilter(items, f){
   var out = [], i, it, q = (f.q || '').trim().toLowerCase();
@@ -326,9 +399,12 @@ function _lbFilter(items, f){
     /* «عام» فئة صريحة لا غياب: خبرٌ بلا صفّ يجب أن يكون قابلاً للعثور عليه، لا أن
        يختفي بين الفلاتر (بند 80-أ: «غياب بنيوي» ≠ «لا بيانات»). */
     if(f.grade === 'general'){ if(it.scoped) continue; }
-    else if(f.grade !== 'all'){ if(it.grade !== f.grade) continue; }
+    else if(f.grade !== 'all'){ if(!_lbHasGrade(it, f.grade)) continue; }
     if(f.section !== 'all' && f.grade !== 'all' && f.grade !== 'general'){
-      if(it.section !== f.section) continue;
+      /* شُعب الخبر **ضمن الصفّ المختار** حصراً. والفراغ = «كل شعب هذا الصفّ»
+         ⇒ يُطابِق أي شعبة مختارة، فلا يختفي خبرٌ عامٌّ للصفّ عند تضييق الشعبة. */
+      var secs = _lbSecsOfItem(it, f.grade);
+      if(secs.length && secs.indexOf(f.section) === -1) continue;
     }
     if(q){
       var hay = ((it.title || '') + ' ' + (it.content || '') + ' ' + (it.teacher || '')).toLowerCase();
@@ -341,26 +417,37 @@ function _lbFilter(items, f){
 /* الشُّعب المتاحة **لصفّ بعينه** — مشتقّة من الحمولة لا من قائمة ثابتة، فلا تظهر شعبة
    بلا منشور ولا تختفي شعبة موجودة. */
 function _lbSectionsOf(items, grade){
-  var seen = {}, out = [], i;
+  var seen = {}, out = [], i, k;
   for(i = 0; i < (items || []).length; i++){
     var it = items[i];
-    if(!it || !it.scoped || it.grade !== grade) continue;
-    var s = it.section || '';
-    if(!s || seen[s]) continue;
-    seen[s] = 1; out.push(s);
+    if(!it || !it.scoped || !_lbHasGrade(it, grade)) continue;
+    var secs = _lbSecsOfItem(it, grade);
+    for(k = 0; k < secs.length; k++){
+      if(seen[secs[k]]) continue;
+      seen[secs[k]] = 1; out.push(secs[k]);
+    }
   }
-  return out.sort();
+  return out.sort();   // أ · ب · ج · د — ترتيب الحروف يطابق ترتيب اليونيكود هنا
 }
 function _lbGradesOf(items){
-  var seen = {}, out = [], i;
+  var seen = {}, out = [], i, k;
   for(i = 0; i < (items || []).length; i++){
     var it = items[i];
     if(!it || !it.scoped) continue;
-    var g = it.grade || '';
-    if(!g || seen[g]) continue;
-    seen[g] = 1; out.push(g);
+    var gs = _lbScope(it).grades;
+    for(k = 0; k < gs.length; k++){
+      if(seen[gs[k]]) continue;
+      seen[gs[k]] = 1; out.push(gs[k]);
+    }
   }
-  return out.sort();
+  /* ترتيب مدرسيّ لا أبجديّ — والمجهول بعد المعلوم مرتَّباً بينه (لا يختفي ولا يتصدّر). */
+  return out.sort(function(a, b){
+    var ia = LB_GRADE_ORDER.indexOf(a), ib = LB_GRADE_ORDER.indexOf(b);
+    if(ia === -1 && ib === -1) return a < b ? -1 : (a > b ? 1 : 0);
+    if(ia === -1) return 1;
+    if(ib === -1) return -1;
+    return ia - ib;
+  });
 }
 
 /* ═══ العرض ═══ */
@@ -417,7 +504,16 @@ function _lbCard(it){
   }
   var tags = '';
   if(it.scoped && it.grade){
-    tags += '<span class="nc-tag">' + esc(it.grade) + (it.section ? ' — ' + esc(it.section) : '') + '</span>';
+    /* وسم لكل صفّ على حدة بدل النصّ المركَّب الخام — «الخامس؛السادس» كانت تُعرَض
+       حرفياً بالفاصل. وعند تعدّد كبير يُختصر البقيّة بعدّاد بدل سطر يمتدّ بلا حدّ. */
+    var gs = _lbScope(it).grades, gi, shown = gs.length > 3 ? 3 : gs.length;
+    for(gi = 0; gi < shown; gi++){
+      var sc = _lbSecsOfItem(it, gs[gi]);
+      tags += '<span class="nc-tag">' + esc(gs[gi]) +
+              (sc.length ? ' — ' + esc(sc.join('، ')) : '') + '</span>';
+    }
+    if(gs.length > shown) tags += '<span class="nc-tag">+' + (gs.length - shown) + '</span>';
+    if(!gs.length) tags += '<span class="nc-tag">عام</span>';
   } else {
     tags += '<span class="nc-tag">عام</span>';
   }
