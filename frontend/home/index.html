@@ -1163,6 +1163,7 @@ img,video,iframe{max-width:100%;display:block}
         <a href="#stats">إحصائياتنا</a>
         <a href="#about">عن المدرسة</a>
         <a href="#news">الأخبار</a>
+        <a id="navLibrary" href="/home/news.html">المكتبة</a>
         <a href="#gallery">المعرض</a>
         <a href="#videos">الفيديوهات</a>
         <a href="#contact">تواصل معنا</a>
@@ -1202,6 +1203,11 @@ img,video,iframe{max-width:100%;display:block}
     <a href="#about"><i class="fas fa-school"></i> عن المدرسة</a>
     <a href="#stages"><i class="fas fa-layer-group"></i> المراحل الدراسية</a>
     <a href="#news"><i class="fas fa-newspaper"></i> الأخبار</a>
+    <!-- 🔴 مدخل المكتبة **في الدرج** هو المدخل الوحيد الذي يصل الجوال: قياس حيّ عند عرض
+         504px أثبت أن `.topbar` و`nav` كلتيهما `display:none`، والظاهر زرّ القائمة ودرجه.
+         فمدخلُ الشريط العلوي وحده كان يخدم سطح المكتب فقط — والجوال هو المنصّة الغالبة
+         (المنتج نفسه تطبيق WebView). -->
+    <a id="drawerLibrary" href="/home/news.html"><i class="fas fa-book-open"></i> مكتبة الأخبار والأنشطة</a>
     <a href="#gallery"><i class="fas fa-images"></i> معرض الصور</a>
     <a href="#videos"><i class="fas fa-play-circle"></i> الفيديوهات</a>
     <a href="#contact"><i class="fas fa-phone"></i> تواصل معنا</a>
@@ -2527,8 +2533,16 @@ function _homeWireLibraryLinks(){
   var t = document.getElementById('tbLibrary');
   if(a) a.href = _homeLibraryUrl('');
   if(b) b.href = _homeLibraryUrl('type=image');
-  // مدخل الشريط العلوي — ثالثهم، ويعمل حتى لو لم يصل المستخدم قسم الأخبار إطلاقاً.
-  if(t) t.href = _homeLibraryUrl('');
+  // 🔴 أربعة مداخل لأن **لا واحد منها يكفي وحده** — قياس حيّ لا تقدير:
+  //   · الزرّان داخل قسم الأخبار: حاويتهما `.reveal` تبقى `opacity:0` حتى التمرير (بند 66)،
+  //     وعلى مدرسة بلا أخبار يقعان تحت رسالة الفراغ.
+  //   · الشريط العلوي: `display:none` عند عرض 504px ⇒ **سطح المكتب فقط**.
+  //   · القائمة والدرج: الدرج هو المدخل الوحيد الذي يصل الجوال — والجوال هو المنصّة الغالبة.
+  var ids = ['tbLibrary', 'navLibrary', 'drawerLibrary'], i, el;
+  for(i = 0; i < ids.length; i++){
+    el = document.getElementById(ids[i]);
+    if(el) el.href = _homeLibraryUrl('');
+  }
 }
 
 /**
