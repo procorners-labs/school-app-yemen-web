@@ -7884,10 +7884,28 @@ function initLazyImages() {
   // window.SCHOOL_ID فارغ = رابط بلا معرّف مدرسة: getStudentSchoolBrand('') تحلّه ديناميكياً
   // لصفّ المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
   var _stBrandCacheKey = 'stBrand_' + (window.SCHOOL_ID || '');
+  // م1: كاش دافئ يتخطّى نداء getStudentSchoolBrand الإقلاعي بالكامل (كان 758-919
+  // نداء/24س في كل فتح صفحة رغم أن هوية المدرسة اسم/شعار/لون تتغيّر نادراً) — 6 ساعات
+  // كافية لتقليم الغالبية العظمى من النداءات مع تحديث خلال نفس اليوم الدراسي.
+  // ⚠️ يرفع أقصى تقادم مُمكن لهوية المدرسة على هذا السطح تحديداً من TTL كاش
+  // getStudentSchoolBrand الخادمي (30 دقيقة، student/_Tenant.js) إلى 6 ساعات —
+  // توسّع مقصود لصالح خفض النداءات، لا سهو؛ لا يمسّ TTL الخادمي نفسه ولا أي سطح آخر.
+  var STU_BRAND_TTL_MS = 6 * 60 * 60 * 1000;
+  var _stBrandSavedAt = 0;
   var _stCachedBrand = null;
   try {
     var _stbRaw = window.localStorage && localStorage.getItem(_stBrandCacheKey);
-    if (_stbRaw) _stCachedBrand = JSON.parse(_stbRaw);
+    if (_stbRaw) {
+      var _stbParsed = JSON.parse(_stbRaw);
+      // توافق رجعي: كاش من قبل هذا التغيير مخزَّن ككائن هوية خام بلا savedAt —
+      // يُعامَل كبارد (يُجبر تحديثاً شبكياً واحداً) بدل افتراض حداثته.
+      if (_stbParsed && _stbParsed.brand && typeof _stbParsed.savedAt === 'number') {
+        _stCachedBrand = _stbParsed.brand;
+        _stBrandSavedAt = _stbParsed.savedAt;
+      } else {
+        _stCachedBrand = _stbParsed;
+      }
+    }
   } catch (eCB) {}
   // عبارات ترحيب دوّارة لشاشة الدخول — تُختار مرّة واحدة فقط لكل تحميل صفحة (لا تتبدّل
   // عند كل تحديث صامت لبيانات الهوية)، مع إدراج اسم المدرسة الحقيقي حيثما يلزم.
@@ -7959,11 +7977,12 @@ function initLazyImages() {
   }
   function applyBrand(b) {
     if (!b) return;
-    // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة.
-    try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify(b)); } catch (eCS) {}
+    // خزّن كامل الهوية (لا اللون فقط) + طابع وقت لفحص دفء الكاش (م1) — للعرض الفوري
+    // في الزيارة التالية دون انتظار الشبكة، وتفادي تكرار النداء خلال TTL نفسه.
+    try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify({ savedAt: Date.now(), brand: b })); } catch (eCS) {}
     if (b.color) {
       applyTheme(b.color);
-      try { if (window.localStorage) localStorage.setItem('stTheme_' + window.SCHOOL_ID, b.color); } catch (eLS) {}
+      try { if (window.localStorage) localStorage.setItem('stTheme_' + (window.SCHOOL_ID || ''), b.color); } catch (eLS) {}
     }
     if (b.name) {
       var els = document.querySelectorAll('.school-brand-name');
@@ -8020,7 +8039,7 @@ function initLazyImages() {
     return 'https://' + u;
   }
   // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
-  try { var _stLastColor = (window.localStorage) ? localStorage.getItem('stTheme_' + window.SCHOOL_ID) : null; if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
+  try { var _stLastColor = (window.localStorage) ? localStorage.getItem('stTheme_' + (window.SCHOOL_ID || '')) : null; if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
   function run() {
     try {
       google.script.run
@@ -8029,8 +8048,12 @@ function initLazyImages() {
         .getStudentSchoolBrand(window.SCHOOL_ID);
     } catch (e) {}
   }
-  if (document.readyState !== 'loading') run();
-  else document.addEventListener('DOMContentLoaded', run);
+  // م1: كاش دافئ (الهوية عُرضت فعلاً أعلاه من _stCachedBrand) ⇒ تخطَّ النداء الخادمي كلياً.
+  var _stBrandWarm = !!(_stCachedBrand && _stBrandSavedAt && (Date.now() - _stBrandSavedAt) < STU_BRAND_TTL_MS);
+  if (!_stBrandWarm) {
+    if (document.readyState !== 'loading') run();
+    else document.addEventListener('DOMContentLoaded', run);
+  }
 })();
 
 /* مصدر مشترك واحد للعبارات التحفيزية + ألوانها — يستهلكه "مطر الكلمات" بشاشة الدخول
