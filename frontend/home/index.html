@@ -1068,6 +1068,43 @@ img,video,iframe{max-width:100%;display:block}
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════
+     بوّابة مسار المدرسة (`yemenschoolz.com/<slug>`) — سكربت **متزامن** عمداً قبل أي عرض.
+     الـWorker يعيد كتابة `/‌<slug>` إلى هذا الملف بلا تمرير `?school=` (إعادة الكتابة تخصّ
+     الجلب الداخلي من GitHub Pages؛ `location.search` بالمتصفّح يبقى كما طلبه الزائر)، فالمصدر
+     الوحيد للمعرّف هنا هو **المسار** — تماماً كما فعلت `home-all-school/Index.html` قبل التقاعد.
+     🔴 `og:site_name` لا يُلمَس هنا ولا في أي مسار: كتابة اسم مدرسة فوقه كانت سبب ظهور اسم
+     غريب في نتائج البحث (بند 75)، وهوية الجذر لا تُمَسّ (بند 68).
+     ═══════════════════════════════════════════════════════════════════════════════════════ -->
+<script>
+  window.__hasPathSlug = function () {
+    var m = /^\/([a-z0-9-]+)\/?$/i.exec(location.pathname);
+    if (!m) return '';
+    var seg = m[1].toLowerCase();
+    /* نسخة من `_RESERVED_TOP_PATHS` في `worker/school-app-proxy.js` (مستودع SchoolApp
+       المنفصل) — الـWorker هو البوّابة الأولى فلا يصل أي مسار محجوز إلى هنا عملياً؛ هذه
+       طبقة ثانية تحمي حالة تغيّر التوجيه أو فتح الملف مباشرةً. يحرس تطابق النسخ الأربع
+       `test-regression-guards.js` — نسخة تنحرف صامتاً تعني slug يُعامَل مدرسةً وهو مسار نظام. */
+    var reserved = {
+      'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1,
+      'schedule': 1, 'master-admin': 1, 'pricing': 1, 'gas': 1, 'qr-img': 1,
+      'qr-download': 1, 'oauth': 1, 'drive-upload': 1, 'media': 1, 'assets': 1,
+      'index.html': 1, 'manifest.webmanifest': 1, 'sw.js': 1, 'robots.txt': 1,
+      'sitemap.xml': 1, 'favicon.ico': 1, 'newsarticle.html': 1
+    };
+    return reserved[seg] ? '' : seg;
+  };
+  (function () {
+    var slug = window.__hasPathSlug();
+    if (!slug) return;
+    var url = 'https://yemenschoolz.com/' + slug;
+    var c = document.querySelector('link[rel="canonical"]');
+    if (c) c.setAttribute('href', url);
+    var o = document.querySelector('meta[property="og:url"]');
+    if (o) o.setAttribute('content', url);
+  })();
+</script>
+
 <!-- PROGRESS BAR -->
 <div id="pgbar"><div id="pgfill"></div></div>
 
@@ -2421,8 +2458,20 @@ function setError(id,msg){
 // معرّف المدرسة من الخادم (‏`?school=`)؛ يستبدله البناء بـ`(window.SCHOOL_ID || '')` للمخرَج
 // الثابت. الفراغ = **مدرسة المالك** لا «معرّف مفقود» (بند 99).
 var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
+/**
+ * معرّف المدرسة بالأولوية: `?school=` صريح ← **slug المسار** ← ما حقنه الخادم ← فارغ.
+ * الفارغ = مدرسة المالك عمداً لا «مفقود» (بند 99).
+ * الـslug بين الاثنين لا قبلهما: طلبٌ صريح بـ`?school=` يفوز دائماً (تشخيص/تبديل مقصود)،
+ * وحقنُ الخادم يبقى تراجعاً لسطح `/exec` حيث لا مسار slug أصلاً.
+ */
 function _homeActiveSchoolId(){
   try{ if(window.SCHOOL_ID) return String(window.SCHOOL_ID); }catch(e){}
+  try{
+    if(typeof window.__hasPathSlug === 'function'){
+      var s = window.__hasPathSlug();
+      if(s) return s;
+    }
+  }catch(e){}
   return String(SERVER_SCHOOL_ID || '');
 }
 
