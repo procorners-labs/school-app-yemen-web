@@ -1,12 +1,15 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════════════════
-     بوّابة المدارس — قائمة كل المدارس المفعّلة على منصّة يمن سكولز.
-     المصدر `listPartnerSchoolsPublic()` (‏`home/_PublicPage.js`) — نُقلت إلى `home` بـ#933،
-     وهي وحدها التي تُرجِع حقل `slug` (نسخة `home-all-school` لا تُرجِعه).
-     نداء واحد لكل فتح صفحة؛ **كل** التصفية عميلية (بند 88: خفض عدد التنفيذات).
+     الصفحة الرئيسية العامّة لمنصّة يمن سكولز — صفحة الهبوط + دليل المدارس.
 
-     🔴 هذه الصفحة **لا تُبدِّل الجذر**. الجذر `/` يبقى على `home-all-school/Index.html` كما
-     هو — توجيه الـWorker في مستودع منفصل (`C:\Users\osama\SchoolApp`) وخارج نطاق هذا العمل
-     بقرار مالك. التحقّق هنا على `/home/schools.html` مباشرةً.
+     المحتوى التسويقي (الهيرو · #about-app · #features · #platform-details · #faq · التذييل)
+     **منقول من `home-all-school/Index.html`** الذي يبقى حيّاً بلا لمسة كشبكة أمان: معرّف
+     نشره لا يُحذف أبداً (بند 104)، وثلاثة ملفات و~60 تأكيداً تقرؤه بمساره الحرفي، ويشير
+     إليه تطبيق أندرويد `SchoolzYemen`. المنقول ≈828 سطراً من 1739 — والباقي (‏#schoolView
+     وبوّابة الـslug ونصف السكربت) **ميّت للتوجيه** لأن `/<slug>` يذهب إلى `/home/index.html`
+     منذ 2026-08-07 (بند 104).
+
+     دليل المدارس يستهلك `listPartnerSchoolsPublic()` (‏`home/_PublicPage.js`، نُقلت بـ#933
+     وهي وحدها التي تُرجِع حقل `slug`). نداء واحد لكل فتح صفحة؛ كل التصفية عميلية.
      ═══════════════════════════════════════════════════════════════════════════════════════ -->
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -22,7 +25,11 @@
 </script>
 <!-- ▲▲ نهاية وسم Google ▲▲ -->
 <!-- ▼▼ حُقِن آلياً: هوية الموقع ▼▼ -->
+<meta name="application-name" content="Yemen Schoolz" />
 <meta name="apple-mobile-web-app-title" content="يمن سكولز" />
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png" />
 <!-- ▲▲ نهاية هوية الموقع ▲▲ -->
 <!-- ▼▼ حُقِن آلياً: جسر GAS عبر fetch (بدل google.script.run الأصلي) ▼▼ -->
 <link rel="manifest" href="/manifest.webmanifest">
@@ -69,50 +76,322 @@
 
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>مدارس المنصّة | Yemen Schoolz</title>
-<meta name="description" content="دليل مدارس منصّة يمن سكولز — كل مدرسة بصفحتها العامّة: الأخبار والأنشطة وبيانات التواصل."/>
-<meta name="application-name" content="Yemen Schoolz"/>
-<meta property="og:site_name" content="Yemen Schoolz"/>
-<meta property="og:type" content="website"/>
-<meta property="og:title" content="مدارس المنصّة | Yemen Schoolz"/>
-<meta property="og:description" content="دليل مدارس منصّة يمن سكولز — كل مدرسة بصفحتها العامّة."/>
-<meta property="og:image" content="https://yemenschoolz.com/assets/icon-192.png"/>
-<meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:image" content="https://yemenschoolz.com/assets/icon-192.png"/>
-<!-- 🔴 `noindex` عمداً **ما دامت ليست الجذر**: الجذر `/` يخدم اليوم قائمة المدارس نفسها
-     وهو المفهرَس بأولوية 1.0. فهرسة نسخة ثانية من نفس القائمة تُنتج كياناً منافساً لهوية
-     الجذر — وهو حرفياً ما كلّف رفضَي OAuth Branding ببندَي 68/75. متى بُدِّل توجيه الجذر
-     إلى هذه الصفحة، تُصبح هي الجذر فترث فهرسته ويُراجَع هذا السطر في نفس الـPR. -->
+  <title>Yemen Schoolz — يمن سكولز | نظام إدارة المدارس</title>
+  <meta name="description" content="Yemen Schoolz (يمن سكولز) — نظام إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <!-- ⚠️ canonical ثابت لا يُلمَس ديناميكياً أبداً (لا تُضِفه إلى setMeta): الجذر يمثّل المنصّة
+       نفسها دوماً، حتى عند عرض بانر مدرسة مختارة. -->
+  <link rel="canonical" href="https://yemenschoolz.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Yemen Schoolz">
+  <meta property="og:title" content="Yemen Schoolz — يمن سكولز | نظام إدارة المدارس">
+  <meta property="og:description" content="Yemen Schoolz (يمن سكولز) — نظام إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <meta property="og:url" content="https://yemenschoolz.com/">
+  <meta property="og:image" content="https://yemenschoolz.com/assets/yemenschoolz-og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Yemen Schoolz — يمن سكولز | نظام إدارة المدارس">
+  <meta name="twitter:description" content="Yemen Schoolz (يمن سكولز) — نظام إدارة المدارس. اكتشف مدارسنا الشريكة واختر مدرستك.">
+  <meta name="twitter:image" content="https://yemenschoolz.com/assets/yemenschoolz-og.png">
+  <!-- بيانات منظَّمة افتراضية للمنصّة نفسها (Organization لا School — المنصّة ليست مدرسة).
+       نوع School/EducationalOrganization محجوز لكتلة ld-school الديناميكية أدناه (عند اختيار
+       مدرسة فعلية)؛ لو استُخدم هنا أيضاً لصار للصفحة كيانان بنوع School معاً. -->
+  <script type="application/ld+json" id="ld-org-default">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://yemenschoolz.com/#organization",
+  "name": "Yemen Schoolz",
+  "alternateName": ["يمن سكولز", "نظام إدارة المدارس"],
+  "description": "Yemen Schoolz (يمن سكولز) — نظام ويب لإدارة المدارس في اليمن: سجلّات الطلاب والدرجات والحضور، الجداول، الأخبار، الرسوم والتقارير.",
+  "url": "https://yemenschoolz.com/",
+  "logo": "https://yemenschoolz.com/assets/yemenschoolz-og.png",
+  "image": "https://yemenschoolz.com/assets/yemenschoolz-og.png",
+  "inLanguage": "ar",
+  "areaServed": { "@type": "Country", "name": "اليمن" }
+}
+  </script>
+  <script type="application/ld+json" id="ld-website-default">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": "https://yemenschoolz.com/#website",
+  "name": "Yemen Schoolz",
+  "alternateName": ["يمن سكولز", "نظام إدارة المدارس"],
+  "url": "https://yemenschoolz.com/",
+  "publisher": { "@id": "https://yemenschoolz.com/#organization" },
+  "inLanguage": "ar"
+}
+  </script>
+<!-- 🔴 بلا وسم البيان وبلا الأيقونات وبلا robots هنا عمداً: `injectionBlock` و
+     `identityBlock` يحقنونها، والإعلان في المصدر فوقها يُنتج وسمَين (بند 75-ب).
+     ما يُعلَن هنا حصراً هو ما يتخطّاه الحقن عند وجوده: canonical · og:site_name ·
+     كتلتا ld+json — فيصير مخرَج الجذر مطابقاً بنيوياً لمخرَجه اليوم. -->
+<!-- 🔴 `noindex` **مؤقّت — يُحذَف في PR التبديل**. ما دام الجذر `/` يخدم
+     `home-all-school/Index.html` (نفس المحتوى تقريباً بأولوية 1.0)، فهرسةُ هذه الصفحة
+     تُنتج كياناً منافساً لهوية الجذر — وهو حرفياً سبب رفضَي OAuth Branding (بندا 68/75).
+     وهي تُعلن `canonical` للجذر أصلاً، فالفهرسة قبل التبديل تُرسل إشارتين متعارضتين. -->
 <meta name="robots" content="noindex, follow"/>
-<link rel="icon" href="/assets/favicon-32.png" sizes="32x32"/>
-<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"/>
-<!-- 🔴 بلا وسم البيان هنا عمداً: injectionBlock يحقنه بلا شرط فيصير وسمَين.
-     ولا يُذكَر اسم السمة حرفياً كي لا يُفسِد أي فحص نصّي لاحق (بند 90-ب). -->
 <link rel="preconnect" href="https://lh3.googleusercontent.com"/>
 
 <style>
-  /* لوحة الألوان مطابقة لـ`home/Index.html` و`home/News.html` — التوكنات نفسها بالأسماء
-     نفسها، فلا يحتاج أي سطح جديد إعادة تعريف. */
+    :root{
+      --brand:#0F5C8C; --brand2:#0A4266; --ink:#1a2233; --muted:#667085;
+      --bg:#f6f8fc; --card:#ffffff; --line:#e6eaf2; --ok:#0f9d58; --shadow:0 8px 30px rgba(20,40,80,.08);
+      --radius:18px;
+      --t2:.32s; --t3:.52s; --ease-out:cubic-bezier(.16,1,.3,1);
+      /* بادئة --pmkt-* مخصّصة حصراً للأقسام التسويقية المنقولة من pricing/ — لا تُستخدَم في أي
+         عنصر آخر بالصفحة، تفادياً لأي تصادم مع --ink/--line الأصليتين (قيم مختلفة تماماً هنا). */
+      --pmkt-primary:#1149a3; --pmkt-primary-dark:#0b2f6e; --pmkt-primary-light:#2c6fdb;
+      --pmkt-accent:#f4a829; --pmkt-accent-dark:#d48a10; --pmkt-red:#e24a2c;
+      --pmkt-green:#16a34a; --pmkt-green-bg:#f0fdf4; --pmkt-blue-light:#dbeafe;
+      --pmkt-ink:#0f172a; --pmkt-ink-soft:#334155; --pmkt-ink-muted:#64748b; --pmkt-line:#e2e8f0;
+      --pmkt-paper:#ffffff; --pmkt-paper2:#f8fafc; --pmkt-paper3:#f1f5f9;
+      --pmkt-shadow-sm:0 2px 8px rgba(0,0,0,0.06); --pmkt-shadow-md:0 8px 24px rgba(0,0,0,0.08);
+      --pmkt-shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+      --pmkt-radius-sm:12px; --pmkt-radius-md:20px; --pmkt-radius-lg:32px;
+    }
+    *{box-sizing:border-box}
+    /* نسيج نقاط خافت جداً على مستوى body نفسه (لا عنصر منفصل) — يظهر طبيعياً خلف أي قسم بلا خلفية
+       معتمة خاصة به (كـ#features)، ويبقى ثابت الموضع بصرياً أثناء التمرير (background-attachment:fixed)
+       فتُحرّكه الحركة نفسها لا موضع الصفحة — هذا ما يمنح إحساس "الصفحة كلها حيّة باستمرار". */
+    body{margin:0;font-family:"Cairo","Segoe UI",Tahoma,Arial,sans-serif;color:var(--ink);
+      background-color:var(--bg);background-image:radial-gradient(rgba(15,92,140,.055) 1px,transparent 1px);
+      background-size:30px 30px;background-position:0 0;background-attachment:fixed;
+      animation:pageAmbientDrift 70s linear infinite;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    img{max-width:100%;display:block}
+    .wrap{max-width:1160px;margin:0 auto;padding:0 18px}
+    @keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+    @keyframes netDrift{0%{background-position:0 0}100%{background-position:-120px -60px}}
+    @keyframes pageAmbientDrift{0%{background-position:0 0}100%{background-position:-160px -160px}}
+    @keyframes hcScrollGrow{from{transform:scale(1)}to{transform:scale(1.12)}}
+    @keyframes heroParallax{from{transform:translateY(0)}to{transform:translateY(40px)}}
+    /* revealTimelineIn/cardTimelineIn تستخدمان خاصيتَي scale/translate الفرديتين لا transform —
+       عمداً: transform محجوزة حصراً لتأثير :hover (feature/school/ncard أدناه). حركة CSS نشطة
+       تُحرِّك خاصية تتفوّق على الـcascade كاملاً لتلك الخاصية (حتى :hover غير الـ!important) طالما
+       الحركة مربوطة — لو استُخدم transform هنا لتجمّد الرفع عند hover نهائياً بعد أول ظهور للبطاقة
+       (خلل حقيقي اكتشفه gas-reviewer وأُصلح قبل الالتزام). scale/translate خاصيتان فرديتان (CSS
+       Transforms Level 2، Baseline منذ أغسطس 2022) تتركّبان مع transform دون أي تعارض قيمة. */
+    @keyframes revealTimelineIn{from{opacity:0;scale:.9;filter:blur(6px)}to{opacity:1;scale:1;filter:blur(0)}}
+    @keyframes cardTimelineIn{from{opacity:0;translate:0 28px;scale:.96;filter:blur(5px)}to{opacity:1;translate:0;scale:1;filter:blur(0)}}
+    @keyframes footerTimelineIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+    @keyframes heroTitleReveal{to{clip-path:inset(0 0 0 0)}}
+    @keyframes fadeUpIn{to{opacity:1;transform:none}}
+    @keyframes ctaPop{to{opacity:1;transform:none}}
+    @keyframes hcDraw{to{stroke-dashoffset:0}}
+    @keyframes hcPulseLine{0%,100%{opacity:.45}50%{opacity:.85}}
+    @keyframes hcPop{from{opacity:0;transform:scale(0)}to{opacity:1;transform:none}}
+    @keyframes hcPulseNode{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.18)}}
+    @keyframes hcHaloPulse{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.7;transform:scale(1.35)}}
+    @keyframes icoIdle{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+
+    .hero-net{position:absolute;inset:-20px;background-image:radial-gradient(rgba(255,255,255,.16) 1.5px,transparent 1.5px);background-size:26px 26px;animation:netDrift 42s linear infinite;opacity:.5;pointer-events:none;will-change:background-position}
+    /* كوكبة SVG (توقيع home-all-school البصري): عقدة "منصّة" مركزية تتصل بست عُقَد "مدارس" عبر خطوط
+       تُرسَم تتابعياً ثم تنبض باستمرار — تجسيد حرفي لفكرة "منصّة واحدة تربط كل المدارس" بدل تجريد بصري عام. */
+    .hero-constellation{position:absolute;inset:0;width:100%;height:100%;opacity:.6;pointer-events:none}
+    .hero-constellation .hc-line{fill:none;stroke:rgba(255,255,255,.55);stroke-width:1.4;stroke-dasharray:1;stroke-dashoffset:1;
+      animation-name:hcDraw,hcPulseLine;animation-duration:.9s,4.5s;animation-timing-function:var(--ease-out),ease-in-out;
+      animation-fill-mode:forwards,none;animation-iteration-count:1,infinite}
+    .hero-constellation .hc-node{fill:#fff;transform-box:fill-box;transform-origin:center;
+      animation-name:hcPop,hcPulseNode;animation-duration:.5s,3.6s;animation-timing-function:var(--ease-out),ease-in-out;
+      animation-fill-mode:forwards,none;animation-iteration-count:1,infinite}
+    .hero-constellation .hc-hub{fill:#fff;transform-box:fill-box;transform-origin:center;
+      animation-name:hcPop,hcPulseNode;animation-duration:.5s,3.6s;animation-timing-function:var(--ease-out),ease-in-out;
+      animation-fill-mode:forwards,none;animation-iteration-count:1,infinite;animation-delay:.7s,1.2s}
+    .hero-constellation .hc-hub-halo{fill:rgba(255,255,255,.22);filter:blur(6px);transform-box:fill-box;transform-origin:center;
+      animation:hcHaloPulse 4s ease-in-out 1.35s infinite}
+
+    /* حالات البداية المخفيّة للهيرو مقيَّدة بـ`.js` لنفس سبب `.reveal-s` أدناه: لقطة تُلتقط عند
+       t=0 (أو بيئة بلا JS) كانت تُظهر العنوان محجوباً بالكامل. الحركة نفسها تبقى كما هي تماماً. */
+    .js .hero-title{clip-path:inset(0 0 0 100%);animation:heroTitleReveal .8s var(--ease-out) .05s forwards}
+    .js .hero-sub{opacity:0;transform:translateY(20px);animation:fadeUpIn .7s var(--ease-out) .4s forwards}
+    .js .cta-pop{opacity:0;transform:translateY(14px) scale(.85);animation:ctaPop .6s cubic-bezier(.34,1.56,.64,1) forwards}
+
+    /* اسم العلامة: سطران مستقلّان معزولان اتجاهياً — راجع التعليق فوق <h1> في الهيرو. */
+    .brand-latin{display:block;direction:ltr;unicode-bidi:isolate;text-align:start;font-weight:800;letter-spacing:.01em}
+    .brand-ar{display:block;direction:rtl;unicode-bidi:isolate;font-size:.62em;font-weight:700;opacity:.92;margin-top:2px}
+    .cta-pop:nth-child(1){animation-delay:.62s}
+    .cta-pop:nth-child(2){animation-delay:.74s}
+    .cta-pop:nth-child(3){animation-delay:.86s}
+
+    /* scale/translate الفرديتان لا transform عمداً — تبقيان transform حصراً لـ:hover (راجع تعليق
+       revealTimelineIn/cardTimelineIn أدناه للسبب الكامل؛ يسري هنا أيضاً على المسار الاحتياطي). */
+    /* ⚠️ الإخفاء مقيَّد بـ`.js` عمداً (يُضاف على <html> بأول سطر داخل <body>): `opacity:0` كحالة
+       أساسية بلا هذا القيد جعلت الصفحة تظهر **فارغة تماماً** لأي بيئة عرض لا تُمرِّر أو لا تُنفِّذ
+       JS — زاحف بحث، أداة لقطة، أو مراجِع Google OAuth Branding (سبب خمس رفضات متتالية، بند 64).
+       لا تُزِل البادئة `.js` من أي قاعدة إخفاء هنا. */
+    .js .reveal-s{opacity:0;scale:.9;filter:blur(6px);transition:opacity var(--t3) var(--ease-out),scale var(--t3) var(--ease-out),filter var(--t3) var(--ease-out)}
+    .reveal-s.in{opacity:1;scale:1;filter:blur(0)}
+    /* بطاقات مُنشأة ديناميكياً بعد استجابة الخادم (شركاء/أخبار). */
+    .js .card-reveal{opacity:0;translate:0 28px;scale:.96;filter:blur(5px);transition:opacity .5s var(--ease-out),translate .5s var(--ease-out),scale .5s var(--ease-out),filter .5s var(--ease-out)}
+    .card-reveal.in{opacity:1;translate:0;scale:1;filter:blur(0)}
+    /* كشف قسري يغلب الحركة نفسها — يضيفه صمّام الأمان الزمني (_revealSafetyValve) بعد 6 ثوانٍ
+       بلا أي تفاعل بشري. لازم لأن حركة `animation-timeline` النشطة تغلب أي إعلان عادي. */
+    html.reveal-all .reveal-s,html.reveal-all .card-reveal{animation:none!important;animation-timeline:none!important;opacity:1!important;scale:1!important;translate:none!important;filter:none!important}
+    /* تحسين تدريجي لموضع التمرير — لا يمسّ .in ولا JS الكشف الحالي: حين animation نشطة تُحرِّك خاصية
+       عنصر، أي transition مُعرَّفة على نفس الخاصية تُعلَّق تلقائياً (مواصفة CSS Animations) — فالسطور
+       أدناه تفوز تلقائياً على المتصفحات الداعمة بلا حاجة لتحييد .reveal-s.in/.card-reveal.in يدوياً،
+       وتبقى غير موجودة إطلاقاً (@supports) على المتصفحات غير الداعمة فيعمل نظام transition/.in كما هو. */
+    @supports (animation-timeline: scroll()) and (animation-timeline: view()) {
+      .hero-constellation{animation:hcScrollGrow linear both;animation-timeline:scroll(root block);animation-range:0 60vh}
+      header.hero{animation:heroParallax linear both;animation-timeline:scroll(root block);animation-range:0 100vh}
+      .js .reveal-s{animation:revealTimelineIn linear both;animation-timeline:view();animation-range:entry 0% cover 40%}
+      .js .card-reveal{animation:cardTimelineIn linear both;animation-timeline:view();animation-range:entry 0% cover 40%}
+      footer{animation:footerTimelineIn linear both;animation-timeline:view();animation-range:entry 0% cover 50%}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+      .hero-constellation,header.hero,.reveal-s,.card-reveal,footer{animation:none!important;animation-timeline:none!important}
+      /* `animation:none` وحدها تُلغي مسار الكشف لكن تُبقي `opacity:0` الأساسية ⇒ صفحة فارغة.
+         كثير من أدوات اللقطات الآلية تُفعِّل `reduce` — فالإظهار الكامل هنا إلزامي لا تجميلي. */
+      .reveal-s,.card-reveal{opacity:1!important;scale:1!important;translate:none!important;filter:none!important}
+    }
+    .btn{display:inline-block;border:none;cursor:pointer;border-radius:12px;padding:11px 18px;font-weight:700;font-size:15px;font-family:inherit;transition:.15s}
+    .btn-primary{background:var(--brand);color:#fff}
+    .btn-primary:hover{background:#0b5ed7}
+    .btn-ghost{background:#eef2ff;color:var(--brand)}
+    header.hero{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:64px 0 72px;position:relative;overflow:hidden}
+    header.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(120deg,var(--brand),#1b7ab8,var(--brand2),var(--brand));background-size:300% 300%;animation:gradShift 14s ease-in-out infinite;opacity:.55;will-change:background-position}
+    header.hero .wrap{position:relative;z-index:1}
+    .hero h1{font-size:clamp(26px,4vw,44px);margin:0 0 12px;font-weight:800}
+    .hero p{font-size:clamp(15px,2.2vw,19px);opacity:.95;margin:0 0 24px;max-width:680px}
+    .hero .cta{display:flex;gap:12px;flex-wrap:wrap}
+    .hero .btn-primary{background:#fff;color:var(--brand)}
+    .hero .btn-ghost{background:rgba(255,255,255,.16);color:#fff}
+
+    /* Sections */
+    section{padding:52px 0}
+    .sec-head{text-align:center;margin-bottom:34px}
+    .sec-head h2{font-size:clamp(22px,3vw,32px);margin:0 0 8px;font-weight:800}
+    .sec-head p{color:var(--muted);margin:0;font-size:16px}
+
+    /* Features */
+    .grid{display:grid;gap:18px}
+    .features{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+    .feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);transition:opacity var(--t3) var(--ease-out),filter var(--t3) var(--ease-out),transform var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
+    .feature:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(20,40,80,.14);border-color:var(--brand)}
+    .feature .ico{font-size:30px;margin-bottom:10px}
+    /* idle خفيف جداً بعد ظهور البطاقة (لا قبله) — مُشغَّل عبر وجود .in على الأب فقط، كي لا تنبض
+       أيقونات لم تُكشَف بعد؛ التأخير المتفاوت لكل بطاقة يمنع التزامن الآلي بين الثمانية. */
+    .reveal-s.in .ico{animation:icoIdle 4s ease-in-out infinite}
+    .feature h3{margin:0 0 6px;font-size:18px}
+    .feature p{margin:0;color:var(--muted);font-size:14.5px}
+    .features .feature:nth-child(1){transition-delay:.02s}
+    .features .feature:nth-child(2){transition-delay:.08s}
+    .features .feature:nth-child(3){transition-delay:.14s}
+    .features .feature:nth-child(4){transition-delay:.20s}
+    .features .feature:nth-child(5){transition-delay:.26s}
+    .features .feature:nth-child(6){transition-delay:.32s}
+    .features .feature:nth-child(7){transition-delay:.38s}
+    .features .feature:nth-child(8){transition-delay:.44s}
+    .features .feature:nth-child(1) .ico{animation-delay:.1s}
+    .features .feature:nth-child(2) .ico{animation-delay:.4s}
+    .features .feature:nth-child(3) .ico{animation-delay:.7s}
+    .features .feature:nth-child(4) .ico{animation-delay:1s}
+    .features .feature:nth-child(5) .ico{animation-delay:1.3s}
+    .features .feature:nth-child(6) .ico{animation-delay:1.6s}
+    .features .feature:nth-child(7) .ico{animation-delay:1.9s}
+    .features .feature:nth-child(8) .ico{animation-delay:2.2s}
+    .features .feature:hover{transition-delay:0s}
+    footer{background:#0f1830;color:#c7d2e6;padding:34px 0;text-align:center;font-size:14px}
+    footer a{color:#9ec1ff}
+    .pmkt-section-title { text-align: center; margin: 70px 0 40px; }
+    .pmkt-section-title h2 {
+      font-size: 2.3rem; font-weight: 900; color: var(--pmkt-ink); display: inline-block;
+      padding-bottom: 14px; position: relative;
+    }
+    .pmkt-section-title h2::after {
+      content: ''; position: absolute; bottom: 0; right: 50%; transform: translateX(50%);
+      width: 60px; height: 5px; background: var(--pmkt-accent); border-radius: 3px;
+    }
+    .pmkt-section-subtitle {
+      text-align: center; max-width: 740px; margin: -20px auto 50px; color: var(--muted);
+      font-size: 1.08rem; line-height: 1.9;
+    }
+    .pmkt-highlight-box {
+      background: var(--card); border-radius: var(--pmkt-radius-lg); padding: 40px 36px;
+      margin: 40px 0; box-shadow: var(--pmkt-shadow-md); border-right: 7px solid var(--pmkt-accent);
+      transition: box-shadow 0.25s;
+    }
+    .pmkt-highlight-box:hover { box-shadow: var(--pmkt-shadow-lg); }
+    .pmkt-highlight-box h3 { font-size: 1.6rem; margin-bottom: 24px; color: var(--pmkt-ink); display: flex; align-items: center; gap: 14px; }
+    .pmkt-highlight-box h3 .ic { font-size: 1.7rem; flex-shrink: 0; }
+    .pmkt-highlight-box ul { list-style: none; }
+    .pmkt-highlight-box ul li {
+      padding: 14px 0; border-bottom: 1px solid var(--pmkt-line); display: flex; align-items: flex-start;
+      gap: 14px; font-size: 1rem; color: var(--pmkt-ink); line-height: 1.7;
+    }
+    .pmkt-highlight-box ul li:last-child { border-bottom: none; }
+    .pmkt-highlight-box ul li .ic { color: var(--pmkt-primary); font-size: 1.1rem; margin-top: 4px; flex-shrink: 0; }
+
+    .pmkt-plat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 28px; margin-bottom: 60px; }
+    .pmkt-plat-card { background: var(--card); border-radius: var(--pmkt-radius-lg); overflow: hidden; box-shadow: var(--pmkt-shadow-md); transition: transform 0.3s, box-shadow 0.3s; }
+    .pmkt-plat-card:hover { transform: translateY(-10px); box-shadow: var(--pmkt-shadow-lg); }
+    .pmkt-plat-header { padding: 26px 24px; color: #fff; display: flex; align-items: center; gap: 16px; position: relative; overflow: hidden; }
+    .pmkt-plat-header .ic { font-size: 2.2rem; flex-shrink: 0; }
+    .pmkt-plat-header h3 { font-size: 1.4rem; font-weight: 800; }
+    .pmkt-plat-body { padding: 26px 24px; }
+    .pmkt-plat-body p { color: var(--muted); margin-bottom: 20px; font-size: 1rem; line-height: 1.8; }
+    .pmkt-plat-body ul { list-style: none; }
+    .pmkt-plat-body ul li { padding: 10px 0; border-bottom: 1px solid var(--pmkt-line); display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--pmkt-ink); }
+    .pmkt-plat-body ul li:last-child { border-bottom: none; }
+    .pmkt-plat-body ul li .ic { color: var(--pmkt-green); font-size: 1rem; }
+
+    .pmkt-scenario-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; margin-bottom: 60px; }
+    .pmkt-scenario-card { background: var(--card); border-radius: var(--pmkt-radius-md); padding: 28px 24px; box-shadow: var(--pmkt-shadow-sm); border-top: 5px solid var(--pmkt-primary); transition: transform 0.25s, box-shadow 0.25s; }
+    .pmkt-scenario-card:hover { transform: translateY(-6px); box-shadow: var(--pmkt-shadow-md); }
+    .pmkt-scenario-card h4 { font-size: 1.2rem; font-weight: 800; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; color: var(--pmkt-ink); }
+    .pmkt-scenario-card p { color: var(--muted); font-size: 0.97rem; line-height: 1.8; }
+    .pmkt-scenario-steps { margin-top: 16px; list-style: none; }
+    .pmkt-scenario-steps li { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; font-size: 0.9rem; color: var(--pmkt-ink); border-bottom: 1px dashed var(--pmkt-line); }
+    .pmkt-scenario-steps li:last-child { border-bottom: none; }
+    .pmkt-step-num {
+      width: 22px; height: 22px; background: var(--pmkt-blue-light); color: var(--pmkt-primary);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 800; flex-shrink: 0; margin-top: 2px;
+    }
+
+    .pmkt-feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-bottom: 60px; }
+    .pmkt-feat-item { background: var(--card); padding: 22px 24px; border-radius: var(--pmkt-radius-md); display: flex; align-items: flex-start; gap: 16px; box-shadow: var(--pmkt-shadow-sm); transition: transform 0.25s, box-shadow 0.25s; }
+    .pmkt-feat-item:hover { transform: translateY(-4px); box-shadow: var(--pmkt-shadow-md); }
+    .pmkt-feat-icon { width: 50px; height: 50px; background: linear-gradient(135deg, var(--pmkt-primary), var(--pmkt-primary-light)); border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1.4rem; }
+    .pmkt-feat-text strong { display: block; font-size: 1rem; margin-bottom: 4px; color: var(--pmkt-ink); }
+    .pmkt-feat-text span { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
+
+    .pmkt-flow-diagram { background: var(--card); border-radius: var(--pmkt-radius-lg); padding: 40px; text-align: center; margin-bottom: 60px; box-shadow: var(--pmkt-shadow-md); }
+    .pmkt-flow-diagram h3 { font-size: 1.3rem; margin-bottom: 30px; color: var(--muted); }
+    .pmkt-flow-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .pmkt-flow-box { background: linear-gradient(135deg, var(--pmkt-primary), var(--pmkt-primary-light)); color: #fff; padding: 14px 28px; border-radius: 50px; font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 12px rgba(17,73,163,0.3); transition: transform 0.2s; }
+    .pmkt-flow-box:hover { transform: scale(1.05); }
+    .pmkt-flow-arrow { color: var(--pmkt-accent); font-size: 1.5rem; font-weight: 900; }
+    .pmkt-flow-note { color: var(--muted); font-size: 0.97rem; margin-top: 24px; max-width: 700px; margin-left: auto; margin-right: auto; }
+
+    .pmkt-faq-list { margin-bottom: 60px; }
+    .pmkt-faq-item { background: var(--card); border-radius: var(--pmkt-radius-md); margin-bottom: 14px; box-shadow: var(--pmkt-shadow-sm); overflow: hidden; border: 1px solid var(--pmkt-line); transition: box-shadow 0.2s; }
+    .pmkt-faq-item:hover { box-shadow: var(--pmkt-shadow-md); }
+    .pmkt-faq-q { padding: 22px 26px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-weight: 700; font-size: 1.05rem; color: var(--pmkt-ink); user-select: none; transition: background 0.2s; }
+    .pmkt-faq-q:hover { background: var(--pmkt-paper2); }
+    .pmkt-faq-q.open { background: var(--pmkt-paper2); color: var(--pmkt-primary); }
+    .pmkt-faq-q .ic { color: var(--pmkt-primary); font-size: 1.1rem; flex-shrink: 0; }
+    .pmkt-faq-toggle { width: 32px; height: 32px; background: var(--pmkt-paper3); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.3s, background 0.2s; color: var(--muted); }
+    .pmkt-faq-q.open .pmkt-faq-toggle { transform: rotate(180deg); background: var(--pmkt-primary); color: #fff; }
+    .pmkt-faq-a { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+    .pmkt-faq-a-inner { padding: 0 26px 22px; color: var(--pmkt-ink); font-size: 0.98rem; line-height: 1.9; border-top: 1px solid var(--pmkt-line); padding-top: 18px; }
+    @media (max-width: 640px) {
+      .pmkt-section-title h2 { font-size: 1.7rem; }
+      .pmkt-highlight-box { padding: 28px 20px; }
+      .pmkt-plat-grid { grid-template-columns: 1fr; }
+    }
+
+  /* ── توكنات دليل المدارس (تُضاف جنباً، لا تستبدل توكنات الصفحة) ── */
   :root{
     --cobalt:#0F5C8C; --cobalt-v:#0b476d; --teal:#1dbfa6;
-    --ink:#0f172a; --txt:#334155; --soft:#64748b;
-    --bg:#f6f9fc; --card:#ffffff; --border:#e2e8f0; --border2:#cbd5e1;
+    --txt:#334155; --soft:#64748b; --border:#e6eaf2; --border2:#cbd5e1;
     --g-cobalt:linear-gradient(135deg,#0F5C8C 0%,#0b476d 100%);
     --g-brand:linear-gradient(135deg,#0F5C8C 0%,#1dbfa6 100%);
-    --glow-cobalt:0 10px 30px rgba(15,92,140,.18);
-    --r:16px;
+    --glow-cobalt:0 10px 30px rgba(15,92,140,.18); --r:16px;
   }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);
-    font-family:'Cairo',system-ui,-apple-system,'Segoe UI',sans-serif}
-  .wrap{max-width:1180px;margin:0 auto;padding:0 16px}
-
-  .sp-head{background:var(--g-cobalt);color:#fff;padding:26px 0 22px;box-shadow:var(--glow-cobalt)}
-  .sp-head .wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-  .sp-logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:5px;object-fit:contain}
-  .sp-ttl{font-size:1.32rem;font-weight:800;margin:0}
-  .sp-sub{font-size:.9rem;opacity:.92;margin:2px 0 0}
-
   .sp-bar{background:var(--card);border-bottom:1px solid var(--border);
     position:sticky;top:0;z-index:20;padding:12px 0}
   .sp-search{width:100%;border:1px solid var(--border2);border-radius:999px;
@@ -120,9 +399,11 @@
   .sp-search:focus{outline:2px solid var(--cobalt);outline-offset:1px}
 
   .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px;padding:22px 0 34px}
-  .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--r);
+  /* `position:relative` أساسٌ للرابط الممتدّ أدناه — البطاقة `div` لا `a` كي تحمل
+     روابط البوّابتين بلا تعشيش `<a>` داخل `<a>`. */
+  .sc{position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--r);
     padding:18px;display:flex;flex-direction:column;gap:11px;
-    box-shadow:0 2px 10px rgba(15,23,42,.05);text-decoration:none;color:inherit;
+    box-shadow:0 2px 10px rgba(15,23,42,.05);color:inherit;
     transition:box-shadow .15s,border-color .15s,translate .15s}
   .sc:hover{border-color:var(--cobalt);box-shadow:var(--glow-cobalt);translate:0 -2px}
   .sc-top{display:flex;align-items:center;gap:12px}
@@ -135,7 +416,17 @@
   .sc-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--soft);
     margin-top:auto;padding-top:6px;align-items:center}
   .sc-chip{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;color:var(--cobalt-v)}
-  .sc-go{margin-inline-start:auto;color:var(--cobalt);font-weight:800}
+  /* الرابط الرئيسيّ ممتدّ على البطاقة كلّها — يبقى رابطاً واحداً دلالياً للزاحف
+     ولقارئ الشاشة، وتبقى البطاقة كلّها قابلة للنقر. */
+  .sc-go{margin-inline-start:auto;color:var(--cobalt);font-weight:800;text-decoration:none}
+  .sc-go::after{content:'';position:absolute;inset:0;border-radius:var(--r)}
+  /* روابط البوّابتين **فوق** الرابط الممتدّ — بدونها تبتلعها طبقة `::after`. */
+  .sc-ports{position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap;
+    border-top:1px solid var(--border);padding-top:10px}
+  .sc-port{flex:1 1 auto;text-align:center;background:#f1f5f9;color:var(--cobalt-v);
+    border-radius:999px;padding:7px 12px;font-size:.82rem;font-weight:800;text-decoration:none;
+    transition:background .15s,color .15s}
+  .sc-port:hover{background:var(--g-cobalt);color:#fff}
 
   .sp-state{text-align:center;color:var(--soft);padding:56px 16px;font-size:.98rem}
   .sp-empty{max-width:430px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:9px}
@@ -152,28 +443,613 @@
 </style>
 </head>
 <body>
+  <script>document.documentElement.className += ' js';</script>
 
-<header class="sp-head">
-  <div class="wrap">
-    <img class="sp-logo" src="/assets/yemenschoolz-mark.png" alt=""/>
-    <div>
-      <h1 class="sp-ttl">مدارس منصّة يمن سكولز</h1>
-      <p class="sp-sub" id="spSub">جارٍ التحميل…</p>
+  <header class="hero">
+    <div class="hero-net" aria-hidden="true"></div>
+    <svg class="hero-constellation" viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="230" y2="70" style="animation-delay:1.25s,2.15s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="360" y2="45" style="animation-delay:1.34s,2.24s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="480" y2="100" style="animation-delay:1.43s,2.33s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="520" y2="200" style="animation-delay:1.52s,2.42s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="400" y2="255" style="animation-delay:1.61s,2.51s"/>
+      <line class="hc-line" pathLength="1" x1="95" y1="180" x2="250" y2="235" style="animation-delay:1.70s,2.60s"/>
+      <circle class="hc-node" cx="230" cy="70" r="3.5" style="animation-delay:1.90s,2.40s"/>
+      <circle class="hc-node" cx="360" cy="45" r="3.5" style="animation-delay:1.99s,2.49s"/>
+      <circle class="hc-node" cx="480" cy="100" r="3.5" style="animation-delay:2.08s,2.58s"/>
+      <circle class="hc-node" cx="520" cy="200" r="3.5" style="animation-delay:2.17s,2.67s"/>
+      <circle class="hc-node" cx="400" cy="255" r="3.5" style="animation-delay:2.26s,2.76s"/>
+      <circle class="hc-node" cx="250" cy="235" r="3.5" style="animation-delay:2.35s,2.85s"/>
+      <circle class="hc-hub-halo" cx="95" cy="180" r="14"/>
+      <circle class="hc-hub" cx="95" cy="180" r="6"/>
+    </svg>
+    <div class="wrap">
+      <p class="hero-kicker" style="margin:0 0 10px;font-size:.95em;font-weight:700;letter-spacing:.02em;opacity:.9">School Management System · نظام إدارة المدارس</p>
+      <!-- الاسم بسطرين منفصلين بـ`unicode-bidi:isolate` عمداً: السلسلة الموحَّدة القديمة
+           «يمن سكولز | Yemen Schoolz» كانت تُعرَض معكوسة بصرياً داخل dir="rtl" فلا تطابق ما
+           يعرضه كونسول Google (LTR) — أحد سببَي رفض Branding. لا تُعِد دمجهما في سطر واحد. -->
+      <h1 class="hero-title"><span class="brand-latin">Yemen Schoolz</span><span class="brand-ar">يمن سكولز</span></h1>
+      <p class="hero-sub">منصّة متكاملة لإدارة المدارس: منصّات للمعلمين والطلاب، وإدارة محتوى وأخبار، وجداول ذكية، ومالية وتقارير — يعمل حتى دون اتصال. اكتشف مدارسنا الشريكة واختر مدرستك.</p>
+      <p style="margin-top:10px;color:#fff;opacity:1;font-size:1.05em;font-weight:600;line-height:1.6">Yemen Schoolz is an integrated school-management platform for teachers, students, and school administrators — content publishing, smart scheduling, attendance, finance, and reports.</p>
+      <div class="cta">
+        <a class="btn btn-primary cta-pop" href="/master-admin/register.html">🏫 سجّل مدرستك</a>
+        <a class="btn btn-ghost cta-pop" href="#partners">استعرض المدارس</a>
+        <a class="btn btn-ghost cta-pop" href="#features">مميّزات المنصّة</a>
+        <a class="btn btn-ghost cta-pop" href="/pricing">💳 خطط الأسعار</a>
+        <a class="btn btn-ghost cta-pop" href="/master-admin/index.html?returnTo=%2F%23partners">🔐 دخول الإدارة</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+       ⚠️ لا تُضِف أبداً `.reveal-s` / `.card-reveal` ولا أي class إخفاء لهذا القسم أو لأي عنصر
+       بداخله، ولا تنقله تحت الطيّة. هذه الكتلة هي البيان الرسمي لهوية التطبيق وغرضه، وهي
+       **ما تفحصه مراجعة Google OAuth Branding** للتأكّد أن الصفحة الرئيسية تشرح ما يفعله
+       التطبيق — يجب أن تبقى مرئية بلا JavaScript وبلا تمرير وبلا انتظار أي حركة (بند 66).
+
+       ⚠️ كتلة الإفصاح التفصيلية **أُزيلت من هنا عمداً بقرار مالك صريح 2026-08-03**؛ مصدر
+       الحقيقة الوحيد لها صار `home/Privacy.html` وهي الصفحة المسجَّلة كـPrivacy policy.
+       **لا تُعِدها إلى هنا** إلا بقرار مالك جديد؛ وإن أُعيدت فهي تُحذف/تُضاف من المصدر ولا
+       تُخفى بصرياً أبداً (`display:none`/`opacity:0` كان سبب خمس رفضات متتالية — بند 66).
+       التفصيل الكامل: `_docs/2026-08-03-اخفاء-افصاح-نطاقات-google-من-الصفحة-الرئيسية.md`.
+       ═══════════════════════════════════════════════════════════════════════════════════════ -->
+  <section id="about-app" class="wrap" style="padding:40px 0 8px">
+    <h2 style="font-size:clamp(20px,2.6vw,28px);margin:0 0 14px">ما هو Yemen Schoolz؟ · What is Yemen Schoolz?</h2>
+
+    <div lang="ar" dir="rtl" style="font-size:16px;line-height:1.9;margin-bottom:26px">
+      <p><strong>Yemen Schoolz (يمن سكولز)</strong> نظام ويب لإدارة المدارس، تستخدمه المدارس في اليمن لإدارة عملها اليومي من مكان واحد: سجلّات الطلاب والدرجات والحضور، وجداول الحصص، ونشر أخبار المدرسة وفعالياتها، والرسوم والتقارير. يتكوّن النظام من أربع واجهات: <strong>لوحة المعلّم</strong>، و<strong>بوابة الطالب وولي الأمر</strong>، و<strong>لوحة إدارة المحتوى</strong>، و<strong>لوحة إدارة المدرسة</strong>.</p>
+      <p style="margin-top:12px">لا نبيع بيانات المستخدمين ولا نشاركها مع أي طرف ثالث. التفاصيل الكاملة في <a href="/home/privacy.html" style="text-decoration:underline">سياسة الخصوصية</a> و<a href="/home/terms.html" style="text-decoration:underline">شروط الخدمة</a>.</p>
+    </div>
+
+    <div lang="en" dir="ltr" style="font-size:16px;line-height:1.85;border-top:1px solid var(--line);padding-top:20px">
+      <p><strong>Yemen Schoolz</strong> is a web-based school management system used by schools in Yemen to run their daily operations in one place: student records, grades, attendance, timetables, school news and events, fees and reports. It provides four interfaces: a <strong>Teacher Dashboard</strong>, a <strong>Student &amp; Parent Portal</strong>, a <strong>Content Management console</strong>, and a <strong>School Administration panel</strong>.</p>
+      <p style="margin-top:12px">We never sell user data and never share it with third parties. Full details: <a href="/home/privacy.html" style="text-decoration:underline">Privacy Policy</a> · <a href="/home/terms.html" style="text-decoration:underline">Terms of Service</a>.</p>
+    </div>
+  </section>
+
+  <main>
+
+  <!-- دليل المدارس — في الفتحة التي كان يشغلها #schoolView: #platform-details وحده
+       411 سطراً، ودفن «جد مدرستك» تحته يكلّف تمريراً طويلاً. المرساة #partners محفوظة
+       فيعمل CTA الهيرو و`returnTo` من MasterAdmin بلا تغيير. -->
+  <section id="partners" style="background:#eef2fb">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>مدارس منصّة يمن سكولز</h2>
+        <p id="spSub">جارٍ التحميل…</p>
+      </div>
+      <div class="sp-bar">
+        <input class="sp-search" id="spSearch" type="search"
+               placeholder="ابحث باسم المدرسة أو المدينة…" aria-label="بحث عن مدرسة"/>
+      </div>
+      <div id="spGrid" class="sp-grid"></div>
+      <div id="spState" class="sp-state">جارٍ تحميل المدارس…</div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>لماذا منصّتنا؟</h2>
+        <p>منظومة واحدة تربط كل أطراف العملية التعليمية</p>
+      </div>
+      <div class="grid features">
+        <div class="feature reveal-s"><div class="ico">👨‍🏫</div><h3>منصّة المعلمين</h3><p>الدرجات والحضور والواجبات والسلوك والتقارير والشهادات — لكل معلّم بصلاحياته.</p></div>
+        <div class="feature reveal-s"><div class="ico">🎓</div><h3>منصّة الطلاب</h3><p>متابعة الدرجات والواجبات والأخبار والجدول والتعاميم من مكان واحد.</p></div>
+        <div class="feature reveal-s"><div class="ico">🗂️</div><h3>إدارة المحتوى</h3><p>أخبار وفعاليات ووسائط بنظام حالات (مسودة → معتمد → منشور) واحترافية نشر.</p></div>
+        <div class="feature reveal-s"><div class="ico">📅</div><h3>الجدول الذكي</h3><p>توليد ونشر الجداول تلقائيًّا مع احترام الإدخال اليدوي وتوزيع الحصص.</p></div>
+        <div class="feature reveal-s"><div class="ico">💰</div><h3>المالية والعمليات</h3><p>رسوم الطلاب والسندات والمصروفات ورواتب الموظفين وتقارير مالية دقيقة.</p></div>
+        <div class="feature reveal-s"><div class="ico">📊</div><h3>الحضور والتقارير</h3><p>تسجيل الحضور وإحصاءات دقيقة وتقارير حسب الصف والشعبة قابلة للطباعة.</p></div>
+        <div class="feature reveal-s"><div class="ico">📱</div><h3>يعمل دون اتصال</h3><p>تطبيق ويب تقدّمي (PWA) يُثبَّت على الهاتف ويعمل عند ضعف الشبكة.</p></div>
+        <div class="feature reveal-s"><div class="ico">🏫</div><h3>متعدّد المدارس</h3><p>كل مدرسة بهويتها وبياناتها المعزولة تمامًا ضمن منصّة واحدة موحّدة.</p></div>
+      </div>
+    </div>
+  </section>
+  <section id="platform-details" class="wrap" style="padding-top:20px">
+  <!-- ═══════════════════════════════
+       WHY MADRASTI
+  ═══════════════════════════════ -->
+  <div class="pmkt-section-title reveal-s">
+    <h2>🌟 لماذا يمن سكولز؟</h2>
+  </div>
+  <p class="pmkt-section-subtitle reveal-s">
+    "يمن سكولز" ليست مجرد برنامج، بل هي نقلة نوعية شاملة في إدارة مدرستك من الألف إلى الياء.
+    صُممت خصيصاً لاحتياجات المدارس اليمنية والعربية، وتعمل بكفاءة عالية على
+    بتكلفة تشغيل صفرية بعد التثبيت.
+  </p>
+
+  <div class="pmkt-highlight-box reveal-s">
+    <h3>🚀 نقلة نوعية لمدرستك نحو العصر الرقمي</h3>
+    <ul>
+      <li>✅
+        <div><strong>تحويل كامل من الورق إلى الرقمية:</strong> جميع سجلات المدرسة تصبح رقمية ومتاحة فوراً من أي جهاز وفي أي وقت. لا مزيد من الملفات الورقية المتراكمة.</div>
+      </li>
+      <li>✅
+        <div><strong>لوحات تحكم تفاعلية لكل دور:</strong> المدير يشاهد إحصائيات المدرسة كاملةً في لمحة، والمعلم يدير فصوله بضغطة زر، وولي الأمر يتابع ابنه أينما كان.</div>
+      </li>
+      <li>✅
+        <div><strong>ربط حقيقي بين جميع الأطراف:</strong> المعلم ↔ الطالب ↔ ولي الأمر ↔ الإدارة في منظومة واحدة متزامنة تلقائياً لحظياً دون أي تدخل يدوي.</div>
+      </li>
+      <li>✅
+        <div><strong>توفير مرتب موظف إدخال بيانات:</strong> كل معلم يدخل بيانات طلابه مباشرة، ويجمع النظام كل شيء تلقائياً. وفر من 300$ إلى 500$ شهرياً.</div>
+      </li>
+      <li>✅
+        <div><strong>تقليل استهلاك الورق بنسبة 90%+:</strong> الكشوف، التقارير، النتائج، والإشعارات – كلها رقمية. احسب التوفير على مدار العام.</div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="pmkt-highlight-box reveal-s">
+    <h3>⏱️ وفّر الوقت والجهد في إدارة الدرجات</h3>
+    <ul>
+      <li>🚫
+        <div><strong>لا حاجة لموظف إدخال درجات:</strong> كل معلم يدخل درجات طلابه مباشرة من جواله أو حاسوبه في أي وقت، ودون الحاجة إلى التواجد في المدرسة.</div>
+      </li>
+      <li>⚡
+        <div><strong>حفظ تلقائي فوري (AutoSave):</strong> بمجرد أن يكتب المعلم الدرجة، تُحفظ تلقائياً خلال ثانية واحدة. لا حاجة للضغط على "حفظ".</div>
+      </li>
+      <li>🧮
+        <div><strong>جمع ورصد الدرجات تلقائياً:</strong> النظام يجمع درجات السلوك + الواجبات + الشفوي + التحريري تلقائياً ويحسب المجاميع الفصلية والسنوية.</div>
+      </li>
+      <li>📊
+        <div><strong>تقارير Excel جاهزة بنقرة واحدة:</strong> تصدير درجات أي شهر، أي مادة، أي فصل إلى ملف Excel في ثوانٍ. جاهز للطباعة المباشرة.</div>
+      </li>
+      <li>🕘
+        <div><strong>سجل تدقيق كامل:</strong> كل عملية إدخال أو تعديل أو حذف مسجّلة مع اسم المستخدم والوقت والتاريخ. الشفافية الكاملة في كل خطوة.</div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="pmkt-highlight-box reveal-s">
+    <h3>🛡️ إدارة متقدمة بصلاحيات دقيقة حسب كل دور</h3>
+    <ul>
+      <li>👑
+        <div><strong>المدير (Admin) – السلطة المطلقة:</strong> يرى جميع بيانات المدرسة بالكامل، يدير المعلمين والطلاب، يتحكم في الحجب المالي، يصل إلى سجل التدقيق الكامل، ويُعيّن الصلاحيات.</div>
+      </li>
+      <li>🧑‍💼
+        <div><strong>الوكيل (Deputy) – صلاحيات إدارية كاملة:</strong> يمتلك جميع صلاحيات المدير الإدارية، لكن لا يستطيع تغيير إعدادات الحجب المالي أو الوصول إلى بيانات الرواتب.</div>
+      </li>
+      <li>✔️
+        <div><strong>المشرف (Supervisor) – إشراف متعدد الفصول:</strong> يشرف على عدة فصول ومواد، يرى تقارير الأداء الشاملة، يضيف المخالفات والأخبار، دون صلاحيات مالية.</div>
+      </li>
+      <li>👨‍🏫
+        <div><strong>المعلم (Teacher) – نطاق محدود وآمن:</strong> يرى فقط فصوله ومواده وشعبه المحددة. يُدخل الدرجات، يضيف الواجبات والأخبار، يسجل المخالفات لطلبته فقط دون تجاوز.</div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="pmkt-highlight-box reveal-s">
+    <h3>🔔 ولي الأمر يتابع ابنه لحظة بلحظة</h3>
+    <ul>
+      <li>⭐
+        <div><strong>إشعارات فورية عند كل تغيير:</strong> عند إضافة درجة جديدة، تسجيل مخالفة، أو إعطاء واجب، يظهر إشعار فور دخول ولي الأمر للمنصة. لا شيء يفوته.</div>
+      </li>
+      <li>📰
+        <div><strong>أخبار مخصصة لصف ابنه:</strong> لا تظهر الأخبار العامة فقط، بل الأخبار الموجّهة لصف ابنه تحديداً وللمدرسة بشكل عام.</div>
+      </li>
+      <li>💬
+        <div><strong>قناة تواصل مباشرة مع المعلمين:</strong> يرسل ملاحظاته لأي معلم مباشرة داخل المنصة، ويتلقى الردود دون الحاجة للحضور الشخصي أو مكالمات هاتفية.</div>
+      </li>
+      <li>📈
+        <div><strong>شفافية مالية كاملة 100%:</strong> يعرف بالضبط كم دفع، كم تبقى، تاريخ كل دفعة، والأقساط القادمة. لا مفاجآت مالية أبداً.</div>
+      </li>
+      <li>🚫
+        <div><strong>نظام الحجب المالي الذكي:</strong> عند تراجع نسبة السداد عن الحد المحدد، يُوقف النظام تلقائياً وصول الطالب للمحتوى التعليمي حتى تُحسم الرسوم.</div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════
+       PLATFORM DETAILS
+  ═══════════════════════════════ -->
+  <div class="pmkt-section-title reveal-s" id="platforms">
+    <h2>📦 تفاصيل المنصات والمكوّنات</h2>
+  </div>
+  <p class="pmkt-section-subtitle reveal-s">
+    خمس منصات متكاملة تعمل بتناغم تام لإدارة كل جوانب حياة مدرستك الرقمية
+  </p>
+
+  <div class="pmkt-plat-grid">
+    <div class="pmkt-plat-card reveal-s">
+      <div class="pmkt-plat-header" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);">
+        🌐
+        <div>
+          <h3>الموقع الرسمي + CMS</h3>
+          <div style="font-size:0.82rem; opacity:0.8;">التطبيق ①</div>
+        </div>
+      </div>
+      <div class="pmkt-plat-body">
+        <p>واجهة عامة احترافية بتصميم عصري ديناميكي، مع لوحة تحكم كاملة لإدارة المحتوى وجدولة المنشورات من خلال نظام CMS متطور.</p>
+        <ul>
+          <li>✅ عرض ديناميكي للأخبار والصور والفيديوهات</li>
+          <li>✅ لوحة CMS لإضافة وتحرير وحذف المحتوى</li>
+          <li>✅ رفع الملفات مباشرة إلى التخزين السحابي</li>
+          <li>✅ إحصائيات المدرسة (طلاب، معلمون، مواد)</li>
+          <li>✅ سجل تدقيق لجميع العمليات</li>
+          <li>✅ دعم روابط الفيديو ومعالجة روابط الوسائط</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pmkt-plat-card reveal-s">
+      <div class="pmkt-plat-header" style="background: linear-gradient(135deg, #2a5298 0%, #1149a3 100%);">
+        🎓
+        <div>
+          <h3>منصة الطالب وولي الأمر</h3>
+          <div style="font-size:0.82rem; opacity:0.8;">التطبيق ②</div>
+        </div>
+      </div>
+      <div class="pmkt-plat-body">
+        <p>بوابة موحّدة للطالب وولي الأمر: درجات تفصيلية، بيانات مالية، جدول أسبوعي ملوّن، مخالفات، وأخبار في مكان واحد.</p>
+        <ul>
+          <li>✅ درجات تفصيلية شهرية (سلوك، واجبات، شفوي، تحريري)</li>
+          <li>✅ تقارير مالية كاملة مع سجل كل دفعة</li>
+          <li>✅ جدول حصص أسبوعي ملوّن</li>
+          <li>✅ نظام حجب مالي تلقائي ذكي</li>
+          <li>✅ إرسال ملاحظات لأولياء الأمور</li>
+          <li>✅ تغيير كلمة المرور وإدارة الحساب</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pmkt-plat-card reveal-s">
+      <div class="pmkt-plat-header" style="background: linear-gradient(135deg, #1149a3 0%, #0b2f6e 100%);">
+        👨‍🏫
+        <div>
+          <h3>منصة المعلم</h3>
+          <div style="font-size:0.82rem; opacity:0.8;">التطبيق ③ – أقوى المكوّنات</div>
+        </div>
+      </div>
+      <div class="pmkt-plat-body">
+        <p>القلب النابض للمنظومة. إدارة شاملة للدرجات والواجبات والمخالفات والأخبار بصلاحيات متدرجة وأمان عالٍ.</p>
+        <ul>
+          <li>✅ 4 أدوار بصلاحيات متدرجة (مدير، وكيل، مشرف، معلم)</li>
+          <li>✅ حفظ تلقائي (AutoSave) بعد ثانية واحدة</li>
+          <li>✅ تصدير واستيراد Excel بنقرة واحدة</li>
+          <li>✅ Token مصادقة آمن (40 حرفاً، 8 ساعات)</li>
+          <li>✅ Rate Limiting: حظر 15 دقيقة بعد 5 محاولات</li>
+          <li>✅ إدارة الواجبات والمخالفات والأخبار والملاحظات</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pmkt-plat-card reveal-s">
+      <div class="pmkt-plat-header" style="background: linear-gradient(135deg, #0d3b66 0%, #1149a3 100%);">
+        📅
+        <div>
+          <h3>أداة توزيع الحصص</h3>
+          <div style="font-size:0.82rem; opacity:0.8;">التطبيق ④</div>
+        </div>
+      </div>
+      <div class="pmkt-plat-body">
+        <p>شبكة تفاعلية 5×7 لبناء جدول الحصص بذكاء. تكتشف التعارضات تلقائياً وتتزامن مع منصات الطلاب والمعلمين.</p>
+        <ul>
+          <li>✅ شبكة 5 أيام × 7 حصص تفاعلية</li>
+          <li>✅ كشف التعارضات تلقائياً</li>
+          <li>✅ تلوين تفاعلي للخلايا</li>
+          <li>✅ تراجع عن آخر عملية (Undo)</li>
+          <li>✅ مزامنة تلقائية مع ملف الطلاب</li>
+          <li>✅ تحويل الشبكة إلى صفوف منظّمة</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pmkt-plat-card reveal-s">
+      <div class="pmkt-plat-header" style="background: linear-gradient(135deg, #1a5ecc 0%, #2c6fdb 100%);">
+        💰
+        <div>
+          <h3>الوحدة المالية المتكاملة</h3>
+          <div style="font-size:0.82rem; opacity:0.8;">التطبيق ⑤ – إضافة اختيارية</div>
+        </div>
+      </div>
+      <div class="pmkt-plat-body">
+        <p>نظام حسابات متكامل بمعايير محاسبية احترافية. شجرة حسابات كاملة، دفتر يومية بقيد مزدوج، مرتبط تلقائياً ببيانات الطلاب.</p>
+        <ul>
+          <li>✅ شجرة حسابات كاملة ومرنة</li>
+          <li>✅ دفتر يومية بقيد مزدوج</li>
+          <li>✅ ميزان المراجعة وقائمة الدخل</li>
+          <li>✅ ربط تلقائي بحسابات الطلاب ورسومهم</li>
+          <li>✅ لوحة تحكم مالية شاملة</li>
+          <li>✅ تقارير دخل وتدفق نقدي</li>
+        </ul>
+      </div>
     </div>
   </div>
-</header>
 
-<div class="sp-bar">
-  <div class="wrap">
-    <input class="sp-search" id="spSearch" type="search"
-           placeholder="ابحث باسم المدرسة أو المدينة…" aria-label="بحث عن مدرسة"/>
+  <!-- ═══════════════════════════════
+       DAILY SCENARIOS
+  ═══════════════════════════════ -->
+  <div class="pmkt-section-title reveal-s">
+    <h2>🔄 سيناريوهات الاستخدام اليومي</h2>
   </div>
-</div>
+  <p class="pmkt-section-subtitle reveal-s">
+    تعرّف على كيفية تفاعل كل طرف مع المنظومة بشكل يومي واقعي
+  </p>
 
-<main class="wrap">
-  <div id="spGrid" class="sp-grid"></div>
-  <div id="spState" class="sp-state">جارٍ تحميل المدارس…</div>
-</main>
+  <div class="pmkt-scenario-grid">
+    <div class="pmkt-scenario-card reveal-s" style="border-top-color: #1149a3;">
+      <h4>🧑‍💼 المدير صباحاً</h4>
+      <p>يفتح لوحة التحكم ويرى صورة كاملة عن المدرسة في ثوانٍ</p>
+      <ul class="pmkt-scenario-steps">
+        <li><span class="pmkt-step-num">1</span> يطّلع على الإحصائيات الكاملة (طلاب، حضور، رسوم)</li>
+        <li><span class="pmkt-step-num">2</span> يراجع تقارير الأداء الأسبوعي للمعلمين</li>
+        <li><span class="pmkt-step-num">3</span> يشاهد قائمة الطلاب المحجوبين مالياً</li>
+        <li><span class="pmkt-step-num">4</span> يراجع سجل التدقيق لأي عمليات مشبوهة</li>
+        <li><span class="pmkt-step-num">5</span> يُوافق أو يرفض طلبات المعلمين</li>
+      </ul>
+    </div>
+
+    <div class="pmkt-scenario-card reveal-s" style="border-top-color: #16a34a;">
+      <h4>👨‍🏫 المعلم في الفصل</h4>
+      <p>يُدير فصله بالكامل من جواله دون أي ورق</p>
+      <ul class="pmkt-scenario-steps">
+        <li><span class="pmkt-step-num">1</span> يفتح المنصة ويختار الفصل والمادة والشعبة</li>
+        <li><span class="pmkt-step-num">2</span> يُدخل درجات الطلاب – تُحفظ تلقائياً بعد ثانية</li>
+        <li><span class="pmkt-step-num">3</span> يُضيف واجباً جديداً مع تحديد تاريخ التسليم</li>
+        <li><span class="pmkt-step-num">4</span> يُسجّل مخالفة لطالب مع وصف تفصيلي</li>
+        <li><span class="pmkt-step-num">5</span> ينشر خبراً خاصاً بفصله أو للمدرسة كاملاً</li>
+      </ul>
+    </div>
+
+    <div class="pmkt-scenario-card reveal-s" style="border-top-color: #f4a829;">
+      <h4>🎓 الطالب في البيت</h4>
+      <p>يتابع كل شيء يخصه في لحظات دون أن يسأل أحداً</p>
+      <ul class="pmkt-scenario-steps">
+        <li><span class="pmkt-step-num">1</span> يرى درجاته لكل مادة فور إضافتها من المعلم</li>
+        <li><span class="pmkt-step-num">2</span> يطّلع على جدول حصص الغد بالألوان</li>
+        <li><span class="pmkt-step-num">3</span> يقرأ الواجبات المطلوبة مع مواعيد تسليمها</li>
+        <li><span class="pmkt-step-num">4</span> يعرف كم تبقى من الرسوم الدراسية بالضبط</li>
+        <li><span class="pmkt-step-num">5</span> يطّلع على الأخبار والإعلانات المدرسية</li>
+      </ul>
+    </div>
+
+    <div class="pmkt-scenario-card reveal-s" style="border-top-color: #e24a2c;">
+      <h4>👪 ولي الأمر في العمل</h4>
+      <p>يتابع ابنه وهو في مكتبه دون أن يغادره</p>
+      <ul class="pmkt-scenario-steps">
+        <li><span class="pmkt-step-num">1</span> يدخل المنصة فيجد إشعاراً بدرجة جديدة</li>
+        <li><span class="pmkt-step-num">2</span> يراجع تفاصيل الأداء الأكاديمي الشهري</li>
+        <li><span class="pmkt-step-num">3</span> يتأكد من موعد وقيمة القسط القادم</li>
+        <li><span class="pmkt-step-num">4</span> يُرسل ملاحظة للمعلم مباشرة عبر المنصة</li>
+        <li><span class="pmkt-step-num">5</span> يطّلع على أخبار المدرسة وأنشطتها</li>
+      </ul>
+    </div>
+
+    <div class="pmkt-scenario-card reveal-s" style="border-top-color: #7c3aed;">
+      <h4>💵 سيناريو الحجب المالي</h4>
+      <p>آلية ذكية تلقائية تحافظ على حقوق المدرسة</p>
+      <ul class="pmkt-scenario-steps">
+        <li><span class="pmkt-step-num">1</span> المدير يُعيّن نسبة الحجب في إعدادات النظام</li>
+        <li><span class="pmkt-step-num">2</span> عند تراجع السداد عن الحد، يُوقف النظام وصول الطالب</li>
+        <li><span class="pmkt-step-num">3</span> يتلقى ولي الأمر إشعاراً بضرورة التسديد</li>
+        <li><span class="pmkt-step-num">4</span> بعد تسجيل الدفعة، يُرفع الحجب تلقائياً</li>
+        <li><span class="pmkt-step-num">5</span> يُسجّل كل شيء في سجل التدقيق الكامل</li>
+      </ul>
+    </div>
+
+    <div class="pmkt-scenario-card reveal-s" style="border-top-color: #0891b2;">
+      <h4>🔄 سيناريو المزامنة التلقائية</h4>
+      <p>بيانات محدّثة دائماً دون تدخل يدوي</p>
+      <ul class="pmkt-scenario-steps">
+        <li><span class="pmkt-step-num">1</span> المعلم يُدخل درجة في منصة المعلم</li>
+        <li><span class="pmkt-step-num">2</span> النظام يُحدّث ملف الطالب تلقائياً</li>
+        <li><span class="pmkt-step-num">3</span> المزامنة اليومية تعمل في الساعة 2 صباحاً</li>
+        <li><span class="pmkt-step-num">4</span> الجدول يُحدَّث في ملفات الطلاب والمعلمين</li>
+        <li><span class="pmkt-step-num">5</span> الكاش يضمن سرعة التحميل رغم كثافة البيانات</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════
+       TECH FEATURES
+  ═══════════════════════════════ -->
+  <div class="pmkt-section-title reveal-s">
+    <h2>⚙️ تقنية متقدمة وأداء عالٍ</h2>
+  </div>
+  <p class="pmkt-section-subtitle reveal-s">
+    مبنية على  بنية تحتية موثوقة وعالمية الاستضافة
+  </p>
+
+  <div class="pmkt-feat-grid">
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">🗄️</div>
+      <div class="pmkt-feat-text">
+        <strong>طبقة كاش ذكية متعددة المستويات</strong>
+        <span>60 ثانية للمخالفات، 10 دقائق للإحصائيات، ساعة للجداول الدراسية. تقليل استدعاءات API بنسبة 80%+</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">🛡️</div>
+      <div class="pmkt-feat-text">
+        <strong>مصادقة آمنة متعددة الطبقات</strong>
+        <span>Token عشوائي 40 حرفاً صالح 8 ساعات + Rate Limiting: حظر تلقائي 15 دقيقة بعد 5 محاولات فاشلة</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">🔄</div>
+      <div class="pmkt-feat-text">
+        <strong>مزامنات تلقائية مجدوَلة</strong>
+        <span>مزامنة يومية تلقائية في الساعة 2 صباحاً + مزامنة فورية عند كل تعديل للجداول والدرجات</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">📗</div>
+      <div class="pmkt-feat-text">
+        <strong>تصدير واستيراد Excel كامل</strong>
+        <span>تصدير أي تقرير – درجات، مالية، مخالفات – إلى Excel بنقرة. واستيراد بيانات جماعية بسهولة</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">📱</div>
+      <div class="pmkt-feat-text">
+        <strong>تصميم متجاوب لجميع الأجهزة</strong>
+        <span>يعمل بكفاءة على الهواتف والأجهزة اللوحية وأجهزة الكمبيوتر. واجهة محسّنة لكل حجم شاشة</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">♾️</div>
+      <div class="pmkt-feat-text">
+        <strong>ملكية دائمة – بدون رسوم شهرية</strong>
+        <span>تدفع مرة واحدة وتملك النظام. لا اشتراكات شهرية، لا رسوم خفية، لا قيود على عدد المستخدمين</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">🔒</div>
+      <div class="pmkt-feat-text">
+        <strong>عزل بيانات كامل بين المعلمين</strong>
+        <span>withAuth + withAuthAndClass + withAuthAndSubject: كل معلم لا يرى إلا بياناته. عزل كامل ومحكم</span>
+      </div>
+    </div>
+    <div class="pmkt-feat-item reveal-s">
+      <div class="pmkt-feat-icon">🕘</div>
+      <div class="pmkt-feat-text">
+        <strong>سجل تدقيق شامل لكل العمليات</strong>
+        <span>كل إضافة أو تعديل أو حذف مسجّل بالتفصيل مع اسم المستخدم والوقت. شفافية وأمان تاموكامل</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════
+       INTEGRATION MAP
+  ═══════════════════════════════ -->
+  <div class="pmkt-section-title reveal-s">
+    <h2>🔗 خريطة تكامل المنظومة</h2>
+  </div>
+  <p class="pmkt-section-subtitle reveal-s">
+    تتكامل المنصات الخمس عبر 4 ملفات خاصة بمدرستك مترابطة بمزامنات تلقائية وكاش ذكي
+  </p>
+
+  <div class="pmkt-flow-diagram reveal-s">
+    <h3>تدفق البيانات بين المنصات</h3>
+    <div class="pmkt-flow-row">
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#1a5ecc,#2c6fdb);">نظام CMS</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#1e3c72,#2a5298);">الموقع الرسمي</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#2a5298,#1149a3);">منصة الطالب</div>
+    </div>
+    <div class="pmkt-flow-row">
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#1149a3,#0b2f6e);">منصة المعلم</div>
+      <span class="pmkt-flow-arrow">⇄</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#16a34a,#15803d);">الدرجات / المخالفات</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#2a5298,#1149a3);">منصة الطالب</div>
+    </div>
+    <div class="pmkt-flow-row">
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#0d3b66,#1149a3);">أداة الحصص</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#7c3aed,#6d28d9);">مزامنة الجدول</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#2a5298,#1149a3);">منصة الطالب + المعلم</div>
+    </div>
+    <div class="pmkt-flow-row">
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#b91c1c,#dc2626);">الحجب المالي (المدير)</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#92400e,#b45309);">الإعدادات (ورقة الطالب)</div>
+      <span class="pmkt-flow-arrow">→</span>
+      <div class="pmkt-flow-box" style="background: linear-gradient(135deg,#2a5298,#1149a3);">منصة الطالب تتحقق</div>
+    </div>
+    <p class="pmkt-flow-note">
+      ⚡ <strong>4 ملفات  رئيسية</strong> متصلة ببعضها عبر 7 ملفات ،
+      مع معالجة موحّدة لروابط الوسائط في جميع المنصات.
+    </p>
+  </div>
+
+  </section>
+  <section id="faq" class="wrap">
+    <div class="pmkt-section-title reveal-s">
+      <h2>❓ أسئلة شائعة</h2>
+    </div>
+    <div class="pmkt-faq-list">
+    <div class="pmkt-faq-item">
+      <div class="pmkt-faq-q">
+        <div style="display:flex; align-items:center; gap:12px;">
+          📶
+          هل يحتاج النظام إلى إنترنت دائم؟
+        </div>
+        <div class="pmkt-faq-toggle">▾</div>
+      </div>
+      <div class="pmkt-faq-a">
+        <div class="pmkt-faq-a-inner">
+          نعم، يحتاج اتصالاً بالإنترنت للعمل الأمثل، لكنه مُصمَّم ليعمل بكفاءة على الاتصالات البطيئة أيضاً بفضل طبقة الكاش الذكية. معظم البيانات تُخزَّن مؤقتاً في الكاش (60 ثانية إلى ساعة حسب نوع البيانات)، مما يقلل استهلاك البيانات بنسبة 80%+. يعمل بكفاءة على أي شبكة 3G أو 4G أو إنترنت منزلي عادي.
+        </div>
+      </div>
+    </div>
+
+    <div class="pmkt-faq-item">
+      <div class="pmkt-faq-q">
+        <div style="display:flex; align-items:center; gap:12px;">
+          👥
+          كم يمكن أن يستخدمه من شخص في وقت واحد؟
+        </div>
+        <div class="pmkt-faq-toggle">▾</div>
+      </div>
+      <div class="pmkt-faq-a">
+        <div class="pmkt-faq-a-inner">
+          لا يوجد حد أقصى عملي. المنظومة مبنية على بنية سحابية قابلة للتوسّع تدعم مئات المستخدمين المتزامنين، وتُستخدَم فعلياً من مدارس بأحجام مختلفة. في حالات الاستخدام المكثّف جداً (مثل يوم نتائج الفصل)، قد يكون هناك تأخير بسيط جداً لا يؤثر على الاستخدام.
+        </div>
+      </div>
+    </div>
+
+    <div class="pmkt-faq-item">
+      <div class="pmkt-faq-q">
+        <div style="display:flex; align-items:center; gap:12px;">
+          ⚙️
+          هل يمكن تخصيص النظام لاحتياجات مدرستنا؟
+        </div>
+        <div class="pmkt-faq-toggle">▾</div>
+      </div>
+      <div class="pmkt-faq-a">
+        <div class="pmkt-faq-a-inner">
+          بالتأكيد. المنظومة مرنة جداً وقابلة للتخصيص الكامل. يمكن تعديل: أسماء المواد والفصول والشعب، نسبة الحجب المالي، طريقة احتساب الدرجات، الألوان والهوية البصرية، وإضافة حقول بيانات إضافية حسب طلبك. الميزات المضافة مستقبلاً (كتقارير مخصصة) تُضاف بتكلفة تُحدَّد حسب الطلب.
+        </div>
+      </div>
+    </div>
+
+    <div class="pmkt-faq-item">
+      <div class="pmkt-faq-q">
+        <div style="display:flex; align-items:center; gap:12px;">
+          🔒
+          ما مدى أمان بيانات طلابنا؟
+        </div>
+        <div class="pmkt-faq-toggle">▾</div>
+      </div>
+      <div class="pmkt-faq-a">
+        <div class="pmkt-faq-a-inner">
+          أمان بيانات طلابكم هو أولويتنا القصوى. البيانات تُخزَّن في جداول الخاص بمدرستك (ملفاتك الخاصة 100%). المنظومة تستخدم: Token مشفّر 40 حرفاً لكل جلسة، Rate Limiting لمنع محاولات الاختراق، عزل كامل بين الأدوار حيث لا يرى المعلم إلا بيانات طلابه، وسجل تدقيق لكل عملية. لا نصل إلى بيانات مدرستك إطلاقاً.
+        </div>
+      </div>
+    </div>
+
+    <div class="pmkt-faq-item">
+      <div class="pmkt-faq-q">
+        <div style="display:flex; align-items:center; gap:12px;">
+          🎓
+          هل يحتاج المعلمون خبرة تقنية؟
+        </div>
+        <div class="pmkt-faq-toggle">▾</div>
+      </div>
+      <div class="pmkt-faq-a">
+        <div class="pmkt-faq-a-inner">
+          لا على الإطلاق. صُممنا للمعلم الذي لا يعرف شيئاً عن التقنية. الواجهة بسيطة وبديهية تماماً. مجرد فتح الرابط، إدخال كلمة المرور، واختيار الفصل والمادة – ثم البدء بإدخال الدرجات. يشمل التعاقد تدريباً عملياً شاملاً لجميع المعلمين مع مرجع مصوّر خطوة بخطوة.
+        </div>
+      </div>
+    </div>
+
+    </div>
+  </section>
+
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>منصّة يمن سكولز &copy; <span id="yr"></span></div>
+      <div style="margin-top:6px;opacity:.8">نظام إدارة مدرسي متكامل — اليمن</div>
+      <div style="margin-top:10px"><a href="/master-admin/register.html" style="color:#fff;text-decoration:underline">سجّل مدرستك في يمن سكولز</a></div>
+      <div style="margin-top:6px"><a href="/pricing" style="color:#fff;text-decoration:underline">خطط الأسعار</a> · <a href="/master-admin/index.html" style="color:#fff;text-decoration:underline">دخول الإدارة</a></div>
+      <div style="margin-top:6px"><a href="/home/privacy.html" style="color:#fff;text-decoration:underline">سياسة الخصوصية</a> · <a href="/home/terms.html" style="color:#fff;text-decoration:underline">شروط الخدمة</a></div>
+    </div>
+  </footer>
 
 <script>
 var SP = { all: [], q: '' };
@@ -220,13 +1096,24 @@ function _spCard(s){
   var meta = '';
   if(s.address) meta += '<span class="sc-chip">' + spEsc(s.address) + '</span>';
   if(s.phone)   meta += '<span>' + spEsc(s.phone) + '</span>';
-  return '<a class="sc" href="' + spEsc(_spSchoolHref(s)) + '">' +
+  /* 🔴 البطاقة `<div>` لا `<a>` تغلّفها: الجذر اليوم يحمل روابط **بوّابتَي المعلم والطالب**
+     لكل مدرسة، و`<a>` داخل `<a>` HTML غير صالح ⇒ كانت ستسقط. الحلّ رابط رئيسيّ ممتدّ
+     (`.sc-go::after` مطلق يغطّي البطاقة) وروابط البوّابتين فوقه بـ`z-index`. */
+  var sid = String(s.schoolId || '').trim();
+  var q   = sid ? ('?school=' + encodeURIComponent(sid)) : '';
+  return '<div class="sc">' +
     '<div class="sc-top">' + head +
       '<div><h2 class="sc-nm">' + spEsc(nm) + '</h2>' +
       (s.address ? '<p class="sc-addr">' + spEsc(s.address) + '</p>' : '') + '</div>' +
     '</div>' +
-    '<div class="sc-meta">' + meta + '<span class="sc-go">عرض الصفحة ←</span></div>' +
-    '</a>';
+    '<div class="sc-meta">' + meta +
+      '<a class="sc-go" href="' + spEsc(_spSchoolHref(s)) + '">عرض الصفحة ←</a>' +
+    '</div>' +
+    '<div class="sc-ports">' +
+      '<a class="sc-port" href="/teacher/index.html' + q + '">👩‍🏫 المعلمون</a>' +
+      '<a class="sc-port" href="/student/index.html' + q + '">🎒 الطلاب</a>' +
+    '</div>' +
+    '</div>';
 }
 
 /* حالة الفراغ تفصل السببين كما بالمكتبة (بند 80-أ): «لا مدارس مفعّلة» غيابٌ بنيويّ بلا
@@ -281,8 +1168,88 @@ document.addEventListener('click', function(e){
 });
 spEl('spSearch').addEventListener('input', function(){ SP.q = this.value; spRender(); });
 
+/* ═══ صفحة الهبوط: الكشف عند التمرير + الأكورديون — منقولة من home-all-school ═══
+   🔴 دالّة `animateCards` **مُسقَطة عمداً** (لم تُنقَل): `spRender()` تُستدعى عند كل ضغطة
+   مفتاح بالبحث وتستبدل `innerHTML` كاملاً ⇒ إعادة تشغيل حركة الكشف على كل حرف = وميض.
+   حركة كشفٍ عند التمرير غير متوافقة بنيوياً مع شبكة تُعاد فلترتها حيّاً.
+   ⚠️ قواعد `.card-reveal` بالـCSS **باقية خاملة** (لا عنصر يحمل الصنف) — تُركت لأنها
+   مشتركة السطر مع `.reveal-s` الحيّة، وتشذيبها يمسّ سبعة محدِّدات بلا مكسب. */
+function initScrollReveal() {
+  var els = document.querySelectorAll('.reveal-s');
+  try {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: .09, rootMargin: '0px 0px -44px 0px' });
+    for (var i = 0; i < els.length; i++) io.observe(els[i]);
+  } catch (e) {
+    // لا يوجد IntersectionObserver (بيئة قديمة) — أظهر العناصر فوراً بدل بقائها مخفية للأبد
+    for (var j = 0; j < els.length; j++) els[j].classList.add('in');
+  }
+  _revealSafetyValve();
+}
+
+// صمّام أمان: بيئة تُنفِّذ JS لكن لا تُمرِّر إطلاقاً (زاحف يُصيِّر الصفحة، أداة لقطة، قارئ
+// آلي) كانت ترى كل ما تحت الطيّة فارغاً لأن `opacity:0` هي الحالة الأساسية. بعد 6 ثوانٍ بلا
+// أي تفاعل بشري نكشف كل شيء دفعة واحدة — مستخدم حقيقي لم يتفاعل خلال 6s لم يرَ التأثير
+// أصلاً، فلا خسارة بصرية. يكمّل بوّابة `.js` (تغطّي حالة «بلا JS» فقط).
+function _revealSafetyValve() {
+  var interacted = false;
+  var evs = ['scroll', 'pointerdown', 'touchstart', 'keydown', 'wheel'];
+  function mark() { interacted = true; }
+  for (var i = 0; i < evs.length; i++) {
+    window.addEventListener(evs[i], mark, { once: true, passive: true });
+  }
+  setTimeout(function () {
+    if (interacted) return;
+    // `.in` وحدها لا تكفي على المتصفّحات الداعمة لـ`animation-timeline`: الحركة النشطة
+    // تتحكّم بـopacity وتغلب أي إعلان عادي (مواصفة CSS Animations) — لذا نضيف صنفاً على
+    // <html> يُلغي الحركة نفسها بـ!important. `.in` تبقى للمسار الاحتياطي (transition).
+    document.documentElement.classList.add('reveal-all');
+    var all = document.querySelectorAll('.reveal-s,.card-reveal');
+    for (var k = 0; k < all.length; k++) all[k].classList.add('in');
+  }, 6000);
+}
+
+// ── أكورديون الأسئلة الشائعة (منقول من pricing/، بنمط addEventListener لا onclick مضمّن) ──
+function initFaqAccordion() {
+  var qs = document.querySelectorAll('.pmkt-faq-q');
+  for (var i = 0; i < qs.length; i++) {
+    qs[i].addEventListener('click', function () {
+      var item = this.parentElement;
+      var answer = item.querySelector('.pmkt-faq-a');
+      var isOpen = this.classList.contains('open');
+      var allQs = document.querySelectorAll('.pmkt-faq-q');
+      for (var j = 0; j < allQs.length; j++) {
+        allQs[j].classList.remove('open');
+        allQs[j].parentElement.querySelector('.pmkt-faq-a').style.maxHeight = '0';
+      }
+      if (!isOpen) {
+        this.classList.add('open');
+        answer.style.maxHeight = answer.scrollHeight + 'px';
+      }
+    });
+  }
+}
+
+/* الإقلاع — 🔴 التحويلة **مطلقة**: النسبية على الجذر تُعطي `/newsarticle.html` وهو 404
+   (لا ملف بذلك المسار ولا يعيد الـWorker كتابته). إصلاح لخلل قائم لا انحدار. */
+function _spBootPage(){
+  try{
+    var q = /[?&]news=/.test(location.search);
+    if(q){ location.replace('/home/newsarticle.html' + location.search); return; }
+  }catch(e){}
+  try{ var y = document.getElementById('yr'); if(y) y.textContent = String(new Date().getFullYear()); }catch(e){}
+  initScrollReveal();
+  initFaqAccordion();
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _spBootPage);
+else _spBootPage();
+
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', spBoot);
 else spBoot();
+</script>
 </script>
 
 </body>
