@@ -1739,7 +1739,27 @@ var io=new IntersectionObserver(function(entries){
     if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}
   });
 },{threshold:.09,rootMargin:'0px 0px -44px 0px'});
-$$('.reveal,.reveal-l,.reveal-r,.reveal-s,.sh').forEach(function(el){io.observe(el)});
+var _REVEAL_SEL = '.reveal,.reveal-l,.reveal-r,.reveal-s,.sh';
+$$(_REVEAL_SEL).forEach(function(el){io.observe(el)});
+
+/**
+ * 🔴 يراقب عناصر الكشف **المُحقَنة بعد التحميل**. السطر أعلاه يعمل مرّةً واحدة، فأي عنصر
+ * يُولَّد لاحقاً بصنف `reveal` (بطاقات الشهادات · بلاطات الإحصاء) **لا يُراقَب أبداً**
+ * ⇒ يبقى على `opacity:0` الأساسية **للأبد**، ولا ينقذه التمرير (مُثبَت بالقياس: بعد
+ * `scrollIntoView` بقي الصنف `tc reveal` بلا `in` والشفافية صفراً).
+ * وهذا فخّ بند 66 بوجهه الأخطر: الحارس الذي يشترط تطابق أصناف المُولَّد مع الساكن كان
+ * **يفرض الخلل** — الصنف نفسه هو ما يُخفي العنصر حين لا يُراقَب.
+ * @param {Element=} root نطاق البحث؛ الافتراضي المستند كاملاً.
+ */
+function _homeObserveReveal(root){
+  var scope = root && root.querySelectorAll ? root : document;
+  var list = scope.querySelectorAll(_REVEAL_SEL), i, el;
+  for(i = 0; i < list.length; i++){
+    el = list[i];
+    if(el.classList.contains('in')) continue;   // كُشِف سابقاً — لا تُعِد مراقبته
+    io.observe(el);
+  }
+}
 
 /* ══════════════════════════════════════════
    COUNTER ANIMATION
@@ -1882,6 +1902,9 @@ function _homeRenderReviews(list){
       +'</div>';
   }
   g.innerHTML=h;
+  // 🔴 بطاقات الشهادات مُولَّدة بصنف `reveal` — بلا إعادة مراقبة تبقى `opacity:0` للأبد،
+  // فتُقرأ الصفحة وكأن «آراء أولياء الأمور» لا تعمل رغم أن البيانات وصلت كاملةً.
+  _homeObserveReveal(g);
 }
 
 /**
@@ -2012,6 +2035,7 @@ function _homeRenderStatsFromBundle(stats){
       +'</div>';
   }
   row.innerHTML=h;
+  _homeObserveReveal(row);   // بلاطات مُولَّدة بصنف `reveal` — بلا هذا تبقى خفيّة للأبد
 }
 
 /* ══════════════════════════════════════════
