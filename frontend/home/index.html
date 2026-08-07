@@ -886,6 +886,15 @@ img,video,iframe{max-width:100%;display:block}
   position:absolute;bottom:0;right:0;left:0;height:3px;
   background:var(--g-brand);opacity:.6;
 }
+/* «عرض المزيد» للشهادات — يمتدّ عبر عمودَي `.tg` كي لا يُقرأ كبطاقة ثالثة ناقصة.
+   بلا `reveal` عمداً: زرٌّ إجرائيّ يجب أن يُرى فور رسمه (بند 105). */
+.tc-more{
+  grid-column:1 / -1;justify-self:center;margin-top:6px;
+  background:transparent;color:var(--navy);border:1.5px solid var(--tx3);
+  border-radius:999px;padding:11px 30px;font-size:.92rem;font-weight:800;
+  cursor:pointer;font-family:inherit;transition:background .15s,color .15s,border-color .15s;
+}
+.tc-more:hover{background:var(--g-brand);color:#fff;border-color:transparent}
 
 /* ═══════════════════════════════════════════
    FOOTER
@@ -1875,20 +1884,35 @@ function _homeApplyBrandTheme(b){
 }
 
 /* ═══════ الشهادات العامّة — نفس بنية `.tc` حرفياً ═══════ */
+var HOME_REVIEWS_PAGE = 6;          // دفعة العرض — لا سقف بيانات (الخادم يُرسل كل المعتمَد)
+var _homeReviewsAll = [], _homeReviewsShown = 0;
+
 function _homeRenderReviews(list){
+  _homeReviewsAll = list || [];
+  _homeReviewsShown = 0;
+  _homeReviewsPaint(true);
+}
+
+/* يرسم دفعةً إضافية. `reset` يبدأ من الصفر (استدعاء أوّل أو إعادة تحميل الحزمة). */
+function _homeReviewsPaint(reset){
   var wrap=document.querySelector('section.testi');
   var g=document.querySelector('section.testi .tg');
   if(!g||!wrap) return;
-  list=list||[];
+  var list=_homeReviewsAll;
   if(!list.length){ wrap.style.display='none'; return; }   // صفر شهادة ⇒ لا بطاقات وهمية
   wrap.style.display='';
+  if(reset) _homeReviewsShown=0;
+  _homeReviewsShown=Math.min(list.length,_homeReviewsShown+HOME_REVIEWS_PAGE);
   var h='', i, k;
-  for(i=0;i<list.length;i++){
+  for(i=0;i<_homeReviewsShown;i++){
     var r=list[i]||{};
-    var stars=parseInt(r.stars,10); if(!(stars>0)) stars=5; if(stars>5) stars=5;
+    var stars=parseInt(r.stars,10); if(!(stars>0)) stars=0; if(stars>5) stars=5;
     var st='';
     for(k=0;k<stars;k++) st+='<i class="fas fa-star"></i>';
     var nm=String(r.name||'').trim();
+    /* 🔴 الوسم يُقدَّم من الخادم (`label`) لا يُشتقّ هنا: الاسم المخزَّن هو اسم **الطالب**،
+       وولي الأمر هو المُقيِّم — فعرضه بلا وسم يُقرأ كأن الطالب هو من كتب الشهادة. */
+    var lbl=String(r.label||r.type||'').trim();
     h+='<div class="tc reveal" data-delay="'+((i%4)+1)+'">'
       +  '<div class="tc-quote">"</div>'
       +  '<div class="tc-stars">'+st+'</div>'
@@ -1896,14 +1920,21 @@ function _homeRenderReviews(list){
       +  '<div class="tc-auth">'
       +    '<div class="tc-av">'+esc(nm.charAt(0)||'؟')+'</div>'
       +    '<div><div class="tc-nm">'+esc(nm||'ولي أمر')+'</div>'
-      +        '<div class="tc-rl">'+esc(r.type||'')+'</div></div>'
+      +        '<div class="tc-rl">'+esc(lbl)+'</div></div>'
       +  '</div>'
       +  '<div class="tc-accent"></div>'
       +'</div>';
   }
+  var rest=list.length-_homeReviewsShown;
+  if(rest>0){
+    h+='<button class="tc-more" id="tcMore" type="button">'
+      +  'عرض المزيد من الآراء ('+rest+')</button>';
+  }
   g.innerHTML=h;
+  var mb=document.getElementById('tcMore');
+  if(mb) mb.onclick=function(){ _homeReviewsPaint(false); };
   // 🔴 بطاقات الشهادات مُولَّدة بصنف `reveal` — بلا إعادة مراقبة تبقى `opacity:0` للأبد،
-  // فتُقرأ الصفحة وكأن «آراء أولياء الأمور» لا تعمل رغم أن البيانات وصلت كاملةً.
+  // فتُقرأ الصفحة وكأن «آراء أولياء الأمور» لا تعمل رغم أن البيانات وصلت كاملةً (بند 105).
   _homeObserveReveal(g);
 }
 
