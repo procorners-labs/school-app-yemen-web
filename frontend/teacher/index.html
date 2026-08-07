@@ -5065,6 +5065,16 @@ function esc(str) {
   return escapeHtml(str);
 }
 
+/**
+ * رابط آمن لسمة href — يُرجِع '' لأي شيء ليس http/https.
+ * حذف أحرف التحكّم **حذفاً** لا استبدالاً بمسافة: الاستبدال يُمرِّر `ja\tvascript:` كنصّ بلا
+ * مخطّط فيجتاز الفحص، وهو بالضبط ما وقع في بند 77-ج. والمُخرَج يمرّ بـesc() عند البناء.
+ */
+function _tcSafeHref(u) {
+  var s = (u === undefined || u === null) ? '' : String(u).replace(/[\t\r\n]/g, '').trim();
+  return /^https?:\/\//i.test(s) ? s : '';
+}
+
 // تنسيق التاريخ بالعربية: "2026-06-07" → "7 يونيو 2026"
 function _fmtDateAr(iso) {
   if (!iso) return '—';
@@ -12061,7 +12071,7 @@ function loadDashboardStats(data) {
                 '<span style="font-size:1.3rem;flex-shrink:0;">' + a.icon + '</span>' +
                 '<div style="flex:1;min-width:0;">' +
                   '<div style="font-size:.85rem;font-weight:600;">' + (a.label || '') + '</div>' +
-                  '<div style="font-size:.82rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + shortText + '</div>' +
+                  '<div style="font-size:.82rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(shortText) + '</div>' +
                 '</div>' +
                 '<span style="font-size:.75rem;color:var(--text-light);white-space:nowrap;">' + formatDate(a.date) + '</span>' +
               '</div>';
@@ -15881,11 +15891,11 @@ function renderHomeworkPage() {
     var rowNum = start + j + 1;
     html += '<tr>' +
       '<td>' + rowNum + '</td>' +
-      '<td><span class="badge badge-primary">' + (h.subject || '') + '</span></td>' +
-      '<td><span class="badge badge-info">' + (h.grade || '') + '</span></td>' +
-      '<td><span class="badge badge-purple">' + (h.section || '') + '</span></td>' +
-      '<td>' + (h.teacher || '') + '</td>' +
-      '<td style="text-align:right;max-width:260px">' + (h.homework || '') + '</td>' +
+      '<td><span class="badge badge-primary">' + esc(h.subject || '') + '</span></td>' +
+      '<td><span class="badge badge-info">' + esc(h.grade || '') + '</span></td>' +
+      '<td><span class="badge badge-purple">' + esc(h.section || '') + '</span></td>' +
+      '<td>' + esc(h.teacher || '') + '</td>' +
+      '<td style="text-align:right;max-width:260px">' + esc(h.homework || '') + '</td>' +
       '<td style="white-space:nowrap">' + formatDate(h.date) + '</td>';
     if (isAdmin()) {
       html += '<td><div class="btn-group">' +
@@ -18447,9 +18457,11 @@ function _buildNewsCard_Teacher(n) {
       // الغلاف المصمّم (للخبر النصّي فقط) ثم النص ثم المرفق
       (isTextOnly ? _tcTextCover(n) : '') +
 
-      // النص
+      // النص — يمرّ بـesc() كبقية الحقول المجاورة. كان يُحقَن خاماً في innerHTML وحده من بين
+      // كل حقول البطاقة، ونصّ الخبر يكتبه أي معلّم ويقرأه المدير ⇒ تخزين نصّ فاعل عبر
+      // المستخدمين. و`white-space:pre-wrap` يُثبِت أن النيّة كانت نصّاً خاماً لا HTML.
       '<div style="padding:0 16px 14px;font-size:.9rem;line-height:1.75;white-space:pre-wrap;word-break:break-word;">' +
-        (n.news || '') +
+        esc(n.news || '') +
       '</div>' +
 
       // المرفق
@@ -19655,21 +19667,22 @@ function renderAdminActivitiesTab(tab) {
     html = '<div class="table-wrap"><table class="rt-cards"><thead><tr><th>#</th><th>المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>الواجب</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var i = 0; i < data.length; i++) {
       var h = data[i];
-      html += '<tr><td data-label="#">' + (aaStart+i+1) + '</td><td data-label="المعلم">' + (h.teacher||'') + '</td><td data-label="المادة"><span class="badge badge-primary">' + (h.subject||'') + '</span></td><td data-label="الفصل">' + (h.grade||'') + '</td><td data-label="الشعبة">' + (h.section||'') + '</td><td data-label="الواجب" style="text-align:right;max-width:200px">' + (h.homework||'') + '</td><td data-label="التاريخ">' + formatDate(h.date) + '</td><td data-label="إجراءات"><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editHomework(\''+h.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteHomeworkItem(\''+h.id+'\')">🗑️</button></div></td></tr>';
+      html += '<tr><td data-label="#">' + (aaStart+i+1) + '</td><td data-label="المعلم">' + esc(h.teacher||'') + '</td><td data-label="المادة"><span class="badge badge-primary">' + esc(h.subject||'') + '</span></td><td data-label="الفصل">' + esc(h.grade||'') + '</td><td data-label="الشعبة">' + esc(h.section||'') + '</td><td data-label="الواجب" style="text-align:right;max-width:200px">' + esc(h.homework||'') + '</td><td data-label="التاريخ">' + formatDate(h.date) + '</td><td data-label="إجراءات"><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editHomework(\''+h.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteHomeworkItem(\''+h.id+'\')">🗑️</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
   } else if (tab === 'news') {
     html = '<div class="table-wrap"><table class="rt-cards"><thead><tr><th>#</th><th>المعلم</th><th>الفصل</th><th>الشعبة</th><th>الخبر</th><th>مرفق</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var j = 0; j < data.length; j++) {
       var n = data[j];
-      html += '<tr><td data-label="#">' + (aaStart+j+1) + '</td><td data-label="المعلم">' + (n.teacher||'') + '</td><td data-label="الفصل">' + (n.grade||'') + '</td><td data-label="الشعبة">' + (n.section||'') + '</td><td data-label="الخبر" style="text-align:right;max-width:200px">' + (n.news||'') + '</td><td data-label="مرفق">' + (n.attachments ? '<a href="'+n.attachments+'" target="_blank" class="btn btn-sm btn-info">📎</a>' : '—') + '</td><td data-label="التاريخ">' + formatDate(n.date) + '</td><td data-label="إجراءات"><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editNews(\''+n.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\''+n.id+'\')">🗑️</button></div></td></tr>';
+      var _aaHref = _tcSafeHref(n.attachments);
+      html += '<tr><td data-label="#">' + (aaStart+j+1) + '</td><td data-label="المعلم">' + esc(n.teacher||'') + '</td><td data-label="الفصل">' + esc(n.grade||'') + '</td><td data-label="الشعبة">' + esc(n.section||'') + '</td><td data-label="الخبر" style="text-align:right;max-width:200px">' + esc(n.news||'') + '</td><td data-label="مرفق">' + (_aaHref ? '<a href="'+esc(_aaHref)+'" target="_blank" rel="noopener" class="btn btn-sm btn-info">📎</a>' : '—') + '</td><td data-label="التاريخ">' + formatDate(n.date) + '</td><td data-label="إجراءات"><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editNews(\''+n.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteNewsItem(\''+n.id+'\')">🗑️</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
   } else {
     html = '<div class="table-wrap"><table class="rt-cards"><thead><tr><th>#</th><th>الطالب</th><th>الفصل</th><th>الشعبة</th><th>المخالفة</th><th>المعلم</th><th>الرد</th><th>التاريخ</th><th>إجراءات</th></tr></thead><tbody>';
     for (var k = 0; k < data.length; k++) {
       var v = data[k];
-      html += '<tr><td data-label="#">' + (aaStart+k+1) + '</td><td data-label="الطالب" style="font-weight:500">' + (v.name||'') + '</td><td data-label="الفصل">' + (v.grade||'') + '</td><td data-label="الشعبة">' + (v.section||'') + '</td><td data-label="المخالفة"><span class="badge badge-danger">' + (v.violation||'') + '</span></td><td data-label="المعلم">' + (v.teacher||'') + '</td><td data-label="الرد">' + (v.reply||'—') + '</td><td data-label="التاريخ">' + formatDate(v.date) + '</td><td data-label="إجراءات"><button class="btn btn-sm btn-danger" onclick="deleteViolationItem(' + v.rowIndex + ')">🗑️</button></td></tr>';
+      html += '<tr><td data-label="#">' + (aaStart+k+1) + '</td><td data-label="الطالب" style="font-weight:500">' + esc(v.name||'') + '</td><td data-label="الفصل">' + esc(v.grade||'') + '</td><td data-label="الشعبة">' + esc(v.section||'') + '</td><td data-label="المخالفة"><span class="badge badge-danger">' + esc(v.violation||'') + '</span></td><td data-label="المعلم">' + esc(v.teacher||'') + '</td><td data-label="الرد">' + esc(v.reply||'—') + '</td><td data-label="التاريخ">' + formatDate(v.date) + '</td><td data-label="إجراءات"><button class="btn btn-sm btn-danger" onclick="deleteViolationItem(' + v.rowIndex + ')">🗑️</button></td></tr>';
     }
     html += '</tbody></table></div>';
   }
