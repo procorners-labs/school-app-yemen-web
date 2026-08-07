@@ -559,10 +559,17 @@ export default {
     }
 
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
-    // الجذر / يخدم بوّابة home-all-school (متعدّدة المدارس) منذ 2026-07-17 — بدل البوّابة
-    // القديمة أحادية الهوية (assets/index.html)، التي تبقى موجودة وتعمل عند طلبها صراحة عبر
-    // /index.html، فقط لم تعد الافتراضي عند الجذر. راجع _build/gen-sitemap.js في school-app-yemen-gas.
-    if (path === '/' || path === '') path = '/home-all-school/index.html';
+    // الجذر / يخدم **home/Schools.html** منذ 2026-08-07: صفحة هبوط كاملة (هيرو · about-app ·
+    // features · platform-details · faq) + دليل المدارس في قسم واحد — أي كل ما كان يخدمه
+    // home-all-school وزيادة. المحتوى نُقِل **نسخاً** والملف القديم مجمَّد بلا لمسة:
+    // /home-all-school/index.html يبقى يُخدَم 200 (معرّف نشره ثابت — بند 104، وأندرويد
+    // SchoolzYemen يشير إليه)، وكذلك /index.html القديمة. راجع _build/gen-sitemap.js في
+    // school-app-yemen-gas — مدخل الجذر هناك يشير إلى home/Schools.html فيتطابق المصدران.
+    //
+    // 🔴 الترتيب مع مستودع الـgas غير قابل للعكس: هذا السطر لا يُنشَر إلا بعد أن يُثبت
+    // curl أن /home/schools.html صار index,follow حيّاً. العكس يخدم الجذر بـnoindex
+    // لنافذة كاملة، وHTML يُخدَم هنا بـno-cache (أدناه) فيصل الزاحف فوراً.
+    if (path === '/' || path === '') path = '/home/schools.html';
     // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته إلى **`/home/index.html`**
     // منذ 2026-08-07 (بند 104) — بدل `home-all-school`. السبب: قرار مالك بأن تكون صفحة كل
     // مدرسة **نفس تصميم `/home/index.html` بالضبط**، والمطابقة الحقيقية أن يخدمهما ملف واحد
