@@ -406,7 +406,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       <div class="panel">
         <div class="panel-title">⚡ مزامنة شاملة فورية</div>
         <p style="color:#666;font-size:13px;margin-bottom:14px;">
-          تُشغّل جميع عمليات المزامنة بالترتيب: مخالفات → ملاحظات → درجات → رسوم → ملخص مالي → إحصاءات
+          تُشغّل المزامنة الشاملة بالترتيب: ملاحظات → تحديث لوحة الإحصاءات
         </p>
         <button class="btn btn-primary" onclick="sync_runAll()" id="btn-sync-all">
           🔄 تشغيل مزامنة شاملة
@@ -444,22 +444,6 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
             </div>
             <button class="btn btn-sm btn-primary" onclick="sync_single('grades')">تشغيل</button>
           </div>
-          <div class="sync-step" id="step-fees">
-            <span class="sync-step-icon">💰</span>
-            <div class="sync-step-info">
-              <div class="sync-step-name">مزامنة الرسوم</div>
-              <div class="sync-step-detail">من ملف المعلمين → ملف الطالب (760 طالب)</div>
-            </div>
-            <button class="btn btn-sm btn-primary" onclick="sync_single('fees')">تشغيل</button>
-          </div>
-          <div class="sync-step" id="step-financial">
-            <span class="sync-step-icon">📑</span>
-            <div class="sync-step-info">
-              <div class="sync-step-name">بناء الملخص المالي</div>
-              <div class="sync-step-detail">في Master_Admin_School > Financial_Summary</div>
-            </div>
-            <button class="btn btn-sm btn-primary" onclick="sync_single('financial')">تشغيل</button>
-          </div>
         </div>
       </div>
     </div>
@@ -479,15 +463,6 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
         </div>
         <div id="rep-att-status"></div>
         <div id="rep-att-result" style="overflow-x:auto;margin-top:12px;"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">💰 تقرير الوضع المالي</div>
-        <div class="form-row">
-          <div class="form-col"><label>أقصى نسبة تسديد (%)</label><input type="number" id="rep-fin-threshold" value="50" min="0" max="100"></div>
-          <div class="form-col" style="justify-content:flex-end;"><button class="btn btn-primary" onclick="rep_financial()">💰 إنشاء التقرير</button></div>
-        </div>
-        <div id="rep-fin-status"></div>
-        <div id="rep-fin-result" style="overflow-x:auto;margin-top:12px;"></div>
       </div>
       <div class="panel">
         <div class="panel-title">👨‍🏫 تقرير أداء المعلمين</div>
@@ -597,7 +572,6 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="system_initSheets()">🔧 تهيئة الأوراق</button>
           <button class="btn btn-success" onclick="system_setupTriggers()">⏰ إنشاء Triggers</button>
-          <button class="btn" style="background:#455a64;color:#fff;" onclick="system_buildFinancial()">💰 بناء الملخص المالي</button>
         </div>
         <div id="system-action-status" style="margin-top:12px;"></div>
       </div>
@@ -1141,15 +1115,17 @@ function sync_runAll() {
         stat.innerHTML = '<div class="status-msg status-error">❌ حدث خطأ</div>';
         return;
       }
-      var r = res.results;
+      // ⚠️ يُقرأ ما تُرجِعه `_masterSyncAllInternal` فعلاً فقط (`notes` · `stats`). النسخة
+      // السابقة كانت تقرأ `r.violations`/`r.grades`/`r.fees` وهي مفاتيح **لم تُرجَع قط**
+      // ⇒ TypeError داخل withSuccessHandler يُسقِط الرسالة كلها بصمت (بند 104-د)، فيبدو
+      // الزر بلا أثر عند النجاح. عطل قائم **قبل** ح2-ب، لكن حذف `results.financial` في
+      // هذا الـPR يجعل ترك المرجع اليتيم غير مقبول — فصُحِّح المعالج كاملاً هنا.
+      var r = res.results || {};
       stat.innerHTML =
         '<div class="status-msg status-success">' +
         '✅ اكتملت المزامنة الشاملة<br>' +
-        '• المخالفات: ' + (r.violations.count || 0) + ' سجل | ' +
-        '• الملاحظات: ' + (r.notes.count || 0) + ' سجل<br>' +
-        '• الدرجات: ' + (r.grades.count || 0) + ' سجل | ' +
-        '• الرسوم: ' + (r.fees.count || 0) + ' سجل<br>' +
-        '• الملخص المالي: ' + (r.financial.count || 0) + ' طالب' +
+        '• الملاحظات: ' + ((r.notes && r.notes.count) || 0) + ' سجل<br>' +
+        '• لوحة الإحصاءات: ' + ((r.stats && r.stats.ok) ? 'مُحدَّثة' : 'لم تُحدَّث') +
         '</div>';
       setTimeout(function() { dashboard_load(); }, 1000);
     })
@@ -1170,9 +1146,7 @@ function sync_single(type) {
   var fnMap = {
     violations: 'syncViolationsToStudent',
     notes     : 'syncNotesFromStudent',
-    grades    : 'syncGradesToStudent',
-    fees      : 'syncFeesToStudent',
-    financial : 'buildFinancialSummary'
+    grades    : 'syncGradesToStudent'
   };
   var fn = fnMap[type];
   if (!fn) return;
@@ -1191,7 +1165,7 @@ function sync_single(type) {
     })
     .withFailureHandler(function(err) {
       if (stepEl) { stepEl.className = 'sync-step error'; }
-    })[fn](fn === 'buildFinancialSummary' ? { token: App.token } : undefined);
+    })[fn]();
 }
 
 // ── التقارير ──────────────────────────────────────────────────
@@ -1237,39 +1211,6 @@ function rep_attendance() {
     })
     .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
     .generateAttendanceReportProtected({ token: App.token, startDate: start, endDate: end, grade: grade, section: section });
-}
-
-function rep_financial() {
-  var threshold = parseFloat(document.getElementById('rep-fin-threshold').value) || 50;
-  var status    = document.getElementById('rep-fin-status');
-  var result    = document.getElementById('rep-fin-result');
-  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ إنشاء التقرير...</div>';
-  result.innerHTML = '';
-
-  google.script.run
-    .withSuccessHandler(function(res) {
-      status.innerHTML = '';
-      if (!res || !res.success) { status.innerHTML = '<div class="status-msg status-error">❌ ' + (res ? res.error : 'خطأ') + '</div>'; return; }
-      var html = '<div style="display:flex;justify-content:space-between;margin-bottom:10px;">';
-      html += '<span style="font-size:13px;color:#555;">' + res.total + ' طالب (دون ' + threshold + '%)</span>';
-      html += '<button class="btn btn-sm btn-success" onclick="rep_exportCSV(\'fin\')">📥 تحميل CSV</button></div>';
-      html += '<table class="master-table" id="fin-report-table"><thead><tr><th>#</th><th>الطالب</th><th>الفصل</th><th>إجمالي الرسوم</th><th>المسدد</th><th>المتبقي</th><th>النسبة</th><th>محجوب</th><th>واتساب</th></tr></thead><tbody>';
-      for (var i = 0; i < res.data.length; i++) {
-        var r = res.data[i];
-        var blocked = r.isBlocked === 'نعم';
-        html += '<tr style="background:' + (blocked ? '#fff3f3' : '#fff') + ';">';
-        html += '<td>' + (i+1) + '</td><td>' + r.name + '</td><td>' + r.grade + '/' + r.section + '</td>';
-        html += '<td>' + r.totalFees.toLocaleString('ar') + '</td><td>' + r.paid.toLocaleString('ar') + '</td>';
-        html += '<td style="color:#c62828;">' + r.remaining.toLocaleString('ar') + '</td>';
-        html += '<td style="font-weight:700;color:' + (r.pct < 30 ? '#c62828' : '#e65100') + ';">' + r.pct + '%</td>';
-        html += '<td>' + (blocked ? '🔒 نعم' : '—') + '</td>';
-        html += '<td>' + (r.waLink ? '<a href="' + r.waLink + '" target="_blank" class="btn btn-sm btn-success">📱</a>' : '—') + '</td></tr>';
-      }
-      result.innerHTML = html + '</tbody></table>';
-      window._finReportData = res.data;
-    })
-    .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
-    .generateFinancialReportProtected({ token: App.token, threshold: threshold });
 }
 
 function rep_teachers() {
@@ -1320,17 +1261,13 @@ function rep_whatsapp() {
     .getAbsentStudentsWithPhone({ token: App.token, date: date });
 }
 
+// المستدعي الوحيد الآن 'att' — فرع 'fin' أُزيل مع تقرير الوضع المالي (ح2-ب). المعامل
+// يبقى لأن الاسم يدخل اسم الملف المُنزَّل أدناه، ولا فرع ميت خلفه.
 function rep_exportCSV(type) {
-  var data = type === 'att' ? window._attReportData : window._finReportData;
+  var data = window._attReportData;
   if (!data || data.length === 0) { alert('لا توجد بيانات للتصدير'); return; }
-  var headers, rows;
-  if (type === 'att') {
-    headers = ['الكود','الاسم','الفصل','الشعبة','غائب','متأخر','نسبة الحضور'];
-    rows = data.map(function(r) { return [r.code,r.name,r.grade,r.section,r.absent,r.late,r.attRate+'%'].join(','); });
-  } else {
-    headers = ['الكود','الاسم','الفصل','الشعبة','الرسوم','المسدد','المتبقي','النسبة','محجوب'];
-    rows = data.map(function(r) { return [r.code,r.name,r.grade,r.section,r.totalFees,r.paid,r.remaining,r.pct+'%',r.isBlocked].join(','); });
-  }
+  var headers = ['الكود','الاسم','الفصل','الشعبة','غائب','متأخر','نسبة الحضور'];
+  var rows = data.map(function(r) { return [r.code,r.name,r.grade,r.section,r.absent,r.late,r.attRate+'%'].join(','); });
   var csv = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
   var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   var url  = URL.createObjectURL(blob);
@@ -1895,15 +1832,6 @@ function system_setupTriggers() {
     .withSuccessHandler(function(res) { status.innerHTML = '<div class="status-msg ' + (res && res.ok ? 'status-success' : 'status-error') + '">' + (res && res.ok ? '✅ ' : '❌ ') + (res ? res.message : 'خطأ') + '</div>'; })
     .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
     .setupMasterTriggers();
-}
-
-function system_buildFinancial() {
-  var status = document.getElementById('system-action-status');
-  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ بناء الملخص المالي...</div>';
-  google.script.run
-    .withSuccessHandler(function(res) { status.innerHTML = '<div class="status-msg ' + (res && res.ok ? 'status-success' : 'status-error') + '">' + (res && res.ok ? '✅ تم بناء الملخص المالي: ' + res.count + ' طالب' : '❌ خطأ') + '</div>'; })
-    .withFailureHandler(function(err) { status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>'; })
-    .buildFinancialSummary({ token: App.token });
 }
 
 // (أُزيلت 2026-08-05) system_backfillEmailAliases — كانت تستدعي
