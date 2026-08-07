@@ -404,47 +404,17 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     <div id="section-sync" class="section">
       <div class="section-title">🔄 مركز المزامنة</div>
       <div class="panel">
-        <div class="panel-title">⚡ مزامنة شاملة فورية</div>
+        <div class="panel-title">⚡ تحديث الإحصاءات فوراً</div>
         <p style="color:#666;font-size:13px;margin-bottom:14px;">
-          تُشغّل المزامنة الشاملة بالترتيب: ملاحظات → تحديث لوحة الإحصاءات
+          تُعيد احتساب لوحة الإحصاءات من ملفات المدرسة الحيّة (المعلمين · CMS · الحصص).
         </p>
         <button class="btn btn-primary" onclick="sync_runAll()" id="btn-sync-all">
-          🔄 تشغيل مزامنة شاملة
+          🔄 تحديث الإحصاءات
         </button>
         <div class="progress-bar" id="sync-progress" style="margin-top:12px;display:none;">
           <div class="progress-fill" id="sync-progress-fill"></div>
         </div>
         <div id="sync-all-status" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-title">📋 خطوات المزامنة</div>
-        <div id="sync-steps">
-          <div class="sync-step" id="step-violations">
-            <span class="sync-step-icon">⚖️</span>
-            <div class="sync-step-info">
-              <div class="sync-step-name">مزامنة المخالفات</div>
-              <div class="sync-step-detail">من ملف المعلمين → ملف الطالب</div>
-            </div>
-            <button class="btn btn-sm btn-primary" onclick="sync_single('violations')">تشغيل</button>
-          </div>
-          <div class="sync-step" id="step-notes">
-            <span class="sync-step-icon">📝</span>
-            <div class="sync-step-info">
-              <div class="sync-step-name">مزامنة الملاحظات</div>
-              <div class="sync-step-detail">من ملف الطالب → ملف المعلمين</div>
-            </div>
-            <button class="btn btn-sm btn-primary" onclick="sync_single('notes')">تشغيل</button>
-          </div>
-          <div class="sync-step" id="step-grades">
-            <span class="sync-step-icon">📊</span>
-            <div class="sync-step-info">
-              <div class="sync-step-name">مزامنة الدرجات</div>
-              <div class="sync-step-detail">من ملف المعلمين → ملف الطالب (762 سجل)</div>
-            </div>
-            <button class="btn btn-sm btn-primary" onclick="sync_single('grades')">تشغيل</button>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -1117,8 +1087,7 @@ function sync_runAll() {
       var r = res.results || {};
       stat.innerHTML =
         '<div class="status-msg status-success">' +
-        '✅ اكتملت المزامنة الشاملة<br>' +
-        '• الملاحظات: ' + ((r.notes && r.notes.count) || 0) + ' سجل<br>' +
+        '✅ اكتمل التحديث<br>' +
         '• لوحة الإحصاءات: ' + ((r.stats && r.stats.ok) ? 'مُحدَّثة' : 'لم تُحدَّث') +
         '</div>';
       setTimeout(function() { dashboard_load(); }, 1000);
@@ -1131,35 +1100,6 @@ function sync_runAll() {
       stat.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
     })
     .masterSyncAll({ token: App.token });
-}
-
-function sync_single(type) {
-  var stepEl  = document.getElementById('step-' + type);
-  if (stepEl) { stepEl.className = 'sync-step running'; }
-
-  var fnMap = {
-    violations: 'syncViolationsToStudent',
-    notes     : 'syncNotesFromStudent',
-    grades    : 'syncGradesToStudent'
-  };
-  var fn = fnMap[type];
-  if (!fn) return;
-
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (stepEl) {
-        stepEl.className = 'sync-step ' + (res && res.ok ? 'done' : 'error');
-        var detail = stepEl.querySelector('.sync-step-detail');
-        if (detail) {
-          detail.textContent = res && res.ok
-            ? '✅ ' + (res.synced || res.count || 0) + ' سجل'
-            : '❌ ' + (res ? res.error : 'خطأ');
-        }
-      }
-    })
-    .withFailureHandler(function(err) {
-      if (stepEl) { stepEl.className = 'sync-step error'; }
-    })[fn]();
 }
 
 // ── التقارير ──────────────────────────────────────────────────
