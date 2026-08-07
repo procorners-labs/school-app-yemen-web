@@ -5106,8 +5106,16 @@ var _stuLogoPending = null;
 function _stuEnsureLogo(cb) {
   cb = cb || function () {};
   if (window._stuLogo) { cb(window._stuLogo); return; }
+  // م2-ج: الهوية محمَّلة إقلاعاً في `window._schoolBrand` — اقرأ منها بدل نداء ثانٍ.
+  if (window._schoolBrand && window._schoolBrand.logo) {
+    try { window._stuLogo = _stuToLh3(window._schoolBrand.logo); } catch (eB) { window._stuLogo = window._schoolBrand.logo; }
+    cb(window._stuLogo || '');
+    return;
+  }
+  // ⚠️ لا حارس `if (!sid)` — المعرّف الفارغ يعني **مدرسة المالك** (بند 99-أ)، و`window.SCHOOL_ID`
+  // يبقى فارغاً على student عمداً (تطبيع بند 97 مقصور على teacher) ⇒ الحارس كان يُفقِد
+  // مدرسةَ المالك شعارَها بصمت.
   var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID || '';
-  if (!sid) { cb(''); return; }
   if (_stuLogoPending) { _stuLogoPending.push(cb); return; }
   _stuLogoPending = [cb];
   function flush(u) {
@@ -7977,6 +7985,10 @@ function initLazyImages() {
   }
   function applyBrand(b) {
     if (!b) return;
+    // م2-ج · تماثل مع منصّة المعلم: مصدر هوية موحَّد يقرؤه أي مستهلك لاحق بلا نداء ثانٍ.
+    // ⚠️ مفاتيح الكاش العميلية (`stBrand_`/`stTheme_`) **لا تُمَسّ** — تغييرها خروج قسري
+    // لكل الطلاب بلا مقابل (بند 99-ب).
+    window._schoolBrand = b;
     // خزّن كامل الهوية (لا اللون فقط) + طابع وقت لفحص دفء الكاش (م1) — للعرض الفوري
     // في الزيارة التالية دون انتظار الشبكة، وتفادي تكرار النداء خلال TTL نفسه.
     try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify({ savedAt: Date.now(), brand: b })); } catch (eCS) {}

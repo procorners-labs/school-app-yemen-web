@@ -3652,9 +3652,25 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     // المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
     var _tcBrandCacheKey = 'tcBrand_' + sid;
     var _tcCachedBrand = null;
+    var _tcBrandSavedAt = 0;
+    // كاش دافئ = صفر نداء إقلاعي (نفس نمط student المنشور بـم1، `Student Portal.html`).
+    // ٣ ساعات لا ٦: المدير هو من يُعدِّل الهوية ويتوقّع رؤية أثره، فنافذة التقادم هنا نصف
+    // نظيرتها في منصّة الطالب. وهي **تتجاوز** TTL الكاش الخادمي (٣٠ دقيقة) عمداً لا سهواً —
+    // والإبطال الفوري مضمون من الطرف الآخر: `SchoolTemplateBridge.js::teacherBridgeActionProtected`
+    // يُسقط مفتاح `tcBrand_` العميلي فور نجاح `updateBrand` (م2-أ)، فلا ينتظر المدير TTL أصلاً.
+    var TC_BRAND_TTL_MS = 3 * 60 * 60 * 1000;
     try {
       var _tcbRaw = window.localStorage && localStorage.getItem(_tcBrandCacheKey);
-      if (_tcbRaw) _tcCachedBrand = JSON.parse(_tcbRaw);
+      if (_tcbRaw) {
+        var _tcbObj = JSON.parse(_tcbRaw);
+        // توافق رجعي: كاش قديم بلا `savedAt` يُعامَل **بارداً** (يُعرَض فوراً ثم يُحدَّث بنداء).
+        if (_tcbObj && _tcbObj.brand && _tcbObj.savedAt) {
+          _tcCachedBrand = _tcbObj.brand;
+          _tcBrandSavedAt = _tcbObj.savedAt;
+        } else {
+          _tcCachedBrand = _tcbObj;
+        }
+      }
     } catch (eCB) {}
     // عبارات ترحيب دوّارة لشاشة الدخول — تُختار مرّة واحدة فقط لكل تحميل صفحة (لا تتبدّل
     // عند كل تحديث صامت لبيانات الهوية)، مع إدراج اسم المدرسة الحقيقي حيثما يلزم.
@@ -3727,8 +3743,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     function applyBrand(b) {
       if (!b) return;
       window._schoolBrand = b;
-      // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة.
-      try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify(b)); } catch (eCS) {}
+      // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة،
+      // مع طابع `savedAt` الذي تقرؤه بوّابة الكاش الدافئ أدناه.
+      try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify({ savedAt: Date.now(), brand: b })); } catch (eCS) {}
       if (b.color) {
         applyTheme(b.color);
         try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {}
@@ -3776,8 +3793,14 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           .getTeacherSchoolBrand(sid);
       } catch (eR) {}
     }
-    if (document.readyState !== 'loading') run();
-    else document.addEventListener('DOMContentLoaded', run);
+    // بوّابة الكاش الدافئ: كاش أحدث من TTL ⇒ **صفر نداء خادمي** عند الإقلاع (الهوية مطبَّقة
+    // فعلاً أعلاه من `_tcCachedBrand`). بارد/غائب ⇒ نداء واحد. نفس بنية م1 في student حرفياً.
+    var _tcBrandWarm = !!(_tcCachedBrand && _tcBrandSavedAt &&
+                          (Date.now() - _tcBrandSavedAt) < TC_BRAND_TTL_MS);
+    if (!_tcBrandWarm) {
+      if (document.readyState !== 'loading') run();
+      else document.addEventListener('DOMContentLoaded', run);
+    }
   })();
 
   /* خلفية شاشة الدخول الزخرفية — نجمي هندسي + مطر كلمات (معتمَد من معاينة Phase 0، 2026-07-27).
@@ -12587,6 +12610,29 @@ function _sbSubmit(payload, st) {
   callServer('teacherBridgeActionProtected', payload, function (r) {
     if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل الحفظ') + '</span>'; return; }
     st.innerHTML = '<span style="color:#2e7d32">✅ تم الحفظ</span>';
+    /* 🔴 إبطال كاش الهوية بطبقاته **الثلاث** — الخادمي وحده لا يكفي.
+       (١) `localStorage` (‏م2-و، TTL ٣ ساعات) وإلا رأى المدير هويته القديمة عند إعادة
+           التحميل التالية. المفتاح بنفس صيغة الـIIFE أعلاه، والمفتاحان معاً لأن الجلسة
+           العارية قد تكون كتبت أيّهما (فئة بند 27/97).
+       (٢) **نسخ الذاكرة** `window._schoolBrand`/`_schoolLogo`/`_tcLogoImgCache` — منذ م2-ب
+           صارت `_tcEnsureSchoolLogo` و`_lhBrand` تقرآن منها **قبل** أي نداء، فبلا إسقاطها
+           يرى المدير شعاره القديم في الطباعة/الأغلفة داخل **نفس التبويب** رغم نجاح الحفظ.
+           رصدته مراجعة `gas-reviewer`، وهو انحدار أحدثته م2-ب نفسها لا عطل سابق.
+       ⚠️ `applyBrand` محبوسة داخل IIFE الهوية فلا يمكن استدعاؤها من هنا؛ الإسقاط (لا
+       إعادة الإسناد) هو المسار الصحيح — يُجبِر أوّل مستهلك على التراجع لنداء واحد. */
+    try {
+      if (window.localStorage) {
+        var _sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
+                   ? SERVER_SCHOOL_ID : (window.SCHOOL_ID || '');
+        localStorage.removeItem('tcBrand_' + _sid);
+        localStorage.removeItem('tcBrand_');
+      }
+    } catch (eDrop) {}
+    try {
+      window._schoolBrand = null;
+      window._schoolLogo  = '';
+      _tcLogoImgCache     = null;
+    } catch (eMem) {}
     if (r.logoUrl) {
       var prev = document.getElementById('sbLogoPreview');
       if (prev) { prev.src = r.logoUrl; prev.style.display = 'inline-block'; }
@@ -17140,8 +17186,16 @@ var _tcLogoPending = null;
 function _tcEnsureSchoolLogo(cb) {
   cb = cb || function () {};
   if (window._schoolLogo) { cb(window._schoolLogo); return; }
+  // م2-ب: الهوية محمَّلة أصلاً في `window._schoolBrand` من إقلاع الصفحة — اقرأ منها بدل
+  // نداء خادمي ثانٍ. النداء يبقى **تراجعاً** لحالة استدعاء مبكّر قبل اكتمال الإقلاع.
+  if (window._schoolBrand && window._schoolBrand.logo) {
+    try { window._schoolLogo = _tcToLh3(window._schoolBrand.logo); } catch (eB) { window._schoolLogo = window._schoolBrand.logo; }
+    cb(window._schoolLogo || '');
+    return;
+  }
+  // ⚠️ لا حارس `if (!sid)` هنا — المعرّف الفارغ يعني **مدرسة المالك** لا «مفقود»،
+  // و`getTeacherSchoolBrand('')` تحلّه بمطابقة عكسية على `teacher_file_id` (بند 99-أ).
   var sid = (typeof App !== 'undefined' && App.user && App.user.schoolId) ? App.user.schoolId : (window.SCHOOL_ID || '');
-  if (!sid) { cb(''); return; }
   if (_tcLogoPending) { _tcLogoPending.push(cb); return; }
   _tcLogoPending = [cb];
   function flush(u) {
@@ -21304,6 +21358,10 @@ function _downloadText(filename, text, mime){
 //  منفصلة تماماً عن CERT/cert_* أدناه (شهادات أكاديمية) — لا استدعاء ولا تداخل حالة.
 // ════════════════════════════════════════════════════════
 function _lhBrand(schoolId, cb) {
+  // م2-ب: خمس دوال ديباجات طباعة تستدعي هذه، وكلّها بعد الدخول — أي أن الهوية محمَّلة
+  // أصلاً في `window._schoolBrand` من إقلاع الصفحة. النداء الخادمي يبقى **تراجعاً** فقط.
+  // (التعليق التاريخي «بلا window._schoolBrand» كان يصف الحالة قبل هذا التوحيد.)
+  if (window._schoolBrand && window._schoolBrand.ok) { cb(window._schoolBrand); return; }
   try {
     google.script.run
       .withSuccessHandler(function (res) {
