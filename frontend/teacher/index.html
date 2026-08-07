@@ -3092,22 +3092,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
-<!-- مودال مراجعة ونشر تغييرات الجدول للمنصتين (توزيع الحصص) -->
-<div class="modal-backdrop" id="sdPublishModal">
-  <div class="modal-dialog">
-    <div class="modal-header">
-      <span>📢 مراجعة ونشر التغييرات للمنصتين</span>
-      <button class="modal-close" onclick="closeModal('sdPublishModal')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div id="sdPublishBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('sdPublishModal')">إلغاء</button>
-      <button class="btn btn-primary" id="sdPublishConfirmBtn" style="display:none" onclick="schedDist_confirmPublish()">✅ تأكيد النشر للمنصتين</button>
-    </div>
-  </div>
-</div>
+<!-- (أُزيل مودال «مراجعة ونشر التغييرات» بـح1: لم يعد ثمّة فرق يُعايَن — كل تعديل
+     يصل المنصّتين فور حفظه، وتحديث أوراق العرض صار زرّاً مباشراً بتأكيد واحد.) -->
 
 <!-- مودال إضافة/تعديل واجب -->
 <div class="modal-backdrop" id="homeworkModal">
@@ -9503,10 +9489,10 @@ var HELP_TOPICS_CATALOG = [
   { id:'schedSettings', label:'إعدادات الجدول والتواقيت', icon:'⚙️', category:'إدارة النظام', body:[
     {type:'p', text:"توزيع الحصص على المعلمين والفصول، وضبط توقيت الحصص اليومي."},
     {type:'ul', items:[
-      "🚀 توزيع تلقائي للكل، 🎯 توزيع تلقائي لمعلّم واحد، 🔍 فحص تعارضات شامل، ↩️ تراجع عن آخر تعيين، 📢 مراجعة ونشر التغييرات — الأزرار الرئيسية."
+      "🚀 توزيع تلقائي للكل، 🎯 توزيع تلقائي لمعلّم واحد، 🔍 فحص تعارضات شامل، ↩️ تراجع عن آخر تعيين، 🔄 تحديث أوراق العرض — الأزرار الرئيسية."
     ]},
     {type:'note', role:"إعدادات التواقيت العامة", text:"في نفس الصفحة أسفلها: بداية الدوام، مدة الحصة، الاستراحة، عدد الحصص اليومي، وطابور الصباح — مع إمكانية ضبط استراحة مخصَّصة لصف معيّن."},
-    {type:'tip', text:"📢 التغييرات لا تصل للمنصّتين إلا بعد الضغط على «مراجعة ونشر التغييرات»."}
+    {type:'tip', text:"⚡ كل تعديل يصل المنصّتين فور حفظه — لا خطوة نشر بعده. زر «🔄 تحديث أوراق العرض» يجدّد أوراق العرض داخل ملف Google Sheets فقط."}
   ]},
   { id:'schoolTemplate', label:'قالب تزويد المدرسة', icon:'🏫', category:'إدارة النظام', body:[
     {type:'p', text:"أداة إعداد/تزويد بيانات المدرسة الأساسية."},
@@ -12267,7 +12253,7 @@ function renderScheduleSettings() {
         '<button class="btn btn-danger btn-sm" onclick="schedDist_redistributeAll()">♻️ إعادة توزيع كاملة</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_checkConflicts()">🔍 فحص تعارضات شامل</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
-        '<button class="btn btn-info btn-sm" onclick="schedDist_openPublish()">📢 مراجعة ونشر التغييرات</button>' +
+        '<button class="btn btn-info btn-sm" onclick="schedDist_refreshViewSheets()">🔄 تحديث أوراق العرض</button>' +
         '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'schedSettings\')" style="padding:4px 8px">❓</button>' +
       '</div></div>' +
     '<div class="section-body">' +
@@ -13753,68 +13739,16 @@ function schedDist_undo() {
   }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
 }
 
-// مراجعة ونشر التغييرات للمنصتين — يلتقط أي تعديل مباشر على شيت الجدول
-// الرئيسي (خارج هذه الواجهة) ويعرض الفرق قبل الدفع الفعلي لمنصّتي المعلم
-// والطالب. لا علاقة له بالمزامنة التلقائية القائمة أصلاً بعد كل تعيين/تعديل/
-// حذف/تراجع عبر هذه الواجهة — أداة إضافية اختيارية فقط.
-function _sdPublishRowLine(r) {
-  return escapeHtml(_sdClassLabel(r.grade, r.section)) + ' — ' + escapeHtml(r.day) + ' الحصة ' + r.period +
-    ': ' + escapeHtml(r.subject) + ' (' + escapeHtml(r.teacher) + ')';
-}
-function schedDist_openPublish() {
-  var body = document.getElementById('sdPublishBody');
-  body.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
-  document.getElementById('sdPublishConfirmBtn').style.display = 'none';
-  openModal('sdPublishModal');
-  callServer('previewScheduleSyncProtected', {}, function (r) {
-    if (!r || !r.success) { body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>'; return; }
-    var added = r.added || [], removed = r.removed || [], changed = r.changed || [];
-    var total = added.length + removed.length + changed.length;
-    if (!total) {
-      body.innerHTML = '<div class="alert alert-success">✅ لا توجد تغييرات غير منشورة حالياً — الجدول متطابق بالفعل مع المنصّتين.</div>';
-      return;
-    }
-    var h = '<div class="alert alert-warning">⚠️ ' + total + ' تغييراً غير منشور بعد (' +
-      added.length + ' إضافة، ' + changed.length + ' تعديل، ' + removed.length + ' حذف).</div>';
-    if (added.length) {
-      h += '<b>➕ إضافات:</b><ul style="margin:6px 0 12px;padding-right:18px">';
-      for (var i = 0; i < added.length; i++) h += '<li>' + _sdPublishRowLine(added[i]) + '</li>';
-      h += '</ul>';
-    }
-    if (changed.length) {
-      h += '<b>✏️ تعديلات:</b><ul style="margin:6px 0 12px;padding-right:18px">';
-      for (var j = 0; j < changed.length; j++) {
-        var c = changed[j];
-        h += '<li>' + escapeHtml(_sdClassLabel(c.grade, c.section)) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period +
-          ': ' + escapeHtml(c.before.subject) + ' (' + escapeHtml(c.before.teacher) + ') ← ' +
-          escapeHtml(c.after.subject) + ' (' + escapeHtml(c.after.teacher) + ')</li>';
-      }
-      h += '</ul>';
-    }
-    if (removed.length) {
-      h += '<b>🗑️ حذف:</b><ul style="margin:6px 0 0;padding-right:18px">';
-      for (var k = 0; k < removed.length; k++) h += '<li>' + _sdPublishRowLine(removed[k]) + '</li>';
-      h += '</ul>';
-    }
-    body.innerHTML = h;
-    document.getElementById('sdPublishConfirmBtn').style.display = '';
-  }, function (e) { body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
-}
-function schedDist_confirmPublish() {
-  if (!confirm('نشر هذه التغييرات فعلياً لمنصّتي المعلم والطالب؟')) return;
-  var body = document.getElementById('sdPublishBody');
-  document.getElementById('sdPublishConfirmBtn').style.display = 'none';
-  body.innerHTML = '<div class="alert alert-info">⏳ جاري النشر…</div>';
+// «🔄 تحديث أوراق العرض» — بعد ح1 صار كل تعديل يصل المنصّتين فور حفظه، فلم تعد
+// ثمّة خطوة نشر ولا فرق يُعايَن. الزرّ يُعيد بناء أوراق العرض الثلاث داخل ملف
+// Google Sheets وحدها (‏«عرض_الجدول_للمعلمين»/«عرض_الجدول_للفصول»/«الجدول_التفاعلي»).
+function schedDist_refreshViewSheets() {
+  if (!confirm('إعادة بناء أوراق العرض الثلاث من الجدول الحالي؟')) return;
+  toast('⏳ جاري تحديث أوراق العرض…', 'info');
   callServer('publishScheduleSyncProtected', {}, function (r) {
-    if (r && r.success) {
-      toast('✅ ' + r.message, 'success');
-      body.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) +
-        '<br><small>قد يستغرق ظهور التغييرات لدى الطلاب حتى ٣ دقائق (كاش المنصة).</small></div>';
-      schedDist_refreshView(); // الشبكة الكاملة مرئية افتراضياً الآن — يجب ألا تبقى قديمة بعد النشر
-    } else {
-      body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
-    }
-  }, function (e) { body.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+    if (r && r.success) { toast('✅ ' + r.message, 'success'); }
+    else { toast('❌ ' + ((r && r.error) || 'تعذّر التحديث'), 'error'); }
+  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
 }
 
 // ════════════════════════════════════════════════════════════════════
