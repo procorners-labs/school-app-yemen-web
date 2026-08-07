@@ -16937,6 +16937,25 @@ function unpublishNewsPublic(id) {
     });
 }
 
+/* إظهار/إخفاء الخبر على **الصفحة الرئيسية العامّة** (عمود «نشر_عام»).
+   🔴 التحديث في `_newsCache` نفسه لا في خريطة جانبية: `_refreshNewsCards` يُعيد الرسم
+   من `_newsCache` حرفياً، فتحديث خريطة أخرى يُنتج زرّاً يعود لحالته القديمة فوراً. */
+function setNewsHomeVisibility(id, hidden) {
+  showLoading(hidden ? 'جارٍ الإخفاء…' : 'جارٍ الإظهار…');
+  callServer('setNewsHomeVisibilityProtected', { newsId: id, hidden: hidden }, function (r) {
+    hideLoading();
+    if (r && r.success) {
+      try {
+        for (var i = 0; i < (_newsCache || []).length; i++) {
+          if (String(_newsCache[i].id) === String(id)) { _newsCache[i].pubHidden = r.hidden; break; }
+        }
+      } catch (e) {}
+      toast(r.message || 'تم', 'success');
+      _refreshNewsCards();
+    } else showError(r ? r.error : 'فشل تنفيذ الطلب');
+  }, function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); });
+}
+
 // تحميل معرّفات الأخبار المنشورة للعامة (لجعل الزر متبادلاً) ثم استدعاء after
 function loadPublishedNewsIds(after) {
   if (!_newsIsOfficial()) { if (typeof after === 'function') after(); return; }
@@ -18504,6 +18523,20 @@ function _buildNewsCard_Teacher(n) {
           if (App.user && App.user.teacherName === newsOwner)
             return '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="requestNewsPublic(\'' + n.id + '\')" title="طلب نشر هذا الخبر في الصفحة العامة (يُرسَل للمشرف)">📣 طلب نشر للعامة</button>';
           return '';
+        })() +
+
+        /* إظهار/إخفاء على **الصفحة الرئيسية العامّة** (عمود «نشر_عام») — منفصل تماماً عن
+           نشر CMS أعلاه: ذاك يكتب في «مكتبة_المحتوى» بملف cms ويخدم السوشل/المكتبة، وهذا
+           يكتب عموداً بورقة «الاخبار» نفسها. الحالتان مستقلّتان ولا تُدمجان.
+           والحالة تصل ضمن حمولة `getAllNewsProtected` نفسها (`n.pubHidden`) — لا خريطة
+           عميلية موازية كـ`_pubNewsIds` (تلك لازمة لأن حالة CMS بملف Spreadsheet آخر). */
+        (function () {
+          if (App.user && App.user.role === 'accountant') return '';
+          if (!_newsIsOfficial()) return '';
+          // الوسيط الثاني = الحالة المرغوبة الجديدة، تُكتب صراحةً منعاً للانعكاس الصامت.
+          if (n.pubHidden)
+            return '<button class="btn btn-sm" style="background:#64748b;color:#fff" onclick="setNewsHomeVisibility(\'' + n.id + '\',false)" title="إعادة إظهاره على الصفحة الرئيسية العامة">👁️ إظهار بالرئيسية</button>';
+          return '<button class="btn btn-sm" style="background:#f1f5f9;color:#334155" onclick="setNewsHomeVisibility(\'' + n.id + '\',true)" title="إخفاؤه من الصفحة الرئيسية العامة — يبقى ظاهراً بمكتبة الأخبار">🙈 إخفاء من الرئيسية</button>';
         })() +
 
         // نشر سوشل ميديا مباشر (فيسبوك/انستغرام) لهذا الخبر — يمرّ عبر مشروع cms المنفصل، الذي
