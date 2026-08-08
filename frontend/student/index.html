@@ -2217,16 +2217,32 @@ a { color: var(--pr); text-decoration: none; }
       </a>
     </div>
     <script>
-      // ✅ وجهة الزر أعلاه — نفس منطق تفرّع nsShareNews (مدرسة الإبداع تبقى على home/
-      // المخصّصة، أي مدرسة أخرى تذهب لبوابة / العامة). قراءة schoolId مباشرة من الرابط
-      // (نفس أسلوب السطر ~2900) بلا سكربتلت GAS — يعمل حرفياً عبر مسارَي doGet الحيّ
-      // ونسخة frontend/ الثابتة معاً بلا حاجة لأي منطق مختلف بينهما.
-      (function () {
-        var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+      /**
+       * وجهة الزرّ أعلاه — **صفحة المدرسة نفسها** لا بوّابة المدارس. مطابقة حرفياً
+       * لـ`_tcReturnHref` في منصّة المعلم، ويحرس تطابقَ سلوكهما اختبارٌ واحد يشغّل
+       * الحالات نفسها على الدالّتين (المشروعان منفصلان فلا يتشاركان كوداً).
+       *
+       * كان الزرّ يتفرّع إلى وجهتين ثابتتين بمعرّف UUID **مثبَّت حرفياً** في الواجهة،
+       * فيعود طالب ابن خلدون إلى دليل كلّ المدارس لا إلى مدرسته.
+       *
+       * السلّم: slug ⇒ `/<slug>` · معرّف ⇒ `/home/index.html?school=<id>` ·
+       * وإلّا ⇒ `/home/index.html` (المعرّف الفارغ = **مدرسة المالك**، بند 99).
+       * قراءة `schoolId` من الرابط بلا سكربتلت GAS — يعمل عبر `doGet` الحيّ ونسخة
+       * `frontend/` الثابتة معاً بلا منطق مختلف بينهما.
+       */
+      function _stReturnHref(slug, sid) {
+        var sl = (slug === null || slug === undefined) ? '' : String(slug).trim();
+        if (sl) return '/' + encodeURIComponent(sl);
+        var id = (sid === null || sid === undefined) ? '' : String(sid).trim();
+        if (id) return '/home/index.html?school=' + encodeURIComponent(id);
+        return '/home/index.html';
+      }
+      function _stApplyReturnHref(slug) {
         var sid = window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '';
         var el = document.getElementById('returnHomeLink');
-        if (el) el.href = (!sid || sid === OWNER_SCHOOL_ID) ? '/home/index.html' : '/';
-      })();
+        if (el) el.href = _stReturnHref(slug, sid);
+      }
+      _stApplyReturnHref('');
     </script>
 
     <!-- 🆘 زر المساعدة والتواصل مع الدعم الفني (IT) -->
@@ -7899,17 +7915,28 @@ function initLazyImages() {
   // getStudentSchoolBrand الخادمي (30 دقيقة، student/_Tenant.js) إلى 6 ساعات —
   // توسّع مقصود لصالح خفض النداءات، لا سهو؛ لا يمسّ TTL الخادمي نفسه ولا أي سطح آخر.
   var STU_BRAND_TTL_MS = 6 * 60 * 60 * 1000;
+  /**
+   * 🔴 بصمة **شكل** الحمولة — والمصيدة هنا أخطر منها في منصّة المعلم: الكاش الدافئ
+   * يتخطّى النداء الإقلاعي كلّياً لـ**ستّ ساعات**، فإضافة حقل جديد (`slug`) تُقابَل
+   * بنسخٍ مخبّأة بلا ذلك الحقل طوال تلك المدّة ⇒ الزرّ يتراجع بصمت لدى كلّ مستخدم حالي.
+   * وهي **داخل القيمة** لا في المفتاح: تغيير `'stBrand_'` يُيتّم مدخلات `localStorage`
+   * للأبد. نفس معالجة الشكل الأقدم (بلا `savedAt`) القائمة أصلاً أدناه.
+   */
+  var ST_BRAND_SHAPE_VER = 3;
   var _stBrandSavedAt = 0;
   var _stCachedBrand = null;
   try {
     var _stbRaw = window.localStorage && localStorage.getItem(_stBrandCacheKey);
     if (_stbRaw) {
       var _stbParsed = JSON.parse(_stbRaw);
-      // توافق رجعي: كاش من قبل هذا التغيير مخزَّن ككائن هوية خام بلا savedAt —
-      // يُعامَل كبارد (يُجبر تحديثاً شبكياً واحداً) بدل افتراض حداثته.
-      if (_stbParsed && _stbParsed.brand && typeof _stbParsed.savedAt === 'number') {
+      // توافق رجعي: كاش من قبل هذا التغيير مخزَّن ككائن هوية خام بلا savedAt — أو بشكلٍ
+      // أقدم من البصمة الحالية — يُعامَل كبارد (يُجبر تحديثاً شبكياً واحداً) بدل افتراض حداثته.
+      if (_stbParsed && _stbParsed.brand && typeof _stbParsed.savedAt === 'number' &&
+          _stbParsed.v === ST_BRAND_SHAPE_VER) {
         _stCachedBrand = _stbParsed.brand;
         _stBrandSavedAt = _stbParsed.savedAt;
+      } else if (_stbParsed && _stbParsed.brand) {
+        _stCachedBrand = _stbParsed.brand;
       } else {
         _stCachedBrand = _stbParsed;
       }
@@ -7946,6 +7973,9 @@ function initLazyImages() {
   if (_stCachedBrand) {
     // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
     applyBrand(_stCachedBrand);
+    // ومعه وجهة الزرّ: الكاش الدافئ يتخطّى النداء ستّ ساعات، فبلا هذا السطر يبقى
+    // الزرّ على درجة التراجع رغم أن الـslug مخزَّن فعلاً.
+    _stApplyReturnHref(_stCachedBrand.slug);
   } else {
     // لا كاش بعد (أول زيارة): حيِّد الاسم/الهاتف الثابتين فوراً قبل وصول النداء غير
     // المتزامن كي لا يومض «مدارس الإبداع» وهاتفها على شبكة بطيئة.
@@ -7991,7 +8021,7 @@ function initLazyImages() {
     window._schoolBrand = b;
     // خزّن كامل الهوية (لا اللون فقط) + طابع وقت لفحص دفء الكاش (م1) — للعرض الفوري
     // في الزيارة التالية دون انتظار الشبكة، وتفادي تكرار النداء خلال TTL نفسه.
-    try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify({ savedAt: Date.now(), brand: b })); } catch (eCS) {}
+    try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify({ v: ST_BRAND_SHAPE_VER, savedAt: Date.now(), brand: b })); } catch (eCS) {}
     if (b.color) {
       applyTheme(b.color);
       try { if (window.localStorage) localStorage.setItem('stTheme_' + (window.SCHOOL_ID || ''), b.color); } catch (eLS) {}
@@ -8055,7 +8085,9 @@ function initLazyImages() {
   function run() {
     try {
       google.script.run
-        .withSuccessHandler(function (res) { if (res && res.ok) applyBrand(res); })
+        .withSuccessHandler(function (res) {
+          if (res && res.ok) { applyBrand(res); _stApplyReturnHref(res.slug); }
+        })
         .withFailureHandler(function () {})
         .getStudentSchoolBrand(window.SCHOOL_ID);
     } catch (e) {}

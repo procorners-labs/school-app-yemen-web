@@ -3618,16 +3618,37 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 <script>
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
 
-  // ✅ وجهة زر "العودة للموقع الرئيسي" — نفس منطق تفرّع shareNews (مدرسة الإبداع تبقى على
-  // home/ المخصّصة، أي مدرسة أخرى تذهب لبوابة / العامة). يعمل هنا عبر JS لا سكربتلت مباشر
-  // في href لأن هذا الملف يُخدَم أيضاً كنسخة frontend/ ثابتة (window.SCHOOL_ID فقط هناك).
-  (function () {
-    var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+  /**
+   * وجهة زرّ «العودة للموقع الرئيسي» — **صفحة المدرسة نفسها** لا بوّابة المدارس.
+   *
+   * كان الزرّ يتفرّع إلى وجهتين ثابتتين فقط: `/home/index.html` لمدرسة المالك (بمعرّف
+   * UUID **مثبَّت حرفياً** في الواجهة) و`/` لأي مدرسة أخرى — أي أن معلّم ابن خلدون
+   * يعود إلى دليل كلّ المدارس لا إلى مدرسته.
+   *
+   * السلّم الثلاثي (نفس شكل `_spSchoolHref` بصفحة الجذر، بدرجة أخيرة مختلفة **عمداً**:
+   * هنا المعرّف الفارغ يعني **مدرسة المالك** لا «مدرسة مجهولة» — بند 99):
+   *   slug   ⇒ `/<slug>`
+   *   معرّف  ⇒ `/home/index.html?school=<id>`
+   *   وإلّا  ⇒ `/home/index.html`
+   *
+   * ويُضبَط على مرحلتين: الدرجة الثانية فوراً من `sid` المعروف تزامنياً (فلا نافذة يكون
+   * فيها الزرّ خاطئاً)، ثم يُرقّى إلى `/<slug>` متى وصلت الهوية. الـslug **اختياري**
+   * بالبيانات الحيّة، فالتراجع مسارٌ عاديّ لا حالة خطأ.
+   */
+  function _tcReturnHref(slug, sid) {
+    var sl = (slug === null || slug === undefined) ? '' : String(slug).trim();
+    if (sl) return '/' + encodeURIComponent(sl);
+    var id = (sid === null || sid === undefined) ? '' : String(sid).trim();
+    if (id) return '/home/index.html?school=' + encodeURIComponent(id);
+    return '/home/index.html';
+  }
+  function _tcApplyReturnHref(slug) {
     var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
               : (window.SCHOOL_ID || '');
     var el = document.getElementById('returnHomeLink');
-    if (el) el.href = (!sid || sid === OWNER_SCHOOL_ID) ? '/home/index.html' : '/';
-  })();
+    if (el) el.href = _tcReturnHref(slug, sid);
+  }
+  _tcApplyReturnHref('');
 
   /* هوية المدرسة ديناميكيًا (اسم/شعار حسب schoolId) — يطبّق على كل .school-brand-name
      (تستخدمها دوال الطباعة/الشهادات/الكشوفات) والشعارات وعنوان الصفحة */
@@ -3645,14 +3666,26 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     // والإبطال الفوري مضمون من الطرف الآخر: `SchoolTemplateBridge.js::teacherBridgeActionProtected`
     // يُسقط مفتاح `tcBrand_` العميلي فور نجاح `updateBrand` (م2-أ)، فلا ينتظر المدير TTL أصلاً.
     var TC_BRAND_TTL_MS = 3 * 60 * 60 * 1000;
+    /**
+     * 🔴 بصمة **شكل** الحمولة — لا نسخة مفتاح.
+     * الكاش الدافئ يتخطّى النداء الإقلاعي كلّياً، فإضافة حقل جديد (`slug`) تُقابَل بنسخٍ
+     * مخبّأة بلا ذلك الحقل لثلاث ساعات ⇒ الزرّ يتراجع بصمت لدى كلّ مستخدم حالي.
+     * والبصمة **داخل القيمة** لا في المفتاح عمداً: تغيير `'tcBrand_'` يُيتّم مدخلات
+     * `localStorage` للأبد (ولا مسار يمسحها)، والسابقة القائمة هي نفسها معالجة الشكل
+     * الأقدم بلا `savedAt` أدناه.
+     */
+    var TC_BRAND_SHAPE_VER = 3;
     try {
       var _tcbRaw = window.localStorage && localStorage.getItem(_tcBrandCacheKey);
       if (_tcbRaw) {
         var _tcbObj = JSON.parse(_tcbRaw);
-        // توافق رجعي: كاش قديم بلا `savedAt` يُعامَل **بارداً** (يُعرَض فوراً ثم يُحدَّث بنداء).
-        if (_tcbObj && _tcbObj.brand && _tcbObj.savedAt) {
+        // توافق رجعي: شكل أقدم (بلا `savedAt` أو بلا بصمة الشكل الحالية) يُعامَل **بارداً**
+        // — يُعرَض فوراً لتفادي شاشة فارغة، ثم يُحدَّث بنداء واحد.
+        if (_tcbObj && _tcbObj.brand && _tcbObj.savedAt && _tcbObj.v === TC_BRAND_SHAPE_VER) {
           _tcCachedBrand = _tcbObj.brand;
           _tcBrandSavedAt = _tcbObj.savedAt;
+        } else if (_tcbObj && _tcbObj.brand) {
+          _tcCachedBrand = _tcbObj.brand;
         } else {
           _tcCachedBrand = _tcbObj;
         }
@@ -3689,6 +3722,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     if (_tcCachedBrand) {
       // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
       applyBrand(_tcCachedBrand);
+      // ومعه وجهة الزرّ: الكاش الدافئ يتخطّى النداء، فبلا هذا السطر يبقى الزرّ على
+      // الدرجة الثانية لثلاث ساعات رغم أن الـslug مخزَّن فعلاً.
+      _tcApplyReturnHref(_tcCachedBrand.slug);
     } else {
       // لا كاش بعد (أول زيارة): حيِّد الاسم الثابت فوراً قبل وصول النداء غير المتزامن
       // كي لا يومض «مدارس الإبداع» على شبكة بطيئة قبل جلب الاسم الحقيقي.
@@ -3731,7 +3767,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       window._schoolBrand = b;
       // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة،
       // مع طابع `savedAt` الذي تقرؤه بوّابة الكاش الدافئ أدناه.
-      try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify({ savedAt: Date.now(), brand: b })); } catch (eCS) {}
+      try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify({ v: TC_BRAND_SHAPE_VER, savedAt: Date.now(), brand: b })); } catch (eCS) {}
       if (b.color) {
         applyTheme(b.color);
         try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {}
@@ -3774,7 +3810,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     function run() {
       try {
         google.script.run
-          .withSuccessHandler(function (res) { if (res && res.ok) applyBrand(res); })
+          .withSuccessHandler(function (res) {
+            if (res && res.ok) { applyBrand(res); _tcApplyReturnHref(res.slug); }
+          })
           .withFailureHandler(function () {})
           .getTeacherSchoolBrand(sid);
       } catch (eR) {}
