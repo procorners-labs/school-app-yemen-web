@@ -2660,12 +2660,25 @@ function loadHomeBundle(){
           if(b.brand.address) m.streetAddress=b.brand.address;
           if(b.page && b.page.email)  m.email=b.page.email;
           if(b.page && b.page.mapUrl) m.hasMap=b.page.mapUrl;
+          // 🔴 الحقلان اللذان كانا يتسرّبان دائماً: لا تدهسهما أي دهسة أعلاه، بينما
+          // `applySeo` تبني منهما `document.title` و`meta description` و`og:description`
+          // ⇒ كانت كلّ مدرسة تُقدَّم بوصف مدرسة المالك وشعارها النصّي (بند 68).
+          if(b.page && b.page.tagline)   m.tagline=b.page.tagline;
+          if(b.page && b.page.aboutText) m.description=b.page.aboutText;
+          // ومثلها روابط التواصل: `applyContacts` هي مسارها الوحيد وتقرأ هذه الحقول
+          // بالاسم، وكتلة الدمج كانت تبني `sameAs` وحدها ⇒ كان واتساب المالك وروابط
+          // سوشله تُعرَض حرفياً على صفحة كلّ مدرسة أخرى.
+          m.whatsapp  = b.brand.whatsapp  || '';
+          m.facebook  = b.brand.facebook  || '';
+          m.instagram = b.brand.instagram || '';
+          m.youtube   = b.brand.youtube   || '';
           var sa=[];
           if(b.brand.facebook)  sa.push(b.brand.facebook);
           if(b.brand.instagram) sa.push(b.brand.instagram);
           if(b.brand.youtube)   sa.push(b.brand.youtube);
           if(sa.length) m.sameAs=sa;
-          window.applySchoolSeo(m);
+          // المعامل الثاني بوّابة تراجع المالك — يملأ ما سكت عنه الشيت له وحده.
+          window.applySchoolSeo(m, b.isOwner === true);
         });
       })
       .withFailureHandler(function(){loadSplitData()})
@@ -2798,27 +2811,62 @@ document.addEventListener('DOMContentLoaded',function(){
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════
-     SEO ديناميكي — هوية المدرسة (مصدر حقيقة واحد)
-     غيّر SCHOOL_PROFILE فقط، فينعكس آلياً على: العنوان + الوصف +
-     Open Graph + بيانات Schema.org المنظّمة. ويُستبدَل تلقائياً إن
-     أرجع الخادم اسم مدرسة (دعم تعدّد المدارس).
+     SEO ديناميكي — قالبٌ افتراضيّ محايد تذوب فيه كلّ مدرسة
+
+     🔴 الافتراضي هوية **المنتج** لا هوية مدرسةٍ بعينها. هذا الملف يُخدَم على
+     `/home/index.html` وعلى `/<slug>` لكلّ مدرسة من **نفس البايتات**، فأي قيمة
+     مدرسةٍ مكتوبةٍ هنا حرفياً تُصيب كلّ المدارس الأخرى بطريقتين:
+       (أ) **وميضاً** — تُعرَض لحظة الإقلاع ثم يستبدلها الشيت (شكوى مالك مقيسة).
+       (ب) **تسريباً دائماً** — أي حقل لا تدهسه كتلة الدمج يبقى للأبد؛ كان
+           `description` و`tagline` كذلك فعلاً، فكانت كلّ مدرسة تُقدَّم لمحرّكات
+           البحث ولمعاينات المشاركة بوصف مدرسة المالك وشعارها النصّي (بند 68).
+     ⇒ `PRODUCT_PROFILE` أساسٌ محايد، و`OWNER_PROFILE_FALLBACK` يُطبَّق **خلف بوّابة
+     `isOwner` وحدها** وعلى الحقول التي سكت عنها الشيت فقط. حين يملأ المالك بقيّة
+     كتلة `J:L` يفوز الشيت تلقائياً ويصير حذف الكائن تنظيفاً بلا أثر.
+
+     🔴 ولا يجوز حلّ الوميض بإخفاء المحتوى (`opacity:0`/`display:none`) انتظاراً
+     لـJS — ذاك حرفياً سبب خمس رفضات OAuth Branding (بند 66). التحييد لا الإخفاء.
 ═══════════════════════════════════════════════════════════════ -->
 <script>
 (function(){
-  var SCHOOL_PROFILE = {
-    name: 'مدارس الإبداع والتميز الدولية',
-    // اسم بديل خاصّ بمدرسة المالك — يبقى بالملفّ الشخصي الساكن (تراجع)، ولا يُثبَّت داخل
-    // بنّاء JSON-LD: تثبيتُه هناك يُلصِق «الإبداع والتميز» بكيان أي مدرسة أخرى (فخّ بند 68).
+  // 🔴 كل قيمة هنا يجب أن تطابق نظيرها **الساكن** في الترميز حرفياً (اسم العلامة في
+  // `.school-brand-name` · `src` وسم `hdrLogo` · نصّ `<meta name="description">`).
+  // التطابق هو تعريف «لا وميض»: ما يراه الزائر قبل الحمولة = ما يراه زاحفٌ بلا JS.
+  // يحرسه تأكيد صريح في `_build/test-regression-guards.js`.
+  var PRODUCT_PROFILE = {
+    name: 'يمن سكولز',
+    alternateName: '',
+    tagline: '',
+    description: 'يمن سكولز — نظام إدارة مدارس متكامل: الأخبار والصور والفيديوهات والإحصاءات ونتائج الطلاب والتواصل.',
+    url: '',
+    logo: 'https://yemenschoolz.com/assets/yemenschoolz-mark.png',
+    telephone: '',
+    email: '',
+    streetAddress: '',
+    addressLocality: '',
+    addressCountry: 'YE',
+    latitude: 0,
+    longitude: 0,
+    hasMap: '',
+    whatsapp: '',
+    facebook: '',
+    instagram: '',
+    youtube: '',
+    sameAs: []
+  };
+
+  // تراجعُ مدرسة المالك — يُطبَّق **فقط** حين `isOwner === true` وعلى الحقول الفارغة.
+  // بلا `name` وبلا `logo` عمداً: هذان يأتيان من السجل المركزي دوماً لكلّ مدرسة.
+  // ‏`alternateName` هنا لا داخل بنّاء JSON-LD — تثبيتُه هناك يُلصِق «الإبداع والتميز»
+  // بكيان أي مدرسة أخرى (فخّ بند 68).
+  var OWNER_PROFILE_FALLBACK = {
     alternateName: 'الإبداع والتميز',
     tagline: 'مدرسة أهلية رائدة في صنعاء',
     description: 'مدارس الإبداع والتميز الدولية بصنعاء — صرح تعليمي رائد يقدّم مراحل رياض الأطفال والابتدائية والمتوسطة والثانوية، بأقسام منفصلة للبنين والبنات، ضمن منصة تعليمية ذكية متكاملة تبني جيلاً مبدعاً ومتميزاً أخلاقياً وعلمياً.',
-    url: 'https://yemenschoolz.com/home/index.html',
-    logo: 'https://lh3.googleusercontent.com/d/12vJRrt-iUVutaLY29tE606ERqYh6Die8=w400',
     telephone: '+967775189922',
     email: 'info@ebdaa-tamayuz.edu',
     streetAddress: 'السنينة - حي الطيران',
     addressLocality: 'صنعاء',
-    addressCountry: 'YE',
     latitude: 15.3533474,
     longitude: 44.163141,
     hasMap: 'https://www.google.com/maps/search/?api=1&query=15.3533474,44.163141',
@@ -2904,8 +2952,29 @@ document.addEventListener('DOMContentLoaded',function(){
     }
   }
 
-  function applySeo(p){
+  // تراجع المالك: يملأ ما سكت عنه الشيت **فقط**، وخلف بوّابة `isOwner` حصراً.
+  // بعد كلّ دهسات كتلة الدمج، فلا يُزيح قيمةً حقيقية أبداً.
+  //
+  // 🔴 «سكت عنه الشيت» ليست «فارغ» وحدها: كتلة الدمج تبدأ من نسخةٍ من `PRODUCT_PROFILE`،
+  // فحقلٌ لم يأتِ من الشيت يصل هنا حاملاً **قيمة القالب المحايد** لا سلسلةً فارغة. اعتبار
+  // الفراغ وحده معياراً كان يُعطّل تراجع `description` نهائياً — التقطه اختبار سلوكي
+  // (كتلة 63) لا حارسٌ نصّي، لأن النصّ كان سليماً تماماً والسلوك وحده كان مكسوراً.
+  function _ownerUnset(v, dflt){
+    if(v === '' || v === 0 || v === null || v === undefined) return true;
+    if(Object.prototype.toString.call(v) === '[object Array]') return v.length === 0;
+    return v === dflt;
+  }
+  function applyOwnerFallback(p){
+    var k;
+    for(k in OWNER_PROFILE_FALLBACK){
+      if(!OWNER_PROFILE_FALLBACK.hasOwnProperty(k)) continue;
+      if(_ownerUnset(p[k], PRODUCT_PROFILE[k])) p[k] = OWNER_PROFILE_FALLBACK[k];
+    }
+  }
+
+  function applySeo(p, isOwner){
     if(!p || !p.name) return;
+    if(isOwner === true) applyOwnerFallback(p);
     p.phoneDisplay = (p.telephone || '').replace(/^\+967/, '');
     applyContacts(p);
     applyBrandText(p);
@@ -2924,53 +2993,70 @@ document.addEventListener('DOMContentLoaded',function(){
     // (كيان مشتقّ من بيانات مستأجر لا يظهر في HTML الخام لأنه يُحقَن بـJS).
     if(p.logo){ setMeta('meta[property="og:image"]', p.logo); setMeta('meta[name="twitter:image"]', p.logo); }
 
-    // هوية الموقع الحاوي (المنصّة) — تُحسَب مبكراً لأن كيان المدرسة يشير إليها بـisPartOf.
-    // مصدر الحقيقة لاسم العلامة هو الجذر (home-all-school)؛ هذه الصفحة مدرسة **مستضافة**.
-    var siteUrl = (window.location && window.location.origin) ? (window.location.origin + '/') : p.url;
-    var siteId = siteUrl + '#website';
-
-    // Schema.org — يساعد ظهور المدرسة في نتائج Google الغنية ورسم المعرفة
+    // Schema.org — يساعد ظهور المدرسة في نتائج Google الغنية ورسم المعرفة.
+    // 🔴 كلّ حقل اختياري يُسقَط بـ`undefined` عند الفراغ (JSON.stringify يحذفه) بدل أن
+    // يُصرَّح فارغاً أو — أسوأ — يرث قيمة مدرسة المالك. كيانٌ ناقص أصدق من كيانٍ كاذب.
     var ld = {
       '@context':'https://schema.org',
       '@type':['School','EducationalOrganization'],
       name: p.name,
       alternateName: p.alternateName || undefined,
-      description: p.description,
-      url: p.url,
-      logo: p.logo,
-      image: p.logo,
-      telephone: p.telephone,
-      email: p.email,
+      description: p.description || PRODUCT_PROFILE.description,
+      // العنوان الحيّ لا مسارٌ مثبَّت: نفس الملف يُخدَم على `/home/index.html` وعلى
+      // `/<slug>`، فتثبيتُه يجعل كلّ مدرسة تُصرِّح بعنوان صفحة المالك.
+      url: canonicalUrl(),
+      logo: p.logo || undefined,
+      image: p.logo || undefined,
+      telephone: p.telephone || undefined,
+      email: p.email || undefined,
       inLanguage: 'ar',
-      areaServed: { '@type':'City', name: p.addressLocality },
-      address: {
+      areaServed: p.addressLocality ? { '@type':'City', name: p.addressLocality } : undefined,
+      address: (p.streetAddress || p.addressLocality) ? {
         '@type':'PostalAddress',
-        streetAddress: p.streetAddress,
-        addressLocality: p.addressLocality,
-        addressCountry: p.addressCountry
-      },
-      sameAs: p.sameAs
+        streetAddress: p.streetAddress || undefined,
+        addressLocality: p.addressLocality || undefined,
+        addressCountry: p.addressCountry || 'YE'
+      } : undefined,
+      sameAs: (p.sameAs && p.sameAs.length) ? p.sameAs : undefined
     };
     if(p.latitude && p.longitude){
       ld.geo = { '@type':'GeoCoordinates', latitude: p.latitude, longitude: p.longitude };
     }
     if(p.hasMap) ld.hasMap = p.hasMap;
     // تبعيّة صريحة: هذه المدرسة جزء من موقع المنصّة، لا هي الموقع نفسه.
-    ld.isPartOf = { '@id': siteId };
+    ld.isPartOf = { '@id': siteId() };
     injectLd('ld-school', ld);
 
-    // WebSite — هوية **المنصّة** لا المدرسة.
-    // كان هذا الكيان يحمل name: p.name (اسم المدرسة) مع url = أصل النطاق + '/' ⇒ يُصرِّح
-    // للزاحف أن اسم الصفحة الرئيسية للنطاق هو «مدارس الإبداع والتميز الدولية»، بينما شاشة
-    // موافقة OAuth مُهيَّأة باسم «Yemen Schoolz» — وهو تعارضٌ يُنتج حرفياً رسالة الرفض
-    // «app name … does not match the app name on your home page». الاسم هنا ثابت أحادي
-    // اللغة عمداً (لا يُشتق من المدرسة) — لا تُعِده إلى p.name.
+    injectSiteLd();
+  }
+
+  // العنوان القانوني للصفحة كما تُصرِّح به هي نفسها — مصدر واحد لكيان المدرسة.
+  function canonicalUrl(){
+    var el = document.head.querySelector('link[rel="canonical"]');
+    var href = el ? (el.getAttribute('href') || '') : '';
+    if(href) return href;
+    return (window.location && window.location.href) ? window.location.href : '';
+  }
+
+  function siteOrigin(){
+    return (window.location && window.location.origin) ? (window.location.origin + '/') : 'https://yemenschoolz.com/';
+  }
+  function siteId(){ return siteOrigin() + '#website'; }
+
+  // WebSite — هوية **المنصّة** لا المدرسة، وتُحقَن **إقلاعياً** لا عند وصول الحمولة:
+  // هي مرساة اسم العلامة (بند 75)، ويجب أن تصمد حتى لو لم يصل نداء الخادم أبداً.
+  // كان هذا الكيان يحمل name: p.name (اسم المدرسة) مع url = أصل النطاق + '/' ⇒ يُصرِّح
+  // للزاحف أن اسم الصفحة الرئيسية للنطاق هو «مدارس الإبداع والتميز الدولية»، بينما شاشة
+  // موافقة OAuth مُهيَّأة باسم «Yemen Schoolz» — وهو تعارضٌ يُنتج حرفياً رسالة الرفض
+  // «app name … does not match the app name on your home page». الاسم هنا ثابت أحادي
+  // اللغة عمداً — 🔴 لا يقرأ أي حقل من `p` إطلاقاً، ولا يُعاد إلى p.name.
+  function injectSiteLd(){
     injectLd('ld-website', {
       '@context':'https://schema.org', '@type':'WebSite',
-      '@id': siteId,
+      '@id': siteId(),
       name: 'Yemen Schoolz',
       alternateName: ['يمن سكولز'],
-      url: siteUrl, inLanguage:'ar'
+      url: siteOrigin(), inLanguage:'ar'
     });
   }
 
@@ -2984,10 +3070,19 @@ document.addEventListener('DOMContentLoaded',function(){
     document.head.appendChild(s);
   }
 
-  // متاحة عالمياً ليدمجها الخادم إن أرجع اسم/بيانات مدرسة (تعدّد المدارس)
-  window.SCHOOL_PROFILE = SCHOOL_PROFILE;
+  // متاحة عالمياً ليدمجها الخادم إن أرجع اسم/بيانات مدرسة (تعدّد المدارس).
+  // 🔴 الاسم العالمي `SCHOOL_PROFILE` يبقى حرفياً — تقرأه **كتلة الدمج الحيّة**
+  // (‏`for(k in window.SCHOOL_PROFILE)` داخل `loadHomeBundle`) كأساسٍ تبني فوقه؛ تغييره
+  // يُفرِّغ الأساس صامتاً. ويقرأه أيضاً `loadHomeBundleLegacy` — وهي **بلا مستدعٍ اليوم**
+  // (رصدته مراجعة `gas-reviewer`)، فلا تُحتَجّ بها وحدها مبرِّراً لإبقاء الاسم.
+  window.SCHOOL_PROFILE = PRODUCT_PROFILE;
   window.applySchoolSeo = applySeo;
-  applySeo(SCHOOL_PROFILE);
+
+  // 🔴 لا `applySeo(...)` إقلاعياً. كان `applySeo(SCHOOL_PROFILE)` هنا يكتب هوية مدرسة
+  // المالك في خمسة أسطح دفعةً (‏`document.title` · `og:*` · اسم العلامة · الشعار · كيان
+  // `School`) قبل أي نداء خادم ⇒ وميضٌ لكلّ مدرسة أخرى، وكيانُ مدرسةٍ خاطئة يبقى مثبَّتاً
+  // إن فشلت الحمولة. ما يُحقَن إقلاعياً الآن هو هوية **المنصّة** وحدها — وهي صحيحة دوماً.
+  injectSiteLd();
 })();
 </script>
 </body>
