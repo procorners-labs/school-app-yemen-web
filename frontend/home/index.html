@@ -1184,11 +1184,11 @@ img,video,iframe{max-width:100%;display:block}
 
       <div class="hdr-ctas">
         <a href="/teacher/index.html"
-           class="hdr-btn hdr-btn-primary" target="_blank" rel="noopener">
+           data-portal="teacher" class="hdr-btn hdr-btn-primary" target="_blank" rel="noopener">
           <i class="fas fa-chalkboard-user"></i> المعلمين
         </a>
         <a href="/student/index.html"
-           class="hdr-btn hdr-btn-amber" target="_blank" rel="noopener">
+           data-portal="student" class="hdr-btn hdr-btn-amber" target="_blank" rel="noopener">
           <i class="fas fa-user-graduate"></i> الطلاب
         </a>
       </div>
@@ -1227,11 +1227,11 @@ img,video,iframe{max-width:100%;display:block}
   </nav>
   <div class="drawer-foot">
     <a href="/teacher/index.html"
-       class="hdr-btn hdr-btn-primary" target="_blank" rel="noopener">
+       data-portal="teacher" class="hdr-btn hdr-btn-primary" target="_blank" rel="noopener">
       <i class="fas fa-chalkboard-user"></i> منصة المعلمين
     </a>
     <a href="/student/index.html"
-       class="hdr-btn hdr-btn-amber" target="_blank" rel="noopener">
+       data-portal="student" class="hdr-btn hdr-btn-amber" target="_blank" rel="noopener">
       <i class="fas fa-user-graduate"></i> منصة الطلاب
     </a>
   </div>
@@ -1260,11 +1260,11 @@ img,video,iframe{max-width:100%;display:block}
     <p class="hero-sub" id="heroSub">منصة تعليمية ذكية متكاملة تجمع بين الأصالة والمعاصرة، وتعرض الأخبار والصور والفيديوهات والإنجازات بطريقة ديناميكية حديثة ومناسبة لكل الأجهزة.</p>
     <div class="hero-btns">
       <a href="/teacher/index.html"
-         class="hbtn hbtn-gold" target="_blank" rel="noopener">
+         data-portal="teacher" class="hbtn hbtn-gold" target="_blank" rel="noopener">
         <i class="fas fa-chalkboard-user"></i> منصة المعلمين
       </a>
       <a href="/student/index.html"
-         class="hbtn hbtn-outline" target="_blank" rel="noopener">
+         data-portal="student" class="hbtn hbtn-outline" target="_blank" rel="noopener">
         <i class="fas fa-user-graduate"></i> منصة الطلاب
       </a>
     </div>
@@ -2654,6 +2654,61 @@ function _homeWireLibraryLinks(){
   }
 }
 
+/* ─── روابط بوّابتَي المعلم والطالب تحمل معرّف مدرسة الصفحة ────────────────────
+   نفس الملف يُخدَم على `/home/index.html` وعلى `/<slug>` لكل مدرسة، وكانت الروابط
+   الستّ ثابتة بلا معرّف ⇒ زائر صفحة ابن خلدون يضغطها فيصل شاشة دخول تحمل هوية
+   **مدرسة المالك** (البناء يحقن `window.SCHOOL_ID = … || '<OWNER_UUID>'` عند غياب
+   `?school=`). قيدان يحكمان الحلّ، وكلاهما مقيس:
+
+   ① 🔴 لا إصلاح في المصدر: رجيكس `build-frontend.js` يستبدل روابط `/exec` بمسارات
+      وتعبيره `(\?[^"'\s<]*)?` **يبتلع أي query** ⇒ أي `?school=` يُكتب في الترميز
+      يُمحى صامتاً عند البناء. الوصل بعد التحميل حصراً — ويحرسه تأكيد نافٍ.
+   ② 🔴 الـslug لا يصلح معرّفاً هنا: `getTeacherSchoolBrand` تطابق `school_id` (UUID)
+      حصراً، والـslug يمرّ بـ`ok:true` واسمٍ **فارغ** — رفضٌ صامت يُنتج شاشة دخول بلا
+      أي هوية، أسوأ من العطل نفسه. لذلك `_homeActiveSchoolId()` **لا تُستعمل** في هذا
+      المسار (أولويّتها تُرجع الـslug)، والمصدر هو `bundle.schoolId` وحده.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/** بوّابة الشكل — هي ما يفصل «معرّفاً تقبله المنصّات» عن «سلاگاً تقبله home وحدها». */
+function _homeIsSchoolUuid(v){
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+         .test(String(v === null || v === undefined ? '' : v).trim());
+}
+
+/**
+ * نقيّة. تُبنى على `base` القائم لا على شكل مفترَض — الصفحة تُخدَم بسطحين
+ * (`…/exec` من GAS · `/teacher/index.html` من `frontend/`) وكلاهما يقرأ `?school=`.
+ * وتقصّ أي query أولاً ⇒ **تكرار النداء لا يُضاعف** المعامل.
+ * ومعرّف غير-UUID (سلاگ · فراغ · مشوّه) ⇒ تُعيد الأساس كما هو: لا تُسوّئ الرابط أبداً.
+ */
+function _homePortalHref(base, sid){
+  var b = String(base === null || base === undefined ? '' : base);
+  var cut = b.indexOf('?');
+  if(cut !== -1) b = b.slice(0, cut);
+  if(!_homeIsSchoolUuid(sid)) return b;
+  return b + '?school=' + encodeURIComponent(String(sid).trim());
+}
+
+/**
+ * 🔴 تكتب `href` وحده. لمس `target`/`rel` يكسر تطبيق الأندرويد: كتلة WebView أدناه
+ * تُزيلهما عن الروابط الداخلية، وإعادة ضبطهما هنا تفتح تبويب متصفّح بدل نشاط.
+ */
+function _homeApplyPortalLinks(sid){
+  var els = document.querySelectorAll('[data-portal]'), i;
+  for(i = 0; i < els.length; i++){
+    els[i].setAttribute('href', _homePortalHref(els[i].getAttribute('href') || '', sid));
+  }
+}
+
+/* ضبط فوري لحالة `?school=<uuid>` الصريحة وحدها (الزائر قادمٌ من بطاقة بالجذر):
+   المعرّف معروف تزامنياً فلا داعي لانتظار الحمولة. 🔴 والبوّابة نفسها تمنع مرور
+   سلاگٍ من هنا — وأي مُدخَل لا يجتازها يترك الروابط على أساسها بلا تغيير. */
+(function(){
+  var _hpq = '';
+  try{ _hpq = (new URLSearchParams(window.location.search)).get('school') || ''; }catch(e){}
+  if(_homeIsSchoolUuid(_hpq)) _homeApplyPortalLinks(_hpq);
+})();
+
 /**
  * رابط بوّابة المنصّة — يظهر على صفحة **مدرسة** ولا يظهر على الجذر الافتراضي.
  * 🔴 المعيار `isOwner` من الخادم لا `_homeActiveSchoolId()`: الأخير غير فارغ أيضاً حين
@@ -2703,6 +2758,14 @@ function loadHomeBundle(){
         _homeSafeApply('theme',   function(){ _homeApplyBrandTheme(b); });
         _homeSafeApply('reviews', function(){ _homeRenderReviews(b.reviews || []); });
         _homeSafeApply('library',  function(){ _homeWireLibraryLinks(); });
+        // 🔴 المصدر `b.schoolId` لا `_homeActiveSchoolId()`: الحمولة تُرجع **UUID القانوني
+        // دائماً** مهما كان المُدخَل (سلاگ · معرّف · فراغ) لأن الخادم يحلّ المستأجر، بينما
+        // الدالّة العميلية تُرجع الـslug على `/<slug>` وهو مرفوض صامتاً عند المنصّات.
+        // والمالك يبقى **عارياً** عمداً: الفارغ = مدرسة المالك (بند 99)، وشكلان للشيء
+        // الواحد يشقّان فضاء الكاش والجلسة (بند 97).
+        _homeSafeApply('portals',  function(){
+          _homeApplyPortalLinks(b.isOwner === true ? '' : b.schoolId);
+        });
         _homeSafeApply('platform', function(){ _homeWirePlatformLink(b); });
         if(b.brand && b.brand.logo) window._homeLogo = b.brand.logo;
         if(window.applySchoolSeo && b.brand) _homeSafeApply('seo', function(){
