@@ -1955,6 +1955,30 @@ function _homeSetTextIf(id, val){
 }
 function _homeHideIf(id){ var el=$(id); if(el) el.style.display='none'; }
 
+/**
+ * حقل اتصال (هاتف · واتساب · عنوان · بريد) بسياسة التراجع الثلاثية نفسها.
+ *
+ * 🔴 يُخفي **الحاوية** لا النصّ وحده: بنية الحقل `<span><i class="fa-…"></i>
+ * <span id="X">…</span></span>`، فإخفاء الداخلي يترك أيقونة هاتف معلّقة بلا رقم.
+ *
+ * ولماذا يُظهر صراحةً عند وجود قيمة: `_homeApplyPageContent` تعمل **قبل**
+ * `applyContacts`، فبلا إعادة الإظهار يبقى حقلٌ أُخفي في الجولة الأولى مخفيّاً
+ * رغم وصول قيمته الحقيقية في الثانية.
+ */
+function _homeContactHost(el){
+  var host = el && el.parentNode;
+  return (host && host.tagName && host.tagName.toLowerCase() === 'span') ? host : el;
+}
+function _homeContactField(id, value, owner){
+  var el = $(id); if(!el) return false;
+  var v = (value == null) ? '' : String(value).trim();
+  var host = _homeContactHost(el);
+  if(v){ el.textContent = v; if(host) host.style.display = ''; return true; }
+  // فارغ: نصّ المالك الساكن يبقى له وحده، ويُخفى كلّياً لأي مدرسة أخرى.
+  if(!owner && host) host.style.display = 'none';
+  return false;
+}
+
 function _homeApplyPageContent(b){
   var p=(b&&b.page)||{}, owner=!!(b&&b.isOwner), i;
 
@@ -1987,10 +2011,11 @@ function _homeApplyPageContent(b){
   _homeFillCards('#stages .feat-card', p.stages, owner);
   _homeFillCards('#about  .feat-card', p.features, owner);
 
-  // ⑤ الاتصال — حقول بلا نقطة حقن سابقاً.
-  _homeSetTextIf('ftEmail', p.email);
-  _homeSetTextIf('tbAddr',  p.address);
-  _homeSetTextIf('ftAddr',  p.address);
+  // ⑤ الاتصال — الحقول الساكنة تحمل بيانات المالك الحقيقية (عنوانه وبريده)، فالفراغ
+  // لغير المالك يجب أن يُخفي الحقل لا أن يتركه معروضاً ببيانات مدرسةٍ أخرى.
+  _homeContactField('ftEmail', p.email,   owner);
+  _homeContactField('tbAddr',  p.address, owner);
+  _homeContactField('ftAddr',  p.address, owner);
 }
 
 /** يملأ بطاقات شبكة قائمة من مصفوفة `{title,desc}` — بلا حذف بطاقة أو تغيير أيقونة. */
@@ -2919,12 +2944,14 @@ document.addEventListener('DOMContentLoaded',function(){
     if(el) el.textContent = value || '';
   }
 
-  function applyContacts(p){
+  function applyContacts(p, isOwner){
     var waDisplay = (p.whatsapp || '').replace(/^\+?967/, '');
-    setText('tbPhone', p.phoneDisplay);
-    setText('fcPhone', p.phoneDisplay);
-    setText('tbWa', waDisplay);
-    setText('fcWa', waDisplay);
+    // 🔴 `_homeContactField` لا `setText`: الأخيرة تكتب نصّاً فارغاً فتترك أيقونة هاتف
+    // بلا رقم، والنصّ الساكن هنا رقم المالك الحقيقي — فتركُه ظاهراً لمدرسة أخرى تسريب.
+    _homeContactField('tbPhone', p.phoneDisplay, isOwner);
+    _homeContactField('fcPhone', p.phoneDisplay, isOwner);
+    _homeContactField('tbWa', waDisplay, isOwner);
+    _homeContactField('fcWa', waDisplay, isOwner);
     setLink('tbFb', p.facebook); setLink('ftFb', p.facebook);
     setLink('tbIg', p.instagram); setLink('ftIg', p.instagram);
     setLink('tbYt', p.youtube); setLink('ftYt', p.youtube);
@@ -2976,7 +3003,7 @@ document.addEventListener('DOMContentLoaded',function(){
     if(!p || !p.name) return;
     if(isOwner === true) applyOwnerFallback(p);
     p.phoneDisplay = (p.telephone || '').replace(/^\+967/, '');
-    applyContacts(p);
+    applyContacts(p, isOwner === true);
     applyBrandText(p);
     // اسم المدرسة أولاً (هو ما يبحث عنه الزائر) ولاحقة المنتج ثابتة بعده — فيبقى
     // انتماء الصفحة للمنصّة ظاهراً في تبويب المتصفّح وفي عنوان نتيجة البحث معاً،
