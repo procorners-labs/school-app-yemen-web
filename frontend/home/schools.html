@@ -416,8 +416,17 @@
   .sc-chip{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;color:var(--cobalt-v)}
   /* الرابط الرئيسيّ ممتدّ على البطاقة كلّها — يبقى رابطاً واحداً دلالياً للزاحف
      ولقارئ الشاشة، وتبقى البطاقة كلّها قابلة للنقر. */
-  .sc-go{margin-inline-start:auto;color:var(--cobalt);font-weight:800;text-decoration:none}
+  /* 🔴 لا `position` على `.sc-go` أبداً: أقرب سلفٍ موضَّع هو `.sc`، وهو ما يجعل طبقة
+     `::after` تمتدّ على البطاقة كلّها. إعطاؤها `position:relative` (أو إعطاؤه لـ`.sc-meta`)
+     يجعلها هي كتلة الاحتواء فينكمش الرابط إلى الزرّ وحده — **بلا أن يحمرّ أي حارس نصّي**،
+     لأن السلسلتين تبقيان حرفياً كما هما. `inline-flex` لا يضبط `position` فهو آمن. */
+  .sc-go{margin-inline-start:auto;background:var(--g-cobalt);color:#fff;font-weight:800;
+    text-decoration:none;border-radius:999px;padding:7px 15px;font-size:.82rem;
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+    box-shadow:0 2px 9px rgba(15,92,140,.22);transition:box-shadow .15s,filter .15s}
   .sc-go::after{content:'';position:absolute;inset:0;border-radius:var(--r)}
+  .sc:hover .sc-go{box-shadow:0 4px 14px rgba(15,92,140,.32);filter:brightness(1.06)}
+  .sc-go-ar{font-size:1.05em;line-height:1}
   /* روابط البوّابتين **فوق** الرابط الممتدّ — بدونها تبتلعها طبقة `::after`. */
   .sc-ports{position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap;
     border-top:1px solid var(--border);padding-top:10px}
@@ -1105,7 +1114,11 @@ function _spCard(s){
       (s.address ? '<p class="sc-addr">' + spEsc(s.address) + '</p>' : '') + '</div>' +
     '</div>' +
     '<div class="sc-meta">' + meta +
-      '<a class="sc-go" href="' + spEsc(_spSchoolHref(s)) + '">عرض الصفحة ←</a>' +
+      /* `aria-label` باسم المدرسة: كل بطاقة كانت تحمل النصّ نفسه، فقارئ الشاشة يسمع
+         «عرض الصفحة» مكرَّرةً بعدد المدارس بلا ما يميّزها. */
+      '<a class="sc-go" href="' + spEsc(_spSchoolHref(s)) + '"' +
+        ' aria-label="عرض صفحة ' + spEsc(nm) + '">' +
+        'عرض الصفحة <span class="sc-go-ar" aria-hidden="true">←</span></a>' +
     '</div>' +
     '<div class="sc-ports">' +
       '<a class="sc-port" href="/teacher/index.html' + q + '">👩‍🏫 المعلمون</a>' +
