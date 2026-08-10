@@ -146,7 +146,12 @@ var _RESERVED_TOP_PATHS = {
   'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1, 'schedule': 1,
   'master-admin': 1, 'pricing': 1, 'gas': 1, 'qr-img': 1, 'qr-download': 1, 'oauth': 1,
   'drive-upload': 1, 'media': 1, 'assets': 1, 'index.html': 1, 'manifest.webmanifest': 1,
-  'sw.js': 1, 'robots.txt': 1, 'sitemap.xml': 1, 'favicon.ico': 1
+  'sw.js': 1, 'robots.txt': 1, 'sitemap.xml': 1, 'favicon.ico': 1,
+  // 'portal' يُخدَم بإعادة كتابة صريحة **تسبق** حساب الـslug (أدناه)، فحجزه هنا غير
+  // ضروري وظيفياً اليوم. يبقى دفاعاً عن ترتيبٍ يتغيّر: لو انتقلت إعادة الكتابة يوماً
+  // إلى ما بعد `_schoolSlugFromPath` لعاد `/portal` يُخدَم كـslug مدرسة بصمت تامّ —
+  // وهو بالضبط سلوكه قبل 2026-08-10. والحجز يمنع كذلك تسجيل مدرسة بهذا الـslug.
+  'portal': 1
 };
 function _schoolSlugFromPath(path) {
   var m = /^\/([a-z0-9-]+)\/?$/i.exec(path);
@@ -570,6 +575,23 @@ export default {
     // curl أن /home/schools.html صار index,follow حيّاً. العكس يخدم الجذر بـnoindex
     // لنافذة كاملة، وHTML يُخدَم هنا بـno-cache (أدناه) فيصل الزاحف فوراً.
     if (path === '/' || path === '') path = '/home/schools.html';
+    // ── /portal → منصّة الطالب (2026-08-10) ──────────────────────────────
+    // رابط قصير جديد لمنصّة الطالب، **بلا تعطيل أي شيء قائم**: `/student/index.html`
+    // و`/gas/student` وكل النطاقات تبقى كما هي حرفياً — تطبيق الأندرويد يحمّل رابطه
+    // الثابت من `AppConfig.kt` ويتجاهل أي URL مُمرَّر، **وبلا Deep Link إطلاقاً**، فلا
+    // طريق لتحديثه ⇒ أي كسر هناك لا رجعة فيه.
+    //
+    // 🔴 هذا **تغيير سلوك لمسار حيّ لا إضافة مسار جديد**: `/portal` كان يُرجِع 200 ويُخدَم
+    // بـ`/home/index.html` لأن `_schoolSlugFromPath` تقرؤه slug مدرسة (قياس حيّ قبل
+    // التغيير: 147,212 بايت — نفس بايتات `/ibn-khaldoun` بالضبط). تُحقِّق قبل الدمج أن
+    // `portal` ليس slug مدرسة مسجَّلة (‏sitemap الحيّ وقتها: `abdaawatmuaz` ·
+    // `ibn-khaldoun` · `aljil-al-hadith` — لا ثالث لها).
+    //
+    // إعادة كتابة داخلية لا redirect: الرابط يبقى `/portal` بشريط المتصفّح (أنظف
+    // للمشاركة)، ويرث السطرُ الواحد كلَّ ما بعده — حذف CSP/X-Frame-Options، وسماح
+    // CORS، وسياسة no-cache للـHTML، وبثّ الجسم. نفس نمط سطر الجذر أعلاه حرفياً.
+    // ويسبق حساب `_pathSlug` أدناه عمداً فلا يُلتقَط كـslug.
+    if (path === '/portal' || path === '/portal/') path = '/student/index.html';
     // رابط مدرسة قصير (yemenschoolz.com/<slug>): يُعاد كتابته إلى **`/home/index.html`**
     // منذ 2026-08-07 (بند 104) — بدل `home-all-school`. السبب: قرار مالك بأن تكون صفحة كل
     // مدرسة **نفس تصميم `/home/index.html` بالضبط**، والمطابقة الحقيقية أن يخدمهما ملف واحد
