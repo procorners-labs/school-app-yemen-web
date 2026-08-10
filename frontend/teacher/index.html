@@ -2691,11 +2691,12 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-supervisorPerms" onclick="showSection('supervisorPerms')" style="display:none;"><span class="si-icon">🛡️</span> ضبط صلاحيات المشرف</button>
   <button class="sidebar-item" id="si-lists-mgmt"      onclick="showSection('lists-mgmt')">     <span class="si-icon">📝</span> إدارة القوائم</button>
   <button class="sidebar-item" id="si-examctrl"        onclick="showSection('examctrl')" style="display:none;"><span class="si-icon">🗂️</span> كنترول اختبارات نهاية العام</button>
-  <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">⚙️</span> إعدادات الجدول والتواقيت</button>
-  <button class="sidebar-item" id="si-auditLog"        onclick="showSection('auditLog')" style="display:none;"><span class="si-icon">🕵️</span> سجل التدقيق</button>
+  <!-- الاسم يذكر «توزيع الحصص» أوّلاً لأنه المحتوى الفعلي الغالب للصفحة (عنوانها بالداخل
+       «توزيع الحصص»، والتواقيت قسم ثانٍ أسفلها). الاسم القديم «إعدادات الجدول والتواقيت»
+       أخفى الأداةَ عن مالك المنصّة نفسه حتى طلبها ظانّاً أنها غير مبنيّة (2026-08-10). -->
+  <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">📆</span> توزيع الحصص والتواقيت</button>
   <button class="sidebar-item" id="si-schoolTemplate"  onclick="showSection('schoolTemplate')" style="display:none;"><span class="si-icon">🏫</span> قالب تزويد المدرسة</button>
   <button class="sidebar-item" id="si-schoolBrand"     onclick="showSection('schoolBrand')" style="display:none;"><span class="si-icon">🖼️</span> بيانات المدرسة</button>
-  <button class="sidebar-item" id="si-myPortals"       onclick="showSection('myPortals')" style="display:none;"><span class="si-icon">🔗</span> منصاتي</button>
   <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🔒</span> الحجب المالي</button>
   <button class="sidebar-item" id="si-platformReviewsAdmin" onclick="showSection('platformReviewsAdmin')"> <span class="si-icon">⭐</span> تقييمات المنصة</button>
@@ -9032,10 +9033,8 @@ function showSection(name, opt) {
       studentDirectory: renderStudentDirectory,
       studentStatus: renderStudentStatus,
       schedSettings: renderScheduleSettings,
-      auditLog: renderAuditLog,
       schoolTemplate: renderSchoolTemplateBridge,
       schoolBrand: renderSchoolBrand,
-      myPortals: renderMyPortals,
       myTasks: renderMyTasks,
       tasksMgmt: renderTasksMgmt,
       certificates: renderCertificates,
@@ -9166,10 +9165,16 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-lists-mgmt':       { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-examctrl':         { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schedSettings':    { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
-  'si-auditLog':         { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schoolTemplate':   { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
-  'si-schoolBrand':      { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
-  'si-myPortals':        { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  // `deputy` أُضيف 2026-08-10 لأن «🔗 منصاتي» انتقلت إلى داخل هذه الصفحة وأُسقط عنصرها
+  // من الشريط — و`getMyPlatformLinksProtected` تقبل المدير والوكيل معاً، فبقاء الصفحة
+  // على `admin` وحده كان سيسلب الوكيلَ ميزةً عاملة. ونموذجُ تعديل البيانات نفسه يبقى
+  // للمدير حصراً **داخل** `renderSchoolBrand` (جسر HMAC يقبل مدير المدرسة وحده) —
+  // فلا زرَّ حفظٍ ظاهرٍ يرفضه الخادم (بند 30).
+  'si-schoolBrand':      { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  // 🗑️ حُذفا 2026-08-10 بطلب المالك: `si-auditLog` (خرج سجل التدقيق كاملاً من المنصّة،
+  // ودالّته `getSchoolAuditLogProtected` صارت محجوبة عن الويب) و`si-myPortals` (انتقل
+  // محتواها إلى صفحة «بيانات المدرسة» أعلاه).
   // admin فقط حصراً (لا deputy) — بطلب صريح من المالك، صفحة إدارية بحتة لتقييمات المنصة.
   'si-platformReviewsAdmin': { roles:['admin'],                                   accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   // غير مقيَّدة بالجدول إطلاقاً (roles:null) — ظاهرة للجميع دوماً؛ مذكورة هنا فقط لتوثيق حالة
@@ -12340,6 +12345,7 @@ function renderScheduleSettings() {
       '<div id="sdStatus"></div>' +
       '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">جارٍ تحميل الجدول الكامل…</div></div></div>' +
     '</div>' +
+    _sgtBlockHtml() +
     '<div class="section-header" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
       '<div class="section-header-icon" style="background:rgba(17,73,163,.12)">⏰</div>' +
       '<div class="section-header-title">التواقيت العامة</div></div>' +
@@ -12351,6 +12357,104 @@ function renderScheduleSettings() {
   }, function (e) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
   _schedDist_init();
 }
+// ══════════════════════════════════════════════════════════════════════
+//  📄 قالب الجدول — تنزيل ورفع بنفس نمط شبكة التوزيع (طلب المالك)
+//  ─────────────────────────────────────────────────────────────────────
+//  🔴 لا دالّة خادمية جديدة: المسار كامل ومختبَر منذ زمن، والناقص كان **الواجهة**
+//  وحدها. `TST_TPL_TAB_NAMES.scheduleGrid` ⇒ ورقة «عرض_الجدول_للمعلمين» (نفس شبكة
+//  المعلّم × 5 أيام × 7 حصص التي يعرضها التوزيع)، ومسارا الخدمة قائمان:
+//    تنزيل: teacherBridgeActionProtected {action:'tabInfo',  tabKey:'scheduleGrid'}
+//    رفع:   teacherBridgeActionProtected {action:'uploadFile'} ثم {action:'importTab'}
+//  ⇒ الفرع الخادمي `importTab/scheduleGrid` يستدعي `importScheduleGridProtected`.
+//  كان هذا كلّه متاحاً في صفحة «قالب تزويد المدرسة» فقط، وضمن قالب المدرسة كاملاً —
+//  ولم يكن `scheduleGrid` مطروحاً حتى في قائمة تبويباتها (ثلاثة تبويبات فقط).
+//
+//  🔴 وحصرُه على `role==='admin'` ليس تشدّداً: `teacherBridgeActionProtected` ترفض
+//  أي دور غير `admin` صراحةً (لا `isAdmin` العام). والصفحة نفسها `admin+deputy` —
+//  فعرضُ الكتلة للوكيل كان يُنتج زرَّين ظاهرَين يرفضهما الخادم (بند 30).
+var SGT_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
+
+function _sgtBlockHtml() {
+  if ((App.user || {}).role !== 'admin') return '';
+  return '' +
+    '<div class="section-header" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
+      '<div class="section-header-icon" style="background:rgba(16,185,129,.12)">📄</div>' +
+      '<div class="section-header-title">قالب الجدول (تنزيل / رفع)</div></div>' +
+    '<div class="section-body">' +
+      '<div class="alert alert-info" style="margin-bottom:12px">نزّل الجدول الحالي كملف Excel بنفس شكل الشبكة (صفٌّ لكل معلّم × خمسة أيام × سبع حصص)، عدّله، ثم ارفعه — يُستورَد ويُدمَج مع الجدول القائم. صيغة الخلية: <code dir="ltr">الفصل (المادة)</code>.</div>' +
+      '<div class="filter-bar" style="margin-bottom:12px"><div class="filter-bar-title">⬇️ تنزيل القالب الحالي</div>' +
+        '<button class="btn btn-secondary btn-sm" onclick="_sgtDownload()">⬇️ تنزيل قالب الجدول</button>' +
+        '<div id="sgtDownloadStatus" style="margin-top:8px;font-size:13px"></div>' +
+      '</div>' +
+      '<div class="filter-bar"><div class="filter-bar-title">📤 رفع القالب المُعبَّأ</div>' +
+        '<input type="file" class="form-control" id="sgt-file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="max-width:340px;margin-bottom:8px">' +
+        '<button class="btn btn-primary btn-sm" onclick="_sgtUpload()">📤 رفع واستيراد الجدول</button>' +
+        '<div id="sgtUploadStatus" style="margin-top:8px;font-size:13px"></div>' +
+      '</div>' +
+    '</div>';
+}
+
+function _sgtDownload() {
+  var st = document.getElementById('sgtDownloadStatus');
+  if (!st) return;
+  st.innerHTML = '⏳ جاري التجهيز…';
+  callServer('teacherBridgeActionProtected', { action: 'tabInfo', tabKey: 'scheduleGrid' }, function (r) {
+    if (!r || !r.success) {
+      st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'تعذّر التجهيز') + '</span>';
+      return;
+    }
+    var links = '';
+    if (r.xlsxUrl) links += '<a href="' + escapeHtml(r.xlsxUrl) + '" target="_blank" rel="noopener">تنزيل Excel</a>';
+    if (r.csvUrl)  links += (links ? ' · ' : '') + '<a href="' + escapeHtml(r.csvUrl) + '" target="_blank" rel="noopener">تنزيل CSV</a>';
+    if (r.editUrl) links += (links ? ' · ' : '') + '<a href="' + escapeHtml(r.editUrl) + '" target="_blank" rel="noopener">فتح في المتصفّح</a>';
+    st.innerHTML = links
+      ? '<span style="color:#2e7d32">✅ جاهز — </span>' + links
+      : '<span style="color:#c62828">❌ لم يُرجِع الخادم أي رابط تنزيل</span>';
+  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+}
+
+function _sgtUpload() {
+  var st = document.getElementById('sgtUploadStatus');
+  var input = document.getElementById('sgt-file');
+  var file = input && input.files && input.files[0];
+  if (!st) return;
+  if (!file) { st.innerHTML = '<span style="color:#c62828">اختر ملفاً أولاً</span>'; return; }
+  if (file.size > SGT_UPLOAD_MAX_BYTES) {
+    st.innerHTML = '<span style="color:#c62828">❌ حجم الملف يتجاوز ' + Math.round(SGT_UPLOAD_MAX_BYTES / 1024 / 1024) + 'MB</span>';
+    return;
+  }
+  st.innerHTML = '⏳ جاري رفع الملف…';
+  var reader = new FileReader();
+  reader.onload = function () {
+    var dataUrl = reader.result || '';
+    var comma = dataUrl.indexOf(',');
+    var base64 = comma > -1 ? dataUrl.substring(comma + 1) : dataUrl;
+    callServer('teacherBridgeActionProtected', {
+      action: 'uploadFile', fileBase64: base64, fileName: file.name, mimeType: file.type
+    }, function (r) {
+      if (!r || !r.success || !r.fileId) {
+        st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل رفع الملف') + '</span>';
+        return;
+      }
+      st.innerHTML = '⏳ جاري استيراد الجدول…';
+      callServer('teacherBridgeActionProtected', { action: 'importTab', tabKey: 'scheduleGrid', fileId: r.fileId }, function (r2) {
+        if (!r2 || !r2.success) {
+          st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r2 && r2.error) || 'فشل الاستيراد') + '</span>';
+          return;
+        }
+        var c = r2.scheduleGrid || {};
+        st.innerHTML = '<span style="color:#2e7d32">✅ تم — أُضيف ' + (c.added || 0) +
+          ' · حُدِّث ' + (c.updated || 0) + ' · تُخطّي ' + (c.skipped || 0) + '</span>';
+        // الشبكة المعروضة أعلاه صارت قديمة فوراً بعد الاستيراد — تُعاد قراءتها من
+        // الخادم لا من أي نسخة عميلية، وإلّا بدا الاستيراد الناجح بلا أثر.
+        try { schedDist_refreshView(); } catch (eRef) {}
+      }, function (e2) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e2.message || e2) + '</span>'; });
+    }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+  };
+  reader.onerror = function () { st.innerHTML = '<span style="color:#c62828">❌ تعذّرت قراءة الملف</span>'; };
+  reader.readAsDataURL(file);
+}
+
 function _renderSchedSetForm(s, breaks, allGrades) {
   var body = document.getElementById('schedSetBody');
   // مصدر الصفوف: كل صفوف المدرسة من الجدول (لكل الفصول) مع احتياطي لصفوف المستخدم
@@ -12465,8 +12569,28 @@ function renderSchoolTemplateBridge() {
 }
 
 // ── بيانات المدرسة (شعار/سوشل/لون + اتصال فيسبوك) — مدير المدرسة فقط، عبر نفس جسر HMAC ──
+//
+// 🔗 **«منصاتي» انتقلت إلى هنا** (طلب المالك 2026-08-10) وأُسقط عنصرها من الشريط.
+// وفصلُ الصلاحيتين مقصود ولا غنى عنه: نموذج التعديل أدناه يمرّ بجسر HMAC يقبل
+// **مدير المدرسة وحده**، بينما `getMyPlatformLinksProtected` تقبل المدير والوكيل معاً.
+// فلو نُقلت «منصاتي» إلى صفحةٍ صلاحيتها `admin` فقط لفَقَد الوكيلُ ميزةً عاملة؛ ولو
+// فُتِح النموذج للوكيل لصار زرّ حفظ ظاهرٍ يرفضه الخادم (بند 30). ⇒ الصفحة تُفتح
+// للوكيل، والنموذج وحده محجوب عنه، و«منصاتي» تظهر للاثنين.
 function renderSchoolBrand() {
   var el = document.getElementById('dynamicContent');
+  var _sbIsAdmin = ((App.user || {}).role === 'admin');
+  if (!_sbIsAdmin) {
+    // الوكيل: «منصاتي» وحدها — بلا نموذج تعديل يرفضه الخادم أصلاً.
+    el.innerHTML = '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(17,73,163,.12)">🔗</div>' +
+      '<div class="section-header-title">منصاتي</div></div>' +
+      '<div class="section-body">' +
+      '<p style="color:var(--text-muted);margin:0 0 10px;font-size:14px;">روابط بوابات مدرستك — افتحها في تبويب جديد أو انسخها لمشاركتها.</p>' +
+      '<div id="myPortalsContent">جاري التحميل...</div>' +
+      '</div></div>';
+    _loadMyPortals();
+    return;
+  }
   el.innerHTML = '<div class="section-card"><div class="section-header">' +
     '<div class="section-header-icon" style="background:rgba(17,73,163,.12)">🖼️</div>' +
     '<div class="section-header-title">بيانات المدرسة</div>' +
@@ -12508,9 +12632,15 @@ function renderSchoolBrand() {
       '<div id="spcSaveStatus" style="margin-top:8px"></div>' +
       '<div style="font-size:12px;color:var(--text-muted,#64748b);margin-top:6px">⏱️ يظهر التعديل على الصفحة العامّة خلال دقيقة تقريباً (كاش الخادم ٣٠ ثانية).</div>' +
     '</div>' +
+    // 🔗 «منصاتي» — نُقلت إلى هنا وأُسقط عنصرها من الشريط الجانبي (طلب المالك 2026-08-10).
+    '<div class="filter-bar" style="margin-top:16px"><div class="filter-bar-title">🔗 منصاتي</div>' +
+      '<div style="font-size:12px;color:var(--text-muted,#64748b);margin-bottom:8px">روابط بوابات مدرستك — افتحها في تبويب جديد أو انسخها لمشاركتها.</div>' +
+      '<div id="myPortalsContent">جاري التحميل...</div>' +
+    '</div>' +
     '</div></div>';
   _sbInit();
   _spcInit();
+  _loadMyPortals();
 }
 
 // ── محتوى الصفحة العامّة: تحميل/عرض/حفظ ──
@@ -25835,116 +25965,10 @@ function sstat_print() {
   w.document.close(); w.focus(); w.print();
 }
 
-// ==================== سجل التدقيق (مدير/وكيل فقط، قراءة فقط) ====================
-// يستدعي getSchoolAuditLogProtected (TeacherCore.js) — تقرأ ورقة Audit_Master بالسجل المركزي،
-// مُصفّاة خادمياً بمدرسة الجلسة الحالية عبر _resolveActiveSchoolId(). لا كتابة من هنا إطلاقاً.
-var _auditLogRows = [];
-
-function renderAuditLog() {
-  var u = App.user || {};
-  var box = document.getElementById('dynamicContent');
-  if (!box) return;
-  if (!(u.role === 'admin' || u.role === 'deputy')) {
-    box.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">صلاحية مدير/نائب مطلوبة</div></div>';
-    return;
-  }
-  box.innerHTML =
-    '<div class="page-head"><h2 style="margin:0;">🕵️ سجل التدقيق</h2>' +
-    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">آخر العمليات المسجَّلة لهذه المدرسة — قراءة فقط.</p></div>' +
-    '<div class="section-card">' +
-    '<input type="text" id="auditLogSearch" placeholder="🔍 ابحث بالمستخدم/الإجراء/الوحدة/التفاصيل..." oninput="_auditLogFilter(this.value)" style="width:100%;padding:8px 10px;margin-bottom:10px;border:1px solid #e2e8f0;border-radius:8px;box-sizing:border-box;">' +
-    '<div id="auditLogContent">جاري التحميل...</div>' +
-    '</div>';
-  _loadAuditLog();
-}
-
-function _loadAuditLog() {
-  var c = document.getElementById('auditLogContent');
-  callServer('getSchoolAuditLogProtected', { limit: 200 }, function(r) {
-    if (!r || !r.success) {
-      showError(r ? r.error : 'خطأ');
-      if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل السجل</div></div>';
-      return;
-    }
-    _auditLogRows = r.logs || [];
-    _auditLogPage = 1;
-    _auditLogRenderTable(_auditLogFiltered());
-  }, function(err) {
-    showError((err && err.message) || 'فشل الاتصال');
-    if (c) c.innerHTML = '<div class="empty-state"><div class="es-title">تعذّر تحميل السجل</div></div>';
-  });
-}
-
-var _auditLogPage = 1;
-var _auditLogQuery = '';
-var _AUDIT_PAGE_SIZE = 50;
-
-function _auditLogFiltered() {
-  if (!_auditLogQuery) return _auditLogRows;
-  var out = [], i, row, hay;
-  for (i = 0; i < _auditLogRows.length; i++) {
-    row = _auditLogRows[i] || {};
-    hay = ((row.userName || '') + ' ' + (row.action || '') + ' ' + (row.module || '') + ' ' + (row.details || '')).toLowerCase();
-    if (hay.indexOf(_auditLogQuery) >= 0) out.push(row);
-  }
-  return out;
-}
-
-function _auditLogRenderTable(list) {
-  var c = document.getElementById('auditLogContent');
-  if (!c) return;
-  if (!list || !list.length) {
-    c.innerHTML = '<div class="empty-state"><div class="es-title">لا توجد سجلات تدقيق' + (_auditLogQuery ? ' مطابقة للبحث' : ' حتى الآن') + '</div></div>';
-    return;
-  }
-  var pages = Math.max(1, Math.ceil(list.length / _AUDIT_PAGE_SIZE));
-  if (!_auditLogPage || _auditLogPage < 1) _auditLogPage = 1;
-  if (_auditLogPage > pages) _auditLogPage = pages;
-  var start = (_auditLogPage - 1) * _AUDIT_PAGE_SIZE;
-  var pageRows = list.slice(start, start + _AUDIT_PAGE_SIZE);
-  var h = '<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>المستخدم</th><th>الإجراء</th><th>الوحدة</th><th>التفاصيل</th></tr></thead><tbody>';
-  for (var i = 0; i < pageRows.length; i++) {
-    var row = pageRows[i] || {};
-    h += '<tr>' +
-      '<td>' + escapeHtml(row.timestamp || '—') + '</td>' +
-      '<td>' + escapeHtml(row.userName || '—') + '</td>' +
-      '<td>' + escapeHtml(row.action || '—') + '</td>' +
-      '<td>' + escapeHtml(row.module || '—') + '</td>' +
-      '<td>' + escapeHtml(row.details || '—') + '</td>' +
-      '</tr>';
-  }
-  h += '</tbody></table></div>';
-  if (list.length > _AUDIT_PAGE_SIZE) {
-    var pbtn = function (label, target, disabled, title) {
-      return '<button class="btn btn-sm btn-secondary" style="min-width:44px" ' + (disabled ? 'disabled ' : '') +
-        (title ? ('title="' + title + '" ') : '') +
-        'onclick="_auditLogGoPage(' + target + ')">' + label + '</button>';
-    };
-    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px">' +
-      pbtn('⏮', 1, _auditLogPage <= 1, 'الأولى') + pbtn('‹ السابق', _auditLogPage - 1, _auditLogPage <= 1) +
-      '<span style="font-size:13px;color:var(--text-muted);white-space:nowrap">صفحة ' + _auditLogPage + ' / ' + pages +
-        ' · <span style="color:var(--text-light)">' + (start + 1) + '–' + (start + pageRows.length) + ' من ' + list.length + '</span></span>' +
-      pbtn('التالي ›', _auditLogPage + 1, _auditLogPage >= pages) + pbtn('⏭', pages, _auditLogPage >= pages, 'الأخيرة') +
-      '</div>';
-  }
-  c.innerHTML = h;
-}
-
-function _auditLogGoPage(n) {
-  _auditLogPage = n;
-  _auditLogRenderTable(_auditLogFiltered());
-}
-
-function _auditLogFilter(q) {
-  _auditLogQuery = (q || '').replace(/^\s+|\s+$/g, '').toLowerCase();
-  _auditLogPage = 1;
-  _auditLogRenderTable(_auditLogFiltered());
-}
-
 // ==================== منصاتي — روابط بوابات المدرسة (مدير/وكيل فقط، قراءة فقط) ====================
 // يستدعي getMyPlatformLinksProtected (_Tenant.js) — يبني رابط كل بوابة (معلم/طالب/CMS/جدول)
 // لمدرسة الجلسة الحالية من سجل Schools المركزي، فقط للبوابات التي معرّف ملفها موجود. لا كتابة
-// من هنا إطلاقاً — نفس بنية renderAuditLog أعلاه.
+// من هنا إطلاقاً. تُعرَض داخل صفحة «بيانات المدرسة» (`renderSchoolBrand`) لا كقسم مستقلّ.
 function renderMyPortals() {
   var u = App.user || {};
   var box = document.getElementById('dynamicContent');
