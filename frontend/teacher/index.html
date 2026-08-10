@@ -9141,8 +9141,11 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-teachers-mgmt':    { roles:['admin','it'],                                  accountant:false, supervisor:{ configurable:true, label:'👥 إدارة المعلمين',            defaultVisible:false } },
   'si-adminStudents':    { roles:['admin'],                                       accountant:false, supervisor:{ configurable:true, label:'🔒 الحجب المالي',              defaultVisible:false } },
   'si-adminActivities':  { roles:['admin','deputy','activities'],                 accountant:false, supervisor:{ configurable:true, label:'📋 جميع الأنشطة',              defaultVisible:true  } },
-  'si-certificates':     { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'🏅 الشهادات',                  defaultVisible:false } },
-  'si-scoresheets':      { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'📋 الكشوفات',                  defaultVisible:false } },
+  // المحاسب: مسموح **خادمياً منذ البداية** (`_tcCanCertificates` تُرجِع true للمحاسب صراحةً،
+  // وتعليق `getScoreSheetsDataProtected` يقول «مدير/وكيل/محاسب») — وكانت القائمة وحدها تُخفيهما.
+  // أي عكس بند 28: الخادم يسمح والعرض يمنع. فُتِحا بطلب المالك 2026-08-10 بلا أي تغيير خادمي.
+  'si-certificates':     { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'🏅 الشهادات',                  defaultVisible:false } },
+  'si-scoresheets':      { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'📋 الكشوفات',                  defaultVisible:false } },
   'si-myTasks':          { roles:null,                                           accountant:true,  supervisor:{ configurable:true, label:'✅ مهامي',                     defaultVisible:true  } },
   'si-tasksMgmt':        { roles:['admin','deputy','activities'],                 accountant:true,  supervisor:{ configurable:true, label:'🗂️ إدارة المهام والإشراف',    defaultVisible:true  } },
   'si-studentDirectory': { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🎒 أسماء الطلاب',              defaultVisible:true  } },
@@ -9153,7 +9156,11 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   // يُخفيها _sbApplySupervisor قسراً (قسم social كامل) بمعزل عن هذا الكائن.
   'si-circulars':        { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:null },
   'si-social':           { roles:['admin','deputy','activities'],                 accountant:false, supervisor:null },
-  'si-financial':        { roles:['admin'],                                       accountant:true,  supervisor:{ configurable:false, alwaysHidden:true } },
+  // 🟡 «المالية والعمليات» مخفيّة عن المحاسب **مؤقّتاً** بطلب المالك 2026-08-10.
+  // إخفاء عرضٍ فقط: `_tfinCanFinance` الخادمية تبقى كما هي بلا مساس، فإعادة الإظهار
+  // تغييرُ هذا العلم وحده إلى true. و`_sbApplyAccountant` تهبط على أوّل عنصر **ظاهر**
+  // لا على اسم قسم مثبَّت — وإلّا أنزل هذا الإخفاءُ المحاسبَ على صفحة مخفيّة.
+  'si-financial':        { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-visits':           { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-supervisorPerms':  { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-lists-mgmt':       { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
@@ -9281,7 +9288,37 @@ function _sbApplyAccountant() {
     }
     secs[acx].style.display = any ? '' : 'none';
   }
-  try { showSection('financial'); } catch (eAcc) {}
+  // 🔴 الهبوط: **ترتيب تفضيل مُعلَن** ثم أوّل عنصر ظاهر ثم شبكة أمان — لا اسم قسم مثبَّت.
+  //
+  // كان `showSection('financial')` حرفياً، فلمّا أُخفيت المالية عن المحاسب (2026-08-10)
+  // كان سيهبط على صفحة مخفيّة. وأوّلُ إصلاحٍ اعتمد **ترتيب الرسم** وحده، فأنزله على
+  // «📅 جدول الحصص» (‏`si-mySchedule` سطر 347 بالمخطَّط، سابقٌ للكشوفات عند 387) — وهو
+  // `accountant:true` قائم من قبل هذا التغيير، ويناقض تعليق القسم نفسه «شريط مركّز بلا
+  // أكاديميات». رصدته مراجعة `gas-reviewer` قبل الدمج.
+  //
+  // ⇒ ترتيب الرسم يخدم التصفّح لا الهبوط. النيّة تُعلَن هنا صراحةً: أوّل مُتاح من هذه
+  // القائمة يفوز، وأي عنصر فيها يُخفى لاحقاً يُتخطّى تلقائياً بلا تعديل كود.
+  var ACC_LANDING = ['financial', 'scoresheets', 'certificates', 'studentStatus', 'myTasks'];
+  try {
+    var landed = false, li, m;
+    var all = document.querySelectorAll('.sidebar-item');
+    // (١) ترتيب التفضيل المُعلَن — يُقبَل فقط إن كان عنصره ظاهراً فعلاً بعد الإخفاء أعلاه.
+    for (var pi = 0; pi < ACC_LANDING.length && !landed; pi++) {
+      for (li = 0; li < all.length; li++) {
+        if (all[li].style.display === 'none') continue;
+        m = /showSection\('([^']+)'\)/.exec(all[li].getAttribute('onclick') || '');
+        if (m && m[1] === ACC_LANDING[pi]) { showSection(m[1]); landed = true; break; }
+      }
+    }
+    // (٢) تراجع: أوّل عنصر ظاهر يحمل showSection — يغطّي أي عنصر جديد لم يُذكَر أعلاه.
+    for (li = 0; li < all.length && !landed; li++) {
+      if (all[li].style.display === 'none') continue;
+      m = /showSection\('([^']+)'\)/.exec(all[li].getAttribute('onclick') || '');
+      if (m) { showSection(m[1]); landed = true; }
+    }
+    // (٣) شبكة أمان: لا يُترك المحاسب بلا قسم — «الملف الشخصي» ظاهر له دائماً بالمانيفست.
+    if (!landed) showSection('profile');
+  } catch (eAcc) {}
 }
 
 // المشرف: القسم الإداري ظاهر، وصفحاته تُقاد من pagePerms (أو الافتراضي عند غيابها).
@@ -18837,9 +18874,20 @@ function _schedIsPriv() {
   return !!(u.isAdmin || u.role === 'admin' || u.role === 'deputy' || u.role === 'supervisor');
 }
 
+// من يملك **تحرير** الجدول: مدير/وكيل حصراً — نفس صلاحية `si-schedSettings`
+// بالمانيفست. بـ`role` صريحاً لا `session.isAdmin`/`u.isAdmin`، فالأخير صحيح
+// للمحاسب والمشرف أيضاً (بند 73) فكان سيمنحهما أزرار كتابة على الجدول.
+function _schedCanEdit() {
+  var u = (typeof App !== 'undefined' && App.user) ? App.user : {};
+  var r = u.role || '';
+  return (r === 'admin' || r === 'deputy');
+}
+
 function renderMySchedule() {
   var u = App.user || {};
-  var title = u.isAdmin ? 'جدول الحصص الكامل' : ('جدولي الدراسي — ' + (u.teacherName || ''));
+  // العنوان بـ`_schedIsPriv()` لا `u.isAdmin`: الأخير صادق للمحاسب أيضاً، فكان
+  // المحاسب يرى «جدول الحصص الكامل» (وأسماء كل المعلّمين) بلا سبب — بند 73.
+  var title = _schedIsPriv() ? 'جدول الحصص الكامل' : ('جدولي الدراسي — ' + (u.teacherName || ''));
   _schedView = 'grid';
   // زر تقويم الاختبارات (subscribeExamCalendar/getMyExamCalendarLinkProtected) مخفيّ
   // عمداً عن منصّة المعلمين بقرار المالك 2026-07-16 — الدوال الخلفية باقية بلا حذف
@@ -19049,8 +19097,65 @@ function _schedBuildToolbar() {
   }
   h += '<button class="btn btn-sm" style="background:var(--success,#10b981);color:#fff;" onclick="_schedShare()">📤 مشاركة نصاً</button>';
   h += '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff;" onclick="_schedShareAsImage()">📷 مشاركة صورة/PDF</button>';
+  if (_schedCanEdit()) h += '<button class="btn btn-sm" style="background:var(--warn,#f59e0b);color:#fff;" id="schedBtnEdit" onclick="_schedOpenEditor()">✏️ تحرير الجدول</button>';
   tb.innerHTML = h;
   _schedUpdateToolbarActive();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  لوحة تحرير الجدول داخل صفحة «جدول الحصص» (طلب المالك 2026-08-10)
+//  ─────────────────────────────────────────────────────────────────────
+//  كانت أدوات التوزيع/التعديل/فحص التعارضات كلّها حيّة وعاملة، لكن **داخل
+//  صفحة أخرى** اسمها في القائمة «⚙️ إعدادات الجدول والتواقيت» — فلم يجدها
+//  المالك من صفحة الجدول. الحلّ **إضافي بحت**: نُنشئ هنا نفس هيكل الـDOM الذي
+//  تتوقّعه دوال `schedDist_*` (بنفس المعرّفات) ثم نستدعي `_schedDist_init()`.
+//  ⇒ **صفر تعديل على أي دالّة توزيع قائمة** — لا إعادة كتابة ولا تفريع ولا
+//  تكرار منطق؛ نفس المودال ونفس فحص التعارضات ونفس وضع التبديل ونفس التراجع.
+//  لا تصادم معرّفات: `dynamicContent` يُستبدَل كاملاً عند كل `showSection`،
+//  فلا تتعايش نسختان من `#sdGrid` في الصفحة أبداً.
+// ══════════════════════════════════════════════════════════════════════
+function _schedOpenEditor() {
+  if (!_schedCanEdit()) { toast('تحرير الجدول للمدير/الوكيل فقط', 'error'); return; }
+  var area = document.getElementById('myScheduleArea');
+  if (!area) return;
+  var fb = document.getElementById('schedFilterBar'); if (fb) fb.style.display = 'none';
+  var tb = document.getElementById('schedToolbar');   if (tb) tb.style.display = 'none';
+  area.innerHTML =
+    '<div class="filter-bar" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
+      '<div class="filter-bar-title" style="margin:0">✏️ تحرير الجدول — انقر أي خانة لتعيينها أو تعديلها</div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="_schedCloseEditor()">↩ عودة للعرض</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">' +
+      '<button class="btn btn-success btn-sm" onclick="schedDist_autoAll()">🚀 توزيع تلقائي للكل</button>' +
+      '<select class="form-select form-select-sm" id="sd-auto-teacher" style="width:auto;min-width:130px"><option value="">— معلّم —</option></select>' +
+      '<button class="btn btn-secondary btn-sm" onclick="schedDist_autoOne()">🎯 توزيع تلقائي لمعلّم</button>' +
+      '<button class="btn btn-secondary btn-sm" onclick="schedDist_redistributeOne()">🔄 إعادة توزيع معلّم</button>' +
+      '<button class="btn btn-danger btn-sm" onclick="schedDist_redistributeAll()">♻️ إعادة توزيع كاملة</button>' +
+      '<button class="btn btn-secondary btn-sm" onclick="schedDist_checkConflicts()">🔍 فحص تعارضات شامل</button>' +
+      '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
+      '<button class="btn btn-info btn-sm" onclick="schedDist_refreshViewSheets()">🔄 تحديث أوراق العرض</button>' +
+    '</div>' +
+    '<div id="sdProgress"><button class="btn btn-secondary btn-sm" onclick="schedDist_loadProgress()">📊 عرض نسبة إنجاز الحصص لكل معلّم</button></div>' +
+    '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الصف والشعبة</div><div class="form-row" style="margin-bottom:0">' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="sd-grade" onchange="schedDist_onGradeChange()"><option value="">— اختر —</option></select></div>' +
+      '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sd-section" onchange="schedDist_loadClass()" disabled><option value="">— اختر الصف أولاً —</option></select></div>' +
+    '</div></div>' +
+    '<div id="sdStatus"></div>' +
+    '<div id="sdGrid"><div class="empty-state"><div class="es-icon">📋</div><div class="es-title">جارٍ تحميل الجدول الكامل…</div></div></div>';
+  _schedDist_init();
+}
+
+// العودة للعرض: يُعيد بناء القراءة من الخادم لا من `_cachedSchedule` — فالمحرِّر
+// قد يكون غيّر الجدول فعلاً، وإعادة رسم نسخة قديمة كانت ستُظهر «لم يُحفَظ» كذباً.
+function _schedCloseEditor() {
+  var fb = document.getElementById('schedFilterBar'); if (fb) fb.style.display = '';
+  var tb = document.getElementById('schedToolbar');   if (tb) tb.style.display = '';
+  // 🔴 `ClientCache.del` هو الاسم الفعلي (‏`_js-core-bridge.html::callServer` يقرأ
+  // `ClientCache.get(cacheKey)`)، والمفتاح `my_schedule` بـTTL 600 ثانية. بلا هذا
+  // الإبطال تعود قراءةُ العرض من كاش عمرُه عشر دقائق فتُظهر الجدول **قبل** تعديلات
+  // المحرِّر — أي «لم يُحفَظ» كاذبة على حفظٍ ناجح.
+  ClientCache.del('my_schedule');
+  loadMySchedule();
 }
 
 function _schedUpdateToolbarActive() {
@@ -19105,7 +19210,7 @@ function _schedApply() {
     area.innerHTML = _schedFreeTableHtml(rows);
   } else {
     area.innerHTML = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;padding:10px 16px;background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);"><span style="font-size:.82rem;color:var(--text-muted);">📌 إجمالي الحصص: <strong>' + rows.length + '</strong></span></div>' +
-      _schedGridTableHtml(rows, { showTeacher: !!(App.user && App.user.isAdmin) });
+      _schedGridTableHtml(rows, { showTeacher: _schedIsPriv() });
   }
 }
 
@@ -19114,7 +19219,7 @@ function applyScheduleFilter() { _schedApply(); }
 function searchSchedule() { _schedApply(); }
 function renderScheduleData(rows) {
   var area = document.getElementById('myScheduleArea');
-  if (area && rows) area.innerHTML = _schedGridTableHtml(rows, { showTeacher: !!(App.user && App.user.isAdmin) });
+  if (area && rows) area.innerHTML = _schedGridTableHtml(rows, { showTeacher: _schedIsPriv() });
 }
 
 function _schedGridTableHtml(rows, opts) {
@@ -22548,7 +22653,12 @@ function ss_renderToolbar(){
       '<select class="form-select" id="ss-size"><option value="A4">A4 أفقي</option><option value="A3">A3 أفقي (للجداول الواسعة)</option></select></div>' +
     '<button class="btn btn-primary btn-sm" onclick="ss_print()">🖨️ طباعة الكشف</button>' +
     '<button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="ss_pdf()">⬇️ تحميل PDF</button>' +
-    '<button class="btn btn-sm" style="background:#10b981;color:#fff" onclick="ss_exportCsv()">📄 تصدير CSV</button>' +
+    // زرّ التصدير مخفيّ عن المحاسب بدل أن يُعرَض ويعمل بلا أثر: `ss_exportCsv` تُرجِع
+    // فوراً لدوره (منع تصدير CSV/Excel قاعدةٌ قائمة) — فكان زرّاً ظاهراً بلا استجابة
+    // ولا رسالة. صار الإخفاء عند مصدر العرض، والحارس داخل الدالّة يبقى كما هو دفاعياً.
+    // ظهر أثره الآن لأن صفحة الكشوفات فُتِحت للمحاسب (2026-08-10) — رصدته المراجعة.
+    (((App.user || {}).role === 'accountant') ? '' :
+      '<button class="btn btn-sm" style="background:#10b981;color:#fff" onclick="ss_exportCsv()">📄 تصدير CSV</button>') +
     '<span class="badge badge-info">'+(SS.data.count||0)+' طالب · '+((SS.data.subjects||[]).length)+' مادة</span>';
 }
 
