@@ -1166,8 +1166,11 @@ function spBoot(){
       spEl('spSub').textContent = SP.all.length + ' مدرسة على المنصّة';
       spRender();
     })
-    .withFailureHandler(function(){
-      spEl('spState').textContent = 'تعذّر الاتصال — تحقّق من الشبكة وأعد المحاولة.';
+    .withFailureHandler(function(err){
+      /* التمييز من الجسر: مزدحم ≠ مقطوع ≠ خطأ منطقي — علاج كلٍّ معاكس للآخر. */
+      spEl('spState').textContent = window.gasErrorInfo
+        ? window.gasErrorInfo(err).text
+        : 'تعذّر الاتصال (عبر خادم Google مباشرةً) — أعد المحاولة.';
     })
     .listPartnerSchoolsPublic();
 }

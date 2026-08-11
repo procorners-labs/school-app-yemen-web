@@ -652,8 +652,11 @@ function lbBoot(){
         if(el) el.scrollIntoView({ behavior:'smooth', block:'center' });
       }
     })
-    .withFailureHandler(function(){
-      $('lbState').textContent = 'تعذّر الاتصال — تحقّق من الشبكة وأعد المحاولة.';
+    .withFailureHandler(function(err){
+      /* التمييز من الجسر: مزدحم ≠ مقطوع ≠ خطأ منطقي — علاج كلٍّ معاكس للآخر. */
+      $('lbState').textContent = window.gasErrorInfo
+        ? window.gasErrorInfo(err).text
+        : 'تعذّر الاتصال (عبر خادم Google مباشرةً) — أعد المحاولة.';
     })
     .getHomePageBundle(_lbSchoolId(), 'library');
 }

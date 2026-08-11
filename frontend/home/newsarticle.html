@@ -465,13 +465,30 @@ function renderArticle(n){
     if (n.schoolLogo) { var bl = document.getElementById('brandLogo'); if (bl) bl.src = n.schoolLogo; }
   }
 }
-function renderError(){
-  document.getElementById('root').innerHTML =
+/* 🔴 التمييز هنا ليس تجميلاً: هذه صفحة الهبوط لكل رابط خبر مُشارَك عبر واتساب. كانت تعرض
+   «هذا الرابط غير صالح أو منتهي» **لأي سبب** — بما فيه انقطاع الشبكة وإشباع الحصّة. فمع إخفاق
+   مقيس بلغ 18.35٪ (2026-08-11)، كان جزء معتبر من الزوار يُخبَرون أن الخبر **محذوف** بينما
+   العطل مؤقّت ⇒ لا يعيدون المحاولة أبداً. العطل المؤقّت يجب أن يبدو مؤقّتاً وأن يُعرَض معه زرّ.
+   ⚠️ النصّ يُوضَع بـ`textContent` لا `innerHTML`: مسار `server` يُعيد رسالة الخادم كما هي. */
+function renderError(err){
+  var info = window.gasErrorInfo ? window.gasErrorInfo(err) : null;
+  var transient = !!(info && info.retryable);
+  var root = document.getElementById('root');
+  root.innerHTML =
     '<div class="state err">' +
-      '<div style="font-size:2.8rem;">&#128274;</div>' +
-      '<h2>هذا الرابط غير صالح أو منتهي</h2>' +
-      '<p>قد يكون الخبر قد حُذف أو أن رابط المشاركة غير صحيح.</p>' +
+      '<div style="font-size:2.8rem;">' + (transient ? '&#128246;' : '&#128274;') + '</div>' +
+      '<h2 id="errTitle"></h2>' +
+      '<p id="errBody"></p>' +
+      (transient ? '<p><button type="button" id="errRetry" class="btn">إعادة المحاولة</button></p>' : '') +
     '</div>';
+  document.getElementById('errTitle').textContent = transient
+    ? 'تعذّر تحميل الخبر الآن'
+    : 'هذا الرابط غير صالح أو منتهي';
+  document.getElementById('errBody').textContent = transient
+    ? (info ? info.text : 'تعذّر الاتصال — أعد المحاولة.')
+    : 'قد يكون الخبر قد حُذف أو أن رابط المشاركة غير صحيح.';
+  var rb = document.getElementById('errRetry');
+  if (rb) rb.onclick = function(){ location.reload(); };
 }
 (function(){
   var school = qparam('school') || qparam('schoolId');
@@ -492,8 +509,10 @@ function renderError(){
   if (!newsId) { renderError(); return; }
   var token = qparam('t');
   google.script.run
+    /* نجاحُ اتصالٍ بردٍّ `ok:false` = الرابط فعلاً غير صالح ⇒ بلا `err` (الرسالة القاطعة).
+       أما الفشل فيمرّر `err` كي يميّز الجسرُ العابرَ من النهائي. */
     .withSuccessHandler(function(r){ if (r && r.ok) renderArticle(r); else renderError(); })
-    .withFailureHandler(function(){ renderError(); })
+    .withFailureHandler(function(err){ renderError(err); })
     .getSharedNewsFull(newsId, school, token);
 })();
 </script>

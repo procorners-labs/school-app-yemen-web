@@ -2597,6 +2597,19 @@ function setError(id,msg){
   g.innerHTML='<div class="st-error"><i class="fas fa-exclamation-triangle err-ico"></i><p class="empty-msg">'+esc(msg)+'</p></div>';
 }
 
+/* يجمع «ماذا فشل» (سياق المستدعي) مع «لماذا» (تصنيف الجسر). الأسباب الثلاثة علاجها متعاكس:
+   مزدحم ⇒ انتظرْ لحظات · مقطوع ⇒ افحص شبكتك · منطقي ⇒ لا فائدة من إعادة المحاولة.
+   ⚠️ غياب `window.gasErrorInfo` ليس خطأً بل **هوية مسار**: هذه الصفحة تُخدَم أيضاً من GAS
+   مباشرةً (`doGet`) حيث لا يُحمَّل `gas-bridge.js` إطلاقاً — فيُعلَن ذلك في النصّ كي يُعرَف
+   من بلاغٍ واحد أي نصف من السطح المزدوج هبط عليه المستخدم. */
+function _errMsg(e,what){
+  var info = window.gasErrorInfo ? window.gasErrorInfo(e) : null;
+  if(!info) return what+' (عبر خادم Google مباشرةً) — أعد المحاولة.';
+  if(info.kind==='busy')    return what+' — الخدمة مزدحمة الآن، أعد المحاولة بعد لحظات.';
+  if(info.kind==='offline') return what+' — تحقّق من الشبكة وأعد المحاولة.';
+  return what+' — أعد المحاولة.';
+}
+
 /* ══════════════════════════════════════════
    DATA LOADING — FULL APPS SCRIPT INTEGRATION
    Preserves: getHomeData, getSchoolStats,
@@ -2860,7 +2873,7 @@ function loadSplitData(){
     .withSuccessHandler(renderNews)
     .withFailureHandler(function(e){
       console.error('[News]',e);
-      setError('dynamicNewsGrid','تعذّر تحميل الأخبار');
+      setError('dynamicNewsGrid',_errMsg(e,'تعذّر تحميل الأخبار'));
     })
     .getNewsForSchool(6);
 
@@ -2868,7 +2881,7 @@ function loadSplitData(){
     .withSuccessHandler(renderImages)
     .withFailureHandler(function(e){
       console.error('[Images]',e);
-      setError('dynamicImagesGrid','تعذّر تحميل الصور');
+      setError('dynamicImagesGrid',_errMsg(e,'تعذّر تحميل الصور'));
     })
     .getImagesForSchool(6);
 
@@ -2876,7 +2889,7 @@ function loadSplitData(){
     .withSuccessHandler(renderVideos)
     .withFailureHandler(function(e){
       console.error('[Videos]',e);
-      setError('dynamicVideoGrid','تعذّر تحميل الفيديوهات');
+      setError('dynamicVideoGrid',_errMsg(e,'تعذّر تحميل الفيديوهات'));
     })
     .getVideosForSchool(8);
 }
