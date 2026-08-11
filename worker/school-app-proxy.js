@@ -138,6 +138,20 @@ function jsonResponse(obj, status) {
 function _AttrSet(attr, val) { this.attr = attr; this.val = val; }
 _AttrSet.prototype.element = function (el) { if (this.val) el.setAttribute(this.attr, this.val); };
 
+/**
+ * مثله، لكن يَحذف الوسم كلَّه عند غياب القيمة بدل تركه فارغاً.
+ *
+ * 🔴 لخانات `og:image` الإضافية تحديداً: الصفحة تحمل أربع خانات ثابتة (`data-og="img1..4"`)
+ * ليملأها الوسيط — لأن `_AttrSet` لا يُنشئ وسماً غائباً. لكن خبراً بصورة واحدة يترك ثلاثاً
+ * بـ`content=""`، و**وسم `og:image` بقيمة فارغة أسوأ من غيابه**: الزاحف يقرؤه صورةً معلَنة
+ * ثم يفشل في جلبها، فقد يسقط البطاقة كلَّها. الحذف يجعل المخرَج مطابقاً لما لو كُتب يدوياً.
+ */
+function _AttrSetOrRemove(attr, val) { this.attr = attr; this.val = val; }
+_AttrSetOrRemove.prototype.element = function (el) {
+  if (this.val) el.setAttribute(this.attr, this.val);
+  else el.remove();
+};
+
 // رابط مدرسة قصير احترافي: yemenschoolz.com/<slug> (مسار بعد الدومين، لا نطاق فرعي قبله —
 // قرار مالك صريح 2026-07-28، يُلغي أي حاجة لسجلّ DNS فرعي/Workers Route خارجي؛ يعمل فوراً عبر
 // مسار خدمة الموقع الثابت أدناه بلا أي إعداد Cloudflare إضافي). أي قطعة مسار واحدة فقط (بلا
@@ -717,12 +731,20 @@ export default {
           // بنفس الدفعة، ويحرس وجودَه `ogTagsExistGuard` هناك.
           var _ogCanonical = CANONICAL_ORIGIN + (_pathSlug ? '/' + _pathSlug : path) +
                              '?news=' + encodeURIComponent(_newsId);
+          // 🖼️ صور المعاينة: `images[]` من الخادم، وتراجعٌ للحقل المفرد `image` كي يبقى
+          //    الوسيط عاملاً لو خُدِم من نشرة GAS أقدم لم تعرف الحقل الجديد بعد.
+          var _ogImgs = (_og.images && _og.images.length) ? _og.images : (_og.image ? [_og.image] : []);
+          // ⚠️ الخانات تُستهدَف بـ`data-og` لا بـ`property`: محدِّد `meta[property="og:image"]`
+          //    يطابق **الأربع** فيكتب القيمة نفسها فيها جميعاً — فيصير التعدّد تكراراً.
           return new HTMLRewriter()
             .on('meta[property="og:title"]', new _AttrSet('content', _og.title))
             .on('meta[property="og:description"]', new _AttrSet('content', _og.description))
-            .on('meta[property="og:image"]', new _AttrSet('content', _og.image))
+            .on('meta[data-og="img1"]', new _AttrSetOrRemove('content', _ogImgs[0] || ''))
+            .on('meta[data-og="img2"]', new _AttrSetOrRemove('content', _ogImgs[1] || ''))
+            .on('meta[data-og="img3"]', new _AttrSetOrRemove('content', _ogImgs[2] || ''))
+            .on('meta[data-og="img4"]', new _AttrSetOrRemove('content', _ogImgs[3] || ''))
             .on('meta[property="og:url"]', new _AttrSet('content', _ogCanonical))
-            .on('meta[name="twitter:image"]', new _AttrSet('content', _og.image))
+            .on('meta[name="twitter:image"]', new _AttrSet('content', _ogImgs[0] || _og.image))
             .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
         }
       } catch (_ogErr) { /* تجاهل — نُعيد الصفحة بوسوم الهوية العامة */ }
