@@ -280,6 +280,64 @@ if (!guardIsConditional) failed++;
 console.log((guardIsConditional ? '  ✅ ' : '  ❌ ') +
             '🔴 ضابط: مسار الـslug المنشور لا يزال يُعاد كتابته كما كان (لا 404 شامل)');
 
+// ── 🔴 هوية النطاق عبر الأصول الثلاثة — حارس **سلوكي** ───────────────────────
+// الضابط الأخطر هنا **معاكس**: النطاق الرسمي يجب أن يخرج **بلا `X-Robots-Tag` إطلاقاً**.
+// رأسُ `noindex` عليه يمحو الموقع كلَّه من Google بنشرةٍ واحدة — ولا يكشفه أيّ فحص نصّي
+// على وجود السطر، لأن السطر موجود وصحيح؛ الخطأ يكون في الشرط وحده.
+console.log('');
+console.log('هوية النطاق عبر الأصول الثلاثة (سلوكي):');
+var iIdx = src.indexOf('function _identityHeaders(');
+var iEnd = src.indexOf('\n}', iIdx) + 2;
+if (iIdx < 0 || iEnd <= 1) {
+  console.log('  ❌ ضابط: تعذّر استخراج `_identityHeaders` — الفحص أجوف');
+  failed++;
+} else {
+  var ictx = vm.createContext({});
+  vm.runInContext(src.slice(iIdx, iEnd), ictx);
+  var idf = vm.runInContext('_identityHeaders', ictx);
+  var HREF = 'https://yemenschoolz.com/abdaawatmuaz';
+
+  [// 🔴 الاتجاه المعاكس أوّلاً — هو الذي يحمي الموقع كلَّه
+   ['yemenschoolz.com',     true,  false, '🔴 ضابط: الرسمي **بلا** X-Robots-Tag (وإلّا مُحي من Google)'],
+   ['www.yemenschoolz.com', true,  false, '🔴 ضابط: www مثله (يُحوَّل 301 إلى الرسمي أصلاً)'],
+   // الحالة الموجبة
+   ['school.procorners.com', true, true,  'الإرثي يُوسَم noindex (يخدم محتوى مطابقاً بلا 301)'],
+   ['school-teacher-proxy.procorners-shop.workers.dev', true, true, 'workers.dev مثله'],
+   // لا مطابقة لاحقة على اسم النطاق الرسمي
+   ['yemenschoolz.com.evil.example', true, true, '🔴 ضابط: لا مطابقة لاحقة تمنح إعفاء الرسمي']
+  ].forEach(function (c) {
+    var h = idf(c[0], c[1], HREF);
+    var hasNoindex = (h['X-Robots-Tag'] === 'noindex, follow');
+    var good = (hasNoindex === c[2]);
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + c[3] +
+                '  [' + (h['X-Robots-Tag'] || 'بلا الرأس') + ']');
+  });
+
+  // الأصول الثابتة لا تُوسَم إطلاقاً — الوسم عليها ضجيج بلا معنى
+  var statik = idf('school.procorners.com', false, HREF);
+  var okStatic = (Object.keys(statik).length === 0);
+  if (!okStatic) failed++;
+  console.log((okStatic ? '  ✅ ' : '  ❌ ') +
+              'ضابط: غير-HTML بلا أيّ رأس هوية  [' + Object.keys(statik).join(',') + ']');
+
+  // رأس `Link: rel=canonical` — يعمل حتى حين يفشل تصحيح الوسم في الجسم
+  var lk = idf('yemenschoolz.com', true, HREF)['Link'];
+  var okLink = (lk === '<' + HREF + '>; rel="canonical"');
+  if (!okLink) failed++;
+  console.log((okLink ? '  ✅ ' : '  ❌ ') + 'رأس Link: rel=canonical مُرسَل على الرسمي أيضاً  [' + lk + ']');
+}
+
+// 🔴 ضابط: `/gas/*` **لا يُمَسّ** بأيّ من رؤوس الهوية — مسار API يقرؤه تطبيق أندرويد،
+//    وأيّ رأس فهرسة عليه بلا معنى وقد يربك عملاء صارمين. يُثبَت بأن كتلة الرؤوس تقع
+//    **بعد** الـ`return` الخاص بـ`/gas/` في تدفّق الدالّة.
+var gasIdx = src.indexOf("var match = path.match(/^\\/gas\\/");
+var idhIdx = src.indexOf('var _idHeaders = _identityHeaders(');
+var gasSafe = (gasIdx > 0 && idhIdx > gasIdx);
+if (!gasSafe) failed++;
+console.log((gasSafe ? '  ✅ ' : '  ❌ ') +
+            '🔴 ضابط: رؤوس الهوية بعد مخرج /gas/ في التدفّق (مسار API لا يُمَسّ)');
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'

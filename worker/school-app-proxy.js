@@ -225,6 +225,37 @@ var _KNOWN_SCHOOL_SLUGS = {
 // قانونيةً يدعو الزاحف لفهرسة عددٍ لا نهائي من نسخ الصفحة الأمّ. المعاينة الاجتماعية
 // (‏`og:url`) وحدها تحمل `?news=` — وهي إشارةٌ أخرى لغرضٍ آخر.
 // صفحة الـslug المجهول — مضمَّنة بالكامل (صفر طلب خارجي، صفر استهلاك من حصّة GAS).
+// ── هوية النطاق عبر الأصول الثلاثة — البديل الصحيح للـ301 المحظور ────────────
+//
+// المشكلة: هذا الوركر الواحد يخدم `yemenschoolz.com` و`school.procorners.com`
+// و`…workers.dev` **بمحتوى مطابق**. فالنطاقان الإرثيان ينافسان الرسميَّ في الفهرس على
+// نفس الصفحات، و`procorners.com` متجرٌ مفهرَس بكثافة كان يُسرّب اسمه («ركن التسوق»)
+// لصفحاتنا.
+//
+// 🔴 ولماذا لا 301: تطبيقا الأندرويد يوجّهان **بمقطع المسار متجاهلَين المضيف تماماً**
+//    (‏`AppConfig.kt::matchesDeployment`)، وروابطهما مجمَّدة في الـAPK بلا Deep Link. فأيّ
+//    301 إلى جذر النطاق الجديد يُقابَل بمسار بلا مقطع معروف ⇒ `Intent.ACTION_VIEW` ⇒
+//    **يفتح Chrome ويترك التطبيق فارغاً بلا رجعة**. ولا سبيل لإصلاحه إلا بـAPK جديد.
+//
+// البديل: `X-Robots-Tag: noindex, follow` — يُزيل الازدواج من الفهرس **بصفر تغيير في
+// الحالة (200) أو الجسم**، والتطبيقان لا يقرآن رؤوس الفهرسة إطلاقاً. و`Link: rel=canonical`
+// كرأس HTTP يعمل حتى حين يفشل تصحيح الوسم في الجسم.
+//
+// 🚫 وما لا يُشحن: `robots.txt` بـ`Disallow: /` على الإرثيَّين — يمنع الزحف ⇒ يمنع Google
+//    من **رؤية** canonical، فيبقى العنوان مفهرَساً بلا محتوى. أسوأ من المرض.
+//
+// دالّة **نقيّة** ليقيسها `test-routes.js` على جدول مضيفات — والضابط الحاسم فيه معاكس:
+// 🔴 النطاق الرسمي **بلا `X-Robots-Tag` إطلاقاً**. رأسُ `noindex` هناك يمحو الموقع من
+//    Google بنشرةٍ واحدة، ولا يكشفه أي فحص نصّي على وجود السطر.
+function _identityHeaders(hostname, isHtml, canonHref) {
+  var out = {};
+  if (!isHtml) return out;                       // الأصول الثابتة لا تُفهرَس أصلاً
+  out['Link'] = '<' + canonHref + '>; rel="canonical"';
+  var canonHost = (hostname === 'yemenschoolz.com' || hostname === 'www.yemenschoolz.com');
+  if (!canonHost) out['X-Robots-Tag'] = 'noindex, follow';
+  return out;
+}
+
 function _unknownSlugPage(slug) {
   return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/>' +
     '<meta name="viewport" content="width=device-width,initial-scale=1"/>' +
@@ -789,6 +820,12 @@ export default {
       headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     }
 
+    // ── هوية الرابط والنطاق (راجع `_identityHeaders` أعلاه للسبب الكامل) ─────
+    // يُحسَب مرّةً ويُستخدَم ثلاثاً: رأس `Link`، وحقن `?news=` أدناه، والحقن العامّ في النهاية.
+    var _canonHref = _canonicalFor(path, _pathSlug, url.searchParams.get('school'));
+    var _idHeaders = _identityHeaders(url.hostname, isHtml, _canonHref);
+    Object.keys(_idHeaders).forEach(function (k) { headers.set(k, _idHeaders[k]); });
+
     // حقن وسوم OG لكل خبر (?news=<id>) كي تُظهر تطبيقات المشاركة (واتساب/فيسبوك) صورة الخبر وعنوانه.
     // /home/ (مدرسة المالك، أحادية المستأجر) تستهدف GAS.home كسابقاً؛ أي مسار آخر (بما فيه الجذر
     // المُعاد كتابته أعلاه إلى home-all-school) يستهدف home-all-school (getNewsOg متعدّدة المستأجرين).
@@ -858,7 +895,7 @@ export default {
             .on('meta[property="og:description"]', new _AttrSet('content', _og.description))
             .on('meta[data-og="img1"]', new _OgImages(_ogImgs.slice(0, 4)))
             .on('meta[property="og:url"]', new _AttrSet('content', _ogCanonical))
-            .on('link[rel="canonical"]', new _AttrSet('href', _canonicalFor(path, _pathSlug, url.searchParams.get('school'))))
+            .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
             .on('meta[name="twitter:image"]', new _AttrSet('content', _ogImgs[0] || _og.image))
             .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
         }
@@ -878,7 +915,6 @@ export default {
     // ⚠️ `_AttrSet` يعدّل وسماً موجوداً ولا يُنشئ غائباً (بند 123) — والوسمان موجودان فعلاً
     //    في مصادر الصفحات العامّة، ويحرس وجودَهما `test-routes.js`.
     if (isHtml && ghResp.status === 200) {
-      var _canonHref = _canonicalFor(path, _pathSlug, url.searchParams.get('school'));
       return new HTMLRewriter()
         .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
         .on('meta[property="og:url"]', new _AttrSet('content', _canonHref))
