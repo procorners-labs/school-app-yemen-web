@@ -192,6 +192,73 @@ function _schoolSlugFromPath(path) {
   return seg;
 }
 
+// 🔴 سجلّ الـslugs المنشورة — مرآةُ `_build/schools.public.json` في مستودع الـgas.
+//
+// قبل 2026-08-11 لم تكن هناك قائمة إطلاقاً: أيّ مقطع مسار واحد غير محجوز (‏`/foo` ·
+// `/test` · أيّ شيء) كان يُرجِع **200 وصفحةً كاملة** — سطحُ فهرسةٍ لا نهائي من صفحات
+// متطابقة، يُصدَّر للزاحف بلا حدّ. التعليق القديم برّره بأن «slug غير حقيقي يُرجِع
+// `not_found` خادمياً لا عطلاً» — وهو صحيح للمستخدم، لكنه لا يقول شيئاً لمحرّك البحث:
+// الحالة 200 وحدها هي ما يقرؤه.
+//
+// ⚠️ **تبعية تشغيلية جديدة:** تسجيلُ مدرسة جديدة صار يتطلّب إضافة slugها **هنا وفي
+//    `_build/schools.public.json` معاً** — وإلّا رجعت صفحتها 404. القائمة ثابتة في الكود
+//    عمداً (لا نداء GAS): التحقّق من الوجود على المسار الحارّ يستهلك من حصّة الثلاثين
+//    نفسها التي نحاول حمايتها، ولكلّ زائر.
+var OWNER_SCHOOL_SLUG = 'abdaawatmuaz';
+var _KNOWN_SCHOOL_SLUGS = {
+  'abdaawatmuaz': 1,
+  'ibn-khaldoun': 1,
+  'aljil-al-hadith': 1
+};
+
+// ── الرابط القانوني — يُحسَب من الطلب، لا من قيمة ساكنة في المصدر ─────────────
+//
+// `home/Index.html` ملفٌّ **واحد يخدم N مستأجرين من M مسارات** (مُصرَّح به في مصدره).
+// ⇒ **لا قيمة `canonical` ساكنة يمكن أن تكون صحيحة فيه**: كانت `/home/index.html`، فكان
+// كلُّ مستأجر يُعلن أن قانونيّه صفحةُ مدرسة المالك. وتثبيتها على `/abdaawatmuaz` كان
+// سيسوّئ الأمر لا يُصلحه. والتصحيح الوحيد الصحيح أن يُحسَب من العنوان المطلوب فعلاً.
+//
+// دالّة **نقيّة** عمداً: يستخرجها `test-routes.js` بـ`vm` ويشغّلها على جدول حالات — فحصٌ
+// سلوكي لا نصّي (‏`grep` يُثبت أن السطر مكتوب، لا أن `/ibn-khaldoun` يخرج بقيمته الصحيحة).
+//
+// وبلا معاملات استعلام عمداً: `?news=<id>` تحويلةٌ جافاسكربتية إلى صفحة المقال، فإعلانها
+// قانونيةً يدعو الزاحف لفهرسة عددٍ لا نهائي من نسخ الصفحة الأمّ. المعاينة الاجتماعية
+// (‏`og:url`) وحدها تحمل `?news=` — وهي إشارةٌ أخرى لغرضٍ آخر.
+// صفحة الـslug المجهول — مضمَّنة بالكامل (صفر طلب خارجي، صفر استهلاك من حصّة GAS).
+function _unknownSlugPage(slug) {
+  return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/>' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1"/>' +
+    '<meta name="robots" content="noindex, follow"/>' +
+    '<title>المدرسة غير موجودة | Yemen Schoolz</title>' +
+    '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f172a;' +
+    'color:#e2e8f0;font-family:system-ui,"Segoe UI",Tahoma,sans-serif;padding:24px}' +
+    '.c{max-width:32rem;text-align:center}h1{font-size:1.5rem;margin:0 0 .75rem}' +
+    'p{color:#94a3b8;line-height:1.9;margin:0 0 1.5rem}code{background:#1e293b;padding:.15em .5em;' +
+    'border-radius:.35em;color:#f1f5f9;direction:ltr;display:inline-block}' +
+    'a{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:.7em 1.6em;' +
+    'border-radius:.6em;font-weight:600}</style></head><body><div class="c">' +
+    '<div style="font-size:3rem">&#127979;</div>' +
+    '<h1>لم نجد هذه المدرسة</h1>' +
+    '<p>العنوان <code>' + _attrEsc(slug) + '</code> غير مسجَّل على المنصّة. ' +
+    'قد يكون الرابط غير مكتمل، أو المدرسة لم تُنشَر بعد.</p>' +
+    '<a href="' + CANONICAL_ORIGIN + '/">تصفّح دليل المدارس</a>' +
+    '</div></body></html>';
+}
+
+function _canonicalFor(path, pathSlug, schoolParam) {
+  if (pathSlug) return CANONICAL_ORIGIN + '/' + pathSlug;
+  if (/^\/home\/index\.html$/i.test(path)) {
+    var s = String(schoolParam || '').toLowerCase();
+    // slug منشور ⇒ الشكل القصير. وأيُّ معرّف آخر (‏UUID مثلاً) يبقى مميَّزاً بمعامله:
+    // إسقاطه على مدرسة المالك كان يوحّد مستأجرَين مختلفَين على عنوان واحد — نفس العلّة.
+    if (_KNOWN_SCHOOL_SLUGS[s]) return CANONICAL_ORIGIN + '/' + s;
+    if (s) return CANONICAL_ORIGIN + path + '?school=' + encodeURIComponent(s);
+    // الفارغ = **مدرسة المالك** لا «معرّف مفقود» (بند 99).
+    return CANONICAL_ORIGIN + '/' + OWNER_SCHOOL_SLUG;
+  }
+  return CANONICAL_ORIGIN + path;
+}
+
 // النطاق الرسمي للمشروع (قرار مالك 2026-07-28). المضيف الوحيد الذي يُحوَّل إليه.
 var CANONICAL_ORIGIN = 'https://yemenschoolz.com';
 // 🔴 مضيف واحد بالضبط يُحوَّل — **لا قائمة قابلة للتوسّع بلا تفكير**.
@@ -654,6 +721,19 @@ export default {
     // 🔴 لكن حقن OG أدناه **يحتاج** المعرّف صراحةً — فيُلتقَط هنا **قبل** إعادة الكتابة،
     // وإلّا صار `?school=` فارغاً بعدها فتُعرَض معاينة مدرسة المالك لكل مدرسة.
     var _pathSlug = _schoolSlugFromPath(path);
+    // 🔴 slug غير منشور ⇒ **404 حقيقي**، لا 200 بصفحة كاملة. قبل هذا كان أيّ مقطع مسار
+    //    واحد غير محجوز يُخدَم بمحتوى `/home/index.html` كاملاً بحالة 200 — سطحُ فهرسةٍ
+    //    لا نهائي. الجسم عربيّ مفيد (لا شاشة فارغة) ويحمل رابط دليل المدارس.
+    if (_pathSlug && !_KNOWN_SCHOOL_SLUGS[_pathSlug]) {
+      return new Response(_unknownSlugPage(_pathSlug), {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'X-Robots-Tag': 'noindex, follow'
+        }
+      });
+    }
     if (_pathSlug) path = '/home/index.html';
     var ghUrl = GITHUB_BASE + path + url.search;
     var ghResp = await fetch(ghUrl, {
@@ -756,7 +836,13 @@ export default {
           // على رابط واحد.
           // ⚠️ يعمل فقط لأن الوسم موجود في المصدر: `_AttrSet` يضبط سمةً على وسم موجود
           // ولا يُنشئ غائباً — أُضيف `og:url` إلى `home/News.html` في مستودع الـgas
-          // بنفس الدفعة، ويحرس وجودَه `ogTagsExistGuard` هناك.
+          // بنفس الدفعة.
+          // 🔴 **تصحيح 2026-08-11:** كان مكتوباً هنا «ويحرس وجودَه `ogTagsExistGuard` هناك»
+          //    — و**لا وجود لهذا الحارس في أيّ مستودع**. بحثٌ كامل أعاد مطابقتين، كلتاهما
+          //    داخل وثائق. أي أن التعليق كان يمنح ثقةً بشبكة أمان غير موجودة، وهو أسوأ من
+          //    الصمت. الحارس الفعلي القائم في `test-routes.js` يفحص **نصّ الحقن في الوركر**
+          //    لا **وجود الوسم في الـHTML المخدوم** — فحذفُ الوسم من المصدر غداً يُصمِت
+          //    الحقن كلَّه ويبقى الفحص أخضر (فئة بند 123 حرفياً). دَينٌ مفتوح مقصود.
           var _ogCanonical = CANONICAL_ORIGIN + (_pathSlug ? '/' + _pathSlug : path) +
                              '?news=' + encodeURIComponent(_newsId);
           // 🖼️ صور المعاينة: `images[]` من الخادم، وتراجعٌ للحقل المفرد `image` كي يبقى
@@ -764,11 +850,15 @@ export default {
           var _ogImgs = (_og.images && _og.images.length) ? _og.images : (_og.image ? [_og.image] : []);
           // ⚠️ المرساة `data-og="img1"` لا `property`: محدِّد `meta[property="og:image"]`
           //    يطابق **كلّ** وسم صورة (بما فيها ما نُلحِقه) فيوحّد قيمتها ⇒ تعدّدٌ يصير تكراراً.
+          // ⚠️ `og:url` يحمل `?news=` (المعاينة تخصّ الخبر) بينما `canonical` **لا يحمله**:
+          //    إشارتان لغرضَين مختلفَين. إعلانُ `?news=` قانونياً يدعو الزاحف لفهرسة عددٍ
+          //    لا نهائي من نسخ الصفحة الأمّ — والتحويلة إلى صفحة المقال جافاسكربتية أصلاً.
           return new HTMLRewriter()
             .on('meta[property="og:title"]', new _AttrSet('content', _og.title))
             .on('meta[property="og:description"]', new _AttrSet('content', _og.description))
             .on('meta[data-og="img1"]', new _OgImages(_ogImgs.slice(0, 4)))
             .on('meta[property="og:url"]', new _AttrSet('content', _ogCanonical))
+            .on('link[rel="canonical"]', new _AttrSet('href', _canonicalFor(path, _pathSlug, url.searchParams.get('school'))))
             .on('meta[name="twitter:image"]', new _AttrSet('content', _ogImgs[0] || _og.image))
             .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
         }
@@ -779,6 +869,20 @@ export default {
         clearTimeout(_ogTimer);
         if (_ogHeld) _bhRelease(_ogApp);
       }
+    }
+
+    // ── الرابط القانوني على كلّ صفحة HTML ────────────────────────────────────
+    // يُصحَّح **خادمياً** لا بجافاسكربت: كان `home/Index.html` يُصلح canonical بعد التحميل
+    // (‏`location.pathname`)، بينما الـHTML الخام الذي يراه الزاحف **أوّلاً** يقول
+    // `/home/index.html` لكلّ مستأجر. و`og:url` كان يُضبَط داخل فرع `?news=` وحده.
+    // ⚠️ `_AttrSet` يعدّل وسماً موجوداً ولا يُنشئ غائباً (بند 123) — والوسمان موجودان فعلاً
+    //    في مصادر الصفحات العامّة، ويحرس وجودَهما `test-routes.js`.
+    if (isHtml && ghResp.status === 200) {
+      var _canonHref = _canonicalFor(path, _pathSlug, url.searchParams.get('school'));
+      return new HTMLRewriter()
+        .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
+        .on('meta[property="og:url"]', new _AttrSet('content', _canonHref))
+        .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
     }
 
     return new Response(ghResp.body, {

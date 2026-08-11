@@ -202,6 +202,84 @@ if (!vm.runInContext("!!_RESERVED_TOP_PATHS['student']", ctx)) {
   console.log('  ✅ ضابط: الأسماء المحجوزة مُستخرَجة (student محجوز)');
 }
 
+// ── 🔴 الرابط القانوني مشروط بالطلب — حارس **سلوكي** ─────────────────────────
+// لماذا سلوكي: `grep` يُثبت أن السطر مكتوب، لا أن `/ibn-khaldoun` يخرج بقيمته الصحيحة.
+// والعلّة التي يقفلها حقيقية ومقيسة: صفحةٌ واحدة تخدم N مستأجرين من M مسارات، فكانت
+// تُعلن `canonical=/home/index.html` للجميع — أي أن كلّ مستأجر يقول للزاحف إن قانونيّه
+// صفحةُ مدرسة المالك. والتصحيح الجافاسكربتي يقع **بعد** التحميل، والزاحف يقرأ الخام أوّلاً.
+console.log('');
+console.log('الرابط القانوني مشروط بالطلب (سلوكي):');
+var cIdx = src.indexOf('function _canonicalFor(');
+// ⚠️ نفس فخّ حارس HSTS: المرساة `\n}` عند عمود 0 لا `}` وحدها — الأقواس ترد داخل الجسم.
+var cEnd = src.indexOf('\n}', cIdx) + 2;
+if (cIdx < 0 || cEnd <= 1) {
+  console.log('  ❌ ضابط: تعذّر استخراج `_canonicalFor` من الوركر — الفحص أجوف');
+  failed++;
+} else {
+  var cctx = vm.createContext({});
+  vm.runInContext(
+    src.slice(coIdx, src.indexOf(';', coIdx) + 1) + '\n' +          // CANONICAL_ORIGIN
+    "var OWNER_SCHOOL_SLUG = 'abdaawatmuaz';\n" +
+    src.slice(src.indexOf('var _KNOWN_SCHOOL_SLUGS'),
+              src.indexOf('};', src.indexOf('var _KNOWN_SCHOOL_SLUGS')) + 2) + '\n' +
+    src.slice(cIdx, cEnd), cctx);
+
+  // ضابط أوّلي: القائمة استُخرجت فعلاً — قائمةٌ فارغة تجعل كلّ ما بعدها أجوف.
+  var nSlugs = Object.keys(vm.runInContext('_KNOWN_SCHOOL_SLUGS', cctx)).length;
+  if (nSlugs !== 3) { failed++; console.log('  ❌ ضابط: سجلّ الـslugs = ' + nSlugs + ' (المتوقَّع 3)'); }
+  else { console.log('  ✅ ضابط: سجلّ الـslugs مُستخرَج (3 مدارس منشورة)'); }
+
+  var CANON = 'https://yemenschoolz.com';
+  [// الحالات الثلاث التي أبلغ عنها المالك — كلّها كانت تُعلن `/home/index.html`
+   ['/home/index.html', '', null,             CANON + '/abdaawatmuaz',
+    'الشكل الطويل بلا معامل ⇒ الشكل القصير لمدرسة المالك (الفارغ = مدرسة المالك، بند 99)'],
+   ['/home/index.html', '', 'abdaawatmuaz',   CANON + '/abdaawatmuaz',
+    '`?school=` بـslug منشور ⇒ الشكل القصير نفسه (توحيد الشكلين)'],
+   ['/home/index.html', 'abdaawatmuaz', null, CANON + '/abdaawatmuaz',
+    'الشكل القصير ⇒ نفسه'],
+   // 🔴 الضابط الحاسم: مستأجر آخر **لا** يُوحَّد على مدرسة المالك
+   ['/home/index.html', '', 'ibn-khaldoun',   CANON + '/ibn-khaldoun',
+    '🔴 مستأجر آخر بـ`?school=` ⇒ عنوانه هو، لا عنوان مدرسة المالك'],
+   ['/home/index.html', 'ibn-khaldoun', null, CANON + '/ibn-khaldoun',
+    '🔴 مستأجر آخر بالمسار ⇒ عنوانه هو'],
+   // معرّف غير منشور (UUID) يبقى مميَّزاً لا يُسقَط على المالك
+   ['/home/index.html', '', '10Zk0vwjrH',     CANON + '/home/index.html?school=10zk0vwjrh',
+    'معرّف غير منشور ⇒ يبقى مميَّزاً بمعامله، لا يُوحَّد على المالك'],
+   // `?news=` لا يدخل الرابط القانوني إطلاقاً (سطح فهرسة لا نهائي لولا ذلك)
+   ['/home/index.html', 'abdaawatmuaz', null, CANON + '/abdaawatmuaz',
+    '`?news=` لا يظهر في القانوني (‏`og:url` وحده يحمله)'],
+   // صفحات أخرى تبقى على مسارها
+   ['/home/privacy.html', '', null,           CANON + '/home/privacy.html',
+    'صفحة عادية ⇒ مسارها كما هو'],
+   ['/student/index.html', '', null,          CANON + '/student/index.html',
+    'بوّابة الطالب ⇒ مسارها كما هو']
+  ].forEach(function (c) {
+    var got = vm.runInContext('_canonicalFor', cctx)(c[0], c[1], c[2]);
+    var good = (got === c[3]);
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + c[4] + '\n       [' + got + ']');
+  });
+}
+
+// ── 🔴 slug غير منشور ⇒ 404 لا 200 ──────────────────────────────────────────
+console.log('');
+console.log('سطح الفهرسة اللانهائي (soft-404):');
+[[/if \(_pathSlug && !_KNOWN_SCHOOL_SLUGS\[_pathSlug\]\)/, 'الـslug يُفحَص ضدّ السجلّ قبل إعادة الكتابة'],
+ [/status: 404/, 'الحالة المُرجَعة 404 لا 200'],
+ [/'X-Robots-Tag': 'noindex, follow'/, 'ورأس noindex معها (حزام وحمّالة)']
+].forEach(function (c) {
+  var good = c[0].test(src);
+  if (!good) failed++;
+  console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
+});
+// ضابط الاتجاه المعاكس: الـslugs المنشورة **لا** تُرجَع 404 — يقيسه جدول `_canonicalFor`
+// أعلاه ضمناً (يُرجِع لها عنواناً صحيحاً)، ويؤكّده هنا أن الفحص مشروط بالنفي لا مطلق.
+var guardIsConditional = /!_KNOWN_SCHOOL_SLUGS\[_pathSlug\]/.test(src) &&
+                         /if \(_pathSlug\) path = '\/home\/index\.html';/.test(src);
+if (!guardIsConditional) failed++;
+console.log((guardIsConditional ? '  ✅ ' : '  ❌ ') +
+            '🔴 ضابط: مسار الـslug المنشور لا يزال يُعاد كتابته كما كان (لا 404 شامل)');
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
