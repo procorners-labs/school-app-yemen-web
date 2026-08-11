@@ -161,10 +161,28 @@ function _schoolSlugFromPath(path) {
   return seg;
 }
 
+// النطاق الرسمي للمشروع (قرار مالك 2026-07-28). المضيف الوحيد الذي يُحوَّل إليه.
+var CANONICAL_ORIGIN = 'https://yemenschoolz.com';
+// 🔴 مضيف واحد بالضبط يُحوَّل — **لا قائمة قابلة للتوسّع بلا تفكير**.
+// `school.procorners.com` و`school-teacher-proxy.procorners-shop.workers.dev` يبقيان
+// يخدمان كما هما **للأبد**: تطبيقا الأندرويد يحملان روابطهما مجمَّدةً في الـAPK بلا
+// Deep Link وبلا مزامنة ديناميكية، ويوجّهان بمقطع المسار **متجاهلَين المضيف تماماً**
+// (`AppConfig.kt::matchesDeployment`). فأي 301 إلى جذر النطاق الجديد يُقابَل بمسار بلا
+// مقطع معروف ⇒ `Intent.ACTION_VIEW` ⇒ **يفتح Chrome ويترك التطبيق فارغاً**، ولا سبيل
+// لإصلاحه إلا بـAPK جديد. `www` وحده آمن لأنه نطاق جديد بلا أي مستخدم سابق.
+var REDIRECT_TO_CANONICAL = { 'www.yemenschoolz.com': 1 };
+
 export default {
   async fetch(request, env, ctx) {
     var url = new URL(request.url);
     var path = url.pathname;
+
+    // ── 0) www ⇒ الجذر (301 دائم، بحفظ المسار والاستعلام) ───────────
+    // يسبق كل شيء: لا معنى لتنفيذ منطق على مضيف سنغادره. و`301` لا `302` كي تتوقّف
+    // المتصفّحات ومحرّكات البحث عن العودة إليه — لا محتوى مكرَّراً ولا هوية منقسمة.
+    if (REDIRECT_TO_CANONICAL[url.hostname]) {
+      return Response.redirect(CANONICAL_ORIGIN + path + url.search, 301);
+    }
 
     // ── 1) وكيل الـ API: /gas/<app> ─────────────────────────────
     var match = path.match(/^\/gas\/([a-zA-Z-]+)\/?$/);
@@ -621,6 +639,21 @@ export default {
     headers.delete('last-modified');
     headers.delete('expires');
 
+    // ── رؤوس أمنية ────────────────────────────────────────────────────
+    // 🔴 **في الكود لا في لوحة Cloudflare** عمداً: رأسٌ باللوحة لا يظهر في أي مراجعة،
+    // ولا يُختبَر، ولا يُتراجَع عنه بنشرة واحدة — وهو بالضبط الانحراف الصامت الذي
+    // جعل إعداد النطاقات كلَّه غير مرئي من المستودع.
+    //
+    // ⚠️ `max-age=300` **مرحلة أولى مقصودة** (٥ دقائق): HSTS يُلزم المتصفّح بـHTTPS
+    // للمدّة كاملةً ولا سبيل لإلغائه من الخادم قبل انقضائها. فيُنشَر قصيراً، ويُتحقَّق
+    // أن الجذر و`www` يعملان، ثم يُرفَع إلى `max-age=15552000; includeSubDomains`.
+    // **بلا `preload`** بقرار مالك — إدراجُ القائمة المدمجة شبه غير قابل للتراجع.
+    headers.set('Strict-Transport-Security', 'max-age=300');
+    headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // 🚫 ولا تُعاد `content-security-policy` ولا `x-frame-options` هنا: حذفهما أعلاه
+    // **مقصود** — `/pricing` يُخدَم داخل `<iframe>` من هذا الوركر نفسه.
+
     // سياسة تخزين ذكية حسب نوع الملف:
     //  - HTML / sw.js / manifest: لا تخزين (تظهر التحديثات فوراً، ويتحدّث الـ SW).
     //  - الأصول الثابتة (js/css/صور/خطوط): تخزين يوم + stale-while-revalidate أسبوع
@@ -674,10 +707,21 @@ export default {
         var _ogJson = await _ogRes.json();
         var _og = (_ogJson && _ogJson.result) ? _ogJson.result : _ogJson;
         if (_og && _og.ok && (_og.image || _og.title)) {
+          // 🔗 الرابط القانوني للمعاينة — يُبنى من **ما طلبه الزائر فعلاً** لا من ثابت:
+          // على الرابط القصير `/<slug>?news=<id>` يصير `<origin>/<slug>?news=<id>`،
+          // وعلى الشكل القديم يبقى مساره كما هو. بلا هذا يعلن كلُّ خبر أن رابطه
+          // القانوني هو صفحة المكتبة العامّة، فتوحّد منصّات المشاركة المعاينات كلَّها
+          // على رابط واحد.
+          // ⚠️ يعمل فقط لأن الوسم موجود في المصدر: `_AttrSet` يضبط سمةً على وسم موجود
+          // ولا يُنشئ غائباً — أُضيف `og:url` إلى `home/News.html` في مستودع الـgas
+          // بنفس الدفعة، ويحرس وجودَه `ogTagsExistGuard` هناك.
+          var _ogCanonical = CANONICAL_ORIGIN + (_pathSlug ? '/' + _pathSlug : path) +
+                             '?news=' + encodeURIComponent(_newsId);
           return new HTMLRewriter()
             .on('meta[property="og:title"]', new _AttrSet('content', _og.title))
             .on('meta[property="og:description"]', new _AttrSet('content', _og.description))
             .on('meta[property="og:image"]', new _AttrSet('content', _og.image))
+            .on('meta[property="og:url"]', new _AttrSet('content', _ogCanonical))
             .on('meta[name="twitter:image"]', new _AttrSet('content', _og.image))
             .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
         }

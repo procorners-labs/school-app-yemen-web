@@ -77,6 +77,74 @@ CASES.forEach(function (c) {
   console.log((good ? '  ✅ ' : '  ❌ ') + c[2] + '  [' + (c[0] || '(فارغ)') + ' → ' + got + ']');
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  تحويل النطاق — `www` وحده يُحوَّل، والإرثيان لا يُمَسّان أبداً
+//  🔴 الضوابط هنا **أهمّ من الحالة الموجبة**: خطأٌ يُحوِّل نطاقاً إرثياً يقذف كل
+//  مستخدمي تطبيق الأندرويد إلى Chmoe ويترك التطبيق فارغاً، ولا يُصلَح إلا بـAPK جديد.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('تحويل النطاق إلى الرسمي:');
+
+var rcIdx = src.indexOf('var REDIRECT_TO_CANONICAL = {');
+var coIdx = src.indexOf("var CANONICAL_ORIGIN = '");
+if (rcIdx < 0 || coIdx < 0) {
+  console.log('  ❌ ضابط: تعذّر استخراج منطق التحويل من الوركر — الاختبار أجوف');
+  failed++;
+} else {
+  var dctx = vm.createContext({});
+  vm.runInContext(src.slice(coIdx, src.indexOf(';', coIdx) + 1) + '\n' +
+                  src.slice(rcIdx, src.indexOf('};', rcIdx) + 2), dctx);
+  dctx.__redirects = function (host) { return !!dctx.REDIRECT_TO_CANONICAL[host]; };
+
+  [['www.yemenschoolz.com', true,  'www يُحوَّل إلى الجذر'],
+   // ── ضوابط الاتجاه المعاكس — كلٌّ منها يحمي مستخدمين حقيقيين ──
+   ['yemenschoolz.com', false, 'ضابط: الجذر نفسه لا يُحوَّل (وإلّا حلقة لا نهائية)'],
+   ['school.procorners.com', false, 'ضابط 🔴: النطاق الإرثي لا يُحوَّل (أندرويد SchoolzYemen يعتمده)'],
+   ['school-teacher-proxy.procorners-shop.workers.dev', false,
+    'ضابط 🔴: workers.dev لا يُحوَّل (أندرويد SchoolAppYemen يعتمده)'],
+   ['www.school.procorners.com', false, 'ضابط: لا مطابقة جزئية على النطاق الإرثي']
+  ].forEach(function (c) {
+    var got = dctx.__redirects(c[0]);
+    var good = (got === c[1]);
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + c[2] + '  [' + c[0] + ' → ' +
+                (got ? '301' : 'يُخدَم كما هو') + ']');
+  });
+
+  var canon = vm.runInContext('CANONICAL_ORIGIN', dctx);
+  var okCanon = (canon === 'https://yemenschoolz.com');
+  if (!okCanon) failed++;
+  console.log((okCanon ? '  ✅ ' : '  ❌ ') + 'وجهة التحويل هي النطاق الرسمي  [' + canon + ']');
+
+  // 🔒 عدد المضيفين المُحوَّلين **واحد بالضبط**: أي توسيع للقائمة يجب أن يمرّ بقرار
+  //    واعٍ لا بإضافة سطر — لأن الخطأ هنا لا يُكتشف إلا من بلاغ مستخدم.
+  var nHosts = Object.keys(vm.runInContext('REDIRECT_TO_CANONICAL', dctx)).length;
+  var okN = (nHosts === 1);
+  if (!okN) failed++;
+  console.log((okN ? '  ✅ ' : '  ❌ ') + '🔒 مضيف واحد بالضبط يُحوَّل  [' + nHosts + ']');
+}
+
+// ── الرؤوس الأمنية ومعاينة الخبر ──
+console.log('');
+console.log('الرؤوس الأمنية وحقن og:url:');
+[[/headers\.set\('Strict-Transport-Security', 'max-age=\d+/, 'HSTS مُرسَل من الكود لا من اللوحة'],
+ [/headers\.set\('X-Content-Type-Options', 'nosniff'\)/, 'nosniff مُرسَل'],
+ [/headers\.set\('Referrer-Policy', 'strict-origin-when-cross-origin'\)/, 'Referrer-Policy مُرسَل'],
+ [/\.on\('meta\[property="og:url"\]', new _AttrSet\('content', _ogCanonical\)\)/, 'og:url محقون بالرابط القانوني'],
+ [/_pathSlug \? '\/' \+ _pathSlug : path/, '🔴 الرابط القانوني يُبنى من الـslug المطلوب لا من ثابت']
+].forEach(function (c) {
+  var good = c[0].test(src);
+  if (!good) failed++;
+  console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
+});
+// 🚫 ضابط: CSP وX-Frame-Options تبقى **محذوفتين** — `/pricing` يُخدَم داخل `<iframe>`.
+var keepsDeleted = /headers\.delete\('content-security-policy'\)/.test(src) &&
+                   /headers\.delete\('x-frame-options'\)/.test(src) &&
+                   !/headers\.set\('Content-Security-Policy'/i.test(src);
+if (!keepsDeleted) failed++;
+console.log((keepsDeleted ? '  ✅ ' : '  ❌ ') +
+            '🚫 ضابط: CSP وX-Frame-Options تبقيان محذوفتين (‏/pricing داخل iframe)');
+
 // ── ضوابط اتجاه معاكس: بلا هذين يمرّ الاختبار كلُّه لأنه لم يقِس شيئاً ──
 console.log('');
 if (rewrites.length < 2) {
