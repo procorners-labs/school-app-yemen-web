@@ -914,6 +914,12 @@ export default {
                 _isCanonHost ? 'max-age=15552000; includeSubDomains' : 'max-age=300');
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // عزل نافذة المتصفّح (‏2026-08-12) — رصده PageSpeed تحت «أفضل الممارسات».
+    // 🔴 `same-origin-allow-popups` **لا** `same-origin`: المنصّة تفتح نوافذ خارجية
+    //    بـ`window.open` (واتساب من `cms/QR_Dashboard.html`، ومسار OAuth فيسبوك)،
+    //    و`same-origin` الصارمة تقطع `window.opener` عنها فتكسر عودة OAuth تحديداً.
+    //    هذه القيمة تُعطي العزل عن أي نافذة تفتحنا، وتُبقي نوافذنا تعمل.
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     // 🚫 ولا تُعاد `content-security-policy` ولا `x-frame-options` هنا: حذفهما أعلاه
     // **مقصود** — `/pricing` يُخدَم داخل `<iframe>` من هذا الوركر نفسه.
 
