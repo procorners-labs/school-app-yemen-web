@@ -675,11 +675,22 @@ export default {
     // ولا يُختبَر، ولا يُتراجَع عنه بنشرة واحدة — وهو بالضبط الانحراف الصامت الذي
     // جعل إعداد النطاقات كلَّه غير مرئي من المستودع.
     //
-    // ⚠️ `max-age=300` **مرحلة أولى مقصودة** (٥ دقائق): HSTS يُلزم المتصفّح بـHTTPS
-    // للمدّة كاملةً ولا سبيل لإلغائه من الخادم قبل انقضائها. فيُنشَر قصيراً، ويُتحقَّق
-    // أن الجذر و`www` يعملان، ثم يُرفَع إلى `max-age=15552000; includeSubDomains`.
+    // ⚠️ المدّة **مشروطة بالمضيف** — وهذا ليس تجميلاً: هذا الوركر الواحد يخدم **ثلاثة
+    // أصول** (‏`yemenschoolz.com` · `school.procorners.com` · `…workers.dev`)، وقياسٌ حيّ
+    // 2026-08-11 أثبت أن الثلاثة كانت تتلقّى الرأس الثابت نفسه. فرفعُ سطرٍ واحد كان
+    // سيمنح النطاق الإرثي ١٨٠ يوماً + `includeSubDomains` أيضاً — أي تثبيت HTTPS لا
+    // رجعة فيه على مضيفٍ داخل نطاق **متجرٍ منفصل** (‏`procorners.com`) وتخدمه نسخةُ
+    // أندرويد مجمَّدة في الـAPK. الشرط يُبقيه على المرحلة الأولى القصيرة.
+    //
+    // المرحلة الأولى (‏`max-age=300`) بلغت غايتها: HSTS يُلزم المتصفّح بـHTTPS للمدّة
+    // كاملةً ولا سبيل لإلغائه من الخادم قبل انقضائها، فنُشِر قصيراً حتى يُتحقَّق أن الجذر
+    // و`www` يعملان — وقد تحقّق حيّاً 2026-08-11 (‏`www` مربوط Custom Domain ⇒ 301 إلى
+    // الجذر بحفظ المسار والاستعلام، والأصول الثلاثة الأخرى 200 بلا تحويل).
     // **بلا `preload`** بقرار مالك — إدراجُ القائمة المدمجة شبه غير قابل للتراجع.
-    headers.set('Strict-Transport-Security', 'max-age=300');
+    var _isCanonHost = (url.hostname === 'yemenschoolz.com' ||
+                        url.hostname === 'www.yemenschoolz.com');
+    headers.set('Strict-Transport-Security',
+                _isCanonHost ? 'max-age=15552000; includeSubDomains' : 'max-age=300');
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     // 🚫 ولا تُعاد `content-security-policy` ولا `x-frame-options` هنا: حذفهما أعلاه
