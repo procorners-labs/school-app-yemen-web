@@ -250,7 +250,9 @@ var _KNOWN_SCHOOL_SLUGS = {
 function _identityHeaders(hostname, isHtml, canonHref) {
   var out = {};
   if (!isHtml) return out;                       // الأصول الثابتة لا تُفهرَس أصلاً
-  out['Link'] = '<' + canonHref + '>; rel="canonical"';
+  // الرأس يُرسَل **فقط حين نعرف القيمة الصحيحة** — `_canonicalFor` تُرجِع `''` لكل صفحة
+  // وسمُها الساكن أدقّ، وإرسالُ رأسٍ مخالف له يُنتج إشارتين متعارضتين لا توحيداً.
+  if (canonHref) out['Link'] = '<' + canonHref + '>; rel="canonical"';
   var canonHost = (hostname === 'yemenschoolz.com' || hostname === 'www.yemenschoolz.com');
   if (!canonHost) out['X-Robots-Tag'] = 'noindex, follow';
   return out;
@@ -276,6 +278,18 @@ function _unknownSlugPage(slug) {
     '</div></body></html>';
 }
 
+// 🔴 **يُرجِع `''` لكل ما ليس صفحة مدرسة — ولا يحقن شيئاً حينها.** هذا ليس تحفّظاً بل
+//    تصحيحُ انحدارَين رصدتهما المراجعة المستقلّة في أوّل صياغة، وكلاهما كان **يُسوّئ**
+//    ما جاء الحقن ليُصلحه:
+//    (أ) المُعامل `path` هو المسار **بعد** إعادة الكتابة الداخلية، فالجذر `/` صار
+//        `/home/schools.html` ⇒ كان سيعلن أن قانونيّه عنوانٌ **غير مُدرَج في الخريطة
+//        إطلاقاً**، بينما الخريطة تعلن `/` بأولوية 1.0. أخطر حالة ممكنة.
+//    (ب) فرعُ «self-canonical» العامّ كان يدهس **أربع قيم ساكنة صحيحة كُتبت عمداً**
+//        لتوحيد الأسماء المستعارة: `/portal` ⇒ `/student` · `/home-all-school/index.html`
+//        ⇒ `/` (صفحة متقاعدة وُحِّدت على الجذر عمداً، بند 104) · `/student/index.html`
+//        ⇒ `/student` · `/schedule/index.html` ⇒ `/schedule`.
+//    ⇒ القاعدة: **لا تحقن إلا حيث تعرف أنك تُحسِّن.** الوسم الساكن أدقّ في كل ما عداه،
+//      وحصرُ الحقن يزيل الخطأ والحملَ معاً (‏`teacher/index.html` وحده 1.88MB).
 function _canonicalFor(path, pathSlug, schoolParam) {
   if (pathSlug) return CANONICAL_ORIGIN + '/' + pathSlug;
   if (/^\/home\/index\.html$/i.test(path)) {
@@ -287,7 +301,7 @@ function _canonicalFor(path, pathSlug, schoolParam) {
     // الفارغ = **مدرسة المالك** لا «معرّف مفقود» (بند 99).
     return CANONICAL_ORIGIN + '/' + OWNER_SCHOOL_SLUG;
   }
-  return CANONICAL_ORIGIN + path;
+  return '';   // ← لا حقن: الوسم الساكن في المصدر صحيح وأدقّ من أي اشتقاق من المسار
 }
 
 // النطاق الرسمي للمشروع (قرار مالك 2026-07-28). المضيف الوحيد الذي يُحوَّل إليه.
@@ -744,8 +758,12 @@ export default {
     // مدرسة **نفس تصميم `/home/index.html` بالضبط**، والمطابقة الحقيقية أن يخدمهما ملف واحد
     // لا أن يُصان تصميمان متطابقان يدوياً. `home` صار متعدّد المستأجرين بالكامل
     // (‏`getHomePageBundle` + مسار المشاركة/OG) في school-app-yemen-gas #916→#931.
-    // فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة فلا يتعارض مع أي مسار قائم. لا نداء
-    // GAS للتحقّق من وجود المدرسة هنا — slug غير حقيقي يُرجِع `not_found` خادمياً لا عطلاً.
+    // فحص _schoolSlugFromPath يستبعد كل الأسماء المحجوزة فلا يتعارض مع أي مسار قائم.
+    // 🔴 **تصحيح 2026-08-11:** كان مكتوباً هنا «لا نداء GAS للتحقّق من وجود المدرسة —
+    // slug غير حقيقي يُرجِع `not_found` خادمياً لا عطلاً». صحيحٌ للمستخدم، **وأعمى تماماً
+    // عن محرّك البحث**: الحالة 200 وحدها هي ما يقرؤه، فكان كلّ مقطع مسار مخترَع صفحةً
+    // كاملة قابلة للفهرسة. صار الفحص ضدّ `_KNOWN_SCHOOL_SLUGS` أدناه — بلا نداء GAS
+    // أيضاً (القائمة ثابتة في الكود)، لكن بحالة 404 صادقة.
     // ⚠️ لا حقن ?school= في المسار (كان بلا فائدة): إعادة الكتابة تخصّ الجلب الداخلي من
     // GitHub Pages فقط؛ `location.search` بالمتصفّح يبقى كما طلبه الزائر. لذلك
     // `home/Index.html::__hasPathSlug()` تقرأ `location.pathname` مباشرةً.
@@ -761,7 +779,13 @@ export default {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'X-Robots-Tag': 'noindex, follow'
+          'X-Robots-Tag': 'noindex, follow',
+          // يخرج قبل كتلة الرؤوس الأمنية أدناه، فتُكرَّر هنا صراحةً — «الرؤوس في الكود»
+          // سياسةٌ لا تحتمل استثناءً صامتاً. والمدّة القصيرة عمداً: هذه استجابة قد تصل
+          // من أيّ مضيف، ولا يجوز أن تثبّت HSTS طويلاً على النطاقين الإرثيين.
+          'Strict-Transport-Security': 'max-age=300',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin'
         }
       });
     }
@@ -908,13 +932,21 @@ export default {
       }
     }
 
-    // ── الرابط القانوني على كلّ صفحة HTML ────────────────────────────────────
+    // ── الرابط القانوني — على صفحات المدرسة وحدها ────────────────────────────
     // يُصحَّح **خادمياً** لا بجافاسكربت: كان `home/Index.html` يُصلح canonical بعد التحميل
     // (‏`location.pathname`)، بينما الـHTML الخام الذي يراه الزاحف **أوّلاً** يقول
     // `/home/index.html` لكلّ مستأجر. و`og:url` كان يُضبَط داخل فرع `?news=` وحده.
-    // ⚠️ `_AttrSet` يعدّل وسماً موجوداً ولا يُنشئ غائباً (بند 123) — والوسمان موجودان فعلاً
-    //    في مصادر الصفحات العامّة، ويحرس وجودَهما `test-routes.js`.
-    if (isHtml && ghResp.status === 200) {
+    //
+    // 🔒 مشروطٌ بـ`_canonHref` غير فارغ ⇒ لا يمرّ على `/` ولا `/portal` ولا بوّابات
+    //    الدخول ولا `home-all-school` — أوسامها الساكنة صحيحة وأدقّ (راجع `_canonicalFor`).
+    //    وهذا يُجنّب أيضاً تحليل `teacher/index.html` (‏1.88MB) بلا فائدة على كل طلب.
+    //
+    // ⚠️ `_AttrSet` يعدّل وسماً موجوداً و**لا يُنشئ غائباً** (بند 123). والوسمان موجودان
+    //    فعلاً في `home/Index.html`. 🔴 **ولا حارس يقيس ذلك اليوم:** `test-routes.js` يقرأ
+    //    ملفّ الوركر وحده (‏`fs.readFileSync(W)` قراءتُه الوحيدة) وصفر HTML مخدوم — فحذفُ
+    //    الوسم من المصدر غداً يُصمِت الحقن ويبقى كلّ فحص أخضر. دَينٌ مفتوح مقصود ومُعلَن،
+    //    لا ادّعاءُ حمايةٍ غير قائمة.
+    if (isHtml && ghResp.status === 200 && _canonHref) {
       return new HTMLRewriter()
         .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
         .on('meta[property="og:url"]', new _AttrSet('content', _canonHref))

@@ -225,9 +225,18 @@ if (cIdx < 0 || cEnd <= 1) {
     src.slice(cIdx, cEnd), cctx);
 
   // ضابط أوّلي: القائمة استُخرجت فعلاً — قائمةٌ فارغة تجعل كلّ ما بعدها أجوف.
-  var nSlugs = Object.keys(vm.runInContext('_KNOWN_SCHOOL_SLUGS', cctx)).length;
-  if (nSlugs !== 3) { failed++; console.log('  ❌ ضابط: سجلّ الـslugs = ' + nSlugs + ' (المتوقَّع 3)'); }
-  else { console.log('  ✅ ضابط: سجلّ الـslugs مُستخرَج (3 مدارس منشورة)'); }
+  // ⚠️ **بلا عدد حرفي** (فئة 83-ب): إضافةُ مدرسة رابعة عملٌ مشروع، وحارسٌ يحمرّ عليها
+  //    يُدرَّب المستخدم على تجاهله. المقيس هو أن الاستخراج نجح وأن مدرسة المالك فيه.
+  var known = vm.runInContext('_KNOWN_SCHOOL_SLUGS', cctx);
+  var nSlugs = Object.keys(known).length;
+  var okList = (nSlugs >= 1 && !!known['abdaawatmuaz']);
+  if (!okList) failed++;
+  console.log((okList ? '  ✅ ' : '  ❌ ') +
+              'ضابط: سجلّ الـslugs مُستخرَج ويحوي مدرسة المالك  [' + nSlugs + ' مدرسة]');
+  // 🟡 تبعية عابرة للمستودعات بلا رابط آلي: هذه القائمة مرآةُ
+  //    `SchoolApp-gas/_build/schools.public.json`. الاتجاه الخطر **غير محروس**: إضافة
+  //    مدرسة هناك بلا إضافتها هنا ⇒ 404 على صفحتها بلا أي إشارة، لأن CI الـgas لا يرى
+  //    هذا الملف. دَينٌ مُعلَن: حارس تكافؤ في مستودع الـgas (نمط `reservedTopPathsParityGuard`).
 
   var CANON = 'https://yemenschoolz.com';
   [// الحالات الثلاث التي أبلغ عنها المالك — كلّها كانت تُعلن `/home/index.html`
@@ -248,11 +257,20 @@ if (cIdx < 0 || cEnd <= 1) {
    // `?news=` لا يدخل الرابط القانوني إطلاقاً (سطح فهرسة لا نهائي لولا ذلك)
    ['/home/index.html', 'abdaawatmuaz', null, CANON + '/abdaawatmuaz',
     '`?news=` لا يظهر في القانوني (‏`og:url` وحده يحمله)'],
-   // صفحات أخرى تبقى على مسارها
-   ['/home/privacy.html', '', null,           CANON + '/home/privacy.html',
-    'صفحة عادية ⇒ مسارها كما هو'],
-   ['/student/index.html', '', null,          CANON + '/student/index.html',
-    'بوّابة الطالب ⇒ مسارها كما هو']
+   // 🔴 الضوابط المعاكسة — كلٌّ منها انحدارٌ وقع فعلاً في أوّل صياغة ورصدَته المراجعة.
+   //    الحقن يجب أن **يصمت** حيث الوسم الساكن أصحّ، لا أن «يُصلحه».
+   ['/home/schools.html', '', null, '',
+    '🔴 الجذر (بعد إعادة الكتابة) ⇒ **بلا حقن** — وسمُه `/` والخريطة تعلنه بأولوية 1.0'],
+   ['/home-all-school/index.html', '', null, '',
+    '🔴 الصفحة المتقاعدة ⇒ بلا حقن — وُحِّدت على الجذر عمداً (بند 104)'],
+   ['/student/index.html', '', null, '',
+    '🔴 بوّابة الطالب ⇒ بلا حقن — وسمُها `/student` وهو الاسم المستعار المقصود'],
+   ['/teacher/index.html', '', null, '',
+    '🔴 بوّابة المعلّم ⇒ بلا حقن (‏1.88MB لا تُحلَّل بلا فائدة)'],
+   ['/home/privacy.html', '', null, '',
+    'صفحة عادية ⇒ بلا حقن — وسمها الساكن صحيح'],
+   ['/home/newsarticle.html', '', null, '',
+    'قالب الخبر ⇒ بلا حقن (‏noindex عمداً، وهويته ساكنة)']
   ].forEach(function (c) {
     var got = vm.runInContext('_canonicalFor', cctx)(c[0], c[1], c[2]);
     var good = (got === c[3]);
@@ -328,15 +346,17 @@ if (iIdx < 0 || iEnd <= 1) {
   console.log((okLink ? '  ✅ ' : '  ❌ ') + 'رأس Link: rel=canonical مُرسَل على الرسمي أيضاً  [' + lk + ']');
 }
 
-// 🔴 ضابط: `/gas/*` **لا يُمَسّ** بأيّ من رؤوس الهوية — مسار API يقرؤه تطبيق أندرويد،
-//    وأيّ رأس فهرسة عليه بلا معنى وقد يربك عملاء صارمين. يُثبَت بأن كتلة الرؤوس تقع
-//    **بعد** الـ`return` الخاص بـ`/gas/` في تدفّق الدالّة.
+// 🟡 ضابط ترتيبٍ نصّي — **بحدّه معلَناً** (بند 116: ما يُربَط بموضعٍ يقيس الموضع لا الحالة).
+//    الغرض: `/gas/*` مسار API يقرؤه تطبيقا الأندرويد، ولا يجوز أن يحمل رؤوس فهرسة.
+//    اليوم يخرج بـ`return` قبل كتلة الرؤوس، وهذا يقيس ترتيب سلسلتين في النصّ لا التدفّق —
+//    فلو نُقلت `_identityHeaders` يوماً إلى دالّة تُستدعى من الأعلى لمرّ مجّاناً. القياس
+//    السلوكي الحقيقي يحتاج تشغيل `fetch` كاملاً بـmock للشبكة، وهو دَينٌ مُعلَن لا مُدَّعى.
 var gasIdx = src.indexOf("var match = path.match(/^\\/gas\\/");
 var idhIdx = src.indexOf('var _idHeaders = _identityHeaders(');
 var gasSafe = (gasIdx > 0 && idhIdx > gasIdx);
 if (!gasSafe) failed++;
 console.log((gasSafe ? '  ✅ ' : '  ❌ ') +
-            '🔴 ضابط: رؤوس الهوية بعد مخرج /gas/ في التدفّق (مسار API لا يُمَسّ)');
+            '🟡 ضابط (ترتيب نصّي، حدُّه مُعلَن): رؤوس الهوية بعد مخرج /gas/');
 
 console.log('');
 console.log(failed === 0
