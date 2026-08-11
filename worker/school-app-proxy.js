@@ -138,18 +138,35 @@ function jsonResponse(obj, status) {
 function _AttrSet(attr, val) { this.attr = attr; this.val = val; }
 _AttrSet.prototype.element = function (el) { if (this.val) el.setAttribute(this.attr, this.val); };
 
+/** تهريب قيمة سمة عند بناء HTML خام للإلحاق. */
+function _attrEsc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /**
- * مثله، لكن يَحذف الوسم كلَّه عند غياب القيمة بدل تركه فارغاً.
+ * يضبط أوّل صورة معاينة على الوسم القائم، **ويُلحِق** البقية وسوماً جديدة بعده.
  *
- * 🔴 لخانات `og:image` الإضافية تحديداً: الصفحة تحمل أربع خانات ثابتة (`data-og="img1..4"`)
- * ليملأها الوسيط — لأن `_AttrSet` لا يُنشئ وسماً غائباً. لكن خبراً بصورة واحدة يترك ثلاثاً
- * بـ`content=""`، و**وسم `og:image` بقيمة فارغة أسوأ من غيابه**: الزاحف يقرؤه صورةً معلَنة
- * ثم يفشل في جلبها، فقد يسقط البطاقة كلَّها. الحذف يجعل المخرَج مطابقاً لما لو كُتب يدوياً.
+ * 🔴 **لماذا الإلحاق لا حجزُ خانات فارغة** — جُرِّب الحجز أوّلاً فأخفق: الصفحة كانت تحمل
+ * أربع خانات `content=""` ليملأها الوسيط، لكنه **لا يحقن إلّا حين تنجح `getNewsOg`**؛
+ * وفي كلّ حالة أخرى — زيارة بلا `?news=`، رابط بلا توكن، أو أي فشل — كانت الخانات الثلاث
+ * تُشحَن **فارغة** إلى الزاحف. و`og:image` فارغاً أسوأ من غيابه: يُقدَّم صورةً معلَنة ثم
+ * يفشل جلبها فقد تسقط البطاقة كلُّها. أي أن الحجز كان يُنتج بالضبط ما وُضع ليتفاداه، في
+ * الحالة **الأشيع** لا النادرة.
+ *
+ * الإلحاق يجعل الحالة الافتراضية صحيحة بذاتها: صفحةٌ بلا حقن = وسمُ صورةٍ واحد سليم،
+ * تماماً كما لو كُتبت يدوياً — بلا اعتماد على تنظيفٍ لاحق قد لا يقع أصلاً.
  */
-function _AttrSetOrRemove(attr, val) { this.attr = attr; this.val = val; }
-_AttrSetOrRemove.prototype.element = function (el) {
-  if (this.val) el.setAttribute(this.attr, this.val);
-  else el.remove();
+function _OgImages(list) { this.list = list || []; }
+_OgImages.prototype.element = function (el) {
+  if (!this.list.length) return;            // بلا صور ⇒ اترك الوسم الافتراضي كما هو
+  el.setAttribute('content', this.list[0]);
+  var extra = '';
+  for (var i = 1; i < this.list.length; i++) {
+    extra += '\n<meta property="og:image" content="' + _attrEsc(this.list[i]) + '"/>';
+  }
+  if (extra) el.after(extra, { html: true });
 };
 
 // رابط مدرسة قصير احترافي: yemenschoolz.com/<slug> (مسار بعد الدومين، لا نطاق فرعي قبله —
@@ -734,15 +751,12 @@ export default {
           // 🖼️ صور المعاينة: `images[]` من الخادم، وتراجعٌ للحقل المفرد `image` كي يبقى
           //    الوسيط عاملاً لو خُدِم من نشرة GAS أقدم لم تعرف الحقل الجديد بعد.
           var _ogImgs = (_og.images && _og.images.length) ? _og.images : (_og.image ? [_og.image] : []);
-          // ⚠️ الخانات تُستهدَف بـ`data-og` لا بـ`property`: محدِّد `meta[property="og:image"]`
-          //    يطابق **الأربع** فيكتب القيمة نفسها فيها جميعاً — فيصير التعدّد تكراراً.
+          // ⚠️ المرساة `data-og="img1"` لا `property`: محدِّد `meta[property="og:image"]`
+          //    يطابق **كلّ** وسم صورة (بما فيها ما نُلحِقه) فيوحّد قيمتها ⇒ تعدّدٌ يصير تكراراً.
           return new HTMLRewriter()
             .on('meta[property="og:title"]', new _AttrSet('content', _og.title))
             .on('meta[property="og:description"]', new _AttrSet('content', _og.description))
-            .on('meta[data-og="img1"]', new _AttrSetOrRemove('content', _ogImgs[0] || ''))
-            .on('meta[data-og="img2"]', new _AttrSetOrRemove('content', _ogImgs[1] || ''))
-            .on('meta[data-og="img3"]', new _AttrSetOrRemove('content', _ogImgs[2] || ''))
-            .on('meta[data-og="img4"]', new _AttrSetOrRemove('content', _ogImgs[3] || ''))
+            .on('meta[data-og="img1"]', new _OgImages(_ogImgs.slice(0, 4)))
             .on('meta[property="og:url"]', new _AttrSet('content', _ogCanonical))
             .on('meta[name="twitter:image"]', new _AttrSet('content', _ogImgs[0] || _og.image))
             .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
