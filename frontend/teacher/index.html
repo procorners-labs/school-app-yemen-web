@@ -4114,6 +4114,28 @@ var ClientCache = {
 
 var _pendingCalls = {};
 
+/* طيّ النداءات المتزامنة (single-flight) لدوال **قراءة idempotent** لا تمرّ بكاش.
+   طابور `_pendingCalls` أدناه كان يعمل للنمط 2 (بـ`cacheKey`) وحده، فنداءات النمط 1
+   المتزامنة تُطلق تنفيذاً مستقلاً لكل مستدعٍ — وهو ما يحدث لـ`getTeacherBootBundle`.
+   🔴 **قائمة سماح صريحة لا قاعدة عامّة:** الشرط الحقيقي للطيّ ليس «قراءة فقط» بل
+   **استقلال الاستجابة عن `params`**. دالّةٌ قرائية تماماً مثل `getStudentDetails({code})`
+   تجتاز كل فحوص «القراءة» ثم تخدم سجلّ طالب لطلبٍ عن طالبٍ آخر. لذلك يشترط الحارس
+   ثلاثة معاً: بادئة `get`، وغياب الاسم عن `API_DANGEROUS_FUNCTIONS` و`WRITE_QUEUEABLE`،
+   و**أن يُستدعى بوسيط `{}` حرفيّ في كل موضع استدعاء**. */
+var CS_SINGLEFLIGHT_FNS = { getTeacherBootBundle: 1 };
+
+/* 🔴 بصمة الهوية في مفتاح الطيّ — ليست زينة.
+   `doLogout()` **لا يُعيد تحميل الصفحة** (‏`showLoginScreen()` + `clearSession()` فقط)،
+   و`clearSession()` يمسح `ClientCache` عمداً كي لا تتسرّب بيانات جلسة سابقة. فمفتاحٌ
+   باسم الدالّة وحده كان يفتح نفس التسريب من باب آخر: معلّم أ يُقلع (‏p50 = 19.3ث
+   و46% لا تعود) ثم يخرج، فيدخل معلّم ب على نفس الجهاز خلال النافذة ⇒ ينطوي نداؤه على
+   نداء أ **قبل أن يُلمَس `google.script.run` أصلاً**، ثم تُبذَر حمولة أ تحت مفاتيح ب
+   (النقاط · الإشعارات · `canOverride`). الأجهزة المشتركة في المدارس تجعل ذلك واقعياً. */
+function _csFoldIdentity() {
+  var u = (typeof App !== 'undefined' && App.user) || null;
+  return ((u && u.schoolId) || '') + '|' + ((u && u.token) || '');
+}
+
 function callServer(fnName, params, a3, a4, a5, a6) {
   // ── تطبيع المعاملات تلقائياً حسب النوع ──
   var cacheKey = null, ttl = 0, callback = null, errorCallback = null;
@@ -4148,13 +4170,27 @@ function callServer(fnName, params, a3, a4, a5, a6) {
         return;
       }
     } catch (e) { /* تجاهل أخطاء الكاش */ }
+  }
 
-    // Dedup — هل يوجد طلب نفسه جاري؟
-    if (_pendingCalls[cacheKey]) {
-      _pendingCalls[cacheKey].push({ cb: callback, eb: errorCallback });
+  /* مفتاح الطيّ: `cacheKey` حين وُجد (سلوك سابق حرفياً)، وإلّا مفتاح مُصطنَع لدوال
+     قائمة السماح **مبصوم بهوية الجلسة** (انظر `_csFoldIdentity` أعلاه — تسريب حقيقي
+     لولاه). البادئة `'__sf_'` محجوزة ولا تصطدم بأي مفتاح كاش حيّ
+     (`boot_config_v2_*` · `notif_bundle_*` · `my_points_header_*` · `lists_data` · `schema_config`).
+     🔴 ولا تصل `ClientCache` أبداً — التخزين يبقى مشروطاً بـ`cacheKey` وحده أدناه.
+     و`hasOwnProperty` لا فحص الحقيقة: `callServer('toString', …)` كان يرث قيمةً صادقة
+     من `Object.prototype` فيحجز مفتاحاً لا يُفرَج عنه أبداً. */
+  var dedupKey = cacheKey ||
+    (Object.prototype.hasOwnProperty.call(CS_SINGLEFLIGHT_FNS, fnName)
+      ? ('__sf_' + fnName + '|' + _csFoldIdentity())
+      : null);
+
+  if (dedupKey) {
+    // Dedup — هل يوجد طلب نفسه جارٍ؟
+    if (_pendingCalls[dedupKey]) {
+      _pendingCalls[dedupKey].push({ cb: callback, eb: errorCallback });
       return;
     }
-    _pendingCalls[cacheKey] = [{ cb: callback, eb: errorCallback }];
+    _pendingCalls[dedupKey] = [{ cb: callback, eb: errorCallback }];
   }
 
   // ── إضافة التوكن تلقائياً ──
@@ -4164,15 +4200,22 @@ function callServer(fnName, params, a3, a4, a5, a6) {
   }
 
   // ── الاستدعاء ──
+  /* 🔴 الإرسال داخل try: رميٌ متزامن (اسم دالّة خادمية أُعيدت تسميته/حُذفت) كان يترك
+     مدخل `dedupKey` محجوزاً إلى الأبد ⇒ **تلك الدالّة صامتة لبقية عمر الصفحة**، وكل
+     مستدعٍ لاحق ينضمّ لطابور لا يُصرَّف أبداً. نُفرِج عن المفتاح ثم نخدم المستدعي
+     بمسار الفشل المعتاد. (خلل قائم للنمط 2 قبل هذا التغيير، وُسِّع بالطيّ فأُغلق هنا.) */
+  try {
   google.script.run
     .withSuccessHandler(function(result) {
-      if (cacheKey) {
+      // 🔴 التخزين مشروط بـ`cacheKey` وحده؛ التصريف بـ`dedupKey` — الطيّ يوسّع
+      //    الطابور لا الكاش.
+      if (cacheKey && typeof ClientCache !== 'undefined') {
         var ok = result && (result.success !== false) && (result.ok !== false);
-        if (ok && typeof ClientCache !== 'undefined') {
-          try { ClientCache.set(cacheKey, result, ttl); } catch (e) {}
-        }
-        var queue = _pendingCalls[cacheKey] || [];
-        delete _pendingCalls[cacheKey];
+        if (ok) { try { ClientCache.set(cacheKey, result, ttl); } catch (e) {} }
+      }
+      if (dedupKey) {
+        var queue = _pendingCalls[dedupKey] || [];
+        delete _pendingCalls[dedupKey];
         for (var i = 0; i < queue.length; i++) {
           var item = queue[i];
           if (item && typeof item.cb === 'function') {
@@ -4187,9 +4230,9 @@ function callServer(fnName, params, a3, a4, a5, a6) {
       // نداءات best-effort (كالنبضة) فشلها المتوقَّع وقت الذروة ليس حدثاً يستحق
       // console.error — كان أول ما يراه المالك في الكونسول فيُقرأ كعطل (بلاغ 2026-08-06).
       if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' failed:', err);
-      if (cacheKey) {
-        var queue = _pendingCalls[cacheKey] || [];
-        delete _pendingCalls[cacheKey];
+      if (dedupKey) {
+        var queue = _pendingCalls[dedupKey] || [];
+        delete _pendingCalls[dedupKey];
         for (var i = 0; i < queue.length; i++) {
           var item = queue[i];
           if (item && typeof item.eb === 'function') {
@@ -4207,6 +4250,12 @@ function callServer(fnName, params, a3, a4, a5, a6) {
       }
     })
     [fnName](params);
+  } catch (eDispatch) {
+    if (dedupKey) delete _pendingCalls[dedupKey];
+    if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' dispatch failed:', eDispatch);
+    if (errorCallback) { try { errorCallback(eDispatch); } catch (e) {} }
+    else { try { callback({ success: false, error: 'تعذّر إرسال الطلب' }); } catch (e) {} }
+  }
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================
@@ -4245,7 +4294,13 @@ function _startHeartbeat() {
         _hbDelayMs = _HB_BASE_MS;
         // إشعار فوري — عند **نجاح** النبضة فقط: نبضة فاشلة كانت تكلف نداءين خادميَّين
         // (النبضة + العدّادات) في اللحظة التي تكون فيها الحصّة مستنفدة أصلاً.
-        try { loadNotifCountsBundle(); } catch (e) {}
+        try {
+          loadNotifCountsBundle();
+          /* لاقط تعافٍ **لمرّة واحدة**: النقاط أُجِّلت لأن الحزمة فشلت/تباطأت وقت الإشباع.
+             🔴 ولا تُنادى كل نبضة: مهلة كاشها 180ث ودورة النبضة 180ث ⇒ إخفاق كاش دائم
+             مضمون — نفس فخّ `notif_bundle` الموثَّق (ولذلك مهلته 300 لا 120). */
+          if (_bootDeferredExtras) { _bootDeferredExtras = false; _loadMyPointsHeader(); }
+        } catch (e) {}
         _scheduleNextBeat();
       }, function () {
         _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
@@ -4299,9 +4354,19 @@ var _gradesHasMore = false;
 // ⭐ PATCH #4 — تحميل قوائم الشهور من الخادم
 //    (استبدل القوائم الثابتة السابقة)
 // ════════════════════════════════════════════════════
-var ALL_MONTHS = [];            // ← تُملأ من getSchemaConfig()
-var TERM_MONTHS = [];           // ← تُملأ من getSchemaConfig()
+/* 🔴 الافتراضات هنا لا داخل `loadBootConfig` — وإلا فبوّابة العرض (9ث في `bootApp`) قد
+   تسبق ردّها فتُرسَم قوائم الشهور **فارغة**. كان مكتوباً عند تلك البوّابة أن
+   «ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية» وهو **زعمٌ خاطئ**: القيمتان كانتا `[]`
+   عند التصريح، والافتراضات محبوسة داخل `loadBootConfig` لا تُطبَّق إلا بعودة نداء.
+   ⚠️ لا تُفلتر ALL_MONTHS أبداً (السبب في التعليق أسفل MONTHS_STATE). */
+var BOOT_DEF_MONTHS = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
+var BOOT_DEF_TERM   = ['نصف العام','نهاية العام'];
+var ALL_MONTHS = BOOT_DEF_MONTHS.slice();   // ← يُستبدَل بردّ getBootConfigBundle
+var TERM_MONTHS = BOOT_DEF_TERM.slice();    // ← يُستبدَل بردّ getBootConfigBundle
 var GRADE_SCHEMA = null;        // ← كائن تكوين الدرجات الكامل
+/* راية تعافٍ لمرّة واحدة: يرفعها مسار فشل/بطء الحزمة، وتستهلكها أوّل نبضة **ناجحة**
+   فتجلب النقاط حينها — بعد تعافي الحصّة، لا لحظة إشباعها. */
+var _bootDeferredExtras = false;
 var V3_CONFIG = { enabled: false, features: {}, labels: {} };
 
 // ⭐ حالة إتاحة شهور الرصد (مشتقّة من «الكنترول_جدول_الاختبارات») — خريطة **منفصلة** عمداً.
@@ -4431,18 +4496,47 @@ function _bootConfigCacheKey() {
 /* حزمة الإقلاع (نمط getStudentBootBundle بمنصّة الطالب، PR#826): نداء خادمي واحد
    يملأ مفاتيح كاش الأعضاء الثلاثة (schema/إشعارات/نقاط) ثم تصيبها المحمّلات القائمة
    — كود العرض لا يتغيّر حرفاً. كل المفاتيح دافئة ⇒ لا نداء إطلاقاً. فشل الحزمة أو
-   عضو منها ⇒ done() فتعمل المحمّلات الفردية كتراجع تلقائي (السلوك القديم حرفياً).
-   مؤقّت أمان 8ث: ردّ معلّق لا يحجب الإقلاع (بوّابة العرض 9ث تبقى الحاكم النهائي). */
-function _teacherBootBundlePrefetch(done) {
-  var finished = false;
-  var finish = function () { if (!finished) { finished = true; try { done(); } catch (eD) {} } };
+   عضو منها ⇒ done(status) فتعمل المحمّلات الفردية كتراجع تلقائي.
+
+   🔴 **`done` يستقبل حالةً الآن** ∈ `'warm' | 'ok' | 'failed' | 'slow'` — لأن المستدعي
+   كان يفرّع ثلاثة نداءات **بلا علم بالنتيجة**، فيُطلقها بالضبط لحظة إشباع الحصّة.
+
+   🔴 **ومؤقّت الإفراج 24,000 لا 8,000** (سقف ميزانية الوسيط المقيس 23,701ms):
+   تحت ذلك السقف الإفراج **تخمينيّ** — الوسيط `p50` لهذه الحزمة **19,346ms**، أي أن
+   أكثر من نصف النداءات **الناجحة** لم تكن قد عادت بعد عند الثانية الثامنة، فكان
+   التفرّع يقع على أغلب الإقلاعات لا على الفاشلة منها: نداءٌ واحد يصير **أربعة**
+   متزامنة، وكلّما بطؤ النظام أطلق أكثر (تغذية راجعة موجبة).
+   وفوق السقف النداء **مقتولٌ يقيناً** فالإفراج حقيقة لا تخمين.
+   ⚠️ والمؤقّت لم يكن يحمي **ظهور** الواجهة يوماً: بوّابة العرض 9ث في `bootApp` هي
+   الحاكم، وتعمل بلا أيٍّ من المحمّلات الثلاثة.
+
+   🔴 **لكنه كان يحمي ما تعرضه — ولهذا إفراجان لا واحد:**
+   `loadBootConfig` تُغذّي أوّل رسم (‏`V3_CONFIG` · `MONTHS_STATE` · `MONTHS_CAN_OVERRIDE`)،
+   و`_bootTryShow` **يعمل مرّة واحدة** فلا إعادة رسم بعده. فرفع مؤقّت واحد إلى 24ث كان
+   سيضمن أن كل إقلاع بطيء يُرسَم بـ`MONTHS_STATE = null` (كل الشهور تبدو مفتوحة) ثم لا
+   يُصحَّح أبداً. ⇒ **`SCHEMA_RELEASE_MS` يبقى محاذياً لبوّابة العرض**، و24ث تخصّ
+   الجرس والنقاط وحدهما (زينةٌ لا تحجب رسماً، ولا يضرّ تأخّرها). */
+var BOOT_SCHEMA_RELEASE_MS = 8000;   // < بوّابة العرض 9ث في bootApp — لا تُرفَع فوقها
+var BOOT_EXTRAS_RELEASE_MS = 24000;  // > سقف الوسيط المقيس 23,701ms — لا تُخفَض تحته
+function _teacherBootBundlePrefetch(done, onSchemaReady) {
+  var finished = false, schemaReleased = false;
+  var releaseSchema = function () {
+    if (schemaReleased) return;
+    schemaReleased = true;
+    if (typeof onSchemaReady === 'function') { try { onSchemaReady(); } catch (eS) {} }
+  };
+  var finish = function (status) {
+    releaseSchema();   // استقرار الحزمة يُفرج عن المخطط فوراً إن لم يكن أُفرِج بالمؤقّت
+    if (!finished) { finished = true; try { done(status); } catch (eD) {} }
+  };
   try {
     var sid = (App.user && App.user.schoolId) || '';
     var haveBoot   = !!ClientCache.get(_bootConfigCacheKey());
     var haveNotif  = !!ClientCache.get('notif_bundle_' + sid);
     var havePoints = !!ClientCache.get('my_points_header_' + sid);
-    if (haveBoot && haveNotif && havePoints) { finish(); return; }
-    setTimeout(finish, 8000);
+    if (haveBoot && haveNotif && havePoints) { finish('warm'); return; }
+    setTimeout(releaseSchema, BOOT_SCHEMA_RELEASE_MS);
+    setTimeout(function () { finish('slow'); }, BOOT_EXTRAS_RELEASE_MS);
     callServer('getTeacherBootBundle', {}, function (r) {
       try {
         if (r && r.ok) {
@@ -4460,14 +4554,15 @@ function _teacherBootBundlePrefetch(done) {
           }
         }
       } catch (eSeed) {}
-      finish();
-    }, function () { finish(); });
-  } catch (eB) { finish(); }
+      finish((r && r.ok) ? 'ok' : 'failed');
+    }, function () { finish('failed'); });
+  } catch (eB) { finish('failed'); }
 }
 
 function loadBootConfig(callback) {
-  var DEF_MONTHS = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
-  var DEF_TERM   = ['نصف العام','نهاية العام'];
+  /* الافتراضات مصدرها واحد مرفوع للنطاق العام (BOOT_DEF_*) — كانت نسخة ثالثة محلّية هنا. */
+  var DEF_MONTHS = BOOT_DEF_MONTHS;
+  var DEF_TERM   = BOOT_DEF_TERM;
   callServer('getBootConfigBundle', {}, _bootConfigCacheKey(), 600, function(bundle) {
     var res = bundle && bundle.schema;
     if (res && res.success) {
@@ -6370,6 +6465,11 @@ function clearSession() {
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
   try { ClientCache.clear(); } catch(e) {} // ✅ يمسح أيضاً كل كاش callServer المخزَّن بـsessionStorage
                                            // (كان يبقى من مدرسة/جلسة سابقة عند تبديل ?school=)
+  /* 🔴 وطابور النداءات الطائرة معه — لا الكاش وحده. `doLogout()` لا يُعيد تحميل الصفحة،
+     فأي نداء مطويّ لم يعد بعد يبقى حيّاً عبر تسجيل الخروج ويُسلَّم للجلسة التالية.
+     مفتاح الطيّ مبصوم بالهوية أصلاً (`_csFoldIdentity`) فهذا حزامٌ ثانٍ لا بديل. */
+  try { _pendingCalls = {}; } catch(e) {}
+  try { _bootDeferredExtras = false; } catch(e) {}
 }
 
 // ==================== LOGIN / LOGOUT ====================
@@ -7049,13 +7149,29 @@ function bootApp() {
   // إن تأخّر ردّ مخطط الدرجات (شبكة بطيئة/TTL منتهٍ) فلا تُترَك الواجهة معلّقة للأبد —
   // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadSchemaConfig
   // (GRADE_SCHEMA يبقى null، ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية).
+  // ⚠️ هذا السطر الأخير **كان زعماً خاطئاً** حتى 2026-08-11: القيمتان كانتا `[]` عند
+  // التصريح والافتراضات محبوسة داخل `loadBootConfig`. صار صحيحاً برفعها إلى
+  // `BOOT_DEF_MONTHS`/`BOOT_DEF_TERM` في `_js-core-bridge.html`.
   _bootFallbackTimer = setTimeout(function() { _bootTryShow(true); }, 9000);
   // حزمة الإقلاع أولاً: نداء واحد يبذر كاش الأعضاء الثلاثة، ثم تصيبه المحمّلات —
   // 3 تنفيذات GAS عند الإقلاع البارد ⇒ 1 (نمط PR#826 بمنصّة الطالب).
-  _teacherBootBundlePrefetch(function () {
+  _teacherBootBundlePrefetch(function (status) {
+    if (status !== 'failed' && status !== 'slow') {
+      // الحزمة بذرت المفاتيح ⇒ إصابتا كاش، صفر نداء. (عضوٌ فشل خادمياً يتراجع لمحمّله
+      //  الفردي — ثابت عزل الأعضاء، يبقى بلا مساس.)
+      setTimeout(loadNotifCountsBundle, 50);
+      setTimeout(_loadMyPointsHeader, 150);
+      return;
+    }
+    /* 🔴 مسار الفشل/البطء هو **لحظة إشباع الحصّة بالضبط**. الجرس والنقاط زينة تفشل
+       صامتةً أصلاً، وإطلاقهما هنا يحوّل نداءً فاشلاً واحداً إلى ثلاثة. يتكفّل بهما
+       أوّل نبضة **ناجحة** — أي بعد تعافي الحصّة، وبصفر نداء مجدول إضافي. */
+    _bootDeferredExtras = true;
+  }, function () {
+    /* إفراج المخطط — مبكّر ومحاذٍ لبوّابة العرض 9ث، **لا** لمؤقّت الجرس/النقاط 24ث:
+       هذا المحمّل يُغذّي أوّل رسم و`_bootTryShow` يعمل مرّة واحدة فلا تصحيح بعده.
+       وعند كاش دافئ أو مفتاح بذرته الحزمة فهو إصابة كاش بصفر نداء شبكة أصلاً. */
     loadBootConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
-    setTimeout(loadNotifCountsBundle, 50);
-    setTimeout(_loadMyPointsHeader, 150);
   });
   var afterLists = function() {
     _bootListsDone = true;
