@@ -127,7 +127,7 @@ if (rcIdx < 0 || coIdx < 0) {
 // ── الرؤوس الأمنية ومعاينة الخبر ──
 console.log('');
 console.log('الرؤوس الأمنية وحقن og:url:');
-[[/headers\.set\('Strict-Transport-Security', 'max-age=\d+/, 'HSTS مُرسَل من الكود لا من اللوحة'],
+[[/headers\.set\('Strict-Transport-Security',/, 'HSTS مُرسَل من الكود لا من اللوحة'],
  [/headers\.set\('X-Content-Type-Options', 'nosniff'\)/, 'nosniff مُرسَل'],
  [/headers\.set\('Referrer-Policy', 'strict-origin-when-cross-origin'\)/, 'Referrer-Policy مُرسَل'],
  [/\.on\('meta\[property="og:url"\]', new _AttrSet\('content', _ogCanonical\)\)/, 'og:url محقون بالرابط القانوني'],
@@ -144,6 +144,48 @@ var keepsDeleted = /headers\.delete\('content-security-policy'\)/.test(src) &&
 if (!keepsDeleted) failed++;
 console.log((keepsDeleted ? '  ✅ ' : '  ❌ ') +
             '🚫 ضابط: CSP وX-Frame-Options تبقيان محذوفتين (‏/pricing داخل iframe)');
+
+// ── 🔴 HSTS مشروط بالمضيف — حارس **سلوكي** لا نصّي ────────────────────────
+// لماذا سلوكي: فحصٌ نصّي يُثبت أن السطر مكتوب، لا أن المضيف الإرثي يخرج بالقيمة
+// القصيرة فعلاً. وقياسٌ حيّ 2026-08-11 أثبت أن هذا الوركر الواحد كان يخدم **ثلاثة
+// أصول** بالرأس الثابت نفسه — فخطأٌ هنا يثبّت HTTPS ١٨٠ يوماً **لا رجعة فيها** على
+// مضيفٍ داخل نطاق متجرٍ منفصل تخدمه نسخةُ أندرويد مجمَّدة، ولا يكشفه أي grep.
+console.log('');
+console.log('HSTS مشروط بالمضيف (سلوكي):');
+var hIdx = src.indexOf('var _isCanonHost =');
+var hSet = src.indexOf("headers.set('Strict-Transport-Security'", hIdx);
+// ⚠️ المرساة `');'` لا `';'`: الفاصلة المنقوطة ترد **داخل** السلسلة نفسها
+//    (‏`'max-age=15552000; includeSubDomains'`)، فالبحث عنها وحدها يقطع المقتطف في
+//    منتصف سلسلة نصّية ⇒ `SyntaxError`. وقع فعلاً أثناء بناء هذا الحارس.
+var hEnd = src.indexOf(');', hSet) + 2;
+if (hIdx < 0 || hSet < 0 || hEnd <= 1 || src.slice(hIdx, hEnd).indexOf('includeSubDomains') < 0) {
+  console.log('  ❌ ضابط: تعذّر استخراج منطق HSTS كاملاً من الوركر — الفحص أجوف');
+  failed++;
+} else {
+  var hSrc = src.slice(hIdx, hEnd);
+  [['yemenschoolz.com',     'max-age=15552000; includeSubDomains', 'الرسمي: ١٨٠ يوماً + includeSubDomains'],
+   ['www.yemenschoolz.com', 'max-age=15552000; includeSubDomains', 'www: مثله'],
+   ['school.procorners.com', 'max-age=300',
+    '🔴 ضابط: الإرثي يبقى قصيراً (متجر منفصل + أندرويد مجمَّد)'],
+   ['school-teacher-proxy.procorners-shop.workers.dev', 'max-age=300',
+    '🔴 ضابط: workers.dev يبقى قصيراً'],
+   ['yemenschoolz.com.evil.example', 'max-age=300',
+    '🔴 ضابط: لا مطابقة لاحقة على اسم النطاق الرسمي']
+  ].forEach(function (c) {
+    var got = null;
+    var hctx = vm.createContext({
+      url: { hostname: c[0] },
+      headers: { set: function (k, v) { got = v; } }
+    });
+    vm.runInContext(hSrc, hctx);
+    var good = (got === c[1]);
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + c[2] + '  [' + got + ']');
+  });
+  var noPreload = !/preload/i.test(hSrc);
+  if (!noPreload) failed++;
+  console.log((noPreload ? '  ✅ ' : '  ❌ ') + '🔒 بلا preload (قرار مالك — الإدراج شبه دائم)');
+}
 
 // ── ضوابط اتجاه معاكس: بلا هذين يمرّ الاختبار كلُّه لأنه لم يقِس شيئاً ──
 console.log('');
