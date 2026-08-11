@@ -2506,7 +2506,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
            بجافاسكربت أدناه (نفس منطق تفرّع shareNews) لأن هذا الملف يُخدَم أيضاً كنسخة
            frontend/ ثابتة لا تُقيَّم فيها سكربتلتات قوالب GAS إطلاقاً. -->
       <div style="text-align:center; margin-top:8px;">
-        <a id="returnHomeLink" href="/home/index.html"
+        <a id="returnHomeLink" href="https://yemenschoolz.com/home/index.html"
            style="display:inline-block;padding:9px 18px;border:1px solid rgba(255,255,255,.4);border-radius:10px;color:#fff;text-decoration:none;font-size:13px;font-weight:600;">
           ← العودة للموقع الرئيسي
         </a>
@@ -3620,6 +3620,33 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
 
   /**
+   * 🔴 أصل الموقع العام — **مصدر الحقيقة الوحيد** لكل رابط يغادر المنصّة من هذا الملف.
+   *
+   * لماذا مطلق لا نسبي: المسار النسبي يرث نطاق الصفحة الحالية، والمنصّة تُخدَم من ثلاثة
+   * نطاقات حيّة (‏`yemenschoolz.com` الرسمي · `school.procorners.com` و`workers.dev`
+   * إرثيّان يبقيان للأبد لأن تطبيقَي الأندرويد يحملان روابطهما مجمَّدةً في الـAPK).
+   * فمن نطاق إرثي كان الزرّ يعيد المستخدم إلى `school.procorners.com/<slug>` — أي أن
+   * الرابط الذي يراه ويشاركه يحمل نطاقاً متقاعداً.
+   *
+   * 🔴 ولا يُحقَن وقت البناء: السطح المخدوم لهذه المنصّة **مزدوج** — `frontend/teacher/`
+   * عبر GitHub Pages **و** `/gas/teacher` عبر `doGet`. حقنٌ في `build-frontend.js`
+   * يغطّي النصف الأول ويترك الثاني متراجعاً بصمت.
+   */
+  var SITE_ORIGIN_PUBLIC = 'https://yemenschoolz.com';
+
+  /**
+   * هل نحن داخل WebView تطبيق؟ — نفس نمط `home/News.html::_lbCtx` حرفياً، لا نمط ثانٍ.
+   * `wv` هو الرمز العامّ لكل WebView على أندرويد فيغطّي التطبيقين معاً.
+   * ⚠️ ويميّز «داخل تطبيق» لا «أيّ تطبيق»: التطبيقان يرسلان `SchoolAppYemen/1.0`
+   * حرفياً (‏`WebViewSupport.kt` نُسخ ولم يُعدَّل) — موثَّق في `home/News.html`.
+   */
+  function _tcInAppCtx() {
+    var ua = '';
+    try { ua = String(navigator.userAgent || ''); } catch (e) {}
+    return /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+  }
+
+  /**
    * وجهة زرّ «العودة للموقع الرئيسي» — **صفحة المدرسة نفسها** لا بوّابة المدارس.
    *
    * كان الزرّ يتفرّع إلى وجهتين ثابتتين فقط: `/home/index.html` لمدرسة المالك (بمعرّف
@@ -3632,22 +3659,35 @@ input, select, textarea, .form-control, .form-select, .grade-input {
    *   معرّف  ⇒ `/home/index.html?school=<id>`
    *   وإلّا  ⇒ `/home/index.html`
    *
+   * 🔴 وبُعدٌ ثانٍ: **السياق**. الرابط القصير `/<slug>` مقطعٌ واحد، وتطبيقا الأندرويد
+   * يوجّهان بمقطع المسار وحده ويتجاهلان المضيف تماماً (`AppConfig.kt::matchesDeployment`)
+   * ⇒ أي مسار بلا مقطع معروف يُفتَح في **متصفّح خارجي** ويترك التطبيق فارغاً. فداخل
+   * التطبيق نستهدف `/home/index.html?school=` (مقطع `/home/` معروف ⇒ يبقى داخلياً)،
+   * وفي المتصفّح نُبقي الرابط القصير الجميل. الوجهة **نفس الصفحة** في الحالتين — يخدمها
+   * الوسيط بإعادة كتابة `/<slug>` ⇒ `/home/index.html`؛ فالفرق شكل الرابط لا محتواه.
+   *
+   * ⚠️ `SchoolzYemen` بيته `/home-all-school/` فيبقى يخرج للمتصفّح كما هو اليوم — غير
+   * منشور بعد (لا Play Console) ⇒ صفر مستخدم متأثّر، ولا وجهة واحدة تُرضي التطبيقين.
+   *
+   * `inApp` **وسيط لا قراءة داخلية** عمداً: يجعل الدالّة نقيّة فتُختبَر سلوكياً على كل
+   * الحالات الستّ بلا `navigator` (حارسٌ نصّي وحده لا يكفي — بند 121).
+   *
    * ويُضبَط على مرحلتين: الدرجة الثانية فوراً من `sid` المعروف تزامنياً (فلا نافذة يكون
    * فيها الزرّ خاطئاً)، ثم يُرقّى إلى `/<slug>` متى وصلت الهوية. الـslug **اختياري**
    * بالبيانات الحيّة، فالتراجع مسارٌ عاديّ لا حالة خطأ.
    */
-  function _tcReturnHref(slug, sid) {
+  function _tcReturnHref(slug, sid, inApp) {
     var sl = (slug === null || slug === undefined) ? '' : String(slug).trim();
-    if (sl) return '/' + encodeURIComponent(sl);
     var id = (sid === null || sid === undefined) ? '' : String(sid).trim();
-    if (id) return '/home/index.html?school=' + encodeURIComponent(id);
-    return '/home/index.html';
+    if (sl && !inApp) return SITE_ORIGIN_PUBLIC + '/' + encodeURIComponent(sl);
+    if (id) return SITE_ORIGIN_PUBLIC + '/home/index.html?school=' + encodeURIComponent(id);
+    return SITE_ORIGIN_PUBLIC + '/home/index.html';
   }
   function _tcApplyReturnHref(slug) {
     var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
               : (window.SCHOOL_ID || '');
     var el = document.getElementById('returnHomeLink');
-    if (el) el.href = _tcReturnHref(slug, sid);
+    if (el) el.href = _tcReturnHref(slug, sid, _tcInAppCtx());
   }
   _tcApplyReturnHref('');
 
@@ -16835,6 +16875,35 @@ function markNewsViewedTeacher(newsId) {
 // shareNews — مشاركة منشور خبر عبر قائمة المشاركة الأصلية (تراجع: نسخ الرابط)
 // الرابط يفتح الخبر على الصفحة الرئيسية حيث تظهر صوره وفيديوهاته.
 // ══════════════════════════════════════════════════════════════════
+/**
+ * 🔗 رابط مشاركة الخبر — **رابط المدرسة القصير** حين يُعرَف الـslug.
+ *
+ *   slug معروف ⇒ `<origin>/<slug>?news=<id>&t=<tok>`
+ *   وإلّا       ⇒ `<origin>/home/news.html?news=<id>&school=<uuid>&t=<tok>`  (الشكل القديم حرفياً)
+ *
+ * لماذا الشكل القصير: يحمل هوية المدرسة ويطابق بقية روابط الموقع (`/<slug>`)، والوسيط
+ * يخدمه أصلاً — يلتقط `_pathSlug` **قبل** إعادة الكتابة ويمرّره إلى `getNewsOg`، فتُبنى
+ * المعاينة بمدرسة الرابط لا بمدرسة المالك.
+ *
+ * 🔒 والتراجع ليس حالة خطأ: الـslug اختياري بالبيانات الحيّة، والشكل القديم يبقى مولَّداً
+ * ومخدوماً كما هو — فكل رابط سبق أن شاركه أحدٌ يظل يعمل بلا استثناء.
+ *
+ * ⚠️ التوكن `t` يُمرَّر في الشكلين معاً: هو ما يسمح بمعاينة خبر موجَّه لصفّ محدَّد. وقد
+ * وُقِّع بـ`session.schoolId` الخام لا بالـslug — ولهذا يتحقّق `home` بقائمة مرشَّحين
+ * (‏`home/Code.js::_homeVerifyShareToken`) لا بمطابقة واحدة.
+ *
+ * دالّة **نقيّة** (كل مدخلاتها وسائط) كي تُختبَر سلوكياً على الشكلين بلا DOM.
+ */
+function _tcNewsShareUrl(newsId, schoolId, shareToken, slug) {
+  var q = '?news=' + encodeURIComponent(newsId);
+  var t = shareToken ? '&t=' + encodeURIComponent(shareToken) : '';
+  var sl = (slug === null || slug === undefined) ? '' : String(slug).trim();
+  if (sl) return SITE_ORIGIN_PUBLIC + '/' + encodeURIComponent(sl) + q + t;
+  var sid = (schoolId === null || schoolId === undefined) ? '' : String(schoolId).trim();
+  return SITE_ORIGIN_PUBLIC + '/home/news.html' + q +
+         (sid ? '&school=' + encodeURIComponent(sid) : '') + t;
+}
+
 function shareNews(newsId) {
   var item = null, list = window._newsCache || [];
   for (var i = 0; i < list.length; i++) {
@@ -16852,15 +16921,19 @@ function shareNews(newsId) {
   //
   // والصفحة نفسها **تُوجِّه بحسب سياق الفتح**: متصفّح عادي ⇒ المكتبة بفلاترها وتسويق
   // المنصّة · داخل أي تطبيق ⇒ إعادة توجيه فورية لصفحة المقال بسياق المدرسة، بلا تسويق.
-  var HOME_BASE = 'https://yemenschoolz.com/home/news.html';
+  // 🔴 الـslug من الهوية المحمَّلة إقلاعاً (`window._schoolBrand`) — لا نداء إضافي، نفس
+  //    مصدر م2-ب. غيابه مسارٌ عاديّ لا حالة خطأ: الـslug **اختياري** بالبيانات الحيّة
+  //    (يُفرَّغ صامتاً عند مخالفة النمط أو التصادم في `Master_Admin.js`).
+  var _shareSlug = '';
+  try {
+    if (window._schoolBrand && window._schoolBrand.slug) _shareSlug = String(window._schoolBrand.slug).trim();
+  } catch (eSlug) {}
 
   // توكن معاينة رابط المشاركة (OG) — يسمح لصفحة home بالتحقّق من الخبر حتى لو كان موجَّهاً لصفّ
   // محدَّد عند بناء بطاقة المعاينة (راجع home/CLAUDE.md بند 4). فشل جلبه (شبكة/جلسة) لا يمنع
   // المشاركة إطلاقاً — الرابط يعمل دوماً، فقط بلا صورة معاينة غنية لذلك الخبر تحديداً في تلك الحالة.
   function _buildUrlAndContinue(shareToken) {
-    var url = HOME_BASE + '?news=' + encodeURIComponent(newsId) +
-              (schoolId ? '&school=' + encodeURIComponent(schoolId) : '') +
-              (shareToken ? '&t=' + encodeURIComponent(shareToken) : '');
+    var url = _tcNewsShareUrl(newsId, schoolId, shareToken, _shareSlug);
     var body  = item ? String(item.news || '') : '';
     var owner = item ? String(item.teacher || '') : '';
     var title = 'خبر من ' + (owner || 'المدرسة');

@@ -1103,7 +1103,11 @@ img,video,iframe{max-width:100%;display:block}
       'schedule': 1, 'master-admin': 1, 'pricing': 1, 'gas': 1, 'qr-img': 1,
       'qr-download': 1, 'oauth': 1, 'drive-upload': 1, 'media': 1, 'assets': 1,
       'index.html': 1, 'manifest.webmanifest': 1, 'sw.js': 1, 'robots.txt': 1,
-      'sitemap.xml': 1, 'favicon.ico': 1, 'newsarticle.html': 1
+      'sitemap.xml': 1, 'favicon.ico': 1, 'newsarticle.html': 1,
+      // 🔴 `portal` — أُضيف للوسيط 2026-08-10 وغاب عنا حتى 2026-08-11. الوسيط يعيد كتابة
+      // `/portal` إلى منصّة الطالب **قبل** حساب الـslug فلا يصل هنا اليوم؛ الحجز طبقةٌ
+      // ثانية لو تغيّر ذلك الترتيب يوماً (بالضبط ما تصفه ملاحظة الوسيط نفسها).
+      'portal': 1
     };
     return reserved[seg] ? '' : seg;
   };
@@ -2880,10 +2884,22 @@ function loadSplitData(){
 // إعادة توجيه روابط مشاركة الأخبار القديمة (?news=...) إلى الصفحة المخصّصة الجديدة
 // newsarticle.html — تحافظ على عمل الروابط المُشارَكة فعلياً مع أشخاص حقيقيين قبل هذا الإصلاح
 // دون كسرها، بدل الاكتفاء بتمييز الخبر إن ظهر ضمن أعلى 6 أخبار عامة فقط (السلوك القديم).
+// 🔴 وسياق المدرسة يُحمَل معه صراحةً: على الرابط القصير `yemenschoolz.com/<slug>?news=X`
+// يعيش المعرّف في **المسار** لا في الاستعلام، والوسيط يعيد الكتابة إلى `/home/index.html`
+// بلا حقن `?school=` (‏`location.search` بالمتصفّح يبقى كما طلبه الزائر). فتمريرُ
+// `location.search` وحده كان يُسقط المدرسة ⇒ `newsarticle.html` تحلّ إلى **مدرسة المالك**
+// وتعرض خبراً لمدرسة أخرى أو لا تجده أصلاً. `__hasPathSlug()` معرَّفة أعلاه في هذا الملف
+// وتقرأ `location.pathname`، و`_homeSchoolRowById` تطابق الـslug كما تطابق الـUUID.
 (function(){
   try {
     var qs = new URLSearchParams(location.search);
-    if (qs.get('news')) { location.replace('newsarticle.html' + location.search); }
+    if (!qs.get('news')) return;
+    var s = location.search;
+    if (!qs.get('school')) {
+      var _sl = (typeof window.__hasPathSlug === 'function') ? window.__hasPathSlug() : '';
+      if (_sl) s += (s ? '&' : '?') + 'school=' + encodeURIComponent(_sl);
+    }
+    location.replace('newsarticle.html' + s);
   } catch (e) {}
 })();
 
