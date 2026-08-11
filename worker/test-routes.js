@@ -66,7 +66,11 @@ var CASES = [
   ['/aljil-al-hadith',    '/home/index.html',    'ضابط: slug مدرسة حقيقي'],
   ['/pricing',            '/pricing',            'ضابط: محجوز'],
   ['/assets/sw.js',       '/assets/sw.js',       'ضابط: أصل ثابت'],
-  ['/sitemap.xml',        '/sitemap.xml',        'ضابط: محجوز']
+  ['/sitemap.xml',        '/sitemap.xml',        'ضابط: محجوز'],
+  // ‏`app`/`download` محجوزان ⇒ لا يُقرآن slug مدرسة. (سلوكهما الفعلي 302 يُقاس
+  //  سلوكياً أدناه — هذا الجدول يصف إعادة الكتابة وحدها ولا يرى العودة المبكرة.)
+  ['/app',                '/app',                'ضابط: محجوز — لا يُقرَأ slug'],
+  ['/download',           '/download',           'ضابط: محجوز — لا يُقرَأ slug']
 ];
 
 var failed = 0;
@@ -403,6 +407,102 @@ var apkFrozen = CASES.some(function (c) {
 if (!apkFrozen) failed++;
 console.log((apkFrozen ? '  ✅ ' : '  ❌ ') +
             '🔴 ضابط: `/student/index.html` (المسار المجمَّد في الـAPK) يُخدَم كما هو');
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  روابط التطبيق القصيرة (/app · /download) وDigital Asset Links — فحص **سلوكي**
+//
+//  🔴 لماذا سلوكي لا نصّي: هذان مساران يعودان **مبكراً** بـ`Response` فلا يراهما
+//  جدول `CASES` أعلاه (يصف إعادة الكتابة وحدها). وتأكيدٌ نصّي على وجود السطر لا يقول
+//  شيئاً عن الحالة ولا عن الرؤوس — وهذه بالضبط الرؤوس التي أغفلها أوّل تنفيذ للميزة.
+//  فنستخرج الكتلتين ونُشغّلهما فعلاً بـ`Response` مزيَّف.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('روابط التطبيق القصيرة وassetlinks (فحص سلوكي):');
+
+function extractBlock(startNeedle, label) {
+  var i = src.indexOf(startNeedle);
+  if (i < 0) return null;
+  // نهاية الكتلة: أوّل سطر يحمل `\n    }` بعد بدايتها (مستوى المسافة البادئة نفسه).
+  var j = src.indexOf('\n    }', i);
+  if (j < 0) return null;
+  return src.slice(i, j + 6);
+}
+
+function runBlock(blockSrc, pathIn, hostIn, search) {
+  var captured = null;
+  function FakeResponse(body, init) {
+    captured = { body: body, status: (init && init.status) || 200, headers: (init && init.headers) || {} };
+    return captured;
+  }
+  var sandbox = {
+    path: pathIn,
+    url: new URL('https://' + hostIn + pathIn + (search || '')),
+    Response: FakeResponse,
+    JSON: JSON,
+    encodeURIComponent: encodeURIComponent
+  };
+  vm.runInNewContext('(function () {\n' + blockSrc + '\nreturn null;\n})()', sandbox);
+  return captured;
+}
+
+var appBlock = extractBlock("if (path === '/app' || path === '/app/'", '/app');
+var alBlock  = extractBlock("if (path === '/.well-known/assetlinks.json')", 'assetlinks');
+
+function check(ok, label) {
+  if (!ok) failed++;
+  console.log((ok ? '  ✅ ' : '  ❌ ') + label);
+}
+
+if (!appBlock) {
+  check(false, '🔴 تعذّر استخراج كتلة `/app` — الفحص أجوف');
+} else {
+  var r1 = runBlock(appBlock, '/app', 'yemenschoolz.com', '');
+  check(!!r1 && r1.status === 302, '`/app` ⇒ 302 (لا 301 — الدائم يُخبَّأ للأبد)');
+  check(!!r1 && /play\.google\.com\/store\/apps\/details\?id=com\.proconrers\.schoolappyemen$/
+        .test(r1.headers['Location'] || ''), 'الوجهة صفحة الحزمة المنشورة على Play');
+  check(!!r1 && r1.headers['Cache-Control'] === 'no-store', '`no-store` — تغيير الهدف يسري فوراً');
+  check(!!r1 && /max-age=15552000/.test(r1.headers['Strict-Transport-Security'] || ''),
+        'HSTS كامل على النطاق الرسمي');
+  check(!!r1 && r1.headers['X-Content-Type-Options'] === 'nosniff' &&
+        !!r1.headers['Referrer-Policy'],
+        '🔴 الرؤوس الأمنية حاضرة رغم العودة المبكرة (الاستثناء الصامت الذي أغفله أوّل تنفيذ)');
+  check(!!r1 && !r1.headers['X-Robots-Tag'], 'ضابط: النطاق الرسمي بلا `X-Robots-Tag`');
+
+  var r2 = runBlock(appBlock, '/download', 'yemenschoolz.com', '?ref=wa');
+  check(!!r2 && r2.status === 302 && /[?&]referrer=wa$/.test(r2.headers['Location'] || ''),
+        '`/download?ref=wa` ⇒ يمرّر `referrer` إلى Play');
+
+  // 🔴 ضابط الاتجاه المعاكس — الأهمّ: نطاق إرثي **لا** يُثبَّت عليه HSTS طويل.
+  var r3 = runBlock(appBlock, '/app', 'school.procorners.com', '');
+  check(!!r3 && r3.headers['Strict-Transport-Security'] === 'max-age=300',
+        '🔴 ضابط معاكس: النطاق الإرثي يبقى على `max-age=300` — لا تثبيت ١٨٠ يوماً');
+  check(!!r3 && r3.headers['X-Robots-Tag'] === 'noindex, follow',
+        'ضابط: النطاق الإرثي لا يُفهرَس');
+
+  // ضابط: مسار لا يخصّ الميزة لا تلتقطه الكتلة إطلاقاً.
+  check(runBlock(appBlock, '/appointments', 'yemenschoolz.com', '') === null,
+        '🔴 ضابط معاكس: `/appointments` لا تلتقطه كتلة `/app` (الحجز بالمقطع لا بالبادئة)');
+}
+
+if (!alBlock) {
+  check(false, '🔴 تعذّر استخراج كتلة assetlinks — الفحص أجوف');
+} else {
+  var ra = runBlock(alBlock, '/.well-known/assetlinks.json', 'yemenschoolz.com', '');
+  check(!!ra && ra.status === 200, '`/.well-known/assetlinks.json` ⇒ 200 من الوسيط لا من Pages');
+  check(!!ra && /application\/json/.test(ra.headers['Content-Type'] || ''), 'نوع المحتوى JSON');
+  var parsed = null;
+  try { parsed = JSON.parse(ra && ra.body); } catch (e) { parsed = null; }
+  check(Array.isArray(parsed) && parsed.length > 0, 'الجسم JSON صالح ومصفوفة');
+  var stmt = (parsed && parsed[0]) || {};
+  check(stmt.target && stmt.target.package_name === 'com.proconrers.schoolappyemen',
+        'اسم الحزمة مطابق للمنشور (‏`proconrers` إملاء مجمَّد صحيح — لا يُصحَّح)');
+  var fps = (stmt.target && stmt.target.sha256_cert_fingerprints) || [];
+  check(fps.length >= 1 && /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(fps[0]),
+        'بصمة SHA-256 واحدة على الأقل وبالصيغة الصحيحة');
+  check(Array.isArray(stmt.relation) &&
+        stmt.relation.indexOf('delegate_permission/common.handle_all_urls') !== -1,
+        'العلاقة `handle_all_urls` (‏App Links + WebAuthn معاً)');
+}
 
 console.log('');
 console.log(failed === 0

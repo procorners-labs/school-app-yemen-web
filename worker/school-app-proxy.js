@@ -182,7 +182,13 @@ var _RESERVED_TOP_PATHS = {
   // ضروري وظيفياً اليوم. يبقى دفاعاً عن ترتيبٍ يتغيّر: لو انتقلت إعادة الكتابة يوماً
   // إلى ما بعد `_schoolSlugFromPath` لعاد `/portal` يُخدَم كـslug مدرسة بصمت تامّ —
   // وهو بالضبط سلوكه قبل 2026-08-10. والحجز يمنع كذلك تسجيل مدرسة بهذا الـslug.
-  'portal': 1
+  'portal': 1,
+  // 'app' و'download' — روابط تحميل/تحديث التطبيق القصيرة (2026-08-12).
+  // الحجز هنا **دفاعي بحت** بنفس منطق 'portal': معالجهما يعترضهما قبل حساب الـslug.
+  // ⚠️ ولا يُبرَّر بأن `/app` كان يُخدَم `home-all-school` — ذاك وصفٌ بائد: منذ 404
+  //    الحقيقي للـslug غير المنشور (‏#129) يُرجِع `/app` **404** لا 200. والحجز يمنع
+  //    كذلك تسجيل مدرسة بأيّ من الاسمين.
+  'app': 1, 'download': 1
 };
 function _schoolSlugFromPath(path) {
   var m = /^\/([a-z0-9-]+)\/?$/i.exec(path);
@@ -722,6 +728,86 @@ export default {
       } catch (upErr) {
         return duCors(jsonResponse({ ok: false, error: 'تعذّر رفع الملف إلى Drive: ' + String(upErr) }, 502));
       }
+    }
+
+    // ── 1و) رابط تحميل/تحديث التطبيق القصير: /app (ومرادفه /download) ──────
+    //   لماذا يعيش في الوسيط لا كصفحة: رابطٌ يُرسَل في واتساب وفي إشعارات التحديث
+    //   ويُطبَع على ورق، فيجب أن يبقى قصيراً وثابتاً حتى لو تغيّر معرّف الحزمة أو
+    //   انتقل التطبيق لمتجر آخر — نقطةُ تغييرٍ واحدة هنا بدل تعديل كل ما نُشِر.
+    //   ‏302 لا 301 عمداً: الدائم يُخبَّأ في المتصفّح للأبد فيُصعِّب أي تغيير هدف لاحق.
+    //   ‏?ref= يُمرَّر إلى Play كـ`referrer` (قياس مصدر التحميل)، وبلا أثر إن غاب.
+    //
+    // 🔴 الرؤوس الأمنية تُكرَّر هنا يدوياً — وهذا ليس نسخاً زائداً: هذا المسار **يعود
+    //    مبكراً** فلا يمرّ بكتلة الرؤوس أسفل الملف. الاستجابة بلا HSTS/nosniff/Referrer
+    //    كانت ستكون استثناءً صامتاً من سياسةٍ يفترض القارئ أنها شاملة — نفس ما عولج
+    //    صراحةً في مسار 404. وشرط المضيف على HSTS **يبقى محفوظاً**: تثبيت HTTPS ١٨٠
+    //    يوماً على نطاق إرثي يخدم متجراً منفصلاً لا رجعة فيه.
+    if (path === '/app' || path === '/app/' || path === '/download' || path === '/download/') {
+      var apPkg = 'com.proconrers.schoolappyemen';
+      var apRef = url.searchParams.get('ref') || '';
+      var apTarget = 'https://play.google.com/store/apps/details?id=' + apPkg +
+        (apRef ? '&referrer=' + encodeURIComponent(apRef) : '');
+      var apIsCanon = (url.hostname === 'yemenschoolz.com' ||
+                       url.hostname === 'www.yemenschoolz.com');
+      var apHeaders = {
+        'Location': apTarget,
+        // لا تخبئة: أي تغيير للهدف يسري فوراً على كل من نسخ الرابط سابقاً.
+        'Cache-Control': 'no-store',
+        'Strict-Transport-Security': apIsCanon
+          ? 'max-age=15552000; includeSubDomains'
+          : 'max-age=300',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'strict-origin-when-cross-origin'
+      };
+      // النطاقات غير الرسمية لا تُفهرَس (نفس قاعدة بقية المسارات).
+      if (!apIsCanon) apHeaders['X-Robots-Tag'] = 'noindex, follow';
+      return new Response(null, { status: 302, headers: apHeaders });
+    }
+
+    // ── 1ز) Digital Asset Links: /.well-known/assetlinks.json ─────────────
+    //   ملفٌّ واحد يخدم ميزتين في تطبيق أندرويد (‏vc32):
+    //     ① **App Links** — `autoVerify="true"` يجعل روابط yemenschoolz.com تفتح داخل
+    //        التطبيق مباشرةً بلا منتقي تطبيقات.
+    //     ② **WebAuthn داخل الـWebView** — `WEB_AUTHENTICATION_SUPPORT_FOR_APP` يشترط
+    //        أن يكون التطبيق مُتحقَّقاً لهذا النطاق، وعليه يتوقّف «الدخول بالبصمة».
+    //
+    //   🔴 لماذا من الوسيط لا من GitHub Pages: مسارٌ يبدأ بنقطة. وGitHub Pages تبني
+    //      بـJekyll الذي **يتجاهل الملفات والمجلدات التي تبدأ بنقطة أو بشرطة سفلية**
+    //      ما لم يوجد `.nojekyll` — أي أن الملف كان يمكن أن يختفي بصمت بعد أوّل بناء،
+    //      ونوع محتواه غير مضمون. من الوسيط: وجودٌ ونوعٌ مضمونان وقابلان للاختبار.
+    //
+    //   ⚠️ **البصمات**: `relation` بـ`handle_all_urls` يمنح التطبيق الروابط، فلا يُضاف
+    //      إلا مفتاحٌ نملكه. الأولى أدناه **مقيسة من الحزمة المنشورة نفسها**
+    //      (‏`SchoolApp-v2.8-vc31` ⇒ `META-INF/SCHOOLAP.RSA` ⇒ keytool) ومطابِقة للمسجَّلة
+    //      في Firebase — وهي **مفتاح الرفع**. أما التوزيع عبر Play فيُعاد توقيعه بـ
+    //      **مفتاح توقيع التطبيق** الذي تديره Google، وبصمته تُقرأ من
+    //      *Play Console ← إعداد ← تكامل التطبيق ← توقيع التطبيق* وتُضاف هنا.
+    //      بلا إضافتها يبقى الرابط عاملاً لكن بمنتقي تطبيقات، وقد لا تعمل البصمة.
+    if (path === '/.well-known/assetlinks.json') {
+      var alFingerprints = [
+        // مفتاح الرفع (مقيس من الحزمة المنشورة 2026-08-12، ومطابِق لمسجَّل Firebase)
+        '11:E9:B0:2B:1F:26:06:54:04:F8:64:46:51:F8:FA:84:EC:52:DF:3D:0D:11:16:9B:E3:E9:E3:40:B7:50:FA:39'
+        // TODO(مالك): أضِف هنا بصمة **مفتاح توقيع التطبيق** من Play Console.
+      ];
+      var alBody = JSON.stringify([{
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: 'com.proconrers.schoolappyemen',
+          sha256_cert_fingerprints: alFingerprints
+        }
+      }]);
+      return new Response(alBody, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          // نظام أندرويد يجلبه عند التثبيت وبعده دورياً — ساعةٌ تكفي، وتُبقي إضافة
+          // بصمة جديدة سارية في وقت معقول بلا انتظار يوم كامل.
+          'Cache-Control': 'public, max-age=3600',
+          'X-Content-Type-Options': 'nosniff'
+        }
+      });
     }
 
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
