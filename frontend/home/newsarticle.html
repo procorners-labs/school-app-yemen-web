@@ -65,7 +65,8 @@
 
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#060f1e"/>
+<meta name="theme-color" content="#0b1a2e" media="(prefers-color-scheme: dark)"/>
+<meta name="theme-color" content="#f2f6fd" media="(prefers-color-scheme: light)"/>
 <meta name="robots" content="noindex, follow"/>
 <meta name="description" content="خبر من المدرسة"/>
 <meta property="og:type" content="article"/>
@@ -74,7 +75,11 @@
 <meta property="og:description" content="اطّلع على تفاصيل هذا الخبر."/>
 <meta property="og:locale" content="ar_AR"/>
 <meta property="og:url" content="https://yemenschoolz.com/home/newsarticle.html"/>
-<meta property="og:image" content=""/>
+<meta property="og:image" content="" data-og="img1"/>
+<!-- خانات صور المعاينة الإضافية — يملؤها الوسيط، وتُحذف إن بقيت فارغة. -->
+<meta property="og:image" content="" data-og="img2"/>
+<meta property="og:image" content="" data-og="img3"/>
+<meta property="og:image" content="" data-og="img4"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:image" content=""/>
 <title>خبر — يمن سكولز</title>
@@ -86,48 +91,189 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* ═══ التوكنات — نهاريّ افتراضاً، وليليّ يُعاد تعريف قيَمه وحدها ═══
+   كلّ لون يُعرَّف أوّلاً على `:root` المجرَّد؛ فلا لون تعريفُه الوحيد داخل كتلة وسائط. */
 :root{
-  --bg:#f2f6fd; --surface:#ffffff; --border:rgba(17,73,163,.12);
-  --tx:#06111f; --tx2:#253d60; --tx3:#5d7a9e; --cobalt:#1149a3;
+  --bg:#f2f6fd; --bg2:#e7eefb; --surface:#ffffff; --surface2:#f7faff;
+  --border:rgba(17,73,163,.13); --border2:rgba(17,73,163,.22);
+  --tx:#06111f; --tx2:#253d60; --tx3:#5d7a9e;
+  --cobalt:#1149a3; --cobalt2:#2f6fd0; --accent:#e8384f;
+  --shadow:0 10px 34px rgba(9,30,66,.10);
+  --shadow-lg:0 22px 60px rgba(9,30,66,.16);
+  --skel:linear-gradient(90deg,#e9eff9 25%,#f4f8ff 50%,#e9eff9 75%);
 }
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b1a2e; --bg2:#0f2340; --surface:#12233c; --surface2:#16294510;
+    --border:rgba(140,180,240,.16); --border2:rgba(140,180,240,.28);
+    --tx:#eaf2ff; --tx2:#bed0e8; --tx3:#8ba6c8;
+    --cobalt:#6fa8ff; --cobalt2:#8dbcff; --accent:#ff6b7f;
+    --shadow:0 10px 34px rgba(0,0,0,.45);
+    --shadow-lg:0 22px 60px rgba(0,0,0,.6);
+    --skel:linear-gradient(90deg,#16294a 25%,#1d3357 50%,#16294a 75%);
+  }
+}
+
 *{box-sizing:border-box}
-body{margin:0;font-family:'Cairo',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
-.wrap{max-width:720px;margin:0 auto;padding:20px 16px 60px;}
-.back{display:inline-flex;align-items:center;gap:6px;color:var(--cobalt);font-weight:700;text-decoration:none;margin-bottom:18px;font-size:.95rem;}
-.back:hover{text-decoration:underline;}
-.brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
-.brand img{width:40px;height:40px;border-radius:10px;object-fit:contain;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);}
-.brand span{font-weight:800;color:var(--tx);font-size:1rem;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:20px;box-shadow:0 10px 34px rgba(0,0,0,.08);}
-.gal{position:relative;height:300px;border-radius:14px;overflow:hidden;background:var(--bg);margin-bottom:16px;}
-.slide{position:absolute;inset:0;}
-.slide img{width:100%;height:100%;object-fit:cover;}
-.gal-nav button{position:absolute;top:50%;transform:translateY(-50%);z-index:3;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:20px;}
-.gal-nav .prev{right:8px}
-.gal-nav .next{left:8px}
-.gal-cnt{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.55);color:#fff;font-size:.7rem;padding:2px 9px;border-radius:10px;}
-h1{font-size:1.35rem;font-weight:800;line-height:1.65;margin:6px 0;}
-.meta{color:var(--tx3);font-size:.85rem;margin-bottom:14px;}
-.content{color:var(--tx2);line-height:1.9;white-space:pre-wrap;font-size:1.02rem;}
-.state{text-align:center;padding:60px 20px;color:var(--tx3);}
-.state.err h2{color:var(--tx);margin:14px 0 8px;}
-.spin{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--cobalt);border-radius:50%;margin:0 auto 14px;animation:sp .8s linear infinite;}
-@keyframes sp{to{transform:rotate(360deg)}}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;font-family:'Cairo',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--tx);min-height:100vh;
+  background-image:radial-gradient(1100px 520px at 85% -10%, var(--bg2), transparent 60%);
+}
+.wrap{max-width:760px;margin:0 auto;padding:18px 16px 72px;}
+
+/* ── شريط علوي لاصق ── */
+.topbar{
+  display:flex;align-items:center;gap:12px;justify-content:space-between;
+  position:sticky;top:0;z-index:40;margin:-18px -16px 18px;padding:12px 16px;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  border-bottom:1px solid transparent;
+}
+@supports not (background: color-mix(in srgb, red 50%, blue)){ .topbar{background:var(--bg);} }
+.topbar.stuck{border-bottom-color:var(--border);backdrop-filter:saturate(150%) blur(10px);}
+.back{
+  display:inline-flex;align-items:center;gap:7px;color:var(--cobalt);font-weight:700;
+  text-decoration:none;font-size:.95rem;padding:8px 12px;border-radius:12px;
+  border:1px solid var(--border);background:var(--surface);transition:.18s;
+}
+.back:hover{border-color:var(--border2);transform:translateX(3px);}
+.back:focus-visible,.iconbtn:focus-visible,.gal-nav button:focus-visible,.dot:focus-visible{
+  outline:2px solid var(--cobalt);outline-offset:2px;
+}
+.iconbtn{
+  display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-family:inherit;
+  font-weight:700;font-size:.9rem;color:var(--tx2);padding:8px 13px;border-radius:12px;
+  border:1px solid var(--border);background:var(--surface);transition:.18s;
+}
+.iconbtn:hover{border-color:var(--border2);color:var(--cobalt);}
+.iconbtn.ok{color:#0a8a4a;border-color:#0a8a4a55;}
+
+/* ── هوية المدرسة ── */
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:16px;}
+.brand img{width:44px;height:44px;border-radius:12px;object-fit:contain;background:#fff;box-shadow:var(--shadow);}
+.brand span{font-weight:800;color:var(--tx);font-size:1.02rem;}
+
+/* ── المعرض ── */
+.gal{
+  position:relative;border-radius:20px;overflow:hidden;background:#05070c;
+  margin-bottom:16px;box-shadow:var(--shadow-lg);aspect-ratio:16/10;
+  touch-action:pan-y;user-select:none;
+}
+@supports not (aspect-ratio: 1){ .gal{height:320px;} }
+.track{display:flex;height:100%;transition:transform .38s cubic-bezier(.22,.75,.3,1);}
+.track.nomove{transition:none;}
+.slide{flex:0 0 100%;position:relative;height:100%;}
+.slide img{width:100%;height:100%;object-fit:cover;display:block;}
+.gal-nav button{
+  position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+  background:rgba(8,14,26,.55);color:#fff;border:1px solid rgba(255,255,255,.18);
+  border-radius:50%;width:40px;height:40px;cursor:pointer;font-size:22px;line-height:1;
+  display:flex;align-items:center;justify-content:center;transition:.18s;
+}
+.gal-nav button:hover{background:rgba(8,14,26,.82);transform:translateY(-50%) scale(1.07);}
+.gal-nav .prev{right:10px} .gal-nav .next{left:10px}
+.gal-cnt{
+  position:absolute;top:10px;left:10px;z-index:3;background:rgba(8,14,26,.62);
+  color:#fff;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:20px;
+  letter-spacing:.4px;
+}
+.dots{position:absolute;bottom:10px;left:0;right:0;z-index:3;display:flex;justify-content:center;gap:7px;}
+.dot{
+  width:8px;height:8px;border-radius:50%;border:none;padding:0;cursor:pointer;
+  background:rgba(255,255,255,.42);transition:.2s;
+}
+.dot.on{background:#fff;width:22px;border-radius:5px;}
 .playbtn{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#000;}
-.playbtn i{width:56px;height:56px;border-radius:50%;background:rgba(232,56,79,.92);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-style:normal;}
+.playbtn img{opacity:.72;transition:.3s;}
+.playbtn:hover img{opacity:.9;transform:scale(1.03);}
+.playbtn i{
+  position:absolute;width:66px;height:66px;border-radius:50%;background:rgba(232,56,79,.95);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;
+  font-style:normal;box-shadow:0 8px 30px rgba(232,56,79,.5);transition:.22s;
+}
+.playbtn:hover i{transform:scale(1.1);}
+.vbadge{
+  position:absolute;bottom:12px;right:12px;z-index:2;background:rgba(8,14,26,.72);
+  color:#fff;font-size:.7rem;font-weight:700;padding:4px 10px;border-radius:8px;
+}
+.zoomhint{
+  position:absolute;bottom:12px;right:12px;z-index:2;background:rgba(8,14,26,.6);
+  color:#fff;font-size:.7rem;padding:4px 9px;border-radius:8px;pointer-events:none;
+}
+
+/* ── البطاقة ── */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:22px;box-shadow:var(--shadow);
+}
+h1{font-size:1.42rem;font-weight:800;line-height:1.62;margin:2px 0 10px;letter-spacing:-.2px;}
+.meta{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  color:var(--tx3);font-size:.84rem;margin-bottom:16px;
+}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:20px;padding:4px 11px;
+}
+.content{color:var(--tx2);line-height:2;white-space:pre-wrap;font-size:1.03rem;word-break:break-word;}
+.content a{color:var(--cobalt);}
+
+/* ── الحالات ── */
+.state{text-align:center;padding:56px 20px;color:var(--tx3);}
+.state.err h2{color:var(--tx);margin:14px 0 8px;font-size:1.2rem;}
+.sk{border-radius:20px;background:var(--skel);background-size:200% 100%;animation:sh 1.3s linear infinite;}
+.sk-gal{aspect-ratio:16/10;margin-bottom:16px;}
+@supports not (aspect-ratio: 1){ .sk-gal{height:320px;} }
+.sk-line{height:15px;margin:11px 0;border-radius:8px;}
+@keyframes sh{to{background-position:-200% 0}}
+
+/* ── العارض المكبَّر (lightbox) ── */
+.lb{
+  position:fixed;inset:0;z-index:90;background:rgba(4,8,15,.94);
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.lb.on{display:flex;}
+.lb img{max-width:100%;max-height:92vh;object-fit:contain;border-radius:10px;}
+.lb .x{
+  position:absolute;top:16px;left:16px;width:42px;height:42px;border-radius:50%;
+  background:rgba(255,255,255,.14);color:#fff;border:none;font-size:24px;cursor:pointer;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms !important;transition-duration:.001ms !important;}
+  .track{transition:none;}
+}
+@media (max-width:520px){
+  h1{font-size:1.22rem;}
+  .card{padding:17px;border-radius:17px;}
+  .gal{border-radius:16px;}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <a class="back" id="backLink" href="index.html">→ العودة للرئيسية</a>
+  <div class="topbar" id="topbar">
+    <a class="back" id="backLink" href="index.html">→ العودة للرئيسية</a>
+    <button class="iconbtn" id="shareBtn" type="button" hidden>&#128279; <span id="shareTxt">مشاركة</span></button>
+  </div>
   <div class="brand" id="brandBox" style="display:none">
     <img id="brandLogo" src="" alt="" onerror="this.style.display='none'">
     <span id="brandName"></span>
   </div>
   <div id="root">
-    <div class="state"><div class="spin"></div>جارٍ تحميل الخبر…</div>
+    <div class="sk sk-gal"></div>
+    <div class="card">
+      <div class="sk sk-line" style="width:72%"></div>
+      <div class="sk sk-line" style="width:40%"></div>
+      <div class="sk sk-line" style="width:100%"></div>
+      <div class="sk sk-line" style="width:94%"></div>
+      <div class="sk sk-line" style="width:66%"></div>
+    </div>
   </div>
 </div>
+<div class="lb" id="lb"><button class="x" id="lbX" type="button" aria-label="إغلاق">&times;</button><img id="lbImg" src="" alt=""></div>
 <script>
 function esc(s){s=String(s==null?'':s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function qparam(k){try{return new URLSearchParams(location.search).get(k)||'';}catch(e){return '';}}
@@ -139,9 +285,9 @@ function drvVideoSrc(fid){
 }
 function videoPoster(u){
   var yt=ytId(u);
-  if(yt) return '<img src="https://img.youtube.com/vi/'+yt+'/hqdefault.jpg" referrerpolicy="no-referrer" loading="lazy">';
+  if(yt) return '<img src="https://img.youtube.com/vi/'+yt+'/hqdefault.jpg" referrerpolicy="no-referrer" loading="lazy" alt="">';
   var d=drvId(u);
-  if(d) return '<img src="https://lh3.googleusercontent.com/d/'+d+'=w1000" referrerpolicy="no-referrer" loading="lazy">';
+  if(d) return '<img src="https://lh3.googleusercontent.com/d/'+d+'=w1000" referrerpolicy="no-referrer" loading="lazy" alt="">';
   return '';
 }
 function videoEmbed(u){
@@ -150,53 +296,168 @@ function videoEmbed(u){
   var d=drvId(u);
   if(d) return '<video src="'+drvVideoSrc(d)+'" controls autoplay playsinline style="position:absolute;inset:0;width:100%;height:100%;background:#000;"></video>';
   if(/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)) return '<video src="'+esc(u)+'" controls autoplay playsinline style="position:absolute;inset:0;width:100%;height:100%;background:#000;"></video>';
-  return '<a href="'+esc(u)+'" target="_blank" rel="noopener" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;">فتح الفيديو ↗</a>';
+  /* 🔴 المسار الاحتياطي يبني `<a href>` من رابط يكتبه معلّم في الشيت. و`esc()` تُهرِّب
+     المحارف ولا تحظر **مخطّطاً**: `javascript:alert(1)` ينجو منها سليماً وينفَّذ بالنقر.
+     فقائمة سماح للمخطّط (‏`http(s)` أو مسار مطلق) لا قائمة حظر — الحظر يُتحايَل عليه
+     بحرف تحكّم داخل اسم المخطّط (بند 35). ورابط غير مقبول يُعرَض نصّاً لا رابطاً. */
+  if(!/^(https?:\/\/|\/)/i.test(String(u||'').replace(/[\u0000-\u0020]/g,'')))
+    return '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;opacity:.8;">تعذّر عرض هذا الوسيط</span>';
+  return '<a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;">فتح الفيديو &#8599;</a>';
 }
 function playVideo(el){
   var u = el.getAttribute('data-vurl'); if (!u) return;
   el.innerHTML=videoEmbed(u);el.onclick=null;
+  GAL.locked = true;   /* فيديو يعمل ⇒ أوقِف السحب/الأسهم كي لا يُقطَع بلمسة عابرة */
 }
-function galNav(gid,dir){
-  var g=document.getElementById(gid); if(!g) return;
-  var slides=g.querySelectorAll('.slide'); var n=slides.length; if(!n) return;
-  var cur=parseInt(g.getAttribute('data-cur')||'0',10);
-  cur=(cur+dir+n)%n;
-  for(var i=0;i<n;i++) slides[i].style.display=(i===cur)?'block':'none';
-  g.setAttribute('data-cur',String(cur));
-  var cnt=document.getElementById(gid+'-cnt'); if(cnt) cnt.textContent=(cur+1)+'/'+n;
+
+/* ══════════════════════════════════════════════════════════════════════
+   المعرض — شريط واحد يتحرّك بـtransform (لا إظهار/إخفاء شرائح):
+   يعطي انتقالاً حقيقياً ويجعل السحب باللمس يتبع الإصبع بدل قفزة مفاجئة.
+   ══════════════════════════════════════════════════════════════════════ */
+var GAL = { cur:0, n:0, locked:false, media:[] };
+
+function galGo(i, instant){
+  if(!GAL.n) return;
+  GAL.cur = (i % GAL.n + GAL.n) % GAL.n;
+  var t = document.getElementById('galTrack'); if(!t) return;
+  if(instant) t.classList.add('nomove'); else t.classList.remove('nomove');
+  /* RTL: الشريط يمتدّ يميناً⇐يساراً، فالإزاحة موجبة لا سالبة. */
+  t.style.transform = 'translateX(' + (GAL.cur * 100) + '%)';
+  var c=document.getElementById('galCnt'); if(c) c.textContent=(GAL.cur+1)+' / '+GAL.n;
+  var dots=document.querySelectorAll('#galDots .dot');
+  for(var d=0; d<dots.length; d++) dots[d].className = 'dot' + (d===GAL.cur?' on':'');
 }
+function galNav(dir){ if(!GAL.locked) galGo(GAL.cur+dir); }
+
+/**
+ * 🔴 اتجاه السحب — **دالّة نقيّة عمداً** كي يقيسها اختبار بدل أن تبقى ثابتةً في تعليق.
+ *
+ * الاشتقاق (وهو ما أخطأت فيه أوّل صياغة): في RTL يستقرّ الشريط على
+ * `translateX(+cur*100%)` — موجب لأن الشريحة التالية تجلس **يسار** الحالية، فإزاحة
+ * الشريط يميناً هي ما يُدخِلها. ومنه: سحبُ الإصبع يميناً (‏`dx>0`) يُظهر التالية أثناء
+ * السحب ⇒ الإفلات يجب أن يستقرّ على **التالية** `+1`.
+ *
+ * كانت الصيغة منسوخة عن نمط LTR (`dx>0 ? -1 : 1`) فانفصل ما يراه المستخدم أثناء السحب
+ * عمّا يستقرّ عليه عند الرفع: تنزلق التالية أمام عينه ثم تقفز الشاشة إلى السابقة.
+ * رصدته مراجعة `gas-reviewer` — ولم يكن أيّ اختبار يغطّيه (حرّاس الأسهم تغطّي لوحة
+ * المفاتيح وحدها). ويتّسق الاتجاه مع بقية الواجهة: زرّ «التالي» على اليسار
+ * (`.next{left}`)، والسهم الأيسر يتقدّم.
+ */
+function galSwipeDir(dx){ return dx > 0 ? 1 : -1; }
+
+function bindGalGestures(){
+  var g=document.getElementById('artGal'); if(!g) return;
+  var x0=0,y0=0,dx=0,drag=false;
+  g.addEventListener('touchstart',function(e){
+    if(GAL.locked||GAL.n<2) return;
+    x0=e.touches[0].clientX; y0=e.touches[0].clientY; dx=0; drag=true;
+  },{passive:true});
+  g.addEventListener('touchmove',function(e){
+    if(!drag) return;
+    dx=e.touches[0].clientX-x0;
+    /* حركة رأسية غالبة ⇒ تمريرُ صفحةٍ لا سحبُ معرض: اترك الصفحة تُمرَّر. */
+    if(Math.abs(e.touches[0].clientY-y0) > Math.abs(dx)){ drag=false; return; }
+    var t=document.getElementById('galTrack');
+    if(t){ t.classList.add('nomove'); t.style.transform='translateX(calc('+(GAL.cur*100)+'% + '+dx+'px))'; }
+  },{passive:true});
+  g.addEventListener('touchend',function(){
+    if(!drag) return; drag=false;
+    var t=document.getElementById('galTrack'); if(t) t.classList.remove('nomove');
+    if(Math.abs(dx) > 45) galGo(GAL.cur + galSwipeDir(dx)); else galGo(GAL.cur, false);
+  });
+  document.addEventListener('keydown',function(e){
+    if(document.getElementById('lb').classList.contains('on')){
+      if(e.key==='Escape') lbClose();
+      return;
+    }
+    if(GAL.n<2) return;
+    /* RTL: «التالي» بصرياً هو السهم الأيسر. */
+    if(e.key==='ArrowLeft') galNav(1);
+    else if(e.key==='ArrowRight') galNav(-1);
+  });
+}
+
+/* ── العارض المكبَّر ── */
+function lbOpen(u){
+  var lb=document.getElementById('lb'), im=document.getElementById('lbImg');
+  if(!lb||!im) return;
+  im.src=u; lb.classList.add('on'); document.body.style.overflow='hidden';
+  var x=document.getElementById('lbX'); if(x) x.focus();
+}
+function lbClose(){
+  var lb=document.getElementById('lb');
+  if(!lb) return;
+  lb.classList.remove('on'); document.body.style.overflow='';
+  var im=document.getElementById('lbImg'); if(im) im.src='';
+}
+
 function buildGallery(media){
   if(!media || !media.length) return '';
-  var gid='artGal', s='';
-  for(var i=0;i<media.length;i++){
-    var m=media[i], disp=(i===0)?'block':'none', inner;
+  GAL.media=media; GAL.n=media.length; GAL.cur=0; GAL.locked=false;
+  var s='', i, m, inner;
+  for(i=0;i<media.length;i++){
+    m=media[i];
     if(m.type==='video'){
-      // data-vurl (سمة HTML، مُهرَّبة عبر esc()) بدل تضمين الرابط داخل سلسلة onclick النصّية —
-      // تفادي كسر حدود سلسلة JS بعلامة اقتباس مفردة حرفية داخل الرابط (نمط آمن مطابق لـ
-      // _homePlayVideo في home/Index.html).
-      inner='<div class="playbtn" data-vurl="'+esc(m.url)+'" onclick="playVideo(this)">'+videoPoster(m.url)+'<i>&#9658;</i></div>';
+      /* data-vurl سمةً مُهرَّبة لا داخل سلسلة onclick — تفادي كسر حدود السلسلة بعلامة
+         اقتباس حرفية داخل الرابط (نفس النمط الآمن في home/Index.html). */
+      inner='<div class="playbtn" data-vurl="'+esc(m.url)+'" onclick="playVideo(this)">'+videoPoster(m.url)
+           +'<i>&#9658;</i><span class="vbadge">فيديو</span></div>';
     } else {
-      inner='<img src="'+esc(m.url)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">';
+      inner='<img src="'+esc(m.url)+'" loading="'+(i===0?'eager':'lazy')+'" decoding="async"'
+           +' referrerpolicy="no-referrer" alt="" data-full="'+esc(m.url)+'"'
+           +' onclick="lbOpen(this.getAttribute(\'data-full\'))" style="cursor:zoom-in"'
+           +' onerror="this.style.display=\'none\'">'
+           +(i===0?'<span class="zoomhint">اضغط للتكبير</span>':'');
     }
-    s+='<div class="slide" style="display:'+disp+';">'+inner+'</div>';
+    s+='<div class="slide">'+inner+'</div>';
   }
   var nav = media.length>1
-    ? ('<div class="gal-nav"><button class="prev" onclick="galNav(\''+gid+'\',-1)" aria-label="السابق">‹</button>'
-      +'<button class="next" onclick="galNav(\''+gid+'\',1)" aria-label="التالي">›</button>'
-      +'<span class="gal-cnt" id="'+gid+'-cnt">1/'+media.length+'</span></div>')
+    ? ('<div class="gal-nav"><button class="prev" type="button" onclick="galNav(-1)" aria-label="السابق">&#8249;</button>'
+      +'<button class="next" type="button" onclick="galNav(1)" aria-label="التالي">&#8250;</button></div>'
+      +'<span class="gal-cnt" id="galCnt">1 / '+media.length+'</span>'
+      +'<div class="dots" id="galDots">'+(function(){
+          var d='',k; for(k=0;k<media.length;k++) d+='<button class="dot'+(k===0?' on':'')+'" type="button" onclick="galGo('+k+')" aria-label="الوسيط '+(k+1)+'"></button>';
+          return d;
+        })()+'</div>')
     : '';
-  return '<div class="gal" id="'+gid+'" data-cur="0">'+s+nav+'</div>';
+  return '<div class="gal" id="artGal"><div class="track" id="galTrack">'+s+'</div>'+nav+'</div>';
 }
+
+function shareArticle(){
+  var url=location.href, t=document.getElementById('shareTxt'), b=document.getElementById('shareBtn');
+  var title=document.title;
+  function done(msg){ if(t) t.textContent=msg; if(b) b.className='iconbtn ok';
+    setTimeout(function(){ if(t) t.textContent='مشاركة'; if(b) b.className='iconbtn'; },2200); }
+  if(navigator.share){
+    navigator.share({title:title, url:url}).then(function(){}).catch(function(){});
+    return;
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){ done('نُسخ الرابط'); }).catch(function(){ done('تعذّر النسخ'); });
+    return;
+  }
+  done('انسخ الرابط من الشريط');
+}
+
 function renderArticle(n){
   document.title = (n.title||'خبر') + ' — يمن سكولز';
   var root=document.getElementById('root');
+  var meta='';
+  if(n.date) meta+='<span class="chip">&#128197; '+esc(n.date)+'</span>';
+  if(n.author) meta+='<span class="chip">&#128100; '+esc(n.author)+'</span>';
+  var mediaCount=(n.media||[]).length;
+  if(mediaCount>1) meta+='<span class="chip">&#128247; '+mediaCount+' وسائط</span>';
   root.innerHTML =
     buildGallery(n.media||[]) +
     '<div class="card">' +
       '<h1>'+esc(n.title||'خبر')+'</h1>' +
-      (n.date ? ('<div class="meta">'+esc(n.date)+(n.author?(' — '+esc(n.author)):'')+'</div>') : '') +
+      (meta ? ('<div class="meta">'+meta+'</div>') : '') +
       '<div class="content">'+esc(n.content||'')+'</div>' +
     '</div>';
+  bindGalGestures();
+  galGo(0, true);
+  var sb=document.getElementById('shareBtn');
+  if(sb){ sb.hidden=false; sb.onclick=shareArticle; }
   if (n.schoolName) {
     var bn = document.getElementById('brandName'); if (bn) bn.textContent = n.schoolName;
     var bb = document.getElementById('brandBox'); if (bb) bb.style.display = 'flex';
@@ -206,7 +467,7 @@ function renderArticle(n){
 function renderError(){
   document.getElementById('root').innerHTML =
     '<div class="state err">' +
-      '<div style="font-size:2.6rem;">&#128274;</div>' +
+      '<div style="font-size:2.8rem;">&#128274;</div>' +
       '<h2>هذا الرابط غير صالح أو منتهي</h2>' +
       '<p>قد يكون الخبر قد حُذف أو أن رابط المشاركة غير صحيح.</p>' +
     '</div>';
@@ -216,6 +477,16 @@ function renderError(){
   var backHref = school ? ('index.html?school='+encodeURIComponent(school)) : 'index.html';
   var backEl = document.getElementById('backLink');
   if (backEl) backEl.setAttribute('href', backHref);
+
+  var lb=document.getElementById('lb'), lbX=document.getElementById('lbX');
+  if(lbX) lbX.onclick=lbClose;
+  if(lb) lb.onclick=function(e){ if(e.target===lb) lbClose(); };
+
+  var tb=document.getElementById('topbar');
+  if(tb) window.addEventListener('scroll',function(){
+    if(window.scrollY>8) tb.classList.add('stuck'); else tb.classList.remove('stuck');
+  },{passive:true});
+
   var newsId = qparam('news');
   if (!newsId) { renderError(); return; }
   var token = qparam('t');
