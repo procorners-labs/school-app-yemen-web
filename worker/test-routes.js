@@ -43,11 +43,23 @@ src.split('\n').forEach(function (L) {
   if (m) rewrites.push({ a: m[1], b: (m[2] !== undefined ? m[2] : null), to: m[3] });
 });
 
+/* المسارات العميقة للمنصّتين — يُستخرَج **الـregex الحيّ من مصدر الوركر** ويُشغَّل، لا
+   يُنسَخ. نسخةٌ في الاختبار تنحرف بصمت عن الحيّ فتُنتج أخضرَ لا يصف الإنتاج (بند 116). */
+var dpIdx = src.indexOf('var _DEEP_PORTAL_RE = ');
+if (dpIdx < 0) {
+  console.error('🔴 DEEP_PORTAL_RE_MISSING — تعذّر استخراج regex المسارات العميقة من الوركر');
+  process.exit(1);
+}
+vm.runInContext(src.slice(dpIdx, src.indexOf('\n', dpIdx)), ctx);
+
 function resolve(p) {
   for (var i = 0; i < rewrites.length; i++) {
     if (p === rewrites[i].a || (rewrites[i].b !== null && p === rewrites[i].b)) return rewrites[i].to;
   }
+  // نفس ترتيب الوركر: بعد إعادات الكتابة الحرفية، وقبل قراءة الـslug.
   ctx.__p = p;
+  var deep = vm.runInContext('_DEEP_PORTAL_RE.exec(__p)', ctx);
+  if (deep) return '/' + String(deep[1]).toLowerCase() + '/index.html';
   if (vm.runInContext('_schoolSlugFromPath(__p)', ctx)) return '/home/index.html';
   return p;   // يُخدَم كما هو من GITHUB_BASE
 }
@@ -70,7 +82,30 @@ var CASES = [
   // ‏`app`/`download` محجوزان ⇒ لا يُقرآن slug مدرسة. (سلوكهما الفعلي 302 يُقاس
   //  سلوكياً أدناه — هذا الجدول يصف إعادة الكتابة وحدها ولا يرى العودة المبكرة.)
   ['/app',                '/app',                'ضابط: محجوز — لا يُقرَأ slug'],
-  ['/download',           '/download',           'ضابط: محجوز — لا يُقرَأ slug']
+  ['/download',           '/download',           'ضابط: محجوز — لا يُقرَأ slug'],
+
+  // ── المسارات العميقة للمنصّتين (2026-08-13) ────────────────────────────────
+  ['/teacher/dashboard/abdaawatmuaz',  '/teacher/index.html', 'معلم: صفحة + slug'],
+  ['/teacher/attendance/abdaawatmuaz', '/teacher/index.html', 'معلم: صفحة أخرى + slug'],
+  ['/teacher/grades/ibn-khaldoun',     '/teacher/index.html', 'معلم: slug بشرطة'],
+  ['/student/news/abdaawatmuaz',       '/student/index.html', 'طالب: صفحة + slug'],
+  ['/student/grades/abdaawatmuaz/',    '/student/index.html', 'طالب: بشرطة مائلة ختامية'],
+  ['/teacher/dashboard',               '/teacher/index.html', 'معلم: صفحة بلا slug (مدرسة المالك)'],
+  ['/TEACHER/Dashboard/AbdaaWatmuaz',  '/teacher/index.html', 'حالة مختلطة ⇒ القسم يُطبَّع'],
+
+  // 🔴 ضوابط معاكسة — أهمّ من الحالة الموجبة
+  ['/teacher/a/b/c',      '/teacher/a/b/c',      '🔴 ضابط: ثلاثة مقاطع لا تُطابِق (لا عمق مخترَع)'],
+  ['/student/Student_Reports.html', '/student/Student_Reports.html',
+                                                 '🔴 ضابط: ملفٌّ بشرطة سفلية ونقطة يُخدَم كما هو'],
+  ['/teacher/',           '/teacher/',           '🔴 ضابط: بلا مقطع تالٍ ⇒ لا تُطابِق'],
+  ['/gas/teacher',        '/gas/teacher',        '🔴 ضابط: نقطة الـAPI لا تُمَسّ'],
+  /* 🔴 هذان الضابطان أُضيفا **بعد** أن كشف اختبارُ الطفرة أن سابقيهما جوفاوان:
+     `/teacher/index.html` يُعاد كتابته إلى **نفسه** فلا يميّز بين regex يقبل النقطة
+     وآخر يرفضها. فيلزم مسارٌ **يختلف** مخرَجه بين الحالتين.
+     ① أصلٌ مستقبليّ تحت القسم (‏`.js`) يجب أن يُخدَم كما هو لا أن يُبتلَع في `index.html`.
+     ② اسم صفحة بشرطة سفلية ليس من صيغتنا (‏kebab-case) ⇒ 404 صادق لا تصييرٌ صامت للتطبيق. */
+  ['/teacher/app.js',     '/teacher/app.js',     '🔴 ضابط: أصلٌ تحت القسم يُخدَم كما هو (يكشف قبولَ النقطة)'],
+  ['/teacher/some_page',  '/teacher/some_page',  '🔴 ضابط: شرطة سفلية ليست صيغةَ صفحة (يكشف توسيع الصنف)']
 ];
 
 var failed = 0;
