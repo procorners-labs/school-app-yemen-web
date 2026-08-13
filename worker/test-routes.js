@@ -531,9 +531,21 @@ if (!alBlock) {
   var stmt = (parsed && parsed[0]) || {};
   check(stmt.target && stmt.target.package_name === 'com.proconrers.schoolappyemen',
         'اسم الحزمة مطابق للمنشور (‏`proconrers` إملاء مجمَّد صحيح — لا يُصحَّح)');
+  // 🔴 **بصمتان بعينهما لا «واحدة على الأقل»** (شُدِّد 2026-08-13). الصياغة السابقة
+  //    كانت تمرّ على القائمة الناقصة — وهي بالضبط الحالة التي تُفشِل App Links
+  //    **لكل مستخدم من Play** بينما التثبيت اليدوي يعمل، فيبدو كل شيء سليماً محلياً.
+  //    ولا يُقاس العدد وحده: تُسمّى كلُّ بصمة بدورها، فحذفُ إحداهما يحمرّ باسمها.
+  var FP_UPLOAD = '11:E9:B0:2B:1F:26:06:54:04:F8:64:46:51:F8:FA:84:EC:52:DF:3D:0D:11:16:9B:E3:E9:E3:40:B7:50:FA:39';
+  var FP_PLAY   = 'CF:63:D5:66:10:1F:6C:1D:4D:3D:90:29:BD:8D:A6:89:A8:80:1A:BC:6A:2D:1F:F6:EE:62:87:F3:49:E0:FE:C9';
+  var FP_RE     = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
   var fps = (stmt.target && stmt.target.sha256_cert_fingerprints) || [];
-  check(fps.length >= 1 && /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(fps[0]),
-        'بصمة SHA-256 واحدة على الأقل وبالصيغة الصحيحة');
+  check(fps.length === 2, 'بصمتان بالضبط (‏الفعلي: ' + fps.length + ')');
+  check(fps.every(function (f) { return FP_RE.test(f); }),
+        'كلتا البصمتين بالصيغة الصحيحة');
+  check(fps.indexOf(FP_UPLOAD) !== -1,
+        '① بصمة **مفتاح الرفع** حاضرة (التثبيت اليدوي والاختبار المحلي)');
+  check(fps.indexOf(FP_PLAY) !== -1,
+        '🔴 ② بصمة **مفتاح توقيع التطبيق** حاضرة — بدونها تفشل الروابط لكل مستخدم من Play');
   check(Array.isArray(stmt.relation) &&
         stmt.relation.indexOf('delegate_permission/common.handle_all_urls') !== -1,
         'العلاقة `handle_all_urls` (‏App Links + WebAuthn معاً)');
