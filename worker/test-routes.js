@@ -551,6 +551,119 @@ if (!alBlock) {
         'العلاقة `handle_all_urls` (‏App Links + WebAuthn معاً)');
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   حقن هوية المدرسة في الـHTML الخام على `/<slug>`  (2026-08-13)
+
+   يُقاس هنا ثلاثة أشياء لا يقيسها شيء آخر في هذا المستودع:
+   ① الحقن **مشروط** بـ`_pathSlug` وبغياب `?news=` — أي أن الجذر وهوية المنصّة لا يُمَسّان.
+   ② `og:site_name` **ليس** ضمن ما يُحقَن (بندا 68/75).
+   ③ **fail-open**: لا `await` لنداء GAS في مسار الاستجابة؛ التحديث في `ctx.waitUntil` وحده.
+      هذه أهمّها: انتظارُ GAS هو العلّة (وسيط 14,535ms · فشل 38.81٪)، فجعلُه شرطاً للعرض
+      يُضاعفها بدل أن يُصلحها — وهو خطأ يبدو صحيحاً تماماً في المراجعة النصّية.
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
+(function () {
+  /* يستخرج نصّ دالّة كاملاً بموازنة الأقواس — لا `indexOf('\n}')`: يتكسّر مع أي دالّة
+     تحوي `}` في بداية سطر داخلها. */
+  function fnSrc(name) {
+    var i = src.indexOf('function ' + name + '(');
+    if (i === -1) return null;
+    var b = src.indexOf('{', i), d = 0, e = -1, j;
+    for (j = b; j < src.length; j++) {
+      if (src[j] === '{') d++;
+      else if (src[j] === '}') { d--; if (d === 0) { e = j + 1; break; } }
+    }
+    return e === -1 ? null : src.slice(i, e);
+  }
+
+  ['_brandFromCache', '_brandRefresh', '_brandRewrite', '_brandDocTitle', '_safeHttpUrl',
+   '_brandCacheKey'].forEach(function (n) {
+    check(!!fnSrc(n) || src.indexOf('async function ' + n + '(') !== -1,
+          'دالّة `' + n + '` موجودة');
+  });
+
+  /* ① الشرط — يُقرأ من الكتلة الحيّة لا من الذاكرة. */
+  var gIdx = src.indexOf('if (_pathSlug && !_newsId) {');
+  check(gIdx !== -1, '🔒 الحقن مشروط بـ`_pathSlug && !_newsId` (الجذر ومسار المشاركة لا يُمَسّان)');
+  var gEnd = src.indexOf('\n      }', gIdx);
+  var gate = gIdx === -1 ? '' : src.slice(gIdx, gEnd === -1 ? gIdx + 600 : gEnd);
+  check(gate.indexOf('_brandRewrite(') !== -1, '… وداخله يُستدعى `_brandRewrite` فعلاً (لا تعريف بلا وصل)');
+
+  /* ③ fail-open — أهمّ تأكيد في هذه الكتلة. */
+  check(/ctx\.waitUntil\(\s*_brandRefresh\(/.test(gate),
+        '🔴 التحديث في `ctx.waitUntil` — خارج مسار الاستجابة تماماً');
+  check(gate.indexOf('await _brandRefresh') === -1,
+        '🔴 **لا `await` لـ`_brandRefresh` في مسار الطلب** (انتظار GAS هو العلّة لا العلاج)');
+  check(/_brandFromCache\(/.test(gate) && gate.indexOf('caches.default.match') === -1,
+        '… والقراءة من كاش الحافة عبر `_brandFromCache` وحدها');
+
+  /* ② + سلوك `_brandRewrite`: يُشغَّل فعلياً على `HTMLRewriter` مزيّف يسجّل المحدِّدات. */
+  var rwCtx = vm.createContext({ String: String, JSON: JSON });
+  vm.runInContext(
+    'function _AttrSet(a,v){this.attr=a;this.val=v;}\n' +
+    'function _TextSet(v){this.val=v;}\n' +
+    'function _BrandHead(b){this.brand=b;}\n' +
+    fnSrc('_brandDocTitle') + '\n' + fnSrc('_brandRewrite') + '\n' +
+    'function mkRw(sink){ return { on: function(sel, h){ sink.push([sel, h]); return this; } }; }', rwCtx);
+  rwCtx.__sink = [];
+  rwCtx.__brand = { name: 'مدارس ابن خلدون الاهلية', tagline: 'ت', description: 'وصف', logo: 'https://lh3.googleusercontent.com/d/X=w400' };
+  vm.runInContext('_brandRewrite(mkRw(__sink), __brand)', rwCtx);
+  var sels = rwCtx.__sink.map(function (p) { return p[0]; });
+
+  check(sels.indexOf('meta[property="og:site_name"]') === -1,
+        '🔒 `og:site_name` **ليس** ضمن المحدِّدات المحقونة (بندا 68/75 — خمس رفضات Branding)');
+  ['title', '.school-brand-name', 'meta[property="og:title"]', 'head',
+   'meta[name="description"]', 'meta[property="og:description"]',
+   '#hdrLogo', '#ftLogo', 'meta[name="twitter:image"]'].forEach(function (s) {
+    check(sels.indexOf(s) !== -1, 'يُحقَن المحدِّد `' + s + '`');
+  });
+  var titleH = rwCtx.__sink.filter(function (p) { return p[0] === 'title'; })[0];
+  /* 🔴 نصّ العنوان **نسخةٌ ثالثة بالضرورة** (مستودع منفصل، وGAS لا يشارك كوداً). تطابقُه
+     الحرفي مع `home/Index.html::__homeDocTitle` هو ما يمنع العنوان من **القفز** لحظة وصول
+     الحمولة. تثبيتُه هنا هو الوصلة الوحيدة الممكنة عبر المستودعين. */
+  check(titleH && titleH[1].val === 'مدارس ابن خلدون الاهلية — ت | يمن سكولز',
+        '🔴 نصّ العنوان مطابق حرفياً لما تبنيه الصفحة (وإلّا قفز العنوان عند وصول الحمولة)');
+
+  /* بلا شعار ⇒ صفر محدِّد صورة: `og:image` فارغاً أسوأ من غيابه (نفس علّة `_OgImages`). */
+  rwCtx.__sink2 = [];
+  rwCtx.__brand2 = { name: 'م', tagline: '', description: '', logo: '' };
+  vm.runInContext('_brandRewrite(mkRw(__sink2), __brand2)', rwCtx);
+  var sels2 = rwCtx.__sink2.map(function (p) { return p[0]; });
+  check(sels2.indexOf('#hdrLogo') === -1 && sels2.indexOf('meta[name="twitter:image"]') === -1,
+        '🔴 ضابط معاكس: بلا شعار ⇒ صفر محدِّد صورة (لا `content=""` مُعلَن)');
+  check(sels2.indexOf('meta[name="description"]') === -1,
+        '🔴 ضابط معاكس: بلا وصف ⇒ لا يُدهَس وصف الصفحة بفراغ');
+  check(sels2.indexOf('title') !== -1 && sels2.indexOf('.school-brand-name') !== -1,
+        '… والاسم يُحقَن دائماً (هو الحدّ الأدنى الذي جاءت الميزة لأجله)');
+
+  /* بوّابة المخطّط — القيمة تصل من شيت يحرّره بشر (بند 35: الحذف لا الاستبدال). */
+  var uCtx = vm.createContext({ String: String });
+  vm.runInContext(fnSrc('_safeHttpUrl'), uCtx);
+  function safe(v) { uCtx.__v = v; return vm.runInContext('_safeHttpUrl(__v)', uCtx); }
+  check(safe('https://lh3.googleusercontent.com/d/X=w400') === 'https://lh3.googleusercontent.com/d/X=w400',
+        'رابط https سليم يمرّ');
+  check(safe('javascript:alert(1)') === '', '🔒 `javascript:` يُرفض');
+  check(safe('ja\tvascript:alert(1)') === '', '🔒 حرف تحكّم داخل المخطّط ⇒ رفض');
+  /* 🔴 **الحالة التي كشفها اختبار الطفرة، وهي عكس ما يوحي به بند 35 حرفياً.**
+     لو حُذِفت أحرف التحكّم (كما يقول البند لبوّابة حاجبة) لصارت هذه `https://evil.example`
+     و**قُبِلت**. البوّابة هنا سامحة فالاتجاه ينقلب ⇒ رفضٌ صريح. */
+  check(safe('https:\t//evil.example') === '',
+        '🔴 `https:<TAB>//evil` يُرفض — الحذف كان سيجعلها صالحة (اتجاه بند 35 منقلب هنا)');
+  check(safe('https://a b.example') === '', '🔒 فراغ داخلي ⇒ رفض');
+  check(safe('  https://ok.example  ') === 'https://ok.example', 'الفراغ المحيط يُقلَّم لا يُرفض');
+  check(safe('http://x/y') === '', '🔒 `http:` غير المشفَّر يُرفض (محتوى مختلط)');
+  check(safe('data:text/html,<script>') === '', '🔒 `data:` يُرفض');
+  check(safe(null) === '' && safe(undefined) === '', 'الفراغ/العدم ⇒ سلسلة فارغة بلا استثناء');
+
+  /* مفتاح الكاش لا يمكن أن يصير سطحاً مخدوماً: ثلاثة مقاطع ⇒ يرفضه `_schoolSlugFromPath`. */
+  ctx.__k = '/__brand-cache/v1/ibn-khaldoun';
+  check(vm.runInContext('_schoolSlugFromPath(__k)', ctx) === '',
+        '🔒 مسار مفتاح الكاش لا يُقرَأ slug مدرسة (لا يصير سطحاً مخدوماً)');
+
+  check(src.indexOf('var BRAND_TTL_S = 21600;') !== -1,
+        'مهلة كاش الهوية ٦ ساعات (≈٤ نداءات/يوم/مدرسة بدل نداءٍ لكل زيارة)');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'

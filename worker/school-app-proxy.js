@@ -343,6 +343,155 @@ var CANONICAL_ORIGIN = 'https://yemenschoolz.com';
 // لإصلاحه إلا بـAPK جديد. `www` وحده آمن لأنه نطاق جديد بلا أي مستخدم سابق.
 var REDIRECT_TO_CANONICAL = { 'www.yemenschoolz.com': 1 };
 
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   هوية المدرسة في الـHTML الخام على `/<slug>`  (2026-08-13)
+
+   العلّة المقيسة: `/<slug>` يُعاد كتابته إلى `home/index.html` — **ملفّ واحد بايتاً ببايت
+   لكل المدارس** (‏179,816 بايت متطابقة على `/abdaawatmuaz` و`/ibn-khaldoun`؛ الفرق سطرا
+   `canonical` و`og:url` اللذان نحقنهما أصلاً). فالهوية التي تصل الزائرَ **والزاحفَ وبطاقةَ
+   معاينة واتساب** هي هوية المنصّة: `<title>` و`og:title` و`description` و`og:image` كلّها
+   «يمن سكولز» لكلّ مدرسة. والصفحة لا تصحّح ذلك إلا بعد `getHomePageBundle` — وسيطه
+   **14,535ms** وفشله **38.81٪** (‏`_docs/perf/trend.jsonl`, 2026-08-13).
+
+   العلاج هنا يغطّي ما **لا يستطيع العميل تغطيته**: الزائر الأوّل بلا كاش، والزاحف الذي
+   قد لا ينفّذ JS، وبطاقة المشاركة التي لا تنفّذه أبداً.
+
+   🔴 **fail-open بصفر تأخير مُضاف**: عند غياب الهوية من كاش الحافة نخدم الصفحة **فوراً**
+      كما هي ونُحدِّث الكاش في الخلفية بـ`ctx.waitUntil`. لا ننتظر GAS في مسار الطلب
+      إطلاقاً — انتظارُه هو العلّة نفسها، فجعلُه شرطاً للعرض يُضاعفها.
+   🔒 مشروطٌ بـ`_pathSlug` ⇒ الجذر `/` و`/home/index.html` العاري و`/portal` وبوّابات
+      الدخول **لا تُمَسّ**. وهوية الجذر خطٌّ أحمر (بندا 68/75).
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ٦ ساعات: الاسم والشعار واللون شبه ثابتة (تتغيّر حين يحرّرها مدير من تبويب «بيانات
+   المدرسة»)، والنتيجة ≈٤ نداءات/يوم/مدرسة تصيب GAS بدل نداءٍ لكلّ زيارة. */
+var BRAND_TTL_S = 21600;
+
+/* 🔴 مفتاح الكاش على **أصل الطلب نفسه** لا مضيف وهمي: `caches.default` في Workers يشترط
+   مفتاحاً داخل النطاق. والمسار ثلاثي المقاطع فيرفضه `_schoolSlugFromPath` (مقطعٌ واحد
+   حصراً) ⇒ لا يمكن أن يصير سطحاً مخدوماً بأي حال. */
+function _brandCacheKey(origin, slug) {
+  return new Request(origin + '/__brand-cache/v1/' + encodeURIComponent(slug), { method: 'GET' });
+}
+
+async function _brandFromCache(origin, slug) {
+  try {
+    var hit = await caches.default.match(_brandCacheKey(origin, slug));
+    if (!hit) return null;
+    var o = await hit.json();
+    return (o && o.name) ? o : null;
+  } catch (e) { return null; }
+}
+
+/* يُشغَّل في `ctx.waitUntil` حصراً — خارج مسار الاستجابة تماماً.
+   يستهلك مقعداً من حصّة الثلاثين، فيمرّ بنفس bulkhead «افتحْ الآن أو تخطَّ» الذي يحكم
+   حقن OG: تحديثُ هويةٍ خلفيّ يجب ألّا يُزاحم تسجيل دخول معلّم أبداً. */
+async function _brandRefresh(origin, slug, env) {
+  var mode = (env && env.BULKHEAD_MODE) || 'on';
+  var held = (mode !== 'off') ? await _bhAcquire('home', 0) : false;
+  if (mode === 'on' && !held) {
+    _bhLog({ ev: 'bulkhead', act: 'skip_brand', app: 'home', mode: mode, n: _bhN, q: _bhQ.length });
+    return;
+  }
+  var timer = null;
+  try {
+    var ab = new AbortController();
+    timer = setTimeout(function () { ab.abort(); }, 8000);
+    var res = await fetch(GAS.home, {
+      method: 'POST',
+      signal: ab.signal,
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ fn: 'getHomePageBundle', args: [slug] })
+    });
+    var json = await res.json();
+    var b = (json && json.result) ? json.result : json;
+    if (!b || b.ok !== true || !b.brand || !b.brand.name) return;
+    var page = b.page || {};
+    /* هوية العرض وحدها — لا هاتف/عنوان/سوشل. تلك محكومة عميلياً بـ`_homeContactField`
+       الذي يُخفيها لغير المالك، وقيمةُ تواصلٍ متقادمة أسوأ من غيابها. */
+    var brand = {
+      name: String(b.brand.name || ''),
+      logo: _safeHttpUrl(b.brand.logo),
+      color: String(b.brand.color || ''),
+      tagline: String(page.tagline || ''),
+      description: String(page.aboutText || '')
+    };
+    await caches.default.put(
+      _brandCacheKey(origin, slug),
+      new Response(JSON.stringify(brand), {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'max-age=' + BRAND_TTL_S
+        }
+      })
+    );
+  } catch (e) { /* fail-open: الصفحة خُدِمت أصلاً؛ المحاولة القادمة تُعيد الكرّة */ }
+  finally {
+    if (timer) clearTimeout(timer);
+    if (held) _bhRelease('home');
+  }
+}
+
+/* 🔴 بوّابة مخطّط صارمة قبل أي إسناد إلى `src`/`og:image`: القيمة تصل من شيت **يحرّره بشر**.
+ *
+ * ⚠️ **تصحيح اتجاه بند 35 هنا — كشفه اختبارُ طفرة.** البند يقول «احذف أحرف التحكّم ولا
+ * تستبدلها بمسافة»، وهو صحيح لبوّابة **حاجبة** (تبحث عن مخطّط خطر): الاستبدال يحوّل
+ * `ja<TAB>vascript:` إلى `ja vascript:` فيفلت من الحجب. لكن هذه بوّابة **سامحة** (تشترط
+ * `https://`)، والاتجاه **ينقلب**: الحذفُ يحوّل `https:<TAB>//evil` إلى `https://evil`
+ * فيُقبَل، بينما الاستبدال يرفضه. أي أن تطبيق البند حرفياً هنا كان **يفتح** ثغرة لا يسدّها.
+ *
+ * ⇒ لا حذف ولا استبدال: **رفضٌ صريح** لأي قيمة تحوي حرف تحكّم أو فراغاً. عنوانٌ صالح لا
+ * يحوي أياً منهما أصلاً، فالرفض بلا كلفة والغموض يُزال من جذره لا يُدار. */
+function _safeHttpUrl(v) {
+  var s = String(v == null ? '' : v).trim();
+  /* 🔴 رفضٌ صريح لا حذف ولا استبدال — راجع الكتلة أعلاه: الاتجاه ينقلب في بوّابة سامحة. */
+  if (!s || /[\u0000-\u0020\u007f]/.test(s)) return '';
+  return /^https:\/\//i.test(s) ? s : '';
+}
+
+/** يستبدل النصّ الداخلي لعنصر — نصّاً لا HTML (اسم المدرسة قيمة مستأجر). */
+function _TextSet(val) { this.val = val; }
+_TextSet.prototype.element = function (el) { if (this.val) el.setInnerContent(this.val, { html: false }); };
+
+/* يحقن `window.__HOME_BRAND__` ليقرأه سكربت الهوية المتزامن في الصفحة فيطلي فوراً
+   **ويبذر كاشه المحلّي من أوّل زيارة**.
+   🔴 `<` يُهرَّب إلى `<` داخل JSON: بلا ذلك يكفي أن يحمل اسمُ مدرسةٍ `</script>`
+   لكسر الوثيقة كلّها — والاسم يأتي من شيت يحرّره بشر. */
+function _BrandHead(brand) { this.brand = brand; }
+_BrandHead.prototype.element = function (el) {
+  var json = JSON.stringify(this.brand).replace(/</g, '\\u003c');
+  el.append('<script>window.__HOME_BRAND__=' + json + ';</' + 'script>', { html: true });
+};
+
+/* لاحقة عنوان التبويب — **نسخةٌ ثالثة بالضرورة**: هذا مستودع منفصل عن `SchoolApp-gas`
+   وGAS لا يشارك كوداً معه. يحرس تطابقها الحرفي مع `__homeDocTitle` هناك حارسٌ في
+   `test-routes.js`؛ انحرافُها يجعل العنوان **يقفز** لحظة وصول الحمولة بدل أن يستقرّ. */
+function _brandDocTitle(name, tagline) {
+  return name + (tagline ? ' — ' + tagline : '') + ' | يمن سكولز';
+}
+
+/* يُلحِق معالجات الهوية بسلسلة `HTMLRewriter` قائمة. مفصولٌ في دالّة كي تستعمله
+   المسارات كلّها بلا نسخ ثانٍ ينحرف. */
+function _brandRewrite(rw, brand) {
+  rw = rw.on('title', new _TextSet(_brandDocTitle(brand.name, brand.tagline)))
+         .on('.school-brand-name', new _TextSet(brand.name))
+         .on('meta[property="og:title"]', new _AttrSet('content', brand.name))
+         .on('head', new _BrandHead(brand));
+  if (brand.description) {
+    rw = rw.on('meta[name="description"]', new _AttrSet('content', brand.description))
+           .on('meta[property="og:description"]', new _AttrSet('content', brand.description));
+  }
+  if (brand.logo) {
+    rw = rw.on('#hdrLogo', new _AttrSet('src', brand.logo))
+           .on('#ftLogo', new _AttrSet('src', brand.logo))
+           .on('meta[data-og="img1"]', new _AttrSet('content', brand.logo))
+           .on('meta[name="twitter:image"]', new _AttrSet('content', brand.logo));
+  }
+  /* 🔒 `og:site_name` غائب عن القائمة **عمداً وأبداً** — بندا 68/75: كتابة اسم مدرسة
+     فوق اسم الموقع هي سبب خمس رفضات OAuth Branding. */
+  return rw;
+}
+
 export default {
   async fetch(request, env, ctx) {
     var url = new URL(request.url);
@@ -1076,10 +1225,26 @@ export default {
     //    الوسم من المصدر غداً يُصمِت الحقن ويبقى كلّ فحص أخضر. دَينٌ مفتوح مقصود ومُعلَن،
     //    لا ادّعاءُ حمايةٍ غير قائمة.
     if (isHtml && ghResp.status === 200 && _canonHref) {
-      return new HTMLRewriter()
+      var _rw = new HTMLRewriter()
         .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
-        .on('meta[property="og:url"]', new _AttrSet('content', _canonHref))
-        .transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
+        .on('meta[property="og:url"]', new _AttrSet('content', _canonHref));
+
+      /* ── هوية المدرسة في الـHTML الخام (راجع الكتلة الشارحة عند `BRAND_TTL_S`) ──
+         🔒 مشروطٌ بـ`_pathSlug` وحده ⇒ الجذر `/` و`/home/index.html` العاري لا يُمَسّان.
+         🔒 و`!_newsId`: مسار المشاركة يملك سلسلته الخاصّة أعلاه بوسوم OG **خاصّة بالخبر**،
+            ودهسُها باسم المدرسة يُفرِغ بطاقة المعاينة من مضمونها. (ولا يصل هذا السطر
+            أصلاً حين ينجح ذلك المسار — لكنه يصله حين يفشل أو يتخطّاه الـbulkhead.)
+         🔴 fail-open: `_brandFromCache` تقرأ كاش الحافة فقط. إخفاقها ⇒ نخدم الصفحة كما
+            هي **بلا أي انتظار** ونُحدِّث في الخلفية. أوّل زائر بعد انتهاء المهلة يرى
+            السلوك القديم — وهو مقبول لأن كاش الصفحة العميلي يغطّيه، والبديل (انتظار GAS
+            في مسار الطلب) يُضاعف العلّة التي جئنا نُصلحها. */
+      if (_pathSlug && !_newsId) {
+        var _brand = await _brandFromCache(url.origin, _pathSlug);
+        if (_brand) _rw = _brandRewrite(_rw, _brand);
+        else if (ctx && ctx.waitUntil) ctx.waitUntil(_brandRefresh(url.origin, _pathSlug, env));
+      }
+
+      return _rw.transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
     }
 
     return new Response(ghResp.body, {
