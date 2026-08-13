@@ -1137,6 +1137,187 @@ img,video,iframe{max-width:100%;display:block}
     var o = document.querySelector('meta[property="og:url"]');
     if (o) o.setAttribute('content', url);
   })();
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   كاش هوية المدرسة — يُطبَّق **قبل أول طلاء** (2026-08-13)
+
+   العلّة المقيسة: هذا الملف يُخدَم بايتاً ببايت لكل المدارس (‏179,816 بايت متطابقة على
+   `/abdaawatmuaz` و`/ibn-khaldoun`، الفرق سطرا `canonical`/`og:url` وحدهما)، وهويته
+   الساكنة هي **المنتج** لا المدرسة. وكانت الهوية الحقيقية لا تُطبَّق إلا داخل
+   `withSuccessHandler` لنداء `getHomePageBundle` — الذي قِيس عند وسيط **14,535ms** وفشل
+   **38.81٪** (‏`_docs/perf/trend.jsonl`, 2026-08-13)، وتنفيذُ الكود نفسه 1,670ms فقط.
+   ⇒ كان كل زائر يرى «يمن سكولز» ثوانيَ طويلة، ويراها **للأبد** حين يفشل النداء.
+
+   العلاج: هوية العرض تُخبَّأ مبصومةً بالمستأجر وتُطلى تزامنياً هنا. نظيره المثبَت في
+   المشروع كاش هوية `teacher/Teacher Dashboard.html` (م2-و).
+
+   🔒 `og:site_name` **لا يُلمَس هنا ولا في أي مسار** (بندا 68/75) — خمس رفضات OAuth
+      Branding سببها كتابة اسم مدرسة فوق اسم الموقع.
+   🔴 يُخزَّن **مخرَج** التظليل لا اللون الخام: منطق حارس التباين يبقى نسخةً واحدة في
+      `_homeThemeVars` بالجسم؛ إعادة اشتقاقه هنا كانت ستنحرف صامتاً (فخّ بند 25).
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+/* المخزن المتدرّج — **التعريف الوحيد**. عُرِّف هنا لا في الجسم لأن الكاش أدناه يقرأه قبل
+   أول طلاء بينما `_pubStorage()` (عدّاد المشاهدات) يقرأه بعد التحميل؛ و`_pubStorage()`
+   صار يفوِّض إليه. `localStorage` يرمي فعلياً في متصفّحات داخل التطبيقات (واتساب/فيسبوك)
+   وفي التصفّح الخاص — وهي المسار الطبيعي لروابط الأخبار المُشارَكة. */
+window.__homeStorage = function () {
+  if (window._pubStoreResolved !== undefined) return window._pubStoreResolved;
+  var probe = '__pub_probe__';
+  var picked = null;
+  try {
+    if (window.localStorage) {
+      window.localStorage.setItem(probe, '1');
+      window.localStorage.removeItem(probe);
+      picked = window.localStorage;
+    }
+  } catch (e1) { picked = null; }
+  if (!picked) {
+    try {
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(probe, '1');
+        window.sessionStorage.removeItem(probe);
+        picked = window.sessionStorage;
+      }
+    } catch (e2) { picked = null; }
+  }
+  window._pubStoreResolved = picked;
+  return picked;
+};
+
+/* أولوية معرّف المستأجر — **التعريف الوحيد**: `?school=` صريح ← slug المسار ← حقن الخادم.
+   يفوِّض إليه `_homeActiveSchoolId()` بالجسم ممرِّراً `SERVER_SCHOOL_ID` (غير مرئي هنا).
+   الفارغ = مدرسة المالك لا «معرّف مفقود» (بند 99).
+
+   🔴 **الاستعلام يُقرأ هنا مباشرةً لا عبر `window.SCHOOL_ID` وحده — وهذا ليس تكراراً.**
+   `window.SCHOOL_ID` يحقنه **البناء** في `frontend/` ولا وجود له في المصدر إطلاقاً، بينما
+   هذا الملفّ يُخدَم من **سطحين**: الثابت (‏`/<slug>` و`/home/index.html`) و`doGet` الخام
+   (‏`/gas/home?school=<id>` — عامّ وحيّ، و`home/Code.js` يقرأ `e.parameter.school`).
+   وعلى السطح الخام `window.SCHOOL_ID` **غير مضبوط**، فكان `__homeBrandCacheKey()` — الذي
+   ينادي بفراغ — يسقط على `_owner` بينما `_homeActiveSchoolId()` يحلّ المدرسة الصحيحة من
+   `SERVER_SCHOOL_ID` ⇒ **هوية مدرسةٍ أخرى تُكتَب تحت مفتاح المالك، ثم تُطلى على صفحته**.
+   أي عكسُ ما يَعِد به التعليق أدناه بالضبط. رصدَته مراجعة `gas-reviewer`.
+   ⇒ قراءةُ الاستعلام هنا توحّد السطحين بلا اعتماد على توقيت حقنٍ لا يقع أصلاً على أحدهما.
+   والترتيب `schoolId` ثم `school` مطابق لـ`_build/build-frontend.js` حرفياً. */
+window.__homeTenantKey = function (fallback) {
+  try {
+    var qs = new URLSearchParams(window.location.search);
+    var q = qs.get('schoolId') || qs.get('school') || '';
+    if (q) return String(q);
+  } catch (e0) {}
+  try { if (window.SCHOOL_ID) return String(window.SCHOOL_ID); } catch (e) {}
+  try { var s = window.__hasPathSlug(); if (s) return s; } catch (e2) {}
+  return String(fallback || '');
+};
+
+/* 🔒 بوّابة مخطّط لشعار المدرسة — **التعريف الوحيد** ويُستعمل عند الكتابة والطلاء معاً.
+   القيمة تصل من عمود `logo_url` بشيت تحرّره إدارةُ المدرسة، و`normalizeGoogleDriveUrl`
+   (‏`home/DriveUrlUtils.js`) تُعيد أي رابط بلا `drive.google.com` **كما هو**. وقبل هذه
+   الدفعة كانت تُسنَد إلى `img.src` لحظياً فحسب؛ الآن تُخزَّن حتى ٣٠ يوماً وتُطلى قبل أوّل
+   طلاء ⇒ سطحُ الخطر اتّسع فوجب إغلاقه. الوسيط يطبّق نظيرها على نفس الحقل.
+
+   🔴 **رفضٌ صريح لا تنظيف**: هذه بوّابة **سامحة** (تشترط `https://`)، وفيها يَنقلب اتجاه
+   بند 35 — حذفُ حرف تحكّم يحوّل `https:<TAB>//evil` إلى `https://evil` **فيُقبَل**. */
+window.__homeSafeLogo = function (v) {
+  var s = ((v === null || v === undefined) ? '' : String(v)).trim();
+  if (!s || /[\u0000-\u0020\u007f]/.test(s)) return '';
+  return /^https:\/\//i.test(s) ? s : '';
+};
+
+var HOME_BRAND_CACHE_PREFIX = 'home_brand_v1_';
+var HOME_BRAND_MAX_AGE_MS = 2592000000;   /* ٣٠ يوماً */
+
+/* 🔴 المفتاح مبصوم بالمستأجر بنيوياً (بندا 23/27) — لا مفتاح عام إطلاقاً، فيستحيل أن تقرأ
+   صفحةُ مدرسةٍ هويةَ أخرى مهما تعاقبت الزيارات في نفس المتصفّح. */
+window.__homeBrandCacheKey = function () {
+  return HOME_BRAND_CACHE_PREFIX + (window.__homeTenantKey('') || '_owner');
+};
+
+/* لاحقة المنتج بعد اسم المدرسة — **التعريف الوحيد** لعنوان التبويب، تستدعيه `applySeo`
+   أيضاً. تثبيت السلسلة في موضعين يجعل أحدهما ينحرف صامتاً عن الآخر. */
+window.__homeDocTitle = function (name, tagline) {
+  return name + (tagline ? ' — ' + tagline : '') + ' | يمن سكولز';
+};
+
+/* طلاء الاسم/الشعار في الجسم — **التعريف الوحيد**، تفوِّض إليه `applyBrandText` بالجسم. */
+window.__homeApplyBrandDom = function (name, logo) {
+  var i, els = document.querySelectorAll('.school-brand-name');
+  /* `textContent` لا `innerHTML`: الاسم نصّ مستأجر يصل من شيت يحرّره بشر. */
+  for (i = 0; i < els.length; i++) { els[i].textContent = name; }
+  logo = window.__homeSafeLogo(logo);   /* 🔒 نقطةُ فحصٍ واحدة تكفي كلّ مستدعٍ */
+  if (logo) {
+    var ids = ['hdrLogo', 'ftLogo'], im;
+    for (i = 0; i < ids.length; i++) {
+      im = document.getElementById(ids[i]);
+      if (im) { im.src = logo; im.alt = name; im.style.display = ''; }
+    }
+  }
+  /* الاسم الإنجليزي يُخفى: السجل المركزي بلا عمود اسم إنجليزي، فإبقاء «Yemen Schoolz»
+     تحت اسم مدرسة عربي يُقرأ تسميةً خاطئة لها. */
+  var en = ['hdrNameEn', 'drwNameEn'], e3;
+  for (i = 0; i < en.length; i++) { e3 = document.getElementById(en[i]); if (e3) e3.style.display = 'none'; }
+};
+
+window.__homeReadCachedBrand = function () {
+  try {
+    var st = window.__homeStorage();
+    if (!st) return null;
+    var raw = st.getItem(window.__homeBrandCacheKey());
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    if (!o || o.v !== 1 || !o.name) return null;
+    /* 🔴 لا إسقاط بعمر قصير عمداً: شعار متقادم بيومين **أفضل قطعاً** من هوية مدرسة خاطئة.
+       السقف ٣٠ يوماً حارسٌ ضد بيانات ميّتة لمدرسة لم تُزَر منذ شهر، لا بوّابة طزاجة —
+       الطزاجة تأتي من الحمولة التي تدهس هذا بعد ثوانٍ على كل حال. */
+    if (o.savedAt && (new Date().getTime() - o.savedAt) > HOME_BRAND_MAX_AGE_MS) return null;
+    return o;
+  } catch (e) { return null; }
+};
+
+window.__homeWriteCachedBrand = function (o) {
+  try {
+    var st = window.__homeStorage();
+    if (!st) return false;
+    st.setItem(window.__homeBrandCacheKey(), JSON.stringify(o));
+    return true;
+  } catch (e) { return false; }
+};
+
+/* يُطبِّق الهوية المتاحة قبل الحمولة. المصدر بالأولوية:
+     ① `window.__HOME_BRAND__` — يحقنه وسيط Cloudflare في HTML الخام على `/<slug>`،
+        فيغطّي **الزائر الأوّل** الذي لا كاش لديه.
+     ② الكاش المحلّي — يغطّي الزائر المتكرّر حتى لو فشل النداء وفشل الوسيط معاً.
+   idempotent ويُستدعى ثلاث مرّات: هنا (وسوم الرأس + متغيّرات CSS)، بعد الترويسة مباشرةً
+   (أوّل موضع مرئي فوق الطيّة)، وآخر الجسم (الدرج · الشريط · التذييل). */
+window.__homeApplyCachedBrand = function () {
+  var b = window.__HOME_BRAND__ || window.__homeReadCachedBrand();
+  if (!b || !b.name) return false;
+  var d = document, k, st;
+  if (b.cssVars) {
+    st = d.documentElement.style;
+    for (k in b.cssVars) {
+      if (Object.prototype.hasOwnProperty.call(b.cssVars, k)) st.setProperty(k, b.cssVars[k]);
+    }
+  }
+  function _hMeta(sel, val) {
+    if (!val) return;
+    var el = d.querySelector(sel);
+    if (el) el.setAttribute('content', val);
+  }
+  try { d.title = window.__homeDocTitle(b.name, b.tagline || ''); } catch (e) {}
+  _hMeta('meta[property="og:title"]', b.name);
+  _hMeta('meta[name="description"]', b.description);
+  _hMeta('meta[property="og:description"]', b.description);
+  /* 🔒 نفس البوّابة على وسمَي الصورة: `og:image` يُعاد نشره في سياقات أخرى (بطاقات
+     المشاركة)، فقيمةٌ بمخطّط غريب تُغادر صفحتنا إلى منصّات لا نتحكّم بها. */
+  _hMeta('meta[property="og:image"]', window.__homeSafeLogo(b.logo));
+  _hMeta('meta[name="twitter:image"]', window.__homeSafeLogo(b.logo));
+  /* 🔒 `og:site_name` غائب عن القائمة أعلاه **عمداً** — بندا 68/75. */
+  window.__homeApplyBrandDom(b.name, b.logo || '');
+  return true;
+};
+
+window.__homeApplyCachedBrand();
 </script>
 
 <!-- PROGRESS BAR -->
@@ -1220,6 +1401,11 @@ img,video,iframe{max-width:100%;display:block}
     </div>
   </div>
 </header>
+<!-- 🔴 الاستدعاء الثاني لطلاء الهوية المخبَّأة — **متزامن وفي هذا الموضع بالذات**: الاستدعاء
+     الأوّل (أوّل الجسم) يسبق تحليل الترويسة فلا يجد عُقَد `.school-brand-name` ولا `#hdrLogo`،
+     وهذه هي المواضع الوحيدة **فوق الطيّة** — أي ما يراه الزائر فعلاً قبل أي تمرير. تأخيره إلى
+     `DOMContentLoaded` يُعيد الوميض الذي أُلغي. idempotent، ويدهسه وصول الحمولة بعد ثوانٍ. -->
+<script>window.__homeApplyCachedBrand();</script>
 
 <!-- MOBILE DRAWER -->
 <div class="drawer-veil" id="drawerVeil"></div>
@@ -1881,10 +2067,17 @@ function _thLuma(rgb){ return (rgb[0]*299 + rgb[1]*587 + rgb[2]*114)/1000; }
 
 var HOME_THEME_LUMA_MAX = 150;   // فوقها يُظلَّل اللون قبل استعماله نصّاً على أبيض
 
-function _homeApplyBrandTheme(b){
-  var raw=(b&&b.brand&&b.brand.color)||'';
-  var rgb=_thParse(raw);
-  if(!rgb) return false;                       // لون غير صالح ⇒ لا يُلمَس أي توكن (بند 77)
+/**
+ * 🔴 **دالّة نقيّة** تُرجِع خريطة المتغيّرات السبعة المحسوبة، أو `null` للون غير صالح.
+ *
+ * فُصِلت عن الإسناد عمداً (2026-08-13): كاش الهوية يخزّن **مخرَجها** لا اللون الخام، فيُعيد
+ * سكربتُ ما-قبل-الطلاء `setProperty` حرفياً بلا أن يعرف شيئاً عن حارس التباين. البديل —
+ * إعادة اشتقاق التظليل هناك — نسختان تنحرفان صامتاً (فخّ بند 25)، وأثرُه أن لون الصفحة
+ * المخبَّأ يخالف اللون النهائي فيومض مرّتين بدل مرّة.
+ */
+function _homeThemeVars(raw){
+  var rgb=_thParse(raw||'');
+  if(!rgb) return null;                        // لون غير صالح ⇒ لا يُلمَس أي توكن (بند 77)
   // 🔴 حارس التباين (بندا 8/24): `--cobalt` يُستعمل **نصّاً على أبيض** في مواضع كثيرة، فلون
   // مدرسة فاتح يكسر التباين في كل الأوضاع لا في الليلي وحده. التظليل قبل الإسناد لا بعده.
   var ink=rgb;
@@ -1896,15 +2089,23 @@ function _homeApplyBrandTheme(b){
   var base='#'+_thHex2(ink[0])+_thHex2(ink[1])+_thHex2(ink[2]);
   var light=_thShade(ink,0.18), dark=_thShade(ink,-0.45);
   var r=ink[0], g=ink[1], bl=ink[2];
-  var st=document.documentElement.style;
-  st.setProperty('--cobalt',   base);
-  st.setProperty('--cobalt-v', light);
-  st.setProperty('--g-cobalt', 'linear-gradient(135deg,'+dark+','+base+')');
-  // طرف الكوبالت فقط — الـteal يبقى كما صُمِّم، فالتدرّج يحتفظ بشخصيته.
-  st.setProperty('--g-brand',  'linear-gradient(135deg,'+base+',#1dbfa6)');
-  st.setProperty('--border',   'rgba('+r+','+g+','+bl+',.10)');
-  st.setProperty('--border2',  'rgba('+r+','+g+','+bl+',.18)');
-  st.setProperty('--glow-cobalt', '0 8px 32px rgba('+r+','+g+','+bl+',.35)');
+  return {
+    '--cobalt':   base,
+    '--cobalt-v': light,
+    '--g-cobalt': 'linear-gradient(135deg,'+dark+','+base+')',
+    // طرف الكوبالت فقط — الـteal يبقى كما صُمِّم، فالتدرّج يحتفظ بشخصيته.
+    '--g-brand':  'linear-gradient(135deg,'+base+',#1dbfa6)',
+    '--border':   'rgba('+r+','+g+','+bl+',.10)',
+    '--border2':  'rgba('+r+','+g+','+bl+',.18)',
+    '--glow-cobalt': '0 8px 32px rgba('+r+','+g+','+bl+',.35)'
+  };
+}
+
+function _homeApplyBrandTheme(b){
+  var vars=_homeThemeVars((b&&b.brand&&b.brand.color)||'');
+  if(!vars) return false;
+  var st=document.documentElement.style, k;
+  for(k in vars){ if(vars.hasOwnProperty(k)) st.setProperty(k, vars[k]); }
   return true;
 }
 
@@ -2224,28 +2425,12 @@ function renderNews(items) {
    وضع التصفّح الخاص — وهو **المسار الطبيعي** لروابط الأخبار المُشارَكة. بلا هذا التدرّج
    كان `_homeVisitorId` يسقط إلى `'v0'` و`_pubViewedLoad` إلى كائن فارغ ⇒ مانع التكرار
    ينهار كلياً ويُعاد إطلاق نداء لكل خبر في **كل** فتح للصفحة. */
+/* 🔴 التعريف انتقل إلى السكربت المتزامن أوّل الجسم (‏`window.__homeStorage`) لأن كاش
+   الهوية يقرأ المخزن **قبل أول طلاء**، أي قبل تنفيذ هذا السكربت بكثير. هذه الدالّة تبقى
+   بلا تغيير سلوكي (نفس التذكرة `window._pubStoreResolved`) وبنفس اسمها لأن لها مستدعين
+   كثيرين — لكنها **غلافٌ لا نسخة ثانية**: نسختان تنحرفان صامتاً (فخّ بند 25). */
 function _pubStorage() {
-  if (window._pubStoreResolved !== undefined) return window._pubStoreResolved;
-  var probe = '__pub_probe__';
-  var picked = null;
-  try {
-    if (window.localStorage) {
-      window.localStorage.setItem(probe, '1');
-      window.localStorage.removeItem(probe);
-      picked = window.localStorage;
-    }
-  } catch (e1) { picked = null; }
-  if (!picked) {
-    try {
-      if (window.sessionStorage) {
-        window.sessionStorage.setItem(probe, '1');
-        window.sessionStorage.removeItem(probe);
-        picked = window.sessionStorage;
-      }
-    } catch (e2) { picked = null; }
-  }
-  window._pubStoreResolved = picked;
-  return picked;
+  return window.__homeStorage();
 }
 
 function _homeVisitorId() {
@@ -2639,15 +2824,11 @@ var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
  * الـslug بين الاثنين لا قبلهما: طلبٌ صريح بـ`?school=` يفوز دائماً (تشخيص/تبديل مقصود)،
  * وحقنُ الخادم يبقى تراجعاً لسطح `/exec` حيث لا مسار slug أصلاً.
  */
+/* 🔴 غلافٌ لا نسخة: منطق الأولوية يعيش في `window.__homeTenantKey` بالسكربت المتزامن أوّل
+   الجسم، لأن مفتاح كاش الهوية يُشتقّ منه **قبل أول طلاء**. `SERVER_SCHOOL_ID` يُمرَّر لأنه
+   `var` في هذا النطاق ويستبدله البناء — فلا يراه ذلك السكربت. */
 function _homeActiveSchoolId(){
-  try{ if(window.SCHOOL_ID) return String(window.SCHOOL_ID); }catch(e){}
-  try{
-    if(typeof window.__hasPathSlug === 'function'){
-      var s = window.__hasPathSlug();
-      if(s) return s;
-    }
-  }catch(e){}
-  return String(SERVER_SCHOOL_ID || '');
+  return window.__homeTenantKey(SERVER_SCHOOL_ID);
 }
 
 // سقوف العرض على الصفحة الرئيسية — تحافظ على كثافة التصميم الحالية. **العدّادات لا تتبعها**:
@@ -2656,8 +2837,11 @@ var HOME_NEWS_CARDS_MAX = 6;
 
 /**
  * المسار الجديد: **نداء واحد** يحمل الهوية والمحتوى والإحصاء والشهادات.
- * المسار القديم (`loadSplitData`، أربعة نداءات) يبقى **تراجعاً** عند `ok:false` أو خطأ شبكة —
- * لا يُحذف: متصفّح بصفحة مخبَّأة ينادي الشكل القديم ساعات بعد النشر (فخّ بند 9).
+ *
+ * المسار القديم (`loadSplitData`، أربعة نداءات) لا يُحذف — متصفّح بصفحة مخبَّأة ينادي الشكل
+ * القديم ساعات بعد النشر (فخّ بند 9) — لكنه **لم يعد تراجعاً عامّاً** منذ 2026-08-13:
+ * دوالُّه الأربع أحادية المستأجر بنيوياً، فصار مقصوراً على المسار العاري بلا معرّف.
+ * التفصيل والقياس في `_homeBundleFailed` أدناه.
  */
 /**
  * رابط المكتبة للمدرسة النشِطة. يُبنى من `_homeActiveSchoolId()` **لا** من `location`:
@@ -2769,6 +2953,83 @@ function _homeSafeApply(label, fn){
     return false;
   }
 }
+/**
+ * يحفظ **هوية العرض** وحدها للطلاء قبل أول طلاء في الزيارة القادمة (ح2، 2026-08-13).
+ *
+ * 🔴 بلا هاتف/عنوان/سوشل عمداً: تلك محكومة بـ`_homeContactField` الذي يُخفيها لغير المالك،
+ * وقيمةُ تواصلٍ متقادمة أسوأ من غيابها — بينما اسمٌ وشعارٌ متقادمان بيوم لا يضرّان أحداً.
+ * 🔴 و`cssVars` مخرَجُ `_homeThemeVars` لا اللون الخام (انظر تعليقها).
+ */
+function _homeCacheBrand(b){
+  if(!b || !b.brand || !b.brand.name) return false;
+  var p = b.page || {};
+  return window.__homeWriteCachedBrand({
+    v: 1,
+    savedAt: new Date().getTime(),
+    name: b.brand.name,
+    /* 🔒 يُفحَص **قبل** التخزين لا عند القراءة وحدها: قيمةٌ بمخطّط غريب لا يجوز أن تعيش
+       في تخزين المتصفّح ثلاثين يوماً أصلاً — والكتابة تسبق القراءة دوماً. */
+    logo: window.__homeSafeLogo(b.brand.logo),
+    tagline: p.tagline || '',
+    description: p.aboutText || '',
+    isOwner: b.isOwner === true,
+    cssVars: _homeThemeVars(b.brand.color || '') || null
+  });
+}
+
+/**
+ * مسار فشل الحمولة على صفحة **مدرسة** — بديلٌ عن `loadSplitData()` (ح1، 2026-08-13).
+ *
+ * 🔴 لماذا لا `loadSplitData()` هنا: دوالها الأربع
+ * (`getSchoolStats`/`getNewsForSchool`/`getImagesForSchool`/`getVideosForSchool`) **لا تقبل
+ * معرّف مدرسة إطلاقاً** — كلّها تمرّ بـ`getSheet` → `_getSS()` المثبَّت على
+ * `CONFIG.SPREADSHEET_ID` (ملف CMS مدرسة المالك)، ومفتاح كاشها `school_news_<n>` غير مبصوم
+ * بالمستأجر. فكانت زيارة `/ibn-khaldoun` عند الفشل تعرض **أخبار وصور وفيديو الإبداع**.
+ * وقياس 2026-08-13: الفشل 38.81٪ ⇒ ذلك يقع في ثلث الزيارات، ويضيف **أربعة** نداءات إلى
+ * نفس الحصّة المخنوقة التي سبّبت الفشل — حلقة تغذية راجعة موجبة.
+ *
+ * 🔴 وبلا أي إعادة محاولة تلقائية: بند 128 (إعادة المحاولة على الإشباع تُسيئه)، و
+ * `assets/gas-bridge.js` ينفّذ إعادةً واحدة لأخطاء الشبكة **ويستثني الإشباع عمداً** —
+ * فطبقةٌ ثانية هنا تخالف الاثنين. الزرّ يدوي: قرارُ إنسانٍ حاضر لا عاصفةُ عملاء.
+ */
+function _homeBundleFailed(reason){
+  var notFound = (reason === 'not_found');
+  var msg = notFound
+    ? 'هذه المدرسة غير متاحة حالياً.'
+    : 'تعذّر تحميل بيانات المدرسة — الخادم مشغول.';
+  var ids = ['dynamicNewsGrid','dynamicImagesGrid','dynamicVideoGrid'], i, el;
+  for(i = 0; i < ids.length; i++){
+    el = document.getElementById(ids[i]);
+    if(!el) continue;
+    el.textContent = '';
+    var box = document.createElement('div');
+    box.className = 'empty-state';
+    box.style.cssText = 'grid-column:1/-1;text-align:center;padding:28px 12px;opacity:.85';
+    var t = document.createElement('div');
+    t.textContent = msg;                       // نصّ لا HTML — `reason` يأتي من الخادم
+    box.appendChild(t);
+    // زرٌّ واحد فقط في أول حاوية: ثلاثة أزرار تُغري بثلاث نداءات متزامنة.
+    if(!notFound && i === 0){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'إعادة المحاولة';
+      btn.style.cssText = 'margin-top:12px;padding:8px 20px;border-radius:999px;border:1px solid var(--border2);background:var(--g-brand);color:#fff;font-weight:700;cursor:pointer';
+      btn.onclick = function(){ loadHomeBundle(); };
+      box.appendChild(btn);
+    }
+    el.appendChild(box);
+  }
+}
+
+/**
+ * 🔴 التراجع القديم مقصورٌ الآن على **المسار العاري بلا أي معرّف مستأجر** — وهو المستأجر
+ * الوحيد (مدرسة المالك) الذي تصفه دوالُّه بنيوياً. أي معرّف/سلاگ ⇒ `_homeBundleFailed`.
+ */
+function _homeBundleFallback(reason){
+  if(!_homeActiveSchoolId()) { loadSplitData(); return; }
+  _homeBundleFailed(reason);
+}
+
 function loadHomeBundle(){
   setLoading('dynamicNewsGrid','جاري تحميل الأخبار…');
   setLoading('dynamicImagesGrid','جاري تحميل الصور…');
@@ -2776,8 +3037,12 @@ function loadHomeBundle(){
   try{
     google.script.run
       .withSuccessHandler(function(b){
-        if(!b || b.ok !== true){ loadSplitData(); return; }
+        if(!b || b.ok !== true){ _homeBundleFallback(b && b.reason); return; }
         window._homeBundle = b;
+        // 🔴 **أوّل خطوة بعد التحقّق**: الهوية تُخبَّأ قبل أي خطوة عرض قد ترمي. لو وُضِعت
+        // في الذيل لَما كُتب الكاش أبداً على صفحةٍ تفشل فيها خطوة عرض واحدة — أي تبقى
+        // تلك الصفحة تحديداً بلا كاش للأبد وهي الأحوج إليه.
+        _homeSafeApply('brandcache', function(){ _homeCacheBrand(b); });
         // الوسائط أولاً — هي التي تُزيل مؤشّرات التحميل الثلاثة، فتبقى الصفحة قابلة
         // للاستعمال حتى لو فشلت خطوة تالية.
         _homeSafeApply('news',    function(){
@@ -2832,9 +3097,9 @@ function loadHomeBundle(){
           window.applySchoolSeo(m, b.isOwner === true);
         });
       })
-      .withFailureHandler(function(){loadSplitData()})
+      .withFailureHandler(function(){_homeBundleFallback('')})
       .getHomePageBundle(_homeActiveSchoolId());
-  } catch(e){loadSplitData();}
+  } catch(e){_homeBundleFallback('');}
 }
 
 /** المسار القديم — يبقى للتراجع حصراً (أربعة نداءات · بيانات CMS · إحصاء افتراضي). */
@@ -3105,23 +3370,11 @@ document.addEventListener('DOMContentLoaded',function(){
   // اسم المدرسة وشعارها في جسم الصفحة — كانا مضمَّنَين حرفياً، و`applyContacts` تعالج
   // الهاتف والسوشل ولا تمسّ الاسم إطلاقاً. الافتراضي الساكن هوية **المنتج** (فهو ما يراه
   // الزاحف قبل تنفيذ أي JS)، وهذه الدالّة تستبدله ببيانات المدرسة متى وصلت من الشيت.
+  // 🔴 غلافٌ لا نسخة: الطلاء نفسه يعيش في `window.__homeApplyBrandDom` بالسكربت المتزامن
+  // أوّل الجسم، لأن كاش الهوية يطليه **قبل أول طلاء**. لو بقيت نسختان لانحرفت إحداهما
+  // صامتاً — وهو بالضبط ما يجعل صفحةً نصفُها هوية مدرسة ونصفُها هوية منصّة.
   function applyBrandText(p){
-    var i, els = document.querySelectorAll('.school-brand-name');
-    for(i = 0; i < els.length; i++){ els[i].textContent = p.name; }
-    if(p.logo){
-      var ids = ['hdrLogo', 'ftLogo'];
-      for(i = 0; i < ids.length; i++){
-        var im = document.getElementById(ids[i]);
-        if(im){ im.src = p.logo; im.alt = p.name; im.style.display = ''; }
-      }
-    }
-    // الاسم الإنجليزي يُخفى عند وصول بيانات المدرسة: السجل المركزي لا يحمل عموداً
-    // لاسم إنجليزي، فإبقاء «Yemen Schoolz» تحت اسم مدرسة عربي يقرأ كتسمية خاطئة لها.
-    var en = ['hdrNameEn', 'drwNameEn'];
-    for(i = 0; i < en.length; i++){
-      var e2 = document.getElementById(en[i]);
-      if(e2) e2.style.display = 'none';
-    }
+    window.__homeApplyBrandDom(p.name, p.logo || '');
   }
 
   // تراجع المالك: يملأ ما سكت عنه الشيت **فقط**، وخلف بوّابة `isOwner` حصراً.
@@ -3153,7 +3406,10 @@ document.addEventListener('DOMContentLoaded',function(){
     // اسم المدرسة أولاً (هو ما يبحث عنه الزائر) ولاحقة المنتج ثابتة بعده — فيبقى
     // انتماء الصفحة للمنصّة ظاهراً في تبويب المتصفّح وفي عنوان نتيجة البحث معاً،
     // بينما الوسم الساكن في <head> يضمن الهوية حتى بلا تنفيذ JS.
-    document.title = p.name + (p.tagline ? ' — ' + p.tagline : '') + ' | يمن سكولز';
+    // 🔴 عبر `__homeDocTitle` لا بتركيب السلسلة هنا: نفس العنوان يُبنى في ثلاثة أماكن
+    // (هنا · كاش الهوية · حقن وسيط Cloudflare)، وتثبيتُه حرفياً في كلٍّ منها يجعلها
+    // تنحرف صامتاً فيقفز العنوان عند وصول الحمولة بدل أن يستقرّ.
+    document.title = window.__homeDocTitle(p.name, p.tagline);
     setMeta('meta[name="description"]', p.description);
     setMeta('meta[property="og:title"]', p.name);
     setMeta('meta[property="og:description"]', p.description);
@@ -3257,5 +3513,10 @@ document.addEventListener('DOMContentLoaded',function(){
   injectSiteLd();
 })();
 </script>
+
+<!-- الاستدعاء الثالث والأخير — يغطّي المواضع التي لم تكن محلَّلة عند الاستدعاء الثاني:
+     الدرج (`drawer`) والشريط المتحرّك والتذييل. كلّها تحت الطيّة فلا وميض مرئي فيها، لكن
+     تركها بهوية المنتج يُنتج صفحةً نصفُها مدرسة ونصفُها منصّة إن فشل النداء. -->
+<script>window.__homeApplyCachedBrand();</script>
 </body>
 </html>
