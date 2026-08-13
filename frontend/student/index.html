@@ -37,7 +37,8 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
+    var _pSlug = (/^\/(?:teacher|student)\/[a-z0-9-]+\/([a-z0-9-]+)\/?$/i.exec(window.location.pathname || '') || [])[1] || '';
+    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '';
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -4114,6 +4115,9 @@ function goTab(tab, btn) {
 
   APP.currentTab = tab;
   lsSaveSession(); // تحديث التبويب المحفوظ في localStorage
+  /* 🔖 ومزامنة شريط المتصفّح إن كنّا على مسارٍ عميق. محروسة بـ`typeof` لأن `goTab`
+     مُعرَّفة قبل المُوجِّه في نفس الملف. ولا تلمس الرابط ما لم يكن من الشكل الجديد. */
+  try { if (typeof _stuPrSyncUrl === 'function') _stuPrSyncUrl(tab); } catch (ePr) {}
 
   // تحميل كسول — كل قسم يُحمَّل أول مرة فقط
   if (!APP.loaded[tab]) {
@@ -4146,6 +4150,64 @@ function goTabByName(name) {
   var btn = document.querySelector('.tab-btn[data-tab="' + name + '"]');
   if (btn) goTab(name, btn);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PortalRouter (الطالب) — ربط `/student/<tab>[/<slug>]` بالتبويبات  (2026-08-13)
+
+   الوركر يعيد كتابة المسار **داخلياً** إلى `/student/index.html`، فيبقى
+   `location.pathname` كما طلبه الزائر. نظيرٌ مطابق منطقياً لـ`teacher/_js-portal-router`
+   لكن على `goTabByName` و`data-tab` بدل `showSection` و`si-*`.
+
+   🔴 ولا يلمس الرابط إطلاقاً ما لم يكن المسار من الشكل الجديد أصلاً:
+   `/student/index.html?school=<uuid>` **مجمَّد في الـAPK** بلا Deep Link، وتحويلُه
+   يكسر مستخدمي النسخة المنشورة بلا رجعة.
+   ═══════════════════════════════════════════════════════════ */
+var STU_PATH_RE = /^\/student\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i;
+var _stuPrSuppress = false;
+
+function _stuPrParsePath(pathname) {
+  var m = STU_PATH_RE.exec(pathname || '');
+  if (!m) return null;
+  var t = String(m[1] || '');
+  if (!t || t === 'index') return null;
+  return { tab: t, slug: String(m[2] || '') };
+}
+
+/* التبويب موجودٌ فعلاً؟ نفس معيار `goTabByName` حرفياً (زرٌّ بـ`data-tab`). */
+function _stuPrTabExists(name) {
+  if (!name) return false;
+  return !!document.querySelector('.tab-btn[data-tab="' + name + '"]');
+}
+
+/* التبويب الأوّلي: **المسار يسبق** الجلسة المحفوظة، ويسقط إليها عند أي تعذّر. */
+function _stuInitialTab(savedTab) {
+  var p = null;
+  try { p = _stuPrParsePath(window.location.pathname); } catch (e) { p = null; }
+  if (p && _stuPrTabExists(p.tab)) return p.tab;
+  return savedTab || 'home';
+}
+
+function _stuPrSyncUrl(name) {
+  if (_stuPrSuppress) return;
+  if (!name || !window.history || !window.history.pushState) return;
+  try {
+    var cur = _stuPrParsePath(window.location.pathname);
+    if (!cur) return;                       // مسارٌ قديم/مجمَّد ⇒ لا يُمَسّ
+    var next = '/student/' + name + (cur.slug ? '/' + cur.slug : '');
+    if (next === window.location.pathname) return;
+    window.history.pushState({ stuTab: name }, '', next + window.location.search);
+  } catch (e) {}
+}
+
+/* زرّ الرجوع — والعَلَم يمنع حلقةً: `popstate` ينادي `goTab` وهي تنادي المزامنة. */
+function _stuPrOnPopState() {
+  var p = null;
+  try { p = _stuPrParsePath(window.location.pathname); } catch (e) { p = null; }
+  if (!p || !_stuPrTabExists(p.tab)) return;
+  _stuPrSuppress = true;
+  try { goTabByName(p.tab); } finally { _stuPrSuppress = false; }
+}
+try { window.addEventListener('popstate', _stuPrOnPopState); } catch (e) {}
 
 // ═══════════════════════════════════════════════════════════
 // 6. الرئيسية — أخبار وإحصاء سريع
@@ -7863,8 +7925,14 @@ document.addEventListener('DOMContentLoaded', function () {
   var savedSession = lsLoadSession();
   // ★ عزل المدارس: إن طُلبت مدرسة عبر الرابط (?school=) تختلف عن جلسة محفوظة لمدرسة أخرى،
   //   أزِل الجلسة القديمة وأظهِر دخول المدرسة المطلوبة (حتى لا تظهر بيانات مدرسة سابقة).
-  var _reqSchool = (window.SCHOOL_ID || '');
-  try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || _reqSchool; } catch (eRS) {}
+  /* 🔴 **معامل الاستعلام وحده** — لا `window.SCHOOL_ID` (2026-08-13). نظيرُ الإصلاح في
+     `teacher/_js-certificates-scoresheets.html`: منذ صيرورة المسارات
+     `/student/<tab>/<slug>` صار الحقن يضع الـslug النصّي في `window.SCHOOL_ID`، بينما
+     `savedSession.user.schoolId` معرّفٌ قانوني ⇒ **لا يتساويان أبداً** ⇒ إسقاط الجلسة
+     ⇒ الرابط العميق يُخرج المستخدم. والتعليق أعلاه يقول نيّة الحارس: «(`?school=`)».
+     🔒 ولا ثغرة عزل: الجلسة تُحلّ خادمياً من `session.schoolId`. */
+  var _reqSchool = '';
+  try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || ''; } catch (eRS) {}
   if (_reqSchool && savedSession && savedSession.user && savedSession.user.schoolId && savedSession.user.schoolId !== _reqSchool) {
     try { lsClearSession(); } catch (eCS) {}
     try { ssClearAll(); } catch (eSS) {} // ✅ يمسح أيضاً كاش sessionStorage (درجات/مالية/واجبات...) لا localStorage فقط
@@ -7893,7 +7961,11 @@ document.addEventListener('DOMContentLoaded', function () {
         .refreshStudentSiblings(APP.user.id, APP.user.schoolId, APP.user.switchToken, getClientId());
     }
     // استعادة التبويب الأخير
-    var lastTab = savedSession.tab || 'home';
+    /* 🔖 التبويب الأوّلي: **المسار يسبق** الجلسة المحفوظة، ويسقط إليها عند أي تعذّر.
+       محروسٌ بـ`typeof` فلو غاب المُوجِّه عاد السلوك القائم حرفياً. */
+    var lastTab = (typeof _stuInitialTab === 'function')
+      ? _stuInitialTab(savedSession.tab)
+      : (savedSession.tab || 'home');
     if (lastTab !== 'home') {
       var tabBtn = document.querySelector('.tab-btn[data-tab="' + lastTab + '"]');
       if (tabBtn) {

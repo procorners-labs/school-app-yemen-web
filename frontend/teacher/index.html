@@ -37,7 +37,8 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '12725ed7-c139-422c-a2d1-ec0ddd358104';
+    var _pSlug = (/^\/(?:teacher|student)\/[a-z0-9-]+\/([a-z0-9-]+)\/?$/i.exec(window.location.pathname || '') || [])[1] || '';
+    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '12725ed7-c139-422c-a2d1-ec0ddd358104';
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -7152,8 +7153,13 @@ function bootApp() {
     _bootShown = true;
     if (_bootFallbackTimer) { clearTimeout(_bootFallbackTimer); _bootFallbackTimer = null; }
     hideLoading();
-    // 🔖 استعادة آخر قسم زاره المستخدم بدل العودة القسرية للرئيسية
-    showSection(_savedSectionOrDashboard());
+    /* 🔖 القسم الأوّلي: **المسار يسبق** آخر قسم محفوظ، ويسقط إليه عند أي تعذّر.
+       يقع هنا تحديداً — **بعد** `initSidebarByRole` (ومنه هبوط المحاسب التلقائي الذي
+       ينادي `showSection` بنفسه) — فيفوز المسار الصريح على الهبوط الافتراضي.
+       ومحروسٌ بـ`typeof`: لو غاب المُوجِّه لأي سبب عاد السلوك القائم حرفياً. */
+    showSection(typeof _portalInitialSection === 'function'
+      ? _portalInitialSection()
+      : _savedSectionOrDashboard());
   };
   // إن تأخّر ردّ مخطط الدرجات (شبكة بطيئة/TTL منتهٍ) فلا تُترَك الواجهة معلّقة للأبد —
   // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadSchemaConfig
@@ -9117,6 +9123,12 @@ function showSection(name, opt) {
     // 🔖 حفظ القسم الحالي كي تعود إعادة التحميل لنفس المكان لا للصفحة الرئيسية
     App.currentSection = name;
     try { localStorage.setItem('teacherActiveSection_v1', name); } catch (e) {}
+    /* 🔖 ومزامنة شريط المتصفّح إن كنّا على مسارٍ عميق (‏`_js-portal-router`).
+       محروسٌ بـ`typeof` لأن هذا الجزء يُحمَّل **قبل** المُوجِّه في ترتيب الـinclude —
+       فبلا الحارس تُلقي أوّل `showSection` قبل تحميله. والمُوجِّه لا يلمس الرابط
+       إطلاقاً ما لم يكن المسار من الشكل الجديد أصلاً (‏`/teacher/index.html` المجمَّد
+       في الـAPK لا يُهاجَر). */
+    try { if (typeof _prSyncUrl === 'function') _prSyncUrl(name); } catch (ePR) {}
     // ✅ إخفاء جميع الأقسام الثابتة دفعة واحدة (يمنع تداخل الصفحات نهائياً)
     //    كان social-section لا يُخفى هنا → يبقى ظاهراً فوق الصفحات الأخرى
     var _staticSections = document.querySelectorAll('.app-body > .section');
@@ -23329,8 +23341,18 @@ window.onload = function() {
   var saved = loadSession(); // يقرأ من localStorage إذا غابت sessionStorage
   // ★ عزل المدارس: إن طُلبت مدرسة عبر الرابط (?school=) تختلف عن جلسة محفوظة لمدرسة أخرى،
   //   أزِل الجلسة القديمة وأظهِر دخول المدرسة المطلوبة (حتى لا تظهر بيانات مدرسة سابقة).
-  var _reqSchool = (window.SCHOOL_ID || '');
-  try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || _reqSchool; } catch (eRS) {}
+  /* 🔴 **معامل الاستعلام وحده** — لا `window.SCHOOL_ID` (2026-08-13).
+     كان يتراجع إلى `window.SCHOOL_ID`، وكان ذلك سليماً ما دام لا يحمل إلا UUID أو
+     المدرسة الافتراضية. لكن منذ صيرورة المسارات `/teacher/<page>/<slug>` صار الحقن
+     يضع فيه **الـslug النصّي** — و`saved.schoolId` معرّفٌ قانوني (UUID) ⇒ **لا يتساويان
+     أبداً** ⇒ `clearSession()` ⇒ **الرابط العميق يُخرج المستخدم بدل أن يفتح القسم**.
+     رصدَته مراجعة `gas-reviewer` على PR#1067 قبل الدمج.
+     والتعليق أعلاه يقول نيّة الحارس صراحةً: «إن طُلبت مدرسة عبر الرابط (`?school=`)» —
+     أي **تبديلُ مستأجرٍ صريح**، لا slug مشاركةٍ في المسار.
+     🔒 ولا يفتح هذا ثغرة عزل: الجلسة الموثَّقة تُحلّ خادمياً من `session.schoolId` داخل
+     `withAuth` — فالـslug في المسار **لا يمنح وصولاً** لمدرسة أخرى بحال. */
+  var _reqSchool = '';
+  try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || ''; } catch (eRS) {}
   if (_reqSchool && saved && saved.schoolId && saved.schoolId !== _reqSchool) {
     clearSession();
     saved = null;
@@ -29712,6 +29734,116 @@ function _visitsReviewExportCsv(){
       return [c.displayClass, c.studentCount, c.studentActivePct, c.teacherCount, c.teacherActivePct, cat.label];
     }));
 }
+</script>
+<!-- مُوجِّه المسارات: `/teacher/<page>[/<slug>]` ⟶ قسمُ اللوحة. يُحمَّل **أخيراً** لأنه
+     يعتمد `showSection` و`_savedSectionOrDashboard` المُعرَّفتين في أجزاء سابقة. -->
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   PortalRouter — ربط `/teacher/<page>[/<slug>]` بأقسام اللوحة  (2026-08-13)
+
+   الوركر يعيد كتابة المسار **داخلياً** إلى `/teacher/index.html`، فيبقى
+   `location.pathname` كما طلبه الزائر — وهذا ما يقرؤه هذا الملف.
+
+   ── لماذا لا كتالوج جديد يُكتب يدوياً ──────────────────────────────────────
+   اصطلاح المستودع الحاكم: **اسم القسم = `id` الزرّ بلا البادئة `si-`**، ومُعتمَدٌ
+   عليه أصلاً في `updateActiveSidebarItem` و`_savedSectionOrDashboard` و
+   `_sbApplyAccountant`. و`SIDEBAR_PERMISSIONS_MANIFEST` (‏37 مفتاحاً) مطابقٌ
+   **حرفياً** لمعرّفات الأزرار — صفر انحراف في الاتجاهين (مقيس).
+   ⇒ المسارات تُشتقّ من المانيفست نفسه، فلا تنشأ قائمةٌ ثانية تنحرف عنه (بند 116).
+
+   ── الصلاحية ──────────────────────────────────────────────────────────────
+   🔴 الرابط **مدخلُ مستخدم لا مصدرَ صلاحية**. القسم المطلوب يُعرَض فقط إن كان
+   زرّه ظاهراً بعد `initSidebarByRole` — أي بعد اشتقاق الدور **خادمياً**. وإلّا
+   سقوطٌ صامت إلى السلوك القائم (`_savedSectionOrDashboard`)، بلا كشف وجوده.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* نفس شكل `_DEEP_PORTAL_RE` في الوركر — لكن مقصوراً على `/teacher/` هنا.
+   المقطع الثاني (الـslug) اختياري: `/teacher/grades` يعني مدرسة المالك. */
+var PORTAL_PATH_RE = /^\/teacher\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i;
+
+/* أسماءٌ ليست أقساماً: `index.html` يُستبعَد بالصنف نفسه (فيه نقطة)، لكن نستبعد
+   صراحةً ما قد يبدو قسماً وليس كذلك. */
+var PORTAL_NOT_SECTIONS = { 'index': 1, 'index.html': 1 };
+
+/* يُحلّل المسار ⇒ { section, slug } أو null. دالّة نقيّة: لا تقرأ DOM ولا حالة. */
+function _prParsePath(pathname) {
+  var m = PORTAL_PATH_RE.exec(pathname || '');
+  if (!m) return null;
+  var sec = String(m[1] || '').toLowerCase();
+  if (!sec || PORTAL_NOT_SECTIONS[sec]) return null;
+  return { section: sec, slug: String(m[2] || '').toLowerCase() };
+}
+
+/* هل القسم متاحٌ للمستخدم الحالي؟ **نفس معيار `_savedSectionOrDashboard` حرفياً**
+   (زرٌّ موجود وغير مخفيّ) — لا معيار ثانٍ ينحرف عنه. */
+function _prSectionAllowed(name) {
+  if (!name) return false;
+  if (name === 'dashboard') return true;
+  var btn = document.getElementById('si-' + name);
+  if (!btn) return false;
+  var disp = '';
+  try { disp = (btn.style && btn.style.display) || ''; } catch (e) { disp = ''; }
+  return disp !== 'none';
+}
+
+/* القسم الأوّلي عند الإقلاع: **المسار يسبق** الحالة المحفوظة.
+   يُستدعى بدل `_savedSectionOrDashboard()` مباشرةً، ويسقط إليها عند أي تعذّر —
+   فالسلوك القائم يبقى هو التراجع لا الاستثناء. */
+function _portalInitialSection() {
+  var p = null;
+  try { p = _prParsePath(window.location.pathname); } catch (e) { p = null; }
+  if (p && _prSectionAllowed(p.section)) return p.section;
+  return _savedSectionOrDashboard();
+}
+
+/* ── مزامنة الشريط ────────────────────────────────────────────────────────
+   🔴 العَلَم يمنع حلقةً: `popstate` ينادي `showSection`، و`showSection` تنادي
+   هذه — فبلا العَلَم يُدفَع مدخلُ تاريخٍ جديد عند كل ضغطة رجوع فلا يعود المستخدم
+   أبداً (زرُّ رجوعٍ يبدو مكسوراً بلا أي خطأ ظاهر). */
+var _PR_SUPPRESS = false;
+
+function _prSlugForUrl() {
+  /* يُحافظ على الـslug القائم في المسار إن وُجد؛ وإلّا يستعمل هوية المدرسة النشطة
+     **فقط إن كانت slug نصّياً** لا UUID — لأن المسار للمشاركة البشرية، وUUID فيه
+     يطيل الرابط بلا فائدة. والخادم يقبل الشكلين أصلاً. */
+  var cur = null;
+  try { cur = _prParsePath(window.location.pathname); } catch (e) { cur = null; }
+  if (cur && cur.slug) return cur.slug;
+  return '';
+}
+
+function _prSyncUrl(name) {
+  if (_PR_SUPPRESS) return;
+  if (!name || !window.history || !window.history.pushState) return;
+  try {
+    /* لا نلمس الرابط إطلاقاً ما لم نكن أصلاً على مسارٍ من هذا الشكل.
+       🔴 السبب حاسم: `/teacher/index.html?school=<uuid>` **مجمَّد في الـAPK** بلا
+       Deep Link — تحويلُه إلى `/teacher/<section>` يكسر 663 تثبيتاً بلا رجعة.
+       فالمُوجِّه يعمل **داخل** المسارات الجديدة فقط، ولا يهاجر إليها أحداً. */
+    var cur = _prParsePath(window.location.pathname);
+    if (!cur) return;
+    var slug = _prSlugForUrl();
+    var next = '/teacher/' + name + (slug ? '/' + slug : '');
+    if (next === window.location.pathname) return;
+    window.history.pushState({ prSection: name }, '', next + window.location.search);
+  } catch (e) { /* تاريخ المتصفّح ليس شرطاً لعمل اللوحة */ }
+}
+
+/* زرّ الرجوع: يعرض القسم بلا إعادة تحميل، وبلا دفع مدخلٍ جديد. */
+function _prOnPopState() {
+  var p = null;
+  try { p = _prParsePath(window.location.pathname); } catch (e) { p = null; }
+  if (!p) return;
+  var target = _prSectionAllowed(p.section) ? p.section : 'dashboard';
+  _PR_SUPPRESS = true;
+  try { showSection(target); } finally { _PR_SUPPRESS = false; }
+}
+
+function _prInit() {
+  try { window.addEventListener('popstate', _prOnPopState); } catch (e) {}
+}
+try { _prInit(); } catch (e) {}
+
 </script>
 </body>
 </html>
