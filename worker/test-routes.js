@@ -279,8 +279,11 @@ if (cIdx < 0 || cEnd <= 1) {
 
   var CANON = 'https://yemenschoolz.com';
   [// الحالات الثلاث التي أبلغ عنها المالك — كلّها كانت تُعلن `/home/index.html`
-   ['/home/index.html', '', null,             CANON + '/abdaawatmuaz',
-    'الشكل الطويل بلا معامل ⇒ الشكل القصير لمدرسة المالك (الفارغ = مدرسة المالك، بند 99)'],
+   // 🔴 **انقلبت 2026-08-14**: كانت تتوقّع `/abdaawatmuaz`. الرابط بلا معرّف لم يعد
+   //    يُعلن قانونيّاً يخصّ مستأجراً بعينه — يُحوَّل إلى الجذر أصلاً، وإعلانُه هويةَ
+   //    مدرسةٍ على عنوانٍ لا يذكرها هو فخّ بند 68 نفسه.
+   ['/home/index.html', '', null,             '',
+    '🔴 الرابط بلا معرّف ⇒ **بلا حقن** — لا يُعلن قانونيّ مستأجرٍ بعينه (يُحوَّل للجذر)'],
    ['/home/index.html', '', 'abdaawatmuaz',   CANON + '/abdaawatmuaz',
     '`?school=` بـslug منشور ⇒ الشكل القصير نفسه (توحيد الشكلين)'],
    ['/home/index.html', 'abdaawatmuaz', null, CANON + '/abdaawatmuaz',
@@ -317,6 +320,121 @@ if (cIdx < 0 || cEnd <= 1) {
     console.log((good ? '  ✅ ' : '  ❌ ') + c[4] + '\n       [' + got + ']');
   });
 }
+
+// ── 🔴 مفتاح المستأجر: المسار **أو** المعامل (2026-08-14) ────────────────────
+//
+// العلّة التي يقفلها: حقن الهوية كان مشروطاً بمقطع المسار وحده، فالسطح الذي يستعمله
+// تطبيق الأندرويد المنشور (‏`/home/index.html?school=<UUID>`) كان **الوحيد بلا علاج** —
+// يصل بـ«يمن سكولز» في كلّ عُقَد الهوية ثمّ يُطلى بعد ثوانٍ. سلوكي لا نصّي: `grep`
+// يُثبت أن الدالّة مكتوبة، لا أنّ UUID يخرج منها ومقطعاً مشوّهاً لا يخرج.
+console.log('');
+console.log('مفتاح المستأجر — المسار أو المعامل (سلوكي):');
+var tkIdx = src.indexOf('function _tenantKeyFrom(');
+var tkEnd = src.indexOf('\n}', tkIdx) + 2;
+var uuIdx = src.indexOf('var _SCHOOL_UUID_RE =');
+if (tkIdx < 0 || tkEnd <= 1 || uuIdx < 0) {
+  console.log('  ❌ ضابط: تعذّر استخراج `_tenantKeyFrom` من الوركر — الفحص أجوف');
+  failed++;
+} else {
+  var tctx = vm.createContext({ URLSearchParams: URLSearchParams });
+  vm.runInContext(
+    src.slice(rIdx, rEnd) + '\n' +                                    // _RESERVED_TOP_PATHS
+    src.slice(fIdx, fEnd) + '\n' +                                    // _schoolSlugFromPath
+    src.slice(src.indexOf('var _KNOWN_SCHOOL_SLUGS'),
+              src.indexOf('};', src.indexOf('var _KNOWN_SCHOOL_SLUGS')) + 2) + '\n' +
+    src.slice(uuIdx, src.indexOf('\n', uuIdx)) + '\n' +               // _SCHOOL_UUID_RE
+    src.slice(tkIdx, tkEnd), tctx);
+
+  var EB = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+  [['/ibn-khaldoun',    '',                       'ibn-khaldoun',
+    'مقطع مسار منشور ⇒ هو المفتاح (السلوك القائم بلا تغيير)'],
+   ['/home/index.html', '?school=' + EB,          EB.toLowerCase(),
+    '🔴 رابط تطبيق الأندرويد المنشور (UUID بمعامل) ⇒ صار له مفتاح — كان `\'\'`'],
+   ['/home/index.html', '?school=ibn-khaldoun',   'ibn-khaldoun',
+    'slug منشور بمعامل ⇒ مفتاح (الصيغة المكسورة التي رصدها GA تعمل الآن)'],
+   ['/home/index.html', '?schoolId=' + EB,        EB.toLowerCase(),
+    '`schoolId=` مقبول كـ`school=` — نفس ما تقرؤه الصفحة'],
+   // 🔴 الضوابط المعاكسة — كلّ واحد منها يمنع مفتاح كاش حافة يتحكّم به العميل
+   ['/home/index.html', '',                       '',
+    '🔴 بلا معامل ⇒ لا مفتاح (وهو ما يُحوَّل للجذر أصلاً)'],
+   ['/home/index.html', '?school=',               '',
+    '🔴 معامل فارغ ⇒ لا مفتاح'],
+   ['/home/index.html', '?school=../../etc',      '',
+    '🔴 قيمة حرّة ⇒ لا مفتاح — لا يصنع العميلُ مدخلَ كاشٍ بما يشاء'],
+   ['/home/index.html', '?school=' + EB.slice(0, -1), '',
+    '🔴 UUID ناقص محرفاً ⇒ مرفوض (البوّابة شكلية صارمة لا `contains`)'],
+   ['/home/index.html', '?school=not-a-school',   '',
+    '🔴 slug غير منشور ⇒ لا مفتاح (لا كاش لما لا نخدمه)'],
+   ['/teacher/index.html', '?school=' + EB,       '',
+    '🔴 بوّابة المعلّم ⇒ لا مفتاح مهما حمل المعامل — الحقن لـ`home` وحده'],
+   ['/home/schools.html', '?school=' + EB,        '',
+    '🔴 الجذر ⇒ لا مفتاح أبداً — هوية الجذر خطّ أحمر (بندا 68/75)'],
+   ['/home/news.html',   '?school=' + EB,         '',
+    '🔴 صفحة المكتبة ⇒ لا مفتاح — لا عُقَد هوية فيها لتُحقَن']
+  ].forEach(function (c) {
+    var got = vm.runInContext('_tenantKeyFrom', tctx)(c[0], c[1]);
+    var good = (got === c[2]);
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + c[3] + '\n       [' + got + ']');
+  });
+
+  // ضابط بنيوي: الحقن يستهلك `_tenantKey` لا `_pathSlug` — وإلّا بقي السطح بلا علاج
+  // بينما كلّ ما سبق أخضر (نفس فئة «حارسٌ يفحص وجود الشرط دون أثره»، بند 137).
+  var usesKey = /var _brand = await _brandFromCache\(url\.origin, _tenantKey\)/.test(src) &&
+                /_brandRefresh\(url\.origin, _tenantKey, env\)/.test(src) &&
+                /if \(_tenantKey && !_newsId\)/.test(src);
+  if (!usesKey) failed++;
+  console.log((usesKey ? '  ✅ ' : '  ❌ ') +
+              '🔴 بنيوي: سلسلة الحقن تستهلك `_tenantKey` لا `_pathSlug`');
+
+  // و`_tenantKeyFrom` تُستدعى بالمسار **الخام** لا بالمُعاد كتابته: بعد إعادة الكتابة
+  // يصير `/ibn-khaldoun` هو `/home/index.html` بلا معامل ⇒ المفتاح `''` وينهار الحقن
+  // على كلّ صفحات الـslug بصمت، وكلّ الحالات أعلاه تبقى خضراء لأنها تختبر الدالّة وحدها.
+  var usesRaw = /_tenantKeyFrom\(_rawPath, url\.search\)/.test(src) &&
+                /var _rawPath = path;/.test(src);
+  if (!usesRaw) failed++;
+  console.log((usesRaw ? '  ✅ ' : '  ❌ ') +
+              '🔴 بنيوي: تُستدعى بالمسار الخام (`_rawPath`) لا بالمُعاد كتابته');
+
+  // 🔒 `og:site_name` مقيسٌ سلوكياً في كتلة «حقن هوية المدرسة» أدناه (تشغيل
+  //    `_brandRewrite` على `HTMLRewriter` مزيّف يسجّل المحدِّدات) — وهو أدقّ من فحص
+  //    نصّي هنا: التعليق داخل الدالّة يذكر الاسم فيُنتج فحصُ الوجود حكماً كاذباً.
+
+  // والهوية المُخبَّأة تحمل `schoolId` — بلاه تبقى روابط البوّابات الستّ عارية.
+  var carriesSid = /schoolId: String\(b\.schoolId \|\| ''\)/.test(src);
+  if (!carriesSid) failed++;
+  console.log((carriesSid ? '  ✅ ' : '  ❌ ') +
+              'الهوية المُخبَّأة تحمل `schoolId` (لوصل روابط البوّابات قبل الحمولة)');
+}
+
+// ── 🔴 الرابط العاري بلا معرّف ⇒ الجذر (2026-08-14) ─────────────────────────
+//
+// الفجوة التي يقفلها: عنوانٌ لا يذكر أيّ مدرسة كان يعرض بيانات مدرسة المالك كاملةً
+// (‏30,056 بايت مقابل 626 لمستأجر آخر، قياس حيّ). فحصٌ نصّي هنا لأن الشرط يعيش داخل
+// `fetch` ولا يُستخرَج كدالّة نقيّة — ولذلك يُقاس **حيّاً** بعد النشر بـ`curl -I`.
+console.log('');
+console.log('الرابط العاري بلا معرّف:');
+[[/if \(\/\^\\\/home\\\/index\\\.html\\\/\?\$\/i\.test\(path\) &&/,
+  'الشرط مثبَّت على `/home/index.html` وحده'],
+ [/!url\.searchParams\.has\('school'\) && !url\.searchParams\.has\('schoolId'\)/,
+  "🔴 الاستثناء بـ**وجود** المعامل لا صحّته (مدرسة جديدة خارج السجلّ لا تُكسَر)"],
+ [/return Response\.redirect\(CANONICAL_ORIGIN \+ '\/', 302\);/,
+  '🔴 302 لا 301 — القرار سياسة قابلة للمراجعة، و301 يُخبَّأ للأبد']
+].forEach(function (c) {
+  var good = c[0].test(src);
+  if (!good) failed++;
+  console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
+});
+// 🔴 الضابط المعاكس البنيوي: التحويل يقع **قبل** حساب `_pathSlug`، وإلّا لالتُقط
+// `/home/index.html` مساراً عادياً ومرّ. ويقع **بعد** `/` و`/portal` فلا يمسّهما.
+var redirIdx = src.indexOf("return Response.redirect(CANONICAL_ORIGIN + '/', 302);");
+var slugIdx  = src.indexOf('var _pathSlug = _schoolSlugFromPath(path);');
+var portIdx  = src.indexOf("if (path === '/portal' || path === '/portal/')");
+var ordered  = redirIdx > 0 && slugIdx > 0 && portIdx > 0 &&
+               redirIdx < slugIdx && redirIdx > portIdx;
+if (!ordered) failed++;
+console.log((ordered ? '  ✅ ' : '  ❌ ') +
+            '🔴 بنيوي: التحويل بعد `/portal` وقبل حساب `_pathSlug`');
 
 // ── 🔴 slug غير منشور ⇒ 404 لا 200 ──────────────────────────────────────────
 console.log('');
@@ -582,9 +700,12 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
           'دالّة `' + n + '` موجودة');
   });
 
-  /* ① الشرط — يُقرأ من الكتلة الحيّة لا من الذاكرة. */
-  var gIdx = src.indexOf('if (_pathSlug && !_newsId) {');
-  check(gIdx !== -1, '🔒 الحقن مشروط بـ`_pathSlug && !_newsId` (الجذر ومسار المشاركة لا يُمَسّان)');
+  /* ① الشرط — يُقرأ من الكتلة الحيّة لا من الذاكرة.
+     🔴 **تغيّر 2026-08-14**: كان `_pathSlug` فصار `_tenantKey` — المستأجر يصل بمقطع
+     مسار **أو** بمعامل صريح، وقصْرُه على الأوّل ترك سطح تطبيق الأندرويد المنشور
+     (‏`/home/index.html?school=<UUID>`) بلا حقن إطلاقاً. راجع كتلة «مفتاح المستأجر». */
+  var gIdx = src.indexOf('if (_tenantKey && !_newsId) {');
+  check(gIdx !== -1, '🔒 الحقن مشروط بـ`_tenantKey && !_newsId` (الجذر ومسار المشاركة لا يُمَسّان)');
   var gEnd = src.indexOf('\n      }', gIdx);
   var gate = gIdx === -1 ? '' : src.slice(gIdx, gEnd === -1 ? gIdx + 600 : gEnd);
   check(gate.indexOf('_brandRewrite(') !== -1, '… وداخله يُستدعى `_brandRewrite` فعلاً (لا تعريف بلا وصل)');
