@@ -7944,15 +7944,23 @@ document.addEventListener('DOMContentLoaded', function () {
     initApp();
     _startHeartbeat();
     try { _biomUpdateNavBtn(); } catch (eBiom) {}
-    // تحديث خلفي صامت لقائمة الإخوة: الجلسة المستعادة من localStorage مجمَّدة على لحظة آخر
-    // دخول حقيقي (حتى 8 ساعات) — بلا هذا النداء لا يظهر أي تعديل بيانات/مطابقة لاحق إلا بعد
-    // تسجيل خروج/دخول يدوي. لا يؤخّر الظهور الأولي (العرض من الكاش فوري، هذا يلحق به بصمت).
+    // تحديث خلفي صامت لقائمة الإخوة + الفصل/الشعبة: الجلسة المستعادة من localStorage مجمَّدة
+    // على لحظة آخر دخول حقيقي (حتى 8 ساعات) — بلا هذا النداء لا يظهر أي تعديل بيانات/مطابقة
+    // لاحق (بما فيه نقل صفّ/شعبة من لوحة المعلّم) إلا بعد تسجيل خروج/دخول يدوي. لا يؤخّر
+    // الظهور الأولي (العرض من الكاش فوري، هذا يلحق به بصمت) — نفس نمط استعادة الإخوة أعلاه،
+    // يُطبَّق الآن على class/section (student/CLAUDE.md بند 8).
     if (APP.user.id && APP.user.schoolId && APP.user.switchToken) {
       google.script.run
         .withSuccessHandler(function (r) {
           if (r && r.ok) {
             APP.user.siblings = r.siblings || [];
             APP.user.switchToken = r.switchToken || APP.user.switchToken;
+            /* `typeof` لا صدقيّة القيمة: الخادم يُرجِع `_safe(...)` أي `''` للخلية الفارغة،
+               وشعبةٌ حُذفت شرعاً من لوحة المعلّم قيمتُها `''` — فالفحص بالصدقيّة كان
+               يُبقي الشعبة القديمة مخزَّنةً إلى الأبد. والحقلان يُستخدَمان مفتاحَي كاش
+               ومعياري تصفية، فقيمةٌ قديمة أسوأ من فارغة. */
+            if (typeof r.class === 'string') { APP.user.class = r.class; }
+            if (typeof r.section === 'string') { APP.user.section = r.section; }
             renderSiblingsCard();
             lsSaveSession();
           }
