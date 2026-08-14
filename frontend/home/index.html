@@ -2981,13 +2981,14 @@ function _homeCacheBrand(b){
 /**
  * مسار فشل الحمولة على صفحة **مدرسة** — بديلٌ عن `loadSplitData()` (ح1، 2026-08-13).
  *
- * 🔴 لماذا لا `loadSplitData()` هنا: دوالها الأربع
- * (`getSchoolStats`/`getNewsForSchool`/`getImagesForSchool`/`getVideosForSchool`) **لا تقبل
- * معرّف مدرسة إطلاقاً** — كلّها تمرّ بـ`getSheet` → `_getSS()` المثبَّت على
- * `CONFIG.SPREADSHEET_ID` (ملف CMS مدرسة المالك)، ومفتاح كاشها `school_news_<n>` غير مبصوم
- * بالمستأجر. فكانت زيارة `/ibn-khaldoun` عند الفشل تعرض **أخبار وصور وفيديو الإبداع**.
- * وقياس 2026-08-13: الفشل 38.81٪ ⇒ ذلك يقع في ثلث الزيارات، ويضيف **أربعة** نداءات إلى
- * نفس الحصّة المخنوقة التي سبّبت الفشل — حلقة تغذية راجعة موجبة.
+ * 🔄 **السبب تبدّل 2026-08-14 والقرار بقي — اقرأ الجديد لا القديم.**
+ * القديم (باطل الآن): الدوالّ الأربع لا تقبل معرّف مدرسة، فكانت زيارة `/ibn-khaldoun` عند
+ * الفشل تعرض **أخبار وصور وفيديو الإبداع**. صارت الأربع تقبل `schoolId` وسيطاً أخيراً
+ * وترفض غير المطابق، ومصادر CMS تُتخطّى بنيوياً لغير المالك ⇒ **التسريب مُغلَق في الخادم**.
+ *
+ * 🔴 والقرار يبقى: لا `loadSplitData()` هنا — لأن **الحمل** لا التسريب. أربعة نداءات
+ * إضافية تُضاف إلى نفس الحصّة المخنوقة التي سبّبت الفشل أصلاً (قياس 2026-08-13: الفشل
+ * 38.81٪ ⇒ ثلث الزيارات) — حلقة تغذية راجعة موجبة، وهي علّة بند 131 الثانية لا الأولى.
  *
  * 🔴 وبلا أي إعادة محاولة تلقائية: بند 128 (إعادة المحاولة على الإشباع تُسيئه)، و
  * `assets/gas-bridge.js` ينفّذ إعادةً واحدة لأخطاء الشبكة **ويستثني الإشباع عمداً** —
@@ -3144,10 +3145,14 @@ function loadHomeBundleLegacy(){
 }
 
 function loadSplitData(){
+  /* المستأجر يُمرَّر صراحةً لكل نداء: الحصار في `_homeBundleFallback` عميليّ وحده، وهذه
+     الدوالّ مكشوفة على `doPost` — فتمرير المعرّف يجعل الصواب بنيوياً لا مشروطاً بمن نادى. */
+  var _sid = (typeof _homeActiveSchoolId === 'function') ? _homeActiveSchoolId() : '';
+
   google.script.run
     .withSuccessHandler(renderStats)
     .withFailureHandler(function(e){console.error('[Stats]',e)})
-    .getSchoolStats();
+    .getSchoolStats(_sid);
 
   google.script.run
     .withSuccessHandler(renderNews)
@@ -3155,7 +3160,7 @@ function loadSplitData(){
       console.error('[News]',e);
       setError('dynamicNewsGrid',_errMsg(e,'تعذّر تحميل الأخبار'));
     })
-    .getNewsForSchool(6);
+    .getNewsForSchool(6,_sid);
 
   google.script.run
     .withSuccessHandler(renderImages)
@@ -3163,7 +3168,7 @@ function loadSplitData(){
       console.error('[Images]',e);
       setError('dynamicImagesGrid',_errMsg(e,'تعذّر تحميل الصور'));
     })
-    .getImagesForSchool(6);
+    .getImagesForSchool(6,_sid);
 
   google.script.run
     .withSuccessHandler(renderVideos)
@@ -3171,7 +3176,7 @@ function loadSplitData(){
       console.error('[Videos]',e);
       setError('dynamicVideoGrid',_errMsg(e,'تعذّر تحميل الفيديوهات'));
     })
-    .getVideosForSchool(8);
+    .getVideosForSchool(8,_sid);
 }
 
 /* ══════════════════════════════════════════
