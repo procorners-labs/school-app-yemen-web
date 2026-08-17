@@ -401,10 +401,19 @@ if (tkIdx < 0 || tkEnd <= 1 || uuIdx < 0) {
   //    نصّي هنا: التعليق داخل الدالّة يذكر الاسم فيُنتج فحصُ الوجود حكماً كاذباً.
 
   // والهوية المُخبَّأة تحمل `schoolId` — بلاه تبقى روابط البوّابات الستّ عارية.
-  var carriesSid = /schoolId: String\(b\.schoolId \|\| ''\)/.test(src);
+  var carriesSid = /schoolId: .*String\(b\.schoolId \|\| ''\)/.test(src);
   if (!carriesSid) failed++;
   console.log((carriesSid ? '  ✅ ' : '  ❌ ') +
               'الهوية المُخبَّأة تحمل `schoolId` (لوصل روابط البوّابات قبل الحمولة)');
+
+  // 🔴 والمالك يُخزَّن بـ`''` **عمداً** لا بمعرّفه — بنفس قاعدة `_homeCacheBrand` في
+  //    `home/Index.html` حرفياً: الفارغ = مدرسة المالك (بند 99). وشكلان للشيء الواحد
+  //    يشقّان فضاء الجلسة والكاش (بند 97)، وقاعدةٌ هنا تخالف نظيرتها هناك تجعل الرابط
+  //    **يقفز** لحظة وصول الحمولة. فحصٌ نصّي لأن الفرع داخل `_brandRefresh` لا دالّة نقيّة.
+  var ownerBlank = /schoolId: \(b\.isOwner === true\) \? '' : String\(b\.schoolId \|\| ''\)/.test(src);
+  if (!ownerBlank) failed++;
+  console.log((ownerBlank ? '  ✅ ' : '  ❌ ') +
+              "🔴 المالك يُخزَّن بـ`''` لا بمعرّفه (شكلٌ واحد للمفهوم — بندا 99/97)");
 }
 
 // ── 🔴 الرابط العاري بلا معرّف ⇒ الجذر (2026-08-14) ─────────────────────────
@@ -414,8 +423,10 @@ if (tkIdx < 0 || tkEnd <= 1 || uuIdx < 0) {
 // `fetch` ولا يُستخرَج كدالّة نقيّة — ولذلك يُقاس **حيّاً** بعد النشر بـ`curl -I`.
 console.log('');
 console.log('الرابط العاري بلا معرّف:');
-[[/if \(\/\^\\\/home\\\/index\\\.html\\\/\?\$\/i\.test\(path\) &&/,
-  'الشرط مثبَّت على `/home/index.html` وحده'],
+[[/if \(\/\^\\\/home\\\/\(index\|news\)\\\.html\\\/\?\$\/i\.test\(path\) &&/,
+  'الشرط يغطّي `/home/index.html` و`/home/news.html` معاً'],
+ [/\(index\|news\)/,
+  "🔴 `news.html` العاري مشمول — يستدعي `getHomePageBundle('', 'library')` ⇒ مكتبة المالك كاملةً (تسريبٌ أوسع لا أضيق)"],
  [/!url\.searchParams\.has\('school'\) && !url\.searchParams\.has\('schoolId'\)/,
   "🔴 الاستثناء بـ**وجود** المعامل لا صحّته (مدرسة جديدة خارج السجلّ لا تُكسَر)"],
  [/return Response\.redirect\(CANONICAL_ORIGIN \+ '\/', 302\);/,
@@ -425,6 +436,19 @@ console.log('الرابط العاري بلا معرّف:');
   if (!good) failed++;
   console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
 });
+
+// 🔴 ضابط معاكس قابلٌ للإفشال: يلتقط **أعضاء** مجموعة البدائل ويقارنها بالمجموعة
+//    المقصودة بالضبط. فحصُ «لا يحوي newsarticle» وحده أجوفُ (يمرّ على أي نصّ)؛ أمّا
+//    مقارنة المجموعة فتحمرّ عند أي إضافة أو حذف. و`newsarticle.html` مستثنى **عمداً**:
+//    مسارُ مشاركةٍ يحمل `?news=` دائماً، وحقن OG له سلسلته الخاصّة — فتحويله يكسر
+//    كلّ رابط خبر مُشارَك.
+var altM = src.match(/\/\^\\\/home\\\/\(([a-z|]+)\)\\\.html/);
+var alts = altM ? altM[1].split('|').sort().join(',') : '(لم تُلتقَط)';
+var altsOk = alts === 'index,news';
+if (!altsOk) failed++;
+console.log((altsOk ? '  ✅ ' : '  ❌ ') +
+            '🔴 مجموعة البدائل = `index,news` بالضبط — لا `newsarticle` (مسار مشاركة) ولا غيره · المقيس: ' + alts);
+
 // 🔴 الضابط المعاكس البنيوي: التحويل يقع **قبل** حساب `_pathSlug`، وإلّا لالتُقط
 // `/home/index.html` مساراً عادياً ومرّ. ويقع **بعد** `/` و`/portal` فلا يمسّهما.
 var redirIdx = src.indexOf("return Response.redirect(CANONICAL_ORIGIN + '/', 302);");

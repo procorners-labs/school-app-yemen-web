@@ -466,8 +466,13 @@ async function _brandRefresh(origin, slug, env) {
          `getTeacherSchoolBrand` تطابق `school_id` حصراً، والـslug يمرّ عندها بـ`ok:true`
          واسمٍ **فارغ** ⇒ شاشة دخول بلا هوية، أسوأ من العطل. وبلا هذا الحقل تبقى الروابط
          عاريةً حتى ترجع الحمولة — و**للأبد إن فشلت** — فيهبط زائرُ مدرسةٍ على شاشة دخول
-         مدرسة المالك (‏`build-frontend.js` يحقن `|| OWNER_SCHOOL_ID` في `teacher`). */
-      schoolId: String(b.schoolId || '')
+         مدرسة المالك (‏`build-frontend.js` يحقن `|| OWNER_SCHOOL_ID` في `teacher`).
+
+         🔴 **والمالك يُخزَّن بـ`''` عمداً** — بنفس قاعدة `_homeCacheBrand` و
+         `_homeSafeApply('portals', …)` في `home/Index.html` حرفياً: الفارغ = مدرسة
+         المالك (بند 99)، وشكلان للشيء الواحد يشقّان فضاء الجلسة والكاش (بند 97).
+         وقاعدةٌ هنا تخالف نظيرتها هناك تجعل الرابط **يقفز** لحظة وصول الحمولة. */
+      schoolId: (b.isOwner === true) ? '' : String(b.schoolId || '')
     };
     await caches.default.put(
       _brandCacheKey(origin, slug),
@@ -1103,7 +1108,11 @@ export default {
     //
     // 302 لا 301 عمداً: القرار سياسة منتج قابلة للمراجعة، و**301 يُخبَّأ في المتصفّح
     // للأبد** فيصير عكسُه مستحيلاً على كلّ من زار الرابط مرّة واحدة.
-    if (/^\/home\/index\.html\/?$/i.test(path) &&
+    // و`news.html` معه: العاري منها يستدعي `getHomePageBundle('', 'library')` ⇒ **مكتبة
+    // المالك كاملةً بما فيها الأخبار الموجَّهة لصفّ/شعبة** (وضع المكتبة يرفع الحجب عنها
+    // عمداً) — تسريبٌ أوسع من الصفحة الرئيسية لا أضيق. `newsarticle.html` **خارج** القائمة:
+    // مسار مشاركةٍ يحمل `?news=` دائماً، وحقن OG له سلسلته الخاصّة.
+    if (/^\/home\/(index|news)\.html\/?$/i.test(path) &&
         !url.searchParams.has('school') && !url.searchParams.has('schoolId')) {
       return Response.redirect(CANONICAL_ORIGIN + '/', 302);
     }
