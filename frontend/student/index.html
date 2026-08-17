@@ -3893,10 +3893,11 @@ function _initFcmBridge() {
   } catch (e) {}
 }
 
-function initApp() {
-  // جسر إشعارات الهاتف (FCM) — تسجيل رمز جهاز ولي الأمر بعد الدخول
-  try { _initFcmBridge(); } catch (e) {}
-  // تحديث Navbar
+/* استُخرجت من `initApp` (integrity-guardian، تقرير 2026-08-15) لإعادة استخدامها من معالج
+   `refreshStudentSiblings` أيضاً — الجلسة المستعادة من localStorage قد تحمل class/section
+   قديمة، وتصحيحها الخلفي الصامت يحتاج إعادة رسم هذه البطاقات لا فقط تحديث الحقول المخزَّنة
+   (student/CLAUDE.md بند 8). */
+function _stuRenderClassMeta() {
   $('navName').textContent = APP.user.name || '—';
   var meta = '';
   if (APP.user.class)   meta += APP.user.class;
@@ -3904,7 +3905,6 @@ function initApp() {
   if (APP.user.id)      meta += ' · ' + APP.user.id;
   $('navMeta').textContent = meta;
 
-  // تهيئة الرئيسية
   $('welcomeName').textContent = APP.user.firstName || APP.user.name || 'الطالب';
   var wm = '';
   if (APP.user.class)   wm += '<span class="chip">📚 ' + esc(APP.user.class) + '</span>';
@@ -3913,6 +3913,13 @@ function initApp() {
   wm += '<span class="chip" id="birthdateChip" onclick="openBirthdatePicker()" title="اضغط لتحديد/تعديل تاريخ ميلادك"></span>';
   $('welcomeMeta').innerHTML = wm;
   renderBirthdateChip();
+}
+
+function initApp() {
+  // جسر إشعارات الهاتف (FCM) — تسجيل رمز جهاز ولي الأمر بعد الدخول
+  try { _initFcmBridge(); } catch (e) {}
+  // تحديث Navbar + تهيئة الرئيسية
+  _stuRenderClassMeta();
   renderBirthdateNotice();
 
   // 👨‍👩‍👦 بطاقة إخوتك في المدرسة (تظهر فقط عند وجود إخوة مرتبطين فعلاً)
@@ -7960,10 +7967,25 @@ document.addEventListener('DOMContentLoaded', function () {
                وشعبةٌ حُذفت شرعاً من لوحة المعلّم قيمتُها `''` — فالفحص بالصدقيّة كان
                يُبقي الشعبة القديمة مخزَّنةً إلى الأبد. والحقلان يُستخدَمان مفتاحَي كاش
                ومعياري تصفية، فقيمةٌ قديمة أسوأ من فارغة. */
-            if (typeof r.class === 'string') { APP.user.class = r.class; }
-            if (typeof r.section === 'string') { APP.user.section = r.section; }
+            var _clsChanged = false;
+            if (typeof r.class === 'string' && r.class !== APP.user.class) { APP.user.class = r.class; _clsChanged = true; }
+            if (typeof r.section === 'string' && r.section !== APP.user.section) { APP.user.section = r.section; _clsChanged = true; }
             renderSiblingsCard();
             lsSaveSession();
+            if (_clsChanged) {
+              /* integrity-guardian، تقرير 2026-08-15: تحديث الحقلين المخزَّنين وحده كان
+                 يترك الجلسة **الحالية** معروضة بالقيمة القديمة (navMeta/welcomeMeta) ومحمَّلة
+                 بأخبار/تعاميم مفتاح كاشها class+section القديم (`_stuBootLoad`) حتى تسجيل
+                 خروج/دخول يدوي — نظير بند 123 مطبَّق على نفس الإصلاح الذي أغلق سابقتَه
+                 (student/CLAUDE.md بند 8). */
+              try { _stuRenderClassMeta(); } catch (eCM) {}
+              try { _stuBootLoad(); } catch (eBL) {}
+              /* `force=true` إلزامي: مفتاح كاش الإحصاءات `'reports_' + APP.user.id` غير
+                 مبصوم بالصفّ، وسبق تسخينه عند initApp() بالبيانات القديمة — نداء بلا فرض
+                 كان سيُعيد نفس الردّ المخزَّن بصمت (رصدته مراجعة gas-reviewer قبل الدمج). */
+              try { loadQuickStats(true); } catch (eQS) {}
+              try { loadHomeToday(); } catch (eHT) {}
+            }
           }
         })
         .withFailureHandler(function () { /* صامت — يبقى العرض المخزَّن كما هو */ })
