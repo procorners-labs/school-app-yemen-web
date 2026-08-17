@@ -1266,7 +1266,8 @@ window.__homeReadCachedBrand = function () {
     var raw = st.getItem(window.__homeBrandCacheKey());
     if (!raw) return null;
     var o = JSON.parse(raw);
-    if (!o || o.v !== 1 || !o.name) return null;
+    /* 🔴 `!== 2` لا `!== 1`: رُفِع مع إضافة `schoolId` — راجع `_homeCacheBrand`. */
+    if (!o || o.v !== 2 || !o.name) return null;
     /* 🔴 لا إسقاط بعمر قصير عمداً: شعار متقادم بيومين **أفضل قطعاً** من هوية مدرسة خاطئة.
        السقف ٣٠ يوماً حارسٌ ضد بيانات ميّتة لمدرسة لم تُزَر منذ شهر، لا بوّابة طزاجة —
        الطزاجة تأتي من الحمولة التي تدهس هذا بعد ثوانٍ على كل حال. */
@@ -1315,6 +1316,22 @@ window.__homeApplyCachedBrand = function () {
   _hMeta('meta[name="twitter:image"]', window.__homeSafeLogo(b.logo));
   /* 🔒 `og:site_name` غائب عن القائمة أعلاه **عمداً** — بندا 68/75. */
   window.__homeApplyBrandDom(b.name, b.logo || '');
+  /* ── وصل روابط البوّابات الستّ من الهوية المتاحة (2026-08-14) ─────────────────
+     العلّة المقيسة: العُقَد `data-portal` تصل من البناء **بلا أيّ معرّف** (رجيكس
+     `build-frontend.js` يبتلع أي query)، ولم تكن توصَل إلا بعد رجوع الحمولة —
+     فتبقى عاريةً طوال نافذة الانتظار و**للأبد إن فشلت**، وزائرُ مدرسةٍ يضغطها
+     فيهبط على شاشة دخول **مدرسة المالك** (‏`teacher` يسقط على `OWNER_SCHOOL_ID`).
+     الآن تُوصَل من `__HOME_BRAND__` المحقون أو من الكاش، أي **قبل** أيّ نداء.
+
+     🔒 `typeof` لا استدعاءٌ مباشر: هذه الدالّة تُنادى ثلاث مرّات، وأُولاها تسبق تعريف
+        `_homeApplyPortalLinks` في الوثيقة. والنداء الأخير (آخر الجسم) هو الذي يصل.
+     🔒 و`b.schoolId` وحده — لا `_homeActiveSchoolId()`: الأخيرة تُرجِع الـslug على
+        `/<slug>`، و`getTeacherSchoolBrand` تطابق `school_id` حصراً فيمرّ الـslug
+        بـ`ok:true` واسمٍ **فارغ** ⇒ شاشة دخول بلا هوية، أسوأ من العطل نفسه.
+        وبوّابة `_homeIsSchoolUuid` داخل `_homePortalHref` تحرس ذلك مرّةً ثانية. */
+  if (typeof _homeApplyPortalLinks === 'function') {
+    try { _homeApplyPortalLinks(b.schoolId || ''); } catch (e2) {}
+  }
   return true;
 };
 
@@ -2965,9 +2982,16 @@ function _homeCacheBrand(b){
   if(!b || !b.brand || !b.brand.name) return false;
   var p = b.page || {};
   return window.__homeWriteCachedBrand({
-    v: 1,
+    /* 🔴 `v` رُفِع إلى 2 عند إضافة `schoolId` (2026-08-14): فحص `o.v !== 2` عند القراءة
+       يُسقِط كل نسخة قديمة تلقائياً بدل أن تعيش ثلاثين يوماً بلا الحقل الجديد فتترك
+       روابط البوّابات عارية على كل زائر متكرّر — وهو بالضبط ما جاء الحقل ليمنعه. */
+    v: 2,
     savedAt: new Date().getTime(),
     name: b.brand.name,
+    /* UUID القانوني للمستأجر — لوصل روابط البوّابات الستّ **قبل** رجوع الحمولة.
+       والمالك يُخزَّن بـ`''` عمداً: الفارغ = مدرسة المالك (بند 99)، وشكلان للشيء الواحد
+       يشقّان فضاء الجلسة (بند 97). نفس قاعدة `_homeSafeApply('portals', …)` حرفياً. */
+    schoolId: (b.isOwner === true) ? '' : String(b.schoolId || ''),
     /* 🔒 يُفحَص **قبل** التخزين لا عند القراءة وحدها: قيمةٌ بمخطّط غريب لا يجوز أن تعيش
        في تخزين المتصفّح ثلاثين يوماً أصلاً — والكتابة تسبق القراءة دوماً. */
     logo: window.__homeSafeLogo(b.brand.logo),
@@ -2995,10 +3019,15 @@ function _homeCacheBrand(b){
  * فطبقةٌ ثانية هنا تخالف الاثنين. الزرّ يدوي: قرارُ إنسانٍ حاضر لا عاصفةُ عملاء.
  */
 function _homeBundleFailed(reason){
-  var notFound = (reason === 'not_found');
-  var msg = notFound
-    ? 'هذه المدرسة غير متاحة حالياً.'
-    : 'تعذّر تحميل بيانات المدرسة — الخادم مشغول.';
+  /* `no_tenant` يُعامَل معاملة `not_found`: كلاهما حالةٌ نهائية لا يُصلحها تكرار
+     النداء، فزرّ «إعادة المحاولة» فيهما دعوةٌ لنداءٍ محكومٍ بالفشل على حصّة مخنوقة. */
+  var noTenant = (reason === 'no_tenant');
+  var notFound = (reason === 'not_found') || noTenant;
+  var msg = noTenant
+    ? 'اختر مدرستك من دليل المدارس.'
+    : (notFound
+        ? 'هذه المدرسة غير متاحة حالياً.'
+        : 'تعذّر تحميل بيانات المدرسة — الخادم مشغول.');
   var ids = ['dynamicNewsGrid','dynamicImagesGrid','dynamicVideoGrid'], i, el;
   for(i = 0; i < ids.length; i++){
     el = document.getElementById(ids[i]);
@@ -3027,7 +3056,33 @@ function _homeBundleFailed(reason){
  * 🔴 التراجع القديم مقصورٌ الآن على **المسار العاري بلا أي معرّف مستأجر** — وهو المستأجر
  * الوحيد (مدرسة المالك) الذي تصفه دوالُّه بنيوياً. أي معرّف/سلاگ ⇒ `_homeBundleFailed`.
  */
+/* ── `no_tenant` — رابطٌ بلا معرّف بلغ الصفحة رغم التحويل (2026-08-14) ────────────
+ *
+ * الخادم صار يرفض المعرّف الفارغ صراحةً (`_PublicPage.js::getHomePageBundle`) والوسيط
+ * يُحوّل الرابط العاري إلى الجذر — فهذا المسار **لا يُبلَغ في الحالة السليمة**. يبلغه
+ * مصدران حقيقيان: نسخةٌ مخبَّأة في Service Worker من قبل النشر، وسطح `/exec` الخام.
+ *
+ * 🔴 **والتحويل مشروطٌ بسطحٍ نملكه وبإطارٍ أعلى**: على `/exec` تُخدَم الصفحة داخل
+ *    `<iframe>` تحت مضيف Google، و`location.replace('/')` هناك يقذف الإطار إلى جذر
+ *    مضيفٍ ليس لنا. الشرطان معاً يجعلان الأسوأ **لا شيء**: صفحةٌ بهوية المنتج بلا
+ *    بيانات مدرسة — وهو حرفياً «فارغ»، أي السلوك المطلوب لا انحدارٌ عنه.
+ */
+function _homeNoTenantRedirect(){
+  try{
+    if(window.top !== window.self) return false;          /* داخل إطار ⇒ لا تحويل */
+    var h = String(window.location.hostname || '').toLowerCase();
+    if(/(^|\.)google(usercontent)?\.com$/.test(h)) return false;   /* سطح GAS الخام */
+    if(window.location.pathname === '/') return false;    /* الجذر أصلاً ⇒ لا حلقة */
+    window.location.replace('/');
+    return true;
+  }catch(e){ return false; }
+}
+
 function _homeBundleFallback(reason){
+  /* 🔴 **قبل كل شيء**: «لم يُذكر معرّف» ليست «معرّفٌ لم يُطابق» ولا «الخادم مشغول».
+     وبلا هذا الفرع كان الفارغ يسقط على `loadSplitData()` — أربعة نداءات على نفس
+     الحصّة المخنوقة، على صفحةٍ لا مستأجر لها أصلاً. */
+  if(reason === 'no_tenant'){ if(_homeNoTenantRedirect()) return; _homeBundleFailed(reason); return; }
   if(!_homeActiveSchoolId()) { loadSplitData(); return; }
   _homeBundleFailed(reason);
 }

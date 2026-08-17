@@ -647,6 +647,22 @@ function lbBoot(){
   google.script.run
     .withSuccessHandler(function(b){
       if(!b || b.ok !== true){
+        /* 🔴 `no_tenant` (2026-08-14) — «لم يُذكر معرّف» لا «تعذّر التحميل»: المكتبة
+           العارية كانت تستدعي `getHomePageBundle('', 'library')` فتُخرج **مكتبة المالك
+           كاملةً بما فيها الأخبار الموجَّهة لصفّ/شعبة** (وضع المكتبة يرفع الحجب عمداً).
+           الوسيط يُحوّل الرابط العاري إلى الجذر، وهذا الفرع يغطّي ما يتجاوزه: نسخةٌ
+           مخبَّأة في Service Worker وسطح `/exec` الخام. والشرطان (إطارٌ أعلى + مضيفٌ
+           ليس لجوجل) في `_lbNoTenantRedirect` بنفس منطق `home/Index.html` حرفياً. */
+        if(b && b.reason === 'no_tenant'){
+          try{
+            if(window.top === window.self &&
+               !/(^|\.)google(usercontent)?\.com$/.test(String(window.location.hostname||'').toLowerCase())){
+              window.location.replace('/'); return;
+            }
+          }catch(e){}
+          $('lbState').textContent = 'اختر مدرستك من دليل المدارس.';
+          return;
+        }
         $('lbState').textContent = 'تعذّر تحميل المنشورات — تحقّق من الرابط أو أعد المحاولة.';
         return;
       }
