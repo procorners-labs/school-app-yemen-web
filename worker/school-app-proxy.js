@@ -220,6 +220,46 @@ function _schoolSlugFromPath(path) {
   return seg;
 }
 
+/* ── مفتاح المستأجر: مقطعُ المسار **أو** المعامل الصريح (2026-08-14) ──────────────
+ *
+ * 🔴 العلّة المقيسة: حقن الهوية كان مشروطاً بـ`_pathSlug` وحده، و«مقطع المسار» ليس
+ *    الطريقة الوحيدة التي يصل بها مستأجرٌ معروف. رابط **تطبيق الأندرويد المنشور**
+ *    (‏`AppConfig.kt::HOME_URL`) هو حرفياً `…/home/index.html?school=<UUID>` — نفس
+ *    المستأجر، بلا مقطع مسار ⇒ **صفر حقن**. قياس 2026-08-14: `__HOME_BRAND__` يرد
+ *    مرّتين (مرجعا قراءة) على ذلك الرابط مقابل ثلاث على `/abdaawatmuaz`، وكلّ عُقَد
+ *    `.school-brand-name` الستّ تصل بـ«يمن سكولز» ثمّ يعيد جافاسكربت طلاءها بعد
+ *    1.7–4.3 ثانية. أي أن السطح الذي يستعمله ٦٦٣ تثبيتاً كان **الوحيد بلا علاج**.
+ *
+ * 🔒 بوّابة الشكل إلزامية ولا تُرخى: القيمة تصل من العميل وتصير **مفتاح كاش حافة**،
+ *    فأيّ سلسلة حرّة تُنشئ مدخلاً لكلّ قيمة ممكنة. المقبول: slug **منشور** أو UUID
+ *    مطابقٌ للشكل حصراً — وما عداه `''` (لا حقن، والصفحة تُخدَم كما هي بلا تغيير).
+ *
+ * 🔒 ومحصورة بـ`/home/index.html`: هي الملفّ الوحيد الذي يقرأ `?school=` ويحمل عُقَد
+ *    الهوية. الجذر `/` **خطٌّ أحمر** (بندا 68/75) ولا يصله هذا الفرع أصلاً — يُعاد
+ *    كتابته إلى `/home/schools.html` قبل هذه النقطة.
+ *
+ * دالّة **نقيّة** (تأخذ المسار وسلسلة الاستعلام لا `URL`) كي يستخرجها `test-routes.js`
+ * بـ`vm` ويشغّلها على جدول حالات — فحصٌ سلوكي لا نصّي، بنفس نمط `_canonicalFor`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+var _SCHOOL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function _tenantKeyFrom(path, search) {
+  var slug = _schoolSlugFromPath(path);
+  if (slug) return slug;
+  if (!/^\/home\/index\.html$/i.test(String(path || ''))) return '';
+  var raw = '';
+  try {
+    var sp = new URLSearchParams(String(search || ''));
+    raw = sp.get('school') || sp.get('schoolId') || '';
+  } catch (e) { return ''; }
+  var v = String(raw).trim();
+  if (!v) return '';
+  var lc = v.toLowerCase();
+  if (_KNOWN_SCHOOL_SLUGS[lc]) return lc;
+  if (_SCHOOL_UUID_RE.test(v)) return lc;
+  return '';
+}
+
 // 🔴 سجلّ الـslugs المنشورة — مرآةُ `_build/schools.public.json` في مستودع الـgas.
 //
 // قبل 2026-08-11 لم تكن هناك قائمة إطلاقاً: أيّ مقطع مسار واحد غير محجوز (‏`/foo` ·
@@ -326,8 +366,14 @@ function _canonicalFor(path, pathSlug, schoolParam) {
     // إسقاطه على مدرسة المالك كان يوحّد مستأجرَين مختلفَين على عنوان واحد — نفس العلّة.
     if (_KNOWN_SCHOOL_SLUGS[s]) return CANONICAL_ORIGIN + '/' + s;
     if (s) return CANONICAL_ORIGIN + path + '?school=' + encodeURIComponent(s);
-    // الفارغ = **مدرسة المالك** لا «معرّف مفقود» (بند 99).
-    return CANONICAL_ORIGIN + '/' + OWNER_SCHOOL_SLUG;
+    // 🔴 **2026-08-14 — انقلب هذا الفرع.** كان يُرجِع `/abdaawatmuaz` تطبيقاً لبند 99
+    // («الفارغ = مدرسة المالك»)، فكانت الصفحة تُعلن أنّها صفحة المالك بينما تصل مطليّةً
+    // بهوية المنصّة ثمّ تُطلى بالمالك — تناقضُ هويةٍ مقيسٌ في الرأس `Link:` حيّاً.
+    // وبند 99 يحكم **حلّ المستأجر داخل الخادم**، لا ما يُعلَن للزاحف على عنوانٍ عامّ
+    // بلا معرّف؛ وإعلانُ قانونيٍّ يخصّ مستأجراً بعينه على عنوانٍ لا يذكره هو بالضبط
+    // فخّ بند 68. والرابط العاري صار يُحوَّل إلى الجذر قبل بلوغ هذه النقطة (أدناه)،
+    // فهذا **دفاعٌ مضاعف** لمسارٍ لم يعد مسلوكاً — لا سلوكاً وحيداً.
+    return '';
   }
   return '';   // ← لا حقن: الوسم الساكن في المصدر صحيح وأدقّ من أي اشتقاق من المسار
 }
@@ -414,7 +460,19 @@ async function _brandRefresh(origin, slug, env) {
       logo: _safeHttpUrl(b.brand.logo),
       color: String(b.brand.color || ''),
       tagline: String(page.tagline || ''),
-      description: String(page.aboutText || '')
+      description: String(page.aboutText || ''),
+      /* 🔴 **UUID القانوني للمستأجر** (‏`_PublicPage.js::getHomePageBundle` يُرجِعه) —
+         لا المفتاح الذي طلبنا به. سببه أن الصفحة تحتاجه لوصل روابط البوّابات الستّ:
+         `getTeacherSchoolBrand` تطابق `school_id` حصراً، والـslug يمرّ عندها بـ`ok:true`
+         واسمٍ **فارغ** ⇒ شاشة دخول بلا هوية، أسوأ من العطل. وبلا هذا الحقل تبقى الروابط
+         عاريةً حتى ترجع الحمولة — و**للأبد إن فشلت** — فيهبط زائرُ مدرسةٍ على شاشة دخول
+         مدرسة المالك (‏`build-frontend.js` يحقن `|| OWNER_SCHOOL_ID` في `teacher`).
+
+         🔴 **والمالك يُخزَّن بـ`''` عمداً** — بنفس قاعدة `_homeCacheBrand` و
+         `_homeSafeApply('portals', …)` في `home/Index.html` حرفياً: الفارغ = مدرسة
+         المالك (بند 99)، وشكلان للشيء الواحد يشقّان فضاء الجلسة والكاش (بند 97).
+         وقاعدةٌ هنا تخالف نظيرتها هناك تجعل الرابط **يقفز** لحظة وصول الحمولة. */
+      schoolId: (b.isOwner === true) ? '' : String(b.schoolId || '')
     };
     await caches.default.put(
       _brandCacheKey(origin, slug),
@@ -496,6 +554,10 @@ export default {
   async fetch(request, env, ctx) {
     var url = new URL(request.url);
     var path = url.pathname;
+    /* 🔴 المسار **كما طلبه الزائر**، قبل أي إعادة كتابة داخلية. `path` يُدهَس أدناه
+       (‏`/` ⇒ `/home/schools.html` · `/<slug>` ⇒ `/home/index.html` · `/portal` ⇒ …)،
+       فأيّ قرارٍ يخصّ ما طلبه الزائر فعلاً يجب أن يُبنى على هذه لا على تلك. */
+    var _rawPath = path;
 
     // ── 0) www ⇒ الجذر (301 دائم، بحفظ المسار والاستعلام) ───────────
     // يسبق كل شيء: لا معنى لتنفيذ منطق على مضيف سنغادره. و`301` لا `302` كي تتوقّف
@@ -1021,6 +1083,39 @@ export default {
     // CORS، وسياسة no-cache للـHTML، وبثّ الجسم. نفس نمط سطر الجذر أعلاه حرفياً.
     // ويسبق حساب `_pathSlug` أدناه عمداً فلا يُلتقَط كـslug.
     if (path === '/portal' || path === '/portal/') path = '/student/index.html';
+    // ── الرابط العاري `/home/index.html` بلا أيّ معرّف ⇒ الجذر (2026-08-14) ──────
+    //
+    // 🔴 **الفجوة التي يُغلقها هذا السطر**: عنوانٌ لا يذكر أيّ مدرسة كان **نافذةً كاملة
+    //    على بيانات مدرسة المالك**. قياس حيّ 2026-08-14: `getHomePageBundle('')` يُرجِع
+    //    `isOwner:true` و**30,056 بايت** (اسم · هاتف · عنوان · شعار · أخبار · صور ·
+    //    فيديو · إحصاءات · شهادات) مقابل 626 بايت لمستأجرٍ آخر. و١٣٨ مستخدماً في ٢٨
+    //    يوماً يصلون هكذا فيرون صفحة مدرسة بعينها على عنوان المنصّة.
+    //    ⇒ قرار مالك 2026-08-14: **الرابط بلا معرّف يجب أن يكون فارغاً**، والمالك
+    //      يُطلَب بمساره `/abdaawatmuaz` كأيّ مستأجر آخر بلا استثناء.
+    //
+    // 🔒 **الشرط `!url.search` وحده** — لا يمسّ أيّ رابط يحمل معرّفاً:
+    //    · تطبيق الأندرويد المنشور (٦٦٣ تثبيتاً) يفتح `…/home/index.html?school=<UUID>`
+    //      (‏`AppConfig.kt::HOME_URL`) ⇒ **خارج الشرط تماماً**.
+    //    · وحتى لو بلغه يوماً: `/` صفحةُ واجهة عامّة مسموحة داخل الـWebView
+    //      (‏`AppConfig.kt` — «الجذر · `/home/**`») ⇒ لا `ACTION_VIEW` ولا قذفٌ إلى
+    //      المتصفّح. هذا **ليس** حالة الـ301 المحظورة عند `REDIRECT_TO_CANONICAL`:
+    //      تلك تغيّر **المضيف** فيفقد التطبيق مقطعَ مساره المعروف؛ وهذه تُبقيه.
+    //
+    // 🔴 والشرط **وجود المعامل لا صحّته**: لو بُني على `_tenantKeyFrom` لصار أيّ مدرسة
+    //    جديدة لم تُضَف بعد إلى `_KNOWN_SCHOOL_SLUGS` (والقائمة **تُصان يدوياً**) تُحوَّل
+    //    إلى الجذر فتُكسَر صفحتها بصمت. المعرّف المجهول يُرفَض خادمياً بـ`not_found` —
+    //    وهذا هو الموضع الصحيح لرفضه، لا هنا.
+    //
+    // 302 لا 301 عمداً: القرار سياسة منتج قابلة للمراجعة، و**301 يُخبَّأ في المتصفّح
+    // للأبد** فيصير عكسُه مستحيلاً على كلّ من زار الرابط مرّة واحدة.
+    // و`news.html` معه: العاري منها يستدعي `getHomePageBundle('', 'library')` ⇒ **مكتبة
+    // المالك كاملةً بما فيها الأخبار الموجَّهة لصفّ/شعبة** (وضع المكتبة يرفع الحجب عنها
+    // عمداً) — تسريبٌ أوسع من الصفحة الرئيسية لا أضيق. `newsarticle.html` **خارج** القائمة:
+    // مسار مشاركةٍ يحمل `?news=` دائماً، وحقن OG له سلسلته الخاصّة.
+    if (/^\/home\/(index|news)\.html\/?$/i.test(path) &&
+        !url.searchParams.has('school') && !url.searchParams.has('schoolId')) {
+      return Response.redirect(CANONICAL_ORIGIN + '/', 302);
+    }
     // ── المسارات العميقة للمنصّتين (راجع `_DEEP_PORTAL_RE` أعلاه للمبرّر والضوابط) ──
     // تسبق حساب `_pathSlug` أدناه عمداً — وإن كان لا يلتقطها أصلاً (يشترط مقطعاً واحداً).
     var _deepSeg = _DEEP_PORTAL_RE.exec(path);
@@ -1238,10 +1333,13 @@ export default {
             هي **بلا أي انتظار** ونُحدِّث في الخلفية. أوّل زائر بعد انتهاء المهلة يرى
             السلوك القديم — وهو مقبول لأن كاش الصفحة العميلي يغطّيه، والبديل (انتظار GAS
             في مسار الطلب) يُضاعف العلّة التي جئنا نُصلحها. */
-      if (_pathSlug && !_newsId) {
-        var _brand = await _brandFromCache(url.origin, _pathSlug);
+      /* 🔴 `_tenantKey` لا `_pathSlug` (2026-08-14): المستأجر قد يصل بمقطع مسار **أو**
+         بمعامل صريح، والثاني هو رابط تطبيق الأندرويد المنشور — راجع `_tenantKeyFrom`. */
+      var _tenantKey = _tenantKeyFrom(_rawPath, url.search);
+      if (_tenantKey && !_newsId) {
+        var _brand = await _brandFromCache(url.origin, _tenantKey);
         if (_brand) _rw = _brandRewrite(_rw, _brand);
-        else if (ctx && ctx.waitUntil) ctx.waitUntil(_brandRefresh(url.origin, _pathSlug, env));
+        else if (ctx && ctx.waitUntil) ctx.waitUntil(_brandRefresh(url.origin, _tenantKey, env));
       }
 
       return _rw.transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
