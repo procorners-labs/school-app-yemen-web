@@ -4194,7 +4194,9 @@ var STU_TAB_ALIAS = {
 function _stuPrParsePath(pathname) {
   var m = STU_PATH_RE.exec(pathname || '');
   if (!m) return null;
-  var t = String(m[1] || '');
+  /* `STU_PATH_RE` يحمل علم `i` فيقبل أي حالة. نُطبّع للمطابقة، والاسم القانوني
+     يُستعاد لاحقاً بـ`_stuCanonicalTab` (‏`examSchedule` تبويبٌ بحالة مختلطة). */
+  var t = String(m[1] || '').toLowerCase();
   if (!t || t === 'index') return null;
   /* `hasOwnProperty` يمنع التقاط أعضاء `Object.prototype` (‏`constructor` مثلاً). */
   if (Object.prototype.hasOwnProperty.call(STU_TAB_ALIAS, t)) t = STU_TAB_ALIAS[t];
@@ -4207,11 +4209,29 @@ function _stuPrTabExists(name) {
   return !!document.querySelector('.tab-btn[data-tab="' + name + '"]');
 }
 
+/* الاسم القانوني للتبويب — مطابقةٌ بلا حساسية للحالة. نظير `_prCanonicalSection`
+   في منصّة المعلم، ولنفس السبب: `data-tab` هو مصدر الحقيقة **بحالته**
+   (‏`examSchedule`)، فأي تطبيع في المسار يجب أن يُستعاد قبل الاستعمال. */
+function _stuCanonicalTab(name) {
+  if (!name) return '';
+  if (_stuPrTabExists(name)) return name;
+  var lc = String(name).toLowerCase(), btns;
+  try { btns = document.querySelectorAll('.tab-btn[data-tab]'); } catch (e) { return ''; }
+  for (var i = 0; i < btns.length; i++) {
+    var d = btns[i].getAttribute('data-tab') || '';
+    if (d && d.toLowerCase() === lc) return d;
+  }
+  return '';
+}
+
 /* التبويب الأوّلي: **المسار يسبق** الجلسة المحفوظة، ويسقط إليها عند أي تعذّر. */
 function _stuInitialTab(savedTab) {
   var p = null;
   try { p = _stuPrParsePath(window.location.pathname); } catch (e) { p = null; }
-  if (p && _stuPrTabExists(p.tab)) return p.tab;
+  if (p) {
+    var canon = _stuCanonicalTab(p.tab);
+    if (canon) return canon;
+  }
   return savedTab || 'home';
 }
 
@@ -4231,9 +4251,11 @@ function _stuPrSyncUrl(name) {
 function _stuPrOnPopState() {
   var p = null;
   try { p = _stuPrParsePath(window.location.pathname); } catch (e) { p = null; }
-  if (!p || !_stuPrTabExists(p.tab)) return;
+  if (!p) return;
+  var canon = _stuCanonicalTab(p.tab);
+  if (!canon) return;
   _stuPrSuppress = true;
-  try { goTabByName(p.tab); } finally { _stuPrSuppress = false; }
+  try { goTabByName(canon); } finally { _stuPrSuppress = false; }
 }
 try { window.addEventListener('popstate', _stuPrOnPopState); } catch (e) {}
 

@@ -30018,13 +30018,42 @@ function _prSectionAllowed(name) {
   return disp !== 'none';
 }
 
+/* ── الاسم القانوني: مطابقةٌ غير حسّاسة للحالة ──────────────────────────────
+   🔴 الخلل الذي يقفله (قِيس 2026-08-18): `_prParsePath` يخفض الحالة، و**١٧ من ٣٧
+   قسماً camelCase** (‏`mySchedule` · `studentDirectory` · `examctrl`…). فالمسار
+   `/teacher/mySchedule/<slug>` كان يُحلّ إلى `myschedule` ⇒ لا `si-myschedule`
+   ⇒ سقوطٌ إلى الداشبورد. و`_prSyncUrl` يكتب **تلك الروابط بالضبط** — أي أن كل
+   رابطٍ يُشارَك من تلك الأقسام كان يفتح الداشبورد عند المستقبِل. وكان مُخفىً
+   محلياً لأن صاحب الجلسة يسقط إلى `localStorage` فيصيب القسم نفسه صدفةً.
+
+   ولا يُعالَج بخفضٍ أعمى في الطرف الآخر: `si-*` هي مصدر الحقيقة بحالتها.
+   ⇒ نُعيد الاسم **كما هو معرَّف في المانيفست** بعد مطابقةٍ بلا حساسية للحالة.
+
+   يقرأ الـDOM عمداً — لهذا يعيش هنا لا في `_prParsePath` (تلك تبقى نقيّة). */
+function _prCanonicalSection(name) {
+  if (!name) return '';
+  var lc = String(name).toLowerCase();
+  if (lc === 'dashboard') return 'dashboard';      /* دائم السماح بلا زرّ */
+  if (document.getElementById('si-' + name)) return name;   /* مطابقة تامّة */
+  var btns;
+  try { btns = document.querySelectorAll('[id^="si-"]'); } catch (e) { return ''; }
+  for (var i = 0; i < btns.length; i++) {
+    var id = String(btns[i].id || '').slice(3);
+    if (id && id.toLowerCase() === lc) return id;
+  }
+  return '';
+}
+
 /* القسم الأوّلي عند الإقلاع: **المسار يسبق** الحالة المحفوظة.
    يُستدعى بدل `_savedSectionOrDashboard()` مباشرةً، ويسقط إليها عند أي تعذّر —
    فالسلوك القائم يبقى هو التراجع لا الاستثناء. */
 function _portalInitialSection() {
   var p = null;
   try { p = _prParsePath(window.location.pathname); } catch (e) { p = null; }
-  if (p && _prSectionAllowed(p.section)) return p.section;
+  if (p) {
+    var canon = _prCanonicalSection(p.section);
+    if (canon && _prSectionAllowed(canon)) return canon;
+  }
   return _savedSectionOrDashboard();
 }
 
@@ -30066,7 +30095,8 @@ function _prOnPopState() {
   var p = null;
   try { p = _prParsePath(window.location.pathname); } catch (e) { p = null; }
   if (!p) return;
-  var target = _prSectionAllowed(p.section) ? p.section : 'dashboard';
+  var canon = _prCanonicalSection(p.section);
+  var target = (canon && _prSectionAllowed(canon)) ? canon : 'dashboard';
   _PR_SUPPRESS = true;
   try { showSection(target); } finally { _PR_SUPPRESS = false; }
 }
