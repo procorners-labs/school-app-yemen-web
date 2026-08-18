@@ -4173,11 +4173,31 @@ function goTabByName(name) {
 var STU_PATH_RE = /^\/student\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i;
 var _stuPrSuppress = false;
 
+/* ── طبقة alias: مسمّى إنجليزي في الرابط ⇒ التبويب الداخلي ──────────────────
+   المرجع: `_docs/2026-08-14-اصطلاح-المسارات-والتسمية.md` §ب.
+
+   🔴 **طبقة قراءة فقط.** `_stuPrSyncUrl` يبقى يكتب **بالاسم الداخلي** دائماً —
+   أي كتابةٍ بالـalias تُنشئ رابطين لنفس التبويب فيتضاعف تاريخ التصفّح ويبدو
+   زرّ الرجوع مكسوراً. والأسماء الداخلية والروابط المنشورة قبل هذا الاصطلاح
+   تبقى تعمل للأبد.
+
+   ⚠️ `notifications` و`profile` **غائبان عمداً** — لا `data-tab` مقابل لهما،
+   وبناؤهما مؤجَّل بقرار مالك (2026-08-18). لا يُخترَع لهما تبويب. */
+var STU_TAB_ALIAS = {
+  'dashboard':   'home',
+  'assignments': 'homework',
+  'exams':       'examSchedule',
+  'results':     'reports',
+  'messages':    'notes'
+};
+
 function _stuPrParsePath(pathname) {
   var m = STU_PATH_RE.exec(pathname || '');
   if (!m) return null;
   var t = String(m[1] || '');
   if (!t || t === 'index') return null;
+  /* `hasOwnProperty` يمنع التقاط أعضاء `Object.prototype` (‏`constructor` مثلاً). */
+  if (Object.prototype.hasOwnProperty.call(STU_TAB_ALIAS, t)) t = STU_TAB_ALIAS[t];
   return { tab: t, slug: String(m[2] || '') };
 }
 

@@ -29969,12 +29969,40 @@ var PORTAL_PATH_RE = /^\/teacher\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i;
    صراحةً ما قد يبدو قسماً وليس كذلك. */
 var PORTAL_NOT_SECTIONS = { 'index': 1, 'index.html': 1 };
 
-/* يُحلّل المسار ⇒ { section, slug } أو null. دالّة نقيّة: لا تقرأ DOM ولا حالة. */
+/* ── طبقة alias: مسمّى إنجليزي في الرابط ⇒ القسم الداخلي ────────────────────
+   المرجع: `_docs/2026-08-14-اصطلاح-المسارات-والتسمية.md` §ب.
+
+   🔴 **طبقة قراءة فقط.** `_prSyncUrl` يبقى يكتب **بالاسم الداخلي** دائماً — أي
+   كتابةٍ بالـalias تُنشئ رابطين لنفس القسم فيتضاعف تاريخ التصفّح ويبدو زرّ
+   الرجوع مكسوراً. والأسماء الداخلية والروابط المنشورة قبل هذا الاصطلاح تبقى
+   تعمل للأبد: المفتاح لا يُطابَق إلّا إن لم يكن اسماً داخلياً أصلاً.
+
+   ⚠️ `classes` ⇒ `lists-mgmt` **ربطٌ تقريبي بقرار مالك (2026-08-18)** لا مطابقة
+   تامّة: لا يوجد `si-classes` في المانيفست، و`lists-mgmt` أقرب الموجود دلالياً
+   (منه تُدار الصفوف والشُعب). قابلٌ للمراجعة — ولا يُقرأ كأنّ ثمّة قسماً اسمه
+   «الفصول». */
+var PORTAL_SECTION_ALIAS = {
+  'schedule':      'mySchedule',
+  'assignments':   'homework',
+  'exams':         'examctrl',
+  'students':      'studentDirectory',
+  'messages':      'notes',
+  'notifications': 'circulars',
+  'classes':       'lists-mgmt'
+};
+
+/* يُحلّل المسار ⇒ { section, slug } أو null. دالّة نقيّة: لا تقرأ DOM ولا حالة.
+   الـalias يُطبَّق هنا فيرثه كلُّ مستهلِك (`_portalInitialSection` · `popstate`)
+   بلا تكرار — ولا يُطبَّق إن كان الاسم داخليّاً أصلاً (`hasOwnProperty` يمنع
+   أيضاً التقاط أعضاء `Object.prototype` مثل `constructor`). */
 function _prParsePath(pathname) {
   var m = PORTAL_PATH_RE.exec(pathname || '');
   if (!m) return null;
   var sec = String(m[1] || '').toLowerCase();
   if (!sec || PORTAL_NOT_SECTIONS[sec]) return null;
+  if (Object.prototype.hasOwnProperty.call(PORTAL_SECTION_ALIAS, sec)) {
+    sec = PORTAL_SECTION_ALIAS[sec];
+  }
   return { section: sec, slug: String(m[2] || '').toLowerCase() };
 }
 
