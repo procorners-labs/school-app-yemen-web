@@ -22917,6 +22917,14 @@ function cert_renderPreview(){
   area.innerHTML=html;
 }
 
+/* تسمية صندوق النتيجة. تُستبدَل لا تُضاف: `.cs-l` محكومة بـ`white-space:nowrap`
+   داخل بطاقةٍ فائضها 1mm، فسطرٌ ثانٍ يُقصّ. وحين يكون الطالب «مكملاً» فعددُ المواد
+   أنفع من عدّاد الرصد — الأخير يجيب «كم رُصد» والسؤال هنا «لماذا مكمل». */
+function _certResultCaption(stu){
+  var n = parseInt(stu.failedCount, 10);
+  if (n > 0) return 'النتيجة · مكمل في ' + n + ' مادة';
+  return 'النتيجة · ' + stu.enteredCount + '/' + stu.subjectCount;
+}
 function cert_certHtml(stu){
   var d=CERT.data, type=d.periodType, month=d.month;
   var subjects=stu.subjects||[];
@@ -22930,7 +22938,12 @@ function cert_certHtml(stu){
   for(var s=0;s<subjects.length;s++){
     var subj=subjects[s], g=subj.grades||[];
     rows+='<tr><td>'+(s+1)+'</td><td style="text-align:right;font-weight:600">'+escapeHtml(subj.name)+'</td>';
-    for(var gi=0; gi<cols.length; gi++){ var v=(g[gi]&&g[gi].value!=='' && g[gi].value!=null)?g[gi].value:'-'; rows+='<td'+((cols[gi]&&cols[gi].isTotal)?' style="font-weight:700"':'')+'>'+escapeHtml(String(v))+'</td>'; }
+    /* ★ المادة دون نصف نهايتها تُلوَّن **داخل خليتها القائمة** لا بسطر جديد:
+       `.cert` مثبَّتة 143mm بـoverflow:hidden وشهادتان لكل A4 (287mm) ⇒ الفائض 1mm،
+       فأي صفّ أو سطر يُضاف يُقصّ صامتاً ولا يُعاد تدفّقه. والتلوين يفسّر «مكمل» على
+       شهادةٍ تقديرها «ممتاز» — بلا هذا يبدو الحكم خطأً لا قاعدةً. */
+    var lowSubj = (subj && subj.belowHalf === true);
+    for(var gi=0; gi<cols.length; gi++){ var v=(g[gi]&&g[gi].value!=='' && g[gi].value!=null)?g[gi].value:'-'; var isTot=(cols[gi]&&cols[gi].isTotal); rows+='<td'+(isTot?(' style="font-weight:700'+(lowSubj?';color:#dc2626':'')+'"'):'')+'>'+escapeHtml(String(v))+'</td>'; }
     rows+='</tr>';
   }
   /* «مكمل» حلّت محلّ «راسب» (قرار مالك) — يبقى صنف اللون `no` لتمييزها بصرياً
@@ -22965,7 +22978,7 @@ function cert_certHtml(stu){
       '<div class="cs-box b1"><div class="cs-v">'+stu.totalSum+'<small> / '+stu.maxSum+'</small></div><div class="cs-l">المجموع الكلي · '+stu.subjectCount+' مادة</div></div>' +
       '<div class="cs-box b2"><div class="cs-v">'+stu.percentage+'%</div><div class="cs-l">النسبة المئوية</div></div>' +
       '<div class="cs-box b3"><div class="cs-v">'+escapeHtml(stu.gradeLabel)+'</div><div class="cs-l">التقدير العام</div></div>' +
-      '<div class="cs-box '+resClass+'"><div class="cs-v">'+escapeHtml(stu.result)+'</div><div class="cs-l">النتيجة · '+stu.enteredCount+'/'+stu.subjectCount+'</div></div>' +
+      '<div class="cs-box '+resClass+'"><div class="cs-v">'+escapeHtml(stu.result)+'</div><div class="cs-l">'+_certResultCaption(stu)+'</div></div>' +
     '</div>' +
     '<div class="cert-sign">' +
       '<div><div class="cs-role">مدير المدرسة</div><div class="cs-line"></div></div>' +
@@ -23362,9 +23375,11 @@ function ss_statsHtml(students){
   var sum=0,n=0,hi=null,lo=null,pass=0,fail=0;
   for(var i=0;i<students.length;i++){
     var st=students[i]; if(st.enteredCount<=0) continue;
-    var a=parseFloat(st.average)||0, p=parseFloat(st.percentage)||0;
+    var a=parseFloat(st.average)||0;
     sum+=a; n++; if(hi===null||a>hi)hi=a; if(lo===null||a<lo)lo=a;
-    if(p>=50)pass++; else fail++;
+    /* يتبع `result` الخادمي لا نسبةً تُعاد حسابها هنا: نسخةٌ عميلية ثانية من
+       العتبة تعني رقمين لنفس الطالب حين تتغيّر القاعدة في طرفٍ دون الآخر. */
+    if(st.result==='ناجح')pass++; else fail++;
   }
   var avg=n?(Math.round((sum/n)*100)/100):0;
   var rate=(pass+fail)?(Math.round((pass/(pass+fail))*1000)/10):0;
