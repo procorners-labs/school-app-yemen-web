@@ -4200,7 +4200,11 @@ function _stuPrParsePath(pathname) {
   if (!t || t === 'index') return null;
   /* `hasOwnProperty` يمنع التقاط أعضاء `Object.prototype` (‏`constructor` مثلاً). */
   if (Object.prototype.hasOwnProperty.call(STU_TAB_ALIAS, t)) t = STU_TAB_ALIAS[t];
-  return { tab: t, slug: String(m[2] || '') };
+  /* 🔴 الـslug يُخفَّض حالةً — نظيرُ `_prParsePath` في المعلّم حرفياً. كان يُترَك خامّاً
+     هنا وحده: صفر أثرٍ اليوم (كل الـslugs في السجل بحروف صغيرة)، لكنه **فرقٌ صامت بين
+     نظيرَين يُفترَض تطابقهما** — و`_tenantResolve` يطابق الـslug بـ`toLowerCase()` فأيّ
+     رابطٍ بحروف كبيرة كان يصل المعلّمَ مطبَّعاً والطالبَ خامّاً. يحرسه تأكيد تماثل. */
+  return { tab: t, slug: String(m[2] || '').toLowerCase() };
 }
 
 /* التبويب موجودٌ فعلاً؟ نفس معيار `goTabByName` حرفياً (زرٌّ بـ`data-tab`). */
