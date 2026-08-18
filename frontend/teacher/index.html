@@ -15454,46 +15454,14 @@ function renderGradesTable() {
   tbody.innerHTML = html;
 }
 function filterGradesTable(q) { var rows = document.querySelectorAll('#gradesTable tbody tr'); for (var i = 0; i < rows.length; i++) { var r = rows[i]; if (q === '' || r.dataset.student.indexOf(q.toLowerCase()) !== -1) r.style.display = ''; else r.style.display = 'none'; } }
-function onGradeInput(inp) {
-  var val  = inp.value;
-  var code = inp.dataset.code;
-  var type = inp.dataset.type;
-
-  var maxMap = {
-    monthly_score: 20,
-    exam_score   : 30,
-    total_score  : 50,
-    final_grade  : 50,
-    behavior     : 20,
-    homework     : 20,
-    oral         : 20,
-    written      : 40
-  };
-  var max = maxMap[type] || 100;
-
-  if (val === '') {
-    inp.classList.remove('has-grade', 'error', 'pending-save', 'saving');
-    var ctxClr = { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section };
-    // 🔴 المسار المفرد القديم كان محصَّناً ضمنياً: مؤقّته يقرأ inp.value **حيّاً** وقت
-    // الإطلاق فيجد الحقل فارغاً فلا يحفظ. المخزن الجديد يلتقط القيمة **نسخاً**، فمسح
-    // الحقل خلال نافذة الدمج كان سيُبقي القيمة القديمة ويكتبها في ورقة درجات طالب حقيقي.
-    // لذلك يُلغى الحقل من المخزن صراحةً (نفس دلالة القديم: المسح لا يحفظ شيئاً).
-    if (GRADE_BATCH_FIELDS[type] === 1) { cancelGradeSave(code, type, ctxClr); return; }
-    triggerAutoSave(inp, ctxClr);
-    return;
-  }
-
-  var num = parseFloat(val);
-  if (isNaN(num) || num < 0 || num > max) {
-    inp.classList.add('error');
-    inp.classList.remove('has-grade', 'pending-save', 'saving');
-    toast('⚠️ الدرجة يجب أن تكون بين 0 و ' + max, 'warning', 2500);
-    return;
-  }
-
-  inp.classList.remove('error');
-  inp.classList.add('has-grade');
-
+/* إعادة حساب المجاميع المرئية لصفّ طالب واحد — نقلٌ خالص من `onGradeInput` (PR أ).
+   استُخرجت لأن مسارين يحتاجانها: الإدخال اليدوي، والتوزيع الجماعي الذي يكتب القيمة
+   برمجياً فلا يُطلق `oninput` أصلاً. لو تُركت مكرَّرة لصار في الملف قاعدتان لسقف
+   المحصلة (`Math.min(50,…)`) وقاعدتان لعتبة التلوين — وأوّل تعديل على إحداهما يجعل
+   الشاشتين تعرضان رقمين مختلفين لنفس الطالب.
+   🔴 `type` وسيطٌ إلزامي لا زينة: شرط الكتلة الفصلية يفحصه، وإسقاطه كان سيوسّع
+   السلوك بدل نقله (والنقل الخالص يُثبَت بالتطابق الحرفي لا بالنيّة). */
+function _gradeRecalcRow(code, type) {
   // حساب المحصلة بصرياً في نصف/نهاية العام (20+30=50)
   if (GS.isTermMonth && (type === 'monthly_score' || type === 'exam_score')) {
     var msInp = document.querySelector('input[data-code="' + code + '"][data-type="monthly_score"]');
@@ -15535,6 +15503,48 @@ function onGradeInput(inp) {
       }
     }
   }
+}
+function onGradeInput(inp) {
+  var val  = inp.value;
+  var code = inp.dataset.code;
+  var type = inp.dataset.type;
+
+  var maxMap = {
+    monthly_score: 20,
+    exam_score   : 30,
+    total_score  : 50,
+    final_grade  : 50,
+    behavior     : 20,
+    homework     : 20,
+    oral         : 20,
+    written      : 40
+  };
+  var max = maxMap[type] || 100;
+
+  if (val === '') {
+    inp.classList.remove('has-grade', 'error', 'pending-save', 'saving');
+    var ctxClr = { month: GS.month, subject: GS.subject, grade: GS.grade, section: GS.section };
+    // 🔴 المسار المفرد القديم كان محصَّناً ضمنياً: مؤقّته يقرأ inp.value **حيّاً** وقت
+    // الإطلاق فيجد الحقل فارغاً فلا يحفظ. المخزن الجديد يلتقط القيمة **نسخاً**، فمسح
+    // الحقل خلال نافذة الدمج كان سيُبقي القيمة القديمة ويكتبها في ورقة درجات طالب حقيقي.
+    // لذلك يُلغى الحقل من المخزن صراحةً (نفس دلالة القديم: المسح لا يحفظ شيئاً).
+    if (GRADE_BATCH_FIELDS[type] === 1) { cancelGradeSave(code, type, ctxClr); return; }
+    triggerAutoSave(inp, ctxClr);
+    return;
+  }
+
+  var num = parseFloat(val);
+  if (isNaN(num) || num < 0 || num > max) {
+    inp.classList.add('error');
+    inp.classList.remove('has-grade', 'pending-save', 'saving');
+    toast('⚠️ الدرجة يجب أن تكون بين 0 و ' + max, 'warning', 2500);
+    return;
+  }
+
+  inp.classList.remove('error');
+  inp.classList.add('has-grade');
+
+  _gradeRecalcRow(code, type);
 
   // مؤقت الحفظ التلقائي — نلتقط سياق GS كـ snapshot الآن وقت الكتابة، لا وقت الإطلاق لاحقاً
   // (المعلّم قد يبدّل الشهر/المادة/الصف/الشعبة خلال 500ms، فتصبح قراءة GS الحيّة عندها خاطئة
