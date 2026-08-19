@@ -29940,8 +29940,105 @@ function _visitsReviewExportCsv(){
 }
 </script>
 <!-- مُوجِّه المسارات: `/teacher/<page>[/<slug>]` ⟶ قسمُ اللوحة. يُحمَّل **أخيراً** لأنه
-     يعتمد `showSection` و`_savedSectionOrDashboard` المُعرَّفتين في أجزاء سابقة. -->
+     يعتمد `showSection` و`_savedSectionOrDashboard` المُعرَّفتين في أجزاء سابقة.
+     والنواة المشتركة تسبقه (ص8-ج): `_js-portal-router` يُعرِّف مواصفةً ويُفوِّض إلى
+     `_prcParse`/`_prcCanonical`/`_prcTargetPath`.
+     ⚠️ **والحملُ على «نفس الكتلة» لا على الترتيب** — قِيس على المخرَج المبنيّ: لا
+     `</script>` بين الجزأين، وإعلاناتُ `function` تُرفَع داخل الكتلة الواحدة فالترتيب
+     المعكوس يعمل. الترتيبُ مُثبَّتٌ اصطلاحاً للقراءة، و**الفصلُ إلى كتلتين** هو الخطر
+     الحقيقي. يحرس الاثنين تأكيدان في `_build/test-regression-guards.js`. -->
 <script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   PortalRouterCore — منطقُ التوجيه **مرّةً واحدة** للمنصّتين  (ص8-ج، 2026-08-19)
+
+   ── لماذا هذا الملفّ ───────────────────────────────────────────────────────
+   منصّتا المعلّم والطالب تحملان مُوجِّهَين **متماثلَين بنيوياً**: نفس الـregex عدا
+   البادئة، نفس طبقة الـalias، نفس تطبيع الـslug، نفس علم منع الحلقة. والفرق كلُّه
+   **بيانات**: وحدةُ العرض (قسم `si-*` عبر `showSection` مقابل تبويب `data-tab` عبر
+   `goTabByName`)، ومفتاحُ الإرجاع، وجدولُ الـalias، والبادئة.
+
+   وقد أثبت التاريخ أن نسختين تنحرفان: تطبيعُ الـslug كان مفقوداً عند الطالب وحده
+   حتى PR#1110 — فرقٌ **صامت** أثرُه أن رابطاً بحروف كبيرة يصل المعلّمَ مطبَّعاً
+   والطالبَ خامّاً، بينما `_tenantResolve` يطابق بـ`toLowerCase()`.
+   ⇒ منطقٌ واحد هنا، وجدولا بيانات هناك.
+
+   ── ما بقي عمداً في ملفّ كلّ منصّة ─────────────────────────────────────────
+   🔴 **علم منع الحلقة وحارس «لا تهاجر أحداً» يبقيان في المُستهلِك حرفياً** — لا
+   لأنهما لا يقبلان التوحيد، بل لأن حرّاس الانحدار يقرآن نصَّهما في موضعه، وكلٌّ
+   منهما يقفل خللاً وقع فعلاً (زرُّ رجوعٍ مكسور · و`/…/index.html?school=<uuid>`
+   المجمَّد في APK vc31 بـ663 تثبيتاً). نقلُهما كان سيُسقط أربعة حرّاس **بانهيارٍ
+   لا باحمرار** (بند 147) مقابل صفر مكسب — فالمنقول هو ما يتكرّر فعلاً.
+
+   ── الثابت الحاكم ─────────────────────────────────────────────────────────
+   🔴 **صفر تغيير سلوكيّ يظهر للمستخدم.** هذا نقلٌ وتعميم لا تحسين، ويحرسه تشغيلٌ
+   فعليّ بـ`vm` على المُوجِّهَين معاً في `_build/test-regression-guards.js`.
+
+   ⚠️ **واستثناءٌ حدّيٌّ واحد يُعلَن هنا صراحةً بدل تركه ضمنياً في اختبار** (رصدَته
+   المراجعة المستقلّة، ولولاها لبقي الادّعاءُ مطلقاً وهو غير دقيق):
+   الشكلُ القديم عند المعلّم كان `if (!sec || PORTAL_NOT_SECTIONS[sec]) return null;`
+   — وصولٌ بالقوس **يقرأ سلسلة النماذج**، فكان يحجب `constructor` و`toString`
+   و`valueOf` وأخواتها **عرَضاً لا قصداً** (قيمةٌ موروثة truthy). والنسخة الموحَّدة
+   تستعمل `hasOwnProperty` فلم تعُد تحجبها ⇒ `/teacher/constructor` صار يُحلَّل.
+   🟢 **والأثر النهائي صفر:** `_prcCanonical` لا تجد `si-constructor` فتُعيد `''`،
+   فيسقط المسار إلى الافتراضيّ **كما كان دائماً**. والسلوك الجديد هو **الأصحّ**:
+   الحجبُ العرَضيّ كان يعتمد على تلوّث سلسلة النماذج لا على قائمة استبعادٍ مقصودة.
+   وجانبُ الطالب لم يتأثّر أصلاً (كان `t === 'index'` بمساواةٍ صريحة).
+   يقيس الحالةَ التأكيدُ `41-ز` في `_build/test-offline.js`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* تحليل المسار ⇒ كائنٌ فيه `spec.key` و`slug`، أو `null`. **دالّة نقيّة**: لا تقرأ
+   DOM ولا حالة — ولهذا تُشغَّل مباشرةً داخل sandbox في حارس الانحدار.
+
+   spec: { re · alias · notNames · key }
+   - `notNames` كائنٌ لا مصفوفة (نظيرُ `PORTAL_NOT_SECTIONS` حرفياً)، ويُقرأ بـ
+     `hasOwnProperty` كي لا يلتقط أعضاء `Object.prototype` (‏`constructor` مثلاً).
+   - الـalias يُطبَّق **هنا وحده** فيرثه كلُّ مستهلِك بلا قائمةٍ ثانية تنحرف. */
+function _prcParse(pathname, spec) {
+  var m = spec.re.exec(pathname || '');
+  if (!m) return null;
+  var name = String(m[1] || '').toLowerCase();
+  if (!name) return null;
+  if (spec.notNames &&
+      Object.prototype.hasOwnProperty.call(spec.notNames, name)) return null;
+  if (Object.prototype.hasOwnProperty.call(spec.alias, name)) name = spec.alias[name];
+  var out = {};
+  out[spec.key] = name;
+  /* 🔴 الـslug يُخفَّض حالةً — **نقطة التطبيع الوحيدة في المنصّتين**. */
+  out.slug = String(m[2] || '').toLowerCase();
+  return out;
+}
+
+/* الاسم القانوني لوحدة العرض — مطابقةٌ **غير حسّاسة للحالة** ثمّ إعادةُ الاسم كما
+   هو معرَّف في مصدر الحقيقة (‏`si-*` و`data-tab` بحالتهما: `mySchedule` ·
+   `studentDirectory` · `examSchedule`). المسارُ يُخفَّض دائماً، فبلا هذه الاستعادة
+   يسقط كلُّ رابطٍ مُشارَك من قسمٍ camelCase إلى الافتراضي (‏قِيس 2026-08-18:
+   ١٧ من ٣٧ قسمَ معلّم بحالة مختلطة).
+
+   يقرأ الـDOM عمداً — ولهذا يعيش خارج `_prcParse` التي تبقى نقيّة.
+   spec: { virtual · exists(name) · list() } */
+function _prcCanonical(name, spec) {
+  if (!name) return '';
+  var lc = String(name).toLowerCase();
+  var virt = spec.virtual || [];
+  for (var v = 0; v < virt.length; v++) {
+    if (lc === String(virt[v]).toLowerCase()) return virt[v];
+  }
+  if (spec.exists(name)) return name;              /* مطابقة تامّة */
+  var all;
+  try { all = spec.list(); } catch (e) { return ''; }
+  for (var i = 0; i < all.length; i++) {
+    if (all[i] && String(all[i]).toLowerCase() === lc) return all[i];
+  }
+  return '';
+}
+
+/* المسار الهدف لوحدة عرضٍ باسمها. الـslug يُؤخذ من المسار القائم **وحده** ولا
+   يُشتقّ من هوية المدرسة النشطة إطلاقاً: حقنُ slug في رابطٍ لم يحمله يُنشئ
+   تمثيلَين لنفس القسم فيتضاعف تاريخ التصفّح. */
+function _prcTargetPath(prefix, name, slug) {
+  return '/' + prefix + '/' + name + (slug ? '/' + slug : '');
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PortalRouter — ربط `/teacher/<page>[/<slug>]` بأقسام اللوحة  (2026-08-13)
 
@@ -29991,19 +30088,34 @@ var PORTAL_SECTION_ALIAS = {
   'classes':       'lists-mgmt'
 };
 
-/* يُحلّل المسار ⇒ { section, slug } أو null. دالّة نقيّة: لا تقرأ DOM ولا حالة.
-   الـalias يُطبَّق هنا فيرثه كلُّ مستهلِك (`_portalInitialSection` · `popstate`)
-   بلا تكرار — ولا يُطبَّق إن كان الاسم داخليّاً أصلاً (`hasOwnProperty` يمنع
-   أيضاً التقاط أعضاء `Object.prototype` مثل `constructor`). */
-function _prParsePath(pathname) {
-  var m = PORTAL_PATH_RE.exec(pathname || '');
-  if (!m) return null;
-  var sec = String(m[1] || '').toLowerCase();
-  if (!sec || PORTAL_NOT_SECTIONS[sec]) return null;
-  if (Object.prototype.hasOwnProperty.call(PORTAL_SECTION_ALIAS, sec)) {
-    sec = PORTAL_SECTION_ALIAS[sec];
+/* ── مواصفة هذه المنصّة: بياناتٌ تُمرَّر إلى المنطق المشترك (ص8-ج) ───────────
+   المنطق نفسه يعيش في `_portal-router-core.html` ويخدم المنصّتين. وما يتبقّى هنا
+   **بياناتٌ لا منطق**: البادئة · الـregex · جدول الـalias · المُستبعَدات · مفتاح
+   الإرجاع · وكيف تُعرَّف وحدةُ العرض في هذه المنصّة (‏`si-*`). */
+var PORTAL_PARSE_SPEC = {
+  re: PORTAL_PATH_RE,
+  alias: PORTAL_SECTION_ALIAS,
+  notNames: PORTAL_NOT_SECTIONS,
+  key: 'section'
+};
+
+var PORTAL_UNIT_SPEC = {
+  virtual: ['dashboard'],          /* دائم السماح بلا زرّ */
+  exists: function (name) { return !!document.getElementById('si-' + name); },
+  list: function () {
+    var btns = document.querySelectorAll('[id^="si-"]'), out = [];
+    for (var i = 0; i < btns.length; i++) out.push(String(btns[i].id || '').slice(3));
+    return out;
   }
-  return { section: sec, slug: String(m[2] || '').toLowerCase() };
+};
+
+/* يُحلّل المسار ⇒ { section, slug } أو null. دالّة نقيّة: لا تقرأ DOM ولا حالة.
+   الـalias يُطبَّق داخل `_prcParse` فيرثه كلُّ مستهلِك (`_portalInitialSection` ·
+   `popstate`) بلا تكرار — ولا يُطبَّق إن كان الاسم داخليّاً أصلاً (`hasOwnProperty`
+   يمنع أيضاً التقاط أعضاء `Object.prototype` مثل `constructor`).
+   والجسم مُوحَّد مع نظيره عند الطالب منذ ص8-ج — التطبيع نقطةٌ واحدة لا نقطتان. */
+function _prParsePath(pathname) {
+  return _prcParse(pathname, PORTAL_PARSE_SPEC);
 }
 
 /* هل القسم متاحٌ للمستخدم الحالي؟ **نفس معيار `_savedSectionOrDashboard` حرفياً**
@@ -30029,19 +30141,11 @@ function _prSectionAllowed(name) {
    ولا يُعالَج بخفضٍ أعمى في الطرف الآخر: `si-*` هي مصدر الحقيقة بحالتها.
    ⇒ نُعيد الاسم **كما هو معرَّف في المانيفست** بعد مطابقةٍ بلا حساسية للحالة.
 
-   يقرأ الـDOM عمداً — لهذا يعيش هنا لا في `_prParsePath` (تلك تبقى نقيّة). */
+   يقرأ الـDOM عمداً — لهذا يعيش خارج `_prParsePath` (تلك تبقى نقيّة).
+   والجسم مُوحَّد مع نظيره عند الطالب منذ ص8-ج: `_prcCanonical` واحدة، و`si-*`
+   مقابل `data-tab` فرقٌ **في المواصفة** لا في المنطق. */
 function _prCanonicalSection(name) {
-  if (!name) return '';
-  var lc = String(name).toLowerCase();
-  if (lc === 'dashboard') return 'dashboard';      /* دائم السماح بلا زرّ */
-  if (document.getElementById('si-' + name)) return name;   /* مطابقة تامّة */
-  var btns;
-  try { btns = document.querySelectorAll('[id^="si-"]'); } catch (e) { return ''; }
-  for (var i = 0; i < btns.length; i++) {
-    var id = String(btns[i].id || '').slice(3);
-    if (id && id.toLowerCase() === lc) return id;
-  }
-  return '';
+  return _prcCanonical(name, PORTAL_UNIT_SPEC);
 }
 
 /* القسم الأوّلي عند الإقلاع: **المسار يسبق** الحالة المحفوظة.
@@ -30088,7 +30192,7 @@ function _prSyncUrl(name) {
     var cur = _prParsePath(window.location.pathname);
     if (!cur) return;
     var slug = _prSlugForUrl();
-    var next = '/teacher/' + name + (slug ? '/' + slug : '');
+    var next = _prcTargetPath('teacher', name, slug);
     if (next === window.location.pathname) return;
     window.history.pushState({ prSection: name }, '', next + window.location.search);
   } catch (e) { /* تاريخ المتصفّح ليس شرطاً لعمل اللوحة */ }
