@@ -23,11 +23,35 @@ var GAS = {
   'home-all-school': 'https://script.google.com/macros/s/AKfycbx21N0YQAqby2TV0q3lrxPHjGHo19y6_6ez0xeB4rvsncmSbRlyLh4iiNvrbtP6-ng2/exec',
   cms:      'https://script.google.com/macros/s/AKfycbz-iAj9L3ROOn4CAjmwkVBUqpWuxIx1LkgPLwKnHu7kHLWKCy3GVJNo1vZbnekop0VlMA/exec',
   teacher:  'https://script.google.com/macros/s/AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND/exec',
+  // ⚠️ هذه القيمة **لم تعد وجهةَ `/gas/student`** منذ ص6 — انظر التحويل أسفل الجدول
+  //    مباشرةً. تبقى مكتوبةً هنا لأنها **مسار التراجع الفوري**، ولأن حذفها يقطع العقد.
   student:  'https://script.google.com/macros/s/AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec',
   schedule: 'https://script.google.com/macros/s/AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag/exec',
   'master-admin': 'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec',
   pricing:  'https://script.google.com/macros/s/AKfycbz11yUbrix4F1lE_GbiAFqE3EClGpoRvAb19LoLoABQX_Xo3i2U25jlQpOFcN9S_yLC/exec'
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ص6 — `/gas/student` يُخدَم من نشرة `teacher` (2026-08-19)
+// ═══════════════════════════════════════════════════════════════════════════
+//  منطق مشروع `student` كلُّه صار داخل مشروع `teacher` (ص4/ص5). وأُثبِت حيّاً قبل
+//  هذا السطر أنّ `/gas/teacher?app=student` يخدم **413,620 بايتاً من قالبنا مطابقةً
+//  حرفياً** لما يخدمه `/gas/student`، وأنّ `?app=student&action=health` يردّ
+//  `app=student · ok=true`. ⇒ النقل هنا تبديلُ وجهةٍ لا تغييرُ محتوى.
+//
+//  🔴 **ولماذا لا يُغيَّر المدخل في الجدول أعلاه:**
+//   (١) قيمته الأصلية هي **مسار التراجع الفوري** — إن أخفق النقل تُعاد هذه الحارسة
+//       الواحدة إلى `GAS.student` ويُدفَع الوركر: ثوانٍ، **بلا أيّ نشر GAS**، ومشروع
+//       `student` باقٍ منشوراً حيّاً وكاملاً. ومعرّف نشره **لا يُحذف أبداً**
+//       (‏`clasp undeploy` ممنوع) — المعرّف لا يعود إن حُذف.
+//   (٢) `student: GAS.teacher` **داخل** الحرفيّة نفسها لا يعمل أصلاً: `GAS` لم يُسنَد
+//       بعد وقت تقييم الحرفيّة ⇒ `undefined` ⇒ «تطبيق غير معروف» على كل نداء.
+//
+//  ⚠️ ولا يكفي تبديلُ الوجهة وحده: معالج `/gas/<app>` يبني الهدف بـ`target + url.search`،
+//     فنداءٌ عارٍ يصل `doGet` المعلّم **بلا مُميِّز** فيخدم لوحة المعلّم بدل صفحة الطالب.
+//     المُميِّزُ `app=student` يُلحَق في المعالج **للمدخل `student` وحده** — انظر
+//     `fullTarget` أدناه، وقارئه `teacher/TeacherCore.js::doGet`.
+GAS.student = GAS.teacher;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  منظّم التزاحم (bulkhead) — المرحلة أ: حَكْم داخل العامل الواحد
@@ -637,6 +661,16 @@ export default {
       // لإعادة المحاولة، فلا يظهر خلل GAS العابر للمستخدم كفشل. طلبات GET (مثل الصفحة) يُقبل HTML فيها.
       var isPost = request.method !== 'GET';
       var fullTarget = target + url.search;
+      // ── ص6: مُميِّز المنصّة لمدخل `student` وحده ──────────────────────────────
+      // `GAS.student` صار يشير إلى نشرة `teacher` (أعلى الملفّ). و`doGet` المدمَجة
+      // تُفرِّق المنصّتين بـ`e.parameter.app` وحده، فبلا هذا الإلحاق يخدم `/gas/student`
+      // **لوحة المعلّم** ويردّ فحصُ الصحّة عن التطبيق الخطأ.
+      // ⚠️ الفاصل مشروط: النداء العاري `/gas/student` بلا استعلام يحتاج `?` لا `&` —
+      //    وهو بالضبط ما يستعمله فحص الصحّة وجسرُ الأندرويد.
+      // ولا يمسّ `/gas/teacher` ولا بقيّة التطبيقات: الشرط على `app` لا على الوجهة.
+      if (app === 'student') {
+        fullTarget += (url.search ? '&' : '?') + 'app=student';
+      }
       var lastText = '', lastStatus = 502, attempt, good = false;
       // فاصل واحد بين المحاولتين — يمتصّ اعتراض/برود GAS المتقطّع (~6%) قبل إرجاع HTML للجسر.
       // ⚠️ 2026-07-28: كان العدد 4 محاولات (250/600/1200ms). حادثة 502 متكرّرة (تسجيل دخول

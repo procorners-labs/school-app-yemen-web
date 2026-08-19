@@ -585,6 +585,37 @@ if (!apkFrozen) failed++;
 console.log((apkFrozen ? '  ✅ ' : '  ❌ ') +
             '🔴 ضابط: `/student/index.html` (المسار المجمَّد في الـAPK) يُخدَم كما هو');
 
+// ── ص6 (2026-08-19): `/gas/student` ⇒ نشرة `teacher` + مُميِّز `app=student` ────
+//
+// 🔴 **الضابطان معاً أو لا:** تبديلُ الوجهة بلا المُميِّز يجعل `/gas/student` يخدم
+// **لوحة المعلّم** بدل صفحة الطالب — والفحص الصحّي يردّ عن التطبيق الخطأ. ولذلك
+// يُقاس الأمران في كتلة واحدة، ومعهما ضابطٌ معاكس يُثبت أن الإلحاق **مقيَّد بمدخل
+// الطالب** فلا يتسرّب إلى `/gas/teacher` ولا إلى بقيّة التطبيقات الستّة.
+//
+// ⚠️ ويُقاس **الفاصل المشروط** صراحةً: النداء العاري `/gas/student` بلا استعلام يحتاج
+// `?` لا `&` — وهو بالضبط ما يستعمله فحص الصحّة وجسرُ الأندرويد. `'?' + 'app=student'`
+// ثابتاً كان سيمرّ كلَّ فحصٍ نصّي ويكسر كلَّ نداءٍ يحمل استعلاماً.
+console.log('');
+console.log('ص6 — تحويل `/gas/student` إلى نشرة المعلّم:');
+[[/^GAS\.student\s*=\s*GAS\.teacher\s*;/m,
+  '🔴 `GAS.student = GAS.teacher` **بعد** الحرفيّة (داخلها `GAS` غير مُسنَد ⇒ undefined)'],
+ [/if \(app === 'student'\) \{[\s\S]{0,160}?fullTarget \+=[^\n]*'app=student'/,
+  '🔴 `app=student` يُلحَق بـ`fullTarget` — بلاه تُخدَم لوحة المعلّم على مسار الطالب'],
+ [/fullTarget \+= \(url\.search \? '&' : '\?'\) \+ 'app=student'/,
+  '🔴 الفاصل مشروط بـ`url.search` — النداء العاري يحتاج `?` لا `&`']
+].forEach(function (c) {
+  var good = c[0].test(src);
+  if (!good) failed++;
+  console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
+});
+// ضابطٌ معاكس: الإلحاق **مشروطٌ** لا مطلق — لا سطر يُلحِق `app=student` بلا شرط `app`.
+var appTagScoped = !/\n\s*fullTarget \+= [^\n]*'app=student'[^\n]*\n/.test(
+  src.replace(/if \(app === 'student'\) \{[\s\S]*?\n\s{6}\}/g, '')
+);
+if (!appTagScoped) failed++;
+console.log((appTagScoped ? '  ✅ ' : '  ❌ ') +
+            '🔴 ضابط معاكس: لا إلحاق لـ`app=student` خارج شرط `app === \'student\'`');
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  روابط التطبيق القصيرة (/app · /download) وDigital Asset Links — فحص **سلوكي**
 //
