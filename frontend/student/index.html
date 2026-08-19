@@ -4348,6 +4348,22 @@ function _stuInitialTab(savedTab) {
   if (p) {
     var canon = _stuCanonicalTab(p.tab);
     if (canon) return canon;
+    /* المسارُ كان مقروءاً وسقط — كان السقوط صامتاً تماماً خلافاً للمعلّم
+       (`_portalInitialSection`)، فيُبلَّغ عنه «الصفحة لا تعمل». الصياغة **موحّدة
+       عمداً** كنظيرها: لا تفرّق بين «تبويبٌ لا وجود له» وغيره كي لا يصير الرابط
+       مِجَسَّ استطلاع. و`setTimeout(0)` كي يظهر الإشعار بعد رسم التبويب البديل.
+       🔴 النوع `'w'` لا `'warning'` — `toast(msg, type)` هنا يستعمل `type` صنفَ CSS
+       مباشرةً، والأصناف المعرَّفة `s/e/w/i` (`_stu-css-main.html`)؛ نسخُ نوع المعلّم
+       حرفياً يُنتج صنفاً لا وجود له فيظهر الإشعار بلا لون تحذيري. */
+    try {
+      setTimeout(function () {
+        try {
+          if (typeof toast === 'function') {
+            toast('تعذّر فتح الصفحة المطلوبة — فُتحت الرئيسية بدلاً منها', 'w');
+          }
+        } catch (eT) {}
+      }, 0);
+    } catch (eS) {}
   }
   return savedTab || 'home';
 }
