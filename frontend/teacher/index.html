@@ -9107,7 +9107,83 @@ function _savedSectionOrDashboard() {
   var disp = '';
   try { disp = (btn.style && btn.style.display) || ''; } catch (e2) { disp = ''; }
   if (disp === 'none') return 'dashboard'; // زرّ مخفيّ = بلا صلاحية ⇒ لا تستعِده
+  /* 🔴 ولا تستعِد قسماً **لا يُعرَض** ولو كان زرّه ظاهراً — `si-platformReview`
+     مودالٌ لا قسم، وقيمتُه عالقةٌ فعلاً في `localStorage` عند كل من فتحه قبل هذا
+     الإصلاح. منعُ الكتابة في `showSection` يمنع حالاتٍ جديدة ولا يُنقذ القائمة،
+     فهذا السطر هو ما يُخرجهم منها عند أوّل إقلاع.
+     ومحروسٌ بـ`typeof`: `_js-nav-permissions` قد لا يكون حُمِّل بعد. */
+  if (typeof _sectionIsRenderable === 'function' && !_sectionIsRenderable(sec)) return 'dashboard';
   return sec;
+}
+
+/* ── ما الذي يُعرَض فعلاً؟ مصدرُ حقيقةٍ واحد يقرؤه `showSection` والمُوجِّه معاً ──────
+   🔴 العلّة التي يُغلقها (مقيسة 2026-08-19): `_prSectionAllowed` كانت تُجيز أيَّ قسمٍ
+   زرُّه ظاهر — و`si-platformReview` و`si-help` أزرارٌ **بلا قسم** (`roles:null` في
+   المانيفست) فلا يلمسها `_sbApplyTable` ⇒ `display === ''` ⇒ تعبر الحارس، بينما
+   `showSection` لا تجد لها عرضاً ⇒ شاشة 🚧. والأسوأ أن السطر 14 هنا كتب القسم في
+   `localStorage` **قبل** اكتشاف ذلك ⇒ **الحالة المكسورة تلتصق عبر إعادة التحميل**.
+
+   ولا تُكتب قائمةٌ ثانية تُصان يدوياً (بند 116): الجدول نفسه هو المصدر، ويقرؤه
+   الطرفان. */
+
+/* الأقسام الخمسة ذات الفروع الثابتة في `showSection` — تُعرَض قبل بلوغ جدول `renders`. */
+var PORTAL_STATIC_SECTIONS = {
+  'attendance': 1, 'teacher-absence': 1, 'teachers-mgmt': 1, 'lists-mgmt': 1, 'social': 1
+};
+
+/* 🔴 يُبنى **كسولاً لا عند التحميل**: مراجع دوالّ العرض تُحلّ لحظةَ النداء، وأجزاء
+   الـinclude تُحمَّل بترتيبٍ لا يضمن تعريفها قبل هذا الجزء. بناؤه في نطاق الوحدة كان
+   سيُنتج كائناً قيمُه `undefined` بصمت. */
+var _SECTION_RENDERERS = null;
+function _sectionRenderers() {
+  if (_SECTION_RENDERERS) return _SECTION_RENDERERS;
+  _SECTION_RENDERERS = {
+    dashboard: renderDashboard,
+    financial: renderFinancial,
+    visits: renderVisitsTraffic,
+    grades: renderGrades,
+    homework: renderHomework,
+    violations: renderViolations,
+    news: renderNews,
+    contentHub: renderContentHub,
+    activitySup: renderActivitySup,
+    notes: renderNotes,
+    mySchedule: renderMySchedule,
+    reports: renderReports,      // ← دالة احتياطية موجودة الآن
+    adminTeachers: renderAdminTeachers,
+    adminActivities: renderAdminActivities,
+    adminStudents: renderAdminStudents,
+    studentDirectory: renderStudentDirectory,
+    studentStatus: renderStudentStatus,
+    schedSettings: renderScheduleSettings,
+    schoolTemplate: renderSchoolTemplateBridge,
+    schoolBrand: renderSchoolBrand,
+    myTasks: renderMyTasks,
+    tasksMgmt: renderTasksMgmt,
+    certificates: renderCertificates,
+    scoresheets: renderScoreSheets,
+    calendar: renderCalendar,
+    supervisorPerms: renderSupervisorPerms,
+    circulars: renderCirculars,
+    examctrl: renderExamControl,
+    profile: renderProfile,
+    letterheads: renderLetterheads,
+    help: renderHelp,
+    platformReviewsAdmin: renderPlatformReviewsAdmin
+  };
+  return _SECTION_RENDERERS;
+}
+
+/* هل للقسم عرضٌ فعليّ؟ — يقرؤه `_prSectionAllowed` قبل قبول قسمٍ من المسار.
+   🔴 وفشلُ البناء يُرجِع `true` عمداً (فاشلٌ **مفتوح**): وظيفةُ هذه الدالّة منعُ شاشةٍ
+   مكسورة لا حراسةُ صلاحية — والصلاحية يفرضها الزرُّ الظاهر في `_prSectionAllowed`
+   نفسها. فإرجاعُ `false` عند عطلٍ عابر كان سيحجب المنصّة كلَّها عن كل مسارٍ عميق. */
+function _sectionIsRenderable(name) {
+  if (!name) return false;
+  if (PORTAL_STATIC_SECTIONS.hasOwnProperty(name)) return true;
+  var r = null;
+  try { r = _sectionRenderers(); } catch (e) { return true; }
+  return typeof r[name] === 'function';
 }
 
 function showSection(name, opt) {
@@ -9123,7 +9199,14 @@ function showSection(name, opt) {
     if (typeof _visitsStopPolling === 'function') { try { _visitsStopPolling(); } catch (eVp) {} }
     // 🔖 حفظ القسم الحالي كي تعود إعادة التحميل لنفس المكان لا للصفحة الرئيسية
     App.currentSection = name;
-    try { localStorage.setItem('teacherActiveSection_v1', name); } catch (e) {}
+    /* 🔴 لا يُحفَظ قسمٌ لا يُعرَض — وهذا **جذرُ الحالة اللاصقة** لا عَرَضُها:
+       الحفظ كان يقع **قبل** بلوغ جدول `renders`، فاسمٌ بلا عرض (`platformReview`
+       مودالٌ لا قسم) يُكتَب ثمّ تُعرَض شاشة 🚧 — و`_savedSectionOrDashboard`
+       تستعيده في كل إقلاع لأنه يجتاز معيارها (زرٌّ موجود وغير مخفيّ). فتلتصق
+       الشاشة المكسورة للأبد بلا أيّ خطأ. */
+    if (typeof _sectionIsRenderable !== 'function' || _sectionIsRenderable(name)) {
+      try { localStorage.setItem('teacherActiveSection_v1', name); } catch (e) {}
+    }
     /* 🔖 ومزامنة شريط المتصفّح إن كنّا على مسارٍ عميق (‏`_js-portal-router`).
        محروسٌ بـ`typeof` لأن هذا الجزء يُحمَّل **قبل** المُوجِّه في ترتيب الـinclude —
        فبلا الحارس تُلقي أوّل `showSection` قبل تحميله. والمُوجِّه لا يلمس الرابط
@@ -9199,40 +9282,7 @@ function showSection(name, opt) {
     }
 
     // قائمة دوال العرض الديناميكية (جميعها معرفة الآن)
-    var renders = {
-      dashboard: renderDashboard,
-      financial: renderFinancial,
-      visits: renderVisitsTraffic,
-      grades: renderGrades,
-      homework: renderHomework,
-      violations: renderViolations,
-      news: renderNews,
-      contentHub: renderContentHub,
-      activitySup: renderActivitySup,
-      notes: renderNotes,
-      mySchedule: renderMySchedule,
-      reports: renderReports,      // ← دالة احتياطية موجودة الآن
-      adminTeachers: renderAdminTeachers,
-      adminActivities: renderAdminActivities,
-      adminStudents: renderAdminStudents,
-      studentDirectory: renderStudentDirectory,
-      studentStatus: renderStudentStatus,
-      schedSettings: renderScheduleSettings,
-      schoolTemplate: renderSchoolTemplateBridge,
-      schoolBrand: renderSchoolBrand,
-      myTasks: renderMyTasks,
-      tasksMgmt: renderTasksMgmt,
-      certificates: renderCertificates,
-      scoresheets: renderScoreSheets,
-      calendar: renderCalendar,
-      supervisorPerms: renderSupervisorPerms,
-      circulars: renderCirculars,
-      examctrl: renderExamControl,
-      profile: renderProfile,
-      letterheads: renderLetterheads,
-      help: renderHelp,
-      platformReviewsAdmin: renderPlatformReviewsAdmin
-    };
+    var renders = _sectionRenderers();
 
     var fn = renders[name];
     if (typeof fn === 'function') {
@@ -30127,7 +30177,20 @@ function _prSectionAllowed(name) {
   if (!btn) return false;
   var disp = '';
   try { disp = (btn.style && btn.style.display) || ''; } catch (e) { disp = ''; }
-  return disp !== 'none';
+  /* الصيغة `!== 'none'` محفوظة حرفياً: حارسٌ قائم يشترط أن يكون معيار الصلاحية هنا
+     **نفسه** معيار `_savedSectionOrDashboard`، ومرساتُه نصّية على هذا التعبير.
+     الشرطُ الثاني أدناه **إضافيّ لا بديل** — والمعيار الأصلي لم يتغيّر. */
+  if (!(disp !== 'none')) return false;
+  /* 🔴 وشرطٌ ثانٍ لا يخصّ الصلاحية بل **الوجود**: زرٌّ ظاهرٌ لا يعني قسماً يُعرَض.
+     `si-platformReview` مودالٌ لا قسم — `roles:null` في المانيفست فلا يلمسه
+     `_sbApplyTable` ⇒ `display === ''` ⇒ كان يعبر هذا الحارس، ثمّ لا تجد له
+     `showSection` عرضاً فتُظهر شاشة 🚧 — **بعد** أن كتبت القسم في `localStorage`
+     فتلتصق الحالة المكسورة عبر إعادة التحميل.
+     والمصدر جدولُ `showSection` نفسه عبر `_sectionIsRenderable`، لا قائمةٌ ثانية
+     تُصان يدوياً (بند 116). ومحروسٌ بـ`typeof`: ترتيب الـinclude لا يضمن تحميل
+     `_js-nav-permissions` قبل هذا الجزء، وغيابُه يُعيد السلوك القائم حرفياً. */
+  if (typeof _sectionIsRenderable === 'function' && !_sectionIsRenderable(name)) return false;
+  return true;
 }
 
 /* ── الاسم القانوني: مطابقةٌ غير حسّاسة للحالة ──────────────────────────────
@@ -30157,6 +30220,25 @@ function _portalInitialSection() {
   if (p) {
     var canon = _prCanonicalSection(p.section);
     if (canon && _prSectionAllowed(canon)) return canon;
+    /* 🔴 المسارُ كان مقروءاً وسقط — والسقوط كان **صامتاً تماماً**: لا رسالة، ولا
+       تغيّر في الرابط، ولا سجلّ. فيُبلَّغ عنه «الصفحة لا تعمل» وهو تصميمٌ سليم.
+       والصياغة **موحّدة عمداً**: لا تفرّق بين «قسمٌ لا وجود له» و«قسمٌ لا تملكه» —
+       رأس هذا الملفّ يشترط ألّا يكشف الرابطُ وجودَ الأقسام لمن لا يملكها، والتفريق
+       يجعل الرابط مِجَسَّ استطلاعٍ للمانيفست.
+       و`setTimeout(0)` كي يظهر الإشعار **بعد** أن يرسم `showSection` القسمَ البديل —
+       الاستدعاء هنا يسبقه. ومحروسٌ بـ`typeof` فغيابُ `toast` لا يكسر الإقلاع. */
+    try {
+      setTimeout(function () {
+        try {
+          if (typeof toast === 'function') {
+            /* `'warning'` لا `'warn'` — جدول `icons` في `toast` مفاتيحه
+               `success/error/warning/info`، وأيّ قيمة أخرى تسقط على `ℹ️` بصمت
+               وتُنتج صنف CSS لا وجود له. */
+            toast('تعذّر فتح الصفحة المطلوبة — فُتحت لوحة التحكّم بدلاً منها', 'warning');
+          }
+        } catch (eT) {}
+      }, 0);
+    } catch (eS) {}
   }
   return _savedSectionOrDashboard();
 }
@@ -30204,9 +30286,14 @@ function _prOnPopState() {
   try { p = _prParsePath(window.location.pathname); } catch (e) { p = null; }
   if (!p) return;
   var canon = _prCanonicalSection(p.section);
-  var target = (canon && _prSectionAllowed(canon)) ? canon : 'dashboard';
+  /* 🔴 خروجٌ صامت لا قذفٌ إلى `dashboard` — والنظير عند الطالب
+     (`_stu-js-shell.html::_stuPrOnPopState`) يفعل ذلك أصلاً، فهذا رفعُ انحرافٍ بين
+     نظيرين لا تغييرُ سياسة. القذفُ كان **يُبدّل القسم فعلياً ويكتب `localStorage`**
+     على ضغطة رجوعٍ إلى مسارٍ غير مسموح — أي أن زرّ الرجوع يُغيّر حالةً محفوظة بدل
+     أن يتركها. والقسمُ المعروض يبقى كما هو، وهو السلوك المتوقَّع. */
+  if (!canon || !_prSectionAllowed(canon)) return;
   _PR_SUPPRESS = true;
-  try { showSection(target); } finally { _PR_SUPPRESS = false; }
+  try { showSection(canon); } finally { _PR_SUPPRESS = false; }
 }
 
 function _prInit() {
