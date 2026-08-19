@@ -3512,6 +3512,13 @@ function _finishStudentLoginSuccess(r, schoolId) {
   _startHeartbeat();
   lsSaveSession();
   try { _biomUpdateNavBtn(); } catch (eBiom) {}
+  /* 🔖 المسار يسبق الافتراضي — بلا هذا السطر يهبط كلُّ رابطٍ مُشارَك
+     (`/student/<page>/<slug>`) على `home` بعد الدخول، وهي الحالة الأشيع للمسار النظيف.
+     بلا `savedTab` عمداً: لا جلسة محفوظة هنا، فالتراجع `'home'` كما كان.
+     ومحروسٌ بـ`typeof` فغيابُ المُوجِّه يُعيد السلوك القائم حرفياً. */
+  try {
+    if (typeof _stuApplyInitialTab === 'function') _stuApplyInitialTab();
+  } catch (eTab) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4343,6 +4350,38 @@ function _stuInitialTab(savedTab) {
     if (canon) return canon;
   }
   return savedTab || 'home';
+}
+
+/* يُطبِّق التبويب الأوّلي على الـDOM — **مستخرَجة من `_stu-js-boot-runtime.html` بنقلٍ
+   خالص** (‏ص/دفعة أ-1) لأن جسمها كان محبوساً في فرع «الجلسة المحفوظة» وحده.
+
+   🔴 العلّة التي تُغلقها: `_stuInitialTab` كان لها **مستدعٍ واحد** داخل ذلك الفرع، ومسارُ
+   الدخول الطازج (`_stu-js-login.html::_finishStudentLoginSuccess`، ومنه مسارُ البصمة
+   أيضاً) ينادي `initApp()` بلا أيّ نداء له ⇒ زائرٌ يفتح رابطاً مُشارَكاً
+   `/student/grades/<slug>` بلا جلسة محفوظة، يسجّل الدخول، ويهبط على `home`. وهي **الحالة
+   الأشيع** للمسار النظيف أصلاً.
+
+   `savedTab` اختياري: بلا جلسة محفوظة تُمرَّر `undefined` فيُرجِع `_stuInitialTab`
+   المسارَ أو `'home'` ⇒ **صفر تغيير سلوكي** حين لا مسار.
+   ومحروسٌ بـ`typeof` كما كان، فلو غاب المُوجِّه عاد السلوك القائم حرفياً. */
+function _stuApplyInitialTab(savedTab) {
+  var lastTab = (typeof _stuInitialTab === 'function')
+    ? _stuInitialTab(savedTab)
+    : (savedTab || 'home');
+  if (lastTab === 'home') return;
+  var tabBtn = document.querySelector('.tab-btn[data-tab="' + lastTab + '"]');
+  if (!tabBtn) return;
+  // goTab بدون حفظ جلسة جديد (لتجنّب تحديث savedAt غير ضروري)
+  APP.currentTab = lastTab;
+  var secs = document.querySelectorAll('section[data-section]');
+  for (var si = 0; si < secs.length; si++) secs[si].style.display = 'none';
+  var target = document.querySelector('section[data-section="' + lastTab + '"]');
+  if (target) { target.style.display = ''; target.classList.add('fade-in'); }
+  var tabs = document.querySelectorAll('.tab-btn');
+  for (var ti = 0; ti < tabs.length; ti++) tabs[ti].classList.remove('active');
+  tabBtn.classList.add('active');
+  // تحميل بيانات التبويب المحفوظ
+  goTab(lastTab, tabBtn);
 }
 
 function _stuPrSyncUrl(name) {
@@ -8143,28 +8182,9 @@ document.addEventListener('DOMContentLoaded', function () {
         .withFailureHandler(function () { /* صامت — يبقى العرض المخزَّن كما هو */ })
         .refreshStudentSiblings(APP.user.id, APP.user.schoolId, APP.user.switchToken, getClientId());
     }
-    // استعادة التبويب الأخير
-    /* 🔖 التبويب الأوّلي: **المسار يسبق** الجلسة المحفوظة، ويسقط إليها عند أي تعذّر.
-       محروسٌ بـ`typeof` فلو غاب المُوجِّه عاد السلوك القائم حرفياً. */
-    var lastTab = (typeof _stuInitialTab === 'function')
-      ? _stuInitialTab(savedSession.tab)
-      : (savedSession.tab || 'home');
-    if (lastTab !== 'home') {
-      var tabBtn = document.querySelector('.tab-btn[data-tab="' + lastTab + '"]');
-      if (tabBtn) {
-        // goTab بدون حفظ جلسة جديد (لتجنّب تحديث savedAt غير ضروري)
-        APP.currentTab = lastTab;
-        var secs = document.querySelectorAll('section[data-section]');
-        for (var si = 0; si < secs.length; si++) secs[si].style.display = 'none';
-        var target = document.querySelector('section[data-section="' + lastTab + '"]');
-        if (target) { target.style.display = ''; target.classList.add('fade-in'); }
-        var tabs = document.querySelectorAll('.tab-btn');
-        for (var ti = 0; ti < tabs.length; ti++) tabs[ti].classList.remove('active');
-        tabBtn.classList.add('active');
-        // تحميل بيانات التبويب المحفوظ
-        goTab(lastTab, tabBtn);
-      }
-    }
+    // استعادة التبويب الأخير — الجسم في `_stu-js-shell.html::_stuApplyInitialTab`
+    // كي يُنادى من مسار الدخول الطازج أيضاً لا من هذا الفرع وحده.
+    _stuApplyInitialTab(savedSession.tab);
   }
 
   try { _biomRenderLoginButton(); } catch (eBiomInit) {}
