@@ -3910,9 +3910,11 @@ function _prcCanonical(name, spec) {
   return '';
 }
 
-/* المسار الهدف لوحدة عرضٍ باسمها. الـslug يُؤخذ من المسار القائم **وحده** ولا
-   يُشتقّ من هوية المدرسة النشطة إطلاقاً: حقنُ slug في رابطٍ لم يحمله يُنشئ
-   تمثيلَين لنفس القسم فيتضاعف تاريخ التصفّح. */
+/* المسار الهدف لوحدة عرضٍ باسمها — دالّةُ تركيبٍ نقيّة لا تقرّر مصدر الـslug.
+   القرار عند الغلافين (`_prSlugForUrl` · `_stuPrSlugForUrl`): المسار القائم يفوز،
+   وإلّا slug هوية المدرسة (`_schoolBrand`) تراجعاً — قرار مالك 2026-08-20.
+   وعلّةُ «تمثيلَين لنفس القسم» يُبطلها أن حقن الـslug وحده يمرّ بـ`replaceState`
+   في مسارَي الكتابة، فلا يتضاعف تاريخ التصفّح. */
 function _prcTargetPath(prefix, name, slug) {
   return '/' + prefix + '/' + name + (slug ? '/' + slug : '');
 }
@@ -4400,14 +4402,39 @@ function _stuApplyInitialTab(savedTab) {
   goTab(lastTab, tabBtn);
 }
 
+/* الـslug للكتابة: المسار القائم يفوز؛ وإلّا تراجعٌ إلى `window._schoolBrand.slug`
+   (يملؤه `applyBrand` في `_stu-js-boot-runtime.html` بكاش دافئ) بعد تحقّق شكليّ.
+   🔴 نفس سياسة المعلّم (`_prSlugForUrl`) حرفياً — قرار مالك 2026-08-20: رابطٌ
+   يُنسخ من جلسةٍ بلا slug كان يفتح عند المستقبِل بلا هوية مدرسة. وحقنُ الـslug
+   وحدَه يمرّ بـ`replaceState` أدناه فلا يتضاعف تاريخ التصفّح. */
+function _stuPrSlugForUrl() {
+  var cur = null;
+  try { cur = _stuPrParsePath(window.location.pathname); } catch (e) { cur = null; }
+  if (cur && cur.slug) return cur.slug;
+  var b = null;
+  try { b = window._schoolBrand; } catch (e2) { b = null; }
+  var s = (b && b.slug) ? String(b.slug).trim().toLowerCase() : '';
+  if (s && /^[a-z0-9-]+$/.test(s)) return s;
+  return '';
+}
+
 function _stuPrSyncUrl(name) {
   if (_stuPrSuppress) return;
   if (!name || !window.history || !window.history.pushState) return;
   try {
     var cur = _stuPrParsePath(window.location.pathname);
     if (!cur) return;                       // مسارٌ قديم/مجمَّد ⇒ لا يُمَسّ
-    var next = _prcTargetPath('student', name, cur.slug);
+    var slug = _stuPrSlugForUrl();
+    var next = _prcTargetPath('student', name, slug);
     if (next === window.location.pathname) return;
+    /* حقنُ slug وحدَه على نفس التبويب ⇒ `replaceState` — لا مدخلَ تاريخ جديد،
+       فزرّ الرجوع لا يمرّ بنسخة الرابط التي بلا slug (نظير المعلّم حرفياً). */
+    if (!cur.slug && slug &&
+        String(cur.tab).toLowerCase() === String(name).toLowerCase() &&
+        window.history.replaceState) {
+      window.history.replaceState({ stuTab: name }, '', next + window.location.search);
+      return;
+    }
     window.history.pushState({ stuTab: name }, '', next + window.location.search);
   } catch (e) {}
 }

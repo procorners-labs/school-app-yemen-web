@@ -30082,9 +30082,11 @@ function _prcCanonical(name, spec) {
   return '';
 }
 
-/* المسار الهدف لوحدة عرضٍ باسمها. الـslug يُؤخذ من المسار القائم **وحده** ولا
-   يُشتقّ من هوية المدرسة النشطة إطلاقاً: حقنُ slug في رابطٍ لم يحمله يُنشئ
-   تمثيلَين لنفس القسم فيتضاعف تاريخ التصفّح. */
+/* المسار الهدف لوحدة عرضٍ باسمها — دالّةُ تركيبٍ نقيّة لا تقرّر مصدر الـslug.
+   القرار عند الغلافين (`_prSlugForUrl` · `_stuPrSlugForUrl`): المسار القائم يفوز،
+   وإلّا slug هوية المدرسة (`_schoolBrand`) تراجعاً — قرار مالك 2026-08-20.
+   وعلّةُ «تمثيلَين لنفس القسم» يُبطلها أن حقن الـslug وحده يمرّ بـ`replaceState`
+   في مسارَي الكتابة، فلا يتضاعف تاريخ التصفّح. */
 function _prcTargetPath(prefix, name, slug) {
   return '/' + prefix + '/' + name + (slug ? '/' + slug : '');
 }
@@ -30257,16 +30259,24 @@ function _portalInitialSection() {
 var _PR_SUPPRESS = false;
 
 function _prSlugForUrl() {
-  /* يُحافظ على الـslug القائم في المسار إن وُجد، **وإلّا فراغ** — لا يُشتقّ من هوية
-     المدرسة النشطة إطلاقاً.
-     🔴 وكان مكتوباً هنا خلافُ ذلك («وإلّا يستعمل هوية المدرسة النشطة فقط إن كانت slug
-     نصّياً») — تعليقٌ يصف ما لا يفعله الكود، وهو أخطر من غياب التعليق: يقود قارئاً إلى
-     افتراض ضمانٍ غير قائم. والسلوك الفعليّ هو **الصحيح** عمداً: حقن slug في رابطٍ لم
-     يحمله يُغيّر شكل الرابط تحت المستخدم ويُنشئ تمثيلَين لنفس القسم (نفس علّة كتابة
-     الـalias التي مُنعت أعلاه). فالتعليقُ صُحِّح، لا الكود. */
+  /* الـslug القائم في المسار يفوز دائماً؛ وإلّا **تراجعٌ إلى slug هوية المدرسة**
+     (`window._schoolBrand.slug` — يملؤه `applyBrand` من `getTeacherSchoolBrand`،
+     بكاش دافئ فيتوفّر من أول رسم غالباً) بعد تحقّق شكليّ وخفض حالة.
+
+     🔴 قرار مالك 2026-08-20 **يقلب سياسة «لا حقن أبداً» السابقة**: رابطٌ يُنسخ من
+     جلسةٍ بلا slug كان يفتح عند المستقبِل على مدرسة المالك (`fallbackId`) — فخّ
+     مشاركة حقيقي. وعلّةُ «تمثيلَين لنفس القسم» التي بُنيت عليها السياسة القديمة
+     يُبطلها أن حقنَ الـslug وحدَه (نفس القسم) يمرّ بـ`replaceState` في `_prSyncUrl`
+     أدناه — لا مدخلَ تاريخ جديد، فزرّ الرجوع لا يمرّ بنسخةٍ بلا slug.
+     ⚠️ وقيدُ الكاش الدافئ: slug متقادم ≤3 ساعات إن غيّر المالكُ slug مدرسة — نادر،
+     و`_tenantResolve` يفرّغ المخالفَ أصلاً. */
   var cur = null;
   try { cur = _prParsePath(window.location.pathname); } catch (e) { cur = null; }
   if (cur && cur.slug) return cur.slug;
+  var b = null;
+  try { b = window._schoolBrand; } catch (e2) { b = null; }
+  var s = (b && b.slug) ? String(b.slug).trim().toLowerCase() : '';
+  if (s && /^[a-z0-9-]+$/.test(s)) return s;
   return '';
 }
 
@@ -30283,6 +30293,15 @@ function _prSyncUrl(name) {
     var slug = _prSlugForUrl();
     var next = _prcTargetPath('teacher', name, slug);
     if (next === window.location.pathname) return;
+    /* حقنُ slug وحدَه على **نفس القسم** ⇒ `replaceState` لا `pushState`: لا مدخلَ
+       تاريخٍ جديد، فزرّ الرجوع لا يمرّ بنسخة الرابط التي بلا slug (وهذا ما يُبقي
+       «تمثيلاً واحداً لكل قسم» رغم الحقن — راجع `_prSlugForUrl`). */
+    if (!cur.slug && slug &&
+        String(cur.section).toLowerCase() === String(name).toLowerCase() &&
+        window.history.replaceState) {
+      window.history.replaceState({ prSection: name }, '', next + window.location.search);
+      return;
+    }
     window.history.pushState({ prSection: name }, '', next + window.location.search);
   } catch (e) { /* تاريخ المتصفّح ليس شرطاً لعمل اللوحة */ }
 }
