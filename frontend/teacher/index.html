@@ -21346,6 +21346,17 @@ function att_saveSingle(code) {
 
   google.script.run
     .withSuccessHandler(function(res) {
+      // (ق7) رفضٌ منطقي من الخادم (مثل «الخادم مشغول» عند تعذّر القفل) يصل عبر مسار
+      // النجاح — كان يُعرَض ✅ ويُصفَّر _attChanged فيبدو المحفوظ محفوظاً وهو لم يُحفَظ.
+      if (!res || !res.success) {
+        if (btn) {
+          btn.classList.remove('saving');
+          btn.classList.add('changed');
+          btn.textContent = '💾 حفظ';
+        }
+        att_setStatus('❌ ' + ((res && res.error) ? res.error : 'تعذّر الحفظ'), '#c62828');
+        return;
+      }
       if (btn) {
         btn.classList.remove('saving');
         btn.classList.add('done');
@@ -21356,9 +21367,7 @@ function att_saveSingle(code) {
         }, 2000);
       }
       _attChanged[code] = false;
-      if (res && res.success) {
-        att_updateSummary();
-      }
+      att_updateSummary();
     })
     .withFailureHandler(function(err) {
       if (btn) {
