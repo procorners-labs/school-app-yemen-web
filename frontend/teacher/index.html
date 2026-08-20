@@ -29325,11 +29325,46 @@ function _visitsLoadCumulative(){
   });
 }
 
-function _visitsNeverAlert(title, names){
-  var list=(names||[]).slice(0,30).map(_tfEsc).join('، ');
-  var more=(names && names.length>30) ? (' + '+(names.length-30)+' آخرين') : '';
+// v2: الخادم يُرسل عيّنة ≤30 اسماً فقط (ما يُعرَض حرفياً) + العدد الكامل — لا القائمة كلّها.
+function _visitsNeverAlert(title, namesSample, totalCount){
+  var sample=(namesSample||[]).slice(0,30);
+  var list=sample.map(_tfEsc).join('، ');
+  var total=totalCount||sample.length;
+  var more=(total>sample.length) ? (' + '+(total-sample.length)+' آخرين') : '';
   return '<div class="tf-alert tf-al-warn"><div>⚠️ <b>'+_tfEsc(title)+'</b>'+
     '<div style="font-size:11.5px;margin-top:4px;opacity:.85;">'+list+more+'</div></div></div>';
+}
+
+// ── فكّ الحمولة المضغوطة (v2) — الخادم يُرسل صفوفاً مصفوفية بدل كائنات بمفاتيح مكرَّرة ──
+// teachersC: [[name, subject, loginCount, usageMinutes], ...]
+function _visitsExpandTeachers(rows){
+  var out=[],i,r;
+  for(i=0;i<(rows||[]).length;i++){
+    r=rows[i];
+    out.push({name:r[0]||'', subject:r[1]||'', loginCount:r[2]||0, usageMinutes:r[3]||0});
+  }
+  return out;
+}
+// studentsC: [{g: الصف, s: الشعبة, r: [[name, loginCount, usageMinutes], ...]}, ...]
+function _visitsExpandStudents(groups){
+  var out=[],i,j,g,r;
+  for(i=0;i<(groups||[]).length;i++){
+    g=groups[i]||{};
+    for(j=0;j<(g.r||[]).length;j++){
+      r=g.r[j];
+      out.push({name:r[0]||'', 'class':g.g||'', section:g.s||'', loginCount:r[1]||0, usageMinutes:r[2]||0});
+    }
+  }
+  return out;
+}
+// اشتقاق أعلى/أقل 20 محلياً بنفس دلالة الخادم القديمة حرفياً: من سجّل دخولاً فعلاً
+// (loginCount>0) مرتَّباً تنازلياً — أول 20 وآخر 20 معكوسة. (الحمولة لم تعد تحملها
+// لأنها كانت تكرّر أسماء موجودة أصلاً في القائمتين الكاملتين.)
+function _visitsTopBottom(all, n){
+  var act=[],i;
+  for(i=0;i<(all||[]).length;i++) if((all[i].loginCount||0)>0) act.push(all[i]);
+  act.sort(function(a,b){ return (b.loginCount||0)-(a.loginCount||0); });
+  return { top: act.slice(0,n), bottom: act.slice(-n).reverse() };
 }
 
 // أداء المعلمين/الطلاب — ألوان محجوزة بمعنى ثابت (جيد/تحذير/حرج)، مصدر حقيقة واحد
@@ -29418,8 +29453,14 @@ function _visitsRenderCumulative(res){
   var body=document.getElementById('vt-cumul-body');
   if(!body) return;
   var tot=res.totals||{}, nev=res.neverLoggedIn||{};
-  window._visitsAllTeachersFull=res.allTeachers||[];
-  window._visitsAllStudentsFull=res.allStudents||[];
+  window._visitsAllTeachersFull=_visitsExpandTeachers(res.teachersC);
+  window._visitsAllStudentsFull=_visitsExpandStudents(res.studentsC);
+  // التجميع بالصف/الشعبة في الحمولة يُفقد الترتيب التنازلي — نُعيده هنا (نفس الترتيب
+  // الافتراضي القديم للجدولين)، وتُشتقّ منه قوائم أعلى/أقل 20.
+  window._visitsAllTeachersFull.sort(function(a,b){ return (b.loginCount||0)-(a.loginCount||0); });
+  window._visitsAllStudentsFull.sort(function(a,b){ return (b.loginCount||0)-(a.loginCount||0); });
+  var tbT=_visitsTopBottom(window._visitsAllTeachersFull, 20);
+  var tbS=_visitsTopBottom(window._visitsAllStudentsFull, 20);
 
   var h='';
   h+=_visitsInfoBanner('ℹ️ هذه البيانات <b>تراكمية منذ إنشاء المدرسة على المنصة</b> (لا ترتبط بتاريخ محدَّد) — بخلاف بقية تبويبات هذه الصفحة المبنية على السجلّ الزمني الجديد منذ 15 يوليو 2026.');
@@ -29433,8 +29474,8 @@ function _visitsRenderCumulative(res){
 
   if((nev.teacherCount||0)>0 || (nev.studentCount||0)>0){
     h+='<div class="tf-alerts">';
-    if(nev.teacherCount>0) h+=_visitsNeverAlert('👨‍🏫 '+nev.teacherCount+' معلم لم يسجّل الدخول إطلاقاً', nev.teacherNames);
-    if(nev.studentCount>0) h+=_visitsNeverAlert('🎒 '+nev.studentCount+' طالب لم يسجّل الدخول إطلاقاً', nev.studentNames);
+    if(nev.teacherCount>0) h+=_visitsNeverAlert('👨‍🏫 '+nev.teacherCount+' معلم لم يسجّل الدخول إطلاقاً', nev.teacherNamesSample, nev.teacherCount);
+    if(nev.studentCount>0) h+=_visitsNeverAlert('🎒 '+nev.studentCount+' طالب لم يسجّل الدخول إطلاقاً', nev.studentNamesSample, nev.studentCount);
     h+='</div>';
   }
 
@@ -29461,16 +29502,16 @@ function _visitsRenderCumulative(res){
 
   h+='<div class="tf-grid2">'+
      _visitsCard('🏅 أعلى 20 معلماً دخولاً',
-       _visitsTierBars((res.topTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier))+
+       _visitsTierBars(tbT.top.map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier))+
      _visitsCard('🏅 أعلى 20 طالباً دخولاً',
-       _visitsTierBars((res.topStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier))+
+       _visitsTierBars(tbS.top.map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier))+
      '</div>';
 
   h+='<div class="tf-grid2">'+
      _visitsCard('🔻 أقل 20 معلماً دخولاً (من بين مَن سجّل دخولاً)',
-       (res.bottomTeachers20&&res.bottomTeachers20.length)?_visitsTierBars((res.bottomTeachers20||[]).map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier):_visitsEmptyState())+
+       tbT.bottom.length?_visitsTierBars(tbT.bottom.map(function(t){ return {name:t.name, value:t.loginCount}; }), _visitsLoginTier):_visitsEmptyState())+
      _visitsCard('🔻 أقل 20 طالباً دخولاً (من بين مَن سجّل دخولاً)',
-       (res.bottomStudents20&&res.bottomStudents20.length)?_visitsTierBars((res.bottomStudents20||[]).map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier):_visitsEmptyState())+
+       tbS.bottom.length?_visitsTierBars(tbS.bottom.map(function(s){ return {name:s.name+' ('+s.class+' '+s.section+')', value:s.loginCount}; }), _visitsLoginTier):_visitsEmptyState())+
      '</div>';
 
   h+=_visitsCard('👨‍🏫 كل المعلمين ('+window._visitsAllTeachersFull.length+')',
