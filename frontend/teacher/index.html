@@ -42,10 +42,10 @@
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
-<script defer src="../assets/offline-db.js"></script>
-<script defer src="../assets/offline-sync.js"></script>
-<script defer src="../assets/gas-bridge.js"></script>
-<script defer src="../assets/app-nudge.js"></script>
+<script defer src="/assets/offline-db.js"></script>
+<script defer src="/assets/offline-sync.js"></script>
+<script defer src="/assets/gas-bridge.js"></script>
+<script defer src="/assets/app-nudge.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
@@ -188,7 +188,7 @@
     /* خط Cairo مُستضاف ذاتياً (بدل CDN) — ملف متغيّر واحد يغطي الأوزان 200-1000 */
     @font-face {
       font-family: 'Cairo';
-      src: url('../assets/Cairo-Variable.ttf') format('truetype-variations');
+      src: url('/assets/Cairo-Variable.ttf') format('truetype-variations');
       font-weight: 200 1000;
       font-style: normal;
       font-display: swap;
@@ -6580,6 +6580,19 @@ function doLogin() {
     return;
   }
   var btn = document.getElementById('loginBtn');
+  // 🔴 حارس غياب الجسر (بند 166) — **قبل** نصب المؤقّت لا بعده.
+  //    `google` يعرّفه `assets/gas-bridge.js` وحده على السطح الثابت. وغيابُه يرمي
+  //    `ReferenceError` **متزامناً** عند النداء أدناه، فلا يبلغ `clearTimeout` أبداً ⇒
+  //    يستيقظ المؤقّت بعد المهلة ويعرض «انتهت مهلة الاتصال» — رسالةُ شبكةٍ عن عطلِ
+  //    تحميل، تقود المستخدم لفحص الراوتر بدل إعادة تحميل الصفحة. هذا العَرَض بعينه هو
+  //    ما ظهر حيّاً على `/teacher/login/<slug>` قبل تحويل الأصول إلى مسار مطلق.
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    clearTimeout(window._loginTimer);
+    btn.disabled = false;
+    btn.textContent = '🚪 دخول إلى المنصة';
+    shakeLoginError('تعذّر تحميل مكوّن الاتصال. أعد تحميل الصفحة.');
+    return;
+  }
   btn.disabled = true;
   btn.textContent = '⏳ جاري التحقق...';
   clearTimeout(window._loginTimer);
