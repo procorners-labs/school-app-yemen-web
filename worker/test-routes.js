@@ -52,12 +52,24 @@ if (dpIdx < 0) {
 }
 vm.runInContext(src.slice(dpIdx, src.indexOf('\n', dpIdx)), ctx);
 
+/* أسماء الأصول المستعارة (‏gas#166) — يُستخرَج الحيّ بنفس القاعدة، وغيابُه **أحمر**
+   لا تخطٍّ صامت (بند 145): إعادةُ تسميةٍ في الوركر كانت ستُطفئ الحارس بلا أثر. */
+var aaIdx = src.indexOf('var _APP_ASSET_ALIAS_RE = ');
+if (aaIdx < 0) {
+  console.error('🔴 APP_ASSET_ALIAS_RE_MISSING — تعذّر استخراج أسماء الأصول المستعارة من الوركر');
+  process.exit(1);
+}
+vm.runInContext(src.slice(aaIdx, src.indexOf('\n', aaIdx)), ctx);
+
 function resolve(p) {
   for (var i = 0; i < rewrites.length; i++) {
     if (p === rewrites[i].a || (rewrites[i].b !== null && p === rewrites[i].b)) return rewrites[i].to;
   }
   // نفس ترتيب الوركر: بعد إعادات الكتابة الحرفية، وقبل قراءة الـslug.
   ctx.__p = p;
+  // نفس ترتيب الوركر حرفياً: اسم الأصل المستعار **قبل** المسار العميق.
+  var alias = vm.runInContext('_APP_ASSET_ALIAS_RE.exec(__p)', ctx);
+  if (alias) { p = '/' + alias[1]; ctx.__p = p; }
   var deep = vm.runInContext('_DEEP_PORTAL_RE.exec(__p)', ctx);
   if (deep) return '/' + String(deep[1]).toLowerCase() + '/index.html';
   if (vm.runInContext('_schoolSlugFromPath(__p)', ctx)) return '/home/index.html';
@@ -92,6 +104,25 @@ var CASES = [
   ['/student/grades/abdaawatmuaz/',    '/student/index.html', 'طالب: بشرطة مائلة ختامية'],
   ['/teacher/dashboard',               '/teacher/index.html', 'معلم: صفحة بلا slug (مدرسة المالك)'],
   ['/TEACHER/Dashboard/AbdaaWatmuaz',  '/teacher/index.html', 'حالة مختلطة ⇒ القسم يُطبَّع'],
+
+  // ── أصلٌ طُلب من عمقٍ خاطئ (‏gas#166، 2026-08-21) ──────────────────────────
+  // نسخُ HTML المخبّأة في عامل الخدمة تحمل `../assets/…` النسبيّ، وهو يُحلّ من العمق
+  // الذي يراه المتصفّح ⇒ `/teacher/assets/…` = 404 ⇒ `window.google` غير معرَّف.
+  ['/teacher/assets/gas-bridge.js',   '/assets/gas-bridge.js',   'أصل: عمق خاطئ ⇒ الموضع الحقيقي'],
+  ['/student/assets/gas-bridge.js',   '/assets/gas-bridge.js',   'أصل: نظير الطالب'],
+  ['/teacher/assets/offline-sync.js', '/assets/offline-sync.js', 'أصل: ملفّ آخر'],
+  ['/student/assets/img/logo.png',    '/assets/img/logo.png',    'أصل: مسار متداخل يُحفَظ كاملاً'],
+  ['/teacher/assets/foo',             '/assets/foo',             'أصل بلا امتداد: الاسم المستعار يسبق المسار العميق (لا يُخدَم صفحةً)'],
+  // ── ضوابط الاتجاه المعاكس: القاعدة مقصورة على المنصّتين ولا تلمس ما سواها ──
+  ['/assets/sw.js',                   '/assets/sw.js',           'ضابط: الأصل الجذري كما هو'],
+  ['/cms/assets/x.js',                '/cms/assets/x.js',        'ضابط: cms خارج القاعدة'],
+  ['/home/assets/x.js',               '/home/assets/x.js',       'ضابط: home خارج القاعدة'],
+  // ⚠️ `assetsx` ليس `assets` — والضابطان يقيسان الحالتين معاً: بامتداد (فيه نقطة ⇒
+  //    خارج `_DEEP_PORTAL_RE` أصلاً فيمرّ كما هو) وبلا امتداد (مسارٌ عميق قانوني).
+  //    التوقّع الأوّل كُتب هنا خطأً `/teacher/index.html` فحمّر — والمرساة هي التي
+  //    صُحِّحت لا الكود (بند 163-③: حارسٌ يحمرّ على سلوكٍ صحيح يُصحَّح لا يُخفَّف).
+  ['/teacher/assetsx/y.js',           '/teacher/assetsx/y.js',   'ضابط: `assetsx` بامتداد ⇒ يمرّ كما هو'],
+  ['/teacher/assetsx/y',              '/teacher/index.html',     'ضابط: `assetsx` بلا امتداد ⇒ مسار عميق لا أصل'],
 
   // 🔴 ضوابط معاكسة — أهمّ من الحالة الموجبة
   ['/teacher/a/b/c',      '/teacher/a/b/c',      '🔴 ضابط: ثلاثة مقاطع لا تُطابِق (لا عمق مخترَع)'],
