@@ -8857,7 +8857,8 @@ function _circLoadRecipientData(cb) {
   }
   if (needS) {
     pending++;
-    callServer('getStudentsDirectoryProtected', {}, function (r) {
+    /* المفتاح مبصوم بهوية الجلسة كاملة (schoolId+token) — الحمولة خاصّة بالمستخدم (mine · الحقول المشروطة بالصلاحية) */
+    callServer('getStudentsDirectoryProtected', {}, 'sdir_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || ''), 180, function (r) {
       _circStudentsAll = (r && r.success && r.students) ? r.students : [];
       done();
     }, function () { _circStudentsAll = []; done(); });
@@ -12295,7 +12296,7 @@ function renderDashboard() {
     loadMyTasksWidget();
     loadDashboardCirculars();
 
-    callServer('getMyActivitiesProtected', {}, 'my_activities', 90,
+    callServer('getMyActivitiesProtected', {}, 'my_activities_' + ((App.user && App.user.schoolId) || ''), 90,
       function(r) {
         if (r && r.success) loadDashboardStats(r.data);
         else document.getElementById('recentActivityContent').innerHTML = '<div class="alert alert-warning">لم يتم تحميل البيانات</div>';
@@ -16366,7 +16367,7 @@ function loadHomework() {
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div>';
 
   callServer('getMyActivitiesProtected', {},
-    'activities_hw', // مفتاح الكاش
+    'activities_hw_' + ((App.user && App.user.schoolId) || ''), // مفتاح الكاش (مبصوم بالمدرسة — بند 85-ب)
     60,               // صلاحية 60 ثانية
     function(r) {
       if (r && r.success) {
@@ -16667,7 +16668,7 @@ function loadViolations() {
   var area = document.getElementById('vioListArea');
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
 
-  callServer('getMyActivitiesProtected', {}, 'my_activities', 90, function(r) {
+  callServer('getMyActivitiesProtected', {}, 'my_activities_' + ((App.user && App.user.schoolId) || ''), 90, function(r) {
     if (r && r.success) {
       _allViolations = (r.data && r.data.violations) ? r.data.violations : [];
       filterViolations();
@@ -21074,7 +21075,8 @@ function profile_loadAbsence(){
   var box=document.getElementById('profile-absence'); if(!box) return;
   var title='<hr class="divider"><h4 style="margin-bottom:10px;font-size:.95rem">🗓️ سجل غيابي هذا العام</h4>';
   box.innerHTML=title+'<p style="color:var(--text-muted);font-size:13px;">⏳ جارٍ التحميل...</p>';
-  callServer('getTeacherAbsenceSummaryProtected', { teacherName: (App.user && App.user.teacherName) || '' }, function(res){
+  callServer('getTeacherAbsenceSummaryProtected', { teacherName: (App.user && App.user.teacherName) || '' },
+    'tabs_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.teacherName) || 'all'), 180, function(res){
     if(!res||!res.success){ box.innerHTML=''; return; }
     var me=(res.summary&&res.summary.length)?res.summary[0]:null;
     if(!me || (me.absentDays===0 && me.absentPeriods===0)){
@@ -21525,7 +21527,7 @@ function att_filterStudents(q){
 var _attAllStudents=[]; // كل أسماء الطلاب من ورقة «الطلاب» (للاقتراحات)
 function att_loadAllStudentNames(){
   // بكاش 10 دقائق + توحيد الطلبات المتزامنة — كانت تُجلب من الخادم عند كل فتح لقسم الحضور
-  callServer('getStudentNamesProtected', {}, 'student_names', 600, function(res){ if(res&&res.success&&res.students) _attAllStudents=res.students; }, function(){});
+  callServer('getStudentNamesProtected', {}, 'student_names_' + ((App.user && App.user.schoolId) || ''), 600, function(res){ if(res&&res.success&&res.students) _attAllStudents=res.students; }, function(){});
 }
 function _attStudentNames(){
   if(_attAllStudents&&_attAllStudents.length) return _attAllStudents;          // كل الطلاب من الشيت
@@ -21676,6 +21678,8 @@ function tabs_save(){
     }
     st.innerHTML='<span style="color:#2e7d32;">✅ '+res.message+'</span>';
     document.getElementById('tabs-teacher').value=''; document.getElementById('tabs-notes').value='';
+    // إبطال كاش تقارير الغياب (tabs_*) — تسجيل غياب جديد يجب أن يظهر فوراً في التقارير والملف الشخصي
+    try { ClientCache.clear('tabs_'); } catch (eCc) {}
     tabs_loadSummary();
   }, function(err){ st.innerHTML='<span style="color:#c62828;">❌ '+err.message+'</span>'; });
 }
@@ -21732,6 +21736,7 @@ function tabs_recDelete(rowIndex){
   if(!confirm('هل تريد إلغاء سجلّ الغياب التالي؟\n'+r.date+' — '+(r.kind==='يوم'?'يوم كامل':'حصة '+r.period)+' — '+r.type)) return;
   callServer('deleteTeacherAbsenceProtected', {rowIndex:rowIndex, teacherName:r.teacher}, function(res){
     if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; }
+    try { ClientCache.clear('tabs_'); } catch (eCc) {}
     toast('✅ '+res.message,'success'); tabs_loadSummary();
   }, function(err){ toast('❌ '+err.message, 'error'); });
 }
@@ -21758,6 +21763,7 @@ function tabs_recSave(rowIndex){
           absType:(typeEl?typeEl.value:r.type), notes:(notesEl?notesEl.value:r.notes) };
   callServer('updateTeacherAbsenceProtected', p, function(res){
     if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; }
+    try { ClientCache.clear('tabs_'); } catch (eCc) {}
     toast('✅ '+res.message,'success'); tabs_loadSummary();
   }, function(err){ toast('❌ '+err.message, 'error'); });
 }
@@ -24141,7 +24147,7 @@ function rep_loadTaskPerformance(scope) {
   box.innerHTML = _rpt_card('📌', 'أداء المهام والإشراف', '<p style="color:#94a3b8;">⏳ جارٍ التحميل...</p>');
 
   if (isManager) {
-    callServer('getAllTaskSummariesProtected', {}, function (res) {
+    callServer('getAllTaskSummariesProtected', {}, 'task_summaries_' + ((App.user && App.user.schoolId) || ''), 180, function (res) {
       if (!res || !res.success) { box.innerHTML = ''; return; }
       window._repTaskList = res.teachers || [];
       window._repTaskGrand = res.grand || null;
@@ -24241,7 +24247,7 @@ function rep_loadTeacherAbsence(scope){
   var priv=(scope==='admin'||scope==='deputy'||scope==='supervisor');
   box.innerHTML=_rpt_card('🧑‍🏫','غياب المعلمين','<p style="color:#94a3b8;">⏳ جارٍ التحميل...</p>');
   var p=priv?{}:{ teacherName:(App.user&&App.user.teacherName)||'' };
-  callServer('getTeacherAbsenceSummaryProtected', p, function(res){
+  callServer('getTeacherAbsenceSummaryProtected', p, 'tabs_' + ((App.user&&App.user.schoolId)||'') + '_' + (p.teacherName||'all'), 180, function(res){
     if(!res||!res.success){ box.innerHTML=''; return; }
     window._repTabs=res.summary||[];
     var inner=(!res.summary||!res.summary.length) ? '<p style="color:#94a3b8;">لا توجد سجلات غياب مسجّلة</p>' : rep_tabsTable(res.summary);
@@ -24299,7 +24305,9 @@ function rep_applyAttStats() {
     startDate: ((document.getElementById('attStatsFrom')    || {}).value) || '',
     endDate:   ((document.getElementById('attStatsTo')      || {}).value) || ''
   };
-  callServer('getAttendanceStatsProtected', p, function (res) {
+  callServer('getAttendanceStatsProtected', p,
+    'attstats_' + ((App.user && App.user.schoolId) || '') + '_' + p.grade + '_' + p.section + '_' + p.startDate + '_' + p.endDate, 180,
+    function (res) {
     if (!res || !res.success) { bodyEl.innerHTML = '<p style="color:var(--danger);">⚠️ ' + ((res && res.error) || 'تعذّر تحميل التقرير') + '</p>'; return; }
     window._repAttStats = res.stats || [];
     bodyEl.innerHTML = rep_attStatsTable(window._repAttStats);
@@ -25837,7 +25845,10 @@ function vio_bulkCardHtml() {
 function vio_bulkLoad() {
   var tb = document.getElementById('vioBulkTbody');
   if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px">…جاري تحميل الطلاب</td></tr>';
-  callServer('getStudentsDirectoryProtected', {}, function (r) {
+  // كاش عميلي مشترك مع مستلمي التعاميم (sdir_) — 3 مستدعين كانوا يعيدون قراءة ورقة الطلاب كاملة كل فتح
+  // المفتاح مبصوم بهوية الجلسة كاملة (schoolId+token) لا بالمدرسة وحدها — الحمولة
+  // خاصّة بالمستخدم (mine · كلمات المرور المشروطة بالصلاحية)، نمط _csFoldIdentity نفسه.
+  callServer('getStudentsDirectoryProtected', {}, 'sdir_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || ''), 180, function (r) {
     tb = document.getElementById('vioBulkTbody');
     if (!(r && r.success)) { if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#c00;padding:20px">' + ((r && r.error) || 'تعذّر تحميل الطلاب') + '</td></tr>'; return; }
     var all = r.students || [], mine = [];
@@ -26233,6 +26244,8 @@ function sdir_saveField(i, field, value) {
         st._hay = _tcNorm((st.name || '') + ' ' + (st.code || '') + ' ' + (st.phone || ''));
         SDIR._fkey = null;
       }
+      // إبطال نسخة الدليل المكاشة (sdir_) التي يقرؤها السلوك الجماعي ومستلمو التعاميم
+      try { ClientCache.clear('sdir_'); } catch (eCc) {}
       toast('✅ تم الحفظ', 'success');
     } else toast('❌ ' + ((r && r.error) || 'فشل الحفظ'), 'error');
   }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
@@ -26355,6 +26368,8 @@ function sdir_submitAdd() {
       }
       return;
     }
+    // طالب جديد يجب أن يظهر فوراً في السلوك الجماعي والتعاميم والاقتراح التلقائي للأسماء
+    try { ClientCache.clear('sdir_'); ClientCache.clear('student_names_'); } catch (eCc) {}
     toast('✅ تمت الإضافة — كلمة المرور: ' + r.password, 'success', 5000);
     sdir_closeAdd(); sdir_load();
   }, function (e) { statusEl.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
@@ -26381,7 +26396,7 @@ function renderStudentStatus() {
     '</div></div>' +
     '<button class="btn btn-primary" onclick="sstat_generate()">🔍 إنشاء التقرير</button>' +
     '<div id="sstat-report" class="mt-3"></div></div></div>';
-  callServer('getStudentNamesProtected', {}, function (r) { if (r && r.success) SSTAT.names = r.students || []; });
+  callServer('getStudentNamesProtected', {}, 'student_names_' + ((App.user && App.user.schoolId) || ''), 600, function (r) { if (r && r.success) SSTAT.names = r.students || []; });
 }
 function sstat_flag(key, label) { return '<label style="font-size:13px"><input type="checkbox" class="sstat-cb" value="' + key + '" checked> ' + label + '</label>'; }
 function sstat_ac(q) { _acRender('sstat-ac', SSTAT.names, q, 'sstat_pick'); }
