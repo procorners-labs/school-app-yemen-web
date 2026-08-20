@@ -717,6 +717,20 @@ function _loadPublicPartners() {
   } catch (e) {}
 }
 
+/* رابط دخول منصّة: slug صالح + متصفّح ⇒ مسار نظيف `/app/<page>/<slug>`؛ داخل WebView
+   تطبيق أو بلا slug ⇒ الشكل القديم `index.html?school=` حرفياً (المقاطع العميقة قد
+   تُقذَف للمتصفّح الخارجي على vc31). تعذّر الكشف ⇒ الشكل القديم (الاتجاه الآمن). */
+function _maEntryHref(app, page, s) {
+  var sl = (s && s.slug) ? String(s.slug).trim().toLowerCase() : '';
+  var inApp = true;
+  try {
+    var ua = String(navigator.userAgent || '');
+    inApp = /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+  } catch (e) { inApp = true; }
+  if (sl && !inApp && /^[a-z0-9-]+$/.test(sl)) return '/' + app + '/' + page + '/' + encodeURIComponent(sl);
+  return '/' + app + '/index.html?school=' + encodeURIComponent((s && s.schoolId) || '');
+}
+
 function _renderPublicPartners(schools) {
   var wrap = document.getElementById('partners-public');
   var grid = document.getElementById('partners-grid');
@@ -737,7 +751,7 @@ function _renderPublicPartners(schools) {
               (s.address ? '<div class="psd-meta">📍 ' + s.address + '</div>' : '') +
               (s.phone ? '<div class="psd-meta">📞 <span dir="ltr">' + s.phone + '</span></div>' : '') +
               (social ? '<div class="psd-social">' + social + '</div>' : '') +
-              (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="/teacher/index.html?school=' + encodeURIComponent(s.schoolId) + '">👨‍🏫 دخول المعلمين</a><a class="psd-btn psd-btn-s" href="/student/index.html?school=' + encodeURIComponent(s.schoolId) + '">🎓 دخول الطلاب</a></div>' : '') +
+              (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="' + _maEntryHref('teacher', 'dashboard', s) + '">👨‍🏫 دخول المعلمين</a><a class="psd-btn psd-btn-s" href="' + _maEntryHref('student', 'home', s) + '">🎓 دخول الطلاب</a></div>' : '') +
             '</div></div>';
   }
   grid.innerHTML = html;

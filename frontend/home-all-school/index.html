@@ -1317,6 +1317,21 @@
         }
       }
 
+      /* رابط دخول منصّة: slug صالح + متصفّح ⇒ مسار نظيف `/app/<page>/<slug>`؛ داخل
+         WebView تطبيق أو بلا slug ⇒ الشكل القديم `index.html?school=` حرفياً (المقاطع
+         العميقة قد تُقذَف للمتصفّح الخارجي على vc31 — تطبيقا الأندرويد يوجّهان بمقطع
+         المسار). تعذّر الكشف ⇒ الشكل القديم (الاتجاه الآمن). */
+      function portalEntryHref(app, page, s) {
+        var sl = (s && s.slug) ? String(s.slug).trim().toLowerCase() : '';
+        var inApp = true;
+        try {
+          var ua = String(navigator.userAgent || '');
+          inApp = /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+        } catch (e) { inApp = true; }
+        if (sl && !inApp && /^[a-z0-9-]+$/.test(sl)) return '/' + app + '/' + page + '/' + encodeURIComponent(sl);
+        return '/' + app + '/index.html?school=' + encodeURIComponent((s && s.schoolId) || '');
+      }
+
       function renderPartners(schools) {
         var def = getDefault();
         var html = '';
@@ -1339,8 +1354,8 @@
             +   socialHtml(s)
             +   '<div class="actions">'
             +     '<button class="btn btn-ok btn-sm" data-choose="' + attr(s.schoolId) + '" data-name="' + attr(s.name) + '">اعتمدها كمدرستي</button>'
-            +     '<a class="btn btn-ghost btn-sm" href="/teacher/index.html?school=' + encodeURIComponent(s.schoolId) + '">دخول المعلمين</a>'
-            +     '<a class="btn btn-ghost btn-sm" href="/student/index.html?school=' + encodeURIComponent(s.schoolId) + '">دخول الطلاب</a>'
+            +     '<a class="btn btn-ghost btn-sm" href="' + portalEntryHref('teacher', 'dashboard', s) + '">دخول المعلمين</a>'
+            +     '<a class="btn btn-ghost btn-sm" href="' + portalEntryHref('student', 'home', s) + '">دخول الطلاب</a>'
             +   '</div>'
             + '</div>';
         }
@@ -1679,8 +1694,8 @@
           +   (meta ? '<div class="sb-meta">' + meta + '</div>' : '')
           + '</div>'
           + '<div class="sb-actions">'
-          +   '<a class="btn btn-primary btn-sm" href="/teacher/index.html?school=' + encodeURIComponent(b.schoolId) + '">دخول المعلمين</a>'
-          +   '<a class="btn btn-ghost btn-sm" href="/student/index.html?school=' + encodeURIComponent(b.schoolId) + '">دخول الطلاب</a>'
+          +   '<a class="btn btn-primary btn-sm" href="' + portalEntryHref('teacher', 'dashboard', b) + '">دخول المعلمين</a>'
+          +   '<a class="btn btn-ghost btn-sm" href="' + portalEntryHref('student', 'home', b) + '">دخول الطلاب</a>'
           +   lastAction
           + '</div></div>';
         var bc = $('btnChange');

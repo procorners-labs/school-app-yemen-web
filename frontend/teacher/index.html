@@ -4012,6 +4012,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       if (p && p.indexOf('967') !== 0 && p.length <= 9) p = '967' + p.replace(/^0+/, '');
       return p;
     }
+    /* رابط دخول منصّة: slug صالح + متصفّح ⇒ مسار نظيف `/app/<page>/<slug>`؛ داخل تطبيق
+       أندرويد أو بلا slug ⇒ الشكل القديم حرفياً — المقاطع العميقة قد تُقذَف للمتصفّح
+       الخارجي على vc31 (نفس منطق `_tcReturnHref`: slug && !inApp). تعذّر الكشف ⇒ قديم. */
+    function entryHref(app, page, s) {
+      var sl = (s && s.slug) ? String(s.slug).trim().toLowerCase() : '';
+      var inApp = true;
+      try { inApp = (typeof _tcInAppCtx === 'function') ? !!_tcInAppCtx() : true; } catch (e) { inApp = true; }
+      if (sl && !inApp && /^[a-z0-9-]+$/.test(sl)) return '/' + app + '/' + page + '/' + encodeURIComponent(sl);
+      return '/' + app + '/index.html?school=' + encodeURIComponent((s && s.schoolId) || '');
+    }
     function render(schools) {
       var wrap = document.getElementById('partners-public');
       var grid = document.getElementById('partners-grid');
@@ -4032,7 +4042,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
                   (s.address ? '<div class="psd-meta">📍 ' + s.address + '</div>' : '') +
                   (s.phone ? '<div class="psd-meta">📞 <span dir="ltr">' + s.phone + '</span></div>' : '') +
                   (social ? '<div class="psd-social">' + social + '</div>' : '') +
-                  (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="/teacher/index.html?school=' + encodeURIComponent(s.schoolId) + '">👨‍🏫 دخول المعلمين</a><a class="psd-btn psd-btn-s" href="/student/index.html?school=' + encodeURIComponent(s.schoolId) + '">🎓 دخول الطلاب</a></div>' : '') +
+                  (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="' + entryHref('teacher', 'dashboard', s) + '">👨‍🏫 دخول المعلمين</a><a class="psd-btn psd-btn-s" href="' + entryHref('student', 'home', s) + '">🎓 دخول الطلاب</a></div>' : '') +
                 '</div></div>';
       }
       grid.innerHTML = html;
@@ -30280,29 +30290,96 @@ function _prSlugForUrl() {
   return '';
 }
 
+/* هل نحن داخل WebView تطبيق أندرويد؟ — كشفٌ ثلاثي fail-closed للهجرة وحدها:
+   أي تعذّرٍ في الكشف يُحسَب «داخل التطبيق» فلا هجرة (الاتجاه الآمن — كسرُ vc31
+   لا رجعة فيه بينما بقاءُ الرابط القديم في المتصفّح مجرّد تأجيل).
+   `_tcInAppCtx` تعيش في `_js-core-bridge.html` — حارس `typeof` لأن ترتيب
+   الـinclude لا يضمنها، والتراجع نمطُها نفسه حرفياً. */
+function _prInApp() {
+  try {
+    if (window.__SchoolAppEnv && window.__SchoolAppEnv.isAndroidWebView === true) return true;
+    if (typeof _tcInAppCtx === 'function') return !!_tcInAppCtx();
+    var ua = String(navigator.userAgent || '');
+    return /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+  } catch (e) { return true; }
+}
+
+/* استعلامُ الرابط بلا `school`/`schoolId` — يُستعمل فقط حين يحمل المسارُ المكتوب
+   slug (فالمعامل صار زائداً؛ الشقيقان يُعالَجان معاً — فئة بند 127). ما عداهما
+   (`open=financial` مثلاً) يبقى. بلا `URLSearchParams` — WebView قديم. */
+function _prCleanSearch() {
+  var raw = '';
+  try { raw = String(window.location.search || ''); } catch (e) { raw = ''; }
+  if (!raw || raw === '?') return '';
+  var parts = raw.replace(/^\?/, '').split('&'), keep = [];
+  for (var i = 0; i < parts.length; i++) {
+    if (!parts[i]) continue;
+    var k = parts[i].split('=')[0].toLowerCase();
+    if (k === 'school' || k === 'schoolid') continue;
+    keep.push(parts[i]);
+  }
+  return keep.length ? ('?' + keep.join('&')) : '';
+}
+
+/* الهجرة الناعمة من الشكل القديم `/teacher/index.html?school=…` (متصفّح فقط) —
+   قرار مالك 2026-08-20، ترقيةً ثالثة لنفس السياسة (بعد PR#1164).
+   🔴 أربعة شروط مجتمعة، وأي شرط يسقط ⇒ خروج صامت بلا أي مساس بالرابط:
+   ① المسار هو `/teacher/index.html` بالضبط (لا `/gas/teacher` ولا غيره)؛
+   ② لسنا داخل تطبيق أندرويد ولا على مضيف الأندرويد الإرثي `school.procorners.com`
+     — روابط الـAPK (‏vc31، 663 تثبيتاً، بلا Deep Link) تبقى تُخدَم كما هي للأبد؛
+   ③ slug المدرسة معروف — **لا هجرة أبداً بلا slug**: `/teacher/<section>` بلا slug
+     وبلا `?school` يسقط على مدرسة المالك عند إعادة التحميل (بند 99/131)؛
+   ④ القسم قانوني. والكتابة `replaceState` حصراً — الهجرة ليست تنقّلاً. */
+function _prMigrateLegacy(name) {
+  try {
+    var path = String(window.location.pathname || '').toLowerCase();
+    if (path !== '/teacher/index.html') return;
+    var host = '';
+    try { host = String(window.location.hostname || '').toLowerCase(); } catch (eH) { host = ''; }
+    if (host === 'school.procorners.com') return;
+    if (_prInApp()) return;
+    var slug = _prSlugForUrl();
+    if (!slug) return;
+    var canon = _prCanonicalSection(name);
+    if (!canon) return;
+    if (!window.history || !window.history.replaceState) return;
+    var next = _prcTargetPath('teacher', canon, slug);
+    window.history.replaceState({ prSection: canon }, '', next + _prCleanSearch());
+  } catch (e) {}
+}
+
 function _prSyncUrl(name) {
   if (_PR_SUPPRESS) return;
   if (!name || !window.history || !window.history.pushState) return;
   try {
-    /* لا نلمس الرابط إطلاقاً ما لم نكن أصلاً على مسارٍ من هذا الشكل.
-       🔴 السبب حاسم: `/teacher/index.html?school=<uuid>` **مجمَّد في الـAPK** بلا
-       Deep Link — تحويلُه إلى `/teacher/<section>` يكسر 663 تثبيتاً بلا رجعة.
-       فالمُوجِّه يعمل **داخل** المسارات الجديدة فقط، ولا يهاجر إليها أحداً. */
+    /* داخل المسارات الجديدة يعمل المُوجِّه كاملاً؛ وعلى الشكل القديم تُجرَّب الهجرة
+       الناعمة المشروطة وحدها (متصفّح فقط — شروطها في `_prMigrateLegacy` أعلاه)،
+       وأي شرط يسقط يُعيد الخروجَ الصامت القائم حرفياً فلا يُمَسّ رابط الـAPK. */
     var cur = _prParsePath(window.location.pathname);
-    if (!cur) return;
+    if (!cur) { _prMigrateLegacy(name); return; }
     var slug = _prSlugForUrl();
     var next = _prcTargetPath('teacher', name, slug);
-    if (next === window.location.pathname) return;
+    /* المسار المكتوب يحمل slug ⇒ `school`/`schoolId` صارا زائدَين فيُسقَطان؛
+       وبلا slug يبقى الاستعلام كما هو — لا نُسقط هوية المستأجر الوحيدة. */
+    var qs = slug ? _prCleanSearch() : window.location.search;
+    if (next === window.location.pathname) {
+      /* نفس المسار — لا تنقّل؛ وتنظيفُ الاستعلام وحده (إن لزم) يمرّ بـ`replaceState`
+         فلا مدخلَ تاريخ جديد لمجرّد إسقاط معامل صار زائداً. */
+      if (qs !== window.location.search && window.history.replaceState) {
+        window.history.replaceState({ prSection: name }, '', next + qs);
+      }
+      return;
+    }
     /* حقنُ slug وحدَه على **نفس القسم** ⇒ `replaceState` لا `pushState`: لا مدخلَ
        تاريخٍ جديد، فزرّ الرجوع لا يمرّ بنسخة الرابط التي بلا slug (وهذا ما يُبقي
        «تمثيلاً واحداً لكل قسم» رغم الحقن — راجع `_prSlugForUrl`). */
     if (!cur.slug && slug &&
         String(cur.section).toLowerCase() === String(name).toLowerCase() &&
         window.history.replaceState) {
-      window.history.replaceState({ prSection: name }, '', next + window.location.search);
+      window.history.replaceState({ prSection: name }, '', next + qs);
       return;
     }
-    window.history.pushState({ prSection: name }, '', next + window.location.search);
+    window.history.pushState({ prSection: name }, '', next + qs);
   } catch (e) { /* تاريخ المتصفّح ليس شرطاً لعمل اللوحة */ }
 }
 
