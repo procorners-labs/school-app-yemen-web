@@ -8857,8 +8857,8 @@ function _circLoadRecipientData(cb) {
   }
   if (needS) {
     pending++;
-    /* المفتاح مبصوم بهوية الجلسة كاملة (schoolId+token) — الحمولة خاصّة بالمستخدم (mine · الحقول المشروطة بالصلاحية) */
-    callServer('getStudentsDirectoryProtected', {}, 'sdir_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || ''), 180, function (r) {
+    /* الشكل الخفيف lean (بلا حقول حسّاسة) — المفتاح مبصوم بهوية الجلسة (mine خاص بالمستخدم) */
+    callServer('getStudentsDirectoryProtected', { lean: 1 }, 'sdir_lean_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || ''), 180, function (r) {
       _circStudentsAll = (r && r.success && r.students) ? r.students : [];
       done();
     }, function () { _circStudentsAll = []; done(); });
@@ -16366,8 +16366,8 @@ function loadHomework() {
   var area = document.getElementById('homeworkListArea');
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div>';
 
-  callServer('getMyActivitiesProtected', {},
-    'activities_hw_' + ((App.user && App.user.schoolId) || ''), // مفتاح الكاش (مبصوم بالمدرسة — بند 85-ب)
+  callServer('getMyActivitiesProtected', { kinds: ['homework'] },
+    'activities_hw2_' + ((App.user && App.user.schoolId) || ''), // مفتاح الكاش (مبصوم بالمدرسة — بند 85-ب؛ hw2 لأن الحمولة صارت واجبات فقط)
     60,               // صلاحية 60 ثانية
     function(r) {
       if (r && r.success) {
@@ -16668,7 +16668,8 @@ function loadViolations() {
   var area = document.getElementById('vioListArea');
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
 
-  callServer('getMyActivitiesProtected', {}, 'my_activities_' + ((App.user && App.user.schoolId) || ''), 90, function(r) {
+  // kinds:violations — صفحة السلوك تستهلك المخالفات وحدها؛ كانت تدفع كلفة قراءة 3 أوراق كاملة
+  callServer('getMyActivitiesProtected', { kinds: ['violations'] }, 'my_activities_vio_' + ((App.user && App.user.schoolId) || ''), 90, function(r) {
     if (r && r.success) {
       _allViolations = (r.data && r.data.violations) ? r.data.violations : [];
       filterViolations();
@@ -25845,10 +25846,9 @@ function vio_bulkCardHtml() {
 function vio_bulkLoad() {
   var tb = document.getElementById('vioBulkTbody');
   if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px">…جاري تحميل الطلاب</td></tr>';
-  // كاش عميلي مشترك مع مستلمي التعاميم (sdir_) — 3 مستدعين كانوا يعيدون قراءة ورقة الطلاب كاملة كل فتح
-  // المفتاح مبصوم بهوية الجلسة كاملة (schoolId+token) لا بالمدرسة وحدها — الحمولة
-  // خاصّة بالمستخدم (mine · كلمات المرور المشروطة بالصلاحية)، نمط _csFoldIdentity نفسه.
-  callServer('getStudentsDirectoryProtected', {}, 'sdir_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || ''), 180, function (r) {
+  // الشكل الخفيف lean: بلا كلمات مرور/جوال/رسوم (هذا المسار لا يستهلكها أصلاً) —
+  // كاش خادمي لكل المدرسة + كاش عميلي مبصوم بهوية الجلسة (mine خاص بالمستخدم).
+  callServer('getStudentsDirectoryProtected', { lean: 1 }, 'sdir_lean_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || ''), 180, function (r) {
     tb = document.getElementById('vioBulkTbody');
     if (!(r && r.success)) { if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#c00;padding:20px">' + ((r && r.error) || 'تعذّر تحميل الطلاب') + '</td></tr>'; return; }
     var all = r.students || [], mine = [];
