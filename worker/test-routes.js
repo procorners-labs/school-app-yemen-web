@@ -192,6 +192,55 @@ if (rcIdx < 0 || coIdx < 0) {
   var okN = (nHosts === 1);
   if (!okN) failed++;
   console.log((okN ? '  ✅ ' : '  ❌ ') + '🔒 مضيف واحد بالضبط يُحوَّل  [' + nHosts + ']');
+
+  /* 🔴 **رمز التحويل يتبع الطريقة — مقيسٌ حيّاً 2026-08-21:**
+     `POST https://www.yemenschoolz.com/gas/teacher` كان يردّ 301، وباتّباعه:
+     `{"ok":false,"error":"اسم الدالة مفقود"}` — الجسم **فُقِد**، لأن 301/302 يُجيزان
+     للعميل تحويل الطريقة إلى GET. وهذا الفرع **يسبق** وكيل `/gas/*` فيبتلع نداءات
+     الـAPI كلَّها من `www` ⇒ تسجيل دخولٍ يفشل صامتاً.
+     ⇒ `GET/HEAD` تبقى 301 (الفهرسة والتخبئة)، وما عداها **308** يحفظ الطريقة والجسم.
+
+     ويُقاس **سلوكياً** بتشغيل الفرع المقتطَع من المصدر — لا بفحص وجود الرقم في النصّ
+     (`indexOf('308')` يمرّ أخضر على شرطٍ معكوس أو ميّت). */
+  /* ⚠️ الاسم مسبوقٌ بـ`_www` عمداً: `rIdx` مستعمَلٌ لاحقاً في هذا الملفّ لـ
+     `_RESERVED_TOP_PATHS`، وكلاهما `var` في **نطاق السكربت نفسه** ⇒ التسمية المتطابقة
+     تدهسه فيرمي اختبارٌ **آخر** `ReferenceError`. وقع فعلاً أثناء كتابة هذه الكتلة. */
+  var _wwwBranchIdx = src.indexOf('if (REDIRECT_TO_CANONICAL[url.hostname]) {');
+  if (_wwwBranchIdx < 0) {
+    console.log('  ❌ ضابط: تعذّر اقتطاع فرع التحويل ⇒ الاختبار أجوف');
+    failed++;
+  } else {
+    var branch = src.slice(_wwwBranchIdx, src.indexOf('\n    }', _wwwBranchIdx) + 6);
+    var mctx = vm.createContext({
+      CANONICAL_ORIGIN: 'https://yemenschoolz.com',
+      REDIRECT_TO_CANONICAL: { 'www.yemenschoolz.com': 1 },
+      Response: { redirect: function (u, s) { return { url: u, status: s }; } }
+    });
+    vm.runInContext(
+      'function __run(method, path, search) {\n' +
+      '  var request = { method: method }, url = { hostname: "www.yemenschoolz.com", search: search };\n' +
+      '  ' + branch.replace(/\breturn Response\.redirect/, 'return Response.redirect') + '\n' +
+      '  return null;\n}', mctx);
+
+    [['GET',    301, '‏GET يبقى 301 — الفهرسة والتخبئة الدائمة لم تتغيّر'],
+     ['HEAD',   301, '‏HEAD مثله'],
+     ['POST',   308, '🔴 POST ⇒ **308** — 301 كان يُفقِد الجسم فيفشل الدخول صامتاً'],
+     ['PUT',    308, '‏PUT مثله'],
+     ['DELETE', 308, '‏DELETE مثله']
+    ].forEach(function (c) {
+      var r = mctx.__run(c[0], '/gas/teacher', '');
+      var good = !!r && r.status === c[1];
+      if (!good) failed++;
+      console.log((good ? '  ✅ ' : '  ❌ ') + c[2] + '  [' + c[0] + ' → ' +
+                  (r ? r.status : 'لا تحويل') + ']');
+    });
+
+    var rq = mctx.__run('POST', '/gas/teacher', '?a=1');
+    var okKeep = !!rq && rq.url === 'https://yemenschoolz.com/gas/teacher?a=1';
+    if (!okKeep) failed++;
+    console.log((okKeep ? '  ✅ ' : '  ❌ ') +
+                '🔒 المسار والاستعلام محفوظان في التحويل  [' + (rq ? rq.url : '—') + ']');
+  }
 }
 
 // ── الرؤوس الأمنية ومعاينة الخبر ──
