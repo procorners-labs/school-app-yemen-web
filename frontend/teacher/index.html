@@ -6645,9 +6645,62 @@ function clearSession() {
 // ==================== LOGIN / LOGOUT ====================
 var _loginAttempts = 0;
 var _loginLocked   = false;
-var _LOGIN_TIMEOUT = 20000;
+/* 🔴 **28000 لا 20000** — والفارق ليس تجميلاً: ميزانية الوسيط `TOTAL_BUDGET_MS = 24000`
+   (`SchoolApp/worker/school-app-proxy.js:732`، محاولتان × 11,500ms + فاصل 700ms).
+   فبمهلة 20ث كان العميل **يُعلن الفشل على طلبٍ حيٍّ ما زال قد ينجح**، فينقر المستخدم
+   ثانيةً ⇒ **مقعد GAS ثانٍ** ⇒ تغذيةٌ راجعة موجبة على الإشباع الذي سبّب التأخّر أصلاً.
+   وهي العلّة التي أنتجت بلاغ 2026-08-21 (‏«انتهت مهلة الاتصال» على دخولٍ لم يفشل).
+   ⚠️ والقيمة محكومةٌ من الطرفين: **فوق** ميزانية الوسيط (24ث) و**تحت** مهلة XHR (60ث).
+   أي تغيير لـ`TOTAL_BUDGET_MS` هناك يوجب تغييرها هنا — مرساةٌ متبادلة، لا رقمان مستقلّان. */
+var _LOGIN_TIMEOUT = 28000;
 var _LOGIN_MAX     = 25;      // يطابق MAX_LOGIN_ATTEMPTS في الخادم
 var _loginLockTimer = null;
+
+/* عرضُ فشلِ الدخول — **مصدرٌ واحد لمسارَي كلمة المرور والبصمة**. معالج البصمة كان
+   `function () {…}` **بلا وسيط أصلاً**، فكان يعرض نصّاً ثابتاً لكل الأسباب.
+   و«خنق البشر» على الازدحام وحده: تبريدُ الزرّ ٥ ثوانٍ يمنع النقر المتكرّر الغاضب —
+   وهو **التضخيم الحقيقي** على هذا المسار. 🔴 وليس إعادةَ محاولة تلقائية: بند 128
+   («إعادة المحاولة على إشباعٍ تُسيئه لا تُصلحه») سارٍ، والوسيط يعيد المحاولة مرّتين
+   بنفسه، والدخول `ONLINE_ONLY` بلا كاشٍ يُنقذه. */
+var _LOGIN_BUSY_COOLDOWN_S = 5;
+
+/* تجهيزُ الزرّ للنداء: يلتقط عنوانه الأصلي **مرّةً واحدة** ثمّ يعطّله. مصدرٌ واحد
+   لمسارَي كلمة المرور والبصمة — و`||` يمنع إعادة الالتقاط لو نُودي بعد التعطيل. */
+function _loginArmBtn(btn, busyText) {
+  if (!btn) return;
+  if (!btn._loginLabel) btn._loginLabel = btn.textContent;
+  btn.disabled = true;
+  if (busyText) btn.textContent = busyText;
+}
+
+/* 🔴 النصّ المُستعاد **يُلتقَط من الزرّ نفسه** لا يُفرَض: مسارا الدخول زرّان مختلفان
+   (`🚪 دخول إلى المنصة` و`🔓 دخول بالبصمة — <الجهاز>`)، ونصٌّ مفروضٌ كان سيمحو اسم
+   الجهاز من زرّ البصمة عند أوّل فشل. و`_loginLabel` يُخزَّن على العنصر لأن التبريد
+   يستبدل النصّ مؤقّتاً فلا يصلح مصدراً لنفسه. */
+function _loginShowFailure(btn, err) {
+  var info = (typeof window.gasErrorInfo === 'function')
+    ? window.gasErrorInfo(err)
+    : { kind: 'offline', text: 'تعذّر الاتصال — تحقّق من الشبكة وأعد المحاولة.' };
+  shakeLoginError(info.text);
+  if (!btn) return;
+  /* ⚠️ الالتقاط يقع في `_loginArmBtn` **قبل** التعطيل — لا هنا: وقت الفشل يكون النصّ
+     `⏳ جاري التحقق...`، فالتقاطُه هنا كان سيثبّت نصّ التحميل عنواناً للزرّ للأبد. */
+  var label = btn._loginLabel || '🚪 دخول إلى المنصة';
+  if (info.kind === 'busy') {
+    var left = _LOGIN_BUSY_COOLDOWN_S;
+    btn.disabled = true;
+    var tick = function () {
+      if (left <= 0) { btn.textContent = label; btn.disabled = false; return; }
+      btn.textContent = '⏳ أعد المحاولة بعد ' + left + 'ث';
+      left--;
+      setTimeout(tick, 1000);
+    };
+    tick();
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = label;
+}
 
 // قفل مؤقت ذاتي الفكّ: عدّاد تنازلي مرئي ثم إعادة تفعيل تلقائية
 function _startLoginLockCountdown(sec) {
@@ -6742,13 +6795,14 @@ function doLogin() {
     shakeLoginError('تعذّر تحميل مكوّن الاتصال. أعد تحميل الصفحة.');
     return;
   }
-  btn.disabled = true;
-  btn.textContent = '⏳ جاري التحقق...';
+  _loginArmBtn(btn, '⏳ جاري التحقق...');
   clearTimeout(window._loginTimer);
   window._loginTimer = setTimeout(function() {
     btn.disabled = false;
     btn.textContent = '🚪 دخول إلى المنصة';
-    shakeLoginError('انتهت مهلة الاتصال. تحقق من الشبكة وحاول مجدداً.');
+    /* 🔴 النصّ يوافق ما يعنيه بلوغُ 28ث فعلاً: الوسيط استنفد ميزانيته (24ث) ⇒ **ازدحام
+       لا انقطاع شبكة**. الرسالة القديمة كانت تقود المستخدم لفحص الراوتر وهو سليم. */
+    shakeLoginError('الخدمة مزدحمة الآن — أعد المحاولة بعد لحظات.');
   }, _LOGIN_TIMEOUT);
 
   // ★ استخراج schoolId من الرابط (إذا وُجد)
@@ -6800,9 +6854,12 @@ function doLogin() {
     })
     .withFailureHandler(function(e) {
       clearTimeout(window._loginTimer);
-      btn.disabled = false;
-      btn.textContent = '🚪 دخول إلى المنصة';
-      shakeLoginError('تعذر الاتصال بالخادم. تحقق من الشبكة وحاول مجدداً.');
+      /* 🔴 التمييز الذي يبنيه الجسر بعناية كان يُهدَر هنا: الرسالة الثابتة «تحقق من
+         الشبكة» **معاكسةٌ** لعلاج 503 (انتظار لحظات لا فحص شبكة)، و`gasErrorInfo`
+         (‏`assets/gas-bridge.js:40-51`) مبنيّةٌ ومُصدَّرةٌ وتُنتج النصّ الصحيح لكلّ
+         حالة — ولم تكن تُستدعى. نفس نمط `home/Index.html:2747`.
+         و`typeof` ليس زينة: السطح المخدوم من `doGet` لا يحمّل `gas-bridge.js` إطلاقاً. */
+      _loginShowFailure(btn, e);
       console.error('Login Error:', e);
     })
     .handleTeacherLogin({
@@ -7021,7 +7078,7 @@ function biomLoginWithDevice(schoolId) {
   }).then(function (assertion) {
     function proceedWithSecret(secretHex) {
       var btn = document.getElementById('loginBtn');
-      if (btn) { btn.disabled = true; }
+      _loginArmBtn(btn);   // يلتقط العنوان قبل التعطيل — مصدرٌ واحد مع مسار كلمة المرور
       callServer('handleTeacherLoginByDevice', {
         deviceId: dev.deviceId, deviceSecret: secretHex, schoolId: schoolId
       }, function (r) {
@@ -7032,9 +7089,11 @@ function biomLoginWithDevice(schoolId) {
         } else {
           shakeLoginError((r && r.error) || 'تعذّر الدخول بالبصمة — استخدم كلمة المرور');
         }
-      }, function () {
-        if (btn) btn.disabled = false;
-        shakeLoginError('تعذّر الاتصال بالخادم — استخدم كلمة المرور');
+      }, function (err) {
+        /* 🔴 كان `function ()` **بلا وسيط أصلاً** ⇒ نصٌّ واحد لكل الأسباب: ازدحامٌ
+           وانقطاعُ شبكةٍ وعطلُ خادمٍ سواءً. وإصلاحُ مسار كلمة المرور وحده هو نمط
+           «حارسٌ يُصلَح في حالته وتُترَك أخواته» (بندا 123 · 168) — فالمصدر واحد. */
+        _loginShowFailure(btn, err);
       });
     }
     if (dev.encrypted) {
