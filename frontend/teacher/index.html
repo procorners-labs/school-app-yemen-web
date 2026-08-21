@@ -4157,6 +4157,23 @@ function _csFoldIdentity() {
   return ((u && u.schoolId) || '') + '|' + ((u && u.token) || '');
 }
 
+/* ── معالج انتهاء الجلسة (واحدٌ للمنصّة كلّها) ──────────────────────────────────
+   🔴 **حارسُ إطلاقٍ واحد إلزاميّ:** حزمةُ الإقلاع تُطلق نداءاتٍ متعدّدة، وانتهاءُ
+   الجلسة يُصيبها **كلَّها في نفس اللحظة** — فبلا الحارس تظهر عشرُ رسائل وتُستدعى
+   شاشةُ الدخول عشر مرّات. والعلَم لا يُصفَّر إلّا بتسجيل دخولٍ ناجح (تُصفّره
+   `showLoginScreen` ضمناً بإعادة التحميل، ونُصفّره صراحةً هنا عند النجاح لاحقاً).
+
+   ⚠️ و`clearSession()` **إلزامية قبل عرض الشاشة**: التوكن المنتهي يبقى في التخزين
+   فيُعاد إرساله مع كل نداء تالٍ ⇒ حلقةٌ من الردود الفاشلة. */
+var _csSessionExpiredShown = false;
+function _csHandleSessionExpired() {
+  if (_csSessionExpiredShown) return;
+  _csSessionExpiredShown = true;
+  try { if (typeof toast === 'function') toast('⚠️ انتهت صلاحية جلستك — يرجى تسجيل الدخول مجدداً', 'warning', 8000); } catch (e) {}
+  try { if (typeof clearSession === 'function') clearSession(); } catch (e) {}
+  try { if (typeof showLoginScreen === 'function') showLoginScreen(); } catch (e) {}
+}
+
 function callServer(fnName, params, a3, a4, a5, a6) {
   // ── تطبيع المعاملات تلقائياً حسب النوع ──
   var cacheKey = null, ttl = 0, callback = null, errorCallback = null;
@@ -4228,6 +4245,26 @@ function callServer(fnName, params, a3, a4, a5, a6) {
   try {
   google.script.run
     .withSuccessHandler(function(result) {
+      /* 🔴 انتهاء الجلسة يُعالَج **هنا مرّةً واحدة** لا في كل مستدعٍ — بلاغ مالك
+         2026-08-21 (‏`getListsDataProtected returned success=false`).
+
+         العلّة المقيسة: `withAuth` (‏`TeacherAuth.js:474-478`) هو **المصدر الوحيد**
+         لـ`requiresLogin: true` في المشروع كلّه — و`grep` أعطى **صفر موضع يقرؤه في
+         الواجهة**. فالنتيجة سلسلةٌ صامتة تامّة:
+           إشباع ⇒ `_auth_refreshSession` لا تعمل ⇒ الجلسة تنتهي ⇒ الخادم يردّ
+           `success:false, requiresLogin:true` ⇒ المستدعي يقرأ `success:false` وحدها
+           فيسقط إلى **قوائم افتراضية عامّة** (‏«الفيزياء»/«الكيمياء»/شُعب `أ·ب·ج`)
+           ⇒ المعلّم يرى **قوائم مدرسةٍ ليست مدرسته** ولا يُطلَب منه تسجيل الدخول.
+
+         🔴 والعلاج في الجسر لا في `getListsData` وحدها: العلّة تصيب **كلّ دالّة
+         محميّة** بلا استثناء، وإصلاحُ الحالة وحدها هو نمط «حارسٌ يُصلَح في حالته
+         وتُترَك أخواته» (بندا 123 · 168).
+
+         ⚠️ ويُنفَّذ **قبل** التخزين والتوزيع: ردٌّ بانتهاء الجلسة لا يُخزَّن في
+         `ClientCache` (‏`success !== false` يمنعه أصلاً، والترتيب يجعله صريحاً).
+         والمستدعي يبقى يستقبل الردّ كما هو — لا نبتلعه — كي لا ينكسر أيُّ مسارٍ
+         يعتمد على `callback` أن يُنادى دائماً. */
+      if (result && result.requiresLogin === true) _csHandleSessionExpired();
       // 🔴 التخزين مشروط بـ`cacheKey` وحده؛ التصريف بـ`dedupKey` — الطيّ يوسّع
       //    الطابور لا الكاش.
       if (cacheKey && typeof ClientCache !== 'undefined') {
@@ -6562,6 +6599,14 @@ function saveSession(userData) {
   var obj = { data: userData, savedAt: Date.now() };
   try { sessionStorage.setItem('teacherSession', JSON.stringify(userData)); } catch(e) {}
   try { localStorage.setItem(_TEACHER_LS_KEY, JSON.stringify(obj)); } catch(e) {}
+  /* 🔴 تصفيرُ حارس «انتهت الجلسة» عند **دخولٍ ناجح** — وهو نقطة النجاح الوحيدة
+     المؤكَّدة. بلاه يبقى العلَم مرفوعاً بعد إعادة الدخول (‏`showLoginScreen` لا تُعيد
+     تحميل الصفحة)، فيصمت التحذير في الانتهاء **التالي** — أي يُصلَح العطل مرّةً
+     ويعود صامتاً للأبد.
+     و`typeof` حزامٌ ثانٍ لا ضرورة: `Teacher Dashboard.html:1141` يُحمِّل
+     `_js-core-bridge` **قبل** هذا الملفّ فالمتغيّر مُعرَّفٌ يقيناً — لكنّ الترتيب
+     خاصّيةُ قالبٍ تُعدَّل، والحارس يبقى صامتاً لو انعكس. */
+  try { if (typeof _csSessionExpiredShown !== 'undefined') _csSessionExpiredShown = false; } catch(e) {}
 }
 function loadSession() {
   // أولاً: حاول من sessionStorage (أسرع — نفس الجلسة)
