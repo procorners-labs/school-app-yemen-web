@@ -4193,12 +4193,40 @@ function _csBundleSeederFor(cacheKey) {
 
    ⚠️ و`clearSession()` **إلزامية قبل عرض الشاشة**: التوكن المنتهي يبقى في التخزين
    فيُعاد إرساله مع كل نداء تالٍ ⇒ حلقةٌ من الردود الفاشلة. */
+/* 🔴 **بلاغ مالك 2026-08-21: «تدخل وتخرج بعد ثوانٍ».** العلّة أن هذا المعالج كان
+   يُطلَق على **أيّ** ردٍّ يحمل `requiresLogin` بلا أن يسأل: ردُّ **أيّ** جلسة هذا؟
+
+   والتسلسل مقيسٌ زمنياً:
+     ث 0    دخولٌ ناجح ⇒ توكنٌ جديد، و`saveSession` تُصفّر العلَم أدناه (‏`…-reviews.html`)
+            ⇒ **الفخّ يُعاد تسليحه** عند كل دخول.
+     ث 2–8  يهبط ردٌّ من نداءٍ **سابقٍ للدخول** ما زال طائراً — عمرُه حتى ~121ث
+            (`xhr.timeout = 60000` × محاولتين) — ويحمل `requiresLogin` من التوكن **الميّت**.
+     ث 2–8  `clearSession()` تمحو **التوكن الجديد الذي صدر للتوّ** ⇒ شاشة دخول.
+            و`showLoginScreen` لا تُعيد التحميل ⇒ المعالجات القديمة حيّة ⇒ الحلقة تتكرّر.
+   ولهذا كان **F5 يكسرها** وإعادة الدخول في نفس التبويب لا تكسرها.
+
+   🔑 والعلاج بصمُ القرار بالتوكن: `params.token` يُحقَن عند الإرسال (‏`callServer` أدناه)،
+   فيصير في متناول ردّه. ردٌّ بتوكنٍ **ليس** التوكن الحالي = صدىً لجلسةٍ ماتت ⇒ يُتجاهَل.
+
+   ⚠️ **واتجاه الفشل مقصود**: التجاهل يقع **فقط** عند إثباتٍ موجب للاختلاف (كلاهما حاضر
+   ومختلف). غيابُ أيّهما ⇒ السلوك القديم حرفياً — لأن كتم انتهاءِ جلسةٍ **حقيقية** أسوأ من
+   إظهارها مرّتين. */
 var _csSessionExpiredShown = false;
-function _csHandleSessionExpired() {
+function _csHandleSessionExpired(forToken) {
+  var cur = '';
+  try { cur = (typeof App !== 'undefined' && App.user && App.user.token) || ''; } catch (eT) { cur = ''; }
+  if (forToken && cur && forToken !== cur) return;   // صدى جلسةٍ سابقة — لا يمسّ الحاليّة
+
   if (_csSessionExpiredShown) return;
   _csSessionExpiredShown = true;
+
+  /* 🔴 التنظيف يطابق `forceLogout` (‏`_js-platform-reviews.html`): بدونه يبقى التوكن الميّت
+     في `App.user` فيُحقَن في كل نداءٍ تالٍ (‏`callServer` أدناه)، وتواصل النبضة ضربَ
+     `teacherHeartbeatProtected` به — أي نداءاتٌ محكومٌ عليها بالفشل تُغذّي الإشباع نفسه. */
+  try { if (App.sessionInterval) { clearInterval(App.sessionInterval); App.sessionInterval = null; } } catch (e) {}
   try { if (typeof toast === 'function') toast('⚠️ انتهت صلاحية جلستك — يرجى تسجيل الدخول مجدداً', 'warning', 8000); } catch (e) {}
   try { if (typeof clearSession === 'function') clearSession(); } catch (e) {}
+  try { App.user = null; App.initDone = false; } catch (e) {}
   try { if (typeof showLoginScreen === 'function') showLoginScreen(); } catch (e) {}
 }
 
@@ -4339,7 +4367,9 @@ function callServer(fnName, params, a3, a4, a5, a6) {
          `ClientCache` (‏`success !== false` يمنعه أصلاً، والترتيب يجعله صريحاً).
          والمستدعي يبقى يستقبل الردّ كما هو — لا نبتلعه — كي لا ينكسر أيُّ مسارٍ
          يعتمد على `callback` أن يُنادى دائماً. */
-      if (result && result.requiresLogin === true) _csHandleSessionExpired();
+      /* 🔑 `params.token` = التوكن الذي أُرسل به **هذا** النداء (يُحقَن أعلاه عند الإرسال).
+         تمريرُه يجعل المعالج قادراً على تمييز صدى جلسةٍ ماتت من انتهاءِ الجلسة الحاليّة. */
+      if (result && result.requiresLogin === true) _csHandleSessionExpired(params && params.token);
       // 🔴 التخزين مشروط بـ`cacheKey` وحده؛ التصريف بـ`dedupKey` — الطيّ يوسّع
       //    الطابور لا الكاش.
       if (cacheKey && typeof ClientCache !== 'undefined') {
