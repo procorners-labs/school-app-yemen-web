@@ -10214,8 +10214,20 @@ function renderExamControl() {
     '<div id="ec-pane-grades" class="ec-pane" style="display:none;padding:18px;"></div>' +
     '<div id="ec-pane-roster" class="ec-pane" style="display:none;padding:18px;"></div>' +
     _ecCommitteeModalHtml() + _ecGenderModalHtml() + _ecDataIssuesModalHtml() + _ecPaymentBlockModalHtml();
+  /* 🔴 تصفيرٌ **إلزاميّ** قبل `ec_setTab('data')`: الـDOM أُعيد بناؤه للتوّ (السطور
+     أعلاه) فكلّ الألواح فارغة، بينما `_ecCurTab` يحمل `'data'` من دخولٍ سابق ⇒ حارسُ
+     التبويب يرجع فوراً ⇒ **لوحة بيانات فارغة عند كل عودة إلى القسم**. الفخّ يخصّ
+     الحارس نفسه لا الميزة، ولذلك له تأكيدٌ مستقلّ يقيس **الترتيب** لا الوجود. */
+  _ecCurTab = '';
   ec_setTab('data');
 }
+
+/* ── حارس التبويب (بلاغ 502، 2026-08-21) ────────────────────────────────────────
+   كان كلُّ نقر — حتى على التبويب **النشط أصلاً** — يُعيد تشغيل محمّله كاملاً: تبويب
+   الجدول وحده ستّ نداءات، فنقرتان سريعتان = **سلسلتان متداخلتان** على حصّةٍ مشبَعة.
+   🔴 و`_ecTabSeq` ليست زينةً بجانب `_ecCurTab`: الأخير يمنع النقر المكرَّر، والأوّل
+   يمنع ردَّ نداءٍ طائرٍ من تبويبٍ **غادرَه المستخدم** أن يدهس ما يعرضه الآن. */
+var _ecCurTab = '', _ecTabSeq = 0;
 
 function ec_setTab(name) {
   var tabs = document.querySelectorAll('#dynamicContent .ec-tab');
@@ -10227,6 +10239,11 @@ function ec_setTab(name) {
     var el = document.getElementById('ec-pane-' + names[p]);
     if (el) el.style.display = (names[p] === name) ? 'block' : 'none';
   }
+  /* التبديل البصري أعلاه بلا شرط (رخيصٌ وidempotent)، والحارس **بعده وقبل المحمّلات**
+     وحدها — كي تبقى نقرةُ التبويب النشط تُعيد إظهاره لو أُخفي بأي مسار آخر. */
+  if (name === _ecCurTab) return;
+  _ecCurTab = name;
+  var seq = ++_ecTabSeq;
   if (name === 'data') ec_loadData();
   else if (name === 'committees') ec_loadCommittees();
   else if (name === 'students') ec_loadStudents();
@@ -10234,7 +10251,7 @@ function ec_setTab(name) {
   else if (name === 'seatcards') ec_loadSeatCardsPane();
   else if (name === 'grades') ec_renderGradesPane();
   else if (name === 'roster') ec_loadRoster();
-  else if (name === 'timetable') ec_renderTimetablePane();
+  else if (name === 'timetable') ec_renderTimetablePane(seq);
 }
 
 // ── البيانات الأساسية ──
@@ -10936,12 +10953,16 @@ function ec_setGradeMode(mode) {
   ec_ensureGradesLoaded(function () { ec_ensureClassesLoaded(function () { ec_renderGradesControls(); }); });
 }
 
-function ec_ensureGradesLoaded(cb) {
-  if (_ecGrades) { cb(); return; }
+function ec_ensureGradesLoaded(cb, force) {
+  /* 🔴 الشرط على السجلّ لا على `_ecGrades`: الأخيرة كانت تصير `[]` عند الفشل — وهي
+     قيمةٌ **صادقة** (‏`_ecGrades` غير فارغة تقنياً) ⇒ الحارس القديم `if (_ecGrades)`
+     يُثبِّت الفشل للأبد ولا يُعيد المحاولة أبداً. */
+  if (!force && _ecTTLoad.grades === 'ok') { cb(); return; }
   callServer('getExamGradeListProtected', {}, function (res) {
-    _ecGrades = (res && res.success) ? res.grades : [];
+    if (res && res.success) { _ecGrades = res.grades || []; _ecTTLoad.grades = 'ok'; }
+    else { _ecGrades = []; _ecTTLoad.grades = 'failed'; }
     cb();
-  }, function () { _ecGrades = []; cb(); });
+  }, function () { _ecGrades = []; _ecTTLoad.grades = 'failed'; cb(); });
 }
 
 function ec_ensureClassesLoaded(cb) {
@@ -11254,19 +11275,93 @@ var _ecCalHolidayRanges = []; // [{start,end,title}] — فترات "إجازة"
 var _ecMonthVisibility = {}; // شهر -> true/false (يُعرَض جدوله على منصة الطالب أم لا)
 var _ecExamInstructions = ''; // نص تعليمات الاختبار الحالي (يُعرَض في منصة الطالب إن لم يكن فارغاً)
 
-function ec_renderTimetablePane() {
+/* ── سجلّ حالة التحميل: تمييزٌ ثلاثيّ لا ثنائيّ ────────────────────────────────────
+   🔴 العلّة المُصلَحة (بلاغ مالك 2026-08-21 — 502 متكرّر على `/gas/teacher`): كل محمّل
+   كان يضع **قيمةً فارغة** عند الفشل ويمضي، فتُرسَم اللوحة كاملةً على بياناتٍ ناقصة بلا
+   أيّ إشارة. والفراغُ هنا **ليس محايداً** — له معنىً مضادّ في كل حالة:
+
+     · الأقفال `{}`      ⇒ الجداول **المقفلة تبدو مفتوحة** (تحريرٌ يُرفَض عند الحفظ)
+     · الرؤية `{}`       ⇒ الأشهر الستّة تبدو **مُتاحة للطلاب** بينما محرم مخفيّ فعلاً
+     · التعليمات `''`    ⇒ 🔴 **فقدانُ بيانات حقيقيّ**: `textarea` فارغة بزرّ حفظ فعّال،
+       و`setExamInstructionsProtected` عند نصٍّ فارغ يستدعي `sh.deleteRow(rowIdx)` ⇒
+       ضغطةٌ واحدة **تمحو تعليمات الاختبار المنشورة لكل الطلاب**
+     · الإجازات `[]`     ⇒ التواريخ المحسوبة تتخطّى نهاية الأسبوع وحدها ثمّ **تُحفَظ**
+
+   ⇒ القاعدة: **«فشل التحميل» يفشل في اتجاه القيد لا الإباحة، ويكون مرئيّاً وقابلاً
+   لإعادة المحاولة.** و`'idle'` تُميَّز عن `'failed'` كي لا يُقرأ «لم أُحمَّل بعد» فشلاً.
+   ⚠️ و`res.success === false` يُحسَب `'failed'` أيضاً — كان يُبتلَع كفراغ. */
+var _ecTTLoad = { grades: 'idle', locks: 'idle', holidays: 'idle',
+                  visibility: 'idle', instructions: 'idle', overview: 'idle' };
+
+/* لافتة فشلٍ موحَّدة — نصٌّ ساكنٌ بحت، ولا تُحقَن فيه أيّ قيمة (بند 168-③).
+   `retryFn` اسمُ دالّة عالمية بلا وسائط ⇒ لا تركيب نصّ داخل `onclick`. */
+function _ecLoadFailBanner(msg, retryFn, tone) {
+  var bg = (tone === 'warn') ? '#fff7ed' : '#fef2f2';
+  var bd = (tone === 'warn') ? '#fdba74' : '#fca5a5';
+  var fg = (tone === 'warn') ? '#9a3412' : '#991b1b';
+  return '<div style="background:' + bg + ';border:1px solid ' + bd + ';color:' + fg +
+    ';border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;">' +
+    '⚠️ ' + escapeHtml(msg) +
+    ' <button onclick="' + escapeHtml(retryFn) + '()" style="margin-right:8px;background:#fff;border:1px solid ' + bd +
+    ';color:' + fg + ';border-radius:8px;padding:3px 10px;cursor:pointer;font-weight:700;">🔄 إعادة المحاولة</button>' +
+    '</div>';
+}
+
+/* «🔄 تحديث» — البديلُ عن إعادة النقر على التبويب بعد أن صار محروساً (`ec_setTab`).
+   يمسح السجلّ إلى `'idle'` فتُعاد كل نداءات السلسلة، وهو **المسار الوحيد** لإعادة
+   المحاولة الشاملة. وإعادةُ المحاولة المفردة تمرّ بـ`ec_ttRetry(<key>)` أدناه. */
+function ec_ttRefreshAll() {
+  var k;
+  for (k in _ecTTLoad) { if (_ecTTLoad.hasOwnProperty(k)) _ecTTLoad[k] = 'idle'; }
+  /* 🔴 ترقيمٌ صريح لا اعتمادٌ على الافتراضي: نقرتان سريعتان على «🔄 تحديث» كانتا
+     تُطلقان سلسلتين **لا تُبطِل إحداهما الأخرى** (كلتاهما بنفس `_ecTabSeq`) — نفس
+     فئة السباق التي عالجها حارس التبويب، منسيّةً عند زرّ التحديث. رصدَته المراجعة. */
+  ec_renderTimetablePane(++_ecTabSeq);
+}
+
+/* إعادة محاولة **عضوٍ واحد** من لافتة فشله — أرخص من إعادة السلسلة كاملةً على حصّةٍ
+   قد تكون مشبَعة أصلاً (بند 128: إعادةُ المحاولة على إشباعٍ تُسيئه لا تُصلحه).
+   🔴 وكلٌّ تلتقط `seq` وتفحصه قبل الرسم: تجاوزُ حارس التسلسل هنا كان يكسر اتّساق
+   الآلية المبنيّة لهذا الغرض بعينه — بدّل المستخدمُ التبويبَ ورَدُّ الإعادة معلَّق،
+   فيرسم `ec_timetableRenderPage` في لوحةٍ غادرها. */
+function _ecTtRetry(loader, key) {
+  _ecTTLoad[key] = 'idle';
+  var seq = ++_ecTabSeq;
+  loader(function () { if (seq === _ecTabSeq) ec_timetableRenderPage(); }, true);
+}
+function ec_ttRetryLocks()        { _ecTtRetry(ec_ensureLocksLoaded, 'locks'); }
+function ec_ttRetryInstructions() { _ecTtRetry(ec_ensureInstructionsLoaded, 'instructions'); }
+function ec_ttRetryVisibility()   { _ecTtRetry(ec_ensureMonthVisibilityLoaded, 'visibility'); }
+function ec_ttRetryHolidays()     { _ecTtRetry(ec_ensureHolidaysLoaded, 'holidays'); }
+function ec_ttRetryOverview()     { _ecTTLoad.overview = 'idle'; ec_renderTimetablePane(++_ecTabSeq); }
+
+function ec_renderTimetablePane(seq) {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
   el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
+  /* لقطةُ تسلسلٍ تُلتقط عند الإطلاق: نداءٌ طائرٌ من نقرةٍ سابقة لا يدهس ما يعرضه
+     المستخدم الآن — لا الرسم ولا المتغيّرات العامّة (بند 125 من زاويةٍ أخرى). */
+  var mySeq = (seq === undefined) ? _ecTabSeq : seq;
+  function stale() { return mySeq !== _ecTabSeq; }
   ec_ensureGradesLoaded(function () {
+    if (stale()) return;
     ec_ensureLocksLoaded(function () {
+      if (stale()) return;
       ec_ensureHolidaysLoaded(function () {
+        if (stale()) return;
         ec_ensureMonthVisibilityLoaded(function () {
+          if (stale()) return;
           ec_ensureInstructionsLoaded(function () {
+            if (stale()) return;
+            if (_ecTTLoad.overview === 'ok' && _ecScheduleOverview) { ec_timetableRenderPage(); return; }
             callServer('getSchoolExamScheduleOverviewProtected', {}, function (res) {
-              _ecScheduleOverview = (res && res.success) ? res : { success: true, months: [] };
+              if (stale()) return;
+              if (res && res.success) { _ecScheduleOverview = res; _ecTTLoad.overview = 'ok'; }
+              else { _ecScheduleOverview = { success: true, months: [] }; _ecTTLoad.overview = 'failed'; }
               ec_timetableRenderPage();
             }, function () {
+              if (stale()) return;
               _ecScheduleOverview = { success: true, months: [] };
+              _ecTTLoad.overview = 'failed';
               ec_timetableRenderPage();
             });
           });
@@ -11278,44 +11373,55 @@ function ec_renderTimetablePane() {
 
 // يُحمَّل مرّة قبل أول رسم للصفحة — خريطة شهر←ظاهر لمنصة الطالب (افتراضي true لأي شهر بلا صف صريح
 // في الخادم، راجع _ecGetMonthVisibilityMap في ExamControl.js).
-function ec_ensureMonthVisibilityLoaded(cb) {
+function ec_ensureMonthVisibilityLoaded(cb, force) {
+  if (!force && _ecTTLoad.visibility === 'ok') { cb(); return; }
   callServer('getExamMonthVisibilityProtected', {}, function (res) {
-    _ecMonthVisibility = (res && res.success && res.visibility) ? res.visibility : {};
+    if (res && res.success && res.visibility) { _ecMonthVisibility = res.visibility; _ecTTLoad.visibility = 'ok'; }
+    else { _ecMonthVisibility = {}; _ecTTLoad.visibility = 'failed'; }
     cb();
-  }, function () { _ecMonthVisibility = {}; cb(); });
+  }, function () { _ecMonthVisibility = {}; _ecTTLoad.visibility = 'failed'; cb(); });
 }
 
 // يُحمَّل مرّة قبل أول رسم للصفحة — نص تعليمات الاختبار الحالي (صف سنتينل __CTRL_INSTRUCTIONS__ داخل
 // نفس شيت الكنترول_جدول_الاختبارات، راجع getExamInstructionsProtected في ExamControl.js).
-function ec_ensureInstructionsLoaded(cb) {
+function ec_ensureInstructionsLoaded(cb, force) {
+  if (!force && _ecTTLoad.instructions === 'ok') { cb(); return; }
   callServer('getExamInstructionsProtected', {}, function (res) {
-    _ecExamInstructions = (res && res.success && res.text) ? res.text : '';
+    if (res && res.success) { _ecExamInstructions = res.text || ''; _ecTTLoad.instructions = 'ok'; }
+    else { _ecExamInstructions = ''; _ecTTLoad.instructions = 'failed'; }
     cb();
-  }, function () { _ecExamInstructions = ''; cb(); });
+  }, function () { _ecExamInstructions = ''; _ecTTLoad.instructions = 'failed'; cb(); });
 }
 
-function ec_ensureLocksLoaded(cb) {
+function ec_ensureLocksLoaded(cb, force) {
+  if (!force && _ecTTLoad.locks === 'ok') { cb(); return; }
   callServer('getExamScheduleLocksProtected', {}, function (res) {
-    _ecTTLocked = (res && res.success && res.locked) ? res.locked : {};
+    if (res && res.success && res.locked) { _ecTTLocked = res.locked; _ecTTLoad.locks = 'ok'; }
+    else { _ecTTLocked = {}; _ecTTLoad.locks = 'failed'; }
     cb();
-  }, function () { _ecTTLocked = {}; cb(); });
+  }, function () { _ecTTLocked = {}; _ecTTLoad.locks = 'failed'; cb(); });
 }
 
 // تُحمَّل مرّة واحدة **قبل** بناء أي لوحة صف (لضمان أن أول حساب لتاريخ لاحق يحترم الإجازات فوراً، لا
 // فقط بعد إعادة تحميل الصفحة). المصدر التقويم المدرسي الحقيقي (getSchoolCalendarProtected، نوع
 // 'إجازة') لا ورقة مخصَّصة لهذا التبويب — قراءة فقط هنا، الإضافة/الحذف من صفحة "🗓️ التقويم المدرسي"
 // حصراً (تجنّباً لتكرار واجهة إدارة إجازات في مكانين مختلفين لنفس البيانات).
-function ec_ensureHolidaysLoaded(cb) {
+function ec_ensureHolidaysLoaded(cb, force) {
+  if (!force && _ecTTLoad.holidays === 'ok') { cb(); return; }
   callServer('getSchoolCalendarProtected', {}, function (res) {
-    var events = (res && res.success && res.events) ? res.events : [];
+    if (!res || !res.success) { _ecCalHolidayRanges = []; _ecTTLoad.holidays = 'failed'; cb(); return; }
+    var events = res.events || [];
     _ecCalHolidayRanges = [];
     for (var i = 0; i < events.length; i++) {
       if (events[i].type === 'إجازة' && events[i].start) {
         _ecCalHolidayRanges.push({ start: events[i].start, end: events[i].end || events[i].start, title: events[i].title });
       }
     }
+    /* 🟢 قائمةٌ فارغة **نجاحٌ لا فشل**: مدرسةٌ بلا إجازات مسجَّلة حالةٌ مشروعة.
+       الفشل هو ألّا يصل ردٌّ أصلاً — والتمييز هو كل الغرض من هذا السجلّ. */
+    _ecTTLoad.holidays = 'ok';
     cb();
-  }, function () { _ecCalHolidayRanges = []; cb(); });
+  }, function () { _ecCalHolidayRanges = []; _ecTTLoad.holidays = 'failed'; cb(); });
 }
 
 // هل يقع dateStr ضمن أي فترة إجازة حقيقية من التقويم المدرسي؟ مقارنة نصّية مباشرة (yyyy-mm-dd
@@ -11452,7 +11558,17 @@ function ec_timetableRenderPage() {
   // ⚠️ لوحة «فتح استثنائي لرصد الدرجات» كانت هنا وانتقلت إلى **صفحة إدارة الدرجات**
   //    (`gmsAdminPanelHtml` في `_js-core-bridge.html`) بقرار مالك 2026-08-21: إعداد الدرجات
   //    لا يتبع الاختبارات. لا تُعِدها هنا — يحرس غيابَها اختبارُ انحدار صريح.
-  var h = '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
+  /* لافتتان على مستوى الصفحة — لعضوَين لا لوحةَ خاصّة لهما:
+     · **الإجازات**: التحرير يبقى مسموحاً (منعُه مبالغة)، لكنّ التواريخ المحسوبة تتخطّى
+       نهاية الأسبوع وحدها ثمّ **تُحفَظ** ⇒ تحذيرٌ برتقاليّ لا أحمر، وغيرُ قابلٍ للإخفاء.
+     · **الصفوف**: `_ecGrades = []` عند الفشل ⇒ صفحةٌ فارغة تبدو «لا صفوف» لا «تعذّر». */
+  var h = (_ecTTLoad.grades === 'failed'
+            ? _ecLoadFailBanner('تعذّر جلب قائمة الصفوف — الصفحة ناقصة لا فارغة.', 'ec_ttRefreshAll') : '') +
+          (_ecTTLoad.holidays === 'failed'
+            ? _ecLoadFailBanner('تعذّر جلب إجازات التقويم — التواريخ التلقائية تتخطّى نهاية الأسبوع فقط.', 'ec_ttRetryHolidays', 'warn') : '') +
+          (_ecTTLoad.overview === 'failed'
+            ? _ecLoadFailBanner('تعذّر جلب الجدول الشامل — شارات «الصفوف المُجدوَلة» غير متاحة.', 'ec_ttRetryOverview') : '') +
+          '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
     '<div id="ec-tt-instructions-panel">' + ec_timetableInstructionsHtml() + '</div>' +
     '<div id="ec-tt-holidays-panel">' + ec_timetableHolidaysHtml() + '</div>' +
     '<details id="ec-tt-matrix-details" style="margin-bottom:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;" ontoggle="ec_timetableMatrixToggle(this)">' +
@@ -11464,7 +11580,12 @@ function ec_timetableRenderPage() {
       '</div>' +
       '<div id="ec-tt-matrix-body" style="margin-top:10px;overflow-x:auto;"></div>' +
     '</details>' +
-    '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">افتح أي شهر لترى كل الصفوف، ثم افتح صفاً لتوزيع مواده بالسحب. حدِّد تاريخ اليوم الأول فقط — بقية أيام ذلك الصف تُحسَب تلقائياً (تتخطّى الخميس/الجمعة وإجازات التقويم المدرسي أعلاه).</p>';
+    /* زرّ التحديث **بديلٌ إلزاميّ** لا زينة: قبل حارس التبويب كان الإداري يُحدِّث بإعادة
+       النقر على التبويب نفسه — وقد صار ذلك بلا أثر عمداً (كل نقرة كانت ست نداءات). */
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 12px;flex-wrap:wrap;">' +
+      '<p style="font-size:12px;color:#64748b;margin:0;flex:1;min-width:240px;">افتح أي شهر لترى كل الصفوف، ثم افتح صفاً لتوزيع مواده بالسحب. حدِّد تاريخ اليوم الأول فقط — بقية أيام ذلك الصف تُحسَب تلقائياً (تتخطّى الخميس/الجمعة وإجازات التقويم المدرسي أعلاه).</p>' +
+      '<button type="button" class="ec-tt-print-btn" onclick="ec_ttRefreshAll()">🔄 تحديث</button>' +
+    '</div>';
   for (var m = 0; m < EC_EXAM_TYPES.length; m++) {
     var month = EC_EXAM_TYPES[m];
     var monthGrades = _ecScheduleOverviewGradesFor(month);
@@ -11476,7 +11597,8 @@ function ec_timetableRenderPage() {
     }
     h += '<details class="ec-tt-month">' +
       '<summary><span class="ec-tt-month-title">' + escapeHtml(month) + '</span>' +
-      '<span class="ec-tt-badge' + (monthGrades.length ? ' ec-tt-badge-ok' : '') + '">' + monthGrades.length + ' صف مُجدوَل</span>' +
+      /* 🔴 «0 صف مُجدوَل» كذبٌ صريح عند فشل الجلب — المعلومة غائبة لا معدومة. */
+      '<span class="ec-tt-badge' + (monthGrades.length ? ' ec-tt-badge-ok' : '') + '">' + (_ecTTLoad.overview === 'failed' ? '— غير متاح' : (monthGrades.length + ' صف مُجدوَل')) + '</span>' +
       '<button type="button" class="ec-tt-print-btn" onclick="ec_printMonthSchedule(event,\'' + escapeHtml(month) + '\')">🖨️ طباعة الجدول الكامل لهذا الشهر</button>' +
       '</summary><div class="ec-tt-month-body">';
     // تجميع بصري فقط للصفوف المتشابهة (نفس مجموعة المواد) — بيانات/جدول كل صف يبقى مستقلاً 100%،
@@ -11587,13 +11709,24 @@ function ec_timetableRenderBoard(key, containerEl) {
   var parts = key.split('|'), grade = parts[0];
 
   var keyEsc = escapeHtml(key.replace(/'/g, "\\'")); // ترتيب الهروب: قصّ الاقتباس قبل escapeHtml (راجع تعليق ec_timetableListHtml)
-  var locked = !!_ecTTLocked[key];
+  /* 🔴 **fail-closed**: تعذُّر جلب الأقفال كان يجعل `_ecTTLocked = {}` ⇒ الجداول
+     **المقفلة تبدو مفتوحة**، فيسحب المدير المواد ثمّ يُرفض حفظُه خادمياً
+     (‏`ExamControl.js:1529` يفرض القفل بحقّ) — عملٌ ضائع وثقةٌ مهدورة.
+     ⚠️ و**زرّ القفل يُخفى أيضاً لا الحفظ وحده**: `ec_timetableToggleLock` يشتقّ الحالة
+     التالية من `!_ecTTLocked[key]` — أي من خريطةٍ فارغة — فيكتب **قيمةً خاطئة** ويفتح
+     قفلاً قائماً. إخفاءُ الحفظ وحده كان سيترك البابَ الأخطر مفتوحاً. */
+  var locksFailed = (_ecTTLoad.locks === 'failed');
+  var locked = locksFailed || !!_ecTTLocked[key];
   var saveBtn = locked ? '' :
     '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableSaveClick(event,\'' + keyEsc + '\')">💾 حفظ الآن</button>';
-  var lockBtn = '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableToggleLock(event,\'' + keyEsc + '\')">' +
+  var lockBtn = locksFailed ? '' :
+    '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableToggleLock(event,\'' + keyEsc + '\')">' +
     (locked ? '🔓 فتح القفل' : '🔒 قفل الترتيب') + '</button>';
-  var lockNote = locked ? '<span style="color:#c62828;font-size:12px;font-weight:700;margin-inline-start:8px;">🔒 مقفل — افتح القفل للتعديل</span>' : '';
-  var h = '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + keyEsc + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button>' + saveBtn + lockBtn + lockNote + '</div>' +
+  var lockNote = locksFailed
+    ? '<span style="color:#991b1b;font-size:12px;font-weight:700;margin-inline-start:8px;">⚠️ تعذّر جلب حالة الأقفال — التحرير معطَّل مؤقتاً</span>'
+    : (locked ? '<span style="color:#c62828;font-size:12px;font-weight:700;margin-inline-start:8px;">🔒 مقفل — افتح القفل للتعديل</span>' : '');
+  var h = (locksFailed ? _ecLoadFailBanner('تعذّر جلب حالة الأقفال — التحرير معطَّل مؤقتاً لئلّا يُعدَّل جدولٌ مقفل.', 'ec_ttRetryLocks') : '') +
+          '<div class="ec-tt-toolbar"><button type="button" class="ec-tt-print-btn" onclick="ec_printGradeSchedule(event,\'' + keyEsc + '\')">🖨️ طباعة جدول ' + escapeHtml(grade) + '</button>' + saveBtn + lockBtn + lockNote + '</div>' +
           '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding-bottom:8px;">';
 
   h += ec_timetablePoolHtml(key, board, locked);
@@ -11899,35 +12032,68 @@ function ec_timetableRecalcDates(list, fromIdx) {
 // حالة "مخفي/ظاهر" فوراً بلا التباس. الإنفاذ الفعلي في getStudentExamSchedule (student/StudentLogic.js)
 // لا هنا — هذه اللوحة تُغيّر العلم الخادمي المُستهلَك من هناك، وليست تصفية عميلية تجميلية.
 function ec_timetableVisibilityHtml() {
+  /* 🔴 عند فشل الجلب: `_ecMonthVisibility = {}` ⇒ الافتراضي `true` يجعل **الأشهر الستّة
+     تبدو مُتاحة للطلاب** بينما الحقيقة قد تكون العكس (محرم مخفيّ فعلاً اليوم). وعرضُ
+     حالةٍ مُخمَّنة كحقيقة أسوأ من الامتناع عن العرض — فالمربّعات تُعطَّل **وتُترَك غير
+     مؤشَّرة**، لأن تأشيرها يُثبِّت الادّعاء الخاطئ نفسه. */
+  var failed = (_ecTTLoad.visibility === 'failed');
   var rows = '';
   for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
     var month = EC_EXAM_TYPES[i];
-    var visible = _ecMonthVisibility.hasOwnProperty(month) ? _ecMonthVisibility[month] : true;
+    var visible = !failed && (_ecMonthVisibility.hasOwnProperty(month) ? _ecMonthVisibility[month] : true);
     var monthEsc = escapeHtml(month.replace(/'/g, "\\'"));
-    rows += '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:12px;cursor:pointer;">' +
-      '<input type="checkbox"' + (visible ? ' checked' : '') + ' onchange="ec_timetableToggleMonthVisibility(\'' + monthEsc + '\', this.checked, this)">' +
+    rows += '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:12px;cursor:' +
+      (failed ? 'not-allowed;opacity:.55;' : 'pointer;') + '">' +
+      '<input type="checkbox"' + (visible ? ' checked' : '') + (failed ? ' disabled' : '') +
+      ' onchange="ec_timetableToggleMonthVisibility(\'' + monthEsc + '\', this.checked, this)">' +
       escapeHtml(month) + '</label>';
   }
   return '<details open style="margin-bottom:12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 12px;">' +
     '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#1e40af;">👁️ عرض الجدول على منصة الطالب — لكل شهر</summary>' +
-    '<div style="margin-top:8px;">' + rows + '</div>' +
+    '<div style="margin-top:8px;">' +
+    (failed ? _ecLoadFailBanner('تعذّر جلب حالة العرض — لا تُعرَض حالةٌ مُخمَّنة.', 'ec_ttRetryVisibility') : '') +
+    rows + '</div>' +
     '</details>';
 }
 
 // لوحة "تعليمات الاختبار" — نص حرّ يُعرَض في منصة الطالب أعلى تبويب جدول الاختبارات إن لم يكن
 // فارغاً. حفظ يدوي بزرّ صريح (لا Debounce تلقائي — نص طويل نسبياً، حفظ فوري لكل ضغطة مفتاح مبالغة).
 function ec_timetableInstructionsHtml() {
+  /* 🔴 **حارس فقدان بيانات — أخطر ما في هذه الدفعة.**
+     `_ecExamInstructions` تصير `''` عند فشل التحميل، وكانت الـ`textarea` تُرسَم فارغةً
+     بزرّ حفظٍ فعّال. و`ExamControl.js::setExamInstructionsProtected` عند نصٍّ فارغ
+     يستدعي **`sh.deleteRow(rowIdx)`** ⇒ ضغطةٌ واحدة **تمحو تعليمات الاختبار المنشورة
+     لكل الطلاب**. والمستخدم لا يعلم أن الجلب فشل أصلاً.
+     ⇒ عند `'failed'`: تعطيلٌ كامل + لافتة + إعادة محاولة. والتعطيل على **الاثنين**
+     (الحقل والزرّ) لا الزرّ وحده: حقلٌ قابلٌ للكتابة يُوهم بأن ما فيه هو المحفوظ. */
+  var failed = (_ecTTLoad.instructions === 'failed');
   return '<details style="margin-bottom:12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:8px;padding:8px 12px;">' +
     '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#7e22ce;">📋 تعليمات الاختبار — تُعرَض لمنصة الطالب</summary>' +
     '<div style="margin-top:8px;">' +
-    '<textarea id="ec-tt-instructions" rows="4" placeholder="مثال: يبدأ الاختبار الساعة 8:00 صباحاً، يُمنع اصطحاب الهاتف، يجب إحضار الأدوات الشخصية..." style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;">' + escapeHtml(_ecExamInstructions) + '</textarea>' +
+    (failed ? _ecLoadFailBanner('تعذّر جلب التعليمات الحالية — الحفظ معطَّل لئلّا تُمحى المنشورة.',
+                                'ec_ttRetryInstructions') : '') +
+    '<textarea id="ec-tt-instructions" rows="4"' + (failed ? ' disabled' : '') +
+      ' placeholder="مثال: يبدأ الاختبار الساعة 8:00 صباحاً، يُمنع اصطحاب الهاتف، يجب إحضار الأدوات الشخصية..." style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;' +
+      (failed ? 'background:#f1f5f9;color:#94a3b8;' : '') + '">' + escapeHtml(_ecExamInstructions) + '</textarea>' +
     '<div style="margin-top:6px;">' +
-    '<button type="button" class="ec-tt-print-btn" onclick="ec_timetableSaveInstructions(event)">💾 حفظ التعليمات</button>' +
+    '<button type="button" class="ec-tt-print-btn"' + (failed ? ' disabled' : '') +
+      ' onclick="ec_timetableSaveInstructions(event)">💾 حفظ التعليمات</button>' +
     '</div></div></details>';
 }
 
 function ec_timetableSaveInstructions(ev) {
   if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  /* حارسٌ ثانٍ عند نقطة الفعل نفسها — `disabled` سمةٌ في الـDOM يمكن تجاوزها، والمنعُ
+     الحقيقي يكون حيث يقع الفعل. وهو أرخص من فحصٍ خادميّ لأنه لا يعرف حالةَ تحميلِ
+     المتصفّح أصلاً (الخادم لا يمكنه التمييز بين «فارغٌ عمداً» و«فارغٌ لأن الجلب فشل»). */
+  if (_ecTTLoad.instructions === 'failed') {
+    /* 🔴 النوع "warning" لا "w": منصّة المعلم تعرف success/error/warning/info وحدها
+       (‏`_css-main.html:1245-1247` و`toast()` في `_js-core-bridge.html`)، بينما `'w'`
+       اصطلاحُ **منصّة الطالب**. فبـ`'w'` يسقط التحذير إلى أيقونة `ℹ️` محايدة بلا حدٍّ
+       لونيّ — وهذا أخطر ما يكون على تحذيرٍ يمنع **فقدان بيانات**. رصدَته المراجعة. */
+    toast('⚠️ تعذّر جلب التعليمات الحالية — الحفظ معطَّل لئلّا تُمحى المنشورة', 'warning');
+    return;
+  }
   var ta = document.getElementById('ec-tt-instructions');
   var text = ta ? ta.value : '';
   var btn = ev ? ev.currentTarget : null;
