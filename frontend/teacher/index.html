@@ -4157,6 +4157,34 @@ function _csFoldIdentity() {
   return ((u && u.schoolId) || '') + '|' + ((u && u.token) || '');
 }
 
+/* ── الانضمام إلى حزمةٍ طائرة بدل نداءٍ ثانٍ لعضوٍ محتوىً فيها ─────────────────
+   🔴 **العلّة المقيسة (بلاغا المالك 2026-08-21):** `getTeacherBootBundle` تحمل الأعضاء
+   الثلاثة، ووسيطُها `p50 = 19,346ms`. وثلاثة مسارات تنادي أعضاءها **بينما هي طائرة**
+   ومفاتيحُها باردةٌ يقيناً:
+     · `loadBootConfig` عند `BOOT_SCHEMA_RELEASE_MS = 8000`.
+     · `loadNotifCountsBundle` من **النبضة عند 1,200ms** — وهي تتجاوز انضباط `bootApp`
+       كلَّه (‏`bootApp` لا تُطلق الإضافيات إلّا بعد نجاح الحزمة؛ النبضة لا تعرف ذلك).
+     · `_loadMyPointsHeader` بنفس النمط.
+   ⇒ تنفيذان (أو أربعة) GAS متزامنة لنفس الحمولة، **وكلّما بطؤ النظام أطلق أكثر**.
+
+   🔴 **والبوّابة تعيش هنا في `callServer` لا في كلّ مستدعٍ** — وهذا ما يجعلها تُعمَّم:
+   أيُّ عضوٍ يُضاف للحزمة لاحقاً يُغطّى بسطرٍ واحد في `_csBundleSeederFor`، بدل إصلاح
+   حالةٍ ثمّ اكتشاف أختها من بلاغٍ تالٍ (بندا 123 · 168).
+
+   ⚠️ **والمفاتيح تُشتقّ من دوالّ البذر نفسها** (`_bootConfigCacheKey()` وصيغتَي
+   `notif_bundle_`/`my_points_header_` في `_teacherBootBundlePrefetch`) — لا حرفيّاتٍ
+   ثانيةً تنحرف بصمت عند أوّل ترقية جيل. */
+function _csBundleSeederFor(cacheKey) {
+  if (!cacheKey) return '';
+  var sid = (typeof App !== 'undefined' && App.user && App.user.schoolId) || '';
+  var bootKey = '';
+  try { bootKey = _bootConfigCacheKey(); } catch (eK) { bootKey = ''; }
+  if (bootKey && cacheKey === bootKey) return 'getTeacherBootBundle';
+  if (cacheKey === 'notif_bundle_' + sid) return 'getTeacherBootBundle';
+  if (cacheKey === 'my_points_header_' + sid) return 'getTeacherBootBundle';
+  return '';
+}
+
 /* ── معالج انتهاء الجلسة (واحدٌ للمنصّة كلّها) ──────────────────────────────────
    🔴 **حارسُ إطلاقٍ واحد إلزاميّ:** حزمةُ الإقلاع تُطلق نداءاتٍ متعدّدة، وانتهاءُ
    الجلسة يُصيبها **كلَّها في نفس اللحظة** — فبلا الحارس تظهر عشرُ رسائل وتُستدعى
@@ -4208,6 +4236,53 @@ function callServer(fnName, params, a3, a4, a5, a6) {
         return;
       }
     } catch (e) { /* تجاهل أخطاء الكاش */ }
+  }
+
+  /* ── الانضمام للحزمة الطائرة (بعد فحص الكاش ⇒ المفتاح باردٌ يقيناً هنا) ──────
+     الحالات الخمس، وكلُّها محفوظةٌ **بالبنية لا بسطر**:
+       · الكاش دافئ ......... خرجنا أعلاه — لا نصل هنا أصلاً.
+       · الحزمة طائرة ....... ننضمّ لطابورها ⇒ **صفر تنفيذ GAS**.
+       · الحزمة نجحت ........ البذرُ يقع في `queue[0].cb` (مستدعي الحزمة الأصلي) وهو
+                              **قبلنا في نفس الحلقة** ⇒ نقرأ الكاش دافئاً ونخدم.
+       · فشلت كلّياً ......... `eb` يُصرِّفنا والكاش بارد ⇒ نداءٌ مباشر (التراجع كما كان).
+       · عضوٌ وحده فشل ...... لم يُبذَر مفتاحه ⇒ نفس المسار: نداءٌ مباشر لعضوه وحده.
+     🔴 **واستثناء انتهاء الجلسة:** لا نداء مباشر بعده — وإلّا أنتج انتهاءُ الجلسة
+     بالضبط النداءَ الذي جئنا نحذفه، والشاشةُ صارت شاشةَ دخول أصلاً.
+
+     ⚠️ **قيدٌ عابرٌ لملفَّين، رصدَته المراجعة، ويحرسه `bootBundlePrefetchIsFirstGuard`:**
+     الفائدة كلُّها مشروطة بأن يكون `_teacherBootBundlePrefetch` **أوّلَ فعلٍ شبكيّ**
+     في `bootApp` (‏`_js-platform-reviews.html`) — فطابور `_pendingCalls` يُسجَّل
+     متزامناً عند إرسالها، ونبضةُ `_startHeartbeat` تصل عند 1,200ms. فلو أُجِّلت
+     الحزمةُ خلف نداءٍ آخر، وجدت النبضةُ الطابورَ فارغاً ⇒ **سقوطٌ صامت إلى سلوك
+     اليوم**: لا عطل، لكن هدفَ هذه البوّابة يضيع بلا أن يحمرّ شيء.
+
+     ⚠️ **واتّساعٌ مُفصَحٌ عنه في نطاق التأثّر:** حزمةٌ تُعلَّق بلا ردٍّ كانت تُجمِّد
+     نفسها وحدها، وصارت تُجمِّد منضمّيها معاً. وحدُّه ليس مفتوحاً: `assets/gas-bridge.js`
+     يضبط `xhr.timeout = 60000` ⇒ `withFailureHandler` يُصرِّف الطابور كلَّه عند
+     الدقيقة، فيسقط الجميع لنداءاتهم المباشرة. الثمنُ تأخّرُ زينةٍ في أسوأ حالةٍ
+     نادرة، مقابل حذفِ نداءٍ مكرَّر على **أغلب** الإقلاعات. */
+  if (cacheKey && typeof ClientCache !== 'undefined') {
+    var seeder = _csBundleSeederFor(cacheKey);
+    if (seeder) {
+      var bundleKey = '__sf_' + seeder + '|' + _csFoldIdentity();
+      if (_pendingCalls[bundleKey]) {
+        var joinSettled = false;
+        var resumeAfterBundle = function () {
+          if (joinSettled) return;   // `cb` و`eb` لا يجتمعان، والعلَم يمنع أيّ تصريفٍ مزدوج
+          joinSettled = true;
+          var seeded = null;
+          try { seeded = ClientCache.get(cacheKey); } catch (eJ) {}
+          if (seeded) { try { callback(seeded); } catch (eJC) { console.error('cb error:', eJC); } return; }
+          if (_csSessionExpiredShown) {
+            try { callback({ success: false, requiresLogin: true, error: 'انتهت الجلسة' }); } catch (eJS) {}
+            return;
+          }
+          callServer(fnName, params, cacheKey, ttl, callback, errorCallback);
+        };
+        _pendingCalls[bundleKey].push({ cb: resumeAfterBundle, eb: resumeAfterBundle });
+        return;
+      }
+    }
   }
 
   /* مفتاح الطيّ: `cacheKey` حين وُجد (سلوك سابق حرفياً)، وإلّا مفتاح مُصطنَع لدوال
@@ -4580,6 +4655,54 @@ function gmsAdminPanelHtml() {
     '</div></details>';
 }
 
+/**
+ * يُطبِّق `MONTHS_STATE`/`MONTHS_CAN_MANAGE` الحاليَّين على الواجهة **المعروضة الآن**.
+ *
+ * 🔴 مُستخرَجة من `gmsAdminToggleMonth` — نقلٌ خالص **عدا سطراً واحداً مُضافاً عمداً**
+ * (تحديث `#gmsMonthNotice`، انظر أدناه) — لأن لها **مستهلكَين** لا واحداً:
+ *   ① تبديلُ المدير مفتاحاً (السلوك القائم — لا يتغيّر حرفٌ منه).
+ *   ② وصولُ `loadBootConfig` **بعد** أوّل رسم — و`_bootTryShow` يعمل مرّة واحدة فلا
+ *      إعادة رسم بعده، فبلا هذه الدالّة يبقى `MONTHS_STATE = null` (كلّ الفترات تبدو
+ *      مفتوحة) بلا تصحيحٍ أبداً. وهذا ما كان يمنع رفعَ مؤقّت الإفراج.
+ *
+ * محروسةٌ **بوجود كلّ عنصر على حدة** ⇒ على أيّ قسمٍ آخر (الأخبار · المالية …) **no-op
+ * تامّ**: لا ترمي ولا تُغيّر شيئاً. وهي أرخص من `showSection(...)` الذي يُعيد إطلاق
+ * المحمّلات ويمسح فلاتر المستخدم.
+ *
+ * 🔴 **ولا تُزعزع تحت أصابع المستخدم — على المسار ② وحده:** `passive === true` يعني
+ * وصولاً في الخلفية، فإن كان `#gradesStudentsArea` معروضاً (حمّل طلاباً فعلاً) لا تُلمَس
+ * قيمة `#gradeMonth`؛ يُكتفى باللوحة والتنبيه. أمّا المسار ① فبفعلٍ صريح من المدير
+ * لتوّه ⇒ يُطبَّق كاملاً كما كان **حرفياً** (لا تُمرَّر له وسيطة).
+ *
+ * ⚠️ **مستثنىً عمداً:** `cert-month`/`ss-month` (شارة 🔒 لا قرار، وتُعاد تعبئتهما عند
+ * فتح قسمَيهما) · و`V3_CONFIG` (مستهلكاه يعملان بفعل المستخدم بعد الإقلاع، وإعادةُ رسم
+ * جدول الدرجات تحت يده أسوأ من عنوان عمودٍ قديم).
+ *
+ * @param {boolean} [passive] — true عند الوصول الخلفي (‏`loadBootConfig`).
+ */
+function _gmsApplySchemaToLiveUi(passive) {
+  var panel = document.getElementById('gradeMonthsAdminPanel');
+  if (panel) panel.innerHTML = gmsAdminPanelHtml();
+
+  var area = document.getElementById('gradesStudentsArea');
+  var busy = !!(passive && area && area.style && area.style.display !== 'none');
+
+  var sel = document.getElementById('gradeMonth');
+  if (sel && !busy) {
+    var keep = sel.value;
+    sel.innerHTML = gradesMonthOptionsHtml(keep);
+    if (sel.value !== keep) sel.value = '';   // اختياره صار معطَّلاً ⇒ لا تترك قيمة وهمية
+  }
+
+  /* ⚠️ **الإضافة الوحيدة خارج النقل الخالص** (رصدَتها المراجعة فوُثِّقت بدل أن تُخفى):
+     الكتلة الأصلية لم تكن تُحدِّث صندوق التنبيه، فتبديلُ المدير يترك نصّاً يصف حالةً
+     صار غيرَها حتى يُعيد اختيار الشهر يدوياً. محروسٌ بوجود العنصر ودالّته معاً. */
+  var nb = document.getElementById('gmsMonthNotice');
+  if (nb && typeof _gmsNoticeHtml === 'function') {
+    nb.innerHTML = _gmsNoticeHtml(sel ? sel.value : '');
+  }
+}
+
 /* تبديل فترة واحدة. الخادم يُعيد الحمولة **المُعاد قراءتها** ⇒ نستبدل حالتنا بها بدل
    افتراض النجاح، فلا تتباعد الواجهة عن الشيت. وعند الفشل: تراجع بصري للمفتاح. */
 function gmsAdminToggleMonth(month, open, el) {
@@ -4596,16 +4719,9 @@ function gmsAdminToggleMonth(month, open, el) {
     // إعادة رسم تعتمده. نفس ما كانت تفعله اللوحة القديمة في تبويب الكنترول.
     try { ClientCache.del(_bootConfigCacheKey()); } catch (eC) {}
 
-    var panel = document.getElementById('gradeMonthsAdminPanel');
-    if (panel) panel.innerHTML = gmsAdminPanelHtml();
-    // 🔴 وقائمة الشهر نفسها تُعاد بناؤها هنا أيضاً — لولاها لبقيت الفترة معطَّلة بصرياً
-    //    حتى إعادة تحميل الصفحة، فيبدو التشغيل وكأنه لم يُطبَّق.
-    var sel = document.getElementById('gradeMonth');
-    if (sel) {
-      var keep = sel.value;
-      sel.innerHTML = gradesMonthOptionsHtml(keep);
-      if (sel.value !== keep) sel.value = '';   // اختياره صار معطَّلاً ⇒ لا تترك قيمة وهمية
-    }
+    // 🔴 اللوحة **وقائمة الشهر** تُعادان هنا — لولاهما لبقيت الفترة معطَّلة بصرياً حتى
+    //    إعادة تحميل الصفحة، فيبدو التشغيل وكأنه لم يُطبَّق. ومصدرُهما واحد الآن.
+    _gmsApplySchemaToLiveUi();
     toast(open ? ('✅ شُغّلت فترة ' + month) : ('🔒 أُطفئت فترة ' + month), 'success');
   }, function (err) {
     if (el) { el.disabled = false; el.checked = !open; }
@@ -4674,7 +4790,19 @@ function _bootConfigCacheKey() {
    و`_bootTryShow` **يعمل مرّة واحدة** فلا إعادة رسم بعده. فرفع مؤقّت واحد إلى 24ث كان
    سيضمن أن كل إقلاع بطيء يُرسَم بـ`MONTHS_STATE = null` (كل الشهور تبدو مفتوحة) ثم لا
    يُصحَّح أبداً. ⇒ **`SCHEMA_RELEASE_MS` يبقى محاذياً لبوّابة العرض**، و24ث تخصّ
-   الجرس والنقاط وحدهما (زينةٌ لا تحجب رسماً، ولا يضرّ تأخّرها). */
+   الجرس والنقاط وحدهما (زينةٌ لا تحجب رسماً، ولا يضرّ تأخّرها).
+
+   ═══ 🔴 تحديث 2026-08-21 (‏PR-A + PR-B): **دلالةُ `SCHEMA_RELEASE_MS` تغيّرت وقيمتُه لا** ═══
+   صار يُفرج عن **انتظار** لا عن **طلب**. فبوّابةُ الانضمام في `callServer`
+   (‏`_csBundleSeederFor`) تجعل `loadBootConfig` عند الثانية الثامنة **تنضمّ** للحزمة
+   الطائرة بدل إطلاق `getBootConfigBundle` ⇒ صفر تنفيذ GAS إضافي، والتفرّع الذي كان
+   يقع على **أغلب** الإقلاعات (لا على الفاشلة منها) لم يعد قائماً.
+   ومسارُ التراجع محفوظٌ بالبنية: فشلُ الحزمة يُصرِّف المنضمّين والكاشُ بارد ⇒ نداءٌ
+   مباشر كما كان تماماً.
+   والوصولُ المتأخّر لم يعد يُنسى: `loadBootConfig` تنادي `_gmsApplySchemaToLiveUi(true)`
+   فتُصحَّح اللوحة والقائمة بعد أوّل رسم — وهو ما كان يمنع رفعَ المؤقّت أصلاً.
+   ⚠️ ومع ذلك **لا تُرفَع القيمة**: بوّابة العرض 9ث تبقى الحاكم، ورفعُها بلا داعٍ
+   يُطيل نافذةَ عرضِ حالةٍ ناقصة بلا مقابل. */
 var BOOT_SCHEMA_RELEASE_MS = 8000;   // < بوّابة العرض 9ث في bootApp — لا تُرفَع فوقها
 var BOOT_EXTRAS_RELEASE_MS = 24000;  // > سقف الوسيط المقيس 23,701ms — لا تُخفَض تحته
 function _teacherBootBundlePrefetch(done, onSchemaReady) {
@@ -4738,6 +4866,11 @@ function loadBootConfig(callback) {
     MONTHS_STATE = (bundle && bundle.monthsState) || null;
     MONTHS_CAN_MANAGE   = !!(bundle && bundle.canManage);
     MONTHS_CAN_OVERRIDE = !!(bundle && bundle.canOverride);
+    /* 🔴 وصولٌ **بعد** أوّل رسم صار يُصحِّح الواجهة بدل أن يبقى منسيّاً: `_bootTryShow`
+       يعمل مرّة واحدة، فبلا هذا السطر يبقى `MONTHS_STATE = null` (كلّ الفترات تبدو
+       مفتوحة) إلى أن يُعيد المستخدم التحميل. وهو no-op تامّ قبل أوّل رسم وعلى أيّ
+       قسمٍ آخر — و`passive` يمنع زعزعة قائمة الشهر تحت أصابع من حمّل طلاباً. */
+    try { if (typeof _gmsApplySchemaToLiveUi === 'function') _gmsApplySchemaToLiveUi(true); } catch (eA) {}
     if (typeof callback === 'function') callback();
   }, function() {
     ALL_MONTHS  = DEF_MONTHS;
