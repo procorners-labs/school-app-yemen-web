@@ -10186,7 +10186,7 @@ function renderExamControl() {
     '<details style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;margin-bottom:12px;color:#1e293b;">' +
       '<summary style="cursor:pointer;font-weight:700;">❓ كيفية الاستخدام (اضغط للفتح)</summary>' +
       '<ol style="margin:10px 0 0;padding-inline-start:20px;font-size:13px;line-height:1.9;">' +
-        '<li><b>البيانات الأساسية:</b> اسم المدرسة (يُعبَّأ تلقائياً) ونوع الاختبار والعام الدراسي.</li>' +
+        '<li><b>البيانات الأساسية:</b> نوع الاختبار والعام الدراسي (ميلادي وهجري) — واسم المدرسة يُعرَض مشتقّاً من سجلّها بلا نسخة ثانية.</li>' +
         '<li><b>جدول الاختبارات:</b> افتح أي شهر لترى كل الصفوف، ثم افتح صفاً واسحب كل مادة إلى يوم اختبارها وحدِّد تاريخ اليوم الأول (تُحسَب بقية الأيام تلقائياً) — يظهر فوراً للطلاب، وله زرّا طباعة (صف/شهر كامل).</li>' +
         '<li><b>اللجان:</b> أضِف لجانك يدوياً أو بزر "لجان افتراضية" (مبنية على صفوفك الكبيرة الفعلية).</li>' +
         '<li><b>الطلاب:</b> يعرض ورقة «الطلاب» الحقيقية مباشرة؛ عيِّن الجنس (يدوياً أو تلقائياً)، دقِّق البيانات، واحجب المتأخرين عن السداد إن لزم — كل ذلك قبل التوزيع.</li>' +
@@ -10243,7 +10243,7 @@ function ec_loadData() {
   el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
   callServer('getExamControlDataProtected', {}, function(res) {
     if (!res || !res.success) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? res.error : 'خطأ') + '</p>'; return; }
-    _ecData = res.data || { schoolName: '', examType: '', academicYear: '', updatedAt: '', updatedBy: '' };
+    _ecData = res.data || { schoolName: '', examType: '', academicYear: '', hijriYear: '', updatedAt: '', updatedBy: '' };
     ec_renderDataPane();
   }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
 }
@@ -10269,24 +10269,110 @@ function _ecExamTypeOptionsHtml(selected) {
   return h;
 }
 
+/* ── قائمتا العام: مُولَّدتان من التاريخ، لا مكتوبتان ولا مُعدَّة يدوياً ──────────────
+   🔴 لماذا التوليد لا قائمة ثابتة: أي قائمة سنوات مكتوبة **تتقادم صامتاً** — تنفد بعد
+   سنوات فيعود المستخدم إلى الكتابة الحرّة أو يجد قائمةً بلا عامه. التوليد حول العام
+   الحالي لا يتقادم أبداً (فئة بند 83-ب).
+   والنافذة ±٢ حول الحالي: تكفي لطباعة كشفٍ لعامٍ سابق أو تجهيز القادم، بلا قائمة طويلة. */
+var EC_YEAR_WINDOW = 2;
+
+function _ecGregorianPairs() {
+  /* العام الدراسي يبدأ في النصف الثاني من السنة الميلادية (محرم 1448 = يوليو 2026)،
+     فالشهر ≥ 7 يعني أنّنا في عام «س − س+1» لا «س−1 − س». */
+  var now = new Date();
+  var startY = now.getFullYear() - (now.getMonth() + 1 >= 7 ? 0 : 1);
+  var out = [];
+  for (var i = -EC_YEAR_WINDOW; i <= EC_YEAR_WINDOW; i++) {
+    out.push((startY + i) + ' - ' + (startY + i + 1));
+  }
+  return { list: out, current: startY + ' - ' + (startY + 1) };
+}
+
+/* 🔴 السنة الهجرية بمقاربة حسابية مقصودة لا بمكتبة تقويم: الغرض **توليد نافذة اختيار**
+   يقع فيها عام المدرسة، والمالك هو من يختار — لا حسابُ تاريخٍ يُعتمَد عليه. والصيغة
+   `H ≈ ⌊(G − 622) × 33/32⌋` تُعطي 1448 لعام 2026، ويطابقه الواقع (شهر «صفر» هو الفترة
+   المفتوحة اليوم = صفر 1448). ونافذة ±٢ تبتلع أي انحراف سنةٍ واحدة في الاتجاهين.
+   ⚠️ ولا تُستعمَل `Intl` بتقويم `islamic-umalqura`: دعمُها متفاوت في WebView الأندرويد،
+   وفشلُها الصامت يُنتج قائمةً فارغة — وهو أسوأ من تقريبٍ تصحّحه النافذة. */
+/* 🔴 **سنةٌ واحدة لا زوج** — تصحيحُ مالك 2026-08-21: العام الدراسي `2026 - 2027` يقابله
+   `1448` وحدها. والسبب بنيويّ لا اصطلاحيّ: السنة الهجرية ٣٥٤ يوماً وتبدأ في يوليو هنا
+   (‏محرم 1448 = يوليو 2026)، فالعامُ الدراسي كلُّه — من محرم إلى نهاية العام — يقع **داخل
+   سنة هجرية واحدة**. أمّا الميلادي فيُشطَر بين سنتين لأن يناير يقع في منتصفه، ولهذا وحده
+   يُكتب زوجاً. */
+function _ecHijriYears(gregStartYear) {
+  /* 🔴 و`+ 1` ليست تصحيحاً اعتباطياً: الصيغة `⌊(G − 622) × 33/32⌋` تُصيب السنة الهجرية
+     المتداخلة مع **يناير** من العام الميلادي، وعامُنا الدراسي يبدأ في **يوليو** — وقد دار
+     الحول الهجري قبله (‏محرم 1448 = يوليو 2026). مُتحقَّقٌ على ثلاثة أعوام متتالية:
+     2025⇒1447 · 2026⇒**1448** (يطابق تصحيح المالك) · 2027⇒1449.
+
+     ⚠️ **وقياسٌ عبر عقد كذّب صياغةً أولى كتبتُها هنا** («الفارق يتراكم كل ~٣٣ عاماً»):
+     التسلسل يقفز فعلاً عند **2030 ⇒ 1453** متخطّياً 1452 (‏2029⇒1451)، أي بعد ثلاث سنوات
+     لا ثلاثين. والسبب أنّ ٣٣/٣٢ نسبةٌ تقريبية فتُنتج قفزةً كلّما تجاوز الكسرُ حدَّ الصحيح،
+     وهو ما يقع دورياً لا مرّةً في العمر.
+     🟢 **وأثرُه الوظيفي صفر:** نافذة ±٢ تُدرِج 1452 ضمن قائمة 2030 (‏1451-1455)، فالمالك
+     يجدها ويختارها. رصدَته مراجعة `gas-reviewer` — و«توثيقٌ يناقض مصدره» علّةٌ قائمة
+     بذاتها هنا (بند 150) وإن لم يتغيّر السلوك. */
+  var h = Math.floor((gregStartYear - 622) * 33 / 32) + 1;
+  var out = [];
+  for (var i = -EC_YEAR_WINDOW; i <= EC_YEAR_WINDOW; i++) out.push(String(h + i));
+  return { list: out, current: String(h) };
+}
+
+/* وسمُ العام على كل سطح طباعة — **مساعدٌ واحد لا صياغةٌ مكرَّرة في ثلاثة مواضع**.
+   يُخرِج «2026 - 2027 · 1448 هـ»، ويُسقط الهجري إن كان فارغاً (المدارس التي لا تستعمله).
+   ولولا التوحيد لَأُضيف الهجري في موضعٍ ونُسِي في آخر — وهي علّةٌ متكرّرة هنا. */
+function _ecYearLabel(d) {
+  var g = _tfEsc((d && d.academicYear) || '');
+  var h = _tfEsc((d && d.hijriYear) || '');
+  if (!g && !h) return '';
+  if (!h) return g;
+  if (!g) return h + ' هـ';
+  return g + ' · ' + h + ' هـ';
+}
+
+function _ecYearOptionsHtml(list, selected) {
+  var h = '', i;
+  for (i = 0; i < list.length; i++) {
+    h += '<option value="' + escapeHtml(list[i]) + '"' +
+         (list[i] === selected ? ' selected' : '') + '>' + escapeHtml(list[i]) + '</option>';
+  }
+  /* قيمةٌ محفوظة خارج النافذة (كشفٌ قديم · صيغةٌ أُدخلت يدوياً قبل القوائم) تُضاف
+     كخيارٍ إضافي بدل أن تُطمَس صامتاً بأقرب سنة — «لا تُبدِّل ما لم تفهمه». */
+  if (selected && list.indexOf(selected) === -1) {
+    h += '<option value="' + escapeHtml(selected) + '" selected>' + escapeHtml(selected) + ' (محفوظ)</option>';
+  }
+  return h;
+}
+
 function ec_renderDataPane() {
   var el = document.getElementById('ec-pane-data'); if (!el) return;
   var d = _ecData || {};
-  // اسم المدرسة يُعبَّأ ديناميكياً من سجل المدرسة الفعلي (نفس المتغيّر الذي يعتمده الشريط الجانبي
-  // وشاشة الدخول) إن لم يكن قد حُفِظ سابقاً — يبقى قابلاً للتعديل، لا حقلاً مقفلاً.
-  var dynamicSchoolName = (window._schoolBrand && window._schoolBrand.name) || '';
-  var schoolNameValue = d.schoolName || dynamicSchoolName;
+  /* 🔴 اسم المدرسة **عرضٌ لا حقل** — يُحقَن خادمياً حيّاً عند كل قراءة
+     (‏`ExamControl.js::_ecLiveSchoolName`) فلا نسخة ثانية تتجمّد. وتراجعٌ عميليّ إلى
+     `_schoolBrand` لو تعذّر الحلّ الخادمي، كي لا تظهر ترويسة بلا اسم. */
+  var schoolNameValue = d.schoolName || (window._schoolBrand && window._schoolBrand.name) || '';
+  var g = _ecGregorianPairs();
+  var hj = _ecHijriYears(parseInt(g.current, 10));
   el.innerHTML =
     '<div style="max-width:480px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;">' +
-    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">اسم المدرسة</label>' +
-    '<input id="ec-d-schoolName" type="text" value="' + escapeHtml(schoolNameValue) + '" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
-    (!d.schoolName && dynamicSchoolName ? '<div style="font-size:11px;color:#64748b;margin:-8px 0 12px;">✓ عُبِّئ تلقائياً من بيانات المدرسة المسجَّلة بالنظام — عدِّله إن لزم</div>' : '') +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">المدرسة</label>' +
+    '<div style="padding:9px;border:1px solid #eef2f7;background:#f8fafc;border-radius:8px;font-weight:700;">' +
+      (schoolNameValue ? escapeHtml(schoolNameValue) : '<span style="color:#94a3b8;font-weight:400;">— غير متاح —</span>') +
+    '</div>' +
+    '<div style="font-size:11px;color:#64748b;margin:6px 0 12px;">↑ من سجلّ المدرسة المسجَّل بالنظام — لتغييره: إعدادات المدرسة</div>' +
     '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">نوع الاختبار (فترة الدرجات)</label>' +
-    '<select id="ec-d-examType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<select id="ec-d-examType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:4px;box-sizing:border-box;">' +
       _ecExamTypeOptionsHtml(d.examType || 'نهاية العام') +
     '</select>' +
-    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">العام الدراسي</label>' +
-    '<input id="ec-d-academicYear" type="text" value="' + escapeHtml(d.academicYear || '') + '" placeholder="مثال: 2025-2026" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px;box-sizing:border-box;">' +
+    '<div style="font-size:11px;color:#64748b;margin:0 0 12px;">الكنترول يعمل على فترتَي الامتحان النهائي وحدهما</div>' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">العام الدراسي (ميلادي)</label>' +
+    '<select id="ec-d-academicYear" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+      _ecYearOptionsHtml(g.list, d.academicYear || g.current) +
+    '</select>' +
+    '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">العام الهجري</label>' +
+    '<select id="ec-d-hijriYear" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px;box-sizing:border-box;">' +
+      _ecYearOptionsHtml(hj.list, d.hijriYear || hj.current) +
+    '</select>' +
     '<button onclick="ec_saveData()" style="background:#1149a3;color:#fff;border:none;border-radius:10px;padding:10px 22px;cursor:pointer;font-weight:700;">💾 حفظ</button>' +
     '<span id="ec-d-status" style="margin-right:10px;font-size:13px;"></span>' +
     (d.updatedAt ? '<div style="margin-top:12px;font-size:12px;color:#64748b;">آخر تحديث: ' + escapeHtml(d.updatedAt) + ' بواسطة ' + escapeHtml(d.updatedBy || '') + '</div>' : '') +
@@ -10295,10 +10381,11 @@ function ec_renderDataPane() {
 
 function ec_saveData() {
   var st = document.getElementById('ec-d-status'); if (st) st.innerHTML = '<span>⏳ جارٍ الحفظ...</span>';
+  // 🔴 بلا `schoolName` — يُحقَن خادمياً حيّاً ولا يُخزَّن (الخادم يُهمله لو أُرسل).
   var p = {
-    schoolName: (document.getElementById('ec-d-schoolName') || {}).value || '',
     examType: (document.getElementById('ec-d-examType') || {}).value || '',
-    academicYear: (document.getElementById('ec-d-academicYear') || {}).value || ''
+    academicYear: (document.getElementById('ec-d-academicYear') || {}).value || '',
+    hijriYear: (document.getElementById('ec-d-hijriYear') || {}).value || ''
   };
   callServer('saveExamControlDataProtected', p, function(res) {
     if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
@@ -10771,7 +10858,7 @@ function ec_printSeatCards(students) {
       cardsHtml += '<div class="card">' +
         '<div class="card-top">' + logoHtml +
           '<div class="card-head">' + _tfEsc(d.schoolName || '') + '</div>' +
-          '<div class="card-sub">' + _tfEsc(d.examType || '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
+          '<div class="card-sub">' + _tfEsc(d.examType || '') + (_ecYearLabel(d) ? ' — ' + _ecYearLabel(d) : '') + '</div>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="card-name">' + _tfEsc(s.name) + '</div>' +
@@ -11143,7 +11230,7 @@ function ec_printCommitteeRoster(committeeName) {
             'h2{margin:0;font-size:19px;} .meta{font-size:12px;opacity:.92;margin-top:4px;}';
   var body = '<div class="header">' + _ecBrandLogoHtml(46) +
              '<h2>لجنة: ' + _tfEsc(committee.committeeName) + '</h2>' +
-             '<div class="meta">' + _tfEsc(d.schoolName || '') + (d.examType ? ' — ' + _tfEsc(d.examType) : '') + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div>' +
+             '<div class="meta">' + _tfEsc(d.schoolName || '') + (d.examType ? ' — ' + _tfEsc(d.examType) : '') + (_ecYearLabel(d) ? ' — ' + _ecYearLabel(d) : '') + '</div>' +
              '</div>' +
              '<table><thead><tr><th>#</th><th>الاسم</th><th>الفصل</th><th>رقم الجلوس</th></tr></thead><tbody>' + rows + '</tbody></table>';
   _tfPrintWin('لجنة ' + committee.committeeName, css, body);
@@ -12066,7 +12153,7 @@ function _ecRenderGradePrint(grade, month, list) {
             'h2{margin:0;font-size:20px;} .meta{font-size:13px;opacity:.92;margin-top:6px;}';
   var body = '<div class="header">' + _ecBrandLogoHtml(50) +
              '<h2>جدول اختبارات ' + _tfEsc(grade) + '</h2>' +
-             '<div class="meta">' + _tfEsc(d.schoolName || '') + ' — ' + _tfEsc(month) + (d.academicYear ? ' — ' + _tfEsc(d.academicYear) : '') + '</div></div>' +
+             '<div class="meta">' + _tfEsc(d.schoolName || '') + ' — ' + _tfEsc(month) + (_ecYearLabel(d) ? ' — ' + _ecYearLabel(d) : '') + '</div></div>' +
              '<table><thead><tr><th>اليوم</th><th>التاريخ</th><th>المادة</th></tr></thead><tbody>' + rows + '</tbody></table>';
   _tfPrintWin('جدول اختبارات ' + grade + ' - ' + month, css, body);
 }
