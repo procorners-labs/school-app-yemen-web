@@ -4143,7 +4143,7 @@ var _pendingCalls = {};
    تجتاز كل فحوص «القراءة» ثم تخدم سجلّ طالب لطلبٍ عن طالبٍ آخر. لذلك يشترط الحارس
    ثلاثة معاً: بادئة `get`، وغياب الاسم عن `API_DANGEROUS_FUNCTIONS` و`WRITE_QUEUEABLE`،
    و**أن يُستدعى بوسيط `{}` حرفيّ في كل موضع استدعاء**. */
-var CS_SINGLEFLIGHT_FNS = { getTeacherBootBundle: 1 };
+var CS_SINGLEFLIGHT_FNS = { getTeacherBootBundle: 1, getExamTimetableBundle: 1 };
 
 /* 🔴 بصمة الهوية في مفتاح الطيّ — ليست زينة.
    `doLogout()` **لا يُعيد تحميل الصفحة** (‏`showLoginScreen()` + `clearSession()` فقط)،
@@ -11335,6 +11335,32 @@ function ec_ttRetryVisibility()   { _ecTtRetry(ec_ensureMonthVisibilityLoaded, '
 function ec_ttRetryHolidays()     { _ecTtRetry(ec_ensureHolidaysLoaded, 'holidays'); }
 function ec_ttRetryOverview()     { _ecTTLoad.overview = 'idle'; ec_renderTimetablePane(++_ecTabSeq); }
 
+/* ── بذرُ حالة التبويب من حزمةٍ واحدة (٧ تنفيذات ⇒ ١) ────────────────────────────
+   النمط منسوخٌ عن `_js-core-bridge.html::_teacherBootBundlePrefetch`:
+   · عودةٌ مبكّرة **بلا أي نداء** لو كانت الأعضاء الستّة `'ok'` أصلاً.
+   · بذرٌ **بشرط برودة الحالة** — ردٌّ متأخّرٌ لا يطمس قيمةً أحدث (نفس قاعدة البذر هناك).
+   · إلى **متغيّرات الذاكرة فقط**: صفر مفتاح `ClientCache` جديد (قاعدة الحزمة ②).
+   🔴 وفشلُ الحزمة **لا يُعالَج هنا**: الحالات تبقى `'idle'` فتتولّاها السلسلة أدناه
+   واحدةً واحدة — أي التراجع مكتوبٌ بالبنية لا بسطرٍ مستقلّ يُنسى تحديثه. */
+function _ecTimetablePrefetch(done) {
+  if (_ecTTLoad.grades === 'ok' && _ecTTLoad.locks === 'ok' && _ecTTLoad.holidays === 'ok' &&
+      _ecTTLoad.visibility === 'ok' && _ecTTLoad.instructions === 'ok' && _ecTTLoad.overview === 'ok') {
+    done(); return;
+  }
+  callServer('getExamTimetableBundle', {}, function (r) {
+    if (!r) { done(); return; }
+    if (r.sheet && r.sheet.success) {
+      if (_ecTTLoad.visibility !== 'ok') { _ecMonthVisibility = r.sheet.visibility || {}; _ecTTLoad.visibility = 'ok'; }
+      if (_ecTTLoad.instructions !== 'ok') { _ecExamInstructions = r.sheet.instructions || ''; _ecTTLoad.instructions = 'ok'; }
+      if (_ecTTLoad.overview !== 'ok') { _ecScheduleOverview = { success: true, months: r.sheet.months || [] }; _ecTTLoad.overview = 'ok'; }
+    }
+    if (r.locks && r.locks.success && _ecTTLoad.locks !== 'ok') { _ecTTLocked = r.locks.locked || {}; _ecTTLoad.locks = 'ok'; }
+    if (r.grades && r.grades.success && _ecTTLoad.grades !== 'ok') { _ecGrades = r.grades.grades || []; _ecTTLoad.grades = 'ok'; }
+    if (r.holidays && r.holidays.success && _ecTTLoad.holidays !== 'ok') { _ecCalHolidayRanges = r.holidays.ranges || []; _ecTTLoad.holidays = 'ok'; }
+    done();
+  }, function () { done(); });
+}
+
 function ec_renderTimetablePane(seq) {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
   el.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">⏳ جارٍ التحميل...</p>';
@@ -11342,6 +11368,12 @@ function ec_renderTimetablePane(seq) {
      المستخدم الآن — لا الرسم ولا المتغيّرات العامّة (بند 125 من زاويةٍ أخرى). */
   var mySeq = (seq === undefined) ? _ecTabSeq : seq;
   function stale() { return mySeq !== _ecTabSeq; }
+  /* الحزمة تسبق السلسلة **ولا تستبدلها**: نجاحٌ كامل ⇒ حرّاس `'ok'` تقصّرها إلى صفر
+     نداء · نجاحٌ جزئي ⇒ الأعضاء الفاشلة وحدها **بالتسلسل** · فشلٌ كلّي ⇒ سلوك اليوم
+     بالحرف (٦ نداءات). 🔴 والتراجع يبقى متسلسلاً لا متوازياً — إطلاق الستّة معاً على
+     حصّةٍ مشبَعة أصلاً عكسُ الغرض تماماً (بند 128). */
+  _ecTimetablePrefetch(function () {
+  if (stale()) return;
   ec_ensureGradesLoaded(function () {
     if (stale()) return;
     ec_ensureLocksLoaded(function () {
@@ -11368,6 +11400,7 @@ function ec_renderTimetablePane(seq) {
         });
       });
     });
+  });
   });
 }
 
