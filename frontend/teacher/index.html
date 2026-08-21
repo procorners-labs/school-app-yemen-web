@@ -4196,7 +4196,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
   /* مفتاح الطيّ: `cacheKey` حين وُجد (سلوك سابق حرفياً)، وإلّا مفتاح مُصطنَع لدوال
      قائمة السماح **مبصوم بهوية الجلسة** (انظر `_csFoldIdentity` أعلاه — تسريب حقيقي
      لولاه). البادئة `'__sf_'` محجوزة ولا تصطدم بأي مفتاح كاش حيّ
-     (`boot_config_v2_*` · `notif_bundle_*` · `my_points_header_*` · `lists_data` · `schema_config`).
+     (`boot_config_v3_*` · `notif_bundle_*` · `my_points_header_*` · `lists_data` · `schema_config`).
      🔴 ولا تصل `ClientCache` أبداً — التخزين يبقى مشروطاً بـ`cacheKey` وحده أدناه.
      و`hasOwnProperty` لا فحص الحقيقة: `callServer('toString', …)` كان يرث قيمةً صادقة
      من `Object.prototype` فيحجز مفتاحاً لا يُفرَج عنه أبداً. */
@@ -4390,11 +4390,17 @@ var GRADE_SCHEMA = null;        // ← كائن تكوين الدرجات الك
 var _bootDeferredExtras = false;
 var V3_CONFIG = { enabled: false, features: {}, labels: {} };
 
-// ⭐ حالة إتاحة شهور الرصد (مشتقّة من «الكنترول_جدول_الاختبارات») — خريطة **منفصلة** عمداً.
+// ⭐ حالة إتاحة فترات الرصد — **بقرار إداري صريح** لا اشتقاقاً من جدول الاختبارات
+//    (قرار مالك 2026-08-21). خريطة **منفصلة** عمداً عن أي حالة أخرى.
 // ⚠️ لا تُفلتر ALL_MONTHS أبداً: renderTerm1SummaryInTerm2 يقارن ALL_MONTHS.indexOf(الشهر)
 //    بـ ALL_MONTHS.indexOf('نصف العام') كفهارس، فأي حذف عنصر يكسر «هل نحن بعد نصف العام؟» صامتاً.
-// null (توكن منتهٍ · عطل · حمولة قديمة من الكاش) ⇒ كل الشهور مفتوحة = السلوك قبل هذه الميزة.
+// null (توكن منتهٍ · عطل · حمولة قديمة من الكاش) ⇒ كل الفترات مفتوحة = السلوك قبل الميزة.
 var MONTHS_STATE = null;
+// 🔴 علَمان لا واحد — ولا يُدمجان:
+//   MONTHS_CAN_MANAGE   = يرى مفاتيح التشغيل/الإطفاء (مدير · وكيل · مشرف)
+//   MONTHS_CAN_OVERRIDE = معفىً من القفل عند الرصد   (مدير · وكيل فقط)
+// كلاهما false افتراضاً: **الصلاحية لا تفشل مفتوحةً**، خلافاً للحالة نفسها التي تفشل مفتوحة.
+var MONTHS_CAN_MANAGE = false;
 var MONTHS_CAN_OVERRIDE = false;
 
 // البوّابة الوحيدة لقراءة الحالة — متسامحة تماماً مع الغياب/التشوّه (نظير _gmsStateOf الخادمية).
@@ -4432,12 +4438,14 @@ function gradesMonthOptionsHtml(selectedMonth) {
     var m = ALL_MONTHS[i];
     var st = MONTHS_CAN_OVERRIDE ? 'open' : _gmsClientState(m);
     var label = m, extra = '';
-    if (st === 'locked') {
-      label = '🔒 ' + m + ' (عرض فقط)';
-      extra = ' data-gms="locked"';
-    } else if (st === 'pending') {
-      label = '⏳ ' + m + ' (لم يبدأ)';
-      extra = ' data-gms="pending" disabled';
+    // 🔴 قرار مالك 2026-08-21: الفترة المطفأة **غير قابلة للاختيار** هنا (disabled) —
+    //    لا «قابلة للاختيار للعرض» كما كانت. المراجعة والطباعة تبقيان متاحتين عبر
+    //    `gmsMonthOptionsReadonly` (الشهادات/الكشوفات) التي **لا تُعطِّل شيئاً أبداً**.
+    // و`pending` لم تعد تُنتَج خادمياً؛ تصل فقط من حمولة مخزَّنة بشكل أقدم ⇒ تُعامَل
+    //    معاملة المطفأة لا المفتوحة (الاتجاه الآمن).
+    if (st === 'locked' || st === 'pending') {
+      label = '🔒 ' + m + ' (مغلقة)';
+      extra = ' data-gms="' + st + '" disabled';
     }
     var sel = (selectedMonth && selectedMonth === m) ? ' selected' : '';
     h += '<option value="' + escapeHtml(m) + '"' + extra + sel + '>' + escapeHtml(label) + '</option>';
@@ -4471,10 +4479,101 @@ function _gmsNoticeHtml(month) {
   var st = _gmsClientState(month);
   var hint = (MONTHS_STATE && MONTHS_STATE.hint && MONTHS_STATE.hint[month]) || '';
   var txt = (st === 'locked')
-    ? '🔒 شهر «' + month + '» مقفل للرصد — انتهت فترته. للتعديل اطلب من المدير فتحه استثنائياً.'
-    : '⏳ شهر «' + month + '» لم تبدأ فترة رصده بعد.';
+    ? '🔒 فترة «' + month + '» مُطفأة للرصد بقرار الإدارة. اطلب من المدير أو الوكيل تشغيلها.'
+    : '🔒 فترة «' + month + '» غير متاحة للرصد حالياً — أعد تحميل الصفحة ثم راجع الإدارة.';
   return '<div class="alert alert-warning mb-3">' + escapeHtml(txt) +
          (hint ? ' <span style="opacity:.75">(' + escapeHtml(hint) + ')</span>' : '') + '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  لوحة تشغيل/إطفاء فترات الرصد — تعيش في **صفحة إدارة الدرجات** (قرار مالك 2026-08-21).
+ *
+ *  كانت في تبويب «كنترول الاختبارات» تحت اسم «فتح استثنائي»، وهو ما جعل إعدادَ الدرجات
+ *  يبدو تابعاً للاختبارات. نُقلت إلى مكانها الطبيعي، وصارت **المصدر الوحيد** للحالة.
+ *
+ *  تظهر للمدير والوكيل والمشرف فقط (`MONTHS_CAN_MANAGE`) — والمعلّم لا يستقبل شيئاً
+ *  إطلاقاً: الدالّة تُرجِع '' فلا يُحقَن HTML ولا يُربَط أي معالج.
+ * ══════════════════════════════════════════════════════════════════ */
+function gmsAdminPanelHtml() {
+  if (!MONTHS_CAN_MANAGE) return '';
+  var rows = '';
+  for (var i = 0; i < ALL_MONTHS.length; i++) {
+    var m = ALL_MONTHS[i];
+    // ⚠️ الحالة الحقيقية لا المُعفاة: `_gmsClientState` مباشرةً لا عبر `MONTHS_CAN_OVERRIDE`،
+    //    وإلّا رأى المدير كل المفاتيح «مشغَّلة» لأنه معفى — فيقلبها ظنّاً أنه يُطفئ.
+    var on = (_gmsClientState(m) === 'open');
+    var hint = (MONTHS_STATE && MONTHS_STATE.hint && MONTHS_STATE.hint[m]) || '';
+    // ترتيب الهروب مقصود: إزالة ' أوّلاً ثم escapeHtml — القيمة تدخل سمة onchange (بند 15).
+    var mEsc = escapeHtml(m.replace(/'/g, "\\'"));
+    rows +=
+      '<div class="gms-adm-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;' +
+        'padding:7px 4px;border-bottom:1px solid var(--border,#e2e8f0)">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;min-width:150px;margin:0">' +
+          '<input type="checkbox" id="gms-adm-' + i + '"' + (on ? ' checked' : '') +
+            ' onchange="gmsAdminToggleMonth(\'' + mEsc + '\', this.checked, this)">' +
+          '<b>' + escapeHtml(m) + '</b>' +
+        '</label>' +
+        '<span class="badge ' + (on ? 'badge-success' : 'badge-secondary') + '">' +
+          (on ? '✅ مُشغَّلة' : '🔒 مُطفأة') + '</span>' +
+        '<span style="color:var(--text-light,#64748b);font-size:12px;flex:1;min-width:150px">' +
+          escapeHtml(hint) + '</span>' +
+      '</div>';
+  }
+  var note = (MONTHS_STATE && MONTHS_STATE.failOpen)
+    ? '<div class="alert alert-warning mb-0" style="margin-top:8px;font-size:12px">' +
+      '⚠️ تعذّرت قراءة الإعداد المحفوظ، وكل الفترات مفتوحة مؤقّتاً. أعد المحاولة بعد قليل — ' +
+      'أي تبديل الآن سيُحفَظ ويُصحِّح الحالة.</div>'
+    : '';
+  return '<details class="section-card mb-3" style="padding:10px 14px">' +
+    '<summary style="cursor:pointer;font-weight:700;font-size:14px">' +
+      '🗓️ التحكّم بفترات رصد الدرجات — تشغيل وإطفاء</summary>' +
+    '<div style="margin-top:10px">' +
+      '<div class="alert alert-info mb-3" style="font-size:12.5px;line-height:1.9">' +
+        '<b>كيف تعمل؟</b><br>' +
+        '• الفترة <b>المُشغَّلة</b> ✅ يستطيع كل المعلّمين رصد درجاتها.<br>' +
+        '• يمكن تشغيل <b>أكثر من فترة معاً</b> — لا حدّ ولا ترتيب مفروض.<br>' +
+        '• الفترة <b>المُطفأة</b> 🔒 تظهر للمعلّم معطَّلة في قائمة الشهر ولا يُقبل حفظه فيها.<br>' +
+        '• <b>الشهادات والكشوفات والطباعة لا تتأثّر</b> — تبقى متاحة لكل الفترات دائماً.<br>' +
+        '• التبديل <b>يُحفظ فوراً</b> ويسري على كل معلّمي المدرسة، ولا علاقة له بجدول ' +
+        'الاختبارات ولا بالكنترول.<br>' +
+        '• المدير والوكيل يرصدان في أي فترة حتى المُطفأة؛ <b>المشرف يُشغّل ويُطفئ لكنه ' +
+        'يخضع للإطفاء</b> مثل المعلّمين.' +
+      '</div>' +
+      rows + note +
+    '</div></details>';
+}
+
+/* تبديل فترة واحدة. الخادم يُعيد الحمولة **المُعاد قراءتها** ⇒ نستبدل حالتنا بها بدل
+   افتراض النجاح، فلا تتباعد الواجهة عن الشيت. وعند الفشل: تراجع بصري للمفتاح. */
+function gmsAdminToggleMonth(month, open, el) {
+  if (el) el.disabled = true;
+  callServer('setGradeMonthOverrideProtected', { month: month, open: !!open }, function (res) {
+    if (el) el.disabled = false;
+    if (!res || !res.success) {
+      if (el) el.checked = !open;   // الحالة الخادمية لم تتغيّر
+      toast('❌ ' + ((res && res.error) || 'تعذّر التحديث'), 'error');
+      return;
+    }
+    MONTHS_STATE = res.monthsState || MONTHS_STATE;
+    // كاش الإقلاع العميلي (600ث) صار قديماً ⇒ احذفه وإلّا عادت الحالة القديمة عند أي
+    // إعادة رسم تعتمده. نفس ما كانت تفعله اللوحة القديمة في تبويب الكنترول.
+    try { ClientCache.del(_bootConfigCacheKey()); } catch (eC) {}
+
+    var panel = document.getElementById('gradeMonthsAdminPanel');
+    if (panel) panel.innerHTML = gmsAdminPanelHtml();
+    // 🔴 وقائمة الشهر نفسها تُعاد بناؤها هنا أيضاً — لولاها لبقيت الفترة معطَّلة بصرياً
+    //    حتى إعادة تحميل الصفحة، فيبدو التشغيل وكأنه لم يُطبَّق.
+    var sel = document.getElementById('gradeMonth');
+    if (sel) {
+      var keep = sel.value;
+      sel.innerHTML = gradesMonthOptionsHtml(keep);
+      if (sel.value !== keep) sel.value = '';   // اختياره صار معطَّلاً ⇒ لا تترك قيمة وهمية
+    }
+    toast(open ? ('✅ شُغّلت فترة ' + month) : ('🔒 أُطفئت فترة ' + month), 'success');
+  }, function (err) {
+    if (el) { el.disabled = false; el.checked = !open; }
+    toast('❌ ' + err.message, 'error');
+  });
 }
 
 /**
@@ -4509,9 +4608,11 @@ function loadSchemaConfig(callback) {
 // 🔒 مفتاح الكاش يضمّ schoolId منذ أن صارت الحمولة تحمل `monthsState` التابعة للمستأجر.
 // كان 'boot_config_v1' ثابتاً بلا مدرسة — صحيحاً وقتها (ثوابت بحتة)، ويصير تسريباً عابر
 // المدارس بمجرّد إضافة أي حقل تابع للمستأجر (المدير يبدّل مدرسة في نفس التبويب).
-// رفع الاسم إلى v2 يُبطِل الكاش القديم تلقائياً عند النشر أيضاً.
+// ورفع الجيل يُبطِل الكاش القديم تلقائياً عند النشر أيضاً — وهذا **إلزامي** كلّما اتّسعت
+// الحمولة بحقل جديد: v2 عند إضافة `monthsState`، و**v3** عند إضافة `canManage`. بدونه
+// يُخدَم الشكل القديم طوال الـTTL (بند 165) ⇒ المشرف بلا مفاتيح عشر دقائق بعد النشر.
 function _bootConfigCacheKey() {
-  return 'boot_config_v2_' + ((typeof App !== 'undefined' && App.user && App.user.schoolId) || '');
+  return 'boot_config_v3_' + ((typeof App !== 'undefined' && App.user && App.user.schoolId) || '');
 }
 
 /* حزمة الإقلاع (نمط getStudentBootBundle بمنصّة الطالب، PR#826): نداء خادمي واحد
@@ -4595,14 +4696,17 @@ function loadBootConfig(callback) {
       TERM_MONTHS = DEF_TERM;
     }
     if (bundle && bundle.v3 && bundle.v3.success !== false) V3_CONFIG = bundle.v3;
-    // حالة الشهور: غيابها لا يُعطّل شيئاً — null ⇒ كل الشهور مفتوحة (fail-open).
+    // حالة الفترات: غيابها لا يُعطّل شيئاً — null ⇒ كل الفترات مفتوحة (fail-open).
+    // أمّا العلَمان فيفشلان **مغلقَين**: حمولة بلا الحقل لا تمنح صلاحية.
     MONTHS_STATE = (bundle && bundle.monthsState) || null;
+    MONTHS_CAN_MANAGE   = !!(bundle && bundle.canManage);
     MONTHS_CAN_OVERRIDE = !!(bundle && bundle.canOverride);
     if (typeof callback === 'function') callback();
   }, function() {
     ALL_MONTHS  = DEF_MONTHS;
     TERM_MONTHS = DEF_TERM;
     MONTHS_STATE = null;
+    MONTHS_CAN_MANAGE   = false;
     MONTHS_CAN_OVERRIDE = false;
     if (typeof callback === 'function') callback();
   });
@@ -11258,8 +11362,10 @@ function ec_timetablePrintMatrix(ev, size) {
 function ec_timetableRenderPage() {
   var el = document.getElementById('ec-pane-timetable'); if (!el) return;
   var grades = _ecGrades || [];
-  var h = '<div id="ec-tt-grademonth-panel">' + ec_timetableGradeMonthHtml() + '</div>' +
-    '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
+  // ⚠️ لوحة «فتح استثنائي لرصد الدرجات» كانت هنا وانتقلت إلى **صفحة إدارة الدرجات**
+  //    (`gmsAdminPanelHtml` في `_js-core-bridge.html`) بقرار مالك 2026-08-21: إعداد الدرجات
+  //    لا يتبع الاختبارات. لا تُعِدها هنا — يحرس غيابَها اختبارُ انحدار صريح.
+  var h = '<div id="ec-tt-visibility-panel">' + ec_timetableVisibilityHtml() + '</div>' +
     '<div id="ec-tt-instructions-panel">' + ec_timetableInstructionsHtml() + '</div>' +
     '<div id="ec-tt-holidays-panel">' + ec_timetableHolidaysHtml() + '</div>' +
     '<details id="ec-tt-matrix-details" style="margin-bottom:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;" ontoggle="ec_timetableMatrixToggle(this)">' +
@@ -11719,62 +11825,6 @@ function ec_timetableVisibilityHtml() {
     '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#1e40af;">👁️ عرض الجدول على منصة الطالب — لكل شهر</summary>' +
     '<div style="margin-top:8px;">' + rows + '</div>' +
     '</details>';
-}
-
-// لوحة "فتح استثنائي لرصد الدرجات" — تعرض الحالة المحسوبة من جدول الاختبارات لكل شهر،
-// وتتيح للمدير تجاوزها. **دلالة مختلفة تماماً عن لوحة الرؤية أعلاه**: تلك تحكم عرض *جدول
-// الاختبارات* على منصة الطالب، وهذه تحكم السماح للمعلّم بحفظ *الدرجات*.
-// المصدر: MONTHS_STATE (تُملأ عند الإقلاع) — وتُحدَّث فوراً من استجابة التبديل.
-function ec_timetableGradeMonthHtml() {
-  var rows = '';
-  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
-    var month = EC_EXAM_TYPES[i];
-    var st = _gmsClientState(month);
-    var overridden = !!(MONTHS_STATE && MONTHS_STATE.overrides && MONTHS_STATE.overrides[month]);
-    var hint = (MONTHS_STATE && MONTHS_STATE.hint && MONTHS_STATE.hint[month]) || '';
-    var badge = overridden ? '🔓 مفتوح استثنائياً'
-              : (st === 'locked' ? '🔒 مقفل' : (st === 'pending' ? '⏳ لم يبدأ' : '✅ نشط'));
-    // ترتيب الهروب مقصود: إزالة ' أولاً ثم escapeHtml — القيمة تدخل سمة onclick (بند 15).
-    var monthEsc = escapeHtml(month.replace(/'/g, "\\'"));
-    var btn = overridden
-      ? '<button class="btn btn-sm btn-secondary" onclick="ec_timetableToggleGradeMonth(\'' + monthEsc + '\', false, this)">إرجاع للتلقائي</button>'
-      : (st === 'open'
-          ? '<span style="color:var(--text-light);font-size:11px;">—</span>'
-          : '<button class="btn btn-sm btn-warning" onclick="ec_timetableToggleGradeMonth(\'' + monthEsc + '\', true, this)">فتح استثنائي</button>');
-    rows += '<div style="display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12px;flex-wrap:wrap;">' +
-      '<b style="min-width:78px;">' + escapeHtml(month) + '</b>' +
-      '<span style="min-width:120px;">' + badge + '</span>' +
-      '<span style="color:var(--text-light);flex:1;min-width:140px;">' + escapeHtml(hint) + '</span>' +
-      btn + '</div>';
-  }
-  var note = (MONTHS_STATE && MONTHS_STATE.failOpen)
-    ? '<div style="font-size:11px;color:var(--text-light);margin-top:6px;">لا يوجد جدول اختبارات بعد — كل الشهور مفتوحة للرصد تلقائياً.</div>'
-    : '';
-  return '<details style="margin-bottom:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 12px;">' +
-    '<summary style="cursor:pointer;font-weight:700;font-size:13px;color:#9a3412;">🔓 فتح استثنائي لرصد الدرجات — لكل شهر</summary>' +
-    '<div style="margin-top:8px;">' + rows + note + '</div>' +
-    '</details>';
-}
-
-function ec_timetableToggleGradeMonth(month, open, btnEl) {
-  if (btnEl) btnEl.disabled = true;
-  callServer('setGradeMonthOverrideProtected', { month: month, open: open }, function (res) {
-    if (btnEl) btnEl.disabled = false;
-    if (!res || !res.success) {
-      toast('❌ ' + (res ? res.error : 'تعذّر التحديث'), 'error');
-      return;   // لا تغيير بصري — الحالة الخادمية لم تتغيّر
-    }
-    // الخادم يُعيد الحمولة الكاملة المُعاد قراءتها ⇒ نستبدل حالتنا بها ونُعيد الرسم.
-    MONTHS_STATE = res.monthsState || MONTHS_STATE;
-    // كاش الإقلاع العميلي (600ث) صار قديماً ⇒ احذفه كي تعكس صفحة الدرجات التغيير فوراً.
-    try { ClientCache.del(_bootConfigCacheKey()); } catch (e) {}
-    var panel = document.getElementById('ec-tt-grademonth-panel');
-    if (panel) panel.innerHTML = ec_timetableGradeMonthHtml();
-    toast(open ? ('🔓 فُتح ' + month + ' استثنائياً للرصد') : ('↩️ عاد ' + month + ' للتلقائي'), 'success');
-  }, function (err) {
-    if (btnEl) btnEl.disabled = false;
-    toast('❌ ' + err.message, 'error');
-  });
 }
 
 // لوحة "تعليمات الاختبار" — نص حرّ يُعرَض في منصة الطالب أعلى تبويب جدول الاختبارات إن لم يكن
@@ -15194,7 +15244,7 @@ function _renderCalWidget(r) {
 }
 
 // ==================== GRADES ====================
-function renderGrades() { var grades = myGrades(); var sections = mySections(); var initGrade = isAdmin() ? '' : pickDefault(grades); var subjects = gradesVisibleSubjects(initGrade); var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(17,73,163,.12)">📊</div><div class="section-header-title">إدارة الدرجات</div><button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'grades\')" style="padding:4px 8px">❓</button><div id="gradesHeaderBtns" class="btn-group" style="display:none"><button class="btn btn-sm btn-success" onclick="saveAllGrades()">💾 حفظ الكل</button><button class="btn btn-sm btn-secondary" onclick="exportGrades()">📤 تصدير</button><button class="btn btn-sm btn-warning" onclick="importGradesPrompt()">📥 استيراد</button><button class="btn btn-sm btn-secondary" onclick="clearAllGrades()">🗑️ مسح</button></div></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الشهر</label><select class="form-select" id="gradeMonth" onchange="onGradeFilterChange()">' + gradesMonthOptionsHtml(_gmsDefaultMonth()) + '</select></div><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="gradeGrade" onchange="gradesOnGradeChange();">' + buildSelectOptions(grades, 'اختر الفصل', isAdmin() ? '' : pickDefault(grades)) + '</select></div><div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="gradeSubject" onchange="onGradeFilterChange(); cascadeUpdateGrades(\'gradeSubject\',\'gradeGrade\',\'gradeSection\'); gradesUpdateSectionSelect(); renderGradesVisChips();">' + buildSelectOptions(subjects, 'اختر المادة', isAdmin() ? '' : pickDefault(subjects)) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="gradeSection" onchange="onGradeFilterChange()">' + buildSelectOptions(gradesVisibleSections(isAdmin() ? '' : pickDefault(subjects), myGrade()), 'اختر الشعبة', isAdmin() ? '' : pickDefault(sections)) + '</select></div><div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="loadStudentsGrades()">🔍 عرض</button></div></div><div id="gradesVisChips" class="mb-3" style="display:none"></div><div id="termMonthNotice" class="alert alert-info mb-3 hidden">📌 شهر نهائي — <b>الأعمال المستمرة</b> (تحسب تلقائياً من الشهور السابقة /20) + <b>درجة الاختبار</b> (يدخلها المعلم /30) = <b>المحصلة</b> (تظهر تلقائياً /50)</div><div id="gmsMonthNotice"></div><div id="importArea" class="hidden mb-3"><div class="file-drop-zone" onclick="document.getElementById(\'gradesImportFile\').click()">📥 انقر أو اسحب ملف Excel للاستيراد</div><input type="file" id="gradesImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="doImportGrades(this)"></div><div id="gradesStudentsArea" style="display:none"><div class="d-flex align-center gap-2 mb-3"><span id="gradesInfoBadge" class="badge badge-info"></span><div class="flex-1"></div><input type="text" class="form-control" style="max-width:200px" placeholder="🔍 بحث باسم الطالب..." oninput="filterGradesTable(this.value)"></div><div id="gradesBulkBar" class="d-flex align-center gap-2 mb-3 flex-wrap" style="display:none;padding:10px 12px;border:1px dashed var(--border,#d7dee8);border-radius:10px;background:var(--surface-2,#f8fafc)"><span style="font-weight:600;white-space:nowrap">📥 تعبئة جماعية</span><select class="form-select" id="gbfType" onchange="_gbfHint()" style="max-width:170px"></select><input type="number" class="form-control" id="gbfValue" step="0.5" min="0" placeholder="الدرجة" style="max-width:120px"><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;margin:0"><input type="checkbox" id="gbfReplace"> استبدال الدرجات الموجودة</label><button type="button" class="btn btn-primary btn-sm" onclick="gbfDistribute()">توزيع الدرجة لجميع الطلاب</button><span id="gbfHint" style="color:var(--text-light,#64748b);font-size:12px"></span></div><div class="table-wrap"><table id="gradesTable"><thead id="gradesTableHead"></thead><tbody id="gradesTableBody"></tbody></table></div><div class="mt-3 text-center"><span id="gradesSaveStatus" class="badge badge-success hidden">كل شيء محفوظ ✅</span></div></div><div id="gradesEmpty" class="empty-state"><div class="es-icon">📊</div><div class="es-title">اختر الفلاتر واضغط "عرض"</div><div class="es-sub">اختر الشهر والمادة والفصل والشعبة لعرض الطلاب</div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; renderGradesVisChips(); onGradeFilterChange(); }
+function renderGrades() { var grades = myGrades(); var sections = mySections(); var initGrade = isAdmin() ? '' : pickDefault(grades); var subjects = gradesVisibleSubjects(initGrade); var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(17,73,163,.12)">📊</div><div class="section-header-title">إدارة الدرجات</div><button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'grades\')" style="padding:4px 8px">❓</button><div id="gradesHeaderBtns" class="btn-group" style="display:none"><button class="btn btn-sm btn-success" onclick="saveAllGrades()">💾 حفظ الكل</button><button class="btn btn-sm btn-secondary" onclick="exportGrades()">📤 تصدير</button><button class="btn btn-sm btn-warning" onclick="importGradesPrompt()">📥 استيراد</button><button class="btn btn-sm btn-secondary" onclick="clearAllGrades()">🗑️ مسح</button></div></div><div class="section-body"><div class="form-row mb-3"><div class="form-group"><label class="form-label">الشهر</label><select class="form-select" id="gradeMonth" onchange="onGradeFilterChange()">' + gradesMonthOptionsHtml(_gmsDefaultMonth()) + '</select></div><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="gradeGrade" onchange="gradesOnGradeChange();">' + buildSelectOptions(grades, 'اختر الفصل', isAdmin() ? '' : pickDefault(grades)) + '</select></div><div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="gradeSubject" onchange="onGradeFilterChange(); cascadeUpdateGrades(\'gradeSubject\',\'gradeGrade\',\'gradeSection\'); gradesUpdateSectionSelect(); renderGradesVisChips();">' + buildSelectOptions(subjects, 'اختر المادة', isAdmin() ? '' : pickDefault(subjects)) + '</select></div><div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="gradeSection" onchange="onGradeFilterChange()">' + buildSelectOptions(gradesVisibleSections(isAdmin() ? '' : pickDefault(subjects), myGrade()), 'اختر الشعبة', isAdmin() ? '' : pickDefault(sections)) + '</select></div><div class="form-group" style="flex:0;align-self:flex-end"><button class="btn btn-primary" onclick="loadStudentsGrades()">🔍 عرض</button></div></div><div id="gradesVisChips" class="mb-3" style="display:none"></div><div id="termMonthNotice" class="alert alert-info mb-3 hidden">📌 شهر نهائي — <b>الأعمال المستمرة</b> (تحسب تلقائياً من الشهور السابقة /20) + <b>درجة الاختبار</b> (يدخلها المعلم /30) = <b>المحصلة</b> (تظهر تلقائياً /50)</div><div id="gradeMonthsAdminPanel">' + gmsAdminPanelHtml() + '</div><div id="gmsMonthNotice"></div><div id="importArea" class="hidden mb-3"><div class="file-drop-zone" onclick="document.getElementById(\'gradesImportFile\').click()">📥 انقر أو اسحب ملف Excel للاستيراد</div><input type="file" id="gradesImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="doImportGrades(this)"></div><div id="gradesStudentsArea" style="display:none"><div class="d-flex align-center gap-2 mb-3"><span id="gradesInfoBadge" class="badge badge-info"></span><div class="flex-1"></div><input type="text" class="form-control" style="max-width:200px" placeholder="🔍 بحث باسم الطالب..." oninput="filterGradesTable(this.value)"></div><div id="gradesBulkBar" class="d-flex align-center gap-2 mb-3 flex-wrap" style="display:none;padding:10px 12px;border:1px dashed var(--border,#d7dee8);border-radius:10px;background:var(--surface-2,#f8fafc)"><span style="font-weight:600;white-space:nowrap">📥 تعبئة جماعية</span><select class="form-select" id="gbfType" onchange="_gbfHint()" style="max-width:170px"></select><input type="number" class="form-control" id="gbfValue" step="0.5" min="0" placeholder="الدرجة" style="max-width:120px"><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;margin:0"><input type="checkbox" id="gbfReplace"> استبدال الدرجات الموجودة</label><button type="button" class="btn btn-primary btn-sm" onclick="gbfDistribute()">توزيع الدرجة لجميع الطلاب</button><span id="gbfHint" style="color:var(--text-light,#64748b);font-size:12px"></span></div><div class="table-wrap"><table id="gradesTable"><thead id="gradesTableHead"></thead><tbody id="gradesTableBody"></tbody></table></div><div class="mt-3 text-center"><span id="gradesSaveStatus" class="badge badge-success hidden">كل شيء محفوظ ✅</span></div></div><div id="gradesEmpty" class="empty-state"><div class="es-icon">📊</div><div class="es-title">اختر الفلاتر واضغط "عرض"</div><div class="es-sub">اختر الشهر والمادة والفصل والشعبة لعرض الطلاب</div></div></div></div>'; document.getElementById('dynamicContent').innerHTML = html; renderGradesVisChips(); onGradeFilterChange(); }
 function onGradeFilterChange() { var m = document.getElementById('gradeMonth'); var mVal = m ? m.value : ''; var notice = document.getElementById('termMonthNotice'); if (notice) { if (TERM_MONTHS.indexOf(mVal) !== -1) notice.classList.remove('hidden'); else notice.classList.add('hidden'); } var gmsBox = document.getElementById('gmsMonthNotice'); if (gmsBox) gmsBox.innerHTML = _gmsNoticeHtml(mVal); }
 
 /**
