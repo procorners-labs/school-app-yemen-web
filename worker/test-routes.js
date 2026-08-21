@@ -871,6 +871,136 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
         'مهلة كاش الهوية ٦ ساعات (≈٤ نداءات/يوم/مدرسة بدل نداءٍ لكل زيارة)');
 })();
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   منظّم التزاحم — جِتَر الانتظار ونافذة الدخول (‏2026-08-21)
+   ───────────────────────────────────────────────────────────────────────────
+   🔴 خطران صامتان يقفلهما هذا الحارس:
+     ① **مدخلٌ باسمٍ خاطئ** في `BH_LOGIN_FNS` ميّتٌ بلا أن يحمرّ شيء — وقع فعلاً:
+        أوّل قائمةٍ كُتبت حملت `handleStudentLogin` و`teacherLoginProtected` ولا وجود
+        لهما في مصدر GAS. الحارس يقيس **وجود الاسم في المصدر الحقيقي** حين يتوفّر
+        المستودع الشقيق (نفس نمط `check-slug-mirror.js`).
+     ② **عودةُ التصادف** `BH_MAX_WAIT_MS == BOOT_SCHEMA_RELEASE_MS` — الجِتَر يفكّه،
+        وحذفُه يُعيد الرنين بلا أثرٍ ظاهر.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function bulkheadWaitAndLoginWindowGuard() {
+  var loginBlock = /var BH_LOGIN_FNS = \{([\s\S]*?)\};/.exec(src);
+  check(!!loginBlock, 'تعذّر اقتطاع `BH_LOGIN_FNS` ⇒ الحارس عمي (يجب أن يحمرّ)');
+  if (!loginBlock) return;
+
+  var names = (loginBlock[1].match(/^\s*([A-Za-z][A-Za-z0-9]*)\s*:/gm) || [])
+    .map(function (l) { return l.replace(/[\s:]/g, ''); });
+  check(names.length >= 4, 'قائمة الدخول غير فارغة (' + names.length + ' اسماً) — ' +
+        'قائمةٌ فارغة تُطفئ الميزة بصمت');
+
+  /* الجِتَر قائمٌ ومُستعمَل — لا معرَّفٌ ومهجور (بند: «حارسٌ يفحص وجود اسمٍ لا أثره»).
+     🔴 ويُقاس **بتشغيله** لا بمطابقة نصّه حرفياً: مرساةٌ على التنسيق تُحمِّر على إعادة
+     صياغةٍ حميدة (رصدَته المراجعة — إنذارٌ كاذب لا ثغرة، لكنه يُفقِد الثقة بالحارس). */
+  var jitterFn = /function _bhWaitMs\(\)\s*\{[\s\S]*?\}/.exec(src);
+  check(!!jitterFn, 'تعذّر اقتطاع `_bhWaitMs` ⇒ الحارس عمي (يجب أن يحمرّ)');
+  if (jitterFn) {
+    var _bhWaitMs = new Function('return (' + jitterFn[0] + ');')();
+    var lo = Infinity, hi = -Infinity, distinct = {};
+    for (var s = 0; s < 400; s++) {
+      var v = _bhWaitMs();
+      lo = Math.min(lo, v); hi = Math.max(hi, v); distinct[v] = 1;
+    }
+    check(lo >= 7000 && hi < 9000 && Object.keys(distinct).length > 50,
+          '🔴 الجِتَر يُنتج قيَماً **متفرّقة** داخل [7000,9000) — ' +
+          '[' + lo + ',' + hi + '] بـ' + Object.keys(distinct).length + ' قيمة');
+    check(hi !== lo, '🔴 وليس ثابتاً مقنَّعاً (ثابتٌ يُعيد التصادف 8000==8000 بصمت)');
+  }
+  check(/_bhAcquire\(app, _bhMode === 'shadow' \? 0 : _bhWait\)/.test(src),
+        '🔴 والجِتَر/النافذة **مُستعمَلان فعلاً** عند `_bhAcquire` لا معرَّفَين ومهجورَين');
+  /* 🔴 القرار على ما يُنفّذه GAS فعلاً: `JSON.parse` لا أوّل مطابقةٍ نصّية — رصدَته
+     المراجعة، لأن المفتاح المكرَّر يُقرأ **أوّله** بالرجيكس و**آخره** بالمُحلِّل. */
+  check(/_bhIsLoginBody\(init\.body\)/.test(src) && /JSON\.parse\(body\)/.test(src),
+        '🔒 نافذة الدخول تُقرَّر بتحليلٍ حقيقيّ لا بمطابقةٍ نصّية قابلة للانتحال');
+  check(/body\.length > BH_LOGIN_BODY_MAX\) return false;/.test(src),
+        '🔒 والتحليل مقيَّدٌ بحجمٍ صغير (لا `JSON.parse` على حمولةٍ ضخمة في المسار الحارّ)');
+  check(/BH_LOGIN_FNS\.hasOwnProperty\(o\.fn\)/.test(src),
+        "🔒 `hasOwnProperty` لا فحص الحقيقة (‏`fn='toString'` كان سيرث نافذة الدخول)");
+
+  /* 🔴 و`_bhIsLoginBody` تُقاس **بتشغيلها على مُدخَلات حقيقية** لا بمطابقة نصّها:
+     طفرةٌ تقلب `catch` إلى `return true` (‏fail-open على الامتياز) مرّت خضراء على كلّ
+     المرساة النصّية — وهي بالضبط أسوأ ما يمكن أن يقع هنا. */
+  var idFn = /function _bhIsLoginBody\(body\)\s*\{[\s\S]*?\n\}/.exec(src);
+  var fnsBlock = /var BH_LOGIN_FNS = \{[\s\S]*?\n\};/.exec(src);
+  var maxBlock = /var BH_LOGIN_BODY_MAX = \d+;/.exec(src);
+  check(!!idFn && !!fnsBlock && !!maxBlock,
+        'تعذّر اقتطاع `_bhIsLoginBody` وتوابعها ⇒ الحارس عمي (يجب أن يحمرّ)');
+  if (idFn && fnsBlock && maxBlock) {
+    var isLogin = new Function(
+      fnsBlock[0] + '\n' + maxBlock[0] + '\n' + idFn[0] +
+      '\nreturn _bhIsLoginBody;')();
+    var big = '{"fn":"handleTeacherLogin","args":["' + new Array(5000).join('x') + '"]}';
+    check(isLogin('{"fn":"handleTeacherLogin","args":[]}') === true,
+          'دخولٌ حقيقيّ يُمنَح النافذة الموسَّعة');
+    check(isLogin('{"fn":"getListsDataProtected","args":[]}') === false,
+          'ضابط: نداءٌ عاديّ لا يُمنَحها');
+    /* 🔴 الانتحال بمفتاحٍ مكرَّر: `JSON.parse` يأخذ **آخر** قيمة كما يفعل GAS. */
+    check(isLogin('{"fn":"handleTeacherLogin","fn":"getListsDataProtected"}') === false,
+          '🔒 مفتاحٌ مكرَّر لا يمنح النافذة (المُحلِّل يأخذ آخره كما يأخذه GAS)');
+    check(isLogin('{"fn":"handleTeacherLogin"') === false,
+          '🔒 fail-closed: جسمٌ تالفٌ لا يُمنَح الامتياز');
+    check(isLogin(null) === false && isLogin(undefined) === false &&
+          isLogin({ fn: 'handleTeacherLogin' }) === false,
+          '🔒 fail-closed: غيرُ النصّ لا يُمنَح الامتياز');
+    check(isLogin(big) === false,
+          '🔒 fail-closed: جسمٌ فوق الحدّ لا يُمنَح الامتياز (ولا يُحلَّل)');
+    check(isLogin('{"fn":"toString","args":[]}') === false,
+          "🔒 fail-closed: `fn='toString'` لا يرث الامتياز من `Object.prototype`");
+  }
+  check(/\r?\n\s*var _nap = Math\.min\(delays\[attempt\], Math\.max\(0, _remain\)\);/.test(src),
+        '🔴 تأخير إعادة المحاولة مقصوصٌ على المتبقّي (وإلّا تجاوز السقف بـ700ms)');
+  /* 🔴 مرساةٌ على **الإعلان** لا على النصّ: العبارة نفسها ترد في تعليقٍ أعلى الملفّ،
+     فطفرةٌ أزالتها من الكود مرّت خضراء لأن التعليق أرضى الشرط. الفرق `\n\s*var`. */
+  check(/\r?\n\s*var TOTAL_BUDGET_MS = 24000 - _bhWaited;/.test(src),
+        '🔴 الانتظار **يُخصَم** من ميزانية المحاولات ⇒ السقف الكلّي يبقى ~24ث');
+
+  /* ③ الأسماء تُطابَق بمصدر GAS حين يتوفّر — وغيابُه `SKIPPED` صريحة لا نجاحٌ صامت. */
+  var GAS = process.env.SCHOOLAPP_GAS_DIR ||
+            path.join(path.dirname(path.dirname(__dirname)), 'SchoolApp-gas');
+  var gasOk = false;
+  try { gasOk = fs.statSync(path.join(GAS, 'teacher')).isDirectory(); } catch (e) { gasOk = false; }
+  if (!gasOk) {
+    console.log('  ⏭️  SKIPPED: مصدر GAS غير متاح (' + GAS + ') — لم تُطابَق أسماء الدخول');
+  } else {
+    var defs = '';
+    ['teacher', 'student'].forEach(function (app) {
+      fs.readdirSync(path.join(GAS, app)).forEach(function (f) {
+        if (/\.js$/.test(f)) defs += fs.readFileSync(path.join(GAS, app, f), 'utf8');
+      });
+    });
+    check(defs.length > 0, 'قُرئ مصدر GAS فعلاً (فارغ = عمى لا نجاح)');
+    var missing = names.filter(function (n) {
+      return !new RegExp('function\\s+' + n + '\\s*\\(').test(defs);
+    });
+    check(missing.length === 0,
+          '🔴 كلّ اسمٍ في `BH_LOGIN_FNS` له تعريفٌ حيّ في GAS' +
+          (missing.length ? ' — الميّت: ' + missing.join(' · ') : ''));
+
+    /* ═══ 🔴 الميزانية تُقارَن **حسابياً** عبر المستودعين لا برقمين منفصلين ═══
+       الهامش بين أسوأ زمنٍ في الوركر ومهلة العميل ضاق إلى ثوانٍ معدودة، وكان يمرّ
+       **بالصدفة**: حارس `SchoolApp-gas` يفحص `_LOGIN_TIMEOUT > 24000` — رقمٌ كُتب
+       **قبل** نافذة الدخول أصلاً. رصدَته المراجعة (بند 113: معرّفٌ عند المستهلك قد
+       يكون أضيق منه عند المنتج). الآن الطرفان يُقرآن ويُطرحان. */
+    var cli = fs.readFileSync(
+      path.join(GAS, 'teacher', '_js-platform-reviews.html'), 'utf8');
+    var cliM  = /var _LOGIN_TIMEOUT\s*=\s*(\d+)/.exec(cli);
+    var winM  = /var BH_LOGIN_WAIT_MS = (\d+);/.exec(src);
+    var attM  = /var PER_ATTEMPT_TIMEOUT_MS = (\d+);/.exec(src);
+    check(!!cliM && !!winM && !!attM,
+          'قُرئت الثوابت الثلاثة من الطرفين (فشلُ الاستخراج = عمى لا نجاح)');
+    if (cliM && winM && attM) {
+      var worst  = Number(winM[1]) + Number(attM[1]);
+      var margin = Number(cliM[1]) - worst;
+      check(margin >= 2000,
+            '🔴 أسوأ زمنٍ في الوركر (' + worst + 'ms) تحت مهلة العميل (' +
+            cliM[1] + 'ms) بهامش ' + margin + 'ms ≥ 2000');
+    }
+  }
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
