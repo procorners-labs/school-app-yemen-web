@@ -543,7 +543,11 @@ console.log((ordered ? '  ✅ ' : '  ❌ ') +
 // ── 🔴 slug غير منشور ⇒ 404 لا 200 ──────────────────────────────────────────
 console.log('');
 console.log('سطح الفهرسة اللانهائي (soft-404):');
-[[/if \(_pathSlug && !_KNOWN_SCHOOL_SLUGS\[_pathSlug\]\)/, 'الـslug يُفحَص ضدّ السجلّ قبل إعادة الكتابة'],
+/* ⚠️ **حُدِّث 2026-08-22 — تشديدٌ لا تخفيف.** كان التأكيد يطابق نصّ الشرط حرفياً
+   (`!_KNOWN_SCHOOL_SLUGS[_pathSlug]`)، فأحمرَّ على **جعلِ السجلّ ديناميكياً** — وهو عملٌ
+   صحيح. والثابتةُ التي يحرسها فعلاً ليست صياغةَ الشرط بل **وجودَ فحصٍ مشروطٍ قبل إعادة
+   الكتابة**: مقطعٌ غيرُ منشور ⇒ 404، ومنشورٌ ⇒ يُعاد كتابته. */
+[[/if \(_pathSlug && !\(await _slugIsPublished\(/, 'الـslug يُفحَص ضدّ السجلّ قبل إعادة الكتابة'],
  [/status: 404/, 'الحالة المُرجَعة 404 لا 200'],
  [/'X-Robots-Tag': 'noindex, follow'/, 'ورأس noindex معها (حزام وحمّالة)']
 ].forEach(function (c) {
@@ -553,11 +557,74 @@ console.log('سطح الفهرسة اللانهائي (soft-404):');
 });
 // ضابط الاتجاه المعاكس: الـslugs المنشورة **لا** تُرجَع 404 — يقيسه جدول `_canonicalFor`
 // أعلاه ضمناً (يُرجِع لها عنواناً صحيحاً)، ويؤكّده هنا أن الفحص مشروط بالنفي لا مطلق.
-var guardIsConditional = /!_KNOWN_SCHOOL_SLUGS\[_pathSlug\]/.test(src) &&
+var guardIsConditional = /!\(await _slugIsPublished\(/.test(src) &&
                          /if \(_pathSlug\) path = '\/home\/index\.html';/.test(src);
 if (!guardIsConditional) failed++;
 console.log((guardIsConditional ? '  ✅ ' : '  ❌ ') +
             '🔴 ضابط: مسار الـslug المنشور لا يزال يُعاد كتابته كما كان (لا 404 شامل)');
+
+/* ── 🟢 السجلُّ الديناميكيّ — سلوكيّ ────────────────────────────────────────────
+   الأخطرُ هنا **معاكسٌ كالعادة**: لو أُسقطت البذرةُ الساكنة صار عطلُ GAS يُسقط الموقعَ
+   كلَّه (كلُّ صفحات المدارس 404 دفعةً واحدة). فالترتيبُ «بذرةٌ ← كاش ← تحديث» ثابتةٌ
+   تُقاس بالتنفيذ لا بالقراءة. */
+console.log('');
+console.log('سجلّ الـslugs الديناميكيّ (سلوكي):');
+var spIdx = src.indexOf('async function _slugIsPublished(');
+var spEnd = spIdx < 0 ? -1 : src.indexOf('\n}', spIdx) + 2;
+if (spIdx < 0 || spEnd <= 1) {
+  console.log('  ❌ ضابط: تعذّر استخراج `_slugIsPublished` — الفحص أجوف');
+  failed++;
+} else {
+  /* 🔴 **الدالّة `async` والسكربتُ متزامن** — و`.then` هنا كان سيُطبَع **بعد** سطر
+     `RESULT` النهائي فيصير الفحصُ زينةً لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»).
+     ⇒ يُجرَّد `async`/`await` ويُشغَّل المنطقُ متزامناً. **والتجريدُ آمنٌ ومكافئ هنا
+     تحديداً** لأن الدالّة لا تحوي فروعاً تعتمد توقيتَ الوعد: ثلاثةُ شروطٍ متسلسلة على
+     قيمٍ مُنتظَرة. ⚠️ **وأداةُ التجريد تُقاس قبل أن يُصدَّق حكمُها** (بند 170): الضابطُ
+     أدناه يُثبت أن `await` اختفى فعلاً وأن الجسم بقي غيرَ فارغ — تجريدٌ يُنتج نصّاً
+     فارغاً يجعل كلَّ ما يليه أخضرَ بلا معنى. */
+  var spSrc = src.slice(spIdx, spEnd)
+                 .replace(/^async function/, 'function')
+                 .replace(/await /g, '');
+  var stripOk = spSrc.indexOf('await ') === -1 &&
+                spSrc.indexOf('_slugsFromCache(') !== -1 &&
+                spSrc.indexOf('_KNOWN_SCHOOL_SLUGS[slug]') !== -1;
+  if (!stripOk) failed++;
+  console.log((stripOk ? '  ✅ ' : '  ❌ ') +
+              'ضابط: تجريدُ `await` نجح والجسمُ باقٍ (تجريدٌ فارغ = أخضرُ بلا معنى)');
+  var calls = { cache: 0, refresh: 0 };
+  var spCtx = vm.createContext({
+    _KNOWN_SCHOOL_SLUGS: { 'abdaawatmuaz': 1 },
+    _slugsFromCache: function () { calls.cache++; return spCtx.__cached; },
+    _slugsRefresh:   function () { calls.refresh++; return spCtx.__fresh; },
+    __cached: null, __fresh: null
+  });
+  vm.runInContext(spSrc, spCtx);
+  function run(slug, cached, fresh) {
+    spCtx.__cached = cached; spCtx.__fresh = fresh;
+    calls.cache = 0; calls.refresh = 0;
+    return vm.runInContext('_slugIsPublished(' + JSON.stringify(slug) + ', "https://x", {})', spCtx);
+  }
+  [
+    ['🔴 البذرةُ الساكنة تُجيب **بلا أيّ نداء** (وإلّا كلّفت كلَّ زيارة)',
+     (function () { var r = run('abdaawatmuaz', null, null);
+       return r === true && calls.cache === 0 && calls.refresh === 0; })()],
+    ['🔴 مدرسةٌ جديدة في الكاش ⇒ تعمل **بلا تحديث** (نداءٌ لكلّ نافذة لا لكلّ زائر)',
+     (function () { var r = run('new-school', ['new-school'], null);
+       return r === true && calls.refresh === 0; })()],
+    ['🔴 كاشٌ بارد ⇒ تحديثٌ **واحد** يجدها',
+     (function () { var r = run('new-school', null, ['new-school']);
+       return r === true && calls.refresh === 1; })()],
+    ['🔴 ضابط: مجهولٌ وقائمةٌ مكاشة ⇒ **false بلا تحديث** (لا نداءَ لكلّ عنوانٍ مخترَع)',
+     (function () { var r = run('ghost', ['a'], null);
+       return r === false && calls.refresh === 0; })()],
+    ['🔴 ضابط: سقوطُ GAS ⇒ المجهولُ false **والبذرةُ تبقى تعمل** (لا يسقط الموقع)',
+     (function () { return run('ghost', null, null) === false &&
+                           run('abdaawatmuaz', null, null) === true; })()]
+  ].forEach(function (c) {
+    if (!c[1]) failed++;
+    console.log((c[1] ? '  ✅ ' : '  ❌ ') + c[0]);
+  });
+}
 
 // ── 🔴 هوية النطاق عبر الأصول الثلاثة — حارس **سلوكي** ───────────────────────
 // الضابط الأخطر هنا **معاكس**: النطاق الرسمي يجب أن يخرج **بلا `X-Robots-Tag` إطلاقاً**.

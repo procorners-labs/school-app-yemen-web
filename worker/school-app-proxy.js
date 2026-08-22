@@ -386,12 +386,100 @@ function _tenantKeyFrom(path, search) {
 //    `_build/schools.public.json` معاً** — وإلّا رجعت صفحتها 404. القائمة ثابتة في الكود
 //    عمداً (لا نداء GAS): التحقّق من الوجود على المسار الحارّ يستهلك من حصّة الثلاثين
 //    نفسها التي نحاول حمايتها، ولكلّ زائر.
+/* 🟢 **صارت بذرةً ساكنة لا مصدرَ حقيقة (2026-08-22).**
+   السجلُّ الحيّ يأتي الآن من `home::listPublicSlugsPublic` عبر `_slugsFromCache` أدناه،
+   ويُؤخَذ **اتحادُه** مع هذه البذرة. والاعتراضُ أعلاه («ولكلّ زائر») عولج حرفياً: القائمة
+   تُخزَّن في `caches.default` فيصير **نداءٌ لكلّ نافذة كاش لا لكلّ زائر**.
+   🔴 **ولا تُحذف البذرة:** لو سقط GAS أو أخفق النداء بقيت المدارس الثلاث تعمل —
+   **fail-open للمعروف · fail-closed لغيره**. وحذفُها يجعل عطلَ GAS يُسقط الموقع كلَّه. */
 var OWNER_SCHOOL_SLUG = 'abdaawatmuaz';
 var _KNOWN_SCHOOL_SLUGS = {
   'abdaawatmuaz': 1,
   'ibn-khaldoun': 1,
   'aljil-al-hadith': 1
 };
+
+/* ── سجلُّ الـslugs الديناميكيّ ──────────────────────────────────────────────────
+   بنيةٌ **منسوخةٌ عن `_brandCacheKey`/`_brandFromCache`/`_brandRefresh` عمداً** — نفس
+   `caches.default`، نفس المفتاح داخل الأصل بمسارٍ ثلاثيّ المقاطع (يرفضه
+   `_schoolSlugFromPath` فلا يصير سطحاً مخدوماً)، ونفس ضوابط المهلة والـbulkhead.
+   **وTTL أقصر (‏٥ د لا ٦ س):** الهويةُ شبه ثابتة، أمّا **مدرسةٌ جديدة فيجب أن تعمل صفحتُها
+   خلال دقائق** — وهذا هو الرقم الذي يحوّل «ديناميكيّ» من وصفٍ إلى سلوك. */
+var SLUGS_TTL_S = 300;
+
+function _slugsCacheKey(origin) {
+  return new Request(origin + '/__slugs-cache/v1/all', { method: 'GET' });
+}
+
+async function _slugsFromCache(origin) {
+  try {
+    var hit = await caches.default.match(_slugsCacheKey(origin));
+    if (!hit) return null;
+    var o = await hit.json();
+    return (o && Array.isArray(o.slugs)) ? o.slugs : null;
+  } catch (e) { return null; }
+}
+
+/* 🔴 **حاجبةٌ بالضرورة** خلافاً لـ`_brandRefresh` التي تعمل في `ctx.waitUntil`: القرارُ
+   هنا «404 أم صفحة» ولا يُتّخذ قبل معرفة الجواب. ولهذا: مهلةٌ صارمة، وbulkhead يتخطّى عند
+   الإشباع (فيسقط على البذرة الساكنة)، وتخزينٌ **حتى للقائمة الفارغة** كي لا يتحوّل عنوانٌ
+   مجهولٌ مكرَّر إلى نداءٍ لكلّ زيارة — وهو بالضبط ما كان يُخشى منه. */
+async function _slugsRefresh(origin, env) {
+  var mode = (env && env.BULKHEAD_MODE) || 'on';
+  var held = (mode !== 'off') ? await _bhAcquire('home', 0) : false;
+  if (mode === 'on' && !held) {
+    _bhLog({ ev: 'bulkhead', act: 'skip_slugs', app: 'home', mode: mode, n: _bhN, q: _bhQ.length });
+    return null;
+  }
+  var timer = null;
+  try {
+    var ab = new AbortController();
+    timer = setTimeout(function () { ab.abort(); }, 8000);
+    var res = await fetch(GAS.home, {
+      method: 'POST',
+      signal: ab.signal,
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ fn: 'listPublicSlugsPublic', args: [] })
+    });
+    var json = await res.json();
+    var b = (json && json.result) ? json.result : json;
+    if (!b || b.ok !== true || !Array.isArray(b.slugs)) return null;
+    var clean = [];
+    for (var i = 0; i < b.slugs.length; i++) {
+      var s = String(b.slugs[i] || '').toLowerCase();
+      /* نفسُ صيغة `_schoolSlugFromPath` — سجلٌّ يحمل قيمةً خارجها لا يمكن أن تُطابَق
+         أصلاً، وتخزينُها يُوهم بتغطيةٍ غير قائمة. */
+      if (/^[a-z0-9-]+$/.test(s) && !_RESERVED_TOP_PATHS[s]) clean.push(s);
+    }
+    await caches.default.put(
+      _slugsCacheKey(origin),
+      new Response(JSON.stringify({ slugs: clean }), {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'max-age=' + SLUGS_TTL_S
+        }
+      })
+    );
+    return clean;
+  } catch (e) {
+    return null;          // fail-open نحو البذرة الساكنة
+  } finally {
+    if (timer) clearTimeout(timer);
+    /* 🔴 `'home'` صراحةً — `_bhRelease(app)` تُنقِص العدّاد العامّ **والعدّاد لكلّ تطبيق**،
+       وتركُ الوسيط فارغاً يُنقِص العامّ وحده ⇒ `_bhApp.home` يتسرّب صاعداً حتى يُغلَق
+       التطبيقُ على نفسه. (نظيرُها في `_brandRefresh` تُمرّرها.) */
+    if (held) _bhRelease('home');
+  }
+}
+
+/* القرارُ النهائيّ: البذرةُ الساكنة أوّلاً (صفر كلفة)، ثمّ الكاش، ثمّ تحديثٌ **واحد**. */
+async function _slugIsPublished(slug, origin, env) {
+  if (_KNOWN_SCHOOL_SLUGS[slug]) return true;
+  var cached = await _slugsFromCache(origin);
+  if (cached) return cached.indexOf(slug) !== -1;
+  var fresh = await _slugsRefresh(origin, env);
+  return !!fresh && fresh.indexOf(slug) !== -1;
+}
 
 // ── الرابط القانوني — يُحسَب من الطلب، لا من قيمة ساكنة في المصدر ─────────────
 //
@@ -1292,7 +1380,11 @@ export default {
     // 🔴 slug غير منشور ⇒ **404 حقيقي**، لا 200 بصفحة كاملة. قبل هذا كان أيّ مقطع مسار
     //    واحد غير محجوز يُخدَم بمحتوى `/home/index.html` كاملاً بحالة 200 — سطحُ فهرسةٍ
     //    لا نهائي. الجسم عربيّ مفيد (لا شاشة فارغة) ويحمل رابط دليل المدارس.
-    if (_pathSlug && !_KNOWN_SCHOOL_SLUGS[_pathSlug]) {
+    /* 🟢 **ديناميكيّ منذ 2026-08-22:** البذرةُ الساكنة أوّلاً (صفر كلفة)، ثمّ القائمةُ
+       المكاشة، ثمّ تحديثٌ **واحد** محكومٌ بالـbulkhead. فمدرسةٌ تسجّل اليوم تعمل صفحتُها
+       خلال دقائق **بلا تعديل كودٍ ولا نشرِ وسيط** — وكان ذلك يتطلّب تعديلَ مستودعين.
+       والاستدعاءُ `await` **بعد** فحص `_pathSlug` فلا يُكلّف شيئاً على المسارات الأخرى. */
+    if (_pathSlug && !(await _slugIsPublished(_pathSlug, url.origin, env))) {
       return new Response(_unknownSlugPage(_pathSlug), {
         status: 404,
         headers: {
