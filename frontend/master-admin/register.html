@@ -260,8 +260,8 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
   <!-- ── شريط التنقل العلوي ── -->
   <div class="top-nav">
     <!-- ✅ زر العودة للرئيسية (ديناميكي وآمن) -->
-    <a href="javascript:void(0)" onclick="goToLogin()" class="btn-home">🏠 العودة للرئيسية</a>
-    <div class="top-badge">📋 تسجيل مدرسة جديدة</div>
+    <a href="javascript:void(0)" onclick="goHome()" class="btn-home">🏠 العودة للرئيسية</a>
+    <div class="top-badge">📋 إنشاء حساب مدرسة</div>
   </div>
 
   <!-- ── Header ── -->
@@ -394,9 +394,9 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
       </div>
       <!-- ✅ رابط تسجيل الدخول لمن لديه حساب -->
       <div style="text-align:center;margin-top:16px;">
-        <a href="javascript:void(0)" onclick="goToLogin()"
+        <a href="javascript:void(0)" onclick="goTeacherLogin('')"
            style="color:var(--primary);font-weight:600;text-decoration:underline;font-size:13px;">
-          🔐 لدي حساب بالفعل — تسجيل الدخول
+          لديك حساب؟ ادخل من منصّة مدرستك
         </a>
       </div>
     </div>
@@ -524,6 +524,9 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
         <div class="succ-title">تم إنشاء منظومتك التعليمية بنجاح!</div>
         <div class="succ-sub" id="succ-sub">أهلاً بك في منصّة يمن سكولز</div>
         <div class="creds-box" id="creds-box"></div>
+        <!-- رابط صفحة المدرسة العامّة `/<slug>` — يملؤه `_showSuccess` **فقط** عند وجود slug
+             غير فارغ، ويبقى مخفيّاً بلاه (fail-closed). -->
+        <div class="creds-box" id="slug-box" style="display:none;"></div>
         <div class="warn-box">
           ⚠️ <strong>مهم:</strong><br>
           اضغط على روابط المنصات أدناه للدخول مباشرة.<br>
@@ -538,11 +541,12 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
                     text-decoration:none;font-size:13px;font-weight:700;">
             📱 تواصل مع الدعم
           </a>
-          <!-- ✅ زر لوحة التحكم (ديناميكي وآمن) -->
-          <a href="javascript:void(0)" onclick="goToLogin()"
+          <!-- 🔴 وجهةُ المدرسة **منصّتها** لا لوحةُ المالك — و`_showSuccess` يمرّر `schoolId`
+               الفعليّ فتفتح لوحةَ مدرستها مباشرةً بلا اختيارٍ يدويّ. -->
+          <a href="javascript:void(0)" id="btn-goto-portal" onclick="goTeacherLogin('')"
              style="padding:11px 22px;background:var(--primary);color:#fff;border-radius:10px;
                     text-decoration:none;font-size:13px;font-weight:700;">
-            🏠 لوحة التحكم
+            🎓 اذهب إلى منصّة مدرستك
           </a>
           <button onclick="reg_reset()"
                   style="padding:11px 20px;background:#e8eaf6;color:var(--primary);
@@ -576,8 +580,10 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
                     text-decoration:none;font-size:13px;font-weight:700;">
             📱 طلب مساعدة
           </a>
-          <!-- ✅ زر الرئيسية (ديناميكي وآمن) -->
-          <a href="javascript:void(0)" onclick="goToLogin()"
+          <!-- 🔴 كان يستدعي `goToLogin()` = لوحةَ المالك. وهذا **الزرّ الرابع** الذي فاتَ
+               أوّلَ جردٍ لهذه العلّة (ثلاثةٌ رُصدت وأربعةٌ كانت) — لأن الجرد جرى على
+               الأزرار «المرئية في المسار السعيد» وهذا يظهر على **شاشة الخطأ** وحدها. -->
+          <a href="javascript:void(0)" onclick="goHome()"
              style="padding:11px 22px;background:#455a64;color:#fff;border-radius:10px;
                     text-decoration:none;font-size:13px;font-weight:700;">
             🏠 الرئيسية
@@ -1083,6 +1089,38 @@ function _showSuccess(res) {
   var sub = document.getElementById('succ-sub');
   if (sub) sub.textContent = 'مرحباً بمدرسة "' + (res.schoolName || '') + '" في منصّة يمن سكولز!';
 
+  /* زرّ «اذهب إلى منصّة مدرستك» يحمل `schoolId` الفعليّ ⇒ تفتح لوحةُ مدرستها مباشرةً.
+     وبلا المعرّف كان `handleTeacherLogin` يستدعي `_setActiveTenant('')` **قبل أيّ بحث**
+     فيسقط على ملفّ المالك (بند 99). */
+  var portalBtn = document.getElementById('btn-goto-portal');
+  if (portalBtn && res.schoolId) {
+    portalBtn.setAttribute('onclick', "goTeacherLogin('" +
+      String(res.schoolId).replace(/[^A-Za-z0-9_-]/g, '') + "')");
+  }
+
+  /* 🔴 بطاقةُ رابط `/<slug>` **fail-closed**: تُعرَض فقط إن عاد slug غير فارغ.
+     الـslug يُنشأ ويُطهَّر ويُفحَص تكرارُه ويُكتَب في العمود 22 عند التزويد، ثمّ **لم يكن
+     يُسلَّم** — لا هنا ولا في البريد الترحيبيّ. وبطاقةٌ برابطٍ ناقص أسوأ من غيابها. */
+  var slugBox = document.getElementById('slug-box');
+  if (slugBox) {
+    var slug = (res.slug || '').toString();
+    if (slug) {
+      var pageUrl = MA_WORKER_BASE_CLIENT + '/' + slug;
+      slugBox.style.display = 'block';
+      slugBox.innerHTML =
+        '<strong style="color:#2e7d32;">🌐 رابط صفحة مدرستك العامّة:</strong><br>' +
+        '<a href="' + pageUrl + '" target="_blank" id="slug-url" ' +
+        'style="color:var(--primary);font-weight:700;word-break:break-all;">' + pageUrl + '</a>' +
+        ' <button type="button" onclick="_copySlugUrl()" ' +
+        'style="margin-inline-start:8px;padding:4px 10px;border:none;border-radius:8px;' +
+        'background:#e8eaf6;color:var(--primary);cursor:pointer;font-size:12px;font-weight:700;">' +
+        '📋 نسخ</button>';
+    } else {
+      slugBox.style.display = 'none';
+      slugBox.innerHTML = '';
+    }
+  }
+
   var cb = document.getElementById('creds-box');
   if (cb) {
     cb.innerHTML =
@@ -1207,6 +1245,14 @@ function _markErr(id, show) {
   else      el.classList.remove('err');
 }
 /* مُحوِّل روابط GAS إلى مسارات الـ Worker — يعمل فقط عند الخدمة عبر الـ Worker. */
+/* 🔴 **مطلقٌ لا نسبيّ — وهذا ليس تفضيلاً.** هذه الصفحة تُخدَم من سطحين: الثابت
+   `/master-admin/register.html` وسطحُ GAS الخام `…/exec?page=register`. والرابطُ النسبيّ
+   (أو المُطلَق من الجذر `/…`) يُحلّ من **العمق والأصل اللذين يراهما المتصفّح** — فعلى سطح
+   GAS يقصد `script.google.com` لا منصّتنا (بندا 123 و166). ⇒ الأصلُ صريحٌ هنا.
+   ⚠️ **ومرآةٌ يدوية لـ`master-admin/Master_Admin.js::MA_WORKER_BASE`** — يحرس تطابقَهما
+   `schoolFacingPagesNeverLinkMasterAdminGuard`، وإلّا انحرف أحدُهما بصمت. */
+var MA_WORKER_BASE_CLIENT = 'https://yemenschoolz.com';
+
 function __toWorker(u) {
   try {
     if (!u || typeof window.GAS_ENDPOINT === 'undefined' || !window.GAS_ENDPOINT) return u;
@@ -1223,25 +1269,75 @@ function __toWorker(u) {
   } catch (e) { return u; }
 }
 
-function goToHome() {
-  google.script.run.withSuccessHandler(function(appUrl) {
-    window.top.location.href = __toWorker(appUrl);
-  }).getMasterAppUrl();
+/* 🗑️ حُذفت `goToHome()` — **دالّةٌ ميّتة بصفر مستدعٍ** في هذا الملفّ (النظيرُ الحيّ باسمها
+   يعيش في `MasterAdmin.html` وحده). وكانت تقصد لوحةَ المالك عبر `getMasterAppUrl()` كأخواتها،
+   فبقاؤها يُبقي بابَ العودة إلى العلّة مفتوحاً لأوّل من ينسخ سطراً. */
+
+/* ═══ وجهتان لا واحدة (2026-08-22) ══════════════════════════════════════════════════
+ *
+ * **العلّة المُغلَقة:** كانت `goToLogin()` واحدةً تخدم **أربعة أزرار بمقاصد متناقضة**
+ * («العودة للرئيسية» · «لدي حساب بالفعل» · «لوحة التحكم» بعد النجاح · «الرئيسية» على شاشة
+ * الخطأ — والرابع فاتَ أوّلَ جردٍ لأنه لا يظهر في المسار السعيد)، وتُرسلها كلَّها إلى
+ * `getMasterAppUrl()` = **لوحة المالك**. و`masterLogin` ترفض كلّ دورٍ غير `owner`
+ * (‏`Master_Admin.js::masterLogin`)، بينما التزويد يُنشئ صاحب المدرسة بدور **`admin`**.
+ * ⇒ مديرُ مدرسةٍ سجّل للتوّ ونقر أيّاً من الثلاثة **يُطرَد**.
+ *
+ * 🔴 والزرُّ الذي يقول «لوحة التحكم» لا يُثبِت أيَّ لوحة — الوجهةُ تُقرأ من الدالّة لا من
+ * النصّ، وهذا ما جعل العطلَ غيرَ مرئيّ في المراجعة النصّية طوال هذه المدّة.
+ *
+ * ⇒ الوجهتان صارتا صريحتين، و`getMasterAppUrl()` **لا تُستدعى من أيٍّ منهما** — تبقى
+ * للوحة المالك وحدها. يحرسه `schoolFacingPagesNeverLinkMasterAdminGuard`.
+ */
+function goHome() {
+  _navTop(MA_WORKER_BASE_CLIENT + '/');
 }
-// ✅ دالة العودة إلى صفحة الدخول الرئيسية (آمنة مع iframe و WebView)
-function goToLogin() {
-  google.script.run.withSuccessHandler(function(appUrl) {
-    var w = __toWorker(appUrl);
-    try {
-      if (window.top && window.top !== window) {
-        window.top.location.href = w;
-      } else {
-        window.location.href = w;
-      }
-    } catch (e) {
-      window.location.href = w;
+
+/* نسخُ رابط صفحة المدرسة — بتراجعٍ إلى `execCommand` لأن `navigator.clipboard` غائبةٌ
+   فعلياً في متصفّحات داخل التطبيقات، وهي مسارٌ طبيعيّ لرابطٍ يُشارَك. */
+function _copySlugUrl() {
+  var el = document.getElementById('slug-url');
+  if (!el) return;
+  var txt = el.textContent || el.href || '';
+  var done = function () { el.style.opacity = '.5'; setTimeout(function () { el.style.opacity = '1'; }, 400); };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, function () { _copyFallback(txt, done); });
+      return;
     }
-  }).getMasterAppUrl();
+  } catch (e) {}
+  _copyFallback(txt, done);
+}
+
+function _copyFallback(txt, done) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  } catch (e) {}
+}
+
+/* منصّة المدرسة: `?school=<id>` حين يكون المعرّف معروفاً (شاشة النجاح)، وبلاه من زرّ
+   «لدي حساب بالفعل» — فالمستخدم هناك يعرف مدرسته ويدخل ببريده. */
+function goTeacherLogin(schoolId) {
+  var u = MA_WORKER_BASE_CLIENT + '/teacher/index.html';
+  var sid = (schoolId || '').toString();
+  if (sid) u += '?school=' + encodeURIComponent(sid);
+  _navTop(u);
+}
+
+/* التنقّل من داخل إطارٍ مضمَّن (سطح `/exec` يُخدَم داخل iframe) — نفس منطق الدالّة القديمة. */
+function _navTop(url) {
+  try {
+    if (window.top && window.top !== window) { window.top.location.href = url; return; }
+  } catch (e) {}
+  window.location.href = url;
 }
 
 // تعبئة كود الإحالة تلقائياً إن وصل المستخدم عبر رابط ?ref=CODE (مشاركة معلّم) + تسجيل زيارة
