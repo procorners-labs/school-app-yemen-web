@@ -947,7 +947,13 @@ function reg_submit() {
   }
   if (msgEl) msgEl.innerHTML = '';
 
+  /* 🔴 نقرتان على هذا الزرّ كانتا تُنتجان تسجيلين — لا حارس ولا تعطيل. والخادمُ صار متماثلاً
+     فالضرر مُغلَقٌ هناك أيضاً، لكنّ منعَ الإرسال من الأصل أرخص وأوضح للمستخدم. */
+  if (_provInFlight) return;
+  _provSetInFlight(true);
+
   _dupConfirmed = false;
+  _provNetRetries = 0;
   navStep(5);
   _startAnimation();
   _reg_doSubmit();
@@ -955,10 +961,131 @@ function reg_submit() {
 
 // إعادة إرسال بعد أن أكّد المستخدم صراحةً تجاوز تحذير تكرار الاسم (زر الشاشة 7).
 function reg_confirmDuplicateAndSubmit() {
+  if (_provInFlight) return;
+  _provSetInFlight(true);
   _dupConfirmed = true;
+  _provNetRetries = 0;
   navStep(5);
   _startAnimation();
   _reg_doSubmit();
+}
+
+/* ═══ حالةُ الإرسال والاستطلاع ═══════════════════════════════════════════════════════
+   🔴 **الفارق الجوهريّ:** التزويد يستغرق **45–90 ثانية** وميزانيةُ الوسيط **24** ⇒ الردُّ
+   الكامل **قد لا يصل أبداً**. فالانقطاعُ هنا **ليس فشلاً** — العملُ جارٍ خادمياً. ولهذا:
+   ① فشلُ الشبكة يُعيد إرسال **نفس الحمولة** (آمنٌ بالتعريف بعد تماثل الخادم، وهو الوسيلةُ
+      الوحيدة لاسترجاع `schoolId` حين لا يصل ردٌّ أصلاً)،
+   ② ثمّ يُستطلَع حتى الاكتمال،
+   ③ ونفادُ المهلة **حالةٌ ثالثة غير حمراء** — لا يُلوَّن الانتظارُ خطأً أبداً. */
+var _provInFlight   = false;
+var _provNetRetries = 0;
+var _provPollTimer  = null;
+var _provPollTicks  = 0;
+var _provLastRes    = null;
+
+function _provSetInFlight(on) {
+  _provInFlight = !!on;
+  var b = document.getElementById('btn-submit');
+  if (b) b.disabled = !!on;
+  var c = document.getElementById('btn-dup-confirm');
+  if (c) c.disabled = !!on;
+}
+
+/* يُصفَّر عند العودة لشاشة الخطأ أو إعادة التعيين — **لا عند النجاح**: نجاحٌ يعني ألّا
+   يُرسَل ثانيةً أبداً. */
+function _provClear() {
+  if (_provPollTimer) { clearInterval(_provPollTimer); _provPollTimer = null; }
+  _provPollTicks = 0;
+  _provSetInFlight(false);
+}
+
+function _provStartPolling(schoolId, seed) {
+  if (!schoolId) return;
+  _provLastRes = seed || null;
+  if (_provPollTimer) clearInterval(_provPollTimer);
+  _provPollTicks = 0;
+  var netFails = 0;
+  _provPollTimer = setInterval(function () {
+    _provPollTicks++;
+    if (_provPollTicks > 24) {          // 24 × 5 ث = 120 ث > أسوأ زمنٍ مقيس (90 ث)
+      clearInterval(_provPollTimer); _provPollTimer = null;
+      _provShowStillWorking(schoolId);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (st) {
+        netFails = 0;
+        if (!st || !st.success) return;                 // notfound ⇒ واصِل الاستطلاع
+        if (st.status === 'ready') {
+          clearInterval(_provPollTimer); _provPollTimer = null;
+          _stopAnimation();
+          /* يُفرَج عن العلَم هنا أيضاً اتّساقاً مع بقية مسارات الخروج — لا أثر ظاهر اليوم
+             (شاشةُ النجاح لا تحمل زرّ إرسال، والعودةُ الوحيدة عبر `reg_reset`)، لكنّ علَماً
+             يبقى `true` في مسارٍ ناجح دَينٌ ينفجر عند أوّل مستهلكٍ جديد يقرؤه. */
+          _provSetInFlight(false);
+          _showSuccess(_provMergeStatus(st));
+        } else if (st.status === 'failed') {
+          clearInterval(_provPollTimer); _provPollTimer = null;
+          _stopAnimation();
+          _provClear();
+          _errScreenReset();
+          var em = document.getElementById('err-msg');
+          if (em) em.textContent = st.failureReason || 'تعذّر إكمال تجهيز مدرستك.';
+          navStep(7);
+        }
+      })
+      .withFailureHandler(function () {
+        /* إخفاقُ شبكةٍ أثناء الاستطلاع **يُتجاهَل ويُعاد** — الخادمُ يعمل، والقناةُ وحدها
+           تعثّرت. وثلاثةٌ متتالية فقط تُنهي الاستطلاع إلى الحالة الثالثة. */
+        netFails++;
+        if (netFails >= 3) {
+          clearInterval(_provPollTimer); _provPollTimer = null;
+          _provShowStillWorking(schoolId);
+        }
+      })
+      .getProvisionStatusPublic({ schoolId: schoolId });
+  }, 5000);
+}
+
+/* يدمج ردَّ الاستطلاع مع ما يعرفه العميل محلياً — نقطةُ الحالة **لا تُرجِع البريد ولا أيّ
+   معرّف ملفّ عمداً**، والعميل يملك البريد من نموذجه أصلاً. */
+function _provMergeStatus(st) {
+  var base = _provLastRes || {};
+  return {
+    success   : true,
+    schoolId  : st.schoolId  || base.schoolId  || '',
+    schoolName: st.schoolName || base.schoolName || _val('f-sname'),
+    slug      : st.slug      || base.slug      || '',
+    trialEnd  : st.trialEnd  || base.trialEnd  || '',
+    adminEmail: _val('f-aemail'),
+    teacherUrl: base.teacherUrl || '',
+    studentUrl: base.studentUrl || '',
+    cmsUrl    : base.cmsUrl     || '',
+    folderUrl : base.folderUrl  || '',
+    logoUrl   : base.logoUrl    || ''
+  };
+}
+
+/* 🔴 الحالةُ الثالثة — **ليست حمراء**. مدرستُك تُبنى الآن، وكلُّ ما نفد هو صبرُ المتصفّح. */
+function _provShowStillWorking(schoolId) {
+  _stopAnimation();
+  _provClear();
+  _errScreenReset();
+  var icon  = document.getElementById('err-icon');
+  var title = document.getElementById('err-title');
+  var em    = document.getElementById('err-msg');
+  if (icon)  icon.textContent = '⏳';
+  if (title) { title.textContent = 'مدرستك قيد التجهيز'; title.style.color = '#e65100'; }
+  if (em) {
+    /* 🔴 النصُّ يطابق ما تفعله الشاشةُ فعلاً: زرُّ «إعادة المحاولة» **ظاهرٌ ويعمل**، فقولُ
+       «لا حاجة لإعادة التسجيل» كان يناقضه. والإعادةُ آمنةٌ بحقّ — فرعُ إعادة المطالبة في
+       `_provClaimSchoolRow_` يُرجِع نفسَ المدرسة بدل إنشاء ثانية. رسالةٌ تخالف سلوكَ
+       الشاشة تُربك المستخدمَ والدعمَ معاً. */
+    em.textContent = 'تم استلام تسجيلك بنجاح والتجهيز جارٍ الآن. سنُرسل لك بريداً فور اكتماله '
+                   + '— عادةً خلال دقيقة أو دقيقتين. ولو أعدتَ الإرسال بنفس البريد فلن تُنشأ '
+                   + 'مدرسة مكرَّرة.';
+  }
+  navStep(7);
 }
 
 function _reg_doSubmit() {
@@ -984,25 +1111,55 @@ function _reg_doSubmit() {
 
   google.script.run
     .withSuccessHandler(function(res) {
-      _stopAnimation();
+      /* ① تحذيرُ تكرار الاسم — قابلٌ للتجاوز، ويُفرَج عن الزرّ لينقر «متابعة». */
+      if (res && !res.success && res.duplicateWarning) {
+        _stopAnimation();
+        _provSetInFlight(false);
+        _dupWarnShow(res.error);
+        return;
+      }
+      /* ② الخادم مشغول (تعذّر القفل) ⇒ إعادةٌ **يدوية** لا تلقائية: الإعادةُ التلقائية تحت
+         الإشباع تُضاعف الحملَ الذي سبّبه (بند 128). */
+      if (res && res.busy) {
+        _stopAnimation();
+        _provClear();
+        _errScreenReset();
+        var eb = document.getElementById('err-msg');
+        if (eb) eb.textContent = res.error || 'الخادم مشغول حالياً — أعد المحاولة بعد لحظات';
+        navStep(7);
+        return;
+      }
       if (!res || !res.success) {
-        if (res && res.duplicateWarning) {
-          _dupWarnShow(res.error);
-          return;
-        }
+        _stopAnimation();
+        _provClear();
         _errScreenReset();
         var em = document.getElementById('err-msg');
         if (em) em.textContent = res ? res.error : 'خطأ غير معروف. يرجى المحاولة مرة أخرى.';
         navStep(7);
         return;
       }
+      /* ③ مطالبةٌ قائمة والعملُ جارٍ ⇒ **لا شاشة خطأ ولا إيقاف أنيميشن** — استطلاعٌ فقط. */
+      if (res.pending) { _provStartPolling(res.schoolId, res); return; }
+      /* ④ اكتمل داخل نافذة الردّ (نادرٌ لكنه ممكن على شبكةٍ سريعة). */
+      _stopAnimation();
+      _provLastRes = res;
       _showSuccess(res);
     })
     .withFailureHandler(function(err) {
+      /* 🔴 **انقطاعُ القناة ليس فشلَ العملية.** الوسيط يُجهض عند 24 ثانية والتزويد يستغرق
+         45–90 ⇒ هذا هو **المسار المتوقّع لا الاستثنائيّ**. وإعادةُ إرسال نفس الحمولة آمنةٌ
+         بالتعريف بعد تماثل الخادم، وهي **الوسيلة الوحيدة لاسترجاع `schoolId`** حين لا يصل
+         ردٌّ أصلاً — فبلا معرّفٍ لا استطلاعَ ممكناً. */
+      _provNetRetries++;
+      if (_provNetRetries <= 3) {
+        setTimeout(_reg_doSubmit, 6000);
+        return;
+      }
       _stopAnimation();
+      _provClear();
       _errScreenReset();
-      var em = document.getElementById('err-msg');
-      if (em) em.textContent = err.message || 'خطأ في الاتصال بالخادم';
+      var em2 = document.getElementById('err-msg');
+      if (em2) em2.textContent = (err && err.message) || 'خطأ في الاتصال بالخادم';
       navStep(7);
     })
     .provisionNewSchool(payload);
@@ -1206,6 +1363,9 @@ function _showSuccess(res) {
 //  إعادة تعيين النموذج
 // ══════════════════════════════════════════════════════════════
 function reg_reset() {
+  /* «تسجيل مدرسة أخرى» ⇒ نموذجٌ جديد ⇒ يُفرَج عن الزرّ ويُوقَف أيُّ استطلاعٍ قائم. */
+  _provClear();
+  _provLastRes = null;
   var inputs = document.querySelectorAll('input, select');
   for (var i = 0; i < inputs.length; i++) {
     if (inputs[i].type === 'checkbox') inputs[i].checked = false;
