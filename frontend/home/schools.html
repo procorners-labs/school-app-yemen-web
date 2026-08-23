@@ -418,6 +418,11 @@
     box-shadow:0 2px 10px rgba(15,23,42,.05);color:inherit;
     transition:box-shadow .15s,border-color .15s,translate .15s}
   .sc:hover{border-color:var(--cobalt);box-shadow:var(--glow-cobalt);translate:0 -2px}
+  /* 🔴 شريط لون الهوية عنصرٌ **ساكن** (بلا `position`) عمداً — بند 112 والتحذير أسفله:
+     `.sc-go::after` يقيس أقرب سلفٍ موضَّع وهو `.sc`، فأيّ عنصرٍ مطلق أو `relative` يُضاف
+     هنا كان سيصير كتلةَ الاحتواء وينكمش الرابط الممتدّ **بلا أن يحمرّ أيّ حارس نصّي**.
+     عنصرٌ ساكن في تدفّق `flex` يتجنّب الفئة كلَّها بدل أن يحرسها. */
+  .sc-bar{height:4px;border-radius:999px;flex:0 0 auto;margin-block-end:2px}
   .sc-top{display:flex;align-items:center;gap:12px}
   .sc-logo{width:54px;height:54px;border-radius:13px;object-fit:contain;background:#f1f5f9;
     padding:4px;flex:0 0 auto}
@@ -428,6 +433,9 @@
   .sc-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--soft);
     margin-top:auto;padding-top:6px;align-items:center}
   .sc-chip{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;color:var(--cobalt-v)}
+  /* شارة المرحلة — تُحقَن فقط حين يحمل الصفُّ قيمةً؛ لا نصَّ بديل عند الغياب. */
+  .sc-lvl{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;
+    color:var(--cobalt-v);font-size:.78rem}
   /* الرابط الرئيسيّ ممتدّ على البطاقة كلّها — يبقى رابطاً واحداً دلالياً للزاحف
      ولقارئ الشاشة، وتبقى البطاقة كلّها قابلة للنقر. */
   /* 🔴 لا `position` على `.sc-go` أبداً: أقرب سلفٍ موضَّع هو `.sc`، وهو ما يجعل طبقة
@@ -1119,6 +1127,18 @@ function _spFilter(list, q){
   return out;
 }
 
+/* هوية المنتج — الافتراضيّ حين لا يكون للمدرسة لونٌ صالح. */
+var SP_BRAND_COLOR = '#0F5C8C';
+
+/* 🔴 **سماحٌ مغلق لا تطهيرٌ سامح.** القيمة تدخل سمة `style` مباشرةً، والاتجاه الصحيح هنا
+   مقيسٌ في بند 133: البوّابة السامحة تنقلب — حذفُ الأحرف المرفوضة يصنع قيمةً صالحة من
+   قيمةٍ خبيثة. فيُقبَل نمطُ hex وحده حرفياً، وكلُّ ما عداه (بما فيه الفراغ) يسقط على
+   هوية المنتج. ولا `spEsc` هنا: الهروب يعالج السياق النصّي لا سياق السمة. */
+function _spSafeColor(v){
+  var c = String(v || '').trim();
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c) ? c : SP_BRAND_COLOR;
+}
+
 function _spCard(s){
   var nm = String(s.name || '').trim();
   var logo = String(s.logo || '').trim();
@@ -1126,6 +1146,11 @@ function _spCard(s){
     ? '<img class="sc-logo" loading="lazy" src="' + spEsc(logo) + '" alt=""/>'
     : '<div class="sc-ph">' + spEsc(nm.charAt(0) || '؟') + '</div>';
   var meta = '';
+  /* شارةُ المرحلة تُحقَن **فقط** حين يحمل الصفُّ قيمةً — لا «غير محدَّدة» ولا نصَّ بديل.
+     ⚠️ والعمودُ فارغٌ اليوم عند كلّ مدرسة حيّة (قِيس 2026-08-23) ⇒ القدرةُ مشحونة والشارةُ
+     غيرُ ظاهرة حتى يُملأ العمود. */
+  var lvl = String(s.level || '').trim();
+  if(lvl)       meta += '<span class="sc-lvl">' + spEsc(lvl) + '</span>';
   if(s.address) meta += '<span class="sc-chip">' + spEsc(s.address) + '</span>';
   if(s.phone)   meta += '<span>' + spEsc(s.phone) + '</span>';
   /* 🔴 البطاقة `<div>` لا `<a>` تغلّفها: الجذر اليوم يحمل روابط **بوّابتَي المعلم والطالب**
@@ -1134,6 +1159,7 @@ function _spCard(s){
   var sid = String(s.schoolId || '').trim();
   var q   = sid ? ('?school=' + encodeURIComponent(sid)) : '';
   return '<div class="sc">' +
+    '<div class="sc-bar" style="background:' + _spSafeColor(s.primaryColor) + '"></div>' +
     '<div class="sc-top">' + head +
       '<div><h2 class="sc-nm">' + spEsc(nm) + '</h2>' +
       (s.address ? '<p class="sc-addr">' + spEsc(s.address) + '</p>' : '') + '</div>' +
