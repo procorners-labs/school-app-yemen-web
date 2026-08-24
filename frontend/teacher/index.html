@@ -13326,10 +13326,10 @@ function renderScheduleSettings() {
       '<div class="section-header-title">التواقيت العامة</div></div>' +
     '<div class="section-body" id="schedSetBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
     '</div>';
-  callServer('getScheduleSettingsProtected', {}, function (r) {
-    if (!r || !r.success) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-warning">تعذّر التحميل</div>'; return; }
-    _renderSchedSetForm(r.settings, r.breaksByGrade || {}, r.allGrades || []);
-  }, function (e) { document.getElementById('schedSetBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+  // 🔴 لا نداءَ رابعاً هنا: «التواقيت العامة» تصل ضمن حزمةِ `_schedDist_init`
+  // (‏`getScheduleDistBundleProtected`) وتُرسَم من داخلها عبر `_renderSchedSetForm`.
+  // كان هذا الموضعُ يُطلق `getScheduleSettingsProtected` بالتوازي مع ثلاثةٍ أخرى
+  // على نفس حصّة التنفيذ — وهو ما تعالجه الحزمة (٤ نداءات ⇒ واحد).
   _schedDist_init();
 }
 // ══════════════════════════════════════════════════════════════════════
@@ -14376,10 +14376,40 @@ var SD_SWAP = { active: false, first: null };
 // معياري) يُضاف أبجدياً في النهاية كاحتياط آمن، لا يختفي أبداً.
 var SD_GRADE_ORDER = ['KG1', 'KG2', 'الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس',
   'السابع', 'الثامن', 'التاسع', 'الأول ثانوي', 'الثاني ثانوي', 'الثالث ثانوي'];
+// ★ حمولةُ الإقلاع القادمة من `getScheduleDistBundleProtected` — **تُستهلَك مرّةً
+//   واحدة** ثمّ يُفرَّغ حقلُها. والتفريغُ هو ما يجعل أيّ تحديثٍ لاحق (زرّ 🔍 ·
+//   إعادةُ رسمٍ بعد تعيين) يعود إلى الخادم كما كان تماماً — لا مخزنٌ ثانٍ بلا
+//   مُبطِل (بند 108).
+var SD_BOOT = { conflicts: null, grid: null };
 function _schedDist_init() {
-  callServer('getScheduleGridProtected', {}, function (r) {
-    if (!r || !r.success) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
+  // 🔴 فشلُ الحزمة يجب أن يُبلَّغ في **كلّ** سطحٍ كانت تُغذّيه — لا في `sdGrid` وحده.
+  //    قبل التوحيد كان لكلّ قسمٍ نداؤه ورسالتُه، فتعطُّلُ أحدهما لا يُصمِت الآخر. وبعده
+  //    يصير الفشلُ الكلّيّ **صمتاً** في «التواقيت العامة»: يبقى هيكلُ الـskeleton الذي
+  //    حقنه `renderScheduleSettings` معروضاً بلا رسالة — أي «جارٍ التحميل» للأبد.
+  //    ⇒ توحيدُ النداءات يوجب توحيدَ مسار الفشل معه (رصدَتها مراجعةُ gas-reviewer).
+  function _sdBootFail(msg) {
+    var g = document.getElementById('sdGrid');
+    if (g) g.innerHTML = '<div class="alert alert-warning">' + escapeHtml(msg) + '</div>';
+    var s = document.getElementById('schedSetBody');
+    if (s) s.innerHTML = '<div class="alert alert-warning">' + escapeHtml(msg) + '</div>';
+  }
+  callServer('getScheduleDistBundleProtected', {}, function (r) {
+    if (!r || !r.success) { _sdBootFail((r && r.error) || 'تعذّر التحميل'); return; }
     SCHED_DIST.options = r.options || {};
+    // بذرُ الموجة الثانية من نفس اللقطة — `schedDist_showAllView` أدناه تستهلكهما
+    // بلا نداءٍ ثانٍ. و`conflicts` قد تكون `[]` مشروعةً ⇒ الفحصُ على `!== null`.
+    SD_BOOT.conflicts = (r.conflicts === null || r.conflicts === undefined) ? null : { list: r.conflicts };
+    SD_BOOT.grid = r.rows ? { rows: r.rows, days: r.days, periods: r.periods } : null;
+    // لوحةُ «التواقيت العامة» تعيش في نفس التبويب وكانت نداءً رابعاً مستقلاً —
+    // تُرسَم هنا إن كان سطحُها مركَّباً (‏`_schedDist_init` تُنادى من سطحين).
+    try {
+      var setBox = document.getElementById('schedSetBody');
+      if (setBox && r.settings && r.settings.success && typeof _renderSchedSetForm === 'function') {
+        _renderSchedSetForm(r.settings.settings, r.settings.breaksByGrade || {}, r.settings.allGrades || []);
+      } else if (setBox && !r.settings) {
+        setBox.innerHTML = '<div class="alert alert-warning">تعذّر التحميل</div>';
+      }
+    } catch (eSet) {}
     // ★ classes {value,label,grade,section} — value=مفتاح داخلي خام (_joinClass،
     // يُرسَل للخادم كما هو)، grade/section منفصلان تماماً لبناء خانتَي اختيار
     // ديناميكيتين (الصف ثم الشعبة) بدل قائمة واحدة نصّها متلاصق ("التاسعب").
@@ -14404,7 +14434,7 @@ function _schedDist_init() {
     var tSel2 = document.getElementById('sd-auto-teacher');
     if (tSel2) for (var j = 0; j < teachers.length; j++) tSel2.innerHTML += '<option value="' + escapeHtml(teachers[j]) + '">' + escapeHtml(teachers[j]) + '</option>';
     schedDist_onGradeChange(); // يُفعِّل وضع «الكل» الافتراضي فوراً (فحص تعارضات شامل تلقائي)
-  }, function (e) { document.getElementById('sdGrid').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+  }, function (e) { _sdBootFail(e.message || e); });
   // ★ لوحة التقدّم لا تُحمَّل تلقائياً هنا عمداً — كانت تضيف طلب خادم ثالث ثقيل
   // (قراءة الجدول المسطَّح كاملاً + ورقة المدرسين) يعمل بالتوازي مع طلبَي
   // الإعدادات/الشبكة عند كل فتح للتبويب، فيتزاحمان معاً (سبب بطء >5 ثوانٍ
@@ -14471,6 +14501,15 @@ function schedDist_showAllView() {
 var SD_FULL_GRID = { rows: [], days: [], periods: [], view: 'teacher' };
 function schedDist_loadFullGrid() {
   var box = document.getElementById('sdGrid');
+  if (SD_BOOT.grid) {
+    var g = SD_BOOT.grid; SD_BOOT.grid = null;
+    if (SCHED_DIST.className !== 'الكل') return;
+    SD_FULL_GRID.rows = g.rows || [];
+    SD_FULL_GRID.days = g.days || [];
+    SD_FULL_GRID.periods = g.periods || [];
+    schedDist_renderFullGrid();
+    return;
+  }
   callServer('getFullScheduleGridProtected', {}, function (r) {
     if (SCHED_DIST.className !== 'الكل') return; // المستخدم بدّل لفصل محدَّد قبل وصول الرد
     if (!r || !r.success) { box.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر تحميل الجدول الكامل') + '</div>'; return; }
@@ -14623,24 +14662,33 @@ function schedDist_autoOne() {
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
 function _sdClassLabel(grade, section) { return section ? (grade + ' ' + section) : grade; }
+// رسمُ التعارضات مفصولاً عن جلبها — كي تُغذّيه حمولةُ الإقلاع أو ردُّ الخادم سواءً.
+function _sdRenderConflicts(list) {
+  var st = document.getElementById('sdStatus');
+  if (!st) return;
+  list = list || [];
+  if (!list.length) { st.innerHTML = '<div class="alert alert-success">✅ لا يوجد أي تعارض في الجدول الحالي.</div>'; return; }
+  var h = '<div class="alert alert-warning"><b>⚠️ ' + list.length + ' تعارضاً:</b><ul style="margin:6px 0 0;padding-right:18px">';
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    if (c.type === 'class') {
+      h += '<li>الفصل ' + escapeHtml(_sdClassLabel(c.grade, c.section)) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period + ': معلّمان معاً (' + escapeHtml(c.teachers.join('، ')) + ')</li>';
+    } else {
+      h += '<li>المعلّم ' + escapeHtml(c.teacher) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period + ': فصلان معاً (' + escapeHtml(c.classes.join('، ')) + ')</li>';
+    }
+  }
+  h += '</ul></div>';
+  st.innerHTML = h;
+}
 function schedDist_checkConflicts() {
   var st = document.getElementById('sdStatus');
+  // ★ حمولةُ الإقلاع تُستهلَك مرّةً واحدة ثمّ تُفرَّغ — فالضغطةُ التالية على 🔍
+  //   تقيس الحالة الحيّة لا لقطةً قديمة.
+  if (SD_BOOT.conflicts) { var seeded = SD_BOOT.conflicts.list; SD_BOOT.conflicts = null; _sdRenderConflicts(seeded); return; }
   st.innerHTML = '<div class="alert alert-info">⏳ جاري فحص التعارضات…</div>';
   callServer('checkAllConflictsProtected', {}, function (r) {
     if (!r || !r.success) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>'; return; }
-    var list = r.conflicts || [];
-    if (!list.length) { st.innerHTML = '<div class="alert alert-success">✅ لا يوجد أي تعارض في الجدول الحالي.</div>'; return; }
-    var h = '<div class="alert alert-warning"><b>⚠️ ' + list.length + ' تعارضاً:</b><ul style="margin:6px 0 0;padding-right:18px">';
-    for (var i = 0; i < list.length; i++) {
-      var c = list[i];
-      if (c.type === 'class') {
-        h += '<li>الفصل ' + escapeHtml(_sdClassLabel(c.grade, c.section)) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period + ': معلّمان معاً (' + escapeHtml(c.teachers.join('، ')) + ')</li>';
-      } else {
-        h += '<li>المعلّم ' + escapeHtml(c.teacher) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period + ': فصلان معاً (' + escapeHtml(c.classes.join('، ')) + ')</li>';
-      }
-    }
-    h += '</ul></div>';
-    st.innerHTML = h;
+    _sdRenderConflicts(r.conflicts || []);
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
 }
 function schedDist_loadClass() {
