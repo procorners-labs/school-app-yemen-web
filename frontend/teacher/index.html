@@ -4483,10 +4483,29 @@ function _startHeartbeat() {
     beat();
   }
   document.addEventListener('visibilitychange', _beatOnVisible);
-  // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات bootApp() (أخبار/تعميمات/
-  // ملاحظات/FCM) التي تُطلَق في نفس اللفة مباشرة بعد _startHeartbeat() — تزامن عدّة XHR على نفس
-  // تطبيق GAS عند الإقلاع كان يرفع احتمال status 0/مهلة (راجع _docs/…-heartbeat-boot-burst).
-  setTimeout(beat, 1200);
+  /* أول نبضة مؤجَّلة كي لا تتزامن مع حزمة نداءات bootApp() (أخبار/تعميمات/ملاحظات/FCM)
+     التي تُطلَق في نفس اللفة مباشرة بعد _startHeartbeat() — تزامن عدّة XHR على نفس تطبيق
+     GAS عند الإقلاع كان يرفع احتمال status 0/مهلة (راجع _docs/…-heartbeat-boot-burst).
+
+     🔴 **وكانت 1200ms رقماً ثابتاً لا يعرف متى انتهى الإقلاع** — والقياس (2026-08-24)
+     يُظهر وسيطَ رحلةٍ واحدة `p50 ≈ 2,987ms`، أي أنّ النبضة تقع **داخل** نافذة الحزمة
+     والقوائم دائماً لا خارجها. وهي تكلّف تنفيذين لا واحداً: النبضة، ثمّ
+     `loadNotifCountsBundle` من ردّها الناجح. ⇒ التزاحم على «حصّة الثلاثين» يقع في اللحظة
+     التي يُقاس فيها الإخفاق (بنود 55 · 62 · 125).
+
+     ⇒ الانتظار صار **مربوطاً بالحدث لا بالساعة**: أوّل رسم فعليّ (`_bootTryShow`)، وبسقفٍ
+     مطلق يمنع التعليق لو لم يقع الرسم أصلاً (مسار دخولٍ لا يمرّ بـ`bootApp`، أو فشل
+     القوائم). والحدّ الأدنى يبقى كما كان فلا يتقدّم شيء على ما كان يسبقه. */
+  var _HB_FIRST_MIN_MS = 1200;    // لا تنخفض: الأرضية التي كانت قائمة
+  var _HB_FIRST_CAP_MS = 15000;   // سقف مطلق — أوّل رسمٍ لا يقع لا يعني نبضةً لا تقع
+  var _hbArmedAt = Date.now();
+  function _armFirstBeat() {
+    var _painted = false;
+    try { _painted = !!window._bootFirstPaintDone; } catch (eFP) { _painted = true; }
+    if (_painted || (Date.now() - _hbArmedAt) >= _HB_FIRST_CAP_MS) { beat(); return; }
+    setTimeout(_armFirstBeat, 400);
+  }
+  setTimeout(_armFirstBeat, _HB_FIRST_MIN_MS);
 }
 
 'use strict';
@@ -4530,6 +4549,12 @@ var GRADE_SCHEMA = null;        // ← كائن تكوين الدرجات الك
 /* راية تعافٍ لمرّة واحدة: يرفعها مسار فشل/بطء الحزمة، وتستهلكها أوّل نبضة **ناجحة**
    فتجلب النقاط حينها — بعد تعافي الحصّة، لا لحظة إشباعها. */
 var _bootDeferredExtras = false;
+/* 🚦 عَلَمُ أوّل رسم — يرفعه `_bootTryShow` (في `_js-platform-reviews.html`) عبر
+   `window` لأن علاماته محلّيةٌ داخل `bootApp` فلا تُرى من هنا.
+   وجودُه لأنّ **رقماً ثابتاً لا يعرف متى انتهى الإقلاع**: أوّل نبضة كانت عند 1200ms
+   حرفيّاً، فتقع **داخل** نافذة الحزمة والقوائم وتُضيف تنفيذَي GAS (النبضة + عدّادات
+   الإشعارات من ردّها) في اللحظة التي تتزاحم فيها الحصّة أصلاً. */
+window._bootFirstPaintDone = false;
 var V3_CONFIG = { enabled: false, features: {}, labels: {} };
 
 // ⭐ حالة إتاحة فترات الرصد — **بقرار إداري صريح** لا اشتقاقاً من جدول الاختبارات
@@ -7487,7 +7512,19 @@ function bootApp() {
   // (loadNotifCountsBundle و_loadMyPointsHeader يُطلقان الآن بعد اكتمال حزمة الإقلاع
   //  أدناه — يصيبان الكاش المبذور فلا نداء شبكة لهما عند نجاح الحزمة)
   setTimeout(_initFcmBridge, 900);
-  setTimeout(function () {
+  /* ⏸️ **مؤجَّلٌ إلى ما بعد أوّل رسم** (كان 1200ms ثابتة). القياس 2026-08-24: وسيط الرحلة
+     الواحدة `p50 ≈ 2,987ms` ⇒ 1200ms تقع **داخل** نافذة الحزمة والقوائم دائماً، فيصير هذا
+     النداء تنفيذَ GAS ثالثاً يتزاحم مع المسار الحرج نفسه. وهو بنصّ تعليقه أدناه حدثٌ نادر
+     «تأخّر ظهوره ساعات مقبول تماماً» ⇒ تأخيرُ ثوانٍ بلا كلفة وظيفية إطلاقاً.
+     نفس آلية `_armFirstBeat`: حدثٌ لا ساعة، وسقفٌ مطلق يمنع الضياع لو لم يقع الرسم. */
+  var _prReqArmedAt = Date.now();
+  var _armPendingReviewCheck = function () {
+    var _painted = false;
+    try { _painted = !!window._bootFirstPaintDone; } catch (ePFP) { _painted = true; }
+    if (!_painted && (Date.now() - _prReqArmedAt) < 15000) {
+      setTimeout(_armPendingReviewCheck, 400);
+      return;
+    }
     // طلب تقييم موجَّه من المدير لهذا المعلّم تحديداً — يتجاوز جدولة المطالبة الذكية العادية
     // ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار".
     //
@@ -7516,7 +7553,8 @@ function bootApp() {
         });
       }
     } catch (ePrReq) {}
-  }, 1200);
+  };
+  setTimeout(_armPendingReviewCheck, 1200);
 
   // بدء مؤقت الجلسة
   initSessionTimer(App.user.expiresIn || 28800);
@@ -7546,6 +7584,10 @@ function bootApp() {
     if (!_bootListsDone) return; // القوائم لا بديل لها — لا نعرض القسم بدونها أبداً
     if (!_bootSchemaDone && !schemaTimedOut) return;
     _bootShown = true;
+    /* 🚦 يرفع عَلَم أوّل رسم لمن هم خارج هذا النطاق — أوّل نبضة تنتظره بدل رقم 1200ms
+       ثابت (التعليل الكامل عند `_armFirstBeat` في `_js-core-bridge.html`).
+       يقع **بعد** `_bootShown = true` مباشرةً فيُرفَع مرّة واحدة تماماً كالعرض نفسه. */
+    try { window._bootFirstPaintDone = true; } catch (eFP) {}
     if (_bootFallbackTimer) { clearTimeout(_bootFallbackTimer); _bootFallbackTimer = null; }
     hideLoading();
     /* 🔖 القسم الأوّلي: **المسار يسبق** آخر قسم محفوظ، ويسقط إليه عند أي تعذّر.
