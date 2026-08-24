@@ -4174,6 +4174,71 @@ function _csFoldIdentity() {
    ⚠️ **والمفاتيح تُشتقّ من دوالّ البذر نفسها** (`_bootConfigCacheKey()` وصيغتَي
    `notif_bundle_`/`my_points_header_` في `_teacherBootBundlePrefetch`) — لا حرفيّاتٍ
    ثانيةً تنحرف بصمت عند أوّل ترقية جيل. */
+/* ── سقفُ التزامن للقراءات (ش1-د · 2026-08-24) ──────────────────────────────
+   🔴 **العلّة مقيسة، والجذرُ تزاحُمٌ لا بطءُ كود.** مِجَسّ `probe-live` وقتَ بلاغ 502
+   على «الإبداع» أعطى: إخفاق **0.0٪** على النداء **المتسلسل**، و`srv p50 = 5ms`
+   ⇒ **١٠٠٪ من الرحلة خارج كودنا**. بينما الإقلاعُ البارد يُطلق حتى **ثمانية** نداءات
+   متزامنة (‏`bootApp` ثلاثة · ثمّ `renderDashboard` خمسة في كتلةٍ واحدة) — فتُشبَع
+   حصّة «٣٠ تنفيذاً متزامناً لكل حساب» (بند 55) ويردّ الوسيطُ 502/503.
+
+   ⇒ **لا يُعاد كتابةُ أيّ دالّة** — العلاجُ خفضُ التنفيذات المتزامنة، وهو ما يقوله
+   تصنيفُ المِجَسّ حرفياً.
+
+   🔴 **والكتاباتُ لا تمرّ بالسقف أبداً.** حفظُ درجةٍ أو نشرُ خبر لا يُحبَس خلف قراءةٍ
+   بطيئة — للكتابات طابورُها القائم (`App.gradeQueue`) وسلوكُها المتوقَّع فوريّ.
+   والتصنيفُ بالبادئة نفسِها التي يستعملها `assets/offline-sync.js::classify`
+   (‏`get`/`check`/`list`) كي لا تنحرف القاعدتان.
+
+   🔴 **وكلُّ منتظرٍ يحمل مهلةً مطلقة.** طابورٌ بلا سقفٍ زمنيّ يُنتج تعليقاً أسوأ من
+   الإشباع الذي جاء يعالجه: نداءٌ لا يعود يحجز خانةً إلى الأبد فتموت الشاشة صامتةً.
+   ⇒ الخانةُ تُحرَّر قسراً بعد `CS_SLOT_MAX_MS`، وهي **فوق** مهلة الجسر (60s) كي لا
+   تسبقها فتُفرِج عن خانةٍ لنداءٍ ما زال حيّاً. */
+var CS_MAX_INFLIGHT = 3;
+var CS_SLOT_MAX_MS = 65000;
+var _csInflight = 0;
+var _csWaitQueue = [];
+
+function _csIsRead(fnName) {
+  /* 🔴 **والرفعُ يُستثنى ولو بدأ بـ`get`** — فجوةٌ كامنة رصدَتها مراجعةُ `gas-reviewer`:
+     الجسرُ يرفع مهلة XHR إلى **180s** لأيّ اسمٍ يحوي `upload|media|attach`
+     (`assets/gas-bridge.js::_isUpload`)، بينما مهلةُ الخانة هنا **65s**. فدالّةٌ مثل
+     `getMediaAttachments` كانت ستُصنَّف قراءةً فتُفرَج خانتُها قسراً وهي **ما زالت
+     طائرة** ⇒ التزامنُ الفعليّ يتجاوز السقف في الحالة الثقيلة بالضبط التي بُنيت
+     البوّابة لأجلها. والنمطُ نفسُه حرفياً كي لا يفترق التصنيفان.
+     ⚠️ لا مطابقَ لهذا اليوم (‏`grep` فارغ) — يُغلَق قبل أن يُولَد لا بعده. */
+  if (/upload|media|attach/i.test(fnName)) return false;
+  return /^get/i.test(fnName) || /^check/i.test(fnName) || /^list/i.test(fnName);
+}
+
+function _csRelease() {
+  if (_csInflight > 0) _csInflight--;
+  /* 🔴 الإفراجُ **قبل** تصريف الطابور وقبل ردود المستدعين — كي يجد ردٌّ يُطلق نداءً
+     جديداً خانةً حاضرة بدل أن يُصطفّ خلف نفسه. */
+  while (_csInflight < CS_MAX_INFLIGHT && _csWaitQueue.length) {
+    var next = _csWaitQueue.shift();
+    _csInflight++;
+    try { next(); } catch (e) { _csInflight--; }
+  }
+}
+
+function _csRunGated(fnName, run) {
+  /* 🔴 **العقدُ واحدٌ للطرفين: `run` يستقبل دائماً دالّةَ إفراج.** الكتابةُ تستقبل
+     دالّةً فارغة لا `undefined` — رصدَه معملُ إجهادٍ كتبتُه لهذه البوّابة نفسها:
+     مستدعٍ يكتب `f()` كان يرمي `f is not a function` على مسار الكتابة وحده. والإنتاجُ
+     كان محميّاً بـ`|| function(){}` عند نقطة الاستدعاء، لكن **عقدٌ يختلف بين فرعين
+     يُنتج علّةً عند أوّل مستدعٍ لا يعرف الفرق** — والتوحيدُ أرخص من تذكّره. */
+  var NOOP = function () {};
+  if (!_csIsRead(fnName)) { run(NOOP); return; }    // كتابةٌ ⇒ فوريّة بلا سقف
+  var released = false;
+  function once() { if (released) return; released = true; _csRelease(); }
+  function start() {
+    setTimeout(once, CS_SLOT_MAX_MS);               // مهلةٌ مطلقة لكلّ خانة
+    run(once);
+  }
+  if (_csInflight < CS_MAX_INFLIGHT) { _csInflight++; start(); }
+  else _csWaitQueue.push(start);
+}
+
 function _csBundleSeederFor(cacheKey) {
   if (!cacheKey) return '';
   var sid = (typeof App !== 'undefined' && App.user && App.user.schoolId) || '';
@@ -4345,9 +4410,12 @@ function callServer(fnName, params, a3, a4, a5, a6) {
      مدخل `dedupKey` محجوزاً إلى الأبد ⇒ **تلك الدالّة صامتة لبقية عمر الصفحة**، وكل
      مستدعٍ لاحق ينضمّ لطابور لا يُصرَّف أبداً. نُفرِج عن المفتاح ثم نخدم المستدعي
      بمسار الفشل المعتاد. (خلل قائم للنمط 2 قبل هذا التغيير، وُسِّع بالطيّ فأُغلق هنا.) */
+  _csRunGated(fnName, function (_freeSlot) {
+  var freeSlot = _freeSlot || function () {};
   try {
   google.script.run
     .withSuccessHandler(function(result) {
+      freeSlot();   // 🔴 قبل أيّ توزيع — انظر `_csRelease`
       /* 🔴 انتهاء الجلسة يُعالَج **هنا مرّةً واحدة** لا في كل مستدعٍ — بلاغ مالك
          2026-08-21 (‏`getListsDataProtected returned success=false`).
 
@@ -4390,6 +4458,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
       }
     })
     .withFailureHandler(function(err) {
+      freeSlot();   // 🔴 قبل أيّ توزيع
       // نداءات best-effort (كالنبضة) فشلها المتوقَّع وقت الذروة ليس حدثاً يستحق
       // console.error — كان أول ما يراه المالك في الكونسول فيُقرأ كعطل (بلاغ 2026-08-06).
       if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' failed:', err);
@@ -4414,11 +4483,13 @@ function callServer(fnName, params, a3, a4, a5, a6) {
     })
     [fnName](params);
   } catch (eDispatch) {
+    freeSlot();   // 🔴 رميٌ متزامن يجب ألّا يحجز خانةً إلى الأبد
     if (dedupKey) delete _pendingCalls[dedupKey];
     if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' dispatch failed:', eDispatch);
     if (errorCallback) { try { errorCallback(eDispatch); } catch (e) {} }
     else { try { callback({ success: false, error: 'تعذّر إرسال الطلب' }); } catch (e) {} }
   }
+  });
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================
@@ -13237,7 +13308,7 @@ function renderScheduleSettings() {
         '<button class="btn btn-danger btn-sm" onclick="schedDist_redistributeAll()">♻️ إعادة توزيع كاملة</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_checkConflicts()">🔍 فحص تعارضات شامل</button>' +
         '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
-        '<button class="btn btn-info btn-sm" onclick="schedDist_refreshViewSheets()">🔄 تحديث أوراق العرض</button>' +
+        '<button id="sdRefreshViews" class="btn btn-info btn-sm" onclick="schedDist_refreshViewSheets()">🔄 تحديث أوراق العرض</button>' +
         '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'schedSettings\')" style="padding:4px 8px">❓</button>' +
       '</div></div>' +
     '<div class="section-body">' +
@@ -14344,9 +14415,17 @@ function _schedDist_init() {
 // classes نفسها (بلا أي نداء خادم إضافي). شعبة واحدة فقط ⇒ تُختار تلقائياً
 // وتُحمَّل الشبكة فوراً (لا خانة اختيار عديمة الفائدة لخيار وحيد).
 function schedDist_onGradeChange() {
-  var grade = document.getElementById('sd-grade').value;
+  /* 🔴 حارسُ وجود — بلاغٌ حيّ 2026-08-24 على «الإبداع»:
+     `TypeError: Cannot read properties of null (reading 'value')`.
+     السببُ ليس منطقَ الدالّة بل **توقيتَها**: تُنادى من ردّ `getScheduleGridProtected`،
+     وحين يتأخّر الردُّ (‏502/إشباع) ويكون المستخدمُ قد بدّل القسم، يصل الردُّ إلى
+     DOM لا يحمل `sd-grade` أصلاً ⇒ رميٌ يقطع **بقيّة** ردّ الجسر فتموت الشاشة كلُّها.
+     ⇒ العودةُ بصمت هي الصواب: لا شيءَ يُصيَّر لقسمٍ غيرِ مركَّب. */
+  var gSel = document.getElementById('sd-grade');
   var sSel = document.getElementById('sd-section');
   var grid = document.getElementById('sdGrid');
+  if (!gSel || !sSel || !grid) return;
+  var grade = gSel.value;
   sSel.innerHTML = '';
   SCHED_DIST.className = '';
   if (!grade) {
@@ -14860,7 +14939,30 @@ function schedDist_refreshViewSheets() {
   callServer('publishScheduleSyncProtected', {}, function (r) {
     if (r && r.success) { toast('✅ ' + r.message, 'success'); }
     else { toast('❌ ' + ((r && r.error) || 'تعذّر التحديث'), 'error'); }
-  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+  }, function (e) {
+    /* 🔴 **تبليغٌ صادق عند إجهاض عمليةٍ كتابية** — بلاغُ 2026-08-24 على «الإبداع»:
+       عُرض ❌ بينما **اكتمل العملُ فعلاً** على الخادم (ورقة «الجدول_التفاعلي» حُذفت،
+       مقيسٌ بجرد الأوراق بعد الضغطة). فالوسيطُ يُجهض عند سقف ميزانيته و**GAS يواصل**
+       (بند 172) — والرسالةُ الكاذبة تدعو المستخدمَ إلى ضغطةٍ ثانية **تُضاعف الحملَ
+       الذي سبّب الإجهاض**، وقد تُنتج عملاً مكرّراً.
+       ⇒ عند الإشباع تحديداً: تُقال الحقيقةُ («قد تكون اكتملت — تحقّق»)، ويُعطَّل الزرّ
+       دقيقةً كي لا تُطلَق الضغطةُ الثانية انعكاساً. أمّا الخطأ المنطقيّ فيبقى ❌ صريحاً. */
+    /* ⚠️ `__saturated` مباشرةً لا `gasErrorInfo`: الأخيرة معرَّفةٌ في `assets/gas-bridge.js`
+       وحدها — أي على سطح `frontend/` فقط، وصفحاتُ `doGet` المخدومة من GAS مباشرةً لا
+       تُحمّله إطلاقاً (تعليق `gas-bridge.js:36-39`). والعلَمُ يأتي من نفس المصدر فيكفي. */
+    var busy = !!(e && e.__saturated) ||
+               (typeof window.gasErrorInfo === 'function' && window.gasErrorInfo(e).kind === 'busy');
+    if (busy) {
+      toast('⏳ الخدمة مزدحمة — وقد تكون العملية اكتملت على الخادم. تحقّق من الأوراق قبل إعادة المحاولة.', 'warning');
+      var btn = document.getElementById('sdRefreshViews');
+      if (btn) {
+        btn.disabled = true;
+        setTimeout(function () { var b = document.getElementById('sdRefreshViews'); if (b) b.disabled = false; }, 60000);
+      }
+      return;
+    }
+    toast('❌ ' + (e.message || e), 'error');
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -20392,7 +20494,7 @@ function _schedOpenEditor() {
       '<button class="btn btn-danger btn-sm" onclick="schedDist_redistributeAll()">♻️ إعادة توزيع كاملة</button>' +
       '<button class="btn btn-secondary btn-sm" onclick="schedDist_checkConflicts()">🔍 فحص تعارضات شامل</button>' +
       '<button class="btn btn-secondary btn-sm" onclick="schedDist_undo()">↩️ تراجع عن آخر تعيين</button>' +
-      '<button class="btn btn-info btn-sm" onclick="schedDist_refreshViewSheets()">🔄 تحديث أوراق العرض</button>' +
+      '<button id="sdRefreshViews" class="btn btn-info btn-sm" onclick="schedDist_refreshViewSheets()">🔄 تحديث أوراق العرض</button>' +
     '</div>' +
     '<div id="sdProgress"><button class="btn btn-secondary btn-sm" onclick="schedDist_loadProgress()">📊 عرض نسبة إنجاز الحصص لكل معلّم</button></div>' +
     '<div class="filter-bar"><div class="filter-bar-title">🔎 اختر الصف والشعبة</div><div class="form-row" style="margin-bottom:0">' +
