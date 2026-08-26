@@ -2195,7 +2195,8 @@ a { color: var(--pr); text-decoration: none; }
       <div class="login-logo brand-mark-fallback" id="stuLoginLogo"></div>
     </div>
     <h1>منصة الطالب</h1>
-    <div class="subtitle school-brand-name">يمن سكولز</div>
+    <!-- 🔴 نصٌّ محايد لا اسمُ المنتج — هذه خانةُ هوية المدرسة (بند 175). -->
+    <div class="subtitle school-brand-name">المدرسة</div>
     <p class="login-welcome-tagline" id="stuLoginWelcomeText"></p>
 
     <div class="login-err" id="loginErr"></div>
@@ -8426,6 +8427,9 @@ function initLazyImages() {
     } catch (eWlc) {}
   }
   _stRenderLoginWelcome('يمن سكولز');
+  // 🔴 كاشٌ مسموم (اسمٌ فارغ) يُعامَل **كغياب** لا كنسخةٍ صالحة — خلّفته النسخة السابقة
+  // على أجهزة قائمة، فبلا هذا الشرط يبقى العطل بعد النشر حتى ينتهي TTL (ستّ ساعات هنا).
+  if (_stCachedBrand && !_stCachedBrand.name) { _stCachedBrand = null; _stBrandSavedAt = 0; }
   if (_stCachedBrand) {
     // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
     applyBrand(_stCachedBrand);
@@ -8469,7 +8473,12 @@ function initLazyImages() {
       s.setProperty('--pr-glow', 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.35)');
     } catch (eTh) {}
   }
-  function applyBrand(b) {
+  /**
+   * `persist` = حمولةٌ جاءت من الخادم للتوّ ⇒ تُخزَّن ويُختَم طابعُها. نظير منصّة المعلّم.
+   * 🔴 طلاءُ نسخةٍ من الكاش لا يُعيد ختمَها (وإلّا لم يبرد الكاش أبداً)، و**لا يُخزَّن
+   * اسمٌ فارغ** (بند 175) — «نجاحٌ بحمولةٍ فارغة» يُثبّت افتراضَ المنتج مكان اسم المدرسة.
+   */
+  function applyBrand(b, persist) {
     if (!b) return;
     // م2-ج · تماثل مع منصّة المعلم: مصدر هوية موحَّد يقرؤه أي مستهلك لاحق بلا نداء ثانٍ.
     // ⚠️ مفاتيح الكاش العميلية (`stBrand_`/`stTheme_`) **لا تُمَسّ** — تغييرها خروج قسري
@@ -8477,10 +8486,12 @@ function initLazyImages() {
     window._schoolBrand = b;
     // خزّن كامل الهوية (لا اللون فقط) + طابع وقت لفحص دفء الكاش (م1) — للعرض الفوري
     // في الزيارة التالية دون انتظار الشبكة، وتفادي تكرار النداء خلال TTL نفسه.
-    try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify({ v: ST_BRAND_SHAPE_VER, savedAt: Date.now(), brand: b })); } catch (eCS) {}
+    if (persist && b.name) {
+      try { if (window.localStorage) localStorage.setItem(_stBrandCacheKey, JSON.stringify({ v: ST_BRAND_SHAPE_VER, savedAt: Date.now(), brand: b })); } catch (eCS) {}
+    }
     if (b.color) {
       applyTheme(b.color);
-      try { if (window.localStorage) localStorage.setItem('stTheme_' + (window.SCHOOL_ID || ''), b.color); } catch (eLS) {}
+      if (persist) { try { if (window.localStorage) localStorage.setItem('stTheme_' + (window.SCHOOL_ID || ''), b.color); } catch (eLS) {} }
     }
     if (b.name) {
       var els = document.querySelectorAll('.school-brand-name');
@@ -8542,9 +8553,11 @@ function initLazyImages() {
     try {
       google.script.run
         .withSuccessHandler(function (res) {
-          if (res && res.ok) { applyBrand(res); _stApplyReturnHref(res.slug); }
+          // 🔴 بوّابةُ قبولٍ واحدة: اسمٌ حقيقيّ أو لا شيء — لا طلاءَ ولا تخزينَ لحمولةٍ فارغة.
+          if (res && res.ok && res.name) { applyBrand(res, true); _stApplyReturnHref(res.slug); return; }
+          try { window.__stBrandLastError = (res && res.code) || 'EMPTY'; } catch (eBE) {}
         })
-        .withFailureHandler(function () {})
+        .withFailureHandler(function () { try { window.__stBrandLastError = 'NETWORK'; } catch (eBF) {} })
         .getStudentSchoolBrand(window.SCHOOL_ID);
     } catch (e) {}
   }

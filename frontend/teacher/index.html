@@ -2490,7 +2490,10 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <div class="login-badge-orbit o2" aria-hidden="true"><span class="login-sparkle"></span></div>
         <div class="login-icon-wrap brand-mark-fallback" id="tchLoginLogo"></div>
       </div>
-      <div class="login-school-name school-brand-name">يمن سكولز</div>
+      <!-- 🔴 نصٌّ محايد لا اسمُ المنتج: هذه الخانة **هوية المدرسة**، واسمُ المنتج يعيش في
+           <title> وفي ترويسة التنقّل («منصة المعلمين»). كتابةُ «يمن سكولز» هنا تجعل
+           الافتراضَ يبدو اسمَ مدرسةٍ حقيقية فلا يُميَّز عن العطل (بند 175). -->
+      <div class="login-school-name school-brand-name">المدرسة</div>
       <div class="login-subtitle">منصة المعلمين الإلكترونية</div>
     </div>
     <!-- 🔴 شارة المنصّة أُزيلت من شاشة الدخول بقرار مالك (2026-08-06). موضعها
@@ -2602,7 +2605,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <button type="button" class="nav-brand" onclick="showSection('dashboard')" title="العودة للوحة التحكم">
         <div class="nav-brand-icon brand-mark-fallback" id="tchNavLogo"></div>
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
-          <div class="nav-brand-text school-brand-name" title="يمن سكولز">يمن سكولز</div>
+          <div class="nav-brand-text school-brand-name" title="المدرسة">المدرسة</div>
           <div class="nav-brand-sub">منصة المعلمين</div>
         </div>
       </button>
@@ -3771,6 +3774,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       } catch (eWlc) {}
     }
     _tcRenderLoginWelcome('يمن سكولز');
+    // 🔴 كاشٌ مسموم (اسمٌ فارغ) يُعامَل **كغياب** لا كنسخةٍ صالحة — وهو ما خلّفته النسخة
+    // السابقة على أجهزة قائمة، فبلا هذا الشرط يبقى العطل بعد النشر حتى ينتهي TTL.
+    if (_tcCachedBrand && !_tcCachedBrand.name) { _tcCachedBrand = null; _tcBrandSavedAt = 0; }
     if (_tcCachedBrand) {
       // عرض فوري من آخر هوية معروفة (بلا انتظار الشبكة) — يُحدَّث صامتاً أدناه إن تغيّر شيء.
       applyBrand(_tcCachedBrand);
@@ -3814,15 +3820,25 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         s.setProperty('--primary-glow-strong', 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.45)');
       } catch (eTh) {}
     }
-    function applyBrand(b) {
+    /**
+     * `persist` = هذه الحمولة جاءت من الخادم للتوّ ⇒ تُخزَّن ويُختَم طابعُها.
+     * 🔴 وطلاءُ نسخةٍ **من الكاش** لا يُعيد ختمَها: بلا هذا التمييز كان كلُّ تحميلٍ يجدّد
+     * `savedAt` فلا يبرد الكاش أبداً، وتصير هوية مدرسةٍ عُدِّلت في Master غيرَ مرئيّة للأبد.
+     * 🔴 و**لا يُخزَّن اسمٌ فارغ** (بند 175): «نجاحٌ بحمولةٍ فارغة» يُثبّت افتراضَ المنتج
+     * مكان اسم المدرسة، ويبقى كذلك بعد تحديث الصفحة لأن الكاش يتخطّى النداء أصلاً.
+     * والشرطُ **داخل** الدالّة لا عند مستدعيها — لها أكثر من مستدعٍ (بند 14).
+     */
+    function applyBrand(b, persist) {
       if (!b) return;
       window._schoolBrand = b;
       // خزّن كامل الهوية (لا اللون فقط) للعرض الفوري في الزيارة التالية دون انتظار الشبكة،
       // مع طابع `savedAt` الذي تقرؤه بوّابة الكاش الدافئ أدناه.
-      try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify({ v: TC_BRAND_SHAPE_VER, savedAt: Date.now(), brand: b })); } catch (eCS) {}
+      if (persist && b.name) {
+        try { if (window.localStorage) localStorage.setItem(_tcBrandCacheKey, JSON.stringify({ v: TC_BRAND_SHAPE_VER, savedAt: Date.now(), brand: b })); } catch (eCS) {}
+      }
       if (b.color) {
         applyTheme(b.color);
-        try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {}
+        if (persist) { try { if (window.localStorage) localStorage.setItem('tcTheme_' + sid, b.color); } catch (eLS) {} }
       }
       if (b.name) {
         var els = document.querySelectorAll('.school-brand-name');
@@ -3863,9 +3879,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       try {
         google.script.run
           .withSuccessHandler(function (res) {
-            if (res && res.ok) { applyBrand(res); _tcApplyReturnHref(res.slug); }
+            // 🔴 بوّابةُ قبولٍ واحدة: اسمٌ حقيقيّ أو لا شيء. حمولةٌ بلا اسم (مدرسة غير
+            // موجودة · Master متعذّر) **لا تُطلى ولا تُخزَّن** — يبقى المعروضُ من الكاش
+            // كما هو، لأن «قديمٌ صحيح» أفضل من افتراضِ منتجٍ يبدو اسمَ مدرسة.
+            if (res && res.ok && res.name) { applyBrand(res, true); _tcApplyReturnHref(res.slug); return; }
+            try { window.__tcBrandLastError = (res && res.code) || 'EMPTY'; } catch (eBE) {}
           })
-          .withFailureHandler(function () {})
+          .withFailureHandler(function (err) {
+            try { window.__tcBrandLastError = 'NETWORK'; } catch (eBF) {}
+          })
           .getTeacherSchoolBrand(sid);
       } catch (eR) {}
     }
