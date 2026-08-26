@@ -84,9 +84,18 @@ GAS.student = GAS.teacher;
 //  القياس الذي يقرّر المرحلة ب — قانون Little من سجلّات ev:'bulkhead':
 //      N ≈ λ × W   (λ = نداءات/ثانية، W = متوسط زمن النداء بالثواني)
 //  إن بقي p99(N) عبر أسبوع (شامل ذروة الإقلاع الصباحي) دون ~12 فالمرحلة أ كافية.
+//
+//  🟢 **والقياس تمّ وحكمُه صريح (‏2026-08-26).** سجلّات وضع الظلّ بعد إصلاح تسرّب المقاعد
+//  (فالعدّاد صادق): `median(n)=7 · p95=30 · p99=83 · max=87 · min=0`. أي أن **عاملاً واحداً**
+//  يتجاوز حصّة الحساب كلَّها (٣٠) عند p95 ويبلغ ثلاثة أضعافها عند p99 — مقابل عتبة ~12
+//  المكتوبة أعلاه. ⇒ الظلُّ انتهى، والوضع الحيّ صار `on` (‏`wrangler.jsonc`).
+//  والأثر المقيس الذي دفع إليه: **٢٨٫٨٪ من نداءات `/gas/*` كانت تردّ 502** — كلُّها عند
+//  `wallTimeMs ≈ 23,700` (استنفادُ الميزانية) وعلى teacher وstudent وhome في اللحظة نفسها.
 var BH_ISO_GLOBAL  = 8;      // أقصى تزامن نحو GAS داخل عامل واحد (كل التطبيقات)
 var BH_ISO_APP     = 5;      // سقف فرعي لكل تطبيق داخل عامل واحد (منع الاحتكار)
-var BH_MAX_WAIT_MS = 8000;   // أقصى انتظار في الطابور قبل رفض نظيف بـ503
+// 🔴 ولا ثابتَ ثالثاً لأقصى انتظار: كان `BH_MAX_WAIT_MS = 8000` معرَّفاً هنا **ولا يُقرأ في
+// أيّ موضعٍ تنفيذيّ** (الانتظار الفعلي من `_bhWaitMs()` أدناه، و`BH_LOGIN_WAIT_MS` للدخول).
+// ثابتٌ ميّتٌ يُقرأ كسياسةٍ سارية هو بالضبط ما يجعل تعديلَه بلا أثر — حُذف 2026-08-26.
 
 // ── عمرُ المقعد: استردادٌ ذاتيّ بدل الثقة بـ`finally` (‏2026-08-26) ──────────────
 //
@@ -120,6 +129,7 @@ var BH_SEAT_TTL_MS = 30000;
 // العضو ينضمّ للحزمة الطائرة)، ويبقى الجِتَر لأيّ مؤقّتٍ ثابتٍ آخر — عميلٍ قديم في
 // كاش، أو تطبيق أندرويد لا يُحدَّث، أو مؤقّتٍ يُضاف لاحقاً بلا انتباه.
 // ±1 ثانية حول 8,000 يفكّ الرنين بصفر كلفة وبلا تغيير في أسوأ زمن.
+// ⚠️ **وهذه هي مهلةُ الطابور الفعليّة الوحيدة** لغير الدخول — لا ثابتَ آخر يحكمها.
 function _bhWaitMs() { return 7000 + Math.floor(Math.random() * 2000); }
 
 // ── نافذةٌ أوسع لنداءات الدخول وحدها ─────────────────────────────────────────
@@ -206,10 +216,13 @@ function _bhCan(app) {
   _bhReap();
   return _bhN < BH_ISO_GLOBAL && (_bhApp[app] || 0) < BH_ISO_APP;
 }
+/** يحجز مقعداً **ويُعيد كائنه** — المُستدعي يحمله ويُعيده بعينه إلى `_bhRelease`. */
 function _bhTake(app) {
   _bhN++;
   _bhApp[app] = (_bhApp[app] || 0) + 1;
-  _bhSeats.push({ app: app, at: Date.now() });
+  var seat = { app: app, at: Date.now() };
+  _bhSeats.push(seat);
+  return seat;
 }
 
 // مسح الطابور بترتيب الوصول (FIFO) مع **تجاوز مقيَّد** لرأس الطابور:
@@ -222,38 +235,54 @@ function _bhPump() {
   while (i < _bhQ.length) {
     var w = _bhQ[i];
     if (w.deadline <= now) {                       // انتهت مهلته أثناء الانتظار
-      _bhQ.splice(i, 1); clearTimeout(w.timer); w.resolve(false); continue;
+      _bhQ.splice(i, 1); clearTimeout(w.timer); w.resolve(null); continue;
     }
     if (!_bhCan(w.app)) {
       if (_bhN >= BH_ISO_GLOBAL) break;             // السقف العالمي ⇒ لا فائدة من المتابعة
       i++; continue;                                // سقف فرعي ⇒ تجاوز إلى من خلفه
     }
-    _bhQ.splice(i, 1); clearTimeout(w.timer); _bhTake(w.app); w.resolve(true);
+    _bhQ.splice(i, 1); clearTimeout(w.timer); w.resolve(_bhTake(w.app));
   }
 }
 
-// يُرجِع Promise<boolean>. maxWaitMs = 0 ⇒ وضع «افتحْ الآن أو تخطَّ» بلا انتظار.
+// يُرجِع `Promise<seat|null>` — كائنُ المقعد عند النجاح، و`null` عند الإخفاق. الصدقُ
+// المنطقيّ للقيمة يبقى كما كان (`if (held)`)، ويُضاف إليه أنّ المُستدعي يعرف **أيّ** مقعدٍ
+// يملكه فيُعيده بعينه. maxWaitMs = 0 ⇒ وضع «افتحْ الآن أو تخطَّ» بلا انتظار.
 function _bhAcquire(app, maxWaitMs) {
-  if (_bhCan(app)) { _bhTake(app); return Promise.resolve(true); }
-  if (!(maxWaitMs > 0)) return Promise.resolve(false);
+  if (_bhCan(app)) return Promise.resolve(_bhTake(app));
+  if (!(maxWaitMs > 0)) return Promise.resolve(null);
   return new Promise(function (resolve) {
     var entry = { app: app, resolve: resolve, deadline: Date.now() + maxWaitMs, timer: 0 };
     entry.timer = setTimeout(function () {
       var ix = _bhQ.indexOf(entry);
-      if (ix !== -1) { _bhQ.splice(ix, 1); resolve(false); }
+      if (ix !== -1) { _bhQ.splice(ix, 1); resolve(null); }
     }, maxWaitMs);
     _bhQ.push(entry);
   });
 }
 
-function _bhRelease(app) {
-  // نُسقِط **أقدم** مقعدٍ لهذا التطبيق: المقاعد غير مميَّزة فردياً، والأقدم هو الأقرب
-  // للاسترداد التلقائي — فإسقاطُه يُبقي أعمار الباقين صادقةً بدل أن يُقصّرها.
-  for (var i = 0; i < _bhSeats.length; i++) {
-    if (_bhSeats[i].app === app) { _bhSeats.splice(i, 1); break; }
-  }
+// ── التحرير **بهويّة المقعد لا بنوعه** (‏2026-08-26) ──────────────────────────
+//
+// 🔴 **العلّة التي عالجها هذا:** كان التحرير يُسقِط «أقدم مقعدٍ لهذا التطبيق» ويُنقِص
+// العدّادَين بلا شرط. فإذا **حُصد** مقعدُ طلبٍ (‏`_bhReap` أنقص العدّادَين سلفاً) ثمّ عاد
+// ذلك الطلب حيّاً ونفّذ `finally`، وقع الإنقاصُ **مرّتين**، وأُسقِط من `_bhSeats` مقعدُ
+// طلبٍ **آخرَ ما يزال حيّاً** — فيبدو ذلك الطلب بلا مقعد ويُحصَد أوانه من جديد.
+// الاتجاه fail-open: عدّادٌ أقلّ من الحقيقة ⇒ قبولٌ **فوق** السقف. مقبولٌ حين كان
+// المنظّم في وضع الظلّ (لا يحكم أصلاً)، **وغيرُ مقبولٍ الآن** وقد صار السقف نافذاً.
+//
+// ⚠️ ولا يُغني عنه أن `BH_SEAT_TTL_MS = 30000 > TOTAL_BUDGET_MS = 24000`: التعليق داخل
+// حلقة إعادة المحاولة أدناه يوثّق أن **زمن اتّباع إعادة توجيه Google غير محسوب** في مهلة
+// المحاولة، وأن حارس الميزانية يفحص **بداية** المحاولة لا نهايتها ⇒ ٢٤ ألفاً ليست سقفاً
+// صلباً، فحصادُ مقعدٍ حيّ ممكنٌ فعلاً لا نظرياً.
+//
+// **العلاج:** المُستدعي يحمل كائن مقعده ويُعيده بعينه. لا يوجد ⇒ حُصد سلفاً ⇒ **صفر إنقاص**.
+function _bhRelease(seat) {
+  if (!seat) return;
+  var ix = _bhSeats.indexOf(seat);
+  if (ix === -1) { _bhPump(); return; }   // حُصد سلفاً: العدّادان أُنقِصا وقتها
+  _bhSeats.splice(ix, 1);
   if (_bhN > 0) _bhN--;
-  if (_bhApp[app] > 0) _bhApp[app]--;
+  if (_bhApp[seat.app] > 0) _bhApp[seat.app]--;
   _bhReap();
   _bhPump();
 }
@@ -484,7 +513,17 @@ async function _slugsFromCache(origin) {
    مجهولٌ مكرَّر إلى نداءٍ لكلّ زيارة — وهو بالضبط ما كان يُخشى منه. */
 async function _slugsRefresh(origin, env) {
   var mode = (env && env.BULKHEAD_MODE) || 'on';
-  var held = (mode !== 'off') ? await _bhAcquire('home', 0) : false;
+  /* 🔴 **انتظارٌ محدود لا «افتحْ الآن أو تخطَّ» — خلافاً لأختَيها (‏2026-08-26).**
+     ‏`_brandRefresh` وحقنُ OG يتخطّيان بلا ضرر: هويةٌ متقادمة أو بطاقةُ معاينةٍ عامّة،
+     والصفحة تُخدَم. أمّا هذه فمخرَجُها قرارُ **نشر**: تخطّيها ⇒ `_slugsRefresh` تُرجِع
+     `null` ⇒ `_slugIsPublished` تُرجِع `false` ⇒ **صفحةُ المدرسة 404**. ومع تفعيل `on`
+     (والمقيسُ `median(n) = 7` مقابل سقفٍ 8) صار الفرعُ المُتخطَّى شائعاً لا نادراً ⇒ كلُّ
+     مدرسةٍ خارج البذرة الثلاثية تسقط كلّما انقضت نافذةُ الـ300 ثانية أثناء الذروة —
+     نقضٌ مباشر لما بُني في #139: «صفحةُ أيّ مدرسةٍ تعمل بلا نشرِ وسيط».
+     ⇒ تنتظر دورَها ثانيتين. والانتظار **لا يحجز مقعد GAS** فلا يزيد الحمل، وثانيتان
+     على صفحةٍ تُحمَّل أرخصُ من 404 على مدرسةٍ قائمة بما لا يُقاس. */
+  var _slugWait = (mode === 'on') ? 2000 : 0;
+  var held = (mode !== 'off') ? await _bhAcquire('home', _slugWait) : null;
   if (mode === 'on' && !held) {
     _bhLog({ ev: 'bulkhead', act: 'skip_slugs', app: 'home', mode: mode, n: _bhN, q: _bhQ.length });
     return null;
@@ -523,10 +562,10 @@ async function _slugsRefresh(origin, env) {
     return null;          // fail-open نحو البذرة الساكنة
   } finally {
     if (timer) clearTimeout(timer);
-    /* 🔴 `'home'` صراحةً — `_bhRelease(app)` تُنقِص العدّاد العامّ **والعدّاد لكلّ تطبيق**،
-       وتركُ الوسيط فارغاً يُنقِص العامّ وحده ⇒ `_bhApp.home` يتسرّب صاعداً حتى يُغلَق
-       التطبيقُ على نفسه. (نظيرُها في `_brandRefresh` تُمرّرها.) */
-    if (held) _bhRelease('home');
+    /* 🔴 يُمرَّر **كائن المقعد** لا اسمُ التطبيق: `_bhRelease` تُنقِص العدّادَين فقط إن
+       كان المقعد ما يزال في `_bhSeats` — فمقعدٌ حُصد سلفاً لا يُنقَص مرّتين، ولا يُسقِط
+       معه مقعدَ طلبٍ آخرَ حيّ. (التفصيل عند تعريف `_bhRelease`.) */
+    if (held) _bhRelease(held);
   }
 }
 
@@ -763,7 +802,7 @@ async function _brandFromCache(origin, slug) {
    حقن OG: تحديثُ هويةٍ خلفيّ يجب ألّا يُزاحم تسجيل دخول معلّم أبداً. */
 async function _brandRefresh(origin, slug, env) {
   var mode = (env && env.BULKHEAD_MODE) || 'on';
-  var held = (mode !== 'off') ? await _bhAcquire('home', 0) : false;
+  var held = (mode !== 'off') ? await _bhAcquire('home', 0) : null;
   if (mode === 'on' && !held) {
     _bhLog({ ev: 'bulkhead', act: 'skip_brand', app: 'home', mode: mode, n: _bhN, q: _bhQ.length });
     return;
@@ -821,8 +860,181 @@ async function _brandRefresh(origin, slug, env) {
   } catch (e) { /* fail-open: الصفحة خُدِمت أصلاً؛ المحاولة القادمة تُعيد الكرّة */ }
   finally {
     if (timer) clearTimeout(timer);
-    if (held) _bhRelease('home');
+    if (held) _bhRelease(held);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// كاشُ الحافّة لنداءات GAS **العامّة** على `/gas/<app>` (‏2026-08-26)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// 🔴 **العلّة المقيسة:** مسار `/gas/` كان **بلا أي طبقة تخزين إطلاقاً** — كلّ نداءٍ يصل
+// GAS ويستهلك مقعداً من حصّة Google (٣٠ متزامناً للحساب كلّه). وقياسُ ١٢ ساعة أعطى
+// `getHomePageBundle` **825** نداءً و`getHomeScheduleBundle` **802** و`getStudentSchoolBrand`
+// **345** — حمولاتٌ **متطابقة** لكلّ زائر، تُعاد حسابتُها من الشيتات في كلّ مرّة.
+// والنتيجة: ٢٨٫٨٪ من نداءات `/gas/*` تردّ 502 بعد ٢٣٫٧ ثانية.
+//
+// **النمط مُعادٌ لا مخترَع:** الملفّ يحوي نسختين متعمَّدتين من نفس البنية — `_slugs*`
+// و`_brand*` — والتعليق عند `_brandCacheKey` يقول إن الثانية نُسخت عن الأولى عمداً.
+// فهذه ثالثةٌ على النمط نفسه، لا انحرافٌ عنه.
+//
+// 🔴 **والمبدأ الحاكم للأمان:** الوسيط **لا يمرّر أي رأس اعتماد** — توكن الجلسة يسافر
+// **داخل `args`**. ⇒ أي دالّة قد تحمل توكناً ممنوعةٌ من الكاش قطعاً. القائمة البيضاء
+// أدناه مقصورةٌ على حمولاتِ **عرضٍ عامّ** لا تتطلّب جلسة أصلاً، ومفتاحُ الكاش يحمل
+// `args` **و`schoolId`** معاً فلا يمكن أن يختلط مستأجرٌ بآخر.
+/* ‏١٠ د للحمولات بطيئة التغيّر — أقصرُ من كاش الهوية (21600) فلا صنفَ تقادمٍ جديد.
+   🔴 **وليس موحَّداً**: `getHomePageBundle` تحمل إعداداتِ صفحةٍ وتقييماتٍ مُكاشةً خادمياً
+   بـ**٣٠ ثانية عمداً** (‏`home/_PublicPage.js`) لأن كاتبها مشروعُ GAS آخر ولا قناة إبطال
+   بينهما — فـ600 على الحافّة كانت ستضاعف نافذة «حدّثتُ ولم يظهر» ~٢٠ ضعفاً، وتُبقي مدرسةً
+   انتهى اشتراكُها مخدومةً عشر دقائق بعد إيقافها. لكلّ دالّةٍ مدّتُها في الجدول أدناه. */
+var API_CACHE_TTL_S      = 600;
+var API_CACHE_BODY_MAX   = 4096;   // نفس حدّ `_bhIsLoginBody`: لا `JSON.parse` على حمولةٍ ضخمة
+/* 🔴 الحدُّ على **النصّ الخام قبل `encodeURIComponent`** لا بعده. القياس: مفتاحُ
+   `{schoolId:<UUID>, klass:'الصف الأول الابتدائي', section:'أ'}` يبلغ **254** حرفاً بعد
+   الترميز (العربية ×6) ⇒ حرفٌ واحد إضافي كان يُخرِج **أكبرَ مستهلكٍ للميزة** من الكاش
+   كلّياً. والأسوأ أنه صامت: `null` بلا سطر سجلّ ⇒ ميزةٌ خامدةٌ وسجلٌّ يبدو طبيعياً.
+   القياسُ على الخام يجعل الحدّ يعني ما يقوله، ويُسجَّل الرفضُ بـ`act:'nokey'` أدناه. */
+var API_CACHE_ARGSKEY_MAX = 200;
+
+/** قيمةٌ قياديّة مقبولة في مفتاح الكاش: نصٌّ قصير بلا أحرف تحكّم. */
+function _apiSafeScalar(v) {
+  if (typeof v !== 'string') return false;
+  if (v.length > 64) return false;
+  return !/[\u0000-\u001F\u007F]/.test(v);
+}
+
+/** ‏`[schoolId?, mode?]` — وسائطُ قياديّة قصيرة لا أكثر. */
+function _apiArgsScalars(args) {
+  if (args.length > 2) return false;
+  for (var i = 0; i < args.length; i++) if (!_apiSafeScalar(args[i])) return false;
+  return true;
+}
+
+/* ‏`getHomeScheduleBundle(params)` وحدها تأخذ **كائناً** — `{schoolId, klass|class, section}`
+   (‏`teacher/StudentLogic.js`). المفاتيح محصورةٌ صراحةً: مفتاحٌ مجهولٌ = احتمالُ توكن. */
+var _API_SCHED_KEYS = { schoolId: 1, klass: 1, 'class': 1, section: 1 };
+function _apiArgsSchedule(args) {
+  if (args.length !== 1) return false;
+  var o = args[0];
+  if (!o || typeof o !== 'object') return false;
+  if (Object.prototype.toString.call(o) === '[object Array]') return false;
+  var k = Object.keys(o);
+  if (k.length > 3) return false;
+  for (var i = 0; i < k.length; i++) {
+    if (!_API_SCHED_KEYS.hasOwnProperty(k[i])) return false;
+    if (!_apiSafeScalar(o[k[i]])) return false;
+  }
+  return true;
+}
+
+/* 🔴 **القائمة البيضاء وشرطُ التخزين معاً في مدخلٍ واحد** — لا جدولان يتباعدان.
+   `ok(b)` تُقرَّر **لكلّ دالّة على حدة** لأن العقود مختلفة فعلاً: الثلاثة الأولى تُرجِع
+   `{ok:true,…}`، بينما `getHomeScheduleBundle` تُرجِع `{settings, schedule}` **بلا `ok`
+   إطلاقاً** — فشرطٌ موحَّد `ok===true` كان سيُسقطها بصمت (كاشٌ لا يُصيب أبداً يبدو
+   عاملاً في السجلّ ولا يوفّر شيئاً)، وشرطٌ موحَّد أرخى كان سيُخزّن أخطاء الثلاثة الأولى. */
+var API_CACHE_FNS = {
+  getHomePageBundle: {
+    args: _apiArgsScalars,
+    /* ‏١٢٠ث لا ٦٠٠: أقصرُ عنصرٍ في الحمولة مُكاشٌ خادمياً ٣٠ث، والاشتراكُ المنتهي
+       يُفحَص هنا. مكسبُ الحمل يبقى معتبَراً (‏825 نداءً/١٢س) والتقادمُ يبقى مقبولاً. */
+    ttl: 120,
+    ok: function (b) { return b.ok === true && !!(b.brand && b.brand.name); }
+  },
+  getTeacherSchoolBrand: {
+    args: _apiArgsScalars,
+    /* 🔴 الاسمُ الفارغ **لا يُخزَّن**: نفس قاعدة `_brandRefresh` حرفياً — «شاشة دخول بلا
+       هوية أسوأ من العطل»، وتثبيتُها ١٠ دقائق يجعل ملءَ الخانة لاحقاً لا يظهر. */
+    ok: function (b) { return b.ok === true && !!b.name; }
+  },
+  getStudentSchoolBrand: {
+    args: _apiArgsScalars,
+    ok: function (b) { return b.ok === true && !!b.name; }
+  },
+  getHomeScheduleBundle: {
+    args: _apiArgsSchedule,
+    /* كلُّ عضوٍ مغلَّفٌ بمعالج خطئه في GAS ويردّ `{ok:false,error}` عند الإخفاق (‏`getSchedule`
+       يفعل ذلك صراحةً عند غياب ورقة «الجدول»). فالشرط: العضوان حاضران **ولا أحدهما خطأ**. */
+    ok: function (b) {
+      if (!b.settings || !b.schedule) return false;
+      return b.settings.ok !== false && b.schedule.ok !== false;
+    }
+  }
+};
+
+/* 🔴 مفتاحٌ **خماسيّ المقاطع** عمداً: `_schoolSlugFromPath` يقبل مقطعاً واحداً حصراً،
+   فمفتاحٌ كهذا لا يمكن أن يصير سطحاً مخدوماً بأيّ حال. نفس قاعدة `_brandCacheKey`. */
+function _apiCacheKey(origin, app, fn, argsKey) {
+  return new Request(origin + '/__api-cache/v1/' + app + '/' + fn + '/' + argsKey,
+                     { method: 'GET' });
+}
+
+/* يُحلّل الجسم ويُرجِع `{fn, argsKey}` إن كان مؤهَّلاً، وإلّا `null`.
+   🔴 **بـ`JSON.parse` لا برجيكس** — نفس درس `_bhIsLoginBody`: الرجيكس يأخذ **أوّل** قيمةٍ
+   لمفتاحٍ مكرَّر و`JSON.parse` يأخذ **آخرها**، فجسمٌ مصنوع
+   `{"fn":"getHomePageBundle",…,"fn":"دالّةٌ أخرى"}` كان **سيُصيب الكاش باسمٍ ويُنفّذ غيره**.
+   وأيُّ شكٍّ ⇒ `null` ⇒ المسارُ العادي (fail-closed). */
+function _apiCacheProbe(body) {
+  try {
+    if (typeof body !== 'string' || body.length > API_CACHE_BODY_MAX) return null;
+    var o = JSON.parse(body);
+    if (!o || typeof o !== 'object') return null;
+    /* 🔒 لا مفتاحَ خارج الثلاثة: الجسر يرسل `{fn, args, schoolId}` حصراً، وأيُّ مفتاحٍ
+       إضافيّ قد يحمل توكناً أو يغيّر دلالة النداء خادمياً بلا أن يدخل المفتاح. */
+    var keys = Object.keys(o);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i] !== 'fn' && keys[i] !== 'args' && keys[i] !== 'schoolId') return null;
+    }
+    if (typeof o.fn !== 'string' || !API_CACHE_FNS.hasOwnProperty(o.fn)) return null;
+    var args = (o.args === undefined || o.args === null) ? [] : o.args;
+    if (Object.prototype.toString.call(args) !== '[object Array]') return null;
+    /* 🔴 من هنا فصاعداً الدالّةُ **مؤهَّلةٌ اسماً** — فرفضُها لاحقاً حدثٌ يستحقّ سطراً في
+       السجلّ (‏`reject`)، بخلاف `null` أعلاه الذي يعني «ليست من أهل الكاش أصلاً» وهو
+       الحالةُ الغالبة فلا يُسجَّل. بلا هذا التمييز تصير الميزةُ خامدةً بصمتٍ تامّ. */
+    if (!API_CACHE_FNS[o.fn].args(args)) return { fn: o.fn, reject: 'args' };
+    var sid = (o.schoolId === undefined || o.schoolId === null) ? '' : o.schoolId;
+    if (!_apiSafeScalar(sid)) return { fn: o.fn, reject: 'sid' };
+    /* 🔴 `schoolId` **داخل المفتاح** — يُحلّ المستأجر خادمياً، فإسقاطُه من المفتاح يخلط
+       مدرسةً بأخرى. والحدُّ يُقاس على الخام لا على المُرمَّز (انظر تبريره أعلى الكتلة). */
+    var raw = JSON.stringify([args, sid]);
+    if (raw.length > API_CACHE_ARGSKEY_MAX) return { fn: o.fn, reject: 'len' };
+    return { fn: o.fn, argsKey: encodeURIComponent(raw) };
+  } catch (e) { return null; }
+}
+
+/** يُرجِع `{text, age}` عند الإصابة و`null` عند الإخفاق. */
+async function _apiCacheGet(origin, app, probe) {
+  try {
+    var hit = await caches.default.match(_apiCacheKey(origin, app, probe.fn, probe.argsKey));
+    if (!hit) return null;
+    var text = await hit.text();
+    if (!text || text.charAt(0) !== '{') return null;
+    var ts = Number(hit.headers.get('X-Api-Ts')) || 0;
+    return { text: text, age: ts ? Math.round((Date.now() - ts) / 1000) : -1 };
+  } catch (e) { return null; }
+}
+
+/* يُخزّن **`text` خاماً كما هو** (بذيله `"_ms"`) — `assets/gas-bridge.js` يستهلكه نصّاً،
+   فإعادةُ بنائه تُلوّث المخرَج المخدوم. والطابعُ الزمنيّ في **رأس مدخل الكاش** لا داخل
+   الحمولة، أسوةً بـ`X-Brand-Ts`. يُرجِع `true` إن خُزّن فعلاً (للسجلّ). */
+async function _apiCachePut(origin, app, probe, text) {
+  try {
+    if (!text || text.charAt(0) !== '{') return false;
+    var json = JSON.parse(text);
+    var b = (json && json.result) ? json.result : json;   // نفس تفكيك `_brandRefresh`
+    if (!b || typeof b !== 'object') return false;
+    if (!API_CACHE_FNS[probe.fn].ok(b)) return false;
+    await caches.default.put(
+      _apiCacheKey(origin, app, probe.fn, probe.argsKey),
+      new Response(text, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'max-age=' + (API_CACHE_FNS[probe.fn].ttl || API_CACHE_TTL_S),
+          'X-Api-Ts': String(Date.now())
+        }
+      })
+    );
+    return true;
+  } catch (e) { return false; }
 }
 
 /* 🔴 بوّابة مخطّط صارمة قبل أي إسناد إلى `src`/`og:image`: القيمة تصل من شيت **يحرّره بشر**.
@@ -948,6 +1160,40 @@ export default {
         if (_bhM) _bhFn = _bhM[1];
       } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
 
+      // ── كاشُ الحافّة: يُعترَض **قبل حجز المقعد** ─────────────────────────────
+      // 🔴 الموضع مقصود: هنا وحدها يكون `init.body` مقروءاً و**لا مقعد مأخوذ بعد** ⇒
+      // إصابةُ الكاش تتخطّى `_bhAcquire` كلّياً فلا تستهلك من السقف. لو وُضع بعد الحجز
+      // لأخذ مقعداً بلا داعٍ — أي أن أنجحَ حالةٍ تُنفق أغلى مورد.
+      // ⚠️ و`?action=health` معفىً هنا أيضاً بنفس سبب إعفائه من المنظّم أدناه: أداةُ
+      // تشخيصٍ تُجيب من كاشٍ لا تُخبرنا عن حال GAS، بل تُخفي بالضبط ما نُشخّصه بها.
+      /* 🔒 و`url.search` **يجب أن يكون فارغاً**: الوسيط يمرّرها حرفياً إلى GAS
+         (`fullTarget = target + url.search` أدناه) وهي **ليست** في مفتاح الكاش.
+         قِيس أن لا `doPost` في السبعة يقرأ `e.parameter` اليوم ⇒ لا استغلال حيّ —
+         لكنّ أوّل دالّةٍ تقرأ معاملاً تفتح تسميمَ كاشٍ فوريّاً. الاشتراطُ هنا يقفل
+         البُعد كلَّه بسطرٍ واحد بدل أن يعتمد على بقاء حقيقةٍ في مستودعٍ آخر.
+         (‏`app=student` يُلحقه الوسيط **بعد** هذه النقطة فلا يتأثّر.) */
+      var _acProbe = null;
+      if (request.method !== 'GET' && url.search === '') {
+        _acProbe = _apiCacheProbe(init.body);
+        /* دالّةٌ مؤهَّلةٌ اسماً لكنّ شكلَها رُفض ⇒ سطرٌ واحد. بلا هذا تبقى الميزةُ خامدةً
+           لأكبر مستهلكيها والسجلُّ يبدو طبيعياً — وهي فئةُ الفشل الصامت بعينها. */
+        if (_acProbe && _acProbe.reject) {
+          _bhLog({ ev: 'apicache', act: 'nokey', app: app, fn: _acProbe.fn, why: _acProbe.reject });
+          _acProbe = null;
+        }
+        if (_acProbe) {
+          var _acHit = await _apiCacheGet(url.origin, app, _acProbe);
+          if (_acHit) {
+            _bhLog({ ev: 'apicache', act: 'hit', app: app, fn: _acProbe.fn,
+                     age: _acHit.age, n: _bhN, q: _bhQ.length });
+            return withCors(new Response(_acHit.text, {
+              status: 200,
+              headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            }));
+          }
+        }
+      }
+
       // ── حَجز مقعد قبل إطلاق أي محاولة نحو GAS (منظّم التزاحم) ───────────────
       // فحوصات الصحّة مُعفاة عمداً: ?action=health أداة تشخيص يجب أن تُخبرنا عن حال
       // GAS نفسه لا عن حال المنظّم — حَكْمها يُخفي بالضبط الحالة التي نُشخّصها بها.
@@ -956,7 +1202,7 @@ export default {
       var _bhExempt = url.searchParams.get('action') === 'health';
       var _bhOn     = (_bhMode !== 'off') && !_bhExempt;
       var _bhT0     = Date.now();
-      var _bhHeld   = false;
+      var _bhHeld   = null;   // كائنُ المقعد المملوك — يُعاد بعينه إلى `_bhRelease`
       if (_bhOn) {
         // وضع الظلّ لا ينتظر إطلاقاً (انتظاره كان سيكون تغيير سلوك بحدّ ذاته): يحاول
         // الحَجز بلا انتظار، ثم يأخذ المقعد على أي حال ويُكمل. فائدته أن العدّاد n في
@@ -972,7 +1218,7 @@ export default {
         _bhLog({ ev: 'bulkhead', act: _bhMode === 'shadow' ? 'would_block' : 'reject',
                  app: app, fn: _bhFn, mode: _bhMode, waitMs: _bhWaited, n: _bhN, q: _bhQ.length });
         if (_bhMode === 'shadow') {
-          _bhHeld = true; _bhTake(app);   // يبقى الحساب متوازناً مع التحرير في finally
+          _bhHeld = _bhTake(app);         // يبقى الحساب متوازناً مع التحرير في finally
         } else {
           // 503 نظيف بنفس نصّ سطر الرفض القائم حرفياً — لا 502 خام من هذا المسار أبداً.
           // ملاحظة سلوكية: assets/gas-bridge.js لا يقرأ الجسم إطلاقاً عند status ≥ 400،
@@ -1041,7 +1287,17 @@ export default {
       var PER_ATTEMPT_TIMEOUT_MS = 11500;
       for (attempt = 0; attempt < 2; attempt++) {
         var elapsedBeforeAttempt = Date.now() - loopStart;
-        if (elapsedBeforeAttempt >= TOTAL_BUDGET_MS) break;
+        /* 🔴 **الحارسُ يستشرف نهايةَ المحاولة لا بدايتَها فقط (‏2026-08-26).** كان
+           `elapsed >= TOTAL_BUDGET_MS` وحده، فمحاولةٌ تبدأ **داخل** الميزانية تنتهي
+           **خارجها** بأحد عشر ألفاً ونصف. وبقي غيرَ مؤذٍ ما دام `_bhWaited ≈ 0` في وضع
+           الظلّ — **وتفعيلُ `on` هو ما جعله مؤذياً**: انتظارُ طابورٍ 11,000ms كان يُنتج
+           ‏11,000 + 23,700 = **34,700ms** مقابل `_LOGIN_TIMEOUT = 28,000` عند العميل ⇒
+           العميل يقطع ويُعلن «تعذّر تسجيل الدخول» **بينما الوسيط ما يزال يحتجز مقعد GAS**.
+           بالاستشراف: المحاولة لا تبدأ إلا إن كانت ستنتهي داخل الميزانية ⇒ الزمن الكلّي
+           ‏(انتظارٌ + حلقة) ‏**مسقوفٌ بـ24,000ms مهما بلغ الانتظار** — وهو ما كان التعليق
+           أعلاه يَعِد به ولا يُنفّذه. والثمن: طلبٌ انتظر طويلاً يأخذ محاولةً واحدة بدل
+           اثنتين — وهو السلوك الصحيح تحت الإشباع لا تدهور (درس 2026-07-28). */
+        if (elapsedBeforeAttempt + PER_ATTEMPT_TIMEOUT_MS > TOTAL_BUDGET_MS) break;
         var controller = new AbortController();
         var abortTimer = setTimeout(function () { controller.abort(); }, PER_ATTEMPT_TIMEOUT_MS);
         init.signal = controller.signal;
@@ -1076,6 +1332,18 @@ export default {
           return jsonResponse({ ok: false, error: 'تعذّر تنفيذ الطلب حالياً (اعتراض مؤقّت من الخادم). حاول مجدداً بعد لحظات.' }, 503);
         }
       }
+      /* ── تخزينُ الردّ العامّ في كاش الحافّة ────────────────────────────────────
+         🔴 عبر `ctx.waitUntil` حصراً: الكتابة **خارج مسار الاستجابة** فلا تُبطئ نداءً،
+         ولا تلمس GAS فلا تحتاج مقعداً — و`_bhRelease` في `finally` لا يتأثّر بها.
+         🔒 وشرطُ التخزين مزدوج: `good` (نقلٌ ناجح ليس HTML) **و**`ok(b)` الخاصّ بالدالّة
+         (داخل `_apiCachePut`). ⇒ **لا كاش سلبيّ إطلاقاً** — تخزينُ الفشل يُثبّته ١٠ دقائق
+         ويُقرأ «الإصلاح لم يعمل». */
+      if (_acProbe && good && ctx && ctx.waitUntil) {
+        var _acFn = _acProbe.fn, _acOrigin = url.origin, _acApp = app, _acText = lastText;
+        ctx.waitUntil(_apiCachePut(_acOrigin, _acApp, _acProbe, _acText).then(function (stored) {
+          _bhLog({ ev: 'apicache', act: stored ? 'store' : 'skip', app: _acApp, fn: _acFn });
+        }));
+      }
       return withCors(new Response(lastText, {
         status: lastStatus,
         headers: { 'Content-Type': 'application/json; charset=utf-8' }
@@ -1105,7 +1373,7 @@ export default {
         // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
         // (الرفض 503 يخرج قبل الـtry ولا يحجز مقعداً أصلاً). بلا هذا، أي مسار خروج
         // منسيّ يُسرّب مقعداً إلى الأبد ويُجمّد السقف تدريجياً.
-        if (_bhHeld) _bhRelease(app);
+        if (_bhHeld) _bhRelease(_bhHeld);
       }
     }
 
@@ -1588,7 +1856,7 @@ export default {
     // سياسة تخزين ذكية حسب نوع الملف:
     //  - sw.js / manifest: **لا تخزين إطلاقاً** — عاملُ خدمةٍ مُكاشٌ بخطأ يُثبّت نفسه.
     //  - HTML: `no-cache, must-revalidate` — يُسأل الخادمُ في كلّ مرّة (الضمانُ محفوظ)،
-    //    والجوابُ صار 304 بدل 527KB حين لا يتغيّر شيء. راجع الكتلة عند `_pageEtag`.
+    //    والجوابُ صار 304 بدل 527KB حين لا يتغيّر شيء. راجع الكتلة عند `_pageLastMod`.
     //  - الأصول الثابتة (js/css/صور/خطوط): تخزين يوم + stale-while-revalidate أسبوع
     //    → على الشبكات الضعيفة تُعاد من كاش المتصفّح فوراً بدل جولة شبكة لكل ملف.
     var lowerPath = path.toLowerCase();
@@ -1625,7 +1893,7 @@ export default {
       // بوسوم الهوية العامة — وهو بالضبط ما يفعله الـcatch أدناه اليوم عند أي فشل.
       // (هذا النداء يستهلك من حصة الثلاثين أيضاً ولم يكن محكوماً إطلاقاً قبل اليوم.)
       var _ogMode = (env && env.BULKHEAD_MODE) || 'on';
-      var _ogHeld = (_ogMode !== 'off') ? await _bhAcquire(_ogApp, 0) : false;
+      var _ogHeld = (_ogMode !== 'off') ? await _bhAcquire(_ogApp, 0) : null;
       if (_ogMode !== 'off' && !_ogHeld) {
         _bhLog({ ev: 'bulkhead', act: 'skip_og', app: _ogApp, mode: _ogMode, n: _bhN, q: _bhQ.length });
       }
@@ -1689,7 +1957,7 @@ export default {
         // إلزامي أن يكون finally: مسار النجاح يخرج بـreturn HTMLRewriter().transform()
         // من **داخل** الـtry، فأي تحرير بعد الكتلة لن يُنفَّذ في الحالة الشائعة.
         clearTimeout(_ogTimer);
-        if (_ogHeld) _bhRelease(_ogApp);
+        if (_ogHeld) _bhRelease(_ogHeld);
       }
     }
 
@@ -1762,5 +2030,3 @@ export default {
     });
   }
 };
-
-// build: re-trigger v2
