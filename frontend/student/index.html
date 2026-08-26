@@ -4735,7 +4735,11 @@ function loadGrades(force) {
         return;
       }
       APP.gradesData = r;
-      ssSet('grades', r);
+      /* 🔴 سقفٌ صريح لا أبد: `ssSet` بلا `ttlSec` تكتب `exp = 0` و`ssGet` لا تُبطلها
+         إطلاقاً ⇒ تبويبٌ فُتح قبل تبديل الإدارة للفترات يظلّ على الشهر القديم حتى
+         ضغط 🔄. و180 ثانية تقارب نافذةَ الكاش الخادميّ العملية بدل الأبد.
+         وزرّ التحديث (`loadGrades(true)`) يبقى يتجاوزها بـ`ssDel` + `noCache`. */
+      ssSet('grades', r, 180);
       renderGradesWithRefresh(r);
     })
     .withFailureHandler(function(e) {
@@ -4836,12 +4840,19 @@ function _stGradesMonthState(r, monthName) {
 
 function _gradesPickDefaultIdx(r, months) {
   // ① الشهر النشط المحسوب خادمياً — مصدر واحد مع منصّة المعلم، فلا يفترق التبويب
-  //    الافتراضي هنا عن الشهر المفتوح هناك. يُقبَل فقط إن كان له بيانات فعلاً
-  //    (لا نفتح الصفحة على تبويب فارغ — نفس شرط المسار القديم أدناه).
+  //    الافتراضي هنا عن الشهر المفتوح هناك.
+  //    🔴 **يُقبَل إن كان له بيانات ✳أو✳ كانت حالته `open`** (تغيير 2026-08-27). كان
+  //    الشرط «فيه بيانات» وحده، فأوّلُ يومٍ من شهرٍ شغّلته الإدارة — ولمّا تُرصد فيه
+  //    درجةٌ بعد — يسقط إلى التراجع فيعود التبويبُ إلى الشهر السابق: أي أن **تشغيل
+  //    الفترة لا يظهر أثرُه حتى تُرصد أوّلُ درجة**، وهو نصفُ بلاغ المالك حرفياً.
+  //    والحالة تُقرأ من `_stGradesMonthState` القائمة — مصدرٌ قائم لا مخزنٌ جديد.
+  //    🔴 والضابطُ المعاكس يبقى: شهرٌ **مقفل** بلا بيانات ما زال يسقط للتراجع، فلا
+  //    نفتح الصفحة على تبويبٍ فارغٍ لا يُتوقَّع امتلاؤه.
   var srvDefault = r && r.monthsState && r.monthsState.defaultMonth;
   if (srvDefault) {
     for (var d = 0; d < months.length; d++) {
-      if (months[d].name === srvDefault && _gradesMonthHasData(months[d])) return d;
+      if (months[d].name !== srvDefault) continue;
+      if (_gradesMonthHasData(months[d]) || _stGradesMonthState(r, srvDefault) === 'open') return d;
     }
   }
 
