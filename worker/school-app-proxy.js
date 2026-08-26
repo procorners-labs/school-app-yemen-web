@@ -699,51 +699,41 @@ var REDIRECT_TO_CANONICAL = { 'www.yemenschoolz.com': 1 };
    بخطأ **يُثبّت نفسه** ولا يُصلَح من الخادم — فئةُ عطلٍ لا رجعةَ فيها.
    ═══════════════════════════════════════════════════════════════════════════════════════ */
 
-/** تجزئة FNV-1a 32-بت — **متزامنة عمداً**: `crypto.subtle` غير متزامنة وتُدخل `await`
- *  في مسارٍ حارٍّ يُنفَّذ لكل صفحة. الغرضُ كشفُ التغيّر لا مقاومةُ التصادم المتعمَّد. */
-function _fnv1a(str) {
-  var h = 0x811c9dc5, s = String(str || '');
-  for (var i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
-  }
-  return h.toString(36);
-}
+/* 🔴 **`ETag` غيرُ قابلٍ للاستعمال هنا — قِيس ولم يُخمَّن (‏2026-08-26).** جُرِّب الشكلان:
+   الضعيف `W/"…"` والقويّ `"…"`، وعلى المضيفَين (النطاق المخصّص و`workers.dev`) ⇒ **لا يبلغ
+   العميل في أيّ حالة**. والمِجَسّ الحاسم: رأسٌ مرآةٌ `X-Page-Validator` بنفس القيمة حرفياً
+   **وصل**، و`ETag` غاب في الطلب نفسه ⇒ الإسقاطُ من **حافّة Cloudflare** لا من الوركر
+   (الحافّة تضغط الجسم فيتغيّر الكيان، فتُسقط وسمَه). والأخطر أن الميزة كانت تبدو منجزةً:
+   `If-None-Match: *` يُرجِع **304** فعلاً — المنطقُ سليم، والرأسُ وحده مفقود ⇒ لا وسمَ يصل
+   ⇒ لا سؤالَ يعود ⇒ **صفرُ أثرٍ في متصفّحٍ حقيقيّ**، وكلُّ فحصٍ محلّيّ أخضر.
+   ⇒ لا تُعِد `ETag` هنا. و`Last-Modified` **تمرّ** (قِيس في نفس الجلسة) — فهي المُصادِق.
+   📌 والدرسُ المعمَّم: «الكود يعمل» ليس «الميزة تعمل». الفاصلُ بينهما رحلةُ الرأس. */
 
-/* نافذةٌ زمنية بالساعة — **شبكةُ أمانٍ للمُصادِق نفسه**: مهما أخطأت البصمات، يُجبَر كلّ
-   عميلٍ على تنزيلٍ كاملٍ واحد كلّ ساعة. الكلفةُ ضئيلة والحدّ الأقصى للبيات ساعةٌ واحدة. */
-function _etagWindow(nowMs) { return Math.floor((nowMs || Date.now()) / 3600000); }
+/** نافذةٌ بالساعة — تُستعمل **احتياطاً وحدها** حين لا يُعطي المنبعُ تاريخاً. */
+function _hourWindow(nowMs) { return Math.floor((nowMs || Date.now()) / 3600000); }
 
-/** يبني المُصادِق المركّب. دالّةٌ **نقيّة** ليختبرها `test-routes.js` بـ`vm` على جدول حالات.
+/** لحظةُ آخر تغيّرٍ حقيقيّ للصفحة المخدومة، بالميلي-ثانية.
  *
- *  🔴 **وسمٌ قويّ لا ضعيف — قِيس حيّاً 2026-08-26 بعد أوّل نشرة:** الشكل الضعيف `W/"…"`
- *  **يُسقطه Cloudflare** على هذه الخطّة فلا يبلغ العميل إطلاقاً؛ والمنبع (GitHub Pages)
- *  يُرسل وسماً قويّاً `"6a8ef97b-…"` فيصل سليماً. والدليلُ القاطع أن `If-None-Match: *`
- *  كان يُرجِع **304** فعلاً — أي أن الكود يعمل والرأسَ وحده هو المفقود، فالميزةُ كانت
- *  **خامدةً بصمت**: لا وسمَ يصل ⇒ لا سؤالَ يعود ⇒ لا 304 أبداً في متصفّحٍ حقيقيّ.
- *  والقوّةُ صحيحةٌ دلالياً هنا: نفس المُدخَلات ⇒ جسمٌ متطابق بايتاً ببايت. */
-function _pageEtag(upstreamValidator, tenantKey, brand, hostname, nowMs) {
-  var brandPrint = brand ? _fnv1a(JSON.stringify(brand)) : '0';
-  return '"' + _fnv1a(
-    String(upstreamValidator || '-') + '|' +
-    String(tenantKey || '-') + '|' +
-    brandPrint + '|' +
-    String(hostname || '-') + '|' +
-    _etagWindow(nowMs)
-  ) + '"';
+ *  🔴 المصدران **كلاهما ضروريّ**، وأيٌّ منهما وحده يُنتج بياتاً صامتاً:
+ *   · `upstreamLastModified` — يتغيّر مع كلّ نشرة CI ⇒ التحديثُ يظهر **فوراً** كما كان.
+ *   · `brandTs` — لحظةُ آخر تحديثٍ لهوية المدرسة المحقونة في الجسم. بدونه تُبدّل مدرسةٌ
+ *     اسمَها أو شعارَها فلا يتغيّر شيءٌ عند المنبع ⇒ يبقى الزائر على الهوية القديمة **إلى
+ *     الأبد**. وهذه بالضبط علّةُ «صفحةٌ واحدة تخدم N مستأجرين».
+ *  ودقّةُ الثانية لأن ترويسة HTTP لا تحمل أدقّ منها — والمقارنةُ لو تمّت بالميلي-ثانية
+ *  لصار `>=` كاذباً دوماً فلا 304 أبداً. */
+function _pageLastMod(upstreamLastModified, brandTs, nowMs) {
+  var up = Date.parse(String(upstreamLastModified || '')) || 0;
+  var br = Number(brandTs) || 0;
+  var v = Math.max(up, br);
+  if (!v) v = _hourWindow(nowMs) * 3600000;
+  return Math.floor(v / 1000) * 1000;
 }
 
-/** مطابقةٌ ضعيفة لقائمة `If-None-Match` (مفصولةٌ بفواصل · تُجرَّد `W/` · `*` يطابق الكلّ). */
-function _etagMatches(inm, etag) {
-  var raw = String(inm || '').trim();
-  if (!raw || !etag) return false;
-  var mine = String(etag).replace(/^W\//, '').trim();
-  var parts = raw.split(',');
-  for (var i = 0; i < parts.length; i++) {
-    var p = parts[i].trim().replace(/^W\//, '');
-    if (p === '*' || p === mine) return true;
-  }
-  return false;
+/** هل نسخةُ العميل حديثةٌ بما يكفي؟ (`If-Modified-Since` ≥ آخر تغيّر). */
+function _notModifiedSince(ims, lastModMs) {
+  var t = Date.parse(String(ims || ''));
+  if (!t || !lastModMs) return false;
+  return t >= lastModMs;
 }
 
 var BRAND_TTL_S = 21600;
@@ -760,7 +750,11 @@ async function _brandFromCache(origin, slug) {
     var hit = await caches.default.match(_brandCacheKey(origin, slug));
     if (!hit) return null;
     var o = await hit.json();
-    return (o && o.name) ? o : null;
+    if (!o || !o.name) return null;
+    /* الحمولةُ والطابعُ منفصلان: `brand` يُحقَن في الصفحة كما هو، و`ts` يُقرأ من رأس مدخل
+       الكاش (‏`X-Brand-Ts`). ومدخلٌ قديمٌ بلا الرأس ⇒ `ts = 0` ⇒ يسقط `_pageLastMod` على
+       تاريخ المنبع وحده — تدرّجٌ آمن بلا إبطال كاشٍ قائم. */
+    return { brand: o, ts: Number(hit.headers.get('X-Brand-Ts')) || 0 };
   } catch (e) { return null; }
 }
 
@@ -814,7 +808,13 @@ async function _brandRefresh(origin, slug, env) {
       new Response(JSON.stringify(brand), {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'max-age=' + BRAND_TTL_S
+          'Cache-Control': 'max-age=' + BRAND_TTL_S,
+          /* 🔴 لحظةُ التحديث تُحفَظ **في رأس مدخل الكاش لا داخل الكائن**: الكائن يُحقَن
+             حرفياً في الصفحة عبر `_BrandHead` (‏`JSON.stringify(brand)`)، فإضافةُ حقلٍ
+             إليه تُلوّث المخرَج المخدوم. والرأسُ يُقرأ بلا مسّ الحمولة.
+             ووظيفتُه: `_pageLastMod` يحتاج أن يعرف متى تغيّرت الهوية، وإلّا بقي زائرُ
+             مدرسةٍ بدّلت اسمَها على الاسم القديم إلى الأبد. */
+          'X-Brand-Ts': String(Date.now())
         }
       })
     );
@@ -1545,10 +1545,10 @@ export default {
     headers.delete('content-security-policy');
     headers.delete('x-frame-options');
     headers.set('Access-Control-Allow-Origin', '*');
-    /* 🔴 مُصادِقُ المنبع يُلتقَط **قبل** الحذف ثم يُحذَف كما كان: لا يُسرَّب للعميل أبداً
-       (لا يصف الجسم المخدوم — راجع الكتلة الشارحة عند `_pageEtag`)، لكنه أدقُّ مُدخَلٍ
-       لدينا عن «هل تغيّر الملفّ في المنبع؟». */
-    var _upstreamValidator = ghResp.headers.get('etag') || ghResp.headers.get('last-modified') || '';
+    /* 🔴 تاريخُ المنبع يُلتقَط **قبل** الحذف ثم يُحذَف كما كان: لا يُمرَّر للعميل كما هو
+       (لا يصف الجسم المخدوم — الهويةُ تُحقَن بعده)، لكنه أدقُّ مُدخَلٍ لدينا عن «هل تغيّر
+       الملفّ في المنبع؟» ⇒ يدخل `_pageLastMod` مع طابع الهوية. */
+    var _upstreamLastMod = ghResp.headers.get('last-modified') || '';
     headers.delete('etag');
     headers.delete('last-modified');
     headers.delete('expires');
@@ -1716,29 +1716,17 @@ export default {
           ومُصادِقٌ هناك يُثبّت بطاقة معاينةٍ خاطئة على واتساب بلا رجعة.
        🔴 و`GET` وحده: مُصادِقٌ على استجابة `HEAD`/غيرها لا معنى له. */
     var _tenantKey = _tenantKeyFrom(_rawPath, url.search);
-    var _brand = null;
+    var _brand = null, _brandTs = 0;
     if (isHtml && !isSwOrManifest && ghResp.status === 200 && _tenantKey && !_newsId) {
-      _brand = await _brandFromCache(url.origin, _tenantKey);
+      var _bc = await _brandFromCache(url.origin, _tenantKey);
+      if (_bc) { _brand = _bc.brand; _brandTs = _bc.ts; }
       if (!_brand && ctx && ctx.waitUntil) ctx.waitUntil(_brandRefresh(url.origin, _tenantKey, env));
     }
     if (isHtml && !isSwOrManifest && ghResp.status === 200 &&
         request.method === 'GET' && !_newsId) {
-      var _pageTag = _pageEtag(_upstreamValidator, _tenantKey, _brand, url.hostname);
-      headers.set('ETag', _pageTag);
-      /* 🔬 **مِجَسّ تشخيصيّ مؤقّت (‏2026-08-26).** قِيس حيّاً أن `ETag` لا يبلغ العميل
-         إطلاقاً — لا بالشكل الضعيف ولا القويّ، وعلى المضيفَين معاً — بينما `If-None-Match: *`
-         يُرجِع **304** فعلاً (أي أن هذا السطر يُنفَّذ). والاحتمالان: الوركر لا يُصدره، أو
-         الحافّة تُسقطه. رأسٌ مرآةٌ بنفس القيمة يفصلهما في طلبٍ واحد:
-           · وصل `X-Page-Validator` وغاب `ETag` ⇒ الإسقاط من الحافّة قطعاً.
-           · غابا معاً ⇒ العلّة قبل ذلك، والفرضيتان تسقطان معاً.
-         🔴 يُزال فور الحسم — رأسٌ تشخيصيّ يبقى يصير حِملاً على كل طلبٍ للأبد. */
-      headers.set('X-Page-Validator', _pageTag);
-      /* 🔬 المِجَسّ الثاني — وقد حسم الأوّل أن الحافّة تُسقط `ETag` (الرأسُ المرآة يصل
-         بنفس القيمة). السؤال الباقي: هل تُسقط `Last-Modified` أيضاً؟ إن مرّ فالمُصادِق
-         يتحوّل إليه بالكامل (‏`If-Modified-Since`)، وإن سقط فلا سبيلَ لإعادة تحقّقٍ من
-         الحافّة أصلاً ويُغلَق الخيط بصدق بدل أن يُطارَد. قيمةٌ ثابتة داخل الساعة. */
-      headers.set('Last-Modified', new Date(_etagWindow() * 3600000).toUTCString());
-      if (_etagMatches(request.headers.get('If-None-Match'), _pageTag)) {
+      var _lmMs = _pageLastMod(_upstreamLastMod, _brandTs);
+      headers.set('Last-Modified', new Date(_lmMs).toUTCString());
+      if (_notModifiedSince(request.headers.get('If-Modified-Since'), _lmMs)) {
         // الجسمُ لا يُستهلَك ⇒ يُلغى صراحةً، وإلّا بقي تدفّقٌ مفتوح بلا قارئ.
         try { if (ghResp.body) ghResp.body.cancel(); } catch (e) { /* أُغلق أصلاً */ }
         return new Response(null, { status: 304, headers: headers });
