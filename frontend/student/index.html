@@ -2779,7 +2779,16 @@ a { color: var(--pr); text-decoration: none; }
 ═══════════════════════════════════════════════════════════════ -->
 <script>
 
-  // ══════════════════════════════════════════════════════
+  /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
+   لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
+   العلّة التي أنشأه: الكاشُ ١٨٠ث في الطرفين بينما نافذةُ التحديث القسريّ **٦٠ ألف مللي**
+   — أي أقصرَ من عمر الكاش نفسه فتُبطله بنيوياً؛ والقياسُ الحيّ `getStudentReports`
+   **756 نداءً/٢٤س بإخفاق 52.1٪** و`srv p50 = 104ms` ⇒ ضحيّةُ تزاحمٍ لا بطءُ كود.
+   ⇒ رقمٌ واحد يستهلكه الجميع، فانحرافُهما يصير مستحيلاً لا مرصوداً (بند 113). */
+var STU_REPORTS_TTL_SEC = 180;
+var STU_REPORTS_TTL_MS  = STU_REPORTS_TTL_SEC * 1000;
+
+// ══════════════════════════════════════════════════════
 // Smart Client Cache + Dedup (P-OPT-04)
 // ══════════════════════════════════════════════════════
 var ClientCache = {
@@ -4261,7 +4270,14 @@ function goTab(tab, btn) {
       if (tab === 'violations') loadViolations(true);
     }
   }
-  if (tab === 'home' && (Date.now() - (_tabLoadedAt.home || 0) > 60000)) {
+  /* 🔴 بند 194: كانت النافذة **٦٠ ثانية** بينما عمرُ كاش `reports_*` **١٨٠ ثانية** في
+     الطرفين (عميليّ `ClientCache` وخادميّ `Student_Reports_Backend.js`) — أي أن التحديثَ
+     القسريّ **أقصرُ من عمر الكاش نفسه فيُبطله بنيوياً**: كلُّ عودةٍ إلى «الرئيسية» بعد
+     دقيقة تمسح المفتاح وتُطلق نداءً جديداً. والقياسُ الحيّ: `getStudentReports` **756
+     نداءً/٢٤س بإخفاق 52.1٪** — أعلى مُنتِجِ إخفاقٍ في المنصّة — بينما `srv p50 = 104ms`
+     أي **ضحيّةُ تزاحمٍ لا بطءُ كود**.
+     ⇒ النافذةُ تُشتقّ من TTL نفسه لا تُكتب رقماً ثانياً ينحرف عنه (بند 113). */
+  if (tab === 'home' && (Date.now() - (_tabLoadedAt.home || 0) > STU_REPORTS_TTL_MS)) {
     loadQuickStats(true);
   }
 }
@@ -4638,6 +4654,9 @@ function _quickStatsPlaceholder() {
 // (م3) طابع آخر تحميل لكل تبويب سريع التغيّر — يُستخدم لإعادة الجلب عند العودة
 var _tabLoadedAt = {};
 
+/* عمرُ كاش التقارير يُقرأ من `STU_REPORTS_TTL_SEC` في `_stu-js-core` — رقمٌ واحد
+   يستهلكه هذا الجزء و`_stu-js-shell` و`_stu-js-reports` معاً (بند 194). */
+
 function loadQuickStats(force) {
   // إحصائيات سريعة — نفس مصدر تبويب «تقاريري» وبنفس مفتاح الكاش
   // (استدعاء خادم واحد يخدم الرئيسية والتقارير معاً، ويعمل مع تراجع الكاش دون اتصال)
@@ -4647,7 +4666,7 @@ function loadQuickStats(force) {
     'getStudentReports',
     { studentId: APP.user.id, schoolId: APP.user.schoolId },
     'reports_' + APP.user.id,
-    180,
+    STU_REPORTS_TTL_SEC,
     function (r) {
       _tabLoadedAt.home = Date.now();
       var rb = $('qstatsRefreshBtn');
@@ -7632,7 +7651,7 @@ function loadReports(force) {
   'getStudentReports',
   { studentId: APP.user.id, schoolId: APP.user.schoolId },
   'reports_' + APP.user.id,
-  180,
+  STU_REPORTS_TTL_SEC,          // نفسُ المصدر الذي تقرؤه الرئيسية ونافذةُ التحديث (بند 194)
   function (r) {
     APP.loaded.reports = true;
     if (r && r.ok && r.data) {
@@ -8024,15 +8043,39 @@ var _lastBeatAt = 0;
 function _startHeartbeat() {
   if (_hbTimerStarted) return;
   _hbTimerStarted = true;
-  function beat() {
-    if (document.visibilityState !== 'visible') return;
-    if (!APP.user || !APP.user.id || !APP.user.switchToken) return;
-    google.script.run
-      .withSuccessHandler(function () {})
-      .withFailureHandler(function () {})
-      .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
+  /* ★ **تراجعٌ تكيّفي** (بند 194) — نقلُ عقدِ `teacher/_js-core-bridge.html` نفسه، لا نمطٌ ثانٍ.
+     فشلُ النبضة المتتالي = ذروةٌ على حصّة الثلاثين، والإصرارُ على إيقاع ٣ دقائق وقتها
+     **يزيد الضغط على الجذر نفسه**؛ والنجاحُ يعيد الإيقاع الأساسي فوراً.
+     🔴 وسلسلةُ `setTimeout` ذاتية الجدولة بدل `setInterval` — الأخير **لا يمكن تباعُدُه
+     أصلاً**، فبقاؤه كان يجعل التراجعَ مستحيلاً لا مؤجَّلاً.
+     📌 والمقياسُ: منصّةُ الطالب **6,435 نداءً/٢٤س (٧٠٪ من الحصّة)** و`studentHeartbeat`
+     أكبرُ مساهمٍ فيها بـ**760**، وكلاهما يُنفَّذ في **نشرة المعلّم نفسها**. */
+  var _HB_BASE_MS = 3 * 60 * 1000;
+  var _HB_MAX_MS  = 12 * 60 * 1000;
+  var _hbDelayMs  = _HB_BASE_MS;
+  var _hbTimer    = null;
+  function _scheduleNextBeat() {
+    if (_hbTimer) { try { clearTimeout(_hbTimer); } catch (e) {} }
+    _hbTimer = setTimeout(beat, _hbDelayMs);
   }
-  setInterval(beat, 3 * 60 * 1000);
+  function beat() {
+    if (document.visibilityState !== 'visible') { _scheduleNextBeat(); return; }
+    if (!APP.user || !APP.user.id || !APP.user.switchToken) { _scheduleNextBeat(); return; }
+    /* 🔴 يُختَم **هنا** لا في مسار العودة وحده: كان `_lastBeatAt` يُحدَّث في
+       `visibilitychange` فقط، فنبضةُ المؤقّت **لا تُزيح نافذة الخنق** ⇒ نبضةٌ ثمّ عودةُ
+       تبويبٍ بعدها بثانية = نداءان بدل واحد. */
+    _lastBeatAt = Date.now();
+    // رمي متزامن (لن يقع نظرياً) يجب ألا يقتل سلسلة الجدولة — فخّ بند 78-أ.
+    try {
+      google.script.run
+        .withSuccessHandler(function () { _hbDelayMs = _HB_BASE_MS; _scheduleNextBeat(); })
+        .withFailureHandler(function () {
+          _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
+          _scheduleNextBeat();
+        })
+        .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
+    } catch (eBeat) { _scheduleNextBeat(); }
+  }
   /* ★ نبضة العودة مخنوقة بحدّ أدنى دقيقة — نقلاً عن نظيرها المُطبَّق في teacher
      (`_BEAT_MIN_GAP_MS`). بلا خنق، تبديل التبويبات المتكرّر يُطلق نبضة لكل عودة
      (وهو سلوك شائع جداً على الجوال) فيتحوّل مؤقّت الثلاث دقائق إلى رشقة. */
@@ -8048,7 +8091,9 @@ function _startHeartbeat() {
   // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات initApp() الأخرى التي تُطلَق
   // في نفس اللفة — نفس إصلاح teacher/Teacher Dashboard.html (راجع _docs/2026-07-27-heartbeat-
   // perf-and-boot-burst.md) المطبَّق هناك فقط سابقاً وليس هنا.
-  setTimeout(beat, 1200);
+  // 🔴 وتُجدوَل عبر `_scheduleNextBeat` بعد أوّل تأخيرٍ قصير: النبضةُ الأولى تدخل **السلسلة**
+  //    لا تقع خارجها، وإلّا بقيت نبضةٌ يتيمة لا يحكمها التراجعُ التكيّفي.
+  _hbTimer = setTimeout(beat, 1200);
 }
 
 // ═══════════════════════════════════════════════════════════
