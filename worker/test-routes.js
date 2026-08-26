@@ -338,7 +338,6 @@ if (cIdx < 0 || cEnd <= 1) {
   var cctx = vm.createContext({});
   vm.runInContext(
     src.slice(coIdx, src.indexOf(';', coIdx) + 1) + '\n' +          // CANONICAL_ORIGIN
-    "var OWNER_SCHOOL_SLUG = 'abdaawatmuaz';\n" +
     src.slice(src.indexOf('var _KNOWN_SCHOOL_SLUGS'),
               src.indexOf('};', src.indexOf('var _KNOWN_SCHOOL_SLUGS')) + 2) + '\n' +
     src.slice(cIdx, cEnd), cctx);
@@ -1115,6 +1114,66 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
             cliM[1] + 'ms) بهامش ' + margin + 'ms ≥ 2000');
     }
   }
+})();
+
+// ── استردادُ المقاعد الذاتيّ في منظّم التزاحم (سلوكي عبر `vm`) ─────────────────
+//
+// 🔴 العلّة المقيسة التي يقفلها (‏2026-08-26): `min(n)` في سجلّات ٢٤ ساعة كان يصعد ولا ينزل
+// ‏(82→87→90→98→99) ويبقى عند ٩٠ في دلوٍ فيه حدثان اثنان — سقّاطةٌ لا حمل. سببُها أن
+// `finally` غير مضمون في Workers عند إلغاء الطلب (انقطاعُ العميل)، فيبقى المقعد محجوزاً
+// للأبد. والأثر: `_bhCan` تُرجِع `false` دائماً فتتوقّف مسارات «افتحْ الآن أو تخطَّ» كلُّها.
+// ⚠️ سلوكيٌّ لا نصّي عمداً: `grep` على `_bhReap` يُثبت أن الدالّة مكتوبة، لا أن المقعد
+//    **يُستردّ فعلاً** ولا أن الحيَّ **لا يُستردّ** — والثاني هو الضابط المعاكس الذي يمنع
+//    علاجاً يقتل طلبات قائمة.
+console.log('');
+console.log('منظّم التزاحم — استردادُ المقاعد الذاتيّ (سلوكي):');
+(function () {
+  var bIdx = src.indexOf('var BH_SEAT_TTL_MS');
+  var qIdx = src.indexOf('function _bhLog(');
+  if (bIdx < 0 || qIdx < 0 || qIdx <= bIdx) {
+    console.log('  ❌ ضابط: تعذّر استخراج كتلة منظّم التزاحم — الفحص أجوف');
+    failed++;
+    return;
+  }
+  var bctx = vm.createContext({ Date: Date, setTimeout: setTimeout, clearTimeout: clearTimeout,
+                                Math: Math, Promise: Promise, console: { log: function () {} },
+                                JSON: JSON });
+  // نأخذ الكتلة من ثابت العمر حتى ما قبل `_bhLog` — تشمل العدّادات والدوالّ الخمس.
+  vm.runInContext(
+    src.slice(bIdx, src.indexOf(';', bIdx) + 1) + '\n' +
+    'var BH_ISO_GLOBAL = 8; var BH_ISO_APP = 5; var BH_MAX_WAIT_MS = 8000;\n' +
+    src.slice(src.indexOf('var _bhN', bIdx), qIdx), bctx);
+
+  var ttl = vm.runInContext('BH_SEAT_TTL_MS', bctx);
+  check(ttl >= 24000 + 2000,
+        '🔴 عمرُ المقعد (' + ttl + 'ms) فوق ميزانية الوسيط الكاملة بهامش — فلا يُسترَدّ مقعدُ طلبٍ حيّ');
+
+  // ① مقعدٌ حُجز ولم يُحرَّر (محاكاةُ طلبٍ قُطع): يُستردّ بعد انقضاء عمره.
+  vm.runInContext('_bhTake("teacher"); _bhTake("teacher");', bctx);
+  check(vm.runInContext('_bhN', bctx) === 2, 'مقعدان محجوزان ⇒ n = 2');
+  vm.runInContext('_bhSeats[0].at -= (BH_SEAT_TTL_MS + 1000);', bctx);
+  vm.runInContext('_bhCan("teacher");', bctx);          // الفحص وحده يكفي للاسترداد
+  check(vm.runInContext('_bhN', bctx) === 1,
+        '🔴 المقعد المتقادم يُستردّ عند أوّل فحص ⇒ n = 1 (بلا هذا يتسرّب للأبد)');
+  check(vm.runInContext('_bhApp.teacher', bctx) === 1,
+        'العدّاد لكلّ تطبيق يُستردّ معه — لا يُترك متسرّباً وحده');
+  check(vm.runInContext('_bhReaped', bctx) === 1,
+        'عدّادُ الاسترداد يرتفع ⇒ التسرّب يصير مرئياً في السجلّ لا مُصلَحاً بصمت');
+
+  // ② الضابط المعاكس — الأهمّ: مقعدٌ **حديث** لا يُمَسّ.
+  vm.runInContext('_bhCan("teacher");', bctx);
+  check(vm.runInContext('_bhN', bctx) === 1,
+        '🔒 ضابط معاكس: المقعد الحيّ لا يُستردّ — الاسترداد لا يقتل طلباً قائماً');
+
+  // ③ التحرير العاديّ يُسقط مقعداً واحداً لا أكثر، ويبقى الحساب متوازناً.
+  vm.runInContext('_bhRelease("teacher");', bctx);
+  check(vm.runInContext('_bhN', bctx) === 0 && vm.runInContext('_bhSeats.length', bctx) === 0,
+        'التحرير العاديّ يُفرغ المقعد والعدّاد معاً (لا تحريرٌ مزدوج)');
+
+  // ④ تحريرٌ زائد لا يُنزل العدّاد تحت الصفر (فيمنح سعةً وهمية).
+  vm.runInContext('_bhRelease("teacher");', bctx);
+  check(vm.runInContext('_bhN', bctx) === 0,
+        '🔒 تحريرٌ زائد لا يُنزل العدّاد تحت الصفر');
 })();
 
 console.log('');
