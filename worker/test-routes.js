@@ -462,7 +462,7 @@ if (tkIdx < 0 || tkEnd <= 1 || uuIdx < 0) {
   // ⚠️ **تحرّكت المرساة لا الضمانة (‏2026-08-26):** حلُّ الهوية نُقل إلى ما **قبل** كتلة
   //    إعادة الكتابة لأن بصمة الهوية صارت جزءاً من المُصادِق المركّب (‏`_pageEtag`)، فتُقرأ
   //    مرّةً وتُستهلَك في الموضعين. الادّعاء نفسه: السلسلة تستهلك `_tenantKey` لا `_pathSlug`.
-  var usesKey = /_brand = await _brandFromCache\(url\.origin, _tenantKey\)/.test(src) &&
+  var usesKey = /_brandFromCache\(url\.origin, _tenantKey\)/.test(src) &&
                 /_brandRefresh\(url\.origin, _tenantKey, env\)/.test(src) &&
                 /_tenantKey && !_newsId/.test(src);
   if (!usesKey) failed++;
@@ -913,7 +913,7 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
      🔴 والشرطُ يُفحَص حيث هو الآن: الحقن ما زال محكوماً بـ`_tenantKey && !_newsId` في
         الموضعين معاً (حلُّ الهوية، ثمّ استهلاكُها). أيُّ شرطٍ يسقط ⇒ يُمَسّ الجذرُ أو
         مسارُ المشاركة، وهو بالضبط ما بُني هذا الحارس لمنعه. */
-  var gIdx = src.indexOf('_brand = await _brandFromCache(url.origin, _tenantKey);');
+  var gIdx = src.indexOf('_brandFromCache(url.origin, _tenantKey)');
   var gateCond = /if \(isHtml && !isSwOrManifest && ghResp\.status === 200 && _tenantKey && !_newsId\)/.test(src) &&
                  /if \(_tenantKey && !_newsId && _brand\)/.test(src);
   check(gIdx !== -1 && gateCond,
@@ -1127,87 +1127,86 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   }
 })();
 
-// ── المُصادِق المركّب و304 (سلوكي عبر `vm`) ────────────────────────────────────
+// ── مُصادِقُ إعادة التحقّق: `Last-Modified` (سلوكي عبر `vm`) ───────────────────
 //
-// 🔴 العلّة المقيسة: `/teacher/` = 2,016,145 حرفاً تُخدَم بلا `ETag` وبـ`no-store` ⇒ كلّ فتحٍ
-// يُنزّلها كاملةً. والخطرُ المقابل أن جسم `/<slug>` **مُعاد كتابته لكلّ مستأجر** من ملفٍّ
-// واحد، فمُصادِقُ المنبع لا يصفه ⇒ 304 كان سيُثبّت هويةَ مدرسةٍ عند عميلِ مدرسةٍ أخرى.
-// ⚠️ سلوكيٌّ لا نصّي: `grep` يُثبت أن `_pageEtag` مكتوبة، لا أن تغيير المستأجر **يُغيّر
-//    الوسم فعلاً** — وذاك هو الحارس المركزيّ هنا.
+// 🔴 العلّة المقيسة: `/teacher/` = 2,016,145 حرفاً تُخدَم بلا أيّ مُصادِق وبـ`no-store` ⇒ كلّ
+// فتحٍ يُنزّلها كاملةً. 🔴 وقياسٌ حيٌّ في نفس الجلسة أسقط `ETag` كخيارٍ نهائياً: الحافّة
+// تُسقطه (الرأسُ المرآة وصل بنفس القيمة وهو غاب)، بينما `Last-Modified` **تمرّ**.
+// ⚠️ سلوكيٌّ لا نصّي: `grep` يُثبت أن الدالّة مكتوبة، لا أن تغيّرَ الهوية **يُقدّم التاريخ
+//    فعلاً** — وذاك هو الحارس المركزيّ هنا (بدونه تبقى مدرسةٌ بدّلت اسمَها على القديم أبداً).
 console.log('');
-console.log('المُصادِق المركّب لصفحات HTML (سلوكي):');
+console.log('مُصادِقُ إعادة التحقّق `Last-Modified` (سلوكي):');
 (function () {
-  var eIdx = src.indexOf('function _fnv1a(');
+  var eIdx = src.indexOf('function _hourWindow(');
   var eEnd = src.indexOf('var BRAND_TTL_S');
   if (eIdx < 0 || eEnd <= eIdx) {
     console.log('  ❌ ضابط: تعذّر استخراج دوالّ المُصادِق — الفحص أجوف');
     failed++;
     return;
   }
-  var ectx = vm.createContext({ Date: Date, Math: Math, JSON: JSON, String: String });
+  var ectx = vm.createContext({ Date: Date, Math: Math, Number: Number, String: String });
   vm.runInContext(src.slice(eIdx, eEnd), ectx);
-  var call = function (u, t, b, h) {
-    return vm.runInContext('_pageEtag(' + JSON.stringify(u) + ',' + JSON.stringify(t) + ',' +
-                           JSON.stringify(b) + ',' + JSON.stringify(h) + ', 1756000000000)', ectx);
+  var lm = function (up, ts) {
+    return vm.runInContext('_pageLastMod(' + JSON.stringify(up) + ',' + JSON.stringify(ts) +
+                           ', 1756216800000)', ectx);
   };
-  var BR = { name: 'مدارس الإبداع', logo: '', color: '#123' };
-  var base = call('"abc"', 'abdaawatmuaz', BR, 'yemenschoolz.com');
+  var UP = 'Wed, 26 Aug 2026 10:00:00 GMT';
+  var UP_MS = Date.parse(UP);
 
-  check(base === call('"abc"', 'abdaawatmuaz', BR, 'yemenschoolz.com'),
-        'حتميّة: نفس المُدخَلات ⇒ نفس الوسم (وإلّا لم يُطابق شيءٌ أبداً)');
-  /* 🔴 **وسمٌ قويّ لا ضعيف — وهذا حارسُ انحدارٍ حقيقيّ لا تفضيل شكل.** قِيس حيّاً
-     2026-08-26: الشكلُ الضعيف `W/"…"` **يُسقطه Cloudflare** فلا يبلغ العميل، بينما وسمُ
-     المنبع القويّ يصل سليماً. والميزةُ حينها تصير **خامدةً بصمت**: `If-None-Match: *`
-     يُرجِع 304 (أي الكود يعمل) لكن لا وسمَ يصل ⇒ لا سؤالَ يعود ⇒ لا 304 في متصفّحٍ حقيقيّ.
-     ⇒ من يُعيده ضعيفاً يوماً يُعطّل المكسبَ كلَّه بلا أن يحمرّ شيءٌ آخر. */
-  check(/^"[a-z0-9]+"$/.test(base),
-        '🔴 وسمٌ **قويّ** — الضعيفُ يُسقطه Cloudflare فتصير الميزة خامدةً بصمت');
+  check(lm(UP, 0) === UP_MS, 'تاريخُ المنبع وحده ⇒ هو المُصادِق (نشرةُ CI تصل فوراً)');
+  check(lm(UP, UP_MS + 60000) === UP_MS + 60000,
+        '🔴 الحارس المركزيّ: تحديثُ الهوية **بعد** المنبع يُقدّم التاريخ ⇒ الزائر يرى الاسم الجديد');
+  check(lm(UP, UP_MS - 60000) === UP_MS,
+        '… وطابعُ هويةٍ أقدم لا يُرجِع التاريخ للوراء (الأحدثُ يحكم)');
+  check(lm('', 0) === 1756216800000 - (1756216800000 % 3600000),
+        'بلا أيّ مصدر ⇒ نافذةُ الساعة احتياطاً (لا مُصادِق مفقود)');
+  check(lm(UP, 0) % 1000 === 0,
+        '🔴 دقّةُ الثانية — لو بقيت الميلي-ثانية لصار `>=` كاذباً دوماً فلا 304 أبداً');
+  check(lm('نصٌّ ليس تاريخاً', 0) === 1756216800000 - (1756216800000 % 3600000),
+        '🔒 تاريخٌ تالف لا يُنتج NaN بل يسقط على الاحتياط');
 
-  check(base !== call('"abc"', 'ibn-khaldoun', BR, 'yemenschoolz.com'),
-        '🔴 الحارس المركزيّ: تغييرُ المستأجر وحده ⇒ وسمٌ مختلف (لا تسميم هوية)');
-  check(base !== call('"abc"', 'abdaawatmuaz', { name: 'مدرسة أخرى', logo: '', color: '#123' }, 'yemenschoolz.com'),
-        'تغييرُ اسم المدرسة وحده ⇒ وسمٌ مختلف (الهوية جزءٌ من المُصادِق)');
-  check(base !== call('"abc"', 'abdaawatmuaz', null, 'yemenschoolz.com'),
-        '🔴 «بلا هوية» ⇒ وسمٌ مختلف — فالانتقال إليها يُبطل المُصادِق تلقائياً');
-  check(base !== call('"abc"', 'abdaawatmuaz', BR, 'school.procorners.com'),
-        'تغييرُ المضيف ⇒ وسمٌ مختلف (`_identityHeaders` يختلف بين الأصول الثلاثة)');
-  check(base !== call('"xyz"', 'abdaawatmuaz', BR, 'yemenschoolz.com'),
-        'تغيّرُ ملفّ المنبع ⇒ وسمٌ مختلف (نشرةُ CI تصل فوراً)');
-  check(call('"abc"', 'abdaawatmuaz', BR, 'yemenschoolz.com') !==
-        vm.runInContext('_pageEtag("\\"abc\\"","abdaawatmuaz",' + JSON.stringify(BR) +
-                        ',"yemenschoolz.com", 1756000000000 + 3600000)', ectx),
-        '🔒 النافذة الزمنية تُبدّل الوسم كلّ ساعة — شبكةُ أمانٍ للمُصادِق نفسه');
-
-  var m = function (inm, tag) {
-    return vm.runInContext('_etagMatches(' + JSON.stringify(inm) + ',' + JSON.stringify(tag) + ')', ectx);
+  var ims = function (h, ms) {
+    return vm.runInContext('_notModifiedSince(' + JSON.stringify(h) + ',' + ms + ')', ectx);
   };
-  check(m(base, base) === true, 'المطابقة: الوسم نفسه يُطابِق');
-  check(m(base.replace(/^W\//, ''), base) === true, 'المطابقة ضعيفة: بلا بادئة `W/` يُطابِق');
-  check(m('"other", ' + base, base) === true, 'قائمةٌ مفصولة بفواصل: يكفي عضوٌ مطابق');
-  check(m('*', base) === true, '`*` يُطابِق كلّ شيء (قاعدة HTTP)');
-  check(m('"nope"', base) === false, '🔒 ضابط معاكس: وسمٌ مختلف لا يُطابِق ⇒ لا 304 كاذب');
-  check(m('', base) === false && m(null, base) === false,
+  check(ims(new Date(UP_MS).toUTCString(), UP_MS) === true, 'المطابقة: نفس اللحظة ⇒ غيرُ معدَّل');
+  check(ims(new Date(UP_MS + 60000).toUTCString(), UP_MS) === true, 'نسخةُ العميل أحدث ⇒ غيرُ معدَّل');
+  check(ims(new Date(UP_MS - 60000).toUTCString(), UP_MS) === false,
+        '🔒 الضابط المعاكس: نسخةُ العميل أقدم ⇒ **200 بالمحتوى الجديد** لا 304 كاذب');
+  check(ims('', UP_MS) === false && ims(null, UP_MS) === false,
         '🔒 غيابُ الرأس لا يُطابِق (وإلّا رُدَّ 304 على أوّل زيارة بلا جسم)');
+  check(ims('غير صالح', UP_MS) === false, '🔒 رأسٌ تالف لا يُطابِق');
+  check(ims(new Date(UP_MS).toUTCString(), 0) === false, '🔒 بلا تاريخٍ عندنا لا 304');
 })();
 
-// ── سياسة التخزين: الفصلُ الذي يحمي عامل الخدمة ────────────────────────────────
+// ── سياسة التخزين، ومنعُ بقاء المِجَسّات ──────────────────────────────────────
 console.log('');
-console.log('سياسة التخزين حسب النوع (بنيوي):');
+console.log('سياسة التخزين ونظافةُ الرؤوس (بنيوي):');
 (function () {
   check(/if \(isSwOrManifest\) \{[\s\S]{0,120}no-cache, no-store, must-revalidate/.test(src),
         '🔴 `sw.js` و`manifest` يبقيان `no-store` — عاملُ خدمةٍ مُكاشٌ بخطأ يُثبّت نفسه');
   check(/\} else if \(isHtml\) \{[\s\S]{0,120}'no-cache, must-revalidate'/.test(src),
-        'HTML صار `no-cache, must-revalidate` — السؤالُ في كلّ مرّة باقٍ، والجوابُ صار 304');
+        'HTML بـ`no-cache, must-revalidate` — السؤالُ في كلّ مرّة باقٍ، والجوابُ صار 304');
   check(src.indexOf("headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')") !== -1,
         'الأصولُ الثابتة بلا تغيير — لم يُمَسّ ما كان يعمل');
-  check(src.indexOf("headers.delete('etag')") !== -1 && src.indexOf("headers.delete('last-modified')") !== -1,
-        '🔴 مُصادِقُ المنبع ما زال يُحذَف — لا يُسرَّب للعميل أبداً (لا يصف الجسم المخدوم)');
-  check(/var _upstreamValidator = ghResp\.headers\.get\('etag'\)/.test(src),
-        '… لكنه يُلتقَط **قبل** الحذف ليدخل المُصادِق المركّب');
+  check(src.indexOf("headers.delete('last-modified')") !== -1 &&
+        /var _upstreamLastMod = ghResp\.headers\.get\('last-modified'\)/.test(src),
+        '🔴 تاريخُ المنبع يُلتقَط قبل الحذف ثم يُحذَف — لا يُمرَّر كما هو (الهويةُ تُحقَن بعده)');
   check(/request\.method === 'GET' && !_newsId/.test(src),
-        '🔴 `?news=` مستثنىً من المُصادِق — نداءُ OG يتخطّاه الـbulkhead لا حتمياً');
+        '🔴 `?news=` مستثنىً — نداءُ OG يتخطّاه الـbulkhead لا حتمياً فيتبدّل الجسم بلا سبب');
   check(/ghResp\.body\.cancel\(\)/.test(src),
         'جسمُ المنبع يُلغى عند 304 — لا تدفّقٌ مفتوح بلا قارئ');
+  check(/'X-Brand-Ts'/.test(src),
+        'طابعُ الهوية يُحفَظ في رأس مدخل الكاش — لا داخل الكائن المحقون في الصفحة');
+  /* 🔴 حارسُ نظافة: مِجَسّان تشخيصيّان استُعملا في هذه الجلسة (`X-Page-Validator` ورأسُ
+     `ETag`) وأُزيلا بعد الحسم. رأسٌ تشخيصيّ يبقى يصير حِملاً على كلّ طلبٍ للأبد، ولا
+     شيء يذكّر به. */
+  /* ⚠️ المطابقةُ على **الضبط** لا على الذِكر: التعليقُ الذي يوثّق القياس يذكر اسم المِجَسّ
+     عمداً — وهو أنفعُ ما في الكتلة، لأنه يمنع إعادةَ محاولةِ `ETag` من الصفر. الممنوع أن
+     يبقى الرأسُ **مضبوطاً** في الاستجابة. */
+  check(!/headers\.set\('X-Page-Validator'/.test(src),
+        '🔴 لا مِجَسّ تشخيصيّ متروك في مسار الإنتاج');
+  check(src.indexOf("headers.set('ETag'") === -1,
+        '🔴 لا `ETag` — الحافّة تُسقطه فيصير رأساً ميّتاً يُوهم بميزةٍ خامدة');
 })();
 
 // ── استردادُ المقاعد الذاتيّ في منظّم التزاحم (سلوكي عبر `vm`) ─────────────────
