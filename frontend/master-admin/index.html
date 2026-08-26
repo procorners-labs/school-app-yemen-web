@@ -400,10 +400,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
         <div class="panel-title">🔗 حالة الاتصال بالملفات</div>
         <div id="files-status"></div>
       </div>
-      <div class="panel">
-        <div class="panel-title">🕒 آخر عمليات المزامنة</div>
-        <div id="last-sync-info"></div>
-      </div>
+      <!-- 🗑️ لوحة «آخر عمليات المزامنة» أُسقِطت 2026-08-26 (بند 192): ورقة `Sync_Log`
+           حُذفت من ملفّ Master بقرار مالك، وكانت تحمل نقلاً مالياً يناقض جدول ٠ من الميثاق.
+           سجلُّ عمليات المالك صار `Audit_Master` وحده. -->
     </div>
 
     <!-- ═══ المزامنة ═══ -->
@@ -503,20 +502,11 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
         <div id="all-settings-container"></div>
         <button class="btn btn-primary" onclick="settings_loadAll()" style="margin-top:12px;">🔄 تحميل الإعدادات</button>
       </div>
-      <div class="panel">
-        <div class="panel-title">🧩 القالب الافتراضي للمدارس الجديدة</div>
-        <p style="color:#64748b;font-size:13px;margin:0 0 12px;">
-          تنطبق هذه التغييرات فقط على المدارس التي يتم إنشاؤها بعد الحفظ. لتحديث مدرسة قائمة استخدم
-          زرّ «♻️ بذر الافتراضيات» من صفحة إدارة المدارس.
-        </p>
-        <div id="template-levels-container" style="margin-bottom:16px;"></div>
-        <div id="template-fees-container" style="margin-bottom:16px;"></div>
-        <div style="display:flex;gap:10px;">
-          <button class="btn btn-primary" onclick="template_load()">🔄 تحميل القالب الحالي</button>
-          <button class="btn btn-success" onclick="template_save()">💾 حفظ التغييرات</button>
-        </div>
-        <div id="template-status" style="margin-top:12px;"></div>
-      </div>
+      <!-- 🗑️ لوحة «القالب الافتراضي للمدارس الجديدة» أُسقِطت 2026-08-26 (بند 192):
+           الرسومُ والمراحلُ بياناتُ مدرسة مالكُها منصّةُ المعلّمين بالميثاق، وورقتاها في
+           ملفّ Master (‏`Template_Fees` · `Template_SchoolLevels`) حُذفتا بقرار مالك —
+           وكانتا **ترويسةً بلا صفٍّ واحد** فالحاكمُ فعلياً هو الثوابتُ الكوديّة.
+           والافتراضياتُ تُبذَر كما هي عبر «♻️ بذر الافتراضيات» في صفحة إدارة المدارس. -->
       <div class="panel">
         <div class="panel-title">⚡ إجراءات النظام</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -895,7 +885,8 @@ function showSection(name) {
   if (name === 'schools') schools_load();
   if (name === 'referrals') referrals_load();
   if (name === 'audit')   audit_load();
-  if (name === 'settings') { settings_loadAll(); template_load(); }
+  // `template_load()` أُسقِطت 2026-08-26 (بند 192) — واستدعاؤها هنا كان سيرمي ReferenceError.
+  if (name === 'settings') { settings_loadAll(); }
   if (name === 'portals') portals_load();
   if (name === 'dashboard') dashboard_load(); // تحميل الإحصائيات عند زيارة Dashboard
 }
@@ -914,13 +905,8 @@ function dashboard_load() {
     })
     .getDashboardStatsProtected({ token: App.token, viewSchoolId: App.viewSchoolId });
 
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.success) return;
-      _renderLastSync(res.logs);
-    })
-    .withFailureHandler(function() {})
-    .getSyncLogProtected({ token: App.token, limit: 5 });
+  // 🗑️ نداءُ `getSyncLogProtected` أُسقِط 2026-08-26 (بند 192) — النقطةُ متقاعدةٌ تُرجِع
+  //    قائمةً فارغة، ونداءُ دالّةٍ متقاعدة تنفيذٌ مهدورٌ من حصّةٍ مشتركة مشبَعة (بند 190).
 }
 
 function _renderStats(stats) {
@@ -972,24 +958,8 @@ function _fileStatusBadge(name, ok) {
          (ok ? '✅' : '❌') + ' ' + name + '</div>';
 }
 
-function _renderLastSync(logs) {
-  var el = document.getElementById('last-sync-info');
-  if (!el || !logs || logs.length === 0) {
-    if (el) el.innerHTML = '<p style="color:#999;font-size:13px;">لا توجد عمليات مزامنة مسجلة بعد</p>';
-    return;
-  }
-  var html = '<div style="overflow-x:auto;"><table class="master-table">' +
-             '<thead><tr><th>الوقت</th><th>النوع</th><th>السجلات</th><th>الحالة</th></tr></thead><tbody>';
-  for (var i = 0; i < Math.min(logs.length, 5); i++) {
-    var l = logs[i];
-    var ok = l.status === 'success';
-    html += '<tr><td>' + l.timestamp + '</td><td>' + l.syncType + '</td>' +
-            '<td>' + l.recordsSynced + '</td>' +
-            '<td><span class="badge ' + (ok ? 'badge-active' : 'badge-inactive') + '">' +
-            (ok ? '✅ نجح' : '❌ خطأ') + '</span></td></tr>';
-  }
-  el.innerHTML = html + '</tbody></table></div>';
-}
+/* 🗑️ `_renderLastSync` حُذفت 2026-08-26 (بند 192) — سقطت لوحتُها ونداؤها ومصدرُها معاً.
+   دالّةُ عرضٍ بلا مستدعٍ ميّتةٌ صامتة، وبقاؤها يُغري بإعادة وصلِ ورقةٍ محظورة. */
 
 function _fmt(num) {
   var n = parseFloat(num) || 0;
@@ -1455,122 +1425,10 @@ function settings_loadAll() {
     .getAllSettingsProtected({ token: App.token });
 }
 
-// ── القالب الافتراضي للمدارس الجديدة ─────────────────────────
-var _tmplState = { allGrades: [], defaultRanges: {}, levelRanges: {}, fees: {} };
-
-var _tmplLevelLabels = {
-  kg: 'روضة', primary: 'ابتدائي', primary_middle: 'ابتدائي+متوسط',
-  middle: 'متوسط', middle_secondary: 'متوسط+ثانوي', secondary: 'ثانوي'
-};
-
-function template_load() {
-  var status = document.getElementById('template-status');
-  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ التحميل...</div>';
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.success) {
-        status.innerHTML = '<div class="status-msg status-error">❌ ' + (res ? res.error : 'خطأ') + '</div>';
-        return;
-      }
-      _tmplState.allGrades = res.allGrades || [];
-      _tmplState.defaultRanges = res.defaultRanges || {};
-      _tmplState.levelRanges = {};
-      (res.levelRanges || []).forEach(function(r) { _tmplState.levelRanges[r.level_key] = r; });
-      _tmplState.fees = {};
-      (res.fees || []).forEach(function(r) { _tmplState.fees[r.grade] = r; });
-      _template_renderLevels();
-      _template_renderFees();
-      status.innerHTML = '<div class="status-msg status-success">✅ تم التحميل</div>';
-    })
-    .withFailureHandler(function(err) {
-      status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
-    })
-    .getTemplateDefaultsProtected({ token: App.token });
-}
-
-function _template_gradeOptions(selected) {
-  var html = '<option value="">—</option>';
-  _tmplState.allGrades.forEach(function(g) {
-    html += '<option value="' + g + '"' + (g === selected ? ' selected' : '') + '>' + g + '</option>';
-  });
-  return html;
-}
-
-function _template_renderLevels() {
-  var html = '<table class="master-table"><thead><tr><th>المستوى</th><th>من صف</th><th>إلى صف</th></tr></thead><tbody>';
-  Object.keys(_tmplLevelLabels).forEach(function(key) {
-    var ov = _tmplState.levelRanges[key];
-    var def = _tmplState.defaultRanges[key] || [0, 0];
-    var fromG = ov ? ov.from_grade : _tmplState.allGrades[def[0]];
-    var toG = ov ? ov.to_grade : _tmplState.allGrades[def[1]];
-    html += '<tr data-level="' + key + '">' +
-      '<td>' + _tmplLevelLabels[key] + (ov ? '' : ' <span style="color:#aaa;font-size:11px;">(افتراضي النظام)</span>') + '</td>' +
-      '<td><select class="tmpl-from">' + _template_gradeOptions(fromG) + '</select></td>' +
-      '<td><select class="tmpl-to">' + _template_gradeOptions(toG) + '</select></td>' +
-      '</tr>';
-  });
-  document.getElementById('template-levels-container').innerHTML = html + '</tbody></table>';
-}
-
-function _template_renderFees() {
-  var html = '<table class="master-table" id="tmpl-fees-table"><thead><tr><th>الصف</th><th>رسوم دراسية</th><th>رسوم كتب</th></tr></thead><tbody>';
-  Object.keys(_tmplState.fees).forEach(function(grade) {
-    var f = _tmplState.fees[grade];
-    html += '<tr data-grade="' + grade + '">' +
-      '<td>' + grade + '</td>' +
-      '<td><input type="number" class="tmpl-study" value="' + f.study_fee + '"></td>' +
-      '<td><input type="number" class="tmpl-books" value="' + f.books_fee + '"></td>' +
-      '</tr>';
-  });
-  html += '<tr>' +
-    '<td><select id="tmpl-new-grade">' + _template_gradeOptions('') + '</select></td>' +
-    '<td><input type="number" id="tmpl-new-study" placeholder="رسوم دراسية"></td>' +
-    '<td><input type="number" id="tmpl-new-books" placeholder="رسوم كتب"></td>' +
-    '</tr>';
-  document.getElementById('template-fees-container').innerHTML = html + '</tbody></table>';
-}
-
-function template_save() {
-  var status = document.getElementById('template-status');
-  var levelRanges = [];
-  document.querySelectorAll('#template-levels-container tr[data-level]').forEach(function(tr) {
-    var from = tr.querySelector('.tmpl-from').value;
-    var to = tr.querySelector('.tmpl-to').value;
-    if (from && to) levelRanges.push({ level_key: tr.getAttribute('data-level'), from_grade: from, to_grade: to });
-  });
-
-  var fees = [];
-  document.querySelectorAll('#tmpl-fees-table tr[data-grade]').forEach(function(tr) {
-    fees.push({
-      grade: tr.getAttribute('data-grade'),
-      study_fee: tr.querySelector('.tmpl-study').value,
-      books_fee: tr.querySelector('.tmpl-books').value
-    });
-  });
-  var newGrade = document.getElementById('tmpl-new-grade').value;
-  if (newGrade) {
-    fees.push({
-      grade: newGrade,
-      study_fee: document.getElementById('tmpl-new-study').value,
-      books_fee: document.getElementById('tmpl-new-books').value
-    });
-  }
-
-  status.innerHTML = '<div class="status-msg status-info">⏳ جارٍ الحفظ...</div>';
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.success) {
-        status.innerHTML = '<div class="status-msg status-error">❌ ' + (res ? res.error : 'خطأ') + '</div>';
-        return;
-      }
-      status.innerHTML = '<div class="status-msg status-success">✅ تم الحفظ</div>';
-      template_load();
-    })
-    .withFailureHandler(function(err) {
-      status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
-    })
-    .updateTemplateDefaultsProtected({ token: App.token, levelRanges: levelRanges, fees: fees });
-}
+/* 🗑️ كتلةُ «تخصيص القالب» كاملةً حُذفت 2026-08-26 (بند 192) — اللوحةُ والنقطتان
+   والحالةُ `_tmplState` ودوالُّ العرض: كلُّها فقدت مستدعيها معاً، ودالّةٌ معرَّفة بلا
+   مستدعٍ ميّتةٌ صامتة تُغري بإعادة وصلِ ورقةٍ محظورة. الرسومُ والمراحلُ تُدار من منصّة
+   المعلّمين، والافتراضياتُ تُبذَر عبر «♻️ بذر الافتراضيات» في صفحة إدارة المدارس. */
 
 function system_initSheets() {
   var status = document.getElementById('system-action-status');
