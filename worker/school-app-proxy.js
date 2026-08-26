@@ -671,6 +671,74 @@ var REDIRECT_TO_CANONICAL = { 'www.yemenschoolz.com': 1 };
 
 /* ٦ ساعات: الاسم والشعار واللون شبه ثابتة (تتغيّر حين يحرّرها مدير من تبويب «بيانات
    المدرسة»)، والنتيجة ≈٤ نداءات/يوم/مدرسة تصيب GAS بدل نداءٍ لكلّ زيارة. */
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   مُصادِقٌ مركّب لصفحات HTML — إعادةُ تحقّقٍ بدل إعادةِ تنزيل  (‏2026-08-26)
+
+   **العلّة المقيسة حيّاً:** `/teacher/` = **2,016,145 حرفاً** (‏~527KB على السلك) تُخدَم
+   بـ`no-cache, **no-store**, must-revalidate` و**بلا `ETag` ولا `Last-Modified`**، بينما
+   المنبع (GitHub Pages) يُرجِعهما فعلاً — والوركر يحذفهما عند السطر `headers.delete('etag')`.
+   ⇒ **كلُّ فتحٍ للصفحة، ولو بعد ثانية، يُنزّل الملفَّ كاملاً.** وعلى شبكةٍ يمنية هذا أثقلُ
+   سببٍ منفردٍ لبطء الفتح.
+
+   🔴 **ولا يُمرَّر `ETag` المنبع كما هو — ولا `If-None-Match` إليه.** جسمُ `/<slug>` ملفٌّ
+   واحدٌ من المنبع (‏`/home/index.html`) يُعاد كتابته بثلاث طبقات: `canonical`+`og:url` ·
+   `_brandRewrite` · وأحياناً OG الخبر. فمُصادِقُ المنبع **لا يصف الجسم المخدوم** بل مُدخَلاً
+   واحداً من ثلاثة: هويةُ مدرسةٍ تتغيّر بلا أن يتغيّر الملفّ ⇒ 304 يُثبّت هويةً بائتةً عند
+   العميل **بلا رجعة**. ولو مرّرنا `If-None-Match` إلى المنبع لردّ 304 بلا جسم بينما بصمةُ
+   المستأجر تغيّرت ⇒ لا جسمَ نُعيد كتابته ⇒ جلبةٌ ثانية في المسار الحارّ.
+
+   ⇒ **المُصادِق يُشتقّ من المُخرَج لا المُدخَل:** مُصادِقُ المنبع + مفتاحُ المستأجر + بصمةُ
+   الهوية التي ستُحقَن حرفياً + المضيف (‏`_identityHeaders` يختلف بين الرسمي والإرثيَّين) +
+   نافذةٌ زمنية. فانتقالُ «بلا هوية ⇒ بهوية» يُبطل المُصادِق تلقائياً، ولا مسارَ يُنتج جسماً
+   مختلفاً بنفس الوسم.
+
+   🔒 **والضمانُ الأصليّ محفوظٌ حرفياً:** `no-cache` تُلزم المتصفّح بالسؤال في كلّ مرّة —
+   لا تُخزّن بلا سؤال. الفرقُ الوحيد أن جوابَ السؤال صار **304 (~٣٠٠ بايت)** بدل 200 (527KB)
+   حين لا يتغيّر شيء. `no-store` وحدها هي التي تمنع **وجودَ نسخةٍ تُسأل عنها** — وهي الزائدة.
+   🔴 و`sw.js` و`manifest.webmanifest` يبقيان `no-store` **وبلا مُصادِق**: عاملُ خدمةٍ مُكاشٌ
+   بخطأ **يُثبّت نفسه** ولا يُصلَح من الخادم — فئةُ عطلٍ لا رجعةَ فيها.
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+/** تجزئة FNV-1a 32-بت — **متزامنة عمداً**: `crypto.subtle` غير متزامنة وتُدخل `await`
+ *  في مسارٍ حارٍّ يُنفَّذ لكل صفحة. الغرضُ كشفُ التغيّر لا مقاومةُ التصادم المتعمَّد. */
+function _fnv1a(str) {
+  var h = 0x811c9dc5, s = String(str || '');
+  for (var i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/* نافذةٌ زمنية بالساعة — **شبكةُ أمانٍ للمُصادِق نفسه**: مهما أخطأت البصمات، يُجبَر كلّ
+   عميلٍ على تنزيلٍ كاملٍ واحد كلّ ساعة. الكلفةُ ضئيلة والحدّ الأقصى للبيات ساعةٌ واحدة. */
+function _etagWindow(nowMs) { return Math.floor((nowMs || Date.now()) / 3600000); }
+
+/** يبني المُصادِق المركّب. دالّةٌ **نقيّة** ليختبرها `test-routes.js` بـ`vm` على جدول حالات. */
+function _pageEtag(upstreamValidator, tenantKey, brand, hostname, nowMs) {
+  var brandPrint = brand ? _fnv1a(JSON.stringify(brand)) : '0';
+  return 'W/"' + _fnv1a(
+    String(upstreamValidator || '-') + '|' +
+    String(tenantKey || '-') + '|' +
+    brandPrint + '|' +
+    String(hostname || '-') + '|' +
+    _etagWindow(nowMs)
+  ) + '"';
+}
+
+/** مطابقةٌ ضعيفة لقائمة `If-None-Match` (مفصولةٌ بفواصل · تُجرَّد `W/` · `*` يطابق الكلّ). */
+function _etagMatches(inm, etag) {
+  var raw = String(inm || '').trim();
+  if (!raw || !etag) return false;
+  var mine = String(etag).replace(/^W\//, '').trim();
+  var parts = raw.split(',');
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i].trim().replace(/^W\//, '');
+    if (p === '*' || p === mine) return true;
+  }
+  return false;
+}
+
 var BRAND_TTL_S = 21600;
 
 /* 🔴 مفتاح الكاش على **أصل الطلب نفسه** لا مضيف وهمي: `caches.default` في Workers يشترط
@@ -1470,6 +1538,10 @@ export default {
     headers.delete('content-security-policy');
     headers.delete('x-frame-options');
     headers.set('Access-Control-Allow-Origin', '*');
+    /* 🔴 مُصادِقُ المنبع يُلتقَط **قبل** الحذف ثم يُحذَف كما كان: لا يُسرَّب للعميل أبداً
+       (لا يصف الجسم المخدوم — راجع الكتلة الشارحة عند `_pageEtag`)، لكنه أدقُّ مُدخَلٍ
+       لدينا عن «هل تغيّر الملفّ في المنبع؟». */
+    var _upstreamValidator = ghResp.headers.get('etag') || ghResp.headers.get('last-modified') || '';
     headers.delete('etag');
     headers.delete('last-modified');
     headers.delete('expires');
@@ -1507,14 +1579,21 @@ export default {
     // **مقصود** — `/pricing` يُخدَم داخل `<iframe>` من هذا الوركر نفسه.
 
     // سياسة تخزين ذكية حسب نوع الملف:
-    //  - HTML / sw.js / manifest: لا تخزين (تظهر التحديثات فوراً، ويتحدّث الـ SW).
+    //  - sw.js / manifest: **لا تخزين إطلاقاً** — عاملُ خدمةٍ مُكاشٌ بخطأ يُثبّت نفسه.
+    //  - HTML: `no-cache, must-revalidate` — يُسأل الخادمُ في كلّ مرّة (الضمانُ محفوظ)،
+    //    والجوابُ صار 304 بدل 527KB حين لا يتغيّر شيء. راجع الكتلة عند `_pageEtag`.
     //  - الأصول الثابتة (js/css/صور/خطوط): تخزين يوم + stale-while-revalidate أسبوع
     //    → على الشبكات الضعيفة تُعاد من كاش المتصفّح فوراً بدل جولة شبكة لكل ملف.
     var lowerPath = path.toLowerCase();
     var isHtml = lowerPath === '/' || /\.html?$/.test(lowerPath) || !/\.[a-z0-9]+$/.test(lowerPath);
-    var isNoCache = isHtml || /\/sw\.js$/.test(lowerPath) || /manifest\.webmanifest$/.test(lowerPath);
-    if (isNoCache) {
+    /* 🔴 يُفصَل عن `isHtml` صراحةً: الاثنان لهما امتدادٌ فلا يقعان في `isHtml` أصلاً، لكنّ
+       الفصلَ يجعل الاستثناء **مقروءاً ومختبَراً** بدل أن يعتمد على تفصيلٍ في تعبيرٍ نمطيّ
+       قد يتغيّر يوماً فيفقد `sw.js` حمايته بصمت. */
+    var isSwOrManifest = /\/sw\.js$/.test(lowerPath) || /manifest\.webmanifest$/.test(lowerPath);
+    if (isSwOrManifest) {
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (isHtml) {
+      headers.set('Cache-Control', 'no-cache, must-revalidate');
     } else {
       headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     }
@@ -1621,6 +1700,31 @@ export default {
     //    ملفّ الوركر وحده (‏`fs.readFileSync(W)` قراءتُه الوحيدة) وصفر HTML مخدوم — فحذفُ
     //    الوسم من المصدر غداً يُصمِت الحقن ويبقى كلّ فحص أخضر. دَينٌ مفتوح مقصود ومُعلَن،
     //    لا ادّعاءُ حمايةٍ غير قائمة.
+    /* ── المُصادِق المركّب و304 ──────────────────────────────────────────────────
+       يُحسَب **قبل** بناء الاستجابة لأن الهوية جزءٌ من المُصادِق: `_brandFromCache` كانت
+       تُقرأ داخل كتلة إعادة الكتابة أدناه، فنُقِلت هنا وتُستهلَك في الموضعين — قراءةُ كاشٍ
+       واحدة لا اثنتان. و`_brandRefresh` يبقى في `waitUntil` حرفياً كما كان.
+       🔴 `?news=` مستثنىً كلّياً (بلا مُصادِق، ويبقى بلا تخزين): حقنُ OG يعتمد نداء GAS
+          **يتخطّاه الـbulkhead لا حتمياً** ⇒ نفس العنوان قد يُنتج جسمين في ثانيتين،
+          ومُصادِقٌ هناك يُثبّت بطاقة معاينةٍ خاطئة على واتساب بلا رجعة.
+       🔴 و`GET` وحده: مُصادِقٌ على استجابة `HEAD`/غيرها لا معنى له. */
+    var _tenantKey = _tenantKeyFrom(_rawPath, url.search);
+    var _brand = null;
+    if (isHtml && !isSwOrManifest && ghResp.status === 200 && _tenantKey && !_newsId) {
+      _brand = await _brandFromCache(url.origin, _tenantKey);
+      if (!_brand && ctx && ctx.waitUntil) ctx.waitUntil(_brandRefresh(url.origin, _tenantKey, env));
+    }
+    if (isHtml && !isSwOrManifest && ghResp.status === 200 &&
+        request.method === 'GET' && !_newsId) {
+      var _pageTag = _pageEtag(_upstreamValidator, _tenantKey, _brand, url.hostname);
+      headers.set('ETag', _pageTag);
+      if (_etagMatches(request.headers.get('If-None-Match'), _pageTag)) {
+        // الجسمُ لا يُستهلَك ⇒ يُلغى صراحةً، وإلّا بقي تدفّقٌ مفتوح بلا قارئ.
+        try { if (ghResp.body) ghResp.body.cancel(); } catch (e) { /* أُغلق أصلاً */ }
+        return new Response(null, { status: 304, headers: headers });
+      }
+    }
+
     if (isHtml && ghResp.status === 200 && _canonHref) {
       var _rw = new HTMLRewriter()
         .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
@@ -1637,12 +1741,8 @@ export default {
             في مسار الطلب) يُضاعف العلّة التي جئنا نُصلحها. */
       /* 🔴 `_tenantKey` لا `_pathSlug` (2026-08-14): المستأجر قد يصل بمقطع مسار **أو**
          بمعامل صريح، والثاني هو رابط تطبيق الأندرويد المنشور — راجع `_tenantKeyFrom`. */
-      var _tenantKey = _tenantKeyFrom(_rawPath, url.search);
-      if (_tenantKey && !_newsId) {
-        var _brand = await _brandFromCache(url.origin, _tenantKey);
-        if (_brand) _rw = _brandRewrite(_rw, _brand);
-        else if (ctx && ctx.waitUntil) ctx.waitUntil(_brandRefresh(url.origin, _tenantKey, env));
-      }
+      // 🔁 `_tenantKey` و`_brand` محسوبان أعلاه (قبل المُصادِق) — لا تُعاد قراءة الكاش هنا.
+      if (_tenantKey && !_newsId && _brand) _rw = _brandRewrite(_rw, _brand);
 
       return _rw.transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
     }
