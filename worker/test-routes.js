@@ -1117,12 +1117,55 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
     var attM  = /var PER_ATTEMPT_TIMEOUT_MS = (\d+);/.exec(src);
     check(!!cliM && !!winM && !!attM,
           'قُرئت الثوابت الثلاثة من الطرفين (فشلُ الاستخراج = عمى لا نجاح)');
-    if (cliM && winM && attM) {
-      var worst  = Number(winM[1]) + Number(attM[1]);
-      var margin = Number(cliM[1]) - worst;
+    /* 🔴 **النموذج صُحِّح 2026-08-26 — كان يُصادق على تجاوزٍ حقيقيّ.** الحساب القديم
+       `worst = BH_LOGIN_WAIT_MS + PER_ATTEMPT` (‏= 23,500) يفترض **محاولةً واحدة**،
+       والحلقة تسمح باثنتين: الثانية تبدأ عند ~12,200 وتنتهي عند 23,700 ⇒ الحقيقة
+       ‏`W + 23,700` = **34,700ms** عند `W = 11,000`. أي أن الحارس كان أخضرَ على سيناريو
+       يقطع فيه العميلُ الاتصالَ فعلاً. ⇒ لا رقمٌ مُخمَّن بعد الآن: **تُحاكى الحلقة نفسها**
+       بثوابتها المقروءة من المصدر، عبر مدى الانتظار كلّه. */
+    var budM = /var TOTAL_BUDGET_MS = (\d+) - _bhWaited;/.exec(src);
+    var napM = /var delays = \[(\d+)\];/.exec(src);
+    check(!!budM && !!napM, 'قُرئت ميزانيةُ الحلقة وفاصلُها من المصدر (فشلُ الاستخراج = عمى)');
+    if (cliM && winM && attM && budM && napM) {
+      var PER = Number(attM[1]), NAP = Number(napM[1]), BASE = Number(budM[1]);
+      /* محاكاةٌ مطابقةٌ للحلقة: محاولتان، حارسُ ميزانيةٍ **يستشرف نهاية المحاولة**،
+         ونومٌ مقصوصٌ على المتبقّي. تُرجِع الزمن الكلّي (انتظارٌ + حلقة). */
+      function worstFor(W) {
+        var budget = BASE - W, elapsed = 0;
+        for (var a = 0; a < 2; a++) {
+          if (elapsed + PER > budget) break;
+          elapsed += PER;
+          if (a < 1) elapsed += Math.min(NAP, Math.max(0, budget - elapsed));
+        }
+        return W + elapsed;
+      }
+      var worstAll = 0, worstLogin = 0, w;
+      for (w = 0; w <= Number(winM[1]); w += 100) {
+        var t = worstFor(w);
+        if (t > worstAll) worstAll = t;
+        worstLogin = Math.max(worstLogin, t);   // نافذةُ الدخول هي الأوسع أصلاً
+      }
+      check(worstAll <= BASE,
+            '🔴 الزمنُ الكلّي مسقوفٌ بالميزانية (' + worstAll + 'ms ≤ ' + BASE +
+            'ms) مهما بلغ انتظارُ الطابور — الحارسُ يستشرف نهاية المحاولة');
+      var margin = Number(cliM[1]) - worstLogin;
       check(margin >= 2000,
-            '🔴 أسوأ زمنٍ في الوركر (' + worst + 'ms) تحت مهلة العميل (' +
+            '🔴 أسوأ زمنِ دخولٍ مُحاكىً (' + worstLogin + 'ms) تحت مهلة العميل (' +
             cliM[1] + 'ms) بهامش ' + margin + 'ms ≥ 2000');
+      /* 🔒 ضابطٌ معاكس: المحاكاة تُميّز فعلاً. بحارسٍ لا يستشرف (النموذج القديم) يجب أن
+         يتجاوز السقف — وإلّا كانت المحاكاة تُصادق على أي شيء. */
+      function worstNaive(W) {
+        var budget = BASE - W, elapsed = 0;
+        for (var a = 0; a < 2; a++) {
+          if (elapsed >= budget) break;
+          elapsed += PER;
+          if (a < 1) elapsed += Math.min(NAP, Math.max(0, budget - elapsed));
+        }
+        return W + elapsed;
+      }
+      check(worstNaive(Number(winM[1]) - 1000) > Number(cliM[1]),
+            '🔒 ضابط معاكس: الحارسُ غيرُ المستشرف يتجاوز مهلة العميل (' +
+            worstNaive(Number(winM[1]) - 1000) + 'ms) — فالمحاكاة تُميّز لا تُصادق');
     }
   }
 })();
@@ -1234,7 +1277,7 @@ console.log('منظّم التزاحم — استردادُ المقاعد ال�
   // نأخذ الكتلة من ثابت العمر حتى ما قبل `_bhLog` — تشمل العدّادات والدوالّ الخمس.
   vm.runInContext(
     src.slice(bIdx, src.indexOf(';', bIdx) + 1) + '\n' +
-    'var BH_ISO_GLOBAL = 8; var BH_ISO_APP = 5; var BH_MAX_WAIT_MS = 8000;\n' +
+    'var BH_ISO_GLOBAL = 8; var BH_ISO_APP = 5;\n' +
     src.slice(src.indexOf('var _bhN', bIdx), qIdx), bctx);
 
   var ttl = vm.runInContext('BH_SEAT_TTL_MS', bctx);
@@ -1258,15 +1301,243 @@ console.log('منظّم التزاحم — استردادُ المقاعد ال�
   check(vm.runInContext('_bhN', bctx) === 1,
         '🔒 ضابط معاكس: المقعد الحيّ لا يُستردّ — الاسترداد لا يقتل طلباً قائماً');
 
-  // ③ التحرير العاديّ يُسقط مقعداً واحداً لا أكثر، ويبقى الحساب متوازناً.
-  vm.runInContext('_bhRelease("teacher");', bctx);
+  // ③ التحرير العاديّ يُسقط **مقعده هو** لا أيَّ مقعد، ويبقى الحساب متوازناً.
+  //    (العقدُ تغيّر 2026-08-26: `_bhRelease` تأخذ كائن المقعد لا اسم التطبيق.)
+  vm.runInContext('var _s1 = _bhSeats[0]; _bhRelease(_s1);', bctx);
   check(vm.runInContext('_bhN', bctx) === 0 && vm.runInContext('_bhSeats.length', bctx) === 0,
         'التحرير العاديّ يُفرغ المقعد والعدّاد معاً (لا تحريرٌ مزدوج)');
 
-  // ④ تحريرٌ زائد لا يُنزل العدّاد تحت الصفر (فيمنح سعةً وهمية).
-  vm.runInContext('_bhRelease("teacher");', bctx);
+  // ④ تحريرٌ زائد لنفس المقعد لا يُنزل العدّاد تحت الصفر (فيمنح سعةً وهمية).
+  vm.runInContext('_bhRelease(_s1);', bctx);
   check(vm.runInContext('_bhN', bctx) === 0,
         '🔒 تحريرٌ زائد لا يُنزل العدّاد تحت الصفر');
+
+  /* ⑤ 🔒 **الضابط الحاسم للعقد الجديد** — مقعدٌ حُصد سلفاً ثمّ عاد طلبُه حيّاً فحرّر:
+     يجب أن يكون **صفر إنقاص**، و**ألّا يُسقِط مقعد طلبٍ آخرَ حيّ**. قبل هذا العقد كان
+     التحرير يُسقط «أقدم مقعدٍ لهذا التطبيق» ويُنقِص بلا شرط ⇒ إنقاصٌ مزدوج بعد الحصاد،
+     ومقعدٌ حيٌّ يُسحَب من تحت صاحبه فيُحصَد أوانه. الاتجاه fail-open ⇒ قبولٌ فوق السقف،
+     وهو غيرُ مقبولٍ الآن وقد صار السقف نافذاً (‏`BULKHEAD_MODE = on`). */
+  vm.runInContext('var _a = _bhTake("teacher"); var _b = _bhTake("teacher");', bctx);
+  vm.runInContext('_a.at -= (BH_SEAT_TTL_MS + 1000); _bhCan("teacher");', bctx);  // يُحصد _a وحده
+  check(vm.runInContext('_bhN', bctx) === 1 && vm.runInContext('_bhSeats.indexOf(_b)', bctx) === 0,
+        'تمهيد: المقعد المتقادم `_a` حُصد والحيّ `_b` باقٍ');
+  vm.runInContext('_bhRelease(_a);', bctx);
+  check(vm.runInContext('_bhN', bctx) === 1 && vm.runInContext('_bhApp.teacher', bctx) === 1,
+        '🔒 تحريرُ مقعدٍ حُصد سلفاً ⇒ صفر إنقاص (لا احتساب مزدوج)');
+  check(vm.runInContext('_bhSeats.indexOf(_b)', bctx) === 0,
+        '🔒 ولا يُسقِط مقعد طلبٍ آخرَ حيّ — `_b` ما يزال قائماً');
+
+  // ⑥ تحريرٌ بلا مقعد (‏`null`) لا يفعل شيئاً — يحرس مسارات «افتحْ الآن أو تخطَّ».
+  vm.runInContext('_bhRelease(null);', bctx);
+  check(vm.runInContext('_bhN', bctx) === 1,
+        '🔒 `_bhRelease(null)` لا يُنقِص شيئاً — الإخفاق في الحجز لا يُحرّر مقعد غيره');
+
+  /* ⑦ 🔴 **الدورةُ الكاملة عبر الطابور** — وهي المسارُ الذي تُنشئه هذه الدفعة أصلاً
+     (بتفعيل `on` صار الانتظارُ شائعاً لا نظرياً)، وكان **بلا أي تغطية**.
+     رصدَته المراجعة بطفرةٍ نجت: لو أعادت `_bhPump`/`_bhAcquire` القيمةَ `true` بدل كائن
+     المقعد، لمرّ كلُّ شيءٍ أخضرَ بينما `_bhRelease(true)` تجد `indexOf === -1` فلا تُنقِص
+     شيئاً ⇒ **إعادةُ إنتاج سقّاطة تسرّب المقاعد نفسها، والسقفُ نافذ هذه المرّة.** */
+  /* ⚠️ **والوعدُ يُشَمّ متزامناً عمداً**: `.then` الحقيقيّ microtask يُنفَّذ **بعد** سطر
+     `RESULT` النهائي فيصير الفحصُ زينةً لا حارساً (نفس فخّ `_slugIsPublished` أعلاه).
+     الشيمُ يستدعي المستمعَ لحظةَ `resolve`. **ويُقاس قبل أن يُصدَّق حكمُه** — الضابطُ
+     الأوّل أدناه يُثبت أنه يُطلق فعلاً، وإلّا بقي `_got` عند `"PENDING"` وكلُّ ما يليه أخضر. */
+  vm.runInContext(
+    'function SyncP(ex) { var s = this; s._d = false; s._v = undefined; s._c = [];\n' +
+    '  ex(function (v) { s._d = true; s._v = v; for (var i = 0; i < s._c.length; i++) s._c[i](v); }); }\n' +
+    'SyncP.prototype.then = function (cb) { if (this._d) cb(this._v); else this._c.push(cb); return this; };\n' +
+    'SyncP.resolve = function (v) { return new SyncP(function (r) { r(v); }); };\n' +
+    'Promise = SyncP;', bctx);
+  /* ⚠️ التمهيدُ يحترم **السقفَين معاً**: ٥ لـ`home` (سقفُها الفرعيّ) + ٣ لـ`teacher` = ٨
+     عالمياً. ملءُ الثمانية بتطبيقٍ واحد كان سيتجاوز السقف الفرعيّ فيحجب المنحَ لسببٍ
+     آخر — سيناريو مستحيلٌ يُنتج فشلاً مضلِّلاً لا حراسة. */
+  vm.runInContext('_bhN = 0; _bhApp = {}; _bhSeats = []; _bhQ = [];', bctx);
+  vm.runInContext('for (var i = 0; i < BH_ISO_APP; i++) _bhTake("home");' +
+                  'for (var j = 0; j < BH_ISO_GLOBAL - BH_ISO_APP; j++) _bhTake("teacher");', bctx);
+  check(vm.runInContext('_bhN', bctx) === 8 && vm.runInContext('_bhApp.home', bctx) === 5,
+        'تمهيد: السقفُ العالميّ ممتلئ (n = 8) بلا تجاوزِ سقفٍ فرعيّ');
+  // طلبُ `teacher` يدخل الطابور (السقفُ العالميّ ممتلئ) ⇒ لا يُمنح فوراً.
+  vm.runInContext('var _got = "PENDING"; _bhAcquire("teacher", 5000).then(function (s) { _got = s; });', bctx);
+  check(vm.runInContext('_bhQ.length', bctx) === 1, 'الطلبُ الفائض ينتظر في الطابور لا يُرفض فوراً');
+  check(vm.runInContext('_got', bctx) === 'PENDING', 'ولم يُمنَح بعد — الطابورُ طابورٌ فعلاً');
+  // يُحرَّر مقعد ⇒ `_bhPump` تمنحه للمنتظِر في الحال.
+  vm.runInContext('_bhRelease(_bhSeats[0]);', bctx);
+  var got = vm.runInContext('_got', bctx);
+  check(got !== 'PENDING', 'ضابطُ الشيم: المستمعُ أُطلق فعلاً (بقاؤه معلّقاً = أخضرُ بلا معنى)');
+  check(got && typeof got === 'object' && got.app === 'teacher',
+        '🔴 المنحُ من الطابور يُعيد **كائن مقعد** لا `true` (وإلّا تسرّب المقعد عند التحرير)');
+  check(vm.runInContext('_bhN', bctx) === 8 && vm.runInContext('_bhQ.length', bctx) === 0,
+        'الطابورُ فُرّغ والعدّاد ثابتٌ عند السقف (مقعدٌ خرج وآخرُ دخل)');
+  vm.runInContext('_bhRelease(_got);', bctx);
+  check(vm.runInContext('_bhN', bctx) === 7 && vm.runInContext('_bhSeats.indexOf(_got)', bctx) === -1,
+        '🔒 تحريرُ المقعد المُمنَّح من الطابور يُنقِص فعلاً — الدورةُ متوازنة');
+})();
+
+// ── كاشُ الحافّة لنداءات GAS العامّة (سلوكي عبر `vm`) ──────────────────────────
+//
+// 🔴 لماذا سلوكيّ لا نصّي: `grep` على `_apiCacheProbe` يُثبت أن الدالّة مكتوبة، لا أنها
+// **ترفض** جسماً بمفتاح `fn` مكرَّر ولا أنها **لا تُخزّن** ردّاً فاشلاً. والضوابط المعاكسة
+// هنا هي الميزةُ كلّها: كاشٌ يُخزّن الخطأ يُثبّته ١٠ دقائق، وكاشٌ يخلط مستأجراً بآخر
+// يسرّب بيانات مدرسةٍ إلى أخرى. كلاهما أسوأ من غياب الكاش أصلاً.
+console.log('');
+console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوكي):');
+(function () {
+  var aIdx = src.indexOf('var API_CACHE_TTL_S');
+  var aEnd = src.indexOf('\n}', src.indexOf('async function _apiCachePut(')) + 2;
+  if (aIdx < 0 || aEnd <= 1 || aEnd <= aIdx) {
+    console.log('  ❌ ضابط: تعذّر استخراج كتلة كاش الـAPI — الفحص أجوف');
+    failed++;
+    return;
+  }
+  /* تجريدُ `async`/`await` بنفس نمط `_slugIsPublished` — والدوالّ هنا كذلك بلا فروعٍ
+     تعتمد توقيت الوعد. ⚠️ والتجريدُ يُقاس قبل أن يُصدَّق حكمُه. */
+  var aSrc = src.slice(aIdx, aEnd).replace(/async function/g, 'function').replace(/await /g, '');
+  var stripOk = aSrc.indexOf('await ') === -1 &&
+                aSrc.indexOf('function _apiCacheProbe(') !== -1 &&
+                aSrc.indexOf('API_CACHE_FNS[probe.fn].ok(b)') !== -1;
+  check(stripOk, 'ضابط: تجريدُ `await` نجح والجسمُ باقٍ (تجريدٌ فارغ = أخضرُ بلا معنى)');
+  if (!stripOk) return;
+
+  var hits = { match: 0, put: 0 };
+  var store = {};                      // url -> {text, ts}
+  function FakeResponse(body, init) {
+    this._t = body;
+    var h = (init && init.headers) || {};
+    this.headers = { get: function (k) { return h[k] === undefined ? null : h[k]; } };
+    this.text = function () { return body; };
+  }
+  var actx = vm.createContext({
+    Date: Date, JSON: JSON, Object: Object, Number: Number, String: String,
+    encodeURIComponent: encodeURIComponent, Response: FakeResponse,
+    Request: function (url) { this.url = url; },
+    caches: { default: {
+      match: function (req) { hits.match++; var e = store[req.url];
+                              return e ? new FakeResponse(e.text, { headers: { 'X-Api-Ts': e.ts } }) : undefined; },
+      put:   function (req, resp) { hits.put++; store[req.url] = { text: resp._t, ts: String(Date.now()) }; }
+    } }
+  });
+  vm.runInContext(aSrc, actx);
+  var probe = vm.runInContext('_apiCacheProbe', actx);
+  var put   = vm.runInContext('_apiCachePut', actx);
+  var get   = vm.runInContext('_apiCacheGet', actx);
+
+  // ① القبول الأساسي.
+  var pOk = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['abdaawatmuaz'] }));
+  check(!!pOk && pOk.fn === 'getHomePageBundle', 'جسمٌ عامّ مؤهَّل يُقبَل');
+
+  // ② 🔒 دالّةٌ خارج القائمة البيضاء — أي شيءٍ يحمل توكناً في `args` يسقط هنا.
+  check(probe(JSON.stringify({ fn: 'getMyActivitiesProtected', args: ['tok'] })) === null,
+        '🔒 دالّةٌ خارج القائمة البيضاء ⇒ لا كاش (الحمولاتُ ذات الجلسة تسقط هنا)');
+
+  /* ③ 🔒 **الفخّ الذي أسقط الرجيكس سابقاً**: `JSON.parse` يأخذ **آخر** قيمةٍ لمفتاحٍ
+     مكرَّر بينما الرجيكس يأخذ أوّلها ⇒ جسمٌ كهذا كان **سيُصيب الكاش باسمٍ ويُنفَّذ غيره**. */
+  check(probe('{"fn":"getHomePageBundle","args":[""],"fn":"getMyActivitiesProtected"}') === null,
+        '🔒 مفتاحُ `fn` مكرَّر ⇒ لا كاش (يُقرأ بـ`JSON.parse` لا برجيكس)');
+
+  // ④ 🔒 مفتاحٌ إضافيّ مجهول = احتمالُ توكن ⇒ fail-closed.
+  check(probe(JSON.stringify({ fn: 'getHomePageBundle', args: [''], token: 'x' })) === null,
+        '🔒 مفتاحٌ إضافيّ مجهول في الجسم ⇒ لا كاش');
+
+  /* ⑤ 🔒 وسيطٌ حرٌّ طويل يُفجّر فضاء المفاتيح. ⚠️ ودالّةٌ **مؤهَّلةٌ اسماً** تُرفض بـ
+     `reject` لا بـ`null` — التمييزُ هو ما يجعل الرفض مسجَّلاً بدل أن تخمد الميزة بصمت. */
+  var pLong = probe(JSON.stringify({ fn: 'getHomePageBundle', args: [new Array(300).join('a')] }));
+  check(!!pLong && !pLong.argsKey && pLong.reject === 'args',
+        '🔒 وسيطٌ حرٌّ طويل ⇒ لا كاش، ورفضٌ **مسجَّل** لا صامت');
+
+  /* ⑤ب 🔒 حدُّ الطول يُقاس على النصّ **الخام** لا المُرمَّز: اسمُ صفٍّ عربيٍّ واقعيّ
+     كان يتجاوز ٢٥٦ بعد `encodeURIComponent` (العربية ×6) فيسقط أكبرُ مستهلكٍ للميزة. */
+  var pAr = probe(JSON.stringify({ fn: 'getHomeScheduleBundle', args: [{
+    schoolId: '3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+    klass: 'الصف الأول الابتدائي', section: 'أ'
+  }] }));
+  check(!!pAr && !!pAr.argsKey,
+        '🔴 اسمُ صفٍّ عربيٍّ واقعيّ يبقى مؤهَّلاً (الحدُّ على الخام لا المُرمَّز)');
+
+  /* ⑥ 🔒 **عزلُ المستأجرين — يُقاس على `_apiCacheKey` نفسها لا على مخرَج المِجَسّ.**
+     🔴 رصدَته المراجعة: مقارنةُ `argsKey` وحدها كانت تمرّ خضراءَ حتى مع `_apiCacheKey`
+     تُسقِط `argsKey` من الـURL كلّياً — أي **كلُّ المدارس تتشارك مدخلاً واحداً**، تسريبُ
+     مستأجرٍ إلى آخر بلا أن يحمرّ شيء. الضابطُ يجب أن يمسّ **المفتاح المخدوم**. */
+  var keyOf = vm.runInContext('_apiCacheKey', actx);
+  var k1 = probe(JSON.stringify({ fn: 'getTeacherSchoolBrand', args: [''], schoolId: 'aaa' })).argsKey;
+  var k2 = probe(JSON.stringify({ fn: 'getTeacherSchoolBrand', args: [''], schoolId: 'bbb' })).argsKey;
+  check(k1 !== k2, '`schoolId` يدخل في `argsKey`');
+  check(keyOf('https://x', 'teacher', 'getTeacherSchoolBrand', k1).url !==
+        keyOf('https://x', 'teacher', 'getTeacherSchoolBrand', k2).url,
+        '🔒 مدرستان ⇒ **مفتاحا كاشٍ مختلفان** (لا يكفي اختلافُ `argsKey` وحده)');
+  check(keyOf('https://x', 'teacher', 'getTeacherSchoolBrand', k1).url !==
+        keyOf('https://x', 'student', 'getTeacherSchoolBrand', k1).url,
+        '🔒 `app` داخل المفتاح ⇒ منصّتان لا تتشاركان مدخلاً');
+  check(keyOf('https://x', 'teacher', 'getTeacherSchoolBrand', k1).url !==
+        keyOf('https://x', 'teacher', 'getStudentSchoolBrand', k1).url,
+        '🔒 `fn` داخل المفتاح ⇒ دالّتان لا تتشاركان مدخلاً');
+
+  // ⑦ التخزين الناجح ثمّ الإصابة — والإصابةُ تُعيد النصّ **حرفياً**.
+  hits.match = 0; hits.put = 0;
+  var goodBrand = JSON.stringify({ ok: true, name: 'مدارس الإبداع', _ms: 6 });
+  var pBrand = probe(JSON.stringify({ fn: 'getTeacherSchoolBrand', args: [''] }));
+  check(put('https://x', 'teacher', pBrand, goodBrand) === true && hits.put === 1,
+        'ردٌّ عامٌّ صالح ⇒ يُخزَّن مرّةً واحدة');
+  var hit = get('https://x', 'teacher', pBrand);
+  check(!!hit && hit.text === goodBrand,
+        'الإصابةُ تُعيد النصّ الخام حرفياً (بذيل `_ms` الذي يستهلكه الجسر)');
+
+  // ⑧ 🔒 لا كاش سلبيّ — تخزينُ الفشل يُثبّته ١٠ دقائق ويُقرأ «الإصلاح لم يعمل».
+  hits.put = 0;
+  check(put('https://x', 'teacher', pBrand, JSON.stringify({ ok: false, error: 'x' })) === false &&
+        hits.put === 0, '🔒 ردُّ `ok:false` ⇒ صفر تخزين');
+
+  // ⑨ 🔒 الاسمُ الفارغ لا يُخزَّن — «شاشة دخول بلا هوية أسوأ من العطل».
+  hits.put = 0;
+  check(put('https://x', 'teacher', pBrand, JSON.stringify({ ok: true, name: '' })) === false &&
+        hits.put === 0, '🔒 `ok:true` باسمٍ فارغ ⇒ صفر تخزين');
+
+  /* ⑩ 🔒 عقدٌ مختلف: `getHomeScheduleBundle` تُرجِع `{settings, schedule}` **بلا `ok`**.
+     شرطٌ موحَّد كان سيُسقطها دائماً بصمت، أو يُخزّن أخطاءها. */
+  var pSched = probe(JSON.stringify({ fn: 'getHomeScheduleBundle',
+                                      args: [{ schoolId: '', klass: 'الأول', section: 'أ' }] }));
+  check(!!pSched, 'وسيطٌ كائنيّ محصورُ المفاتيح يُقبَل (`getHomeScheduleBundle`)');
+  hits.put = 0;
+  check(put('https://x', 'student', pSched,
+            JSON.stringify({ settings: { dayStart: '07:00' }, schedule: { ok: false, error: 'لا جدول' } })) === false &&
+        hits.put === 0, '🔒 عضوٌ فاشل داخل الحزمة ⇒ صفر تخزين');
+  check(put('https://x', 'student', pSched,
+            JSON.stringify({ settings: { dayStart: '07:00' }, schedule: { rows: [] } })) === true,
+        'حزمةٌ بعضوَين صالحَين تُخزَّن رغم غياب `ok` — العقدُ لكلّ دالّة على حدة');
+
+  // ⑪ 🔒 وسيطٌ كائنيّ بمفتاحٍ خارج المحصورة — وهو المسارُ الذي يحمل توكناً لو حمله.
+  var pTok = probe(JSON.stringify({ fn: 'getHomeScheduleBundle', args: [{ token: 'x' }] }));
+  check(!!pTok && !pTok.argsKey, '🔒 وسيطٌ كائنيّ بمفتاحٍ مجهول ⇒ لا كاش');
+
+  // ⑫ إخفاقُ الكاش يُرجِع null لا يرمي.
+  check(get('https://x', 'teacher', probe(JSON.stringify({ fn: 'getStudentSchoolBrand', args: ['zzz'] }))) === null,
+        'إخفاقُ الكاش يُرجِع `null` بلا رمي');
+})();
+
+/* ── 🔴 موضعُ الاعتراض — بنيويّ لا سلوكيّ، وهو نصفُ الميزة ─────────────────────
+   إصابةُ الكاش يجب أن تسبق `_bhAcquire`، وإلّا أنفقت أنجحُ حالةٍ أغلى مورد (مقعداً من
+   حصّة Google) بلا أن تلمس GAS أصلاً. ولا يُقاس هذا سلوكياً بلا محاكاة المعالج كلّه. */
+console.log('');
+console.log('كاشُ الحافّة — موضعُ الاعتراض (بنيوي):');
+(function () {
+  var gIdx = src.indexOf("if (path.indexOf('/gas/') === 0");
+  if (gIdx < 0) gIdx = src.indexOf('var _acProbe');
+  /* الحدُّ الأعلى **معلَّمٌ بسجلّ `ev:'gas'`** (آخرُ سطرٍ في المعالج) لا برقمٍ ثابت:
+     نافذةٌ بطولٍ ثابت تنكمش تحت الكتلة كلّما نما الملفّ فتصير الضوابطُ خضراءَ بلا معنى. */
+  var gEnd = src.indexOf("ev: 'gas'", gIdx);
+  var seg = src.slice(gIdx, gEnd > gIdx ? gEnd : gIdx + 9000);
+  var iProbe = seg.indexOf('_apiCacheProbe(init.body)');
+  var iAcq   = seg.indexOf('_bhAcquire(app');
+  check(iProbe > -1 && iAcq > -1 && iProbe < iAcq,
+        '🔴 الاعتراضُ **قبل** حجز المقعد — الإصابةُ لا تستهلك من السقف');
+  /* 🔴 الشرطُ **أقوى** من إعفاء الصحّة وحدها ويشمله: استعلامٌ فارغٌ حصراً. سببُه المزدوج:
+     (‏١) `?action=health` أداةُ تشخيصٍ تُجيب من كاشٍ تُخفي بالضبط ما نُشخّصه بها؛
+     (‏٢) الوسيط يمرّر `url.search` حرفياً إلى GAS وهي ليست في المفتاح ⇒ بُعدُ تسميمٍ
+     مفتوحٌ لأوّل دالّةٍ تقرأ `e.parameter`. الاشتراطُ يقفل الاثنين معاً. */
+  check(/url\.search === ''[\s\S]{0,200}_apiCacheProbe/.test(seg),
+        "🔴 الكاشُ مقصورٌ على استعلامٍ فارغ — يُعفي `?action=health` ويقفل تسميمَ الاستعلام معاً");
+  check(seg.indexOf('ctx.waitUntil(_apiCachePut(') > -1,
+        'التخزينُ في `ctx.waitUntil` — خارج مسار الاستجابة فلا يُبطئ نداءً');
+  check(/_acProbe && good && ctx/.test(seg),
+        '🔒 التخزين مشروطٌ بـ`good` أيضاً — نقلٌ فاشل أو HTML لا يُخزَّن');
 })();
 
 console.log('');
