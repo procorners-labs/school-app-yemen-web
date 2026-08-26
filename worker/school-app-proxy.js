@@ -1725,6 +1725,14 @@ export default {
         request.method === 'GET' && !_newsId) {
       var _pageTag = _pageEtag(_upstreamValidator, _tenantKey, _brand, url.hostname);
       headers.set('ETag', _pageTag);
+      /* 🔬 **مِجَسّ تشخيصيّ مؤقّت (‏2026-08-26).** قِيس حيّاً أن `ETag` لا يبلغ العميل
+         إطلاقاً — لا بالشكل الضعيف ولا القويّ، وعلى المضيفَين معاً — بينما `If-None-Match: *`
+         يُرجِع **304** فعلاً (أي أن هذا السطر يُنفَّذ). والاحتمالان: الوركر لا يُصدره، أو
+         الحافّة تُسقطه. رأسٌ مرآةٌ بنفس القيمة يفصلهما في طلبٍ واحد:
+           · وصل `X-Page-Validator` وغاب `ETag` ⇒ الإسقاط من الحافّة قطعاً.
+           · غابا معاً ⇒ العلّة قبل ذلك، والفرضيتان تسقطان معاً.
+         🔴 يُزال فور الحسم — رأسٌ تشخيصيّ يبقى يصير حِملاً على كل طلبٍ للأبد. */
+      headers.set('X-Page-Validator', _pageTag);
       if (_etagMatches(request.headers.get('If-None-Match'), _pageTag)) {
         // الجسمُ لا يُستهلَك ⇒ يُلغى صراحةً، وإلّا بقي تدفّقٌ مفتوح بلا قارئ.
         try { if (ghResp.body) ghResp.body.cancel(); } catch (e) { /* أُغلق أصلاً */ }
