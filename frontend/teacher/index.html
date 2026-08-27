@@ -4091,6 +4091,10 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 // Smart Client Cache مع TTL
 // ══════════════════════════════════════════════════════
 
+/* 🔴 **سقفُ بياتٍ صريح للتراجع عند الإشباع** (بند 196): بائتٌ بلا سقفٍ يعرض بياناتِ
+   الأمس بثقة. ويُقاس **من لحظة الانتهاء** لا من لحظة الكتابة — لأن `e` وحدها مخزَّنة. */
+var CS_STALE_MAX_AGE_MS = 30 * 60 * 1000;
+
 var ClientCache = {
   _prefix: 'app_cache_',
 
@@ -4121,10 +4125,26 @@ var ClientCache = {
       var raw = sessionStorage.getItem(this._prefix + key);
       if (!raw) return null;
       var obj = JSON.parse(raw);
-      if (Date.now() > obj.e) {
-        sessionStorage.removeItem(this._prefix + key);
-        return null;
-      }
+      /* 🔴 **لا `removeItem` عند الانتهاء** (بند 196) — القراءةُ أوّلُ ما ينفّذه
+         `callServer`، فكانت تُتلف مسارَ التراجع قبل الحاجة إليه: حين يفشل النداءُ
+         بعدها بثوانٍ لم يعد ثمّة بائتٌ يُخدَم منه. والتخزينُ لا ينمو — المفتاحُ يُدهَس
+         عند أوّل نجاحٍ تالٍ، و`del`/`clear` باقيتان لمن يريد الحذف صراحةً (وهما مسارُ
+         الإبطال الحقيقيّ بعد كلّ كتابة). */
+      if (Date.now() > obj.e) return null;
+      return obj.d;
+    } catch (e) { return null; }
+  },
+
+  /** يقرأ مدخلاً **منتهيَ الصلاحية** بلا حذفٍ وبلا تجديدِ عمر — للتراجع عند الإشباع وحده. */
+  getStale: function(key) {
+    try {
+      var raw = sessionStorage.getItem(this._prefix + key);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (!obj || typeof obj.e !== 'number') return null;
+      var age = Date.now() - obj.e;
+      if (age <= 0) return null;                        // ما زال حيّاً ⇒ `get` تخدمه
+      if (age > CS_STALE_MAX_AGE_MS) return null;       // بائتٌ فوق السقف
       return obj.d;
     } catch (e) { return null; }
   },
@@ -4230,6 +4250,20 @@ function _csIsRead(fnName) {
      ⚠️ لا مطابقَ لهذا اليوم (‏`grep` فارغ) — يُغلَق قبل أن يُولَد لا بعده. */
   if (/upload|media|attach/i.test(fnName)) return false;
   return /^get/i.test(fnName) || /^check/i.test(fnName) || /^list/i.test(fnName);
+}
+
+/* هل الفشلُ عابرٌ (إشباع/شبكة) أم منطقيٌّ من الخادم؟ — التراجعُ للبائت للأوّل وحده.
+   🔴 **فرعان لا واحد، لأن المنصّة تُخدَم من أصلين:** على الواجهة الثابتة يُحمَّل
+   `assets/gas-bridge.js` فيصل الخطأُ موسوماً `__saturated`/`__network` (‏502/503/504/429
+   تُصنَّف إشباعاً هناك منذ 2026-08-24)؛ وعلى مسار `doGet` الخام (‏`/gas/teacher`) لا
+   يُحمَّل الجسرُ إطلاقاً فيصل خطأُ GAS الأصليّ بلا أيّ وسم — والاكتفاءُ بالوسم كان
+   سيجعل التراجعَ ميّتاً على السطح المخدوم من GAS وحده، وهو نصفُ المستخدمين. */
+function _csIsTransientErr(err) {
+  if (!err) return false;
+  if (err.__saturated || err.__network) return true;
+  var m = '';
+  try { m = String((err && err.message) || err); } catch (eS) { m = ''; }
+  return /50[234]|429|مزدحم|timeout|انتهت المهلة|فشل الاتصال|network/i.test(m);
 }
 
 function _csRelease() {
@@ -4484,6 +4518,40 @@ function callServer(fnName, params, a3, a4, a5, a6) {
       // نداءات best-effort (كالنبضة) فشلها المتوقَّع وقت الذروة ليس حدثاً يستحق
       // console.error — كان أول ما يراه المالك في الكونسول فيُقرأ كعطل (بلاغ 2026-08-06).
       if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' failed:', err);
+
+      /* ── التراجعُ للبائت عند الإشباع (بند 196) ─────────────────────────────────────
+         🔴 **بثلاثة شروطٍ مجتمعة لا واحد:** `_csIsRead` (الكتاباتُ لا تُخدَم من بائتٍ
+         أبداً — «حُفظ» كاذبة أخطر من «فشل الحفظ») · `cacheKey` حاضر (لا `dedupKey`:
+         الأوّلُ مفتاحُ التخزين والثاني مفتاحُ الطيّ، وقد يختلفان) · وفشلٌ **عابر**
+         (خطأٌ منطقيّ من الخادم يُعرَض كما هو وإلّا أُخفيت علّةٌ حقيقية).
+         وعلّتُه حلقةُ تغذيةٍ موجبة (بند 131): 502 كان يُنتج رسالةَ خطأ ⇒ المستخدم يُعيد ⇒
+         نداءٌ جديد يُغذّي الإشباعَ نفسه الذي أنتج الخطأ. وأثرُه المباشر على بلاغ 2026-08-27:
+         `getVisitsTrafficProtected` له `cacheKey` وTTL 180ث ⇒ 502 بعد انقضائها صار يُخدَم
+         من آخر تقرير بدل رسالةِ خطأ.
+         🔴 ولا يُعاد تخزينُ البائت ولا يُجدَّد عمرُه — وإلّا صار كاشاً بلا مُبطِل (بند 189). */
+      var _stale = null;
+      if (cacheKey && _csIsRead(fnName) && _csIsTransientErr(err) &&
+          typeof ClientCache !== 'undefined' && typeof ClientCache.getStale === 'function') {
+        try { _stale = ClientCache.getStale(cacheKey); } catch (eSt) { _stale = null; }
+      }
+      if (_stale && typeof _stale === 'object') {
+        _stale.__stale = true;
+        if (!CS_QUIET_FNS[fnName]) {
+          try { toast('⏳ الخدمة مزدحمة — تُعرَض آخر نسخة محفوظة', 'warning'); } catch (eT) {}
+        }
+        if (dedupKey) {
+          var qStale = _pendingCalls[dedupKey] || [];
+          delete _pendingCalls[dedupKey];
+          for (var s = 0; s < qStale.length; s++) {
+            var itS = qStale[s];
+            if (itS && typeof itS.cb === 'function') { try { itS.cb(_stale); } catch (e) {} }
+          }
+        } else {
+          try { callback(_stale); } catch (e) {}
+        }
+        return;
+      }
+
       if (dedupKey) {
         var queue = _pendingCalls[dedupKey] || [];
         delete _pendingCalls[dedupKey];

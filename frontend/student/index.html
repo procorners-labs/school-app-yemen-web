@@ -2788,6 +2788,77 @@ a { color: var(--pr); text-decoration: none; }
 var STU_REPORTS_TTL_SEC = 180;
 var STU_REPORTS_TTL_MS  = STU_REPORTS_TTL_SEC * 1000;
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   سقفُ التزامن لسطح الطالب (بند 196) — **نقلُ عقدٍ قائم لا اختراعُ نمطٍ ثانٍ**
+
+   🔴 **العلّة البنيوية:** آلياتُ الخنق كلُّها كانت تعيش في `teacher/_js-core-bridge.html`
+   وحده، و`Student Portal.html` **لا يُدرِجه** — أجزاؤه كلُّها `_stu-*`. فما كان عند
+   الطالب هو `callServerSmart` أدناه: كاشٌ ودمجُ طلباتٍ متطابقة فقط، **بلا سقفِ تزامن
+   وبلا طابور وبلا مهلةِ خانة**.
+
+   ولماذا يهمّ: `GAS.student = GAS.teacher` في الوسيط ⇒ **مشروعٌ تنفيذيٌّ واحد** يتقاسم
+   حصّة «٣٠ تنفيذاً متزامناً لكل حساب» (بند 55). والقياس الحيّ (٢٤س، 2026-08-26):
+   `student` **6,435 نداءً من 9,185 (٧٠٪)** مقابل `teacher` 2,025 ⇒ سبعون بالمئة من
+   الحمل بلا أيّ مكبح. وأثرُه يقع على **الطرف الآخر**: `getTeacherBootBundle`
+   `srv p50 = 6ms` مقابل 9,055ms كلّي = **٩٩٫٩٪ انتظارُ طابور** بإخفاق 37.6٪ —
+   فالدالّةُ التي يسمّيها البلاغ أبرأُ ما في المنصّة (بند 194).
+
+   🔴 **والقيمتان نفسُ قيمتَي المعلّم عمداً** (`CS_MAX_INFLIGHT` · `CS_SLOT_MAX_MS`):
+   الحصّةُ مشتركةٌ بين السطحين، فسقفان مختلفان يُنتجان تزامناً فعلياً أعلى من المقصود
+   عند أيّ من الطرفين — والتوحيدُ هو الضمانةُ الوحيدة القابلة للقياس.
+
+   🔴 **والكتاباتُ لا تمرّ بالسقف أبداً** — حفظُ ملاحظةٍ أو تفاعلٍ لا يُحبَس خلف قراءةٍ
+   بطيئة. والتصنيفُ بالبادئة نفسِها التي يستعملها `_csIsRead` كي لا تنحرف القاعدتان.
+
+   🔴 **وكلُّ منتظرٍ يحمل مهلةً مطلقة** — طابورٌ بلا سقفٍ زمنيّ يُنتج شاشةً ميّتة صامتة
+   أسوأ من الإشباع الذي جاء يعالجه.
+   ══════════════════════════════════════════════════════════════════════════════ */
+var STU_MAX_INFLIGHT = 3;
+var STU_SLOT_MAX_MS  = 65000;
+var _stuInflight  = 0;
+var _stuWaitQueue = [];
+
+function _stuIsRead(fnName) {
+  /* 🔴 **الرفعُ يُستثنى ولو بدأ بـ`get`** — الجسرُ يرفع مهلة XHR إلى 180s لأيّ اسمٍ يحوي
+     `upload|media|attach` (`assets/gas-bridge.js::_isUpload`) بينما مهلةُ الخانة هنا
+     65s ⇒ خانةٌ تُفرَج قسراً والنداءُ ما زال طائراً، فيتجاوز التزامنُ الفعليّ السقفَ في
+     الحالة الثقيلة بالضبط. والنمطُ نفسُه حرفياً كما في `_csIsRead`. */
+  if (/upload|media|attach/i.test(fnName)) return false;
+  return /^get/i.test(fnName) || /^check/i.test(fnName) || /^list/i.test(fnName);
+}
+
+function _stuRelease() {
+  if (_stuInflight > 0) _stuInflight--;
+  /* الإفراجُ **قبل** تصريف الطابور — كي يجد ردٌّ يُطلق نداءً جديداً خانةً حاضرة. */
+  while (_stuInflight < STU_MAX_INFLIGHT && _stuWaitQueue.length) {
+    var next = _stuWaitQueue.shift();
+    _stuInflight++;
+    try { next(); } catch (e) { _stuInflight--; }
+  }
+}
+
+function _stuRunGated(fnName, run) {
+  /* العقدُ واحدٌ للطرفين: `run` يستقبل **دائماً** دالّةَ إفراج — الكتابةُ تستقبل دالّةً
+     فارغة لا `undefined`، فعقدٌ يختلف بين فرعين يُنتج علّةً عند أوّل مستدعٍ لا يعرف الفرق. */
+  var NOOP = function () {};
+  if (!_stuIsRead(fnName)) { run(NOOP); return; }   // كتابةٌ ⇒ فوريّة بلا سقف
+  var released = false;
+  function once() { if (released) return; released = true; _stuRelease(); }
+  function start() {
+    setTimeout(once, STU_SLOT_MAX_MS);              // مهلةٌ مطلقة لكلّ خانة
+    run(once);
+  }
+  if (_stuInflight < STU_MAX_INFLIGHT) { _stuInflight++; start(); }
+  else _stuWaitQueue.push(start);
+}
+
+/** يُصفّر خانات البوّابة — للمعمل ولأي مسارٍ يُعيد بناء الجلسة عمداً. */
+function _stuResetGate() { _stuInflight = 0; _stuWaitQueue = []; }
+
+/* 🔴 **سقفُ بياتٍ صريح للتراجع** (بند 196): بائتٌ بلا سقفٍ يعرض بياناتِ الأمس بثقة.
+   ويُقاس **من لحظة الانتهاء** لا من لحظة الكتابة — لأن `e` وحدها مخزَّنة. */
+var STU_STALE_MAX_AGE_MS = 30 * 60 * 1000;
+
 // ══════════════════════════════════════════════════════
 // Smart Client Cache + Dedup (P-OPT-04)
 // ══════════════════════════════════════════════════════
@@ -2804,7 +2875,22 @@ var ClientCache = {
       var raw = sessionStorage.getItem(this._prefix + key);
       if (!raw) return null;
       var obj = JSON.parse(raw);
-      if (Date.now() > obj.e) { sessionStorage.removeItem(this._prefix + key); return null; }
+      /* 🔴 **لا `removeItem` عند الانتهاء** (بند 196) — كانت القراءةُ تحذف المدخلَ المنتهي،
+         وهي أوّلُ ما ينفّذه `callServerSmart`. فحين يفشل النداءُ بعدها بثوانٍ لم يعد ثمّة
+         بائتٌ يُخدَم منه: القراءةُ نفسُها كانت تُتلف مسارَ التراجع قبل الحاجة إليه.
+         والتخزينُ لا ينمو بذلك — المفتاحُ نفسُه يُدهَس عند أوّل نجاحٍ تالٍ. */
+      if (Date.now() > obj.e) return null;
+      return obj.d;
+    } catch (e) { return null; }
+  },
+  /** يقرأ المدخلَ المنتهي **بلا حذفٍ وبلا تجديدِ عمر** — للتراجع عند الإشباع وحده. */
+  getStale: function(key) {
+    try {
+      var raw = sessionStorage.getItem(this._prefix + key);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (!obj || typeof obj.e !== 'number') return null;
+      if (Date.now() - obj.e > STU_STALE_MAX_AGE_MS) return null;
       return obj.d;
     } catch (e) { return null; }
   },
@@ -2812,6 +2898,79 @@ var ClientCache = {
     try { sessionStorage.removeItem(this._prefix + key); } catch (e) {}
   }
 };
+
+/**
+ * مفاتيحُ كاشِ الشاشة الرئيسية — **مصدرُ حقيقةٍ واحد لثلاثة مستهلكين** (بند 113).
+ *
+ * 🔴 **والبصمةُ بالمستأجر إلزامية:** كان المفتاحان `home_news_<الصف>_<الشعبة>` و
+ * `circ_<الصف>_<الشعبة>_<الكود>` **بلا معرّف مدرسة** ⇒ طالبان من مدرستين بنفس تسمية
+ * الصف والشعبة («الأول»/«أ» — شائعة) يتشاركان المفتاح نفسه، وكودُ الطالب نفسُه قد
+ * يتكرّر عبر المدارس (لهذا كاشُ التقارير الخادميّ مبصومٌ بـ`_activeFileId()` أصلاً).
+ * رصدَته مراجعةُ `gas-reviewer` قبل الدمج (بند 196)، ويتّسع أثرُه بتغييرَي البند معاً:
+ * القراءةُ لم تعد تحذف المنتهي، والتراجعُ صار **يعرضه** حتى ٣٠ دقيقة بعد انتهائه.
+ */
+function _stuHomeNewsKey() {
+  return 'home_news_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section;
+}
+function _stuHomeCircKey() {
+  return 'circ_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' +
+         APP.user.section + '_' + APP.user.id;
+}
+
+/* هل الفشلُ عابرٌ (إشباع/شبكة) أم منطقيٌّ من الخادم؟ — التراجعُ للبائت للأوّل وحده.
+   🔴 **فرعان لا واحد، لأن السطحَ يُخدَم من أصلين:** على الواجهة الثابتة يُحمَّل
+   `assets/gas-bridge.js` فيصل الخطأُ موسوماً `__saturated`/`__network`؛ وعلى مسار
+   `doGet` الخام (‏`/gas/student`) لا يُحمَّل الجسرُ إطلاقاً فيصل خطأُ GAS الأصليّ بلا
+   أيّ وسم — والاكتفاءُ بالوسم كان سيجعل التراجعَ ميّتاً على السطح المخدوم من GAS. */
+function _stuIsTransientErr(err) {
+  if (!err) return false;
+  if (err.__saturated || err.__network) return true;
+  var m = '';
+  try { m = String((err && err.message) || err); } catch (eS) { m = ''; }
+  return /50[234]|429|مزدحم|timeout|انتهت المهلة|فشل الاتصال|network/i.test(m);
+}
+
+/**
+ * غلافٌ محروسٌ للنداءات الخام التي **تملك كاشها الخاصّ** (‏`ssGet`/`ssSet`).
+ *
+ * 🔴 **لماذا غلافٌ ثانٍ ولا يُرحَّل هؤلاء إلى `callServerSmart`:** لأن `callServerSmart`
+ * تحمل كاشَها (`ClientCache`)، وترحيلُ `loadGrades` إليها كان سيُنشئ **مخزناً ثانياً
+ * لنفس البيانات** ينحرف عن الأوّل بلا أن يراه أحد (بند 187: قبل إضافة كاشٍ يُسأل أثمّة
+ * كاشٌ قائم يحمل نفسها). فهذا الغلاف يعطي **السقفَ والتراجعَ فقط** ويترك الكاشَ لصاحبه.
+ *
+ * @param {string}   fnName   اسم دالّة الخادم
+ * @param {Array}    args     معاملاتها بالترتيب
+ * @param {Function} onOk     ردّ النجاح — ويستقبل أيضاً البائتَ موسوماً `__stale`
+ * @param {Function} [onErr]  ردّ الفشل
+ * @param {string}   [staleKey] مفتاحُ `ss*` للتراجع؛ غيابُه ⇒ لا تراجع
+ */
+function callServerGated(fnName, args, onOk, onErr, staleKey) {
+  _stuRunGated(fnName, function (freeSlot) {
+    var freed = false;
+    function release() { if (freed) return; freed = true; try { freeSlot(); } catch (eF) {} }
+    try {
+      var runner = google.script.run
+        .withSuccessHandler(function (r) { release(); try { onOk(r); } catch (e) {} })
+        .withFailureHandler(function (err) {
+          release();
+          if (staleKey && _stuIsRead(fnName) && _stuIsTransientErr(err)) {
+            var st = (typeof ssGetStale === 'function') ? ssGetStale(staleKey) : null;
+            if (st && typeof st === 'object') {
+              st.__stale = true;
+              try { toast('⏳ الخدمة مزدحمة — تُعرَض آخر نسخة محفوظة', 'warning'); } catch (eT) {}
+              try { onOk(st); } catch (e) {}
+              return;
+            }
+          }
+          if (onErr) { try { onErr(err); } catch (e) {} }
+        });
+      runner[fnName].apply(runner, args || []);
+    } catch (eDispatch) {
+      release();
+      if (onErr) { try { onErr(eDispatch); } catch (e) {} }
+    }
+  });
+}
 
 var _pendingCalls = {};
 
@@ -2827,33 +2986,79 @@ function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback)
     }
     _pendingCalls[cacheKey] = [{ cb: callback, eb: errorCallback }];
   }
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (cacheKey && result && result.success !== false) {
-        ClientCache.set(cacheKey, result, ttl);
-      }
+  _stuRunGated(fnName, function (freeSlot) {
+    var freed = false;
+    function release() { if (freed) return; freed = true; try { freeSlot(); } catch (eF) {} }
+
+    try {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          release();
+          if (cacheKey && result && result.success !== false) {
+            ClientCache.set(cacheKey, result, ttl);
+          }
+          if (cacheKey) {
+            var q = _pendingCalls[cacheKey] || [];
+            delete _pendingCalls[cacheKey];
+            for (var i = 0; i < q.length; i++) {
+              try { q[i].cb(result); } catch (e) {}
+            }
+          } else {
+            callback(result);
+          }
+        })
+        .withFailureHandler(function(err) {
+          release();
+
+          /* ── التراجعُ للبائت عند الإشباع (بند 196) ───────────────────────────────
+             🔴 **بثلاثة شروطٍ مجتمعة لا واحد:** قراءةٌ (الكتاباتُ لا تُخدَم من بائتٍ
+             أبداً — «حُفظ» كاذبة أخطر من «فشل الحفظ») · مفتاحُ كاشٍ حاضر · وفشلٌ
+             **عابر** (الأخطاءُ المنطقية من الخادم تُعرَض كما هي وإلّا أُخفيت علّةٌ حقيقية).
+             وعلّتُه حلقةُ تغذيةٍ موجبة (بند 131): 502 كان يُنتج رسالةَ خطأ ⇒ المستخدم
+             يُعيد ⇒ نداءٌ جديد يُغذّي الإشباعَ نفسه الذي أنتج الخطأ.
+             🔴 **ولا يُكتب البائتُ فوق كاشٍ حيّ ولا يُجدَّد عمرُه** — وإلّا صار كاشاً بلا
+             مُبطِل (بند 189). وغيابُه ⇒ السلوكُ القديم حرفياً. */
+          var stale = null;
+          if (cacheKey && _stuIsRead(fnName) && _stuIsTransientErr(err)) {
+            stale = ClientCache.getStale(cacheKey);
+          }
+          if (stale && typeof stale === 'object') {
+            stale.__stale = true;
+            try { toast('⏳ الخدمة مزدحمة — تُعرَض آخر نسخة محفوظة', 'warning'); } catch (eT) {}
+            var qs = _pendingCalls[cacheKey] || [];
+            delete _pendingCalls[cacheKey];
+            for (var s = 0; s < qs.length; s++) {
+              try { qs[s].cb(stale); } catch (e) {}
+            }
+            return;
+          }
+
+          if (cacheKey) {
+            var q = _pendingCalls[cacheKey] || [];
+            delete _pendingCalls[cacheKey];
+            for (var j = 0; j < q.length; j++) {
+              if (q[j].eb) { try { q[j].eb(err); } catch (e) {} }
+            }
+          } else if (errorCallback) {
+            errorCallback(err);
+          }
+        })
+        [fnName](params);
+    } catch (eDispatch) {
+      /* رميٌ **متزامن** عند الإرسال (الدالّة غير معرَّفة · الجسر غير جاهز): بلا هذا
+         تبقى الخانةُ محجوزة حتى `STU_SLOT_MAX_MS` كاملةً على خطأٍ فوريّ. */
+      release();
       if (cacheKey) {
-        var q = _pendingCalls[cacheKey] || [];
+        var qe = _pendingCalls[cacheKey] || [];
         delete _pendingCalls[cacheKey];
-        for (var i = 0; i < q.length; i++) {
-          try { q[i].cb(result); } catch (e) {}
-        }
-      } else {
-        callback(result);
-      }
-    })
-    .withFailureHandler(function(err) {
-      if (cacheKey) {
-        var q = _pendingCalls[cacheKey] || [];
-        delete _pendingCalls[cacheKey];
-        for (var j = 0; j < q.length; j++) {
-          if (q[j].eb) { try { q[j].eb(err); } catch (e) {} }
+        for (var k = 0; k < qe.length; k++) {
+          if (qe[k].eb) { try { qe[k].eb(eDispatch); } catch (e) {} }
         }
       } else if (errorCallback) {
-        errorCallback(err);
+        errorCallback(eDispatch);
       }
-    })
-    [fnName](params);
+    }
+  });
 }
   function getClientId() {
   try {
@@ -3254,10 +3459,29 @@ function ssGet(key) {
     var raw = sessionStorage.getItem(SS_KEY + '_' + key);
     if (!raw) return null;
     var obj = JSON.parse(raw);
-    if (obj.exp && obj.exp < Date.now()) {
-      sessionStorage.removeItem(SS_KEY + '_' + key);
-      return null;
-    }
+    /* 🔴 **لا `removeItem` عند الانتهاء** (بند 196) — نفسُ علّة `ClientCache.get`: القراءةُ
+       كانت تُتلف مسارَ التراجع قبل الحاجة إليه، فحين يفشل النداءُ بعدها بثوانٍ لم يعد ثمّة
+       بائتٌ يُخدَم منه. والتخزينُ لا ينمو — المفتاحُ يُدهَس عند أوّل نجاحٍ تالٍ، و`ssDel`
+       و`ssClearAll` باقيتان لمن يريد الحذف صراحةً. */
+    if (obj.exp && obj.exp < Date.now()) return null;
+    return obj.data;
+  } catch (e) { return null; }
+}
+
+/**
+ * يقرأ مدخلاً **منتهيَ الصلاحية** بلا حذفٍ وبلا تجديدِ عمر — للتراجع عند الإشباع وحده
+ * (‏`callServerGated`). يُرجِع `null` إن كان المدخل حيّاً أصلاً (‏`ssGet` تخدمه)، أو
+ * أقدمَ من `STU_STALE_MAX_AGE_MS`، أو بلا انتهاءٍ أصلاً (‏`exp = 0`).
+ */
+function ssGetStale(key) {
+  try {
+    var raw = sessionStorage.getItem(SS_KEY + '_' + key);
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (!obj || !obj.exp) return null;
+    var age = Date.now() - obj.exp;
+    if (age <= 0) return null;                                  // ما زال حيّاً
+    if (age > STU_STALE_MAX_AGE_MS) return null;                // بائتٌ فوق السقف
     return obj.data;
   } catch (e) { return null; }
 }
@@ -3276,13 +3500,33 @@ function ssDel(key) {
   try { sessionStorage.removeItem(SS_KEY + '_' + key); } catch (e) {}
 }
 
+/**
+ * يمسح **كلّ** كاشات الجلسة — المخزنين معاً: `studentPortal_v2_*` (‏`ss*`) و`stu_cache_*`
+ * (‏`ClientCache`).
+ *
+ * 🔴 **ولماذا المخزنان لا الأوّل وحده** (رصدَته مراجعةُ `gas-reviewer` قبل الدمج، بند 196):
+ * كان يمسح `SS_KEY` وحده، بينما مفاتيح `ClientCache` تبقى — ومنها
+ * `home_news_<الصف>_<الشعبة>` **بلا معرّف مدرسة**. فطالبان من مدرستين بنفس تسمية الصف
+ * والشعبة («الأول»/«أ» — شائعة) يتشاركان المفتاح نفسه، ومواضعُ الاستدعاء الثلاثة هي
+ * بالضبط لحظاتُ تبديل الهوية: إقلاعُ البوّابة · `switchStudentAccount` · اكتشافُ
+ * `?school=` مختلف.
+ *
+ * ⚠️ **والخطرُ اتّسع بتغييرَي بند 196 معاً:** ① القراءةُ لم تعد تحذف المدخلَ المنتهي،
+ * ② والتراجعُ صار **يعرضه فعلاً** حتى ٣٠ دقيقة بعد انتهائه مع toast يوحي بشرعيّته.
+ * ⇒ التفريغُ هنا **شرطُ سلامة لا تحسين**، وهو الموضعُ الفئويّ: يُغلق الفئةَ كلَّها في
+ * نقطةٍ واحدة بدل ثلاث نقاطٍ تُنسى إحداها.
+ */
 function ssClearAll() {
   try {
-    var i;
+    var PREFIXES = [SS_KEY + '_', 'stu_cache_'];
+    var i, p;
     var toRemove = [];
     for (i = 0; i < sessionStorage.length; i++) {
       var k = sessionStorage.key(i);
-      if (k && k.indexOf(SS_KEY + '_') === 0) toRemove.push(k);
+      if (!k) continue;
+      for (p = 0; p < PREFIXES.length; p++) {
+        if (k.indexOf(PREFIXES[p]) === 0) { toRemove.push(k); break; }
+      }
     }
     for (i = 0; i < toRemove.length; i++) sessionStorage.removeItem(toRemove[i]);
   } catch (e) {}
@@ -4557,13 +4801,13 @@ function loadHomeNews(force) {
     if (c) { renderHomeNews(c); return; }
   }
   // (م3) زر 🔄: تجاوز كاش callServerSmart أيضاً لتصل أحدث الإشعارات فعلاً
-  if (force) ClientCache.remove('home_news_' + APP.user.class + '_' + APP.user.section);
+  if (force) ClientCache.remove(_stuHomeNewsKey());
   w.innerHTML = loaderHTML('جارٍ تحميل الإشعارات...');
 
   callServerSmart(
   'getStudentNews',
   { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-  'home_news_' + APP.user.class + '_' + APP.user.section,
+  _stuHomeNewsKey(),
   180,
   function (news) {
     var arr = (news && news.length) ? news.slice(0, 3) : [];
@@ -4599,7 +4843,7 @@ function renderHomeNews(news) {
 // تُعرض أحدث 3 تعاميم وتُخفى البطاقة كلياً عند عدم وجود تعاميم.
 function loadHomeCirculars(force) {
   if (!APP.user) return;
-  var cKey = 'circ_' + APP.user.class + '_' + APP.user.section + '_' + APP.user.id;
+  var cKey = _stuHomeCircKey();
   if (force) ClientCache.remove(cKey);
   callServerSmart(
     'getStudentCircularsFiltered',
@@ -4726,9 +4970,12 @@ function loadGrades(force) {
     }
   }
 
-  // ✅ إضافة زر تحديث في رأس الصفحة
-  google.script.run
-    .withSuccessHandler(function(r) {
+  /* ✅ إضافة زر تحديث في رأس الصفحة
+     🔴 محروسٌ بسقف التزامن (بند 196): `getGrades` **625 نداءً/٢٤س** وسطحُ الطالب ٧٠٪ من
+     حمل المشروع التنفيذيّ المشترك. والكاشُ يبقى `ss*` كما هو — الغلافُ يعطي السقفَ
+     والتراجعَ للبائت فقط ولا يُنشئ مخزناً ثانياً (بند 187). */
+  callServerGated('getGrades', [APP.user.id, APP.user.schoolId, !!force],
+    function(r) {
       APP.loaded.grades = true;
       if (!r || !r.ok) {
         w.innerHTML = errHTML('لم يتم استلام بيانات الدرجات: ' + (r.error || ''));
@@ -4739,13 +4986,14 @@ function loadGrades(force) {
          إطلاقاً ⇒ تبويبٌ فُتح قبل تبديل الإدارة للفترات يظلّ على الشهر القديم حتى
          ضغط 🔄. و180 ثانية تقارب نافذةَ الكاش الخادميّ العملية بدل الأبد.
          وزرّ التحديث (`loadGrades(true)`) يبقى يتجاوزها بـ`ssDel` + `noCache`. */
-      ssSet('grades', r, 180);
+      /* البائتُ لا يُعاد تخزينُه — وإلّا صار كاشاً بلا مُبطِل (بند 189). */
+      if (!r.__stale) ssSet('grades', r, 180);
       renderGradesWithRefresh(r);
-    })
-    .withFailureHandler(function(e) {
+    },
+    function(e) {
       w.innerHTML = errHTML('فشل تحميل الدرجات: ' + (e.message || e));
-    })
-    .getGrades(APP.user.id, APP.user.schoolId, !!force);   /* التحديث يتجاوز كاش الخادم */
+    },
+    'grades');   /* التحديث يتجاوز كاش الخادم عبر معامل `force` */
 }
 
 // ✅ غلاف جديد يضيف زر التحديث
@@ -5329,7 +5577,7 @@ function loadCirculars() {
   callServerSmart(
     'getStudentCircularsFiltered',
     params,
-    'circ_' + APP.user.class + '_' + APP.user.section + '_' + APP.user.id,
+    _stuHomeCircKey(),
     120,
     function (r) { renderCirculars((r && r.success) ? (r.circulars || []) : []); },
     function () { renderCirculars([]); }
@@ -8129,8 +8377,8 @@ var _badgeInFlight = false;
 function _stuBootLoad() {
   if (!APP.user || !APP.user.id) return;
 
-  var newsKey = 'home_news_' + APP.user.class + '_' + APP.user.section;
-  var circKey = 'circ_' + APP.user.class + '_' + APP.user.section + '_' + APP.user.id;
+  var newsKey = _stuHomeNewsKey();
+  var circKey = _stuHomeCircKey();
 
   var newsWarm = false, circWarm = false;
   try { newsWarm = !!ClientCache.get(newsKey); } catch (eNw) {}
@@ -8163,8 +8411,17 @@ function _stuBootLoad() {
   var lastLogin = ssGet('lastLogin');
   if (!lastLogin) lastLogin = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  google.script.run
-    .withSuccessHandler(function (r) {
+  /* 🔴 محروسٌ بسقف التزامن (بند 196) — **698 نداءً/٢٤س**، ومسارُ فشله يُطلق ثلاثةَ
+     نداءاتٍ بديلة دفعةً واحدة. فبلا السقف كان الإخفاقُ يُنتج دفقةً تُغذّي الإشباعَ
+     الذي أنتجه (بند 131)؛ والسقفُ يُصطفّها بدل أن يُفجّرها، بلا مسٍّ لعقد التراجع.
+     ولا `staleKey` هنا: التراجعُ القائم أدقّ من بائتٍ مجمَّع (عزلُ الأعضاء بعلَم إخفاق
+     مستقلّ يحرسه `gasExecutionVolumeGuard`). */
+  callServerGated('getStudentBootBundle', [{
+      klass: APP.user.class, section: APP.user.section,
+      studentId: APP.user.id, studentName: APP.user.name,
+      lastLoginDate: lastLogin, schoolId: APP.user.schoolId
+    }],
+    function (r) {
       _badgeInFlight = false;
       if (!r || !r.ok) { loadHomeNews(); loadHomeCirculars(); loadNotificationBadges(); return; }
 
@@ -8198,17 +8455,12 @@ function _stuBootLoad() {
         setBadge('badge-homework', b.homework);
         _stuMaybeNotifyNews(b.news);
       }
-    })
-    .withFailureHandler(function () {
+    },
+    function () {
       _badgeInFlight = false;
       loadHomeNews();
       loadHomeCirculars();
       loadNotificationBadges();
-    })
-    .getStudentBootBundle({
-      klass: APP.user.class, section: APP.user.section,
-      studentId: APP.user.id, studentName: APP.user.name,
-      lastLoginDate: lastLogin, schoolId: APP.user.schoolId
     });
 }
 
@@ -8229,8 +8481,10 @@ function loadNotificationBadges() {
     lastLogin = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // قبل أسبوع
   }
 
-  google.script.run
-    .withSuccessHandler(function (r) {
+  /* محروسٌ بسقف التزامن (بند 196) — استطلاعٌ دوريّ يتراكب مع الإقلاع وتبديل التبويب. */
+  callServerGated('getStudentNotificationBadge',
+    [APP.user.id, APP.user.name, APP.user.class, APP.user.section, lastLogin, APP.user.schoolId],
+    function (r) {
       _badgeInFlight = false;
       if (!r || !r.ok || !r.badge) return;
       var b = r.badge;
@@ -8239,13 +8493,8 @@ function loadNotificationBadges() {
       setBadge('badge-notes', b.notes);
       setBadge('badge-homework', b.homework);
       _stuMaybeNotifyNews(b.news);
-    })
-    .withFailureHandler(function () { _badgeInFlight = false; /* صامت */ })
-    .getStudentNotificationBadge(
-    APP.user.id, APP.user.name,
-    APP.user.class, APP.user.section,
-    lastLogin, APP.user.schoolId
-);
+    },
+    function () { _badgeInFlight = false; /* صامت */ });
 }
 
 function setBadge(id, count) {
