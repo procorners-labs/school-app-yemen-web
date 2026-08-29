@@ -1114,7 +1114,7 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
       path.join(GAS, 'teacher', '_js-platform-reviews.html'), 'utf8');
     var cliM  = /var _LOGIN_TIMEOUT\s*=\s*(\d+)/.exec(cli);
     var winM  = /var BH_LOGIN_WAIT_MS = (\d+);/.exec(src);
-    var attM  = /var PER_ATTEMPT_TIMEOUT_MS = (\d+);/.exec(src);
+    var attM  = /var GAS_ATTEMPT_MARGIN_MS = (\d+);/.exec(src);
     check(!!cliM && !!winM && !!attM,
           'قُرئت الثوابت الثلاثة من الطرفين (فشلُ الاستخراج = عمى لا نجاح)');
     /* 🔴 **النموذج صُحِّح 2026-08-26 — كان يُصادق على تجاوزٍ حقيقيّ.** الحساب القديم
@@ -1126,18 +1126,30 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
     var budM = /var TOTAL_BUDGET_MS = (\d+) - _bhWaited;/.exec(src);
     var napM = /var delays = \[(\d+)\];/.exec(src);
     check(!!budM && !!napM, 'قُرئت ميزانيةُ الحلقة وفاصلُها من المصدر (فشلُ الاستخراج = عمى)');
-    if (cliM && winM && attM && budM && napM) {
-      var PER = Number(attM[1]), NAP = Number(napM[1]), BASE = Number(budM[1]);
-      /* محاكاةٌ مطابقةٌ للحلقة: محاولتان، حارسُ ميزانيةٍ **يستشرف نهاية المحاولة**،
-         ونومٌ مقصوصٌ على المتبقّي. تُرجِع الزمن الكلّي (انتظارٌ + حلقة). */
+    var minM = /var GAS_MIN_ATTEMPT_MS = (\d+);/.exec(src);
+    check(!!minM, 'قُرئ `GAS_MIN_ATTEMPT_MS` من المصدر (فشلُ الاستخراج = عمى)');
+    if (cliM && winM && attM && budM && napM && minM) {
+      var MARGIN = Number(attM[1]), MINATT = Number(minM[1]);
+      var NAP = Number(napM[1]), BASE = Number(budM[1]);
+      /* 🔴 **النموذج أُعيد بناؤه 2026-08-29 مع علاج تضخيم إعادة المحاولة.** لم تعُد ثمّة
+         `PER_ATTEMPT_TIMEOUT_MS` ثابتة: مهلةُ المحاولة = ما تبقّى من الميزانية ناقصَ
+         الهامش، وفشلُ المهلة **لا يُعيد المحاولة**. فالمساران الممكنان:
+         ① مهلة على المحاولة الأولى ⇒ خروجٌ فوراً.
+         ② فشلُ نقلٍ سريع ⇒ نومٌ مقصوص ⇒ محاولةٌ ثانية بما تبقّى.
+         وأسوأُ زمنٍ هو الأكبر منهما — ويجب أن يبقى تحت `BASE` في الحالتين. */
+      function _planT(elapsed, budget) {
+        var t = budget - elapsed - MARGIN;
+        return (t < MINATT) ? 0 : t;
+      }
       function worstFor(W) {
-        var budget = BASE - W, elapsed = 0;
-        for (var a = 0; a < 2; a++) {
-          if (elapsed + PER > budget) break;
-          elapsed += PER;
-          if (a < 1) elapsed += Math.min(NAP, Math.max(0, budget - elapsed));
-        }
-        return W + elapsed;
+        var budget = BASE - W;
+        // ① مسارُ المهلة: محاولةٌ واحدة تستهلك كلَّ المتبقّي ثمّ تخرج بلا إعادة.
+        var timeoutPath = _planT(0, budget);
+        // ② مسارُ فشلِ النقل السريع (‏≈0ms) ثمّ نومٌ ثمّ محاولةٌ ثانية.
+        var e = 0;
+        e += Math.min(NAP, Math.max(0, budget - e));
+        e += _planT(e, budget);
+        return W + Math.max(timeoutPath, e);
       }
       var worstAll = 0, worstLogin = 0, w;
       for (w = 0; w <= Number(winM[1]); w += 100) {
@@ -1152,20 +1164,61 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
       check(margin >= 2000,
             '🔴 أسوأ زمنِ دخولٍ مُحاكىً (' + worstLogin + 'ms) تحت مهلة العميل (' +
             cliM[1] + 'ms) بهامش ' + margin + 'ms ≥ 2000');
-      /* 🔒 ضابطٌ معاكس: المحاكاة تُميّز فعلاً. بحارسٍ لا يستشرف (النموذج القديم) يجب أن
-         يتجاوز السقف — وإلّا كانت المحاكاة تُصادق على أي شيء. */
-      function worstNaive(W) {
-        var budget = BASE - W, elapsed = 0;
+      /* 🔒 ضابطٌ معاكس: المحاكاة تُميّز فعلاً. النموذجُ الذي **يُعيد المحاولة على المهلة**
+         (‏ما كان قائماً حتى 2026-08-29) يجب أن يتجاوز السقف — وإلّا كانت المحاكاة
+         تُصادق على أي شيء. وهذا بعينه ما كان يُنتج 502 المقيسة عند 24,339ms. */
+      function worstIfRetryOnTimeout(W) {
+        var budget = BASE - W, e = 0;
         for (var a = 0; a < 2; a++) {
-          if (elapsed >= budget) break;
-          elapsed += PER;
-          if (a < 1) elapsed += Math.min(NAP, Math.max(0, budget - elapsed));
+          var t = _planT(e, budget);
+          if (!t) break;
+          e += t;                                   // مهلةٌ استهلكت كلَّ المتبقّي
+          if (a < 1) e += NAP;                      // 🔴 ثمّ يُعيد المحاولة رغم المهلة
         }
-        return W + elapsed;
+        return W + e;
       }
-      check(worstNaive(Number(winM[1]) - 1000) > Number(cliM[1]),
-            '🔒 ضابط معاكس: الحارسُ غيرُ المستشرف يتجاوز مهلة العميل (' +
-            worstNaive(Number(winM[1]) - 1000) + 'ms) — فالمحاكاة تُميّز لا تُصادق');
+      check(worstIfRetryOnTimeout(0) > BASE,
+            '🔒 ضابط معاكس: نموذجُ «أعِد المحاولة على المهلة» يتجاوز الميزانية (' +
+            worstIfRetryOnTimeout(0) + 'ms > ' + BASE + 'ms) — فالمحاكاة تُميّز لا تُصادق');
+    }
+
+    /* ═══ سياسةُ المحاولة — سلوكيّاً عبر `vm` لا محاكاةً موازية ═══════════════════
+       🔴 لماذا: المحاكاةُ أعلاه تُعيد كتابة المنطق في ملفّ الاختبار، فتصير حارساً
+       يقيس **نسخته** لا الكود. هذا القسم يُشغّل الدالّتين الحقيقيّتين من المصدر —
+       وغيابُهما **أحمر** لا تخطٍّ صامت. */
+    var gIdx = src.indexOf('var GAS_MIN_ATTEMPT_MS');
+    var gEnd = src.indexOf('\n}', src.indexOf('function _gasShouldRetry(')) + 2;
+    check(gIdx >= 0 && gEnd > gIdx,
+          'ضابط: استُخرجت كتلةُ سياسة المحاولة من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
+    if (gIdx >= 0 && gEnd > gIdx) {
+      var gctx = vm.createContext({});
+      vm.runInContext(src.slice(gIdx, gEnd), gctx);
+      var plan  = vm.runInContext('_gasAttemptPlan', gctx);
+      var retry = vm.runInContext('_gasShouldRetry', gctx);
+      check(typeof plan === 'function' && typeof retry === 'function',
+            'ضابط: الدالّتان قابلتان للتشغيل فعلاً (لا نصٌّ مستخرَجٌ فارغ)');
+
+      // ① الجوهر: فشلُ المهلة لا يفتح تنفيذاً ثانياً على حصّةٍ مشبَعة (بند 128).
+      check(retry(true, 0, 2) === false,
+            '🔴 فشلُ المهلة **لا** يُعيد المحاولة — تنفيذُ GAS ما زال جارياً');
+      // ② الضابطُ المعاكس: الحارسُ ليس سياجاً — فشلُ النقل السريع ما زال يُعيدها.
+      check(retry(false, 0, 2) === true,
+            '🔒 ضابط معاكس: فشلُ النقل السريع **ما زال** يُعيد المحاولة (لا سياج)');
+      check(retry(false, 1, 2) === false,
+            'المحاولةُ الأخيرة لا تُعيد مهما كان سببُ الفشل');
+
+      // ③ الاستجابةُ البطيئة الناجحة صار لها متّسع: المقيس حيّاً 20,958ms نجح.
+      var p0 = plan(0, 24000);
+      check(p0.go === true && p0.timeoutMs > 11500,
+            '🔴 مهلةُ المحاولة الأولى (' + p0.timeoutMs + 'ms) تتجاوز الثابتَ القديم ' +
+            '11,500ms — الاستجابةُ المقيسة 20,958ms تصل بدل أن تُجهَض');
+      check(p0.timeoutMs >= 20958,
+            '🔴 وتسع القياسَ الحيّ نفسه (' + p0.timeoutMs + 'ms ≥ 20,958ms)');
+      // ④ وسقفُ الـ24s محفوظٌ كما كان — لا تبدأ محاولةٌ تنتهي خارجه.
+      check(plan(22500, 24000).go === false,
+            '🔴 لا تبدأ محاولةٌ لا تنتهي داخل الميزانية — سقفُ 24,000ms محفوظ');
+      check(plan(0, 24000).timeoutMs + 0 <= 24000,
+            'مهلةُ المحاولة لا تتجاوز الميزانية نفسها أبداً');
     }
   }
 })();
