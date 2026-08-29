@@ -5797,8 +5797,14 @@ function renderNewsList() {
   try { _stuWireCoverScale(); } catch (eCv) {}
 
   // تسجيل المشاهدات (مرة واحدة لكل خبر مرئي)
+  // 🔴 نداءٌ **واحد** لكل الأخبار — لا حلقةَ نداءات (بند 206). الحلقةُ السابقة كانت
+  //    تُطلق حتى ثمانية `google.script.run` **خام** تتجاوز سقف `STU_MAX_INFLIGHT`.
   setTimeout(function () {
-    for (var k = 0; k < items.length; k++) markNewsViewed(items[k].id);
+    var _vIds = [];
+    for (var k = 0; k < items.length; k++) {
+      if (items[k] && items[k].id) _vIds.push(items[k].id);
+    }
+    markNewsViewedBatch(_vIds);
   }, 600);
 }
 
@@ -7144,6 +7150,39 @@ function markNewsViewed(newsId) {
     userName: APP.user.name,
     schoolId: APP.user.schoolId
 });
+}
+
+/* ── markNewsViewedBatch — نداءٌ واحد لكل أخبار الصفحة (بند 206) ─────────────
+   🔴 **العلّة:** `_stu-js-news.html` كان يُطلق `markNewsViewed` **داخل حلقة `for`**
+   على كل خبر معروض (حتى `pageSize = 8`). و`markNewsViewed` تستدعي `google.script.run`
+   **خاماً** ⇒ النداءات **لا تمرّ بـ`_stuRunGated` ولا بسقف `STU_MAX_INFLIGHT = 3`** —
+   أي أنها كانت المسارَ الوحيد في المنصّة الذي يتجاوز بوّابةَ التزامن نفسها. وثمانيةُ
+   تنفيذاتٍ متزامنة تبتلع مقاعد الوسيط الخمسة فيُرفَض ما بعدها بـ503.
+
+   🟢 **والنداءُ الدفعيّ يمرّ بالبوّابة**: `callServerGated` — فيُحسَب ضمن السقف بدل
+   تجاوزه. (‏`_stuIsRead` تصنّفه كتابةً فيمرّ فوراً بلا انتظار، وهذا هو المقصود:
+   لا يُؤخَّر تسجيلُ مشاهدة، لكنه يبقى **نداءً واحداً** لا ثمانية.)
+
+   ⚠️ ومزيلُ التكرار المحلّي `_stuViewedHas`/`_stuViewedAdd` (‏`localStorage`) يبقى كما
+   هو حرفياً — يمنع إعادةَ الإرسال عبر الجلسات، والخادمُ يمنع التكرار الدائم. */
+function markNewsViewedBatch(newsIds) {
+  if (!APP.user || !APP.user.id || !newsIds || !newsIds.length) return;
+
+  var fresh = [];
+  for (var i = 0; i < newsIds.length; i++) {
+    var id = newsIds[i];
+    if (!id || _stuViewedHas(id)) continue;
+    _stuViewedAdd(id);
+    fresh.push(id);
+  }
+  if (!fresh.length) return;
+
+  try {
+    callServerGated('recordStudentNewsViewsBatch',
+      [{ newsIds: fresh, studentId: APP.user.id, userName: APP.user.name,
+         schoolId: APP.user.schoolId }],
+      function () {}, function () {});
+  } catch (e) {}
 }
 
 function openLightbox(url) {
