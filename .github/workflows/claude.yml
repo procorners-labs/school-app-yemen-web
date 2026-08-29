@@ -18,15 +18,25 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+
+    # 🔴 `write` وليس `read` — صُحِّح 2026-08-29.
+    # كانت الثلاثة `read` (صيغةٌ ولّدتها نسخةٌ قديمة من /install-github-app)، وعطبُها
+    # موثَّقٌ رسمياً: anthropics/claude-code-action#1562 — الإجراء يعمل ثمّ **لا ينشر
+    # تعليقاً ولا مراجعة، بلا أي رسالة خطأ**. أي الفشلُ الصامت بعينه.
+    # ⚠️ ودقّةٌ تُقال حتى لا يُساء فهم التغيير: هذه الكتلة تحكم `GITHUB_TOKEN` وحده.
+    # ومع تثبيت تطبيق Claude يأتي حقُّ الكتابة من توكن التطبيق لا منها — ولذلك نجحت
+    # تشغيلةُ school-app-yemen-web #147 رغم `read`. ⇒ العطلُ كان **كامناً لا واقعاً**:
+    # يظهر في أوّل مستودعٍ يسقط فيه مسار التطبيق. والترقية تُغلق الفئة لا حادثةً.
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write
+      pull-requests: write
+      issues: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read # ليقرأ Claude نتائج CI على الـPRs
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -36,14 +46,14 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
-
-          # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-          # claude_args: '--allowed-tools Bash(gh pr *)'
+          # ٩٨ من آخر ١٠٠ تعليق على PRs هذا الحساب من chatgpt-codex-connector[bot]،
+          # ونصُّها واحدٌ مكرّر: «You have reached your Codex usage limits» (قِيس 2026-08-29).
+          # هذا يستبعدها من **سياق** Claude فلا تُقرأ ولا تُستهلَك توكناتُها.
+          # ⚠️ وليس حارساً ضدّ استدعاء البوتات — ذاك مضمونٌ أصلاً بافتراض `allowed_bots: ""`
+          #    الذي يمنع أي بوت من إطلاق هذا الإجراء. يُقال صراحةً بدل الإيهام بحمايةٍ مكرَّرة.
+          # 🔴 ولا يُوسَّع إلى `*[bot]`: تعليقات github-actions[bot] تحمل نتائجَ فحوصٍ
+          #    قد يحتاجها Claude، واستبعادُها يُفقره بلا مقابل.
+          exclude_comments_by_actor: "chatgpt-codex-connector[bot]"

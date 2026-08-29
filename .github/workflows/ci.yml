@@ -12,11 +12,20 @@ on:
 permissions:
   contents: read
 
+# دفعتان متتاليتان على نفس الفرع تُنتجان تشغيلتين، والأولى تختبر كوداً تجاوزَه الثاني
+# ⇒ دقائق مهدورة بلا معلومة. أُضيف 2026-08-29 بنفس صيغة build-and-deploy.yml في
+# مستودع الـGAS حرفياً، فلا تتباعد السياستان بين المستودعين المقترنين بـCI.
+# 🔴 والاستثناء على main مقصود ولا يُزال: إلغاء تشغيلة main يُلغي التحقّق من الحالة
+# التي يُخدَم منها الموقع فعلاً — والفشلُ هناك صامت.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check Worker JS syntax
         run: node --check worker/school-app-proxy.js
