@@ -4645,12 +4645,32 @@ function _startHeartbeat() {
     if (document.visibilityState !== 'visible') { _scheduleNextBeat(); return; }
     if (!App.user || !App.user.token) { _scheduleNextBeat(); return; }
     _lastBeatAt = Date.now();
+    /* ★ **نداءٌ واحد لكلّ نبضة (‏2026-08-29).** كانت النبضةُ تُطلق نداءً ثمّ نداءً ثانياً
+       للعدّادات ⇒ **نداءان لكلّ مستخدمٍ داخل كلّ ٣ دقائق** — أكثرُ مسارٍ تكراراً في
+       المنصّة، والمورد المشبَع هو **عددُ التنفيذات** لا سرعتُها (‏`srv p50 = 4ms`).
+       🟢 والطلبُ **مشروطٌ ببرودة المفتاح العميليّ**: نطلب العدّادات مع النبضة في نفس
+       اللحظة التي كان سيُطلق فيها النداءُ الثاني أصلاً، فيبقى عملُ الخادم على إيقاعه
+       (‏ttl 300 > دورة 180) بينما يسقط النداءُ الثاني. طيٌّ ساذجٌ غيرُ مشروط كان
+       **يُضاعف عملَ الخادم** بينما يُنصّف النداءات — مكسبٌ في محورٍ وخسارةٌ في آخر. */
+    var _hbSid = (App.user && App.user.schoolId) || '';
+    var _hbNotifCold = true;
+    try { _hbNotifCold = !ClientCache.get('notif_bundle_' + _hbSid); } catch (eNC) {}
     // رمي متزامن (لن يقع نظرياً) يجب ألا يقتل سلسلة الجدولة — فخّ بند 78-أ.
     try {
-      callServer('teacherHeartbeatProtected', {}, function () {
+      callServer('teacherHeartbeatProtected', _hbNotifCold ? { wantNotif: 1 } : {}, function (r) {
         _hbDelayMs = _HB_BASE_MS;
+        /* بذرُ العدّادات من حمولة النبضة — **وبشرط برودة المفتاح** كنمط حزمة الإقلاع
+           حرفياً: ردٌّ متأخّر يجب ألّا يطمس قيمةً أحدث جلبها مسارٌ آخر. */
+        try {
+          if (r && r.notifCounts && r.notifCounts.success !== false &&
+              !ClientCache.get('notif_bundle_' + _hbSid)) {
+            ClientCache.set('notif_bundle_' + _hbSid, r.notifCounts, 300);
+          }
+        } catch (eSeedN) {}
         // إشعار فوري — عند **نجاح** النبضة فقط: نبضة فاشلة كانت تكلف نداءين خادميَّين
         // (النبضة + العدّادات) في اللحظة التي تكون فيها الحصّة مستنفدة أصلاً.
+        // 🟢 وبعد البذر أعلاه تُصيب هذه كاشَها فوراً ⇒ **صفرُ نداءٍ ثانٍ**؛ وإن غاب الحقل
+        //    (نشرةٌ قديمة · فشلُ العدّادات وحدها) تتراجع لمسارها القديم بلا كسر.
         try {
           loadNotifCountsBundle();
           /* لاقط تعافٍ **لمرّة واحدة**: النقاط أُجِّلت لأن الحزمة فشلت/تباطأت وقت الإشباع.
