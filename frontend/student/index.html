@@ -4303,8 +4303,14 @@ function initApp() {
   $('welcomeGreet').textContent = greet + '،';
 
   // تحميل أولي للرئيسية
-  _stuBootLoad();        // أخبار + تعاميم + شارات في تنفيذ خادمي واحد
-  loadQuickStats();
+  /* 🔴 «نظرة سريعة» لم تعد تُطلَق هنا (2026-08-29) — صارت **عضواً رابعاً** في
+     `getStudentBootBundle`، ومِلكيّةُ إطلاقها كلُّها داخل `_stuBootLoad` (بما فيها
+     التراجعُ إلى `loadQuickStats()` في كلّ مسارٍ لا تصله الحزمة).
+     السبب مقيس: 520 نداءَ `getStudentReports`/٢٤س مقابل **487 جلسة** = 1.07 لكلّ إقلاع
+     ⇒ الكاشُ لا يُستدعى أصلاً، والنداءُ كان يُطلَق في **رشقة الإقلاع** نفسِها فينتظر
+     خلف سقف التزامن: `p50 = 15,605ms` بينما `srv p50 = 106ms`.
+     ⚠️ ولا تُعِد السطر هنا — إعادتُه تُنتج نداءين لنفس الحمولة في كلّ إقلاع. */
+  _stuBootLoad();        // أخبار + تعاميم + شارات + نظرة سريعة في تنفيذ خادمي واحد
   loadHomeToday();   // جدول اليوم + الساعة اللحظية
 
   // ملاحظة: قائمة معلمي صف الطالب (لصفحة ملاحظاتي) لم تعد تُحمَّل هنا عند الإقلاع —
@@ -4905,10 +4911,53 @@ var _tabLoadedAt = {};
 /* عمرُ كاش التقارير يُقرأ من `STU_REPORTS_TTL_SEC` في `_stu-js-core` — رقمٌ واحد
    يستهلكه هذا الجزء و`_stu-js-shell` و`_stu-js-reports` معاً (بند 194). */
 
+/* ★ الطلاء مفصولٌ عن الجلب (2026-08-29) — مستهلكان لا واحد: `loadQuickStats` أدناه،
+   و`_stuApplyBootQuickStats` الذي يستقبل نفس الحمولة من **حزمة الإقلاع** بلا نداءٍ ثانٍ.
+   🔴 والفصلُ شرطُ صحّة لا ترتيب: نسخُ جسم الطلاء في الطرفين كان سيُنتج سطحين ينحرفان
+   بلا أن يحمرّ شيء (بند 104) — وهو نفسُ ما تحرسه مرآةُ `stumerge` بين المشروعين. */
+function _stuRenderQuickStats(data) {
+  var w = $('quickStats');
+  if (!w) return;
+  _tabLoadedAt.home = Date.now();
+  var rb = $('qstatsRefreshBtn');
+  if (rb) rb.disabled = false;
+  if (!data || !data.summary) { w.innerHTML = _quickStatsPlaceholder(); return; }
+  var s = data.summary;
+  var avg = s.overallAvg || 0;
+  var avgCls = avg >= 80 ? 'g' : (avg >= 60 ? 'w' : 'r');
+  var attRate = (s.attendanceRate !== undefined) ? s.attendanceRate : 100;
+  var attCls  = attRate >= 90 ? 'g' : (attRate >= 75 ? 'w' : 'r');
+  // السلوكيات = تعزيزات ⭐ + ملاحظات ⚠️ — نفس إجمالي تبويب «السلوكيات»
+  var merits = Number(s.meritsCount || 0);
+  var vios   = Number(s.violationsCount || 0);
+  var behTotal = merits + vios;
+  var behCls = vios > 0 ? 'w' : 'g';
+  w.innerHTML =
+    '<div class="q-stat ' + avgCls + '" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">' + esc(avg) + '%</div><div class="lbl">المعدل العام</div></div></div>' +
+    '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">' + esc(s.homeworkAssigned || 0) + '</div><div class="lbl">واجبات</div></div></div>' +
+    '<div class="q-stat ' + behCls + '" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">' + esc(behTotal) + '</div><div class="lbl">سلوكيات ⭐' + esc(merits) + ' · ⚠️' + esc(vios) + '</div></div></div>' +
+    '<div class="q-stat ' + attCls + '" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">' + esc(attRate) + '%</div><div class="lbl">نسبة الحضور</div></div></div>' +
+    '<div style="grid-column:1/-1; font-size:11px; color:var(--muted); text-align:center; margin-top:6px;">إحصائيات تراكمية حتى الآن — تكتمل تدريجياً مع تقدّم الفصل</div>';
+}
+
+/* ★ مستهلكُ حزمة الإقلاع — يُخزّن ويطلي بلا أيّ نداءٍ خادميّ (2026-08-29).
+   🔴 **يُخزَّن النجاحُ وحده**: حمولةُ `{ok:false}` مُخزَّنةً تُجمّد العطلَ ١٨٠ ثانية على
+   كلّ التنفيذات — أسوأ من العطل نفسه (بند 191، ونفسُ شرط `success !== false` المطبَّق على
+   التعاميم في `_stuBootLoad`).
+   🔴 **والمفتاح مطابقٌ حرفياً** لمفتاح `loadQuickStats` و`_stu-js-reports`، وإلّا صار
+   للحمولة الواحدة مفتاحان ينحرفان (بند 187).
+   يُرجِع `true` إن استُهلكت الحمولة فعلاً — والمنادي يقرّر التراجع بناءً عليه لا بناءً
+   على وجود الحقل (بند 157: الأثرُ لا الاسم). */
+function _stuApplyBootQuickStats(rpt) {
+  if (!rpt || !rpt.ok || !rpt.data || !rpt.data.summary) return false;
+  try { ClientCache.set('reports_' + APP.user.id, rpt, STU_REPORTS_TTL_SEC); } catch (eQs) {}
+  _stuRenderQuickStats(rpt.data);
+  return true;
+}
+
 function loadQuickStats(force) {
   // إحصائيات سريعة — نفس مصدر تبويب «تقاريري» وبنفس مفتاح الكاش
   // (استدعاء خادم واحد يخدم الرئيسية والتقارير معاً، ويعمل مع تراجع الكاش دون اتصال)
-  var w = $('quickStats');
   if (force) ClientCache.remove('reports_' + APP.user.id);
   callServerSmart(
     'getStudentReports',
@@ -4916,31 +4965,10 @@ function loadQuickStats(force) {
     'reports_' + APP.user.id,
     STU_REPORTS_TTL_SEC,
     function (r) {
-      _tabLoadedAt.home = Date.now();
-      var rb = $('qstatsRefreshBtn');
-      if (rb) rb.disabled = false;
-      if (!r || !r.ok || !r.data) { w.innerHTML = _quickStatsPlaceholder(); return; }
-      var s = r.data.summary || {};
-      var avg = s.overallAvg || 0;
-      var avgCls = avg >= 80 ? 'g' : (avg >= 60 ? 'w' : 'r');
-      var attRate = (s.attendanceRate !== undefined) ? s.attendanceRate : 100;
-      var attCls  = attRate >= 90 ? 'g' : (attRate >= 75 ? 'w' : 'r');
-      // السلوكيات = تعزيزات ⭐ + ملاحظات ⚠️ — نفس إجمالي تبويب «السلوكيات»
-      var merits = Number(s.meritsCount || 0);
-      var vios   = Number(s.violationsCount || 0);
-      var behTotal = merits + vios;
-      var behCls = vios > 0 ? 'w' : 'g';
-      w.innerHTML =
-        '<div class="q-stat ' + avgCls + '" onclick="goTabByName(\'grades\')"><div class="ic-wrap">📊</div><div><div class="num">' + esc(avg) + '%</div><div class="lbl">المعدل العام</div></div></div>' +
-        '<div class="q-stat b" onclick="goTabByName(\'homework\')"><div class="ic-wrap">📝</div><div><div class="num">' + esc(s.homeworkAssigned || 0) + '</div><div class="lbl">واجبات</div></div></div>' +
-        '<div class="q-stat ' + behCls + '" onclick="goTabByName(\'violations\')"><div class="ic-wrap">⚠️</div><div><div class="num">' + esc(behTotal) + '</div><div class="lbl">سلوكيات ⭐' + esc(merits) + ' · ⚠️' + esc(vios) + '</div></div></div>' +
-        '<div class="q-stat ' + attCls + '" onclick="goTabByName(\'attendance\')"><div class="ic-wrap">📋</div><div><div class="num">' + esc(attRate) + '%</div><div class="lbl">نسبة الحضور</div></div></div>' +
-        '<div style="grid-column:1/-1; font-size:11px; color:var(--muted); text-align:center; margin-top:6px;">إحصائيات تراكمية حتى الآن — تكتمل تدريجياً مع تقدّم الفصل</div>';
+      _stuRenderQuickStats((r && r.ok && r.data) ? r.data : null);
     },
     function () {
-      var rb2 = $('qstatsRefreshBtn');
-      if (rb2) rb2.disabled = false;
-      w.innerHTML = _quickStatsPlaceholder();
+      _stuRenderQuickStats(null);
     }
   );
 }
@@ -8388,11 +8416,18 @@ function _stuBootLoad() {
   try { newsWarm = !!ClientCache.get(newsKey); } catch (eNw) {}
   try { circWarm = !!ClientCache.get(circKey); } catch (eCw) {}
 
+  /* 🔴 «نظرة سريعة» صارت **عضواً في الحزمة** (2026-08-29) — فمِلكيّةُ إطلاقها انتقلت من
+     `_stu-js-shell::initApp` إلى هنا. وكلُّ مسارِ خروجٍ مبكّر أدناه **لا تصله الحزمة**،
+     فيلزمه استدعاءُ `loadQuickStats()` صراحةً — وإلّا بقيت الرئيسيةُ بلا إحصاءات في ثلاث
+     حالاتٍ صامتة. (بند 189: توحيدُ النداءات يوجب توحيدَ مسار الفشل، وإلّا بقي السطحُ
+     الثاني على skeleton صامت.) */
+
   /* الاثنان دافئان ⇒ لا مكسب من الحزمة، والمسار القديم أسرع بصرياً (رسم فوري من الكاش) */
   if (newsWarm && circWarm) {
     loadHomeNews();
     loadHomeCirculars();
     loadNotificationBadges();
+    loadQuickStats();
     return;
   }
 
@@ -8400,11 +8435,12 @@ function _stuBootLoad() {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
     loadHomeNews();
     loadHomeCirculars();
+    loadQuickStats();
     return;
   }
 
   /* طلب شارات جارٍ بالفعل ⇒ لا نُضاعفه */
-  if (_badgeInFlight) { loadHomeNews(); loadHomeCirculars(); return; }
+  if (_badgeInFlight) { loadHomeNews(); loadHomeCirculars(); loadQuickStats(); return; }
   _badgeInFlight = true;
 
   if (!newsWarm) {
@@ -8427,7 +8463,10 @@ function _stuBootLoad() {
     }],
     function (r) {
       _badgeInFlight = false;
-      if (!r || !r.ok) { loadHomeNews(); loadHomeCirculars(); loadNotificationBadges(); return; }
+      if (!r || !r.ok) {
+        loadHomeNews(); loadHomeCirculars(); loadNotificationBadges(); loadQuickStats();
+        return;
+      }
 
       // ── الأخبار ──
       if (r.news && !r.newsFailed) {
@@ -8459,12 +8498,20 @@ function _stuBootLoad() {
         setBadge('badge-homework', b.homework);
         _stuMaybeNotifyNews(b.news);
       }
+
+      /* ── نظرة سريعة ── (2026-08-29)
+         🔴 القرارُ من **قيمة الاستهلاك** لا من وجود الحقل: `_stuApplyBootQuickStats`
+         ترفض `{ok:false}` وترفض الحمولةَ بلا `summary`، فتُرجِع `false` ⇒ نعود للنداء
+         المفرد. اشتراطُ `!r.reportsFailed` وحده كان سيمرّ على `{ok:false}` لأن الدالّة
+         **تبتلع استثناءها وتُرجِع كائناً** بدل أن ترمي — نفسُ فخّ التعاميم أعلاه حرفياً. */
+      if (!_stuApplyBootQuickStats(r.reports)) loadQuickStats();
     },
     function () {
       _badgeInFlight = false;
       loadHomeNews();
       loadHomeCirculars();
       loadNotificationBadges();
+      loadQuickStats();
     });
 }
 
@@ -8606,11 +8653,23 @@ document.addEventListener('DOMContentLoaded', function () {
                  خروج/دخول يدوي — نظير بند 123 مطبَّق على نفس الإصلاح الذي أغلق سابقتَه
                  (student/CLAUDE.md بند 8). */
               try { _stuRenderClassMeta(); } catch (eCM) {}
+              /* 🔴 **الإبطالُ يسبق الحزمة، ولا نداءَ ثانٍ بعدها** (2026-08-29).
+                 كان هنا `_stuBootLoad()` ثمّ `loadQuickStats(true)` — وبعد أن صارت
+                 «نظرة سريعة» **عضواً في الحزمة** أنتج ذلك نداءَي `getStudentReports`
+                 متتاليَين: الأولُ داخل الحزمة يُطلى ثمّ يُدهَس فوراً، وحسابُه مُهدَرٌ
+                 بالكامل — من نفس حصّة التنفيذ التي جاءت هذه الدفعة تعالج إشباعها.
+                 (رصدته مراجعة `gas-reviewer` قبل الدمج.)
+
+                 🔴 **ولا يُحذف السطرُ وحده — العلّةُ التي أوجبت `force` قائمة:** مفتاحُ
+                 `'reports_' + APP.user.id` **غير مبصومٍ بالصفّ** وسبق تسخينه بالبيانات
+                 القديمة. فلو اكتُفي بالحزمة لأمكن أن يأخذ `_stuBootLoad` مسارَ الكاش
+                 الدافئ (أخبارٌ وتعاميمُ صفٍّ سبقت زيارتُه) فيتراجع إلى `loadQuickStats()`
+                 **بلا فرض** ⇒ يُخدَم تقريرُ الصفّ القديم بصمت.
+                 ⇒ الإبطالُ **قبل** النداء يجعل كلَّ مسارٍ صحيحاً: الحزمةُ تدهس المفتاح
+                 بالطازج، والتراجعُ يجده بارداً فيجلب. (بند 189: توحيدُ النداءات يوجب
+                 توحيدَ مسار الفشل.) */
+              try { ClientCache.remove('reports_' + APP.user.id); } catch (eQS) {}
               try { _stuBootLoad(); } catch (eBL) {}
-              /* `force=true` إلزامي: مفتاح كاش الإحصاءات `'reports_' + APP.user.id` غير
-                 مبصوم بالصفّ، وسبق تسخينه عند initApp() بالبيانات القديمة — نداء بلا فرض
-                 كان سيُعيد نفس الردّ المخزَّن بصمت (رصدته مراجعة gas-reviewer قبل الدمج). */
-              try { loadQuickStats(true); } catch (eQS) {}
               try { loadHomeToday(); } catch (eHT) {}
             }
           }
