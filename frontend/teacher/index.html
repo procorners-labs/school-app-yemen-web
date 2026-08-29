@@ -12185,6 +12185,19 @@ function ec_timetableRenderPage() {
   el.innerHTML = h;
 }
 
+/* مفتاح كاش جدول الاختبارات — مبصوم بالمدرسة ثم الصف|الشهر (بند 85-ب · بندا 23/27).
+   بلا بصمة المستأجر يرى مديرٌ متعدّد المدارس جدولَ مدرسة A تحت اسم مدرسة B. */
+function _ecTTCacheKey(key) {
+  return 'ec_tt_' + ((typeof App !== 'undefined' && App.user && App.user.schoolId) || '') + '_' + key;
+}
+
+/* 🔴 مُبطِلٌ إلزاميّ — كاشٌ على سطحٍ يُحرَّر في نفس الشاشة بلا مُبطِل يخدم البائتَ
+   بعد الحفظ مباشرةً (جذر بند 108: مخزنٌ جديد بلا مُبطِل). يُستدعى عند كل حفظ ناجح
+   وعند كل قفل/فتح، ويُبذَر بالحالة المحفوظة كي يبقى إعادةُ الفتح دافئاً وصحيحاً. */
+function _ecTTCacheInvalidate(key) {
+  try { ClientCache.clear('ec_tt_' + ((typeof App !== 'undefined' && App.user && App.user.schoolId) || '') + '_' + key); } catch (e) {}
+}
+
 function ec_timetableGradeToggle(detailsEl) {
   if (!detailsEl.open || detailsEl.getAttribute('data-loaded') === '1') return;
   detailsEl.setAttribute('data-loaded', '1');
@@ -12192,10 +12205,12 @@ function ec_timetableGradeToggle(detailsEl) {
   var parts = key.split('|'), grade = parts[0], month = parts[1];
   var body = detailsEl.querySelector('.ec-tt-grade-body');
   if (body) body.innerHTML = '<p style="text-align:center;color:#999;padding:14px;">⏳ جارٍ التحميل...</p>';
-  callServer('getExamScheduleProtected', { grade: grade, month: month }, function (res) {
+  /* كاش عميلي 120ث — الدالّة كانت بلا كاش على **الطرفين** وتقرأ الورقة كاملةً في
+     كل فتح بطاقة (بند 206). والمدّة قصيرة عمداً لأن السطح يُحرَّر في نفس الشاشة،
+     ومعها مُبطِلٌ صريح عند كل حفظ/قفل ناجح. */
+  callServer('getExamScheduleProtected', { grade: grade, month: month }, _ecTTCacheKey(key), 120, function (res) {
     if (!res || !res.success) {
-      detailsEl.removeAttribute('data-loaded'); // فشل الجلب — يُعاد المحاولة عند إغلاق/فتح البطاقة مجدداً
-      if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</p>';
+      _ecTTReleaseLoaded(detailsEl, body, (res ? res.error : 'خطأ'), null);
       return;
     }
     // تسطيح days[{dayIndex,date,subjects:[{name,order}]}] الخادمية إلى قائمة واحدة مرتَّبة —
@@ -12210,9 +12225,42 @@ function ec_timetableGradeToggle(detailsEl) {
     ec_timetableComputeUnscheduled(key, grade);
     ec_timetableRenderBoard(key, body);
   }, function (err) {
-    detailsEl.removeAttribute('data-loaded');
-    if (body) body.innerHTML = '<p style="color:#c62828;">❌ ' + err.message + '</p>';
+    _ecTTReleaseLoaded(detailsEl, body, (err && err.message) || 'خطأ', err);
   });
+}
+
+/* ── مسار الفشل الموحَّد لبطاقة الصف ─────────────────────────────────────────
+   🔴 **العلّة المقيسة (سجلّ المالك 2026-08-30):** كان `removeAttribute('data-loaded')`
+   غيرَ مشروط ⇒ أثناء الإشباع كلُّ فتح/إغلاق للبطاقة يُطلق نداءً جديداً على مقعدٍ
+   لا يتوفّر أصلاً — **دوّامةٌ يُغذّيها الفشلُ نفسه**، وهي ما أنتج تكرار
+   `getExamScheduleProtected failed (502)` ستَّ مرّات متتالية.
+
+   والتمييز يقع على `err.__saturated` الذي يضعه `gas-bridge.js` على 502/503/504/429
+   وحدها: فشلُ **إشباع** ⇒ لا إعادة تلقائية، بل زرٌّ يدويّ يُطلقها المستخدم متى شاء.
+   وفشلٌ منطقيّ آخر (خطأ خادم حقيقي) يبقى بسلوكه الأصلي حرفياً — إعادةُ المحاولة
+   بفتحٍ تالٍ. ⇒ تضييقٌ مُقتصِر على الفئة التي تسبّب الدوّامة، لا إلغاءٌ للسلوك. */
+function _ecTTReleaseLoaded(detailsEl, body, msg, err) {
+  var saturated = !!(err && err.__saturated);
+  if (!saturated) detailsEl.removeAttribute('data-loaded');
+  if (!body) return;
+  if (saturated) {
+    var k = detailsEl.getAttribute('data-key') || '';
+    body.innerHTML = '<p style="text-align:center;color:#c62828;padding:14px;">📭 الخدمة مزدحمة حالياً' +
+      '<br><button type="button" class="btn btn-sm" style="margin-top:8px;" ' +
+      'onclick="ec_timetableRetryGrade(this,\'' + String(k).replace(/'/g, "\\'") + '\')">🔄 إعادة المحاولة</button></p>';
+  } else {
+    body.innerHTML = '<p style="color:#c62828;">❌ ' + msg + '</p>';
+  }
+}
+
+/* إعادةُ المحاولة **بضغطة المستخدم وحدها** — لا مؤقّت ولا إعادة تلقائية:
+   إعادةُ المحاولة على إشباعٍ تُسيئه لا تُصلحه (بند 128 · بند 202). */
+function ec_timetableRetryGrade(btn, key) {
+  var gd = document.querySelector('.ec-tt-grade[data-key="' + String(key).replace(/"/g, '\\"') + '"]');
+  if (!gd) return;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ ...'; }
+  gd.removeAttribute('data-loaded');
+  ec_timetableGradeToggle(gd);
 }
 
 // مواد الصف الكاملة تأتي من App.lists.curriculumByGrade (محمَّلة أصلاً لكل الواجهة — نفس
@@ -12796,9 +12844,31 @@ function ec_timetableToggleLock(ev, key) {
   }, function (err) { toast('❌ ' + err.message, 'error'); });
 }
 
+/* ── تجميعُ الحفظ التلقائي: نداءٌ واحد لكل جلسة سحب (بند 206) ────────────────
+   🔴 **العلّة المقيسة (سجلّ المالك 2026-08-30):** ثماني إخفاقات متتالية لـ
+   `saveExamScheduleBulkProtected`. وهي **الدالّةُ الوحيدة** في هذا المسار التي تأخذ
+   `LockService.getScriptLock().tryLock(5000)` **fail-closed** (`ExamControl.js`) —
+   ونطاقُ القفل في GAS هو **المشروع كلُّه** لا الصفَّ (جذر بند 74). فبلا حارس تدفّق:
+   سحبةٌ متتالية ⇒ حفظٌ كل 600ms ⇒ الثاني يجد الأول ماسكاً القفل ⇒ «النظام مشغول»،
+   أو يستهلك مقعداً من مقاعد منظّم التزاحم الخمسة فيُرفَض ما بعده بـ503.
+
+   العلاج شقّان معاً — أحدُهما وحده لا يكفي:
+   ① **مهلة التجميع 600 ⇒ 1500ms**: تُبقي السحبةَ المتّصلة كلَّها ضمن نافذةٍ واحدة.
+   ② **single-flight لكل `key`**: إن كان حفظٌ جارياً لا يُطلق ثانٍ؛ يُوسَم `dirty`
+      ويُعاد جدولةُ **حفظٍ واحد** فور عودة الجاري.
+
+   🟢 **وصفرُ فقدان بيانات بنيوياً:** المحفوظ يُبنى وقتَ الإرسال من
+   `_ecScheduleBoards[key]` — أي **آخر حالة اللوحة دائماً**، لا لقطةٌ التُقطت وقت
+   الجدولة (هذا بالضبط ما يحرسه بند 16 في `teacher/CLAUDE.md`). فتأجيلُ الحفظ يؤخّره
+   ولا يُسقط تعديلاً. وزرّ «حفظ الآن» يبقى فورياً. */
+var _ecTTSaveInflight = {};   /* 'الصف|الشهر' -> true أثناء وجود حفظٍ على الشبكة */
+var _ecTTSaveDirty    = {};   /* 'الصف|الشهر' -> true إن وقع تعديلٌ أثناء ذلك الحفظ */
+var EC_TT_SAVE_DEBOUNCE_MS = 1500;
+
 function ec_timetableScheduleSave(key) {
+  if (_ecTTSaveInflight[key]) { _ecTTSaveDirty[key] = true; return; }
   if (_ecTTSaveTimers[key]) clearTimeout(_ecTTSaveTimers[key]);
-  _ecTTSaveTimers[key] = setTimeout(function () { ec_timetableSaveNow(key); }, 600);
+  _ecTTSaveTimers[key] = setTimeout(function () { ec_timetableSaveNow(key); }, EC_TT_SAVE_DEBOUNCE_MS);
 }
 
 // زرّ "حفظ الآن" اليدوي — يُلغي أي مؤقّت مؤجَّل معلَّق وينفّذ حفظاً فورياً، مع تغذية راجعة مرئية
@@ -12812,8 +12882,28 @@ function ec_timetableSaveClick(ev, key) {
   ec_timetableSaveNow(key, true, btn);
 }
 
+/* يُستدعى في نهاية كل حفظ — نجح أو فشل — فيُفرِج عن الحارس، وإن تراكم تعديلٌ أثناءه
+   جدوَل حفظاً **واحداً** لا حفظاً لكل تعديلٍ فاتَ. */
+function _ecTTSaveRelease(key) {
+  _ecTTSaveInflight[key] = false;
+  if (_ecTTSaveDirty[key]) {
+    _ecTTSaveDirty[key] = false;
+    if (_ecTTSaveTimers[key]) clearTimeout(_ecTTSaveTimers[key]);
+    _ecTTSaveTimers[key] = setTimeout(function () { ec_timetableSaveNow(key); }, EC_TT_SAVE_DEBOUNCE_MS);
+  }
+}
+
 function ec_timetableSaveNow(key, manual, btnEl) {
   var board = _ecScheduleBoards[key]; if (!board) return;
+  /* حفظٌ جارٍ على الشبكة: لا تُطلق ثانياً على القفل نفسه — علّم واخرج.
+     🔴 والاستثناء يُقال: «حفظ الآن» اليدويّ **لا يتجاوز** الحارس أيضاً — تجاوزُه
+     يُعيد بالضبط الحالةَ التي وُضع لمنعها (ضغطتان متتاليتان = حفظان متزامنان). */
+  if (_ecTTSaveInflight[key]) {
+    _ecTTSaveDirty[key] = true;
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '💾 حفظ الآن'; }
+    return;
+  }
+  _ecTTSaveInflight[key] = true;
   var parts = key.split('|'), grade = parts[0], month = parts[1];
   // إعادة تسطيح board.list (قائمة واحدة) إلى بنية الشيت الموجودة أصلاً — يوم واحد لكل مادة، الموضع
   // = dayIndex، order=1 دوماً (مادة واحدة/يوم في هذا التصميم) — بلا أي تغيير خادمي مطلوب لهذا الجزء.
@@ -12837,10 +12927,15 @@ function ec_timetableSaveNow(key, manual, btnEl) {
     } else if (manual) {
       toast('✅ تم حفظ جدول ' + grade, 'success');
     }
+    /* الكاش العميلي للبطاقة صار بائتاً بهذا الحفظ — أبطِله كي لا تُخدَم النسخة
+       القديمة عند إعادة الفتح خلال الـ120 ثانية (بند 108: مخزنٌ بلا مُبطِل). */
+    if (res && res.success) _ecTTCacheInvalidate(key);
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = '💾 حفظ الآن'; }
+    _ecTTSaveRelease(key);
   }, function (err) {
     toast('❌ ' + err.message, 'error');
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = '💾 حفظ الآن'; }
+    _ecTTSaveRelease(key);
   });
 }
 
@@ -18221,6 +18316,40 @@ function markNewsViewedTeacher(newsId) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// markNewsViewedTeacherBatch — نداءٌ واحد لكل أخبار الصفحة (بند 206)
+// ══════════════════════════════════════════════════════════════════
+// 🔴 كان هنا استدعاءٌ لـmarkNewsViewedTeacher **داخل حلقة `for`** على كل خبر معروض
+// ⇒ N نداءً متزامناً من عميلٍ واحد على رسمةٍ واحدة. ومنظّم تزاحم الوسيط يمنح
+// خمسةَ مقاعد للتطبيق الواحد، فما بعد الخامس يُرفَض بـ503 بعد انتظار ~8 ثوانٍ —
+// وهو بعينه ما ظهر في سجلّ المتصفّح: ستّةُ `recordNewsViewProtected failed (503)`
+// متتالية. والعلاج خفضُ عدد التنفيذات لا تسريعُ الدالّة (`srv p50 = 4ms`).
+//
+// ⚠️ مزيلُ التكرار العميلي `window._tcViewedNews` يبقى كما هو — يمنع إعادة الإرسال
+// داخل الجلسة الواحدة؛ والخادم يمنع التكرار الدائم.
+function markNewsViewedTeacherBatch(newsIds) {
+  if (!newsIds || !newsIds.length) return;
+  if (!window._tcViewedNews) window._tcViewedNews = {};
+
+  var fresh = [];
+  for (var i = 0; i < newsIds.length; i++) {
+    var id = newsIds[i];
+    if (!id || window._tcViewedNews[id]) continue;
+    window._tcViewedNews[id] = true;
+    fresh.push(id);
+  }
+  if (!fresh.length) return;
+
+  try {
+    callServer('recordNewsViewsBatchProtected', { newsIds: fresh }, function(){}, function(){
+      // فشل عابر: اسمح بإعادة المحاولة في عرض لاحق — لكلّ معرّفات الدفعة معاً،
+      // بنفس سلوك النظيرة المفردة حرفياً.
+      if (!window._tcViewedNews) return;
+      for (var j = 0; j < fresh.length; j++) window._tcViewedNews[fresh[j]] = false;
+    });
+  } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════
 // shareNews — مشاركة منشور خبر عبر قائمة المشاركة الأصلية (تراجع: نسخ الرابط)
 // الرابط يفتح الخبر على الصفحة الرئيسية حيث تظهر صوره وفيديوهاته.
 // ══════════════════════════════════════════════════════════════════
@@ -18670,9 +18799,12 @@ function renderNewsList(list, isFirst) {
   }
 
   // 👁️ تسجيل مشاهدة المعلم لكل خبر معروض (يُغذّي «معلمون شاهدوا»؛ مزال التكرار داخليًّا)
+  // 🔴 نداءٌ **واحد** لكل الأخبار — لا حلقةَ نداءات (بند 206).
+  var _rvIds = [];
   for (var _rv = 0; _rv < list.length; _rv++) {
-    if (list[_rv] && list[_rv].id) markNewsViewedTeacher(list[_rv].id);
+    if (list[_rv] && list[_rv].id) _rvIds.push(list[_rv].id);
   }
+  markNewsViewedTeacherBatch(_rvIds);
 
   try { _tcWireCoverScale(); } catch (eCv) {}
 }
@@ -25006,7 +25138,15 @@ function rep_loadAllTeacherActivity(scope) {
   // حصري للمدير/الوكيل — لا يظهر للمشرف/المعلم
   if (scope !== 'admin' && scope !== 'deputy') { box.innerHTML = ''; return; }
   box.innerHTML = _rpt_card('🧑‍🏫', 'نشاط المعلمين — تقرير موسّع وشامل', '<p style="color:var(--text-light);">⏳ جارٍ التحميل...</p>');
-  callServer('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '' }, function (res) {
+  /* كاش عميلي 180ث — مطابقٌ للكاش الخادمي (`rpt_all_activity_v2_*`) الذي كان قائماً
+     أصلاً بلا مستهلِك عميليّ (بند 206): ثلاثةٌ من التقارير الأربعة المُطلَقة معاً عند
+     `:795-798` تُمرِّر `cacheKey` وهذا وحده لم يكن — فكلُّ فتحٍ للتبويب تنفيذُ GAS
+     كامل. والمفتاح مبصوم بالمدرسة ثم بالشعبة (بند 85-ب · بندا 23/27): مديرٌ متعدّد
+     المدارس ينتقل بـ`?school=` في نفس التبويب، وبلا البصمة يرى نشاطَ مدرسةٍ تحت اسم
+     أخرى — ولأن `section` جزءٌ من الوسيط فهو جزءٌ من المفتاح وإلّا خُدم تقريرُ شعبةٍ
+     لطلبٍ عن شعبةٍ أخرى. */
+  var _actKey = 'rpt_allact_' + ((App.user && App.user.schoolId) || '') + '_' + (_RPT_SECTION || '');
+  callServer('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '' }, _actKey, 180, function (res) {
     if (!res || !res.success) { box.innerHTML = ''; return; }
     window._repAllTeachers = res.teachers || [];
     window._repAllTeachersSummary = res.summary || null;
@@ -25144,7 +25284,11 @@ function rep_loadTaskPerformance(scope) {
       box.innerHTML = _rpt_card('📌', 'أداء المهام والإشراف', inner + actions);
     }, function () { box.innerHTML = ''; });
   } else {
-    callServer('getTeacherTaskSummaryProtected', { teacherName: (App.user && App.user.teacherName) || '' }, function (res) {
+    /* المسار غير الإداري — كان الوحيد في هذه الدالّة بلا كاش عميلي بينما شقيقه
+       الإداري أعلاه يُمرِّره منذ البداية (بند 187: شقيقةٌ كُيِّشت وأختُها في نفس
+       الملفّ فاتتها). المفتاح مبصوم بالمدرسة **واسم المعلّم** لأنه وسيطُ النداء. */
+    callServer('getTeacherTaskSummaryProtected', { teacherName: (App.user && App.user.teacherName) || '' },
+      'task_self_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.teacherName) || ''), 180, function (res) {
       if (!res || !res.success) { box.innerHTML = ''; return; }
       var s = res.summary || {};
       if (!s.total) { box.innerHTML = ''; return; }
