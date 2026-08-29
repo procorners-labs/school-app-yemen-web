@@ -3780,14 +3780,31 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         if (nm) nm.classList.add('name-reveal-play');
       } catch (eRv) {}
     }
+    /* 🔴 **بند 175 — لا اسمَ منتجٍ في خانة هوية المدرسة (أُصلح 2026-08-29).** كان
+       `.replace('{SCHOOL}', schoolName || 'يمن سكولز')` يكتب اسمَ المنصّة مكان اسم
+       المدرسة، فيقرأ المستخدمُ «طلاب يمن سكولز» ويظنّه اسمَ مدرسةٍ حقيقية ⇒ **العطلُ
+       لا يُميَّز من الحالة السليمة**. والـHTML كان قد أُصلح فعلاً (التعليقُ فوق
+       `.login-school-name` في `Teacher Dashboard.html` يقول ذلك نصّاً) — وبقي مسارا JS
+       ينقضانه: إصلاحٌ نُفِّذ نصفُه فبقي العطل.
+       🟢 **والعلاجُ ليس استبدالَ الاسم بآخر بل إسقاطَ العبارة التي تحتاجه**: بلا اسمٍ
+       تُعرَض عبارةٌ لا تذكر مدرسةً أصلاً — فلا فراغٌ محرج ولا هويةٌ كاذبة. */
+    function _tcNeutralTaglineIdx() {
+      for (var i = 0; i < _tcLoginTaglines.length; i++) {
+        var j = (_tcTaglineIdx + i) % _tcLoginTaglines.length;
+        if (_tcLoginTaglines[j].indexOf('{SCHOOL}') === -1) return j;
+      }
+      return _tcTaglineIdx;   // كلُّها تحتاج اسماً — لا يقع اليوم، والتراجعُ مكتوب لا مفترَض
+    }
     function _tcRenderLoginWelcome(schoolName) {
       try {
         var elw = document.getElementById('loginWelcomeText');
         if (!elw) return;
-        elw.textContent = _tcLoginTaglines[_tcTaglineIdx].replace('{SCHOOL}', schoolName || 'يمن سكولز');
+        var nm = (schoolName || '').toString().trim();
+        var idx = nm ? _tcTaglineIdx : _tcNeutralTaglineIdx();
+        elw.textContent = _tcLoginTaglines[idx].replace('{SCHOOL}', nm);
       } catch (eWlc) {}
     }
-    _tcRenderLoginWelcome('يمن سكولز');
+    _tcRenderLoginWelcome('');
     // 🔴 كاشٌ مسموم (اسمٌ فارغ) يُعامَل **كغياب** لا كنسخةٍ صالحة — وهو ما خلّفته النسخة
     // السابقة على أجهزة قائمة، فبلا هذا الشرط يبقى العطل بعد النشر حتى ينتهي TTL.
     if (_tcCachedBrand && !_tcCachedBrand.name) { _tcCachedBrand = null; _tcBrandSavedAt = 0; }
@@ -3959,10 +3976,16 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     function _tcBuildWordRain() {
       var wrap = document.getElementById('tchLoginWordRain');
       if (!wrap) return;
+      /* 🔴 **بند 175 (أُصلح 2026-08-29):** كان التراجعُ `: 'يمن سكولز'` — اسمُ المنتج في
+         قطرةٍ تحمل صنف `school-brand-name`، أي في خانة هوية المدرسة حرفياً.
+         🟢 والقراءةُ من الـDOM هي الصواب (الخانةُ تحمل «المدرسة» المحايدة قبل وصول الهوية،
+         و`applyBrand` يعيد طلاءَها لاحقاً بالصنف نفسه). فإن **غابت الخانة أصلاً** فلا
+         هويةَ تُدَّعى: تُسقَط قطرةُ الاسم وتُعرَض العباراتُ وحدها — لا اسمَ منتجٍ بديلاً. */
       var nameEl = document.querySelector('.login-school-name');
-      var schoolName = (nameEl && nameEl.textContent) ? nameEl.textContent : 'يمن سكولز';
+      var schoolName = (nameEl && nameEl.textContent) ? nameEl.textContent.trim() : '';
       var html = '', count = 9, i, text, color, left, duration, delay, size;
       for (i = 0; i < count; i++) {
+        if (i === 0 && !schoolName) continue;
         if (i === 0) { text = escapeHtml(schoolName); color = '#fff'; }
         else { text = _TC_RAIN_TEXTS[(i - 1) % _TC_RAIN_TEXTS.length]; color = _TC_RAIN_COLORS[(i - 1) % _TC_RAIN_COLORS.length]; }
         left = 6 + (i * 10) % 88;

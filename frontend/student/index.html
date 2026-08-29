@@ -565,9 +565,42 @@ a { color: var(--pr); text-decoration: none; }
   display: flex; align-items: center; gap: 10px;
   flex: 1; min-width: 0;
 }
-.nav-brand .ic {
-  font-size: 24px;
+/* 🗑️ `.nav-brand .ic` حُذفت 2026-08-29 — الرمز `🎓` استُبدل بشعار المدرسة أدناه.
+   ⚠️ و`class="ic"` نفسها **حيّةٌ في 39 موضعاً** خارج `.nav-brand`، والمحذوفُ المحدِّدُ
+   المتفرّعُ وحده لا الصنف. */
+/* 🟢 شعارُ المدرسة في الرأس — نظيرُ `#tchNavLogo` في منصّة المعلّم (2026-08-29).
+   يحقن فيه `applyBrand` وسمَ `<img>`، وقبل وصول الهوية يظهر `.brand-mark-fallback`. */
+.nav-brand-icon {
+  width: 34px; height: 34px;
   flex-shrink: 0;
+  border-radius: 9px;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.14);
+}
+.nav-brand-icon img { width: 100%; height: 100%; object-fit: contain; }
+.nav-brand .sub {
+  font-size: 11px;
+  opacity: .85;
+  white-space: nowrap;
+}
+/* هويةُ الطالب — انتقلت من `.nav-brand` حين صارت الأخيرة لهوية المدرسة.
+   🔴 تُخفى على الجوّال: الرأسُ لا يتّسع للهويتين معاً، والطالبُ يرى اسمَه في بطاقة
+   الترحيب أعلى اللوحة على أي حال (`#welcomeName`) — فالإخفاءُ لا يُسقط معلومة. */
+.nav-who {
+  min-width: 0;
+  max-width: 42%;
+  text-align: left;
+  margin-inline-start: auto;
+  padding-inline-end: 10px;
+}
+.nav-who .name {
+  font-weight: 700; font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-who .meta {
+  font-size: 10.5px; opacity: .85;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nav-brand .info {
   flex: 1; min-width: 0;
@@ -579,13 +612,9 @@ a { color: var(--pr); text-decoration: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nav-brand .meta {
-  font-size: 11px;
-  opacity: .85;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* 🗑️ `.nav-brand .meta` حُذفت 2026-08-29 — صارت ميتةً بانتقال `#navMeta` إلى `.nav-who`
+   (‏صفرُ `class="meta"` داخل `.nav-brand` اليوم، مقيسٌ لا مفترَض). و`.nav-brand .name`
+   و`.nav-brand .info` **باقيتان حيَّتين**: الرأسُ الجديد يستعملهما لاسم المدرسة. */
 .nav-actions {
   display: flex; gap: 6px;
   flex-shrink: 0;
@@ -2083,6 +2112,10 @@ a { color: var(--pr); text-decoration: none; }
   .exam-hero { padding: 14px; }
   .exam-hero .countdown { font-size: 20px; }
   .nav-brand .name { font-size: 13px; }
+  /* الرأسُ لا يتّسع لهويتَي المدرسة والطالب معاً على الجوّال — واسمُ الطالب باقٍ
+     مرئياً في بطاقة الترحيب (`#welcomeName`)، فالإخفاءُ لا يُسقط معلومة. */
+  .nav-who { display: none; }
+  .nav-brand-icon { width: 30px; height: 30px; }
   .news-filters { grid-template-columns: 1fr; }
   .fin-summary { grid-template-columns: 1fr; }
   .q-grid { grid-template-columns: 1fr 1fr; }
@@ -2357,12 +2390,26 @@ a { color: var(--pr); text-decoration: none; }
 
   <!-- Navbar -->
   <header class="navbar">
+    <!-- 🔴 **هويةُ المدرسة في الرأس — أُضيفت 2026-08-29 (قرار مالك).** كان الرأسُ يحمل
+         `🎓` ثابتةً واسمَ الطالب وحدَه: **صفرُ شعارٍ وصفرُ اسمِ مدرسة**، بينما رأسُ
+         المعلّم (`Teacher Dashboard.html`) يحمل الاثنين ⇒ الطالبُ لا يرى مدرستَه إطلاقاً
+         بعد الدخول، والهويةُ تصله عبر `--pr*` و`document.title` فقط.
+         🟢 والبنيةُ نظيرةٌ لرأس المعلّم حرفياً: شعارٌ بـ`brand-mark-fallback` +
+         `.school-brand-name` (يطليه `applyBrand` تلقائياً) + سطرٌ فرعيّ ثابت.
+         🔴 و`#navName`/`#navMeta` **لم يُحذفا** — نُقلا إلى الكتلة المجاورة، ويملؤهما
+         `_stu-js-shell.html::_stuRenderClassMeta` كما هو بلا تغيير. حذفُهما كان سيكسر
+         `_stuRenderClassMeta` و`refreshStudentSiblings` معاً بصمت. -->
     <div class="nav-brand">
-      <span class="ic">🎓</span>
+      <div class="nav-brand-icon brand-mark-fallback" id="stuNavLogo"></div>
       <div class="info">
-        <div class="name" id="navName">—</div>
-        <div class="meta" id="navMeta">—</div>
+        <!-- نصٌّ محايد لا اسمُ المنتج — خانةُ هوية المدرسة (بند 175). -->
+        <div class="name school-brand-name" title="المدرسة">المدرسة</div>
+        <div class="sub">منصة الطالب</div>
       </div>
+    </div>
+    <div class="nav-who">
+      <div class="name" id="navName">—</div>
+      <div class="meta" id="navMeta">—</div>
     </div>
     <div class="nav-actions">
       <div class="thm-wrap" id="thmWrap">
@@ -8791,14 +8838,28 @@ function initLazyImages() {
       if (nm) nm.classList.add('name-reveal-play');
     } catch (eRv) {}
   }
+  /* 🔴 **بند 175 — لا اسمَ منتجٍ في خانة هوية المدرسة (أُصلح 2026-08-29).** نظيرُ
+     `teacher/_js-core-bridge.html::_tcRenderLoginWelcome` حرفياً: كان يكتب «يمن سكولز»
+     مكان اسم المدرسة فيقرأ وليُّ الأمر «مدرسة يمن سكولز» ⇒ العطلُ لا يُميَّز من الحالة
+     السليمة. والـHTML كان مُصلَحاً (`.subtitle.school-brand-name` = «المدرسة») وهذا
+     المسارُ ينقضه. 🟢 والعلاجُ إسقاطُ العبارة التي تحتاج اسماً لا استبدالُ الاسم. */
+  function _stNeutralTaglineIdx() {
+    for (var i = 0; i < _stLoginTaglines.length; i++) {
+      var j = (_stTaglineIdx + i) % _stLoginTaglines.length;
+      if (_stLoginTaglines[j].indexOf('{SCHOOL}') === -1) return j;
+    }
+    return _stTaglineIdx;
+  }
   function _stRenderLoginWelcome(schoolName) {
     try {
       var elw = document.getElementById('stuLoginWelcomeText');
       if (!elw) return;
-      elw.textContent = _stLoginTaglines[_stTaglineIdx].replace('{SCHOOL}', schoolName || 'يمن سكولز');
+      var nm = (schoolName || '').toString().trim();
+      var idx = nm ? _stTaglineIdx : _stNeutralTaglineIdx();
+      elw.textContent = _stLoginTaglines[idx].replace('{SCHOOL}', nm);
     } catch (eWlc) {}
   }
-  _stRenderLoginWelcome('يمن سكولز');
+  _stRenderLoginWelcome('');
   // 🔴 كاشٌ مسموم (اسمٌ فارغ) يُعامَل **كغياب** لا كنسخةٍ صالحة — خلّفته النسخة السابقة
   // على أجهزة قائمة، فبلا هذا الشرط يبقى العطل بعد النشر حتى ينتهي TTL (ستّ ساعات هنا).
   if (_stCachedBrand && !_stCachedBrand.name) { _stCachedBrand = null; _stBrandSavedAt = 0; }
@@ -8875,6 +8936,11 @@ function initLazyImages() {
       try { window._stuLogo = _stuToLh3(b.logo); } catch (e) { window._stuLogo = b.logo; }
       var lg = document.getElementById('stuLoginLogo');
       if (lg) lg.innerHTML = '<img src="' + b.logo + '" alt="" onerror="this.style.display=\'none\'" style="width:64px;height:64px;object-fit:contain;border-radius:12px;" />';
+      /* 🟢 شعارُ المدرسة في رأس المنصّة بعد الدخول — نظيرُ `#tchNavLogo` (2026-08-29).
+         بلا هذا السطر يبقى الرأسُ الجديد على `.brand-mark-fallback` أبداً: العنصرُ
+         مضافٌ في HTML لكن لا أحد يملؤه — فئةُ «الميزة معرَّفة والآلية لا تعمل» (بند 118). */
+      var nv = document.getElementById('stuNavLogo');
+      if (nv) nv.innerHTML = '<img src="' + b.logo + '" alt="" onerror="this.style.display=\'none\'" />';
       _stPlayLoginReveal();
     }
     var ct = document.getElementById('stuLoginContact');
@@ -9003,10 +9069,14 @@ var STU_MOTIVATION_COLORS = ['#ffd166', '#06d6a0', '#4cc9f0', '#f4a261', '#c77df
   function _stBuildWordRain() {
     var wrap = document.getElementById('stuLoginWordRain');
     if (!wrap) return;
+    /* 🔴 **بند 175 (أُصلح 2026-08-29)** — نظيرُ `_tcBuildWordRain` حرفياً: اسمُ المنتج
+       كان تراجعاً في قطرةٍ تحمل صنف `school-brand-name`. والقراءةُ من الـDOM هي الصواب،
+       وغيابُ الخانة يُسقط قطرةَ الاسم ولا يستبدلها باسم المنصّة. */
     var nameEl = document.querySelector('.login-card .subtitle.school-brand-name');
-    var schoolName = (nameEl && nameEl.textContent) ? nameEl.textContent : 'يمن سكولز';
+    var schoolName = (nameEl && nameEl.textContent) ? nameEl.textContent.trim() : '';
     var html = '', count = 9, i, text, color, left, duration, delay, size;
     for (i = 0; i < count; i++) {
+      if (i === 0 && !schoolName) continue;
       if (i === 0) { text = _stFxEsc(schoolName); color = '#fff'; }
       else { text = STU_MOTIVATION_PHRASES[(i - 1) % STU_MOTIVATION_PHRASES.length]; color = STU_MOTIVATION_COLORS[(i - 1) % STU_MOTIVATION_COLORS.length]; }
       left = 6 + (i * 10) % 88;
