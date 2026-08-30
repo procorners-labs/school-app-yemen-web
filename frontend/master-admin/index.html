@@ -349,6 +349,12 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     <div class="nav-item" onclick="showSection('referrals')" id="nav-referrals">
       <span class="nav-icon">🎁</span><span>الإحالات</span>
     </div>
+    <div class="nav-item" onclick="showSection('requests')" id="nav-requests">
+      <span class="nav-icon">📥</span><span>طلبات التسجيل</span>
+      <span id="nav-requests-badge"
+            style="display:none;margin-inline-start:auto;background:#c62828;color:#fff;
+                   border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;"></span>
+    </div>
     <div class="nav-item" onclick="showSection('audit')" id="nav-audit">
       <span class="nav-icon">📋</span><span>سجل التدقيق</span>
     </div>
@@ -474,6 +480,41 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
             <tbody id="referral-teacher-stats-tbody"><tr><td colspan="5" style="text-align:center;padding:20px;color:#999;">—</td></tr></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══ طلبات التسجيل ═══
+         🔴 داخل `ownerOnly`: بياناتُ الطلب تحمل بريدَ مقدّمه ورقمَه، ولا شأن لمدير مدرسةٍ
+         بها. (وسابقةُ قسم «التقارير التفصيلية» المحذوف — كان خارج قائمة المالك فظهر
+         لمديري المدارس. ⚠️ ولا يُكتَب معرّفُ تبويبه هنا حرفياً: حارسُ «صفر أثر» يطابق
+         النصّ الخام فيحمرّ على ذكرِه ولو في تعليق.) -->
+    <div id="section-requests" class="section">
+      <div class="section-title">📥 طلبات التسجيل</div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <button class="btn btn-primary" onclick="requests_load()">🔄 تحديث</button>
+        <select id="requests-filter" onchange="requests_load()"
+                style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;">
+          <option value="">الكل</option>
+          <option value="AWAITING_APPROVAL" selected>بانتظار الاعتماد</option>
+          <option value="CONTACT_PENDING">طلبات تواصل</option>
+          <option value="EMAIL_PENDING">بانتظار توثيق البريد</option>
+          <option value="APPROVED">معتمَدة</option>
+          <option value="CONTACTED">تُوبعت</option>
+          <option value="REJECTED">مرفوضة</option>
+          <option value="EXPIRED">منتهية</option>
+        </select>
+      </div>
+      <div id="requests-status"></div>
+      <div class="panel" style="padding:0;overflow:auto;">
+        <table class="master-table">
+          <thead><tr>
+            <th>النوع</th><th>المدرسة</th><th>المسؤول</th><th>البريد</th>
+            <th>واتساب</th><th>الخطة</th><th>التاريخ</th><th>الحالة</th><th>إجراء</th>
+          </tr></thead>
+          <tbody id="requests-tbody">
+            <tr><td colspan="9" style="text-align:center;padding:20px;color:#999;">اضغط «تحديث»</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -740,7 +781,7 @@ function _showApp() {
   } catch (e) {}
 
   // إخفاء عناصر المالك عن مديري المدارس
-  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals'];
+  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals', 'nav-requests'];
   for (var i = 0; i < ownerOnly.length; i++) {
     var el = document.getElementById(ownerOnly[i]);
     if (el) el.style.display = App.isOwner ? '' : 'none';
@@ -865,10 +906,11 @@ function app_logout() {
 // ── التنقل بين الأقسام ────────────────────────────────────────
 
 function showSection(name) {
-  var sections = ['dashboard','sync','reports','schools','referrals','audit','settings','portals'];
+  var sections = ['dashboard','sync','reports','schools','referrals','requests','audit','settings','portals'];
   var titles   = {
     dashboard:'📊 Dashboard', sync:'🔄 المزامنة', reports:'📈 التقارير',
-    schools:'🏫 المدارس', referrals:'🎁 الإحالات', audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات',
+    schools:'🏫 المدارس', referrals:'🎁 الإحالات', requests:'📥 طلبات التسجيل',
+    audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات',
     portals:'🚀 منصاتي'
   };
 
@@ -884,6 +926,7 @@ function showSection(name) {
   // تحميل البيانات عند الدخول
   if (name === 'schools') schools_load();
   if (name === 'referrals') referrals_load();
+  if (name === 'requests') requests_load();
   if (name === 'audit')   audit_load();
   // `template_load()` أُسقِطت 2026-08-26 (بند 192) — واستدعاؤها هنا كان سيرمي ReferenceError.
   if (name === 'settings') { settings_loadAll(); }
@@ -1082,6 +1125,161 @@ function _renderSchools(schools) {
 }
 
 // ── الإحالات ─────────────────────────────────────────────────
+
+// ── طلبات التسجيل ────────────────────────────────────────────
+/* 🔴 بابان لا باب: `SELF_SERVICE` (بريدٌ موثَّقٌ برمز ⇒ **يُعتمَد فيُنشئ مدرسة**) و
+   `CALLBACK` (طلبُ تواصلٍ بلا رمز ⇒ **يُوسَم متابَعاً فقط**). وزرُّ الاعتماد لا يظهر
+   للثاني أصلاً، والخادمُ يرفضه ثانيةً — الحجبُ في الواجهة تسهيلٌ لا حاجز. */
+var SRQ_LABELS = {
+  EMAIL_PENDING: 'بانتظار توثيق البريد', AWAITING_APPROVAL: 'بانتظار الاعتماد',
+  APPROVING: 'قيد الإنشاء…', APPROVED: 'معتمَدة', REJECTED: 'مرفوضة',
+  EXPIRED: 'منتهية', CONTACT_PENDING: 'طلبُ تواصل', CONTACTED: 'تُوبع'
+};
+
+function requests_load() {
+  var status = document.getElementById('requests-status');
+  var filter = document.getElementById('requests-filter').value;
+  if (status) status.innerHTML = '';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) {
+        if (status) {
+          status.innerHTML = '<div class="status-msg status-error">❌ ' +
+            ((res && res.error) || 'خطأ') + '</div>';
+        }
+        return;
+      }
+      _renderRequests(res.requests || []);
+    })
+    .withFailureHandler(function (err) {
+      if (status) status.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
+    })
+    .listSchoolRequestsProtected({ token: App.token, status: filter });
+
+  /* شارةُ العدد تُقرأ من نداءٍ **غير مفلتَر** — قراءةُ المفلتَر تجعلها تصف ما تراه
+     الشاشةُ لا ما ينتظرك فعلاً، فتختفي بمجرّد تبديل الفلتر. */
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) return;
+      var n = 0, list = res.requests || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].status === 'AWAITING_APPROVAL' || list[i].status === 'CONTACT_PENDING') n++;
+      }
+      var b = document.getElementById('nav-requests-badge');
+      if (b) { b.style.display = n ? 'inline-block' : 'none'; b.textContent = String(n); }
+    })
+    .withFailureHandler(function () {})
+    .listSchoolRequestsProtected({ token: App.token, status: '' });
+}
+
+function _renderRequests(list) {
+  var tbody = document.getElementById('requests-tbody');
+  if (!tbody) return;
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;">لا توجد طلبات</td></tr>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    var isCb = (r.kind === 'CALLBACK');
+    var act = '';
+    if (!isCb && r.status === 'AWAITING_APPROVAL') {
+      act = '<button class="btn btn-primary" style="padding:5px 10px;font-size:12px;" ' +
+            'onclick="request_approve(\'' + _maEscAttr(r.requestId) + '\')">✅ اعتماد</button> ' +
+            '<button class="btn" style="padding:5px 10px;font-size:12px;background:#c62828;color:#fff;" ' +
+            'onclick="request_reject(\'' + _maEscAttr(r.requestId) + '\')">✖ رفض</button>';
+    } else if (isCb && r.status === 'CONTACT_PENDING') {
+      act = '<button class="btn btn-primary" style="padding:5px 10px;font-size:12px;" ' +
+            'onclick="request_markContacted(\'' + _maEscAttr(r.requestId) + '\')">📞 تمّت المتابعة</button>';
+    } else {
+      act = '<span style="color:#999;">—</span>';
+    }
+    var extra = '';
+    if (r.note) extra += '<div style="font-size:11px;color:#777;">📝 ' + _maEsc(r.note) + '</div>';
+    if (r.studentsApprox) extra += '<div style="font-size:11px;color:#777;">👥 ~' + _maEsc(r.studentsApprox) + ' طالب</div>';
+    if (r.rejectReason) extra += '<div style="font-size:11px;color:#c62828;">✖ ' + _maEsc(r.rejectReason) + '</div>';
+    html += '<tr>' +
+      '<td>' + (isCb ? '📨 تواصل' : '🏫 تسجيل') + '</td>' +
+      '<td><strong>' + _maEsc(r.schoolName) + '</strong>' + extra + '</td>' +
+      '<td>' + _maEsc(r.adminName) + '</td>' +
+      '<td dir="ltr">' + _maEsc(r.adminEmail || '—') + '</td>' +
+      '<td dir="ltr">' + _maEsc(r.whatsapp || '—') + '</td>' +
+      '<td>' + _maEsc(r.planType || '—') + '</td>' +
+      '<td>' + _maEsc(r.createdAt) + '</td>' +
+      '<td>' + _maEsc(SRQ_LABELS[r.status] || r.status) + '</td>' +
+      '<td>' + act + '</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function _maEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+/* معرّفُ الطلب UUID — يُقصَر على محارفه المشروعة قبل حقنه في `onclick`. */
+function _maEscAttr(s) {
+  return String(s == null ? '' : s).replace(/[^A-Za-z0-9_-]/g, '');
+}
+
+function _requestsBusy(msg) {
+  var status = document.getElementById('requests-status');
+  if (status) status.innerHTML = '<div class="status-msg">⏳ ' + _maEsc(msg) + '</div>';
+}
+
+function request_approve(id) {
+  /* 🔴 تأكيدٌ صريح: الاعتماد **يُنشئ مدرسةً حيّة** بمجلّد Drive وملفَّي شيت وحساب مالك،
+     ولا تراجعَ عنه بزرّ. */
+  if (!confirm('اعتماد الطلب وإنشاء المدرسة فعلياً؟ العملية تستغرق دقيقةً أو دقيقتين.')) return;
+  _requestsBusy('جارٍ إنشاء المدرسة… لا تغلق الصفحة');
+  google.script.run
+    .withSuccessHandler(function (res) {
+      var status = document.getElementById('requests-status');
+      if (res && res.success) {
+        if (status) status.innerHTML = '<div class="status-msg status-success">✅ ' + _maEsc(res.message || 'تمّ') + '</div>';
+      } else if (status) {
+        status.innerHTML = '<div class="status-msg status-error">❌ ' + _maEsc((res && res.error) || 'فشل') + '</div>';
+      }
+      requests_load();
+    })
+    .withFailureHandler(function (err) {
+      /* 🔴 انقطاعُ القناة **ليس فشلَ الإنشاء**: التزويد 45–90 ثانية وميزانيةُ الوسيط أقصر،
+         فالردُّ قد لا يصل والعملُ جارٍ خادمياً. ولهذا لا يُقال «فشل» — يُطلب التحديث. */
+      var status = document.getElementById('requests-status');
+      if (status) {
+        status.innerHTML = '<div class="status-msg">⏳ انقطع الاتصال والعمل جارٍ خادمياً — ' +
+          'اضغط «تحديث» بعد دقيقة للتأكّد قبل إعادة المحاولة. (' + _maEsc(err.message) + ')</div>';
+      }
+    })
+    .approveSchoolRequestProtected({ token: App.token, requestId: id });
+}
+
+function request_reject(id) {
+  var reason = prompt('سبب الرفض (يظهر للمدرسة في بريد الاعتذار — اتركه فارغاً لعدم ذكر سبب):', '');
+  if (reason === null) return;
+  _requestsBusy('جارٍ الرفض…');
+  google.script.run
+    .withSuccessHandler(function () { requests_load(); })
+    .withFailureHandler(function (err) {
+      var status = document.getElementById('requests-status');
+      if (status) status.innerHTML = '<div class="status-msg status-error">❌ ' + _maEsc(err.message) + '</div>';
+    })
+    .rejectSchoolRequestProtected({ token: App.token, requestId: id, reason: reason });
+}
+
+function request_markContacted(id) {
+  var note = prompt('ملاحظة عن المتابعة (اختياري):', '');
+  if (note === null) return;
+  _requestsBusy('جارٍ الوسم…');
+  google.script.run
+    .withSuccessHandler(function () { requests_load(); })
+    .withFailureHandler(function (err) {
+      var status = document.getElementById('requests-status');
+      if (status) status.innerHTML = '<div class="status-msg status-error">❌ ' + _maEsc(err.message) + '</div>';
+    })
+    .markRequestContactedProtected({ token: App.token, requestId: id, note: note });
+}
 
 function referrals_load() {
   var status = document.getElementById('referrals-status');
