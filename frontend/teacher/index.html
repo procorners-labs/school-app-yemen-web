@@ -20723,10 +20723,43 @@ function _schedDistinctSubjects() {
   return out;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   أبعادُ عرض الجدول — تتبع البيانات لا ثابتاً مكتوباً (2026-09-01)
+
+   🔴 **العلّة:** الخادمُ صار يبني شبكتَي العرض بأبعادٍ مشتقّة من البيانات
+   (`ScheduleManager.js::_smGridDims`، ‏PR#1382) — فبات يكتب الخميسَ والحصّةَ الثامنة.
+   وهذه السطوحُ كانت تقصّهما عند العرض: `mx > 7` سقفٌ صريح، وستُّ مصفوفاتِ أيامٍ ثابتة.
+   ⇒ **بياناتٌ تُكتب ولا تُعرَض** — بلا رسالةِ خطأٍ واحدة.
+
+   🔴 **والأرضيةُ تبقى ثابتة** (الأيامُ الخمسة الأساس): مدرسةٌ بلا خميسٍ ترى جدولَها
+   كما هو تماماً، ولا تتقلّص الشبكةُ وتتمدّد مع كلّ تعديل.
+   ⚠️ **والسقفُ الأعلى يبقى** — بـ`SCHED_MAX_PERIODS` بدل السبع: صفٌّ تالفٌ بحصّة `99`
+   كان سيُولّد جدولاً بمئة عمود. رُفع الحدُّ ولم يُلغَ. (نظيرُ `SM_MAX_PERIODS` خادمياً.)
+   ══════════════════════════════════════════════════════════════════════════════ */
+var SCHED_WEEK_ORDER = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+var SCHED_BASE_DAYS  = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+var SCHED_MAX_PERIODS = 12;
+
+/* الأيامُ المعروضة = الخمسةُ الأساس + كلُّ يومٍ يحمل حصّةً فعلاً، بترتيب الأسبوع
+   القانونيّ لا بترتيب الظهور. يُقرأ من `_cachedSchedule` — نفسِ مصدرِ كلّ العارضين. */
+function _schedDays(rows) {
+  var src = rows || _cachedSchedule || [], seen = {}, i, out = [];
+  for (i = 0; i < SCHED_BASE_DAYS.length; i++) seen[SCHED_BASE_DAYS[i]] = true;
+  for (i = 0; i < src.length; i++) {
+    var dn = String((src[i] && src[i].day) || '').trim();
+    if (dn && SCHED_WEEK_ORDER.indexOf(dn) >= 0) seen[dn] = true;
+  }
+  for (i = 0; i < SCHED_WEEK_ORDER.length; i++) {
+    if (seen[SCHED_WEEK_ORDER[i]]) out.push(SCHED_WEEK_ORDER[i]);
+  }
+  return out;
+}
+
 function _schedPeriodMax() {
   var rows = _cachedSchedule || [], mx = 0;
   for (var i = 0; i < rows.length; i++) { var p = parseInt(rows[i].period, 10); if (p > mx) mx = p; }
-  if (mx < 1) mx = 7; if (mx > 7) mx = 7;
+  if (mx < 1) mx = 7;
+  if (mx > SCHED_MAX_PERIODS) mx = SCHED_MAX_PERIODS;
   return mx;
 }
 
@@ -20734,7 +20767,7 @@ function _schedBuildFilterBar() {
   var bar = document.getElementById('schedFilterBar');
   if (!bar) return;
   var priv = _schedIsPriv();
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var days = _schedDays();
   var h = '<div class="form-row mb-3">';
   // المادة — مبنية من بيانات الجدول مباشرة لضمان التطابق
   h += '<div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="schedSubjectFilter" onchange="_schedApply()"><option value="">كل المواد</option>';
@@ -20908,12 +20941,12 @@ function renderScheduleData(rows) {
 
 function _schedGridTableHtml(rows, opts) {
   opts = opts || {};
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var days = _schedDays();
   var pmax = 7;
   var dayIcons = { 'السبت':'🕌', 'الأحد':'📖', 'الاثنين':'✏️', 'الثلاثاء':'📐', 'الأربعاء':'🏆' };
   var dayColors = { 'السبت':'#667eea', 'الأحد':'#f5576c', 'الاثنين':'#4facfe', 'الثلاثاء':'#43e97b', 'الأربعاء':'#fa709a' };
   var grid = {};
-  for (var d = 0; d < 5; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
+  for (var d = 0; d < days.length; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
   for (var i = 0; i < rows.length; i++) {
     var item = rows[i];
     var dayIdx = days.indexOf(item.day);
@@ -20925,7 +20958,7 @@ function _schedGridTableHtml(rows, opts) {
   var html = '<div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:.85rem;"><thead><tr style="background:var(--primary);color:#fff;"><th style="padding:14px 8px;text-align:center;font-weight:800;min-width:80px;">اليوم</th>';
   for (var p = 0; p < pmax; p++) html += '<th style="padding:14px 4px;text-align:center;font-weight:700;">' + (p + 1) + '</th>';
   html += '</tr></thead><tbody>';
-  for (var d = 0; d < 5; d++) {
+  for (var d = 0; d < days.length; d++) {
     var dayName = days[d];
     var icon = dayIcons[dayName] || '📅';
     var dayColor = dayColors[dayName] || 'var(--primary)';
@@ -20955,7 +20988,7 @@ function _schedGridTableHtml(rows, opts) {
 
 // عرض الحصص الفارغة لكل معلم (للمشرف/الوكيل/المدير) — ديناميكي ويحترم الفلاتر
 function _schedFreeTableHtml(rows) {
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var days = _schedDays();
   var pmax = _schedPeriodMax();
   var occ = {}, order = [];
   for (var i = 0; i < rows.length; i++) {
@@ -20963,21 +20996,21 @@ function _schedFreeTableHtml(rows) {
     if (!t) continue;
     var di = days.indexOf(r.day); if (di === -1) continue;
     var pp = parseInt(r.period, 10); if (pp < 1 || pp > pmax) continue;
-    if (!occ[t]) { occ[t] = {}; order.push(t); for (var d = 0; d < 5; d++) occ[t][d] = {}; }
+    if (!occ[t]) { occ[t] = {}; order.push(t); for (var d = 0; d < days.length; d++) occ[t][d] = {}; }
     occ[t][di][pp] = true;
   }
   order.sort(function(a, b) { return a.localeCompare(b, 'ar'); });
   if (!order.length) return '<div class="empty-state"><div class="es-icon">🕳️</div><div class="es-title">لا توجد بيانات</div></div>';
   var html = '<div style="margin-bottom:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:.82rem;color:var(--text-muted);">🕳️ الحصص الفارغة لكل معلم — الأرقام تمثّل الحصص الشاغرة في كل يوم (متاح للمشرف والوكيل والمدير).</div>';
   html += '<div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:.82rem;"><thead><tr style="background:var(--primary);color:#fff;"><th style="padding:12px 8px;text-align:right;min-width:150px;">المعلم</th>';
-  for (var d = 0; d < 5; d++) html += '<th style="padding:12px 6px;text-align:center;">' + days[d] + '</th>';
+  for (var d = 0; d < days.length; d++) html += '<th style="padding:12px 6px;text-align:center;">' + days[d] + '</th>';
   html += '<th style="padding:12px 6px;text-align:center;min-width:70px;">إجمالي الفراغ</th></tr></thead><tbody>';
   for (var oi = 0; oi < order.length; oi++) {
     var tn = order[oi];
     var rowBg = (oi % 2 === 0) ? 'background:var(--surface2);' : 'background:var(--surface);';
     html += '<tr style="' + rowBg + '"><td style="padding:10px 8px;font-weight:700;">' + escapeHtml(tn) + '</td>';
     var tot = 0;
-    for (var d2 = 0; d2 < 5; d2++) {
+    for (var d2 = 0; d2 < days.length; d2++) {
       var cell = '', cnt = 0;
       for (var pq = 1; pq <= pmax; pq++) {
         if (!occ[tn][d2][pq]) {
@@ -21046,10 +21079,10 @@ function _schedPrintWindow(bodyHtml, title, page) {
 }
 
 function _schedPrintGridTable(rows) {
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var days = _schedDays();
   var pmax = 7;
   var grid = {};
-  for (var d = 0; d < 5; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
+  for (var d = 0; d < days.length; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
   for (var i = 0; i < rows.length; i++) {
     var it = rows[i]; var di = days.indexOf(it.day); if (di === -1) continue;
     var pi = parseInt(it.period, 10) - 1; if (pi < 0 || pi > pmax - 1) continue;
@@ -21058,7 +21091,7 @@ function _schedPrintGridTable(rows) {
   var h = '<table><thead><tr><th>اليوم</th>';
   for (var p = 0; p < pmax; p++) h += '<th>الحصة ' + (p + 1) + '</th>';
   h += '</tr></thead><tbody>';
-  for (var d2 = 0; d2 < 5; d2++) {
+  for (var d2 = 0; d2 < days.length; d2++) {
     h += '<tr><td class="day">' + days[d2] + '</td>';
     for (var pp = 0; pp < pmax; pp++) {
       var items = grid[d2][pp], cell = '';
@@ -21129,7 +21162,7 @@ function _schedShare() {
   if (f.day)     lines.push('اليوم: ' + f.day);
   lines.push('إجمالي الحصص: ' + rows.length);
   lines.push('');
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var days = _schedDays();
   var byDay = {};
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
@@ -21203,13 +21236,13 @@ function _schedSavePng(canvas, fname) {
 }
 
 function _schedBuildCanvas(rows, schoolName) {
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var days = _schedDays();
   var pmax = _schedPeriodMax();
   if (pmax < 1) pmax = 7;
 
   // بناء الشبكة
   var grid = {};
-  for (var d = 0; d < 5; d++) {
+  for (var d = 0; d < days.length; d++) {
     grid[d] = {};
     for (var p = 0; p < pmax; p++) grid[d][p] = [];
   }
@@ -21227,7 +21260,7 @@ function _schedBuildCanvas(rows, schoolName) {
   var DAY_W  = 76, COL_W = 112, HDR_H = 42, ROW_H = 70;
   var TTL_H  = schoolName ? 46 : 0;
   var W = DAY_W + pmax * COL_W;
-  var H = TTL_H + HDR_H + 5 * ROW_H;
+  var H = TTL_H + HDR_H + days.length * ROW_H;
 
   var canvas = document.createElement('canvas');
   canvas.width  = W * DPR;
@@ -21270,7 +21303,7 @@ function _schedBuildCanvas(rows, schoolName) {
   var rowBgs    = ['#f0f4ff', '#ffffff'];
   var showTch   = !!(App && App.user && App.user.isAdmin);
 
-  for (var dr = 0; dr < 5; dr++) {
+  for (var dr = 0; dr < days.length; dr++) {
     var rowY = Y0 + HDR_H + dr * ROW_H;
 
     // خلفية الصف

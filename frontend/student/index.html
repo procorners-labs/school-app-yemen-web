@@ -7526,9 +7526,29 @@ function renderSchedule(r) {
     return;
   }
 
-  // أيام الدراسة: السبت → الأربعاء (نظام اليمن)
-  var days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  /* أيامُ الدراسة: الخمسةُ الأساس (نظام اليمن) **زائدَ كلِّ يومٍ يحمل حصّةً فعلاً**.
+     🔴 كانت مصفوفةً ثابتة، و`grid[dn]` يبقى **غيرَ معرَّفٍ** لأيّ يومٍ خارجها ⇒ حصصُ
+     الخميس تُكتب خادمياً (‏`_smGridDims`، PR#1382) و**تسقط صامتةً عند العرض**.
+     والأرضيةُ محفوظة: مدرسةٌ بلا خميسٍ ترى جدولَها كما هو حرفياً.
+     ⚠️ والتطبيعُ يسبق المطابقة — `normDay` يوحّد صيغَ الهمزة، وبدونه يُقرأ «الاربعاء»
+     يوماً سادساً فتنشأ عمودٌ مكرَّر. */
+  var STU_WEEK_ORDER = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+  var daySeen = { 'السبت': 1, 'الأحد': 1, 'الاثنين': 1, 'الثلاثاء': 1, 'الأربعاء': 1 };
+  for (var dq = 0; dq < r.schedule.length; dq++) {
+    var dnq = normDay(r.schedule[dq].day);
+    if (dnq && STU_WEEK_ORDER.indexOf(dnq) >= 0) daySeen[dnq] = 1;
+  }
+  var days = [];
+  for (var dw = 0; dw < STU_WEEK_ORDER.length; dw++) {
+    if (daySeen[STU_WEEK_ORDER[dw]]) days.push(STU_WEEK_ORDER[dw]);
+  }
+  /* والحصصُ من الإعداد، وسقفُها أقصى حصّةٍ موجودةٍ فعلاً — الإعدادُ قد يتخلّف عن
+     البيانات، والعرضُ يتبع الأوسعَ منهما كي لا تُبتلع حصّةٌ مسنَدة. */
   var periods = (window.SCHED_TIMES_CFG && window.SCHED_TIMES_CFG.periodsCount) || 7;
+  for (var pq = 0; pq < r.schedule.length; pq++) {
+    var pv = parseInt(r.schedule[pq].period, 10);
+    if (!isNaN(pv) && pv > periods && pv <= 12) periods = pv;
+  }
 
   // بناء شبكة [day][period]
   var grid = {};
