@@ -4496,6 +4496,11 @@ function switchSibling(targetCode, chip) {
         badgeInterval: null
       };
 
+      /* 🔴 رصيدُ إعادة محاولة الإقلاع يُصفَّر هنا — تبديلُ الحساب **ليس تحميلَ صفحة**،
+         و`_stuBootRetries` متغيّرُ نطاقٍ عامّ لا يُعاد تصفيرُه بإعادة بناء `APP`. بلا هذا
+         السطر يُحرَم الأخُ المُبدَّلُ إليه من أيّ إعادةِ محاولة **صامتاً** إن كان الرصيدُ
+         استُهلك مع الأخ السابق. (رصدَته مراجعةُ `gas-reviewer` — بند 214-③.) */
+      try { _stuBootResetRetries(); } catch (eBR) {}
       initApp();
       if (keepTab !== 'home') goTabByName(keepTab);
       lsSaveSession();
@@ -8550,6 +8555,8 @@ function _stuBootLoad() {
     function (r) {
       _badgeInFlight = false;
       if (!r || !r.ok) {
+        /* ردٌّ وصل بحمولةٍ فاشلة ⇒ الخادمُ نفّذ ولم يُشبَع ⇒ التفرّعُ مشروع.
+           (‏مسارُ الإشباع لا يصل هنا أصلاً: الجسرُ يستدعي `withFailureHandler`.) */
         loadHomeNews(); loadHomeCirculars(); loadNotificationBadges(); loadQuickStats();
         return;
       }
@@ -8592,13 +8599,146 @@ function _stuBootLoad() {
          **تبتلع استثناءها وتُرجِع كائناً** بدل أن ترمي — نفسُ فخّ التعاميم أعلاه حرفياً. */
       if (!_stuApplyBootQuickStats(r.reports)) loadQuickStats();
     },
-    function () {
+    /* 🔴 **مسارُ الفشل يُفرَز صنفين — وهذا جوهرُ الإصلاح (بند 131 · 202).**
+
+       كان هذا المعالجُ يُطلق **أربعةَ نداءاتٍ بديلة** بلا شرط. والقياس (‏`npm run perf`،
+       نافذة `2026-08-29T23:30Z → 08-30T23:30Z`): `getStudentBootBundle` **718 نداءً/٢٤س
+       بإخفاق 19.4٪** — ارتفاعاً من 15.8٪ بينما تحسّن كلُّ شيءٍ آخر (الإخفاق الكلّي
+       13.9٪ ⇒ 8.2٪) ⇒ **١٣٩ فشلاً/يوم × ٣ نداءاتٍ زائدة = +٤١٧ تنفيذاً**، تصل كلُّها
+       على حصّةٍ **مستنفدةٍ أصلاً** فتُطيل الإشباعَ الذي وقعت بسببه: حلقةُ تغذيةٍ موجبة.
+
+       والفرزُ لازمٌ لأن العلاجين **متعاكسان**:
+       · خطأٌ منطقيّ ⇒ الخادمُ نفّذ وردّ ⇒ التفرّعُ إلى الأربعة **مشروع** وهو التراجعُ
+         الصحيح (عضوٌ واحدٌ قد يكون فشل والبقيّةُ تنجح).
+       · إشباعٌ (`502`/`503`/`429`/انقطاع) ⇒ الحصّةُ مستنفدة ⇒ التفرّعُ **يُسيئها**.
+         العلاجُ رسمٌ من الكاش القائم + محاولةٌ واحدةٌ مؤجَّلة بتشتيتٍ عشوائيّ.
+
+       🟢 **ولا `staleKey` ولا مخزنَ بائتٍ جديد** — وهذا تضييقٌ مقصود عن الخطّة: مفتاحا
+       `ClientCache` القائمان (`_stuHomeNewsKey`/`_stuHomeCircKey`) يكتبهما مسارُ النجاح
+       أعلاه أصلاً، فالرسمُ منهما لا يُنشئ مفتاحاً خامساً يمكن أن ينحرف (بند 187). */
+    function (err) {
       _badgeInFlight = false;
+      if (typeof _stuIsTransientErr === 'function' && _stuIsTransientErr(err)) {
+        _stuBootDegraded(err);
+        return;
+      }
       loadHomeNews();
       loadHomeCirculars();
       loadNotificationBadges();
       loadQuickStats();
     });
+}
+
+/* رصيدُ محاولات الإقلاع المؤجَّلة. بلا سقفٍ تصير «محاولةٌ» حلقةً: كلُّ إشباعٍ يجدول
+   محاولةً تُشبَع فتجدول أخرى.
+
+   🔴 **والرصيدُ يُستهلَك عند المحاولة الفعليّة لا عند جدولتها** — رصدَته مراجعةُ
+   `gas-reviewer`: وسمُ العلَم قبل `setTimeout` يجعله يُستهلَك حتى حين **لا تقع محاولةٌ
+   أصلاً** (تبويبٌ مخفيّ)، فتصير الرسالةُ المعروضة «سنُعيد المحاولة تلقائياً» **وعداً
+   كاذباً** لا تعافيَ منه إلّا بإعادة تحميلٍ يدويّة — أي عودةُ العلّة التي عولجت (بند 131).
+   و`_stuBootRetryArmed` يمنع جدولتين متوازيتين بلا أن يستهلك رصيداً. */
+var STU_BOOT_MAX_RETRIES = 2;
+var _stuBootRetries = 0;
+var _stuBootRetryArmed = false;
+var _stuBootVisWaiting = false;
+
+/* 🔴 **ويُصفَّر عند تبديل الحساب لا عند تحميل الصفحة وحده** — رصدَته المراجعةُ أيضاً:
+   `switchStudentAccount` يُعيد بناء `APP` ويستدعي `initApp()` **بلا إعادة تحميل**، فلو
+   استُهلك الرصيدُ مع الأخ الأوّل لَحُرم الأخُ المُبدَّلُ إليه من أيّ إعادةِ محاولة
+   صامتاً — والتعليقُ كان يقول «لكلّ تحميلِ صفحة»، **وتبديلُ الحساب ليس تحميلَ صفحة**. */
+function _stuBootResetRetries() {
+  _stuBootRetries = 0;
+  _stuBootRetryArmed = false;
+  _stuBootVisWaiting = false;
+}
+
+/* ★ مسارُ الإشباع — يرسم من الكاش القائم ولا يفرّع، ويحاول مرّةً واحدةً مؤجَّلة.
+
+   🔴 **والرسمُ إلزاميٌّ لا تجميليّ:** `_stuBootLoad` كتب `loaderHTML(...)` في حاوية
+   الأخبار قبل النداء. فالخروجُ الصامت من هنا يترك **دوّامةً أبديّة** على الشاشة —
+   أي يحوّل عطلاً عابراً إلى ما يبدو تعليقاً دائماً، ويدفع المستخدمَ إلى إعادة تحميلٍ
+   يُطلق رشقةَ إقلاعٍ جديدة على نفس الحصّة المشبَعة (بند 131 بوجهٍ بشريّ). */
+function _stuBootDegraded(err) {
+  /* 🔴 **الرسالةُ تتبع صنفَ العطل لا مكانَ التقاطه** (رصدَته المراجعة): `_stuIsTransientErr`
+     تُرجِع `true` لـ`__saturated` **و**`__network` معاً — والثاني انقطاعُ شبكةٍ حقيقيّ عند
+     المستخدم. وإخبارُ من لا إنترنتَ لديه بأن «الخدمة مزدحمة» يدفعه لانتظار الخادم بينما
+     العلّةُ عنده. والتمييزُ **مبنيٌّ أصلاً** في `gas-bridge.js::gasErrorInfo` (‏`busy`
+     مقابل `offline`) وكان يُهدَر هنا — فئةُ بند 119 حرفياً.
+     ⚠️ و`gasErrorInfo` غيرُ معرَّفة على السطح المخدوم من `doGet` (الجسرُ يخصّ `frontend/`)
+     ⇒ حارسُ وجودٍ ثمّ نصٌّ محايد. */
+  var kind = 'busy';
+  try {
+    if (typeof window !== 'undefined' && typeof window.gasErrorInfo === 'function') {
+      kind = window.gasErrorInfo(err).kind;
+    }
+  } catch (eK) {}
+  var offline = (kind === 'offline');
+
+  var drew = false;
+  try {
+    var cn = ClientCache.get(_stuHomeNewsKey());
+    if (cn) { renderHomeNews(cn.length ? cn.slice(0, 3) : []); drew = true; }
+  } catch (eDn) {}
+  try {
+    var cc = ClientCache.get(_stuHomeCircKey());
+    if (cc) { renderHomeCirculars((cc && cc.circulars) || []); drew = true; }
+  } catch (eDc) {}
+
+  /* لا كاشَ ولا بيانات ⇒ حالةٌ صريحةٌ تسمّي السبب وتقول إن المحاولة ستُعاد — لا
+     دوّامة، ولا رسالةُ خطأ تدفع لإعادة التحميل. */
+  if (!drew) {
+    try {
+      var wn = $('homeNews');
+      if (wn) wn.innerHTML = offline
+        ? emptyHTML('📶', 'تعذّر الاتصال',
+            'تحقّق من اتصالك بالإنترنت — سنُعيد المحاولة تلقائياً')
+        : emptyHTML('⏳', 'الخدمة مزدحمة الآن',
+            'سنُعيد المحاولة تلقائياً بعد لحظات — لا حاجة لإعادة التحميل');
+    } catch (eDe) {}
+  } else {
+    try {
+      toast(offline
+        ? '📶 تعذّر الاتصال — تُعرَض آخر نسخة محفوظة'
+        : '⏳ الخدمة مزدحمة — تُعرَض آخر نسخة محفوظة', 'warning');
+    } catch (eDt) {}
+  }
+
+  /* 🔴 الشاراتُ و«نظرة سريعة» **لا تُطلَبان هنا عمداً** — وهما نصفُ التضخيم.
+     `getStudentReports` (عضوُ «نظرة سريعة») هي ثاني أثقل دالّة في المنصّة
+     (`srv p50 = 8,658ms` · ‏242 نداءً/٢٤س)، وإعادةُ إطلاقها على حصّةٍ مستنفدة تُنتج
+     فشلاً آخرَ بثمنِ تنفيذٍ كامل. تصلان مع المحاولة المؤجَّلة إن نجحت. */
+
+  if (_stuBootRetryArmed || _stuBootRetries >= STU_BOOT_MAX_RETRIES) return;
+  _stuBootRetryArmed = true;
+  /* تشتيتٌ عشوائيّ ٤–٩ ثوانٍ: عشراتُ العملاء يُشبَعون في اللحظة نفسها، فمحاولةٌ
+     بتأخيرٍ **ثابت** تُعيد تجميعهم في رشقةٍ واحدة — أي تُعيد إنتاج الإشباع بدقّة. */
+  setTimeout(function () {
+    _stuBootRetryArmed = false;
+
+    /* نداءٌ طائرٌ بالفعل ⇒ الوعدُ يُوفى به، ولا يُستهلَك رصيد. */
+    if (_badgeInFlight) return;
+
+    /* تبويبٌ مخفيّ ⇒ **لا نُطلق ولا نُهدر الرصيد**، بل ننتظر أوّلَ ظهور.
+       (‏الإطلاقُ على تبويبٍ مخفيّ حملٌ لا يراه أحد — بند 196 حرفياً.) */
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      if (_stuBootVisWaiting) return;
+      _stuBootVisWaiting = true;
+      var once = function () {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', once);
+        _stuBootVisWaiting = false;
+        if (_badgeInFlight || _stuBootRetries >= STU_BOOT_MAX_RETRIES) return;
+        _stuBootRetries++;
+        try { _stuBootLoad(); } catch (eV) {}
+      };
+      document.addEventListener('visibilitychange', once);
+      return;
+    }
+
+    /* 🔴 الرصيدُ يُستهلَك **هنا** — عند المحاولة الفعليّة وحدها. */
+    _stuBootRetries++;
+    try { _stuBootLoad(); } catch (eR) {}
+  }, 4000 + Math.floor(Math.random() * 5000));
 }
 
 function loadNotificationBadges() {
