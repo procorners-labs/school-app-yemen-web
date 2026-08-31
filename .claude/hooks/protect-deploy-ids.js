@@ -44,8 +44,29 @@ var before, after;
 
 if (typeof ti.content === 'string') {
   // Write: يُقارَن المحتوى الجديد بالملفّ على القرص (إن وُجد).
+  // 🔴 **تعذُّرُ القياس حجبٌ لا مرور** — كان هنا `catch { process.exit(0) }` صامتاً، أي أن
+  //  فشلَ قراءة القرص يُقرأ **«نظيف»** فيمرّ التعديلُ بلا مقارنةٍ أصلاً. وهو الفشلُ الصامت
+  //  بعينه: الحارسُ يبدو عاملاً ولا يقيس شيئاً. (نمطُ `clasp-deploy-guard` في المستودع الشقيق.)
+  //
+  // ⚠️ **والتمييزُ إلزاميّ وإلّا انقلب الحارسُ سياجاً يمنع الهدفَ الذي كُتب لحمايته:**
+  //  `ENOENT` = ملفٌّ جديد لا وجود له بعد ⇒ لا معرّفاتٍ سابقةً تُقارَن، و**إنشاؤه مسموح**.
+  //  وما عداه (‏`EACCES` · `EISDIR` · قرصٌ معطوب) = **قياسٌ تعذّر على ملفٍّ قائم** ⇒ يُحظَر.
   var onDisk = '';
-  try { onDisk = fs.readFileSync(path.resolve(String(file)), 'utf8'); } catch (e) { process.exit(0); }
+  try {
+    onDisk = fs.readFileSync(path.resolve(String(file)), 'utf8');
+  } catch (e) {
+    if (!e || e.code !== 'ENOENT') {
+      process.stderr.write(
+        '🚫 حُظر التعديل: تعذّر قراءةُ الملفّ على القرص، فتعذّرت المقارنة.\n\n' +
+        '  الملفّ : ' + target + '\n' +
+        '  السبب : ' + ((e && e.code) || 'غير معروف') + '\n\n' +
+        'هذا الحارسُ يقارن معرّفات النشر قبل التعديل وبعده. وحين يتعذّر القياس فالمرورُ\n' +
+        'يعني «لم أفحص» لا «نظيف» — فيُحظَر. أصلِح سببَ تعذّر القراءة ثمّ أعِد المحاولة.\n'
+      );
+      process.exit(2);
+    }
+    onDisk = '';   // ENOENT ⇒ ملفٌّ جديد: `before` فارغة، والإنشاءُ يمرّ.
+  }
   before = ids(onDisk);
   after = ids(ti.content);
 } else if (typeof ti.old_string === 'string' || typeof ti.new_string === 'string') {
