@@ -205,7 +205,12 @@ if (rcIdx < 0 || coIdx < 0) {
   /* ⚠️ الاسم مسبوقٌ بـ`_www` عمداً: `rIdx` مستعمَلٌ لاحقاً في هذا الملفّ لـ
      `_RESERVED_TOP_PATHS`، وكلاهما `var` في **نطاق السكربت نفسه** ⇒ التسمية المتطابقة
      تدهسه فيرمي اختبارٌ **آخر** `ReferenceError`. وقع فعلاً أثناء كتابة هذه الكتلة. */
-  var _wwwBranchIdx = src.indexOf('if (REDIRECT_TO_CANONICAL[url.hostname]) {');
+  /* ⚠️ المرساةُ **بادئةٌ بلا شرطٍ ولا قوس ختام** عمداً: كانت
+     `'if (REDIRECT_TO_CANONICAL[url.hostname]) {'` حرفياً، فلمّا أُضيف استثناءُ
+     `/.well-known/` إلى نفس السطر (2026-09-01) سقطت المرساةُ وأخفق الاختبار.
+     🟢 وذلك **سلوكٌ صحيح** — الحارسُ أمسك تغييراً في الفرع الذي يحرسه؛ والمرساةُ
+     الأضيق كانت ستُبقيه أخضرَ لو تخطّى بدل أن يُخفق. */
+  var _wwwBranchIdx = src.indexOf('if (REDIRECT_TO_CANONICAL[url.hostname]');
   if (_wwwBranchIdx < 0) {
     console.log('  ❌ ضابط: تعذّر اقتطاع فرع التحويل ⇒ الاختبار أجوف');
     failed++;
@@ -240,8 +245,31 @@ if (rcIdx < 0 || coIdx < 0) {
     if (!okKeep) failed++;
     console.log((okKeep ? '  ✅ ' : '  ❌ ') +
                 '🔒 المسار والاستعلام محفوظان في التحويل  [' + (rq ? rq.url : '—') + ']');
+
+    /* 🔴 **`/.well-known/` مُعفى من التحويل — مقيسٌ 2026-09-01:**
+       المانيفستُ المنشور يعلن `www.yemenschoolz.com` بـ`autoVerify`، وتحقّقُ
+       Digital Asset Links **لا يتبع التحويلات**. وكان `www/.well-known/assetlinks.json`
+       يردّ **301 بجسمٍ فارغ** بينما الجذرُ يردّ 200 ⇒ تحقّقُ ذلك المضيف يفشل **صامتاً**.
+       ⇒ الإعفاءُ **بادئةٌ حرفية** لا `indexOf > -1`: الضوابطُ الثلاثة أدناه هي ما يفرّق
+       بين الاثنين، وبلاها يمرّ «يحتوي» أخضرَ وهو يفتح ثقباً في التحويل كلِّه. */
+    [['/.well-known/assetlinks.json', null, '🔴 `‏/.well-known/assetlinks.json` من `www` ⇒ **لا تحويل** (يُخدَم 200)'],
+     ['/.well-known/anything',        null, 'كلُّ ما تحت `/.well-known/` معفىً — لا الملفُّ وحده'],
+     // ── ضوابط الاتجاه المعاكس: بلاها يمرّ الإعفاءُ الفضفاض أخضرَ ──
+     ['/',                            301,  'ضابط: جذرُ `www` ما زال يُحوَّل'],
+     ['/home/index.html',             301,  'ضابط: صفحاتُ `www` ما زالت تُحوَّل'],
+     ['/well-known/assetlinks.json',  301,  'ضابط 🔒: بلا نقطةٍ بادئة ⇒ يُحوَّل (المطابقةُ حرفية)'],
+     ['/x/.well-known/assetlinks.json', 301, 'ضابط 🔒: بادئةٌ لا تضمين ⇒ مسارٌ داخليّ يُحوَّل']
+    ].forEach(function (c) {
+      var r = mctx.__run('GET', c[0], '');
+      var got = r ? r.status : null;
+      var good = (got === c[1]);
+      if (!good) failed++;
+      console.log((good ? '  ✅ ' : '  ❌ ') + c[2] + '  [' + c[0] + ' → ' +
+                  (r ? r.status : 'لا تحويل') + ']');
+    });
   }
 }
+
 
 // ── الرؤوس الأمنية ومعاينة الخبر ──
 console.log('');
@@ -871,6 +899,27 @@ if (!alBlock) {
   check(Array.isArray(stmt.relation) &&
         stmt.relation.indexOf('delegate_permission/common.handle_all_urls') !== -1,
         'العلاقة `handle_all_urls` (‏App Links + WebAuthn معاً)');
+
+  /* 🔴 **والمضيفُ الثاني يُخدَم أيضاً — أُضيف 2026-09-01 بعد قياسٍ حيّ:**
+     المانيفستُ المنشور يعلن `www.yemenschoolz.com` بـ`autoVerify` كذلك
+     (‏`AndroidManifest.xml:101-106`)، وتحقّقُ Digital Asset Links **لا يتبع التحويلات**.
+     وكان فرعُ `REDIRECT_TO_CANONICAL` يبتلع المسارَ فيردّ **301 بجسمٍ فارغ** ⇒ ذلك
+     المضيفُ يفشل تحقّقُه **صامتاً**. هذا الفحصُ يُثبت أن الكتلة تخدم المضيفَين معاً؛
+     ⚠️ **وحدُّ هذا الفحص يُقال صراحةً:** الكتلةُ المقتطَعة **لا ترى فرعَ التحويل** الذي
+     يسبقها، فهو **لا يحمرّ** بإلغاء الإعفاء — قِيس بمعمل طفرة: إلغاءُ الإعفاء يُحمِّر
+     ضوابطَ كتلة «تحويل النطاق» **وحدها**. ⇒ ما يقيسه هذا السطر: أن المعالجَ **محايدٌ
+     تجاه المضيف** فيخدم الجسمَ نفسَه متى بلغه الطلب. والحارسُ الفعليّ للإعفاء هناك. */
+  var raw = runBlock(alBlock, '/.well-known/assetlinks.json', 'www.yemenschoolz.com', '');
+  check(!!raw && raw.status === 200 && raw.body === ra.body,
+        'المعالجُ محايدٌ تجاه المضيف — `www` يُخدَم نفسَ الجسم بـ200 متى بلغه الطلب');
+
+  /* 🔴 وموضعُ المعالج بنيويّ: يسبق حسابَ الـslug. وإلّا قرأ `_schoolSlugFromPath` المسارَ
+     اسمَ مدرسةٍ فخُدم `home/index.html` بـ200 **ونوعِ محتوى HTML** ⇒ تحقّقٌ يفشل وكلُّ
+     شيءٍ يبدو سليماً — وهي فئةُ `/portal` نفسُها التي وُجد هذا الملفّ بسببها. */
+  var _alIdx   = src.indexOf("if (path === '/.well-known/assetlinks.json')");
+  var _slugIdx = src.indexOf('var _pathSlug = _schoolSlugFromPath(path);');
+  check(_alIdx > 0 && _slugIdx > 0 && _alIdx < _slugIdx,
+        '🔴 المعالجُ **يسبق** حسابَ الـslug — وإلّا خُدم HTML بـ200 وفشل التحقّق صامتاً');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════
