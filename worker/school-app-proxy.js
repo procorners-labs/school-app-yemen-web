@@ -1187,7 +1187,22 @@ export default {
     // 🔑 والعلاج **جراحيّ لا إلغاء**: قصدُ الـ301 مشروع ويبقى لـ`GET/HEAD` (وهي وحدها ما
     // تفهرسه محرّكات البحث وتُخبِّئه المتصفّحات). وما عداها ⇒ **308** — نفس دلالة «دائم»
     // تماماً، لكنه **يُلزم** العميل بحفظ الطريقة والجسم.
-    if (REDIRECT_TO_CANONICAL[url.hostname]) {
+    // 🔴 **واستثناءٌ ثانٍ من نفس الفئة — `/.well-known/` لا يُحوَّل (مقيسٌ 2026-09-01):**
+    //   المانيفستُ في التطبيق المنشور يعلن **مضيفَين** بـ`autoVerify="true"`:
+    //   `yemenschoolz.com` **و`www.yemenschoolz.com`** (‏`AndroidManifest.xml:101-106`،
+    //   بلا `android:path` ⇒ كلُّ المسارات). وتحقّقُ Digital Asset Links **لا يتبع
+    //   التحويلات**: يطلب الملفَّ من كلِّ مضيفٍ معلَن ويشترط 200 مباشرةً.
+    //   والقياسُ الذي كشفه: `curl -D - https://www.yemenschoolz.com/.well-known/assetlinks.json`
+    //   ⇒ **301 · `Content-Length: 0`** بينما الجذرُ يردّ **200 · `application/json`**
+    //   ⇒ مضيفُ `www` **يفشل تحقّقُه صامتاً** — بلا رسالةٍ في أيّ مكان.
+    //   والأثرُ المحتمل: App Links و**WebAuthn** («الدخول بالبصمة») لمستخدمي `vc31`.
+    //   ⚠️ **وما لم يُقَس بعد:** أيُسقط فشلُ `www` تحقّقَ الجذر معه أم يبقى الجذرُ وحده
+    //   متحقّقاً؟ يُقاس بـ`adb shell pm get-app-links com.proconrers.schoolappyemen`،
+    //   ولا يُحسم استنتاجاً — والعلاجُ أدناه صحيحٌ في الحالين وكلفتُه صفر.
+    //   🔑 والعلاجُ **جراحيّ لا إلغاء** كسابقه: `/.well-known/` وحده يُعفى (‏بادئةً
+    //   حرفية)، وكلُّ ما عداه من `www` يبقى محوَّلاً كما هو. وهو **أرخص الخيارين**:
+    //   البديلُ حذفُ `www` من المانيفست، ويلزمه إصدارٌ جديد **ولا يُصلح المثبَّتَ اليوم**.
+    if (REDIRECT_TO_CANONICAL[url.hostname] && path.indexOf('/.well-known/') !== 0) {
       var _canonUrl = CANONICAL_ORIGIN + path + url.search;
       var _safeMethod = (request.method === 'GET' || request.method === 'HEAD');
       return Response.redirect(_canonUrl, _safeMethod ? 301 : 308);
