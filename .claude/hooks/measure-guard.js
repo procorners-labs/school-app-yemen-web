@@ -29,9 +29,19 @@ var VERDICT_RE = /\b(npm\s+run|node\s+--check|node\s+worker\/test-routes\.js|gra
 var PIPE_SINK_RE = /\|\s*(tail|head|findstr|grep)\b/;
 var PIPEFAIL_RE = /(set\s+-o\s+pipefail|PIPESTATUS)/;
 
+/* 🔴 تُحذَف المناطقُ المقتبَسة قبل أيّ مطابقة — وهذا **إصلاحُ إنذارٍ كاذبٍ وقع فعلاً**:
+   أوّلُ استعمالٍ للحارس بعد تركيبه حجب `gh pr create --title "… \`curl -w\` …"` — أي أنه
+   منع **توثيقَ نفسه**. والعلاجُ ليس الالتفافَ على الحارس بل تضييقُه: رايةُ `curl` الحقيقية
+   **لا تكون داخل اقتباس**، وذكرُها في عنوانٍ أو رسالةٍ أو `echo` يكون داخله دائماً. */
+function stripQuoted(s) {
+  return String(s)
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+}
+
 /** يُرجع نصَّ الحجب، أو '' إن كان الأمرُ سليماً. مفصولٌ عن الإدخال ليكون قابلاً للاختبار. */
 function verdict(cmd) {
-  var c = String(cmd || '');
+  var c = stripQuoted(cmd || '');
   if (!c) return '';
 
   // ① `curl` + `-w`/`--write-out` — بأيّ ترتيب، وبأيّ اسمٍ للثنائيّة.
@@ -77,7 +87,12 @@ if (process.argv.indexOf('--self-test') > -1) {
     ['npm run gate > out.txt 2>&1; echo EXIT=$?', false, 'إعادةُ التوجيه بلا أنبوب تمرّ'],
     ['git log --oneline | head -5', false, 'أمرُ قراءةٍ مُنبَّب لا يُحجَب — التضييقُ مقصود'],
     ['ls -a | tail -3', false, 'قراءةٌ عادية تمرّ'],
-    ['echo "curl -w في تعليقٍ عربيّ"', true, '⚠️ حدٌّ معروف: النصُّ داخل `echo` يُمسَك أيضاً']
+    // 🔴 إنذارٌ كاذبٌ وقع فعلاً عند أوّل استعمال: الحارسُ حجب **توثيقَ نفسه**.
+    ['echo "curl -w في تعليقٍ عربيّ"', false, '🔴 ذِكرٌ داخل اقتباس يمرّ — الحارسُ لا يحجب توثيقَه'],
+    ['gh pr create --title "feat: حارسُ `curl -w`" --body-file x.txt', false,
+      '🔴 الحالةُ التي أفشلت الحارسَ أوّلَ مرّة: عنوانُ PR يذكر الراية'],
+    ['curl.exe -w "%{http_code}" -s https://x/', true,
+      'ضابطٌ مضادّ للتضييق: الرايةُ الحقيقية خارجَ الاقتباس ما زالت تُحجَب']
   ];
   var bad = 0;
   CASES.forEach(function (c) {
