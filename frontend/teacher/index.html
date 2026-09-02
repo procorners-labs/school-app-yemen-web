@@ -7821,45 +7821,104 @@ function bootApp() {
   _bootFallbackTimer = setTimeout(function() { _bootTryShow(true); }, 9000);
   // حزمة الإقلاع أولاً: نداء واحد يبذر كاش الأعضاء الثلاثة، ثم تصيبه المحمّلات —
   // 3 تنفيذات GAS عند الإقلاع البارد ⇒ 1 (نمط PR#826 بمنصّة الطالب).
+  var afterLists = function() {
+    _bootListsDone = true;
+    _bootTryShow();
+  };
+
+  /* ★ نداءُ القوائم يتسلسل **بعد** حزمة الإقلاع بدل موازاته (2026-09-02).
+
+     🔴 **ما كان:** `_teacherBootBundlePrefetch` غيرُ متزامن **فيعود فوراً**، فينطلق
+     `_fetchListsFromServer` (‏`getListsDataProtected` — قراءةُ ورقةٍ كاملة) **بجواره**
+     ⇒ **تنفيذان ثقيلان متزامنان لكلّ إقلاع**. وسقفُ حصّة Google **تنفيذاتٌ متزامنة**
+     (‏30/حساب) لا عددُها ⇒ التزامنُ هو المتغيّر الحاكم لا حجمُ العمل.
+
+     🔴 **والقياسُ الذي فرض هذا التغيير** (‏نافذة `2026-09-02T11:30Z→14:30Z`، مصدرُه
+     سجلّاتُ الوركر): `/gas/teacher` إخفاق **26.7٪** مع `k=330`. وستُّ عيّناتِ 502 كلُّها
+     `wallTimeMs = 23,700` — **سقفُ ميزانية الوسيط حرفياً** (‏`24,000 − 300`) —
+     بـ`cpuTimeMs` بين 0 و3 و**`srv` غائبٌ تماماً** ⇒ **الوركرُ ينتظر ولا يعمل، وGAS لم
+     يُرجِع شيئاً** ⇒ إشباعُ حصّةٍ عند GAS، والوسيطُ **مُبلِّغٌ لا جانٍ**.
+     ⇒ **رفعُ ميزانية الوسيط مضادُّ الاتجاه**: يحوّل ٥٠٣ رخيصاً (يتراجع الجسرُ لكاش
+     IndexedDB فوراً) إلى ٥٠٢ باهظاً بعد زمنٍ أطول، ويُطيل احتجازَ تنفيذ GAS.
+
+     🟢 **والمسارُ الدافئ مشمولٌ عمداً** — `_refreshListsSilently` تنادي
+     `_fetchListsFromServer` نفسَها، وهو **المسارُ الأشيع** (أكثرُ المستخدمين لهم كاشُ
+     قوائم) ⇒ استثناؤه كان يترك أغلبَ الإقلاعات على العطب.
+
+     🔴 **ولا نقطةَ فشلٍ مفردة:** `_teacherBootBundlePrefetch` **يضمن** استدعاء `done`
+     — مؤقّتُ `finish('slow')` عند `BOOT_EXTRAS_RELEASE_MS` · و`catch` يستدعي
+     `finish('failed')` · و`finish` أحاديُّ التنفيذ. فتعليقُ الخادم لا يمنع القوائم.
+     ⚠️ **و`finish('warm')` متزامنٌ** عند كاشٍ كامل (‏يعود قبل أن يعود المُستدعي) —
+     ولهذا `setTimeout(…, 0)` أدناه: يُخرج البدءَ من الكتلة المتزامنة فلا يعتمد ترتيبٌ
+     على لحظةِ عودةِ دالّةٍ قد ترتدّ فوراً وقد لا ترتدّ.
+
+     ⚠️ **وثمنُه يُقال:** الإقلاعُ **البارد** يبطؤ — النداءان بالتتابع لا بالتوازي.
+     المقايضةُ مقصودة: ثوانٍ على الإقلاع مقابل ربعِ المستخدمين لا يدخلون أصلاً. */
+  var _bootListsStarted = false;
+  /* 🔴 **تصريحُ دالّةٍ لا تعبيرٌ مجهول** — و`extractFunctionBody` في
+     `_build/test-regression-guards.js` تطابق `function <اسم>(` حصراً، فالتعبيرُ المجهول
+     يجعل حارسَ التسلسل يعيد `null` **فيحمرّ على كودٍ سليم**. قِيس فعلاً عند كتابته.
+     ⇒ الشكلُ يتبع عقدَ أداة القياس القائمة، ولا تُضعَّف الأداةُ لتقبل شكلاً آخر. */
+  function _bootStartLists() {
+    if (_bootListsStarted) return;      // الحزمة قد تُنهي مرّتين نظرياً — البدءُ مرّةً واحدة
+    _bootListsStarted = true;
+    if (cachedLists && cachedLists.grades && cachedLists.grades.length) {
+      _refreshListsSilently();
+    } else {
+      showLoading('جاري تحميل البيانات...');
+      _fetchListsFromServer(function(success) {
+        if (!success) {
+          App.lists = _getDefaultLists();
+          toast('تعذر تحميل القوائم الكاملة — قد لا تظهر جميع الخيارات', 'warning', 5000);
+        }
+        App.initDone = true;
+        afterLists();
+      });
+    }
+  }
+
+  /* 🟢 والمسارُ الدافئ يرسم فوراً بلا انتظار — هذا إسنادٌ محلّيّ بصفر نداء شبكة،
+     فتأجيلُه كان سيؤخّر أوّل رسمٍ بلا أيّ مكسبٍ في التزامن. المؤجَّلُ هو **التحديث
+     الصامت** وحده (وهو النداءُ الشبكيّ). */
+  if (cachedLists && cachedLists.grades && cachedLists.grades.length) {
+    App.lists = cachedLists;
+    App.initDone = true;
+    afterLists();
+  }
+
   _teacherBootBundlePrefetch(function (status) {
     if (status !== 'failed' && status !== 'slow') {
       // الحزمة بذرت المفاتيح ⇒ إصابتا كاش، صفر نداء. (عضوٌ فشل خادمياً يتراجع لمحمّله
       //  الفردي — ثابت عزل الأعضاء، يبقى بلا مساس.)
       setTimeout(loadNotifCountsBundle, 50);
       setTimeout(_loadMyPointsHeader, 150);
+      setTimeout(_bootStartLists, 0);
       return;
     }
     /* 🔴 مسار الفشل/البطء هو **لحظة إشباع الحصّة بالضبط**. الجرس والنقاط زينة تفشل
        صامتةً أصلاً، وإطلاقهما هنا يحوّل نداءً فاشلاً واحداً إلى ثلاثة. يتكفّل بهما
-       أوّل نبضة **ناجحة** — أي بعد تعافي الحصّة، وبصفر نداء مجدول إضافي. */
+       أوّل نبضة **ناجحة** — أي بعد تعافي الحصّة، وبصفر نداء مجدول إضافي.
+       🔴 **والقوائمُ ليست زينة** — بدونها لا تُبنى الشاشة، فتبدأ في الحالتين. */
     _bootDeferredExtras = true;
+    setTimeout(_bootStartLists, 0);
   }, function () {
     /* إفراج المخطط — مبكّر ومحاذٍ لبوّابة العرض 9ث، **لا** لمؤقّت الجرس/النقاط 24ث:
        هذا المحمّل يُغذّي أوّل رسم و`_bootTryShow` يعمل مرّة واحدة فلا تصحيح بعده.
        وعند كاش دافئ أو مفتاح بذرته الحزمة فهو إصابة كاش بصفر نداء شبكة أصلاً. */
     loadBootConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
-  });
-  var afterLists = function() {
-    _bootListsDone = true;
-    _bootTryShow();
-  };
+    /* 🔴 **سقفٌ للتسلسل — وإلّا انقلب التأجيلُ تعليقاً.** بوّابةُ العرض
+       (`if (!_bootListsDone) return`) **غيرُ مشروطة بمؤقّت**، وردُّ الحزمة قد يتأخّر إلى
+       `BOOT_EXTRAS_RELEASE_MS = 24000` ⇒ ربطُ بدءِ القوائم بردّ الحزمة **وحده** يترك
+       المستخدمَ على شاشة التحميل أربعاً وعشرين ثانيةً قبل أن يبدأ النداءُ أصلاً.
+       رصدته المراجعةُ المستقلّة، وأُكّد بالقياس: الثابتُ 24,000 والبوّابةُ غيرُ مشروطة.
 
-  if (cachedLists && cachedLists.grades && cachedLists.grades.length) {
-    App.lists = cachedLists;
-    App.initDone = true;
-    afterLists();
-    _refreshListsSilently();
-  } else {
-    showLoading('جاري تحميل البيانات...');
-    _fetchListsFromServer(function(success) {
-      if (!success) {
-        App.lists = _getDefaultLists();
-        toast('تعذر تحميل القوائم الكاملة — قد لا تظهر جميع الخيارات', 'warning', 5000);
-      }
-      App.initDone = true;
-      afterLists();
-    });
-  }
+       🟢 **والحدُّ مشتقٌّ من نقطةِ تفتيشٍ قائمة لا رقمٌ مخترَع:** `releaseSchema` يقع عند
+       **أقرب** الحدثين — `BOOT_SCHEMA_RELEASE_MS = 8000` أو استقرارُ الحزمة أيّهما أسبق —
+       وهو **دون** بوّابة العرض 9ث عمداً. ⇒ التسلسلُ يبقى قائماً في الحالة الشائعة
+       (الحزمةُ تستقرّ قبل 8ث فتبدأ القوائمُ من ردّها)، **والأسوأُ محدودٌ بـ8ث لا 24ث**.
+       و`_bootStartLists` أحاديُّ التنفيذ ⇒ أسبقُ المسارين يفوز بلا ازدواج. */
+    setTimeout(_bootStartLists, 0);
+  });
 
   // (عرض القائمة الجانبية حُسِم مبكراً أعلاه عبر initSidebarByRole — لا تكرار هنا)
   // (⭐ v3 config أصبحت مدمَجة داخل loadBootConfig أعلاه — لا نداء getV3Config منفصل بعد الآن)
