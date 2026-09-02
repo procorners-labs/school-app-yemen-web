@@ -559,6 +559,59 @@ if (!altsOk) failed++;
 console.log((altsOk ? '  ✅ ' : '  ❌ ') +
             '🔴 مجموعة البدائل = `index,news` بالضبط — لا `newsarticle` (مسار مشاركة) ولا غيره · المقيس: ' + alts);
 
+// ── 🔴 استثناءُ `?news=` من التحويل (2026-09-02) ─────────────────────────────
+//
+// الفجوة التي يقفلها: بنّاءُ رابط المشاركة يُنتج `‎/home/news.html?news=…&t=…` **بلا
+// `school`** حين يكون `schoolId` فارغاً — و`session.schoolId` فارغةٌ لحساب المالك
+// بالتصميم. فكان التحويلُ يبتلع `?news=` و`?t=` (‏`Response.redirect` بلا `url.search`)
+// ⇒ الزائرُ يهبط على دليل المدارس بلا خبر، بلا خطأ ولا أثر.
+//
+// 🔴 وضابطان متقابلان عمداً: الأوّل يُثبت أن الاستثناء **قائم**، والثاني يُثبت أنه
+//    **لم يبتلع القصدَ الأمنيّ** — بلا الثاني يصير الإصلاحُ ثغرةً تفتح مكتبةَ المالك.
+console.log('');
+console.log('استثناء `?news=` من التحويل العاري:');
+[[/!url\.searchParams\.has\('news'\) &&/,
+  '✅ الاستثناء قائم: وجودُ `news` يرفع التحويل'],
+ [/!url\.searchParams\.has\('news'\) &&\s*\n\s*!url\.searchParams\.has\('school'\)/,
+  "🔴 **الضابط المعاكس**: الشروط الثلاثة مقرونةٌ بـ`&&` ⇒ الرابطُ العاري **بلا** `news` يبقى محوَّلاً (مكتبةُ المالك محميّة)"],
+ [/has\('news'\)/,
+  '🔴 الشرط بـ**وجود** المعامل لا بصحّة قيمته — خبرٌ محذوفٌ أو معرّفٌ فاسد لا يُعيد فتح التسريب']
+].forEach(function (c) {
+  var good = c[0].test(src);
+  if (!good) failed++;
+  console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
+});
+
+// 🔴 ضابطٌ مضادٌّ للانعكاس: `has('news')` بلا `!` يقلب المعنى تماماً (يُحوِّل روابطَ
+//    المشاركة وحدها ويترك العاري) — وهو خطأُ حرفٍ واحدٍ يمرّ على أي فحصٍ نصّيٍّ ساذج.
+var newsNeg = /!url\.searchParams\.has\('news'\)/.test(src) &&
+              !/[^!]url\.searchParams\.has\('news'\) &&/.test(src);
+if (!newsNeg) failed++;
+console.log((newsNeg ? '  ✅ ' : '  ❌ ') +
+            '🔴 النفي `!` حاضرٌ ولا يوجد `has(\'news\')` موجَبٌ في موضع الشرط — انعكاسُ المعنى محروس');
+
+// ── 🔴 `getNewsOg`: تسلسلُ حلّ المستأجر (2026-09-02) ─────────────────────────
+//
+// كان يقرأ `?school=` وحده بينما `_tenantKeyFrom` و`frontend/home/newsarticle.html`
+// يقبلان `?schoolId=` أيضاً ⇒ رابطٌ بالاسم الثاني يُمرِّر **فراغاً** ⇒ مدرسةُ المالك
+// (بند 99). عدمُ تناظرٍ في أسماء المعاملات يُنتج سقوطاً صامتاً إلى مستأجرٍ خاطئ.
+console.log('');
+console.log('حلّ المستأجر في `getNewsOg`:');
+var ogArgsM = src.match(/fn: 'getNewsOg', args: \[_newsId, ([^,]+(?:\|\| [^,]+)*), url/);
+var ogArgs = ogArgsM ? ogArgsM[1].replace(/\s+/g, ' ').trim() : '(لم تُلتقَط)';
+var ogOk = /_pathSlug \|\| url\.searchParams\.get\('school'\) \|\| url\.searchParams\.get\('schoolId'\) \|\| ''/.test(ogArgs);
+if (!ogOk) failed++;
+console.log((ogOk ? '  ✅ ' : '  ❌ ') +
+            '🔴 التسلسل `_pathSlug → school → schoolId → \'\'` بهذا الترتيب · المقيس: ' + ogArgs);
+
+// 🔴 الضابط المعاكس: `_pathSlug` **أوّلاً** لا آخِراً. على صفحة مدرسة (`/<slug>?news=`)
+//    لا وجودَ لـ`?school=` إطلاقاً؛ ولو تأخّر الـslug لعادت علّةُ «معاينةُ كلّ مدرسة
+//    تعرض خبرَ المالك» التي عولجت في بند 99 — إصلاحُ اليوم لا يجوز أن ينقضها.
+var slugFirst = /args: \[_newsId, _pathSlug \|\|/.test(src);
+if (!slugFirst) failed++;
+console.log((slugFirst ? '  ✅ ' : '  ❌ ') +
+            '🔴 **الضابط المعاكس**: `_pathSlug` أوّلُ المرشَّحين — لا يُزاح بمعاملِ استعلام');
+
 // 🔴 الضابط المعاكس البنيوي: التحويل يقع **قبل** حساب `_pathSlug`، وإلّا لالتُقط
 // `/home/index.html` مساراً عادياً ومرّ. ويقع **بعد** `/` و`/portal` فلا يمسّهما.
 var redirIdx = src.indexOf("return Response.redirect(CANONICAL_ORIGIN + '/', 302);");

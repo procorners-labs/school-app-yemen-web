@@ -1850,7 +1850,24 @@ export default {
     // المالك كاملةً بما فيها الأخبار الموجَّهة لصفّ/شعبة** (وضع المكتبة يرفع الحجب عنها
     // عمداً) — تسريبٌ أوسع من الصفحة الرئيسية لا أضيق. `newsarticle.html` **خارج** القائمة:
     // مسار مشاركةٍ يحمل `?news=` دائماً، وحقن OG له سلسلته الخاصّة.
+    // 🔴 استثناءُ `?news=` — أُضيف 2026-09-02 بعد بلاغِ مالكٍ مقيس.
+    //
+    // العلّة: بنّاءُ رابط المشاركة (`_tcNewsShareUrl`/`_stNewsShareUrl`) يُنتج الشكل
+    // `‎/home/news.html?news=<id>&school=<uuid>&t=<tok>` — و`school` **مشروطٌ بأن يكون
+    // `schoolId` غيرَ فارغ**. و`session.schoolId` **فارغةٌ لحساب المالك بالتصميم**
+    // (‏`teacher/_ShareToken.js`) ⇒ روابطُ المالك تُنتَج بلا `school` ⇒ تُطابِق الشرطَ
+    // أدناه ⇒ **302 إلى الجذر بلا `url.search`** ⇒ `?news=` و`?t=` **يضيعان**،
+    // والزائرُ يهبط على دليل المدارس بلا خبر. عطلٌ صامت: لا خطأ ولا أثر.
+    //
+    // ⚠️ والقصدُ الأمنيّ الأصليّ يبقى كما هو ولا يُمَسّ: `news.html` **العارية** تستدعي
+    // `getHomePageBundle('', 'library')` ⇒ مكتبةَ المالك كاملةً بما فيها الأخبار
+    // الموجَّهة لصفّ/شعبة — تسريبٌ حقيقيّ، والتحويلُ هو موضعُ منعه. فالاستثناءُ
+    // **بأضيق شرطٍ ممكن**: وجودُ `news` وحده يرفع التحويل، وما دونه يبقى محوَّلاً.
+    // 🔒 ورفعُ التحويل **لا يرفع أيَّ تحقّق**: `?news=` له سلسلتُه الخاصّة
+    // (‏`getNewsOg` يتحقّق من التوكن ويحلّ المستأجر)، و`newsarticle.html` مستثناةٌ
+    // من هذه القائمة أصلاً **لهذا السبب بعينه** — فالاستثناءُ تسويةٌ لا توسيع.
     if (/^\/home\/(index|news)\.html\/?$/i.test(path) &&
+        !url.searchParams.has('news') &&
         !url.searchParams.has('school') && !url.searchParams.has('schoolId')) {
       return Response.redirect(CANONICAL_ORIGIN + '/', 302);
     }
@@ -2030,7 +2047,12 @@ export default {
           // 🔴 `_pathSlug` أولاً ثم `?school=`: على صفحة مدرسة (`/‌<slug>?news=…`) لا وجود
         // لـ`?school=` إطلاقاً، فالاكتفاء به كان يُمرِّر فراغاً = **مدرسة المالك** (بند 99)
         // ⇒ معاينة واتساب لكل مدرسة تعرض خبر الإبداع. التُقِط قبل إعادة كتابة المسار أعلاه.
-        body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, _pathSlug || url.searchParams.get('school') || '', url.searchParams.get('t') || ''] })
+        // ➕ 2026-09-02: `schoolId` مقبولٌ بجوار `school` — تسويةٌ مع `_tenantKeyFrom`
+        // و`frontend/home/newsarticle.html` اللذين يقبلان الاسمين منذ زمن، بينما كان
+        // هذا الموضعُ يقرأ `school` وحده ⇒ رابطٌ بـ`?schoolId=` يُمرِّر **فراغاً** إلى
+        // `getNewsOg` ⇒ **مدرسةُ المالك** (بند 99). عدمُ تناظرٍ في أسماء المعاملات
+        // يُنتج سقوطاً صامتاً إلى مستأجرٍ خاطئ — لا خطأ ولا أثر.
+        body: JSON.stringify({ fn: 'getNewsOg', args: [_newsId, _pathSlug || url.searchParams.get('school') || url.searchParams.get('schoolId') || '', url.searchParams.get('t') || ''] })
         });
         clearTimeout(_ogTimer);
         var _ogJson = await _ogRes.json();
