@@ -1263,13 +1263,18 @@ function _brandRewrite(rw, brand, surface) {
            .on('[data-brand-host="phone"]', new _Unhide())
            .on('[data-brand-href="phone"]', new _AttrSet('href', 'tel:' + brand.phone));
     if (sf === 'home') rw = rw.on('#tbPhone', new _TextSet(brand.phone)).on('#fcPhone', new _TextSet(brand.phone));
+    /* 🔴 صيغةُ الأيقونة مطابقةٌ حرفياً لما يكتبه `applyBrand` في مستودع الـgas
+       (‏`_stu-js-boot-runtime.html` و`_tcRenderLoginContact`) — وإلّا **قفز النصّ**
+       لحظةَ وصول الحمولة بدل أن يستقرّ. نفسُ علّة `_brandDocTitle` مع `__homeDocTitle`. */
     if (sf === 'student') rw = rw.on('#stuLoginContact', new _TextSet('📞 ' + brand.phone));
+    if (sf === 'teacher') rw = rw.on('#tchLoginContact', new _TextSet('📞 ' + brand.phone));
   }
   if (brand.address) {
     rw = rw.on('[data-brand="address"]', new _BrandField(brand.address))
            .on('[data-brand-host="address"]', new _Unhide());
     if (sf === 'home') rw = rw.on('#tbAddr', new _TextSet(brand.address)).on('#ftAddr', new _TextSet(brand.address));
     if (sf === 'student') rw = rw.on('#stuLoginAddress', new _TextSet('📍 ' + brand.address));
+    if (sf === 'teacher') rw = rw.on('#tchLoginAddress', new _TextSet('📍 ' + brand.address));
   }
   if (brand.whatsapp) {
     var waDigits = _brandDigits(brand.whatsapp);

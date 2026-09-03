@@ -1128,6 +1128,13 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
         '🔴 سطح المعلّم بلا `title` ولا وسوم OG — العميل يملك العنوان، والوسوم غائبة أصلاً و`_AttrSet` لا يُنشئ');
   check(sels3.indexOf('#hdrLogo') === -1 && sels3.indexOf('#stuLoginLogo') === -1,
         '🔴 ولا تتسرّب محدِّدات سطحٍ آخر إليه');
+  /* 🟢 خانتا الهاتف/العنوان في رأس المعلّم — أضافتهما جلسةُ `SchoolApp-gas` في المرور
+     نفسِه (لم تكونا موجودتين أصلاً، بخلاف الطالب). ولا يُضافان بعدُ إلى حارس الـHTML
+     المخدوم: `frontend/` مُولَّدٌ من هناك ولن يحملهما حتى تُدمَج دفعتُهم وتُعاد الدورة. */
+  var tchC = rwCtx.__sink3.filter(function (p) { return p[0] === '#tchLoginContact'; })[0];
+  check(tchC && tchC[1].val === '📞 +967771234567',
+        'سطح المعلّم: `#tchLoginContact` بصيغة الطالب نفسِها (وإلّا قفز النصّ عند وصول الحمولة)');
+  check(sels3.indexOf('#tchLoginAddress') !== -1, '… و`#tchLoginAddress` كذلك');
   rwCtx.__sink4 = [];
   vm.runInContext('_brandRewrite(mkRw(__sink4), __brand, "student")', rwCtx);
   var sels4 = rwCtx.__sink4.map(function (p) { return p[0]; });
@@ -1138,6 +1145,8 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
         '🔴 بنفس صيغة `applyBrand` في `_stu-js-boot-runtime.html` (وإلّا قفز النصّ عند وصول الحمولة)');
   check(sels4.indexOf('#stuNavLogo') !== -1 && sels4.indexOf('#tchNavLogo') === -1,
         '… وشعار الطالب وحده — لا شعار المعلّم');
+  check(sels4.indexOf('#tchLoginContact') === -1 && sels4.indexOf('#tchLoginAddress') === -1,
+        '🔴 ضابط معاكس: خانتا المعلّم لا تظهران على سطح الطالب');
 
   /* السطح يُشتقّ من المسار الخام: دالّة نقيّة بجدول حالات. */
   var sfCtx = vm.createContext({ String: String });
