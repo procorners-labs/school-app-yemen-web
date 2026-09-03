@@ -18778,7 +18778,13 @@ function setNewsHomeVisibility(id, hidden) {
 // تحميل معرّفات الأخبار المنشورة للعامة (لجعل الزر متبادلاً) ثم استدعاء after
 function loadPublishedNewsIds(after) {
   if (!_newsIsOfficial()) { if (typeof after === 'function') after(); return; }
-  callServer('getPublishedNewsIdsProtected', {}, function (r) {
+  /* 🔴 كاشُ عميلٍ أُضيف 2026-09-03: كان **بلا كاشٍ إطلاقاً** (النمط ١) ⇒ تنفيذُ GAS كامل
+     في **كلّ** فتحٍ لقسم الأخبار، وقد ظهر في سجلّ 502 حيّ لصقه المالك.
+     🔴 **والبادئةُ `news_p` مقصودةٌ لا اعتباطية:** المُبطِلُ القائم بعد النشر هو
+     `ClientCache.clear('news_p')` (انظر التعليق أعلى `loadNewsPage`) — وأيُّ بادئةٍ أخرى
+     تُنتج كاشاً **بلا مُبطِل** فتبقى حالةُ النشر بائتةً بعد نشرِ خبر (بند 189). */
+  var _pubIdsKey = 'news_pubids_' + ((App.user && App.user.schoolId) || '');
+  callServer('getPublishedNewsIdsProtected', {}, _pubIdsKey, 120, function (r) {
     var ids = (r && r.success && r.ids) ? r.ids : [];
     var map = {};
     for (var i = 0; i < ids.length; i++) map[String(ids[i])] = true;
@@ -18797,7 +18803,11 @@ function loadPublicNewsRequests() {
   var box = document.getElementById('newsPublicReview');
   if (!box) return;
   if (!_newsIsOfficial()) { box.innerHTML = ''; return; }
-  callServer('getPublicNewsRequestsProtected', {}, function (r) {
+  /* كاشُ عميلٍ 2026-09-03 — نفسُ علّة `loadPublishedNewsIds` أعلاه ونفسُ بادئة الإبطال.
+     ⚠️ وTTL **٦٠ث لا ١٢٠**: هذه لوحةُ **طلباتٍ معلَّقة** ينتظر المسؤولُ ظهورَها، فبقاؤها
+     دقيقتين يبدو تعطّلاً. والمقايضةُ تُقال: نصفُ الكاش مقابل استجابةٍ محسوسة. */
+  var _pubReqKey = 'news_pubreq_' + ((App.user && App.user.schoolId) || '');
+  callServer('getPublicNewsRequestsProtected', {}, _pubReqKey, 60, function (r) {
     var reqs = (r && r.success && r.requests) ? r.requests : [];
     if (!reqs.length) { box.innerHTML = ''; return; }
     var h = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px">' +
