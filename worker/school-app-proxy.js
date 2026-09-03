@@ -507,19 +507,43 @@ function _schoolSlugFromPath(path) {
 var _SCHOOL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function _tenantKeyFrom(path, search) {
-  var slug = _schoolSlugFromPath(path);
+  var p = String(path || '');
+  var slug = _schoolSlugFromPath(p);
   if (slug) return slug;
-  if (!/^\/home\/index\.html$/i.test(String(path || ''))) return '';
+  /* بوّابة الشكل الواحدة لكلّ المصادر: slug منشور أو UUID حصراً — وإلّا `''`. */
+  function norm(v) {
+    v = String(v || '').trim();
+    if (!v) return '';
+    var lc = v.toLowerCase();
+    if (_KNOWN_SCHOOL_SLUGS[lc]) return lc;
+    if (_SCHOOL_UUID_RE.test(v)) return lc;
+    return '';
+  }
+  /* 🟢 2026-09-03 (قرار المالك: الهوية على السطوح الثلاثة) — المقطعُ الثاني في المسارات
+     العميقة لبوّابتَي الدخول: `/teacher/login/<k>` · `/student/<tab>/<k>` (شكل `_DEEP_PORTAL_RE`
+     بمقطعين). المقطعُ الأوّل تبويبٌ لا مدرسة، فلا يُقرأ مفتاحاً أبداً. */
+  var deep = /^\/(teacher|student)\/[a-z0-9-]+\/([a-z0-9-]+)\/?$/i.exec(p);
+  if (deep) return norm(deep[2]);
+  /* والمعامل الصريح `?school=`/`?schoolId=` على الملفّات الثلاثة التي تقرؤه وتحمل عُقَد
+     هوية (‏`/home/index.html` — رابط تطبيق الأندرويد — و`/teacher/index.html` و
+     `/student/index.html`) وعلى `/portal` (يُعاد كتابته إلى بوّابة الطالب).
+     🔴 الجذر `/home/schools.html` و`/home/news.html` ليسا هنا: هوية الجذر خطّ أحمر (بندا 68/75). */
+  if (!/^\/(home|teacher|student)\/index\.html$/i.test(p) && !/^\/portal\/?$/i.test(p)) return '';
   var raw = '';
   try {
     var sp = new URLSearchParams(String(search || ''));
     raw = sp.get('school') || sp.get('schoolId') || '';
   } catch (e) { return ''; }
-  var v = String(raw).trim();
-  if (!v) return '';
-  var lc = v.toLowerCase();
-  if (_KNOWN_SCHOOL_SLUGS[lc]) return lc;
-  if (_SCHOOL_UUID_RE.test(v)) return lc;
+  return norm(raw);
+}
+
+/* السطحُ الذي يُعاد كتابته — يقرّر أيَّ عائلة محدِّدات تُطبَّق في `_brandRewrite`.
+   دالّة نقيّة (المسار الخام قبل أيّ إعادة كتابة داخلية) يستخرجها `test-routes.js` بـ`vm`. */
+function _brandSurfaceFor(path) {
+  var p = String(path || '');
+  if (/^\/teacher\//i.test(p)) return 'teacher';
+  if (/^\/student\//i.test(p) || /^\/portal\/?$/i.test(p)) return 'student';
+  if (/^\/home\/index\.html$/i.test(p) || _schoolSlugFromPath(p)) return 'home';
   return '';
 }
 
@@ -846,8 +870,10 @@ var BRAND_TTL_S = 21600;
 /* 🔴 مفتاح الكاش على **أصل الطلب نفسه** لا مضيف وهمي: `caches.default` في Workers يشترط
    مفتاحاً داخل النطاق. والمسار ثلاثي المقاطع فيرفضه `_schoolSlugFromPath` (مقطعٌ واحد
    حصراً) ⇒ لا يمكن أن يصير سطحاً مخدوماً بأي حال. */
+/* 🔁 `v2` منذ 2026-09-03: الحمولةُ صارت تحمل الهاتف/العنوان/واتساب (قرار المالك). رفعُ
+   النسخة يُسقط مدخلات `v1` فوراً بدل أن تُخدَم بلا الحقول حتى انقضاء ستّ ساعات. */
 function _brandCacheKey(origin, slug) {
-  return new Request(origin + '/__brand-cache/v1/' + encodeURIComponent(slug), { method: 'GET' });
+  return new Request(origin + '/__brand-cache/v2/' + encodeURIComponent(slug), { method: 'GET' });
 }
 
 async function _brandFromCache(origin, slug) {
@@ -887,14 +913,25 @@ async function _brandRefresh(origin, slug, env) {
     var b = (json && json.result) ? json.result : json;
     if (!b || b.ok !== true || !b.brand || !b.brand.name) return;
     var page = b.page || {};
-    /* هوية العرض وحدها — لا هاتف/عنوان/سوشل. تلك محكومة عميلياً بـ`_homeContactField`
-       الذي يُخفيها لغير المالك، وقيمةُ تواصلٍ متقادمة أسوأ من غيابها. */
+    /* 🔴 **قرار المالك 2026-09-03 ينقض قرار 2026-08-14 صراحةً:** كان هنا «هوية العرض وحدها —
+       لا هاتف/عنوان/سوشل … وقيمةُ تواصلٍ متقادمة أسوأ من غيابها». المالك يريد الهاتف
+       والعنوان في رؤوس الصفحات لكلّ الزوّار، فصارت الحمولة تحملها. والتقادمُ محكومٌ
+       بـ`BRAND_TTL_S` (٦ ساعات) وبكاش `/gas/` (١٠ دقائق) على الطريق العميلي.
+       🔒 كلُّ حقل **مقصوصٌ ومُعقَّم** (`_brandText`) لأن الكائن كلَّه يُحقَن حرفياً في
+       الصفحة (`_BrandHead`) ويعيش في كاش الحافة — والقيم من شيتٍ يحرّره بشر.
+       🔒 والروابط تمرّ بـ`_safeHttpUrl` (https مطلق وإلّا `''`). */
     var brand = {
       name: String(b.brand.name || ''),
       logo: _safeHttpUrl(b.brand.logo),
       color: String(b.brand.color || ''),
       tagline: String(page.tagline || ''),
       description: String(page.aboutText || ''),
+      phone: _brandText(b.brand.phone, 32),
+      address: _brandText(b.brand.address, 200),
+      whatsapp: _brandText(b.brand.whatsapp, 32),
+      facebook: _safeHttpUrl(b.brand.facebook),
+      instagram: _safeHttpUrl(b.brand.instagram),
+      youtube: _safeHttpUrl(b.brand.youtube),
       /* 🔴 **UUID القانوني للمستأجر** (‏`_PublicPage.js::getHomePageBundle` يُرجِعه) —
          لا المفتاح الذي طلبنا به. سببه أن الصفحة تحتاجه لوصل روابط البوّابات الستّ:
          `getTeacherSchoolBrand` تطابق `school_id` حصراً، والـslug يمرّ عندها بـ`ok:true`
@@ -1124,14 +1161,58 @@ function _safeHttpUrl(v) {
 function _TextSet(val) { this.val = val; }
 _TextSet.prototype.element = function (el) { if (this.val) el.setInnerContent(this.val, { html: false }); };
 
-/* يحقن `window.__HOME_BRAND__` ليقرأه سكربت الهوية المتزامن في الصفحة فيطلي فوراً
-   **ويبذر كاشه المحلّي من أوّل زيارة**.
+/** نصٌّ مستأجرٍ مقصوص ومُعقَّم لحمولة الهوية: بلا `<`/`>` وبلا محارف تحكّم، بحدّ طول. */
+function _brandText(v, max) {
+  var s = (v == null) ? '' : String(v).replace(/[<>\u0000-\u001f\u007f]/g, '').trim();
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+/** أرقام فقط — لرابط `wa.me/<digits>` (‏`+967 7x…` ⇒ `9677x…`). */
+function _brandDigits(v) { return String(v || '').replace(/\D/g, ''); }
+
+/* ── عقد الخطّافات الموحَّد للسطوح الثلاثة (2026-09-03) ────────────────────────
+   محدِّدٌ واحد يعمل على أيّ صفحة بدل محدِّدٍ لكلّ صفحة:
+     `[data-brand="name|logo|phone|address|whatsapp"]`  ⇒ نصّ، أو `src` على <img>
+     `[data-brand-href="phone|whatsapp"]`                ⇒ `href` = tel: / wa.me/
+     `[data-brand-host="phone|address|whatsapp"]`         ⇒ يُزال `hidden` **فقط حين تكون
+                                                            القيمة موجودة** (الفارغ يبقى مخفياً —
+                                                            نفس فلسفة `_homeContactField`)
+   الوسومُ تعيش في مصدر `SchoolApp-gas` (‏`home/Index.html` · `Teacher Dashboard.html` ·
+   `Student Portal.html`)، وهذا الملفّ يشحن الآلية. غيابُ الخطّاف ⇒ لا أثر (المعالج لا
+   يُستدعى)، فالتدرّج آمن في الاتجاهين. */
+function _BrandField(val) { this.val = val; }
+_BrandField.prototype.element = function (el) {
+  if (!this.val) return;
+  var tag = String(el.tagName || '').toLowerCase();
+  if (tag === 'img') { el.setAttribute('src', this.val); return; }
+  if (tag === 'input') { el.setAttribute('value', this.val); return; }
+  el.setInnerContent(this.val, { html: false });
+};
+function _Unhide() {}
+_Unhide.prototype.element = function (el) {
+  el.removeAttribute('hidden');
+  /* `display:none` المكتوب على العنصر نفسه (كما تفعل `_homeContactField` عند الإخفاء) */
+  var st = el.getAttribute('style');
+  if (st && /display\s*:\s*none/i.test(st)) el.setAttribute('style', st.replace(/display\s*:\s*none\s*;?/ig, ''));
+};
+/* حاويةُ شعارٍ من نوع <div> تُملأ بـ`innerHTML` عميلياً (‏`#tchLoginLogo` · `#stuNavLogo` …):
+   نحقن <img> بنفس الشكل الذي يكتبه `applyBrand` هناك كي لا «يقفز» الشعار عند وصول الحمولة.
+   🔒 الرابط مرّ بـ`_safeHttpUrl` (https حصراً، بلا محارف تحكّم) ويُهرَّب كخاصية. */
+function _LogoInner(url, alt) { this.url = url; this.alt = alt; }
+_LogoInner.prototype.element = function (el) {
+  if (!this.url) return;
+  el.setInnerContent('<img src="' + _attrEsc(this.url) + '" alt="' + _attrEsc(this.alt || '') + '" loading="eager">', { html: true });
+};
+
+/* يحقن `window.__SCHOOL_BRAND__` ليقرأه سكربت الهوية المتزامن في الصفحة فيطلي فوراً
+   **ويبذر كاشه المحلّي من أوّل زيارة**. و`__HOME_BRAND__` مرادفٌ له للتوافق مع
+   `home/Index.html` القائم (تُقرأ هناك عند `__homeApplyCachedBrand`).
    🔴 `<` يُهرَّب إلى `<` داخل JSON: بلا ذلك يكفي أن يحمل اسمُ مدرسةٍ `</script>`
    لكسر الوثيقة كلّها — والاسم يأتي من شيت يحرّره بشر. */
 function _BrandHead(brand) { this.brand = brand; }
 _BrandHead.prototype.element = function (el) {
   var json = JSON.stringify(this.brand).replace(/</g, '\\u003c');
-  el.append('<script>window.__HOME_BRAND__=' + json + ';</' + 'script>', { html: true });
+  el.append('<script>window.__SCHOOL_BRAND__=' + json + ';window.__HOME_BRAND__=window.__SCHOOL_BRAND__;</' + 'script>', { html: true });
 };
 
 /* لاحقة عنوان التبويب — **نسخةٌ ثالثة بالضرورة**: هذا مستودع منفصل عن `SchoolApp-gas`
@@ -1142,21 +1223,65 @@ function _brandDocTitle(name, tagline) {
 }
 
 /* يُلحِق معالجات الهوية بسلسلة `HTMLRewriter` قائمة. مفصولٌ في دالّة كي تستعمله
-   المسارات كلّها بلا نسخ ثانٍ ينحرف. */
-function _brandRewrite(rw, brand) {
-  rw = rw.on('title', new _TextSet(_brandDocTitle(brand.name, brand.tagline)))
-         .on('.school-brand-name', new _TextSet(brand.name))
-         .on('meta[property="og:title"]', new _AttrSet('content', brand.name))
+   المسارات كلّها بلا نسخ ثانٍ ينحرف.
+   `surface` ∈ `home` (الافتراضي) · `teacher` · `student` — راجع `_brandSurfaceFor`:
+   · `home`: كما كان + خانات الاتصال (‏`#tbPhone` …) التي تبقى **مخفيّةً** حتى يصل
+     خطّاف `data-brand-host` من المصدر (يُكتب النصّ فقط؛ الحاوية `<span hidden>` بلا معرّف).
+   · `teacher`/`student`: **بلا `title` ولا وسوم OG** — العميل يملك العنوان هناك، ووسوم
+     OG غائبة أصلاً و`_AttrSet` لا يُنشئ غائباً. الشعار حاوية <div> تُملأ بـ`_LogoInner`. */
+function _brandRewrite(rw, brand, surface) {
+  var sf = surface || 'home';
+  rw = rw.on('.school-brand-name', new _TextSet(brand.name))
+         .on('[data-brand="name"]', new _BrandField(brand.name))
          .on('head', new _BrandHead(brand));
-  if (brand.description) {
-    rw = rw.on('meta[name="description"]', new _AttrSet('content', brand.description))
-           .on('meta[property="og:description"]', new _AttrSet('content', brand.description));
+  if (sf === 'home') {
+    rw = rw.on('title', new _TextSet(_brandDocTitle(brand.name, brand.tagline)))
+           .on('meta[property="og:title"]', new _AttrSet('content', brand.name));
+    if (brand.description) {
+      rw = rw.on('meta[name="description"]', new _AttrSet('content', brand.description))
+             .on('meta[property="og:description"]', new _AttrSet('content', brand.description));
+    }
+    if (brand.logo) {
+      rw = rw.on('#hdrLogo', new _AttrSet('src', brand.logo))
+             .on('#ftLogo', new _AttrSet('src', brand.logo))
+             .on('meta[data-og="img1"]', new _AttrSet('content', brand.logo))
+             .on('meta[name="twitter:image"]', new _AttrSet('content', brand.logo));
+    }
   }
   if (brand.logo) {
-    rw = rw.on('#hdrLogo', new _AttrSet('src', brand.logo))
-           .on('#ftLogo', new _AttrSet('src', brand.logo))
-           .on('meta[data-og="img1"]', new _AttrSet('content', brand.logo))
-           .on('meta[name="twitter:image"]', new _AttrSet('content', brand.logo));
+    rw = rw.on('[data-brand="logo"]', new _BrandField(brand.logo));
+    if (sf === 'teacher') {
+      rw = rw.on('#tchLoginLogo', new _LogoInner(brand.logo, brand.name))
+             .on('#tchNavLogo', new _LogoInner(brand.logo, brand.name));
+    } else if (sf === 'student') {
+      rw = rw.on('#stuLoginLogo', new _LogoInner(brand.logo, brand.name))
+             .on('#stuNavLogo', new _LogoInner(brand.logo, brand.name));
+    }
+  }
+  if (brand.phone) {
+    rw = rw.on('[data-brand="phone"]', new _BrandField(brand.phone))
+           .on('[data-brand-host="phone"]', new _Unhide())
+           .on('[data-brand-href="phone"]', new _AttrSet('href', 'tel:' + brand.phone));
+    if (sf === 'home') rw = rw.on('#tbPhone', new _TextSet(brand.phone)).on('#fcPhone', new _TextSet(brand.phone));
+    /* 🔴 صيغةُ الأيقونة مطابقةٌ حرفياً لما يكتبه `applyBrand` في مستودع الـgas
+       (‏`_stu-js-boot-runtime.html` و`_tcRenderLoginContact`) — وإلّا **قفز النصّ**
+       لحظةَ وصول الحمولة بدل أن يستقرّ. نفسُ علّة `_brandDocTitle` مع `__homeDocTitle`. */
+    if (sf === 'student') rw = rw.on('#stuLoginContact', new _TextSet('📞 ' + brand.phone));
+    if (sf === 'teacher') rw = rw.on('#tchLoginContact', new _TextSet('📞 ' + brand.phone));
+  }
+  if (brand.address) {
+    rw = rw.on('[data-brand="address"]', new _BrandField(brand.address))
+           .on('[data-brand-host="address"]', new _Unhide());
+    if (sf === 'home') rw = rw.on('#tbAddr', new _TextSet(brand.address)).on('#ftAddr', new _TextSet(brand.address));
+    if (sf === 'student') rw = rw.on('#stuLoginAddress', new _TextSet('📍 ' + brand.address));
+    if (sf === 'teacher') rw = rw.on('#tchLoginAddress', new _TextSet('📍 ' + brand.address));
+  }
+  if (brand.whatsapp) {
+    var waDigits = _brandDigits(brand.whatsapp);
+    rw = rw.on('[data-brand="whatsapp"]', new _BrandField(brand.whatsapp))
+           .on('[data-brand-host="whatsapp"]', new _Unhide());
+    if (waDigits) rw = rw.on('[data-brand-href="whatsapp"]', new _AttrSet('href', 'https://wa.me/' + waDigits));
+    if (sf === 'home') rw = rw.on('#tbWa', new _TextSet(brand.whatsapp)).on('#fcWa', new _TextSet(brand.whatsapp));
   }
   /* 🔒 `og:site_name` غائب عن القائمة **عمداً وأبداً** — بندا 68/75: كتابة اسم مدرسة
      فوق اسم الموقع هي سبب خمس رفضات OAuth Branding. */
@@ -2140,10 +2265,20 @@ export default {
       }
     }
 
-    if (isHtml && ghResp.status === 200 && _canonHref) {
-      var _rw = new HTMLRewriter()
-        .on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
-        .on('meta[property="og:url"]', new _AttrSet('content', _canonHref));
+    /* 🟢 2026-09-03: البوّابة صارت **`_canonHref` أو هويةٌ محلولة** — فتُعاد كتابة بوّابتَي
+       الدخول أيضاً حين يُعرَف المستأجر (قرار المالك: الاسم والشعار والهاتف والعنوان على
+       السطوح الثلاثة). canonical/og:url يبقيان مشروطَين بـ`_canonHref` وحده (لا يُحقَنان
+       على بوّابات الدخول — `_canonicalFor` لم يُمَسّ). وكلفةُ تمرير `teacher/index.html`
+       (‏٢ م.ب) عبر HTMLRewriter **تُقاس بعد النشر لا تُفترض**: الأساس المقيس قبله
+       median 1ms/p95 3ms على `/teacher/`، ومعيار التراجع p95 > 30ms أو أيّ `1102`.
+       والحقنُ لا يقع إلّا حين تكون الهوية في كاش الحافة أصلاً (`_brand` غير فارغ). */
+    var _brandOn = !!(_tenantKey && !_newsId && _brand);
+    if (isHtml && ghResp.status === 200 && (_canonHref || _brandOn)) {
+      var _rw = new HTMLRewriter();
+      if (_canonHref) {
+        _rw = _rw.on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
+                 .on('meta[property="og:url"]', new _AttrSet('content', _canonHref));
+      }
 
       /* ── هوية المدرسة في الـHTML الخام (راجع الكتلة الشارحة عند `BRAND_TTL_S`) ──
          🔒 مشروطٌ بـ`_pathSlug` وحده ⇒ الجذر `/` و`/home/index.html` العاري لا يُمَسّان.
@@ -2157,7 +2292,7 @@ export default {
       /* 🔴 `_tenantKey` لا `_pathSlug` (2026-08-14): المستأجر قد يصل بمقطع مسار **أو**
          بمعامل صريح، والثاني هو رابط تطبيق الأندرويد المنشور — راجع `_tenantKeyFrom`. */
       // 🔁 `_tenantKey` و`_brand` محسوبان أعلاه (قبل المُصادِق) — لا تُعاد قراءة الكاش هنا.
-      if (_tenantKey && !_newsId && _brand) _rw = _brandRewrite(_rw, _brand);
+      if (_tenantKey && !_newsId && _brand) _rw = _brandRewrite(_rw, _brand, _brandSurfaceFor(_rawPath));
 
       return _rw.transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
     }

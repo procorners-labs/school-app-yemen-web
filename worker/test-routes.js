@@ -472,8 +472,26 @@ if (tkIdx < 0 || tkEnd <= 1 || uuIdx < 0) {
     '🔴 UUID ناقص محرفاً ⇒ مرفوض (البوّابة شكلية صارمة لا `contains`)'],
    ['/home/index.html', '?school=not-a-school',   '',
     '🔴 slug غير منشور ⇒ لا مفتاح (لا كاش لما لا نخدمه)'],
-   ['/teacher/index.html', '?school=' + EB,       '',
-    '🔴 بوّابة المعلّم ⇒ لا مفتاح مهما حمل المعامل — الحقن لـ`home` وحده'],
+   /* 🟢 **انقلب 2026-09-03 بقرار المالك** (الهوية على السطوح الثلاثة). كان هنا:
+      «بوّابة المعلّم ⇒ لا مفتاح مهما حمل المعامل — الحقن لـ`home` وحده».
+      ولا يُقرأ ذلك ترخيصاً عامّاً: البوّابة الشكلية كما هي (slug منشور أو UUID)،
+      والحالات المعاكسة أدناه تحرس أن الجذر وصفحة المكتبة ما زالا خطّاً أحمر. */
+   ['/teacher/index.html', '?school=' + EB,       EB.toLowerCase(),
+    '🟢 بوّابة المعلّم بمعامل صريح ⇒ مفتاح (رأسُ الدخول يُطلى خادمياً)'],
+   ['/student/index.html', '?school=' + EB,       EB.toLowerCase(),
+    '🟢 بوّابة الطالب بمعامل صريح ⇒ مفتاح'],
+   ['/portal', '?school=' + EB,                   EB.toLowerCase(),
+    '🟢 `/portal` (اسمٌ مستعار لبوّابة الطالب) ⇒ مفتاح'],
+   ['/teacher/login/ibn-khaldoun', '',            'ibn-khaldoun',
+    '🟢 المقطع الثاني في المسار العميق ⇒ مفتاح (‏`/teacher/login/<slug>`)'],
+   ['/student/grades/' + EB, '',                  EB.toLowerCase(),
+    '🟢 والمقطع الثاني يقبل UUID أيضاً'],
+   ['/teacher/login/not-a-school', '',            '',
+    '🔴 ضابط معاكس: slug غير منشور في المقطع الثاني ⇒ لا مفتاح'],
+   ['/teacher/login', '',                         '',
+    '🔴 مقطعٌ واحد = تبويبٌ لا مدرسة ⇒ لا مفتاح (‏`login` ليس مستأجراً)'],
+   ['/teacher/index.html', '?school=../../etc',   '',
+    '🔴 والبوّابة الشكلية تسري على السطوح الجديدة حرفياً'],
    ['/home/schools.html', '?school=' + EB,        '',
     '🔴 الجذر ⇒ لا مفتاح أبداً — هوية الجذر خطّ أحمر (بندا 68/75)'],
    ['/home/news.html',   '?school=' + EB,         '',
@@ -1038,11 +1056,16 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
     'function _AttrSet(a,v){this.attr=a;this.val=v;}\n' +
     'function _TextSet(v){this.val=v;}\n' +
     'function _BrandHead(b){this.brand=b;}\n' +
+    'function _BrandField(v){this.val=v;}\n' +
+    'function _Unhide(){}\n' +
+    'function _LogoInner(u,a){this.url=u;this.alt=a;}\n' +
+    fnSrc('_brandDigits') + '\n' +
     fnSrc('_brandDocTitle') + '\n' + fnSrc('_brandRewrite') + '\n' +
     'function mkRw(sink){ return { on: function(sel, h){ sink.push([sel, h]); return this; } }; }', rwCtx);
   rwCtx.__sink = [];
-  rwCtx.__brand = { name: 'مدارس ابن خلدون الاهلية', tagline: 'ت', description: 'وصف', logo: 'https://lh3.googleusercontent.com/d/X=w400' };
-  vm.runInContext('_brandRewrite(mkRw(__sink), __brand)', rwCtx);
+  rwCtx.__brand = { name: 'مدارس ابن خلدون الاهلية', tagline: 'ت', description: 'وصف', logo: 'https://lh3.googleusercontent.com/d/X=w400',
+                    phone: '+967771234567', address: 'صنعاء — شارع الستين', whatsapp: '+967771234567' };
+  vm.runInContext('_brandRewrite(mkRw(__sink), __brand, "home")', rwCtx);
   var sels = rwCtx.__sink.map(function (p) { return p[0]; });
 
   check(sels.indexOf('meta[property="og:site_name"]') === -1,
@@ -1062,7 +1085,7 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   /* بلا شعار ⇒ صفر محدِّد صورة: `og:image` فارغاً أسوأ من غيابه (نفس علّة `_OgImages`). */
   rwCtx.__sink2 = [];
   rwCtx.__brand2 = { name: 'م', tagline: '', description: '', logo: '' };
-  vm.runInContext('_brandRewrite(mkRw(__sink2), __brand2)', rwCtx);
+  vm.runInContext('_brandRewrite(mkRw(__sink2), __brand2, "home")', rwCtx);
   var sels2 = rwCtx.__sink2.map(function (p) { return p[0]; });
   check(sels2.indexOf('#hdrLogo') === -1 && sels2.indexOf('meta[name="twitter:image"]') === -1,
         '🔴 ضابط معاكس: بلا شعار ⇒ صفر محدِّد صورة (لا `content=""` مُعلَن)');
@@ -1070,6 +1093,74 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
         '🔴 ضابط معاكس: بلا وصف ⇒ لا يُدهَس وصف الصفحة بفراغ');
   check(sels2.indexOf('title') !== -1 && sels2.indexOf('.school-brand-name') !== -1,
         '… والاسم يُحقَن دائماً (هو الحدّ الأدنى الذي جاءت الميزة لأجله)');
+
+  /* ── عقد الخطّافات الموحَّد + الهاتف/العنوان (2026-09-03 — قرار المالك) ──────────
+     🔴 الضابطُ على **الآلية والاتّجاه معاً**: أن يُحقَن الخطّاف حين تكون القيمة، وألّا
+        يُحقَن حين تغيب — لأن `data-brand-host` **يُظهِر حاويةً مخفيّة**، وإظهارُها بقيمةٍ
+        فارغة يعيد بالضبط العلّة التي أُخفيت لأجلها (أيقونةُ هاتفٍ بلا رقم · بند 08-27). */
+  ['[data-brand="name"]', '[data-brand="phone"]', '[data-brand="address"]',
+   '[data-brand="whatsapp"]', '[data-brand="logo"]',
+   '[data-brand-host="phone"]', '[data-brand-host="address"]', '[data-brand-host="whatsapp"]',
+   '[data-brand-href="phone"]', '[data-brand-href="whatsapp"]',
+   '#tbPhone', '#fcPhone', '#tbAddr', '#ftAddr', '#tbWa', '#fcWa'].forEach(function (s) {
+    check(sels.indexOf(s) !== -1, 'يُحقَن الخطّاف `' + s + '`');
+  });
+  var telH = rwCtx.__sink.filter(function (p) { return p[0] === '[data-brand-href="phone"]'; })[0];
+  check(telH && telH[1].val === 'tel:+967771234567', '`tel:` مبنيٌّ من الرقم كما ورد من GAS (بلا إعادة تطبيع)');
+  var waH = rwCtx.__sink.filter(function (p) { return p[0] === '[data-brand-href="whatsapp"]'; })[0];
+  check(waH && waH[1].val === 'https://wa.me/967771234567',
+        '🔴 `wa.me` بالأرقام وحدها — `+` فيه يكسر الرابط صامتاً');
+  ['[data-brand-host="phone"]', '[data-brand-host="address"]', '[data-brand-host="whatsapp"]',
+   '[data-brand="phone"]', '#tbPhone', '#stuLoginContact'].forEach(function (s) {
+    check(sels2.indexOf(s) === -1,
+          '🔴 ضابط معاكس: بلا هاتف/عنوان ⇒ لا `' + s + '` (الحاوية تبقى مخفيّة)');
+  });
+
+  /* ── السطوح الثلاثة: عائلةُ محدِّداتٍ لكلٍّ، والعنوانُ ووسومُ OG لـ`home` وحدها ───── */
+  rwCtx.__sink3 = [];
+  vm.runInContext('_brandRewrite(mkRw(__sink3), __brand, "teacher")', rwCtx);
+  var sels3 = rwCtx.__sink3.map(function (p) { return p[0]; });
+  check(sels3.indexOf('#tchLoginLogo') !== -1 && sels3.indexOf('#tchNavLogo') !== -1,
+        'سطح المعلّم: حاويتا الشعار تُملآن (‏<div> بـ`innerHTML` لا `img[src]`)');
+  check(sels3.indexOf('.school-brand-name') !== -1 && sels3.indexOf('[data-brand="phone"]') !== -1,
+        '… والاسم والخطّافات تعمل على المعلّم أيضاً');
+  check(sels3.indexOf('title') === -1 && sels3.indexOf('meta[property="og:title"]') === -1,
+        '🔴 سطح المعلّم بلا `title` ولا وسوم OG — العميل يملك العنوان، والوسوم غائبة أصلاً و`_AttrSet` لا يُنشئ');
+  check(sels3.indexOf('#hdrLogo') === -1 && sels3.indexOf('#stuLoginLogo') === -1,
+        '🔴 ولا تتسرّب محدِّدات سطحٍ آخر إليه');
+  /* 🟢 خانتا الهاتف/العنوان في رأس المعلّم — أضافتهما جلسةُ `SchoolApp-gas` في المرور
+     نفسِه (لم تكونا موجودتين أصلاً، بخلاف الطالب). ولا يُضافان بعدُ إلى حارس الـHTML
+     المخدوم: `frontend/` مُولَّدٌ من هناك ولن يحملهما حتى تُدمَج دفعتُهم وتُعاد الدورة. */
+  var tchC = rwCtx.__sink3.filter(function (p) { return p[0] === '#tchLoginContact'; })[0];
+  check(tchC && tchC[1].val === '📞 +967771234567',
+        'سطح المعلّم: `#tchLoginContact` بصيغة الطالب نفسِها (وإلّا قفز النصّ عند وصول الحمولة)');
+  check(sels3.indexOf('#tchLoginAddress') !== -1, '… و`#tchLoginAddress` كذلك');
+  rwCtx.__sink4 = [];
+  vm.runInContext('_brandRewrite(mkRw(__sink4), __brand, "student")', rwCtx);
+  var sels4 = rwCtx.__sink4.map(function (p) { return p[0]; });
+  check(sels4.indexOf('#stuLoginContact') !== -1 && sels4.indexOf('#stuLoginAddress') !== -1,
+        'سطح الطالب: خانتا الهاتف والعنوان في شاشة الدخول تُملآن خادمياً');
+  var stuC = rwCtx.__sink4.filter(function (p) { return p[0] === '#stuLoginContact'; })[0];
+  check(stuC && stuC[1].val === '📞 +967771234567',
+        '🔴 بنفس صيغة `applyBrand` في `_stu-js-boot-runtime.html` (وإلّا قفز النصّ عند وصول الحمولة)');
+  check(sels4.indexOf('#stuNavLogo') !== -1 && sels4.indexOf('#tchNavLogo') === -1,
+        '… وشعار الطالب وحده — لا شعار المعلّم');
+  check(sels4.indexOf('#tchLoginContact') === -1 && sels4.indexOf('#tchLoginAddress') === -1,
+        '🔴 ضابط معاكس: خانتا المعلّم لا تظهران على سطح الطالب');
+
+  /* السطح يُشتقّ من المسار الخام: دالّة نقيّة بجدول حالات. */
+  var sfCtx = vm.createContext({ String: String });
+  vm.runInContext(
+    src.slice(rIdx, rEnd) + '\n' + src.slice(fIdx, fEnd) + '\n' + fnSrc('_brandSurfaceFor'), sfCtx);
+  [['/abdaawatmuaz', 'home'], ['/home/index.html', 'home'],
+   ['/teacher/login', 'teacher'], ['/teacher/login/ibn-khaldoun', 'teacher'],
+   ['/teacher/index.html', 'teacher'], ['/student/index.html', 'student'],
+   ['/student/grades/ibn-khaldoun', 'student'], ['/portal', 'student'],
+   ['/home/schools.html', ''], ['/home/news.html', '']].forEach(function (c) {
+    sfCtx.__p = c[0];
+    check(vm.runInContext('_brandSurfaceFor(__p)', sfCtx) === c[1],
+          'سطحُ `' + c[0] + '` = `' + c[1] + '`');
+  });
 
   /* بوّابة المخطّط — القيمة تصل من شيت يحرّره بشر (بند 35: الحذف لا الاستبدال). */
   var uCtx = vm.createContext({ String: String });
@@ -1091,7 +1182,7 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   check(safe(null) === '' && safe(undefined) === '', 'الفراغ/العدم ⇒ سلسلة فارغة بلا استثناء');
 
   /* مفتاح الكاش لا يمكن أن يصير سطحاً مخدوماً: ثلاثة مقاطع ⇒ يرفضه `_schoolSlugFromPath`. */
-  ctx.__k = '/__brand-cache/v1/ibn-khaldoun';
+  ctx.__k = '/__brand-cache/v2/ibn-khaldoun';
   check(vm.runInContext('_schoolSlugFromPath(__k)', ctx) === '',
         '🔒 مسار مفتاح الكاش لا يُقرَأ slug مدرسة (لا يصير سطحاً مخدوماً)');
 
@@ -1765,6 +1856,47 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
         '🔒 ضابطٌ معاكس: **انحرافُ الوثيقة وحدَها** (`off`) ⇒ يُكشف — وهو العطلُ الأصليّ حرفياً');
   check(codeOf(src.replace(/env\.BULKHEAD_MODE\)\s*\|\|\s*'[^']*'/, "env.BULKHEAD_MODE) || 'off'")) !== doc,
         '🔒 ضابطٌ معاكس: انحرافُ **افتراضِ الكود** وحدَه ⇒ يُكشف');
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   الخطّافات في الـHTML **المخدوم** — لا في الوركر (2026-09-03)
+   ═══════════════════════════════════════════════════════════════════════════════
+   🔴 هذا يغلق دَيناً مُعلَناً في `school-app-proxy.js`: كان هذا الملفّ يقرأ مصدرَ الوركر
+      **وحده**، فحذفُ الوسم من `frontend/` غداً يُصمِت الحقنَ ويبقى كلُّ فحصٍ أخضر —
+      «حارسٌ أخضرُ لأنه لم يقِس شيئاً».
+   ⚠️ و`frontend/` **مُولَّدٌ** من `SchoolApp-gas`: فشلُ هذا الحارس يعني أن دفعةً هناك
+      أسقطت وسماً يعتمده الوركر — وهذا بالضبط ما نريد أن نراه أحمرَ لا صامتاً.
+   🔒 والغيابُ الكلّي للملفّ **فشلٌ لا تخطٍّ**: مستودعٌ بلا `frontend/` لا يخدم شيئاً. */
+(function () {
+  console.log('');
+  console.log('الخطّافات في الـHTML المخدوم (‏`frontend/` مُولَّد من مستودع الـgas):');
+  var FE = path.join(__dirname, '..', 'frontend');
+  var SURFACES = [
+    ['home/index.html', ['school-brand-name', 'id="hdrLogo"', 'id="ftLogo"',
+                         'id="tbPhone"', 'id="fcPhone"', 'id="tbAddr"', 'id="ftAddr"',
+                         'id="tbWa"', 'id="fcWa"', '__HOME_BRAND__']],
+    ['teacher/index.html', ['school-brand-name', 'id="tchLoginLogo"', 'id="tchNavLogo"']],
+    ['student/index.html', ['school-brand-name', 'id="stuLoginLogo"', 'id="stuNavLogo"',
+                            'id="stuLoginContact"', 'id="stuLoginAddress"']]
+  ];
+  SURFACES.forEach(function (s) {
+    var html = '';
+    try { html = fs.readFileSync(path.join(FE, s[0]), 'utf8'); } catch (e) { html = ''; }
+    if (!html) {
+      check(false, '🔴 تعذّرت قراءة `frontend/' + s[0] + '` — الحارس أعمى لا نظيف');
+      return;
+    }
+    s[1].forEach(function (hook) {
+      check(html.indexOf(hook) !== -1,
+            '`' + s[0] + '` يحمل `' + hook + '` (يعتمده `_brandRewrite`)');
+    });
+  });
+  /* ضابطٌ معاكس على الحارس نفسه: وسمٌ لا وجود له يجب أن يُقرأ غائباً — وإلّا كانت
+     المطابقةُ سامحةً وكلُّ ما سبق بلا معنى. */
+  var probe = '';
+  try { probe = fs.readFileSync(path.join(FE, 'home', 'index.html'), 'utf8'); } catch (e) { probe = ''; }
+  check(probe && probe.indexOf('id="__no-such-hook__"') === -1,
+        '🔒 ضابط معاكس: وسمٌ غير موجود يُقرأ غائباً (المطابقة ليست سامحة)');
 })();
 
 console.log('');
