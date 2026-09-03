@@ -1888,13 +1888,24 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
   console.log('');
   console.log('الخطّافات في الـHTML المخدوم (‏`frontend/` مُولَّد من مستودع الـgas):');
   var FE = path.join(__dirname, '..', 'frontend');
+  /* 🟢 عائلةُ `data-brand*` وصلت من مستودع الـgas 2026-09-03 (‏`main@8483536` ⇒ دفعةُ
+     `auto: rebuild frontend`) **ومُتحقَّقٌ منها حيّاً**: خانتا الاتصال في الصفحة العامّة
+     تُظهَران فعلاً بالهاتف والعنوان في الـHTML الخام. فصارت الخطّافاتُ مفروضةً لا مأمولة. */
   var SURFACES = [
     ['home/index.html', ['school-brand-name', 'id="hdrLogo"', 'id="ftLogo"',
                          'id="tbPhone"', 'id="fcPhone"', 'id="tbAddr"', 'id="ftAddr"',
-                         'id="tbWa"', 'id="fcWa"', '__HOME_BRAND__']],
-    ['teacher/index.html', ['school-brand-name', 'id="tchLoginLogo"', 'id="tchNavLogo"']],
+                         'id="tbWa"', 'id="fcWa"', '__HOME_BRAND__',
+                         'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
+                         'data-brand-host="phone"', 'data-brand-host="address"']],
+    ['teacher/index.html', ['school-brand-name', 'id="tchLoginLogo"', 'id="tchNavLogo"',
+                            'id="tchLoginContact"', 'id="tchLoginAddress"',
+                            'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
+                            'data-brand-host="phone"', 'data-brand-host="address"',
+                            '__SCHOOL_BRAND__']],
     ['student/index.html', ['school-brand-name', 'id="stuLoginLogo"', 'id="stuNavLogo"',
-                            'id="stuLoginContact"', 'id="stuLoginAddress"']]
+                            'id="stuLoginContact"', 'id="stuLoginAddress"',
+                            'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
+                            '__SCHOOL_BRAND__']]
   ];
   SURFACES.forEach(function (s) {
     var html = '';
