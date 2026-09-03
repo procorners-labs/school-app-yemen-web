@@ -1325,7 +1325,10 @@ window.__homeApplyCachedBrand = function () {
     var host = el.parentNode;
     if (host && host.tagName && host.tagName.toLowerCase() === 'span') { host.hidden = false; host.style.display = ''; }
   }
-  _hContact('tbPhone', b.phone); _hContact('tbAddr', b.address);
+  /* 🔴 نفسُ شكل العرض الذي يكتبه `applyContacts` لاحقاً (‏`phoneDisplay` = بلا `+967`) —
+     وإلّا كتب الطلاءُ المبكّر `+967…` ثمّ دهسته الحمولةُ بالشكل المحلّي، فيقفز النصُّ
+     أمام المستخدم. الشكلُ الدوليّ يبقى في `brand.phone` لمن يحتاجه (‏`tel:`/`wa.me`). */
+  _hContact('tbPhone', String(b.phone || '').replace(/^\+967/, '')); _hContact('tbAddr', b.address);
   /* ── وصل روابط البوّابات الستّ من الهوية المتاحة (2026-08-14) ─────────────────
      العلّة المقيسة: العُقَد `data-portal` تصل من البناء **بلا أيّ معرّف** (رجيكس
      `build-frontend.js` يبتلع أي query)، ولم تكن توصَل إلا بعد رجوع الحمولة —
