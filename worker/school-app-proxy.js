@@ -870,10 +870,12 @@ var BRAND_TTL_S = 21600;
 /* 🔴 مفتاح الكاش على **أصل الطلب نفسه** لا مضيف وهمي: `caches.default` في Workers يشترط
    مفتاحاً داخل النطاق. والمسار ثلاثي المقاطع فيرفضه `_schoolSlugFromPath` (مقطعٌ واحد
    حصراً) ⇒ لا يمكن أن يصير سطحاً مخدوماً بأي حال. */
-/* 🔁 `v2` منذ 2026-09-03: الحمولةُ صارت تحمل الهاتف/العنوان/واتساب (قرار المالك). رفعُ
-   النسخة يُسقط مدخلات `v1` فوراً بدل أن تُخدَم بلا الحقول حتى انقضاء ستّ ساعات. */
+/* 🔁 `v2` منذ 2026-09-03: الحمولةُ صارت تحمل الهاتف/العنوان/واتساب (قرار المالك).
+   🔁 و`v3` في اليوم نفسِه بعد قياسٍ حيّ: الهاتفُ يُطبَّع إلى E.164 (‏`_brandPhone`).
+   **رفعُ النسخة ليس تجميلاً:** مدخلاتُ `v2` تحمل رقماً خاماً، وبلا الرفع تُخدَم ستّ
+   ساعاتٍ برقمٍ يقفز عند طلاء العميل وبرابط `wa.me` باطل. */
 function _brandCacheKey(origin, slug) {
-  return new Request(origin + '/__brand-cache/v2/' + encodeURIComponent(slug), { method: 'GET' });
+  return new Request(origin + '/__brand-cache/v3/' + encodeURIComponent(slug), { method: 'GET' });
 }
 
 async function _brandFromCache(origin, slug) {
@@ -926,9 +928,9 @@ async function _brandRefresh(origin, slug, env) {
       color: String(b.brand.color || ''),
       tagline: String(page.tagline || ''),
       description: String(page.aboutText || ''),
-      phone: _brandText(b.brand.phone, 32),
+      phone: _brandPhone(b.brand.phone),
       address: _brandText(b.brand.address, 200),
-      whatsapp: _brandText(b.brand.whatsapp, 32),
+      whatsapp: _brandPhone(b.brand.whatsapp),
       facebook: _safeHttpUrl(b.brand.facebook),
       instagram: _safeHttpUrl(b.brand.instagram),
       youtube: _safeHttpUrl(b.brand.youtube),
@@ -1169,6 +1171,22 @@ function _brandText(v, max) {
 
 /** أرقام فقط — لرابط `wa.me/<digits>` (‏`+967 7x…` ⇒ `9677x…`). */
 function _brandDigits(v) { return String(v || '').replace(/\D/g, ''); }
+
+/* 🔴 **تطبيعٌ إلى E.164 — نسخةٌ ثالثة بالضرورة، وتطابقُها الحرفيُّ إلزاميّ.**
+   قِيس حيّاً 2026-09-03 بعد أوّل نشر: `getHomePageBundle.brand.phone` يصل **خاماً من
+   عمود الشيت** (‏`775189922`)، بينما `getTeacherSchoolBrand`/`getStudentSchoolBrand`
+   تُطبّعانه في `_Tenant.js` إلى `+967775189922`. والأثرُ عطلان لا واحد:
+   ① **النصُّ يقفز** — الخادمُ يكتب `775189922` ثمّ يعيد العميلُ طلاءه `+967775189922`
+      بعد ثوانٍ. نفسُ علّةِ `_brandDocTitle` مع `__homeDocTitle` حرفياً.
+   ② 🔴 **ورابطُ `wa.me` يصير باطلاً** — يشترط الرقمَ الدوليّ كاملاً، و`wa.me/775189922`
+      لا يفتح محادثةً أصلاً. عطلٌ صامتٌ يظهر للمستخدم لا في أيّ سجلّ.
+   المنطقُ مطابقٌ لـ`teacher/_Tenant.js:502-503` في مستودع الـgas. */
+function _brandPhone(v) {
+  var s = _brandText(v, 32).replace(/[\s()-]/g, '');
+  if (!s) return '';
+  if (s.charAt(0) === '+') return s;
+  return '+967' + s.replace(/^0+/, '');
+}
 
 /* ── عقد الخطّافات الموحَّد للسطوح الثلاثة (2026-09-03) ────────────────────────
    محدِّدٌ واحد يعمل على أيّ صفحة بدل محدِّدٍ لكلّ صفحة:
