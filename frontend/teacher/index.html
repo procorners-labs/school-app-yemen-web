@@ -436,6 +436,13 @@
       opacity:.9; animation:loginTitleFlow 10s ease-in-out infinite reverse;
     }
 
+    /* بياناتُ تواصل المدرسة تحت العنوان — مخفيّةٌ بـ`hidden` حتى تُملأ من الهوية. */
+    .login-contact {
+      font-size:.78rem; color:rgba(255,255,255,.78); margin-top:4px; direction:ltr; unicode-bidi:plaintext;
+    }
+    .login-contact a { color:inherit; text-decoration:none; }
+    .login-contact a:hover { text-decoration:underline; }
+
     .login-body { padding:20px 32px 22px; }
     .login-welcome {
       text-align:center; color:rgba(255,255,255,.85);
@@ -2488,13 +2495,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <div class="login-badge-ring" aria-hidden="true"></div>
         <div class="login-badge-orbit o1" aria-hidden="true"><span class="login-sparkle"></span></div>
         <div class="login-badge-orbit o2" aria-hidden="true"><span class="login-sparkle"></span></div>
-        <div class="login-icon-wrap brand-mark-fallback" id="tchLoginLogo"></div>
+        <div class="login-icon-wrap brand-mark-fallback" id="tchLoginLogo" data-brand="logo"></div>
       </div>
       <!-- 🔴 نصٌّ محايد لا اسمُ المنتج: هذه الخانة **هوية المدرسة**، واسمُ المنتج يعيش في
            <title> وفي ترويسة التنقّل («منصة المعلمين»). كتابةُ «يمن سكولز» هنا تجعل
            الافتراضَ يبدو اسمَ مدرسةٍ حقيقية فلا يُميَّز عن العطل (بند 175). -->
-      <div class="login-school-name school-brand-name">المدرسة</div>
+      <div data-brand="name" class="login-school-name school-brand-name">المدرسة</div>
       <div class="login-subtitle">منصة المعلمين الإلكترونية</div>
+      <!-- 📞 بياناتُ تواصل المدرسة من السجلّ المركزيّ (قرار مالك 2026-09-03) — تُملأ من
+           `applyBrand` وتبقى مخفيّةً حين لا قيمة. `data-brand` خطّافٌ ثابت للوسيط. -->
+      <div class="login-contact" id="tchLoginContact" data-brand="phone" data-brand-host="phone" hidden></div>
+      <div class="login-contact" id="tchLoginAddress" data-brand="address" data-brand-host="address" hidden></div>
     </div>
     <!-- 🔴 شارة المنصّة أُزيلت من شاشة الدخول بقرار مالك (2026-08-06). موضعها
          الآن **المطبوعات وحدها** عبر `PRINT_BRAND_NOTE` — شاشة الدخول تبقى لاسم
@@ -2607,9 +2618,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
       <!-- ✅ زر المدرسة – تم إصلاح الوسم من </a> إلى </button> -->
       <button type="button" class="nav-brand" onclick="showSection('dashboard')" title="العودة للوحة التحكم">
-        <div class="nav-brand-icon brand-mark-fallback" id="tchNavLogo"></div>
+        <div class="nav-brand-icon brand-mark-fallback" id="tchNavLogo" data-brand="logo"></div>
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
-          <div class="nav-brand-text school-brand-name" title="المدرسة">المدرسة</div>
+          <div class="nav-brand-text school-brand-name" title="المدرسة" data-brand="name">المدرسة</div>
           <div class="nav-brand-sub">منصة المعلمين</div>
         </div>
       </button>
@@ -3722,8 +3733,13 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   /* هوية المدرسة ديناميكيًا (اسم/شعار حسب schoolId) — يطبّق على كل .school-brand-name
      (تستخدمها دوال الطباعة/الشهادات/الكشوفات) والشعارات وعنوان الصفحة */
   (function () {
-    var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
-              : (window.SCHOOL_ID || '');
+    /* 🟢 هويةٌ يحقنها الوسيط في `<head>` على السطح الثابت (`window.__SCHOOL_BRAND__` —
+       عقدٌ مع جلسة الوركر 2026-09-03): مصدرٌ أوّل للرسم وللمعرّف القانونيّ، ونداءُ
+       `getTeacherSchoolBrand` يبقى مصدرَ التحديث. بلا اسمٍ ⇒ تُعامَل غياباً (بند 191). */
+    var _tcInj = (window.__SCHOOL_BRAND__ && window.__SCHOOL_BRAND__.name) ? window.__SCHOOL_BRAND__ : null;
+    var sid = (_tcInj && _tcInj.schoolId) ? String(_tcInj.schoolId)
+              : ((typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID
+              : (window.SCHOOL_ID || ''));
     // sid فارغ = رابط بلا معرّف مدرسة: getTeacherSchoolBrand('') تحلّه ديناميكياً لصفّ
     // المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
     var _tcBrandCacheKey = 'tcBrand_' + sid;
@@ -3859,6 +3875,26 @@ input, select, textarea, .form-control, .form-select, .grade-input {
      * مكان اسم المدرسة، ويبقى كذلك بعد تحديث الصفحة لأن الكاش يتخطّى النداء أصلاً.
      * والشرطُ **داخل** الدالّة لا عند مستدعيها — لها أكثر من مستدعٍ (بند 14).
      */
+    function _tcRenderLoginContact(b) {
+      var ph = document.getElementById('tchLoginContact');
+      var ad = document.getElementById('tchLoginAddress');
+      if (ph) {
+        while (ph.firstChild) ph.removeChild(ph.firstChild);
+        var phone = (b && b.phone) ? String(b.phone).trim() : '';
+        if (phone) {
+          var a = document.createElement('a');
+          a.href = 'tel:' + phone.replace(/[^\d+]/g, '');
+          a.textContent = '📞 ' + phone;
+          ph.appendChild(a);
+          ph.hidden = false;
+        } else { ph.hidden = true; }
+      }
+      if (ad) {
+        var addr = (b && b.address) ? String(b.address).trim() : '';
+        ad.textContent = addr ? ('📍 ' + addr) : '';
+        ad.hidden = !addr;
+      }
+    }
     function applyBrand(b, persist) {
       if (!b) return;
       window._schoolBrand = b;
@@ -3888,6 +3924,10 @@ input, select, textarea, .form-control, .form-select, .grade-input {
            الرابط من `window._schoolBrand` (‏`_js-profile-attendance.html::att_schoolName`
            و`att_schoolPhone`) — فصفرُ هويةِ مالكٍ في الترميز، والحلُّ غيرُ مشروط. */
       }
+      /* 📞 هاتفُ المدرسة وعنوانُها على شاشة الدخول (قرار مالك 2026-09-03) — من حمولة
+         الهوية نفسها (السجلّ المركزيّ)، بلا أيّ قيمةٍ ثابتة: الغيابُ = إخفاء. النصُّ بـ
+         `textContent` والرابطُ بـ`createElement` لا `innerHTML` (بند 35). */
+      _tcRenderLoginContact(b);
       if (b.logo) {
         // نفس الجلبة تغذّي شعار أغلفة الأخبار مبكراً — كان يُجلب فقط عند فتح
         // صفحة الأخبار فيغيب عن أول معاينة/مشاركة قبل اكتمال ذلك النداء.
@@ -3920,6 +3960,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     }
     // بوّابة الكاش الدافئ: كاش أحدث من TTL ⇒ **صفر نداء خادمي** عند الإقلاع (الهوية مطبَّقة
     // فعلاً أعلاه من `_tcCachedBrand`). بارد/غائب ⇒ نداء واحد. نفس بنية م1 في student حرفياً.
+    // الهويةُ المحقونة من الوسيط تُرسَم فوق الكاش (أحدثُ منه) **بلا تخزين** — التخزينُ للخادم وحده.
+    if (_tcInj) { try { applyBrand(_tcInj, false); } catch (eInj) {} }
     var _tcBrandWarm = !!(_tcCachedBrand && _tcBrandSavedAt &&
                           (Date.now() - _tcBrandSavedAt) < TC_BRAND_TTL_MS);
     if (!_tcBrandWarm) {

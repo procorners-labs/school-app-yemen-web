@@ -2225,11 +2225,13 @@ a { color: var(--pr); text-decoration: none; }
       <div class="login-badge-ring" aria-hidden="true"></div>
       <div class="login-badge-orbit o1" aria-hidden="true"><span class="login-sparkle"></span></div>
       <div class="login-badge-orbit o2" aria-hidden="true"><span class="login-sparkle"></span></div>
-      <div class="login-logo brand-mark-fallback" id="stuLoginLogo"></div>
+      <div class="login-logo brand-mark-fallback" id="stuLoginLogo" data-brand="logo"></div>
     </div>
     <h1>منصة الطالب</h1>
-    <!-- 🔴 نصٌّ محايد لا اسمُ المنتج — هذه خانةُ هوية المدرسة (بند 175). -->
-    <div class="subtitle school-brand-name">المدرسة</div>
+    <!-- 🔴 نصٌّ محايد لا اسمُ المنتج — هذه خانةُ هوية المدرسة (بند 175).
+         `data-brand` خطّافٌ ثابت للسطوح الثلاثة (2026-09-03): يعيد الوسيطُ كتابةَ الهوية
+         بعائلة محدِّدٍ واحدة `[data-brand=…]` بدل محدِّدٍ لكل صفحة. المحدِّداتُ القديمة باقية. -->
+    <div data-brand="name" class="subtitle school-brand-name">المدرسة</div>
     <p class="login-welcome-tagline" id="stuLoginWelcomeText"></p>
 
     <div class="login-err" id="loginErr"></div>
@@ -2248,8 +2250,8 @@ a { color: var(--pr); text-decoration: none; }
     <button class="btn-primary" id="loginBtn" onclick="doLogin()">تسجيل الدخول 🚪</button>
     <div id="biomLoginBtnWrap"></div>
 
-    <div style="text-align:center; margin-top:8px; font-size:11px; color:var(--muted);" id="stuLoginContact"></div>
-    <div id="stuLoginAddress" style="text-align:center;font-size:11px;color:var(--muted);margin-top:2px;"></div>
+    <div style="text-align:center; margin-top:8px; font-size:11px; color:var(--muted);" id="stuLoginContact" data-brand="phone"></div>
+    <div id="stuLoginAddress" style="text-align:center;font-size:11px;color:var(--muted);margin-top:2px;" data-brand="address"></div>
     <div id="stuLoginSocial" class="psd-social" style="justify-content:center;margin-top:5px;"></div>
 
     <!-- ✅ زر العودة للموقع الرئيسي العام — href الثابت احتياط أولي فقط؛ يُصحَّح فوراً
@@ -2400,10 +2402,10 @@ a { color: var(--pr); text-decoration: none; }
          `_stu-js-shell.html::_stuRenderClassMeta` كما هو بلا تغيير. حذفُهما كان سيكسر
          `_stuRenderClassMeta` و`refreshStudentSiblings` معاً بصمت. -->
     <div class="nav-brand">
-      <div class="nav-brand-icon brand-mark-fallback" id="stuNavLogo"></div>
+      <div class="nav-brand-icon brand-mark-fallback" id="stuNavLogo" data-brand="logo"></div>
       <div class="info">
         <!-- نصٌّ محايد لا اسمُ المنتج — خانةُ هوية المدرسة (بند 175). -->
-        <div class="name school-brand-name" title="المدرسة">المدرسة</div>
+        <div class="name school-brand-name" title="المدرسة" data-brand="name">المدرسة</div>
         <div class="sub">منصة الطالب</div>
       </div>
     </div>
@@ -2829,6 +2831,11 @@ a { color: var(--pr); text-decoration: none; }
      - تحميل كسول، كاش متصفح، معالجة أخطاء شاملة
 ═══════════════════════════════════════════════════════════════ -->
 <script>
+  /* 🔴 معرّفُ المدرسة من الخادم (2026-09-03) — نظيرُ `Teacher Dashboard.html`:
+     `_stuServe.js` يضبط `t.schoolId` من `?school=` وكان هذا القالبُ لا يقرؤه إطلاقاً
+     (متغيّرٌ ميّت) ⇒ `<title>` يحترم المعامل والرأسُ لا. على السطح الثابت يستبدله
+     البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
+  var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -8982,7 +8989,16 @@ function initLazyImages() {
 (function () {
   // window.SCHOOL_ID فارغ = رابط بلا معرّف مدرسة: getStudentSchoolBrand('') تحلّه ديناميكياً
   // لصفّ المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
-  var _stBrandCacheKey = 'stBrand_' + (window.SCHOOL_ID || '');
+  /* 🔴 مصدرُ معرّف الهوية (2026-09-03): على السطح الخام `/gas/student?school=X` كان
+     `window.SCHOOL_ID` غيرَ مضبوطٍ فيسقط الرأسُ على مدرسة ملفّ النشر بينما `<title>`
+     يحترم المعامل. `SERVER_SCHOOL_ID` يُحقَن في `Student Portal.html` من `_stuServe.js`،
+     وعلى السطح الثابت يستبدله البناءُ بـ`(window.SCHOOL_ID || '')` فلا يتغيّر شيء هناك.
+     ⚠️ عزلُ الجلسة أعلاه يبقى على معامل الاستعلام وحده — لا يُمَسّ. */
+  var _stInj = (window.__SCHOOL_BRAND__ && window.__SCHOOL_BRAND__.name) ? window.__SCHOOL_BRAND__ : null;
+  var _stBrandSid = (_stInj && _stInj.schoolId) ? String(_stInj.schoolId)
+                    : ((typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
+                    ? SERVER_SCHOOL_ID : (window.SCHOOL_ID || ''));
+  var _stBrandCacheKey = 'stBrand_' + _stBrandSid;
   // م1: كاش دافئ يتخطّى نداء getStudentSchoolBrand الإقلاعي بالكامل (كان 758-919
   // نداء/24س في كل فتح صفحة رغم أن هوية المدرسة اسم/شعار/لون تتغيّر نادراً) — 6 ساعات
   // كافية لتقليم الغالبية العظمى من النداءات مع تحديث خلال نفس اليوم الدراسي.
@@ -9195,10 +9211,12 @@ function initLazyImages() {
           try { window.__stBrandLastError = (res && res.code) || 'EMPTY'; } catch (eBE) {}
         })
         .withFailureHandler(function () { try { window.__stBrandLastError = 'NETWORK'; } catch (eBF) {} })
-        .getStudentSchoolBrand(window.SCHOOL_ID);
+        .getStudentSchoolBrand(_stBrandSid);
     } catch (e) {}
   }
   // م1: كاش دافئ (الهوية عُرضت فعلاً أعلاه من _stCachedBrand) ⇒ تخطَّ النداء الخادمي كلياً.
+  // الهويةُ المحقونة من الوسيط (`__SCHOOL_BRAND__`) تُرسَم فوق الكاش **بلا تخزين** — عقد 2026-09-03.
+  if (_stInj) { try { applyBrand(_stInj, false); _stApplyReturnHref(_stInj.slug); } catch (eInj) {} }
   var _stBrandWarm = !!(_stCachedBrand && _stBrandSavedAt && (Date.now() - _stBrandSavedAt) < STU_BRAND_TTL_MS);
   if (!_stBrandWarm) {
     if (document.readyState !== 'loading') run();

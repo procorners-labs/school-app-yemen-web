@@ -1316,6 +1316,16 @@ window.__homeApplyCachedBrand = function () {
   _hMeta('meta[name="twitter:image"]', window.__homeSafeLogo(b.logo));
   /* 🔒 `og:site_name` غائب عن القائمة أعلاه **عمداً** — بندا 68/75. */
   window.__homeApplyBrandDom(b.name, b.logo || '');
+  /* 📞 الهاتفُ والعنوان من الحمولة المبكّرة أيضاً (2026-09-03) — وإلّا ظهر الاسمُ فوراً
+     والهاتفُ بعد ثوانٍ حين تصل حزمةُ الصفحة. `_homeContactField` تعيش في كتلةٍ لاحقة فلا
+     تُستدعى هنا؛ والغيابُ = لا شيء (الحاويةُ تبقى `hidden`). */
+  function _hContact(id, val) {
+    var el = d.getElementById(id); if (!el || !val) return;
+    el.textContent = String(val);
+    var host = el.parentNode;
+    if (host && host.tagName && host.tagName.toLowerCase() === 'span') { host.hidden = false; host.style.display = ''; }
+  }
+  _hContact('tbPhone', b.phone); _hContact('tbAddr', b.address);
   /* ── وصل روابط البوّابات الستّ من الهوية المتاحة (2026-08-14) ─────────────────
      العلّة المقيسة: العُقَد `data-portal` تصل من البناء **بلا أيّ معرّف** (رجيكس
      `build-frontend.js` يبتلع أي query)، ولم تكن توصَل إلا بعد رجوع الحمولة —
@@ -1350,8 +1360,8 @@ window.__homeApplyCachedBrand();
              المالك ورقمها نصّاً صريحاً، وهذا الملفّ يُخدَم من نفس البايتات على `/<slug>`
              لكلّ مدرسة ⇒ عنوانُ مدرسةٍ ورقمُها يُعرَضان على صفحة مدرسةٍ أخرى حتى تصل
              الحمولة، ودائماً إن أخفقت. `_homeContactField` وحدها تملؤها وتُظهِرها. -->
-        <span hidden><i class="fas fa-map-marker-alt"></i> <span id="tbAddr"></span></span>
-        <span hidden><i class="fas fa-phone-alt"></i> <span id="tbPhone"></span></span>
+        <span hidden data-brand-host="address"><i class="fas fa-map-marker-alt"></i> <span id="tbAddr" data-brand="address"></span></span>
+        <span hidden data-brand-host="phone"><i class="fas fa-phone-alt"></i> <span id="tbPhone" data-brand="phone"></span></span>
         <span hidden><i class="fab fa-whatsapp"></i> <span id="tbWa"></span></span>
       </div>
       <div class="tb-socials">
@@ -1391,10 +1401,11 @@ window.__homeApplyCachedBrand();
           <!-- الافتراضي شعار **المنتج**؛ applyBrandText يستبدله بشعار المدرسة متى وصل من
                الشيت. رابط مطلق لا ../assets — الصفحة تُخدَم أيضاً من GAS /exec حيث المسار
                النسبي يُرجِع 404 و<img> مكسورة تعرض أيقونة عطل. -->
-          <img id="hdrLogo" src="https://yemenschoolz.com/assets/yemenschoolz-mark.png" alt="يمن سكولز" loading="eager" onerror="this.style.display='none'">
+          <img data-brand="logo" id="hdrLogo" src="https://yemenschoolz.com/assets/yemenschoolz-mark.png" alt="يمن سكولز" loading="eager" onerror="this.style.display='none'">
         </div>
         <div>
-          <div class="logo-text-ar school-brand-name">يمن سكولز</div>
+          <!-- `data-brand` خطّافٌ ثابت للسطوح الثلاثة (2026-09-03) — المحدِّداتُ القديمة باقية. -->
+          <div data-brand="name" class="logo-text-ar school-brand-name">يمن سكولز</div>
           <div class="logo-text-en" id="hdrNameEn">Yemen Schoolz</div>
         </div>
       </a>
