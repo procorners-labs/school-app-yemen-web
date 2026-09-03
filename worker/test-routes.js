@@ -1695,6 +1695,78 @@ console.log('كاشُ الحافّة — موضعُ الاعتراض (بنيوي
         '🔒 التخزين مشروطٌ بـ`good` أيضاً — نقلٌ فاشل أو HTML لا يُخزَّن');
 })();
 
+/* ── 🔴 `BULKHEAD_MODE` — تطابقُ الإعدادِ المنشور مع الكود ومع الوثيقة ────────────
+   **لماذا هنا لا في مستودع الـGAS:** وثائقُ `SchoolApp-gas` قالت ثلاثَ مرّات
+   «`BULKHEAD_MODE = off` معطَّلٌ عمداً · التفعيل محظور»، **والقيمةُ لم تكن `off` قطّ**
+   (قِيس بالأثر 2026-09-03 · `gas#1410`). وأيُّ حارسٍ يُكتب هناك **لا يقرأ**
+   `SchoolApp/wrangler.jsonc` فيقارن نصّاً بنصّ ⇒ **أجوفُ بالتعريف**.
+
+   🔴 **والمقارنةُ ثلاثيّةٌ عمداً، ومصدرُ الحقيقة `wrangler.jsonc` وحده** (هو ما يُنشَر):
+   ① القيمةُ المضبوطة **وضعٌ يتفرّع إليه الكودُ فعلاً** — والمجموعةُ **تُشتقّ من المصدر**
+      لا تُكتب هنا، وإلّا تقادمت كما تقادم كلُّ ثابتٍ منسوخ.
+   ② **افتراضُ الكود** (`|| 'on'`) = **الافتراضُ المُعلَن في `CLAUDE.md`**.
+   ③ **القيمةُ المضبوطة = المُعلَنة في `CLAUDE.md`** — وهي العلّةُ التي وقعت.
+   ولكلِّ فحصٍ **ضابطُه المعاكس** أدناه: بلاها يمرّ القسمُ أخضرَ لأنه لم يقِس شيئاً. */
+console.log('');
+console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود والوثيقة:');
+(function () {
+  var WR = path.join(__dirname, '..', 'wrangler.jsonc');
+  var MD = path.join(__dirname, '..', 'CLAUDE.md');
+  if (!fs.existsSync(WR) || !fs.existsSync(MD)) {
+    check(false, '🔴 `wrangler.jsonc` و`CLAUDE.md` موجودان — غيابُ أحدهما فشلٌ لا تخطٍّ صامت');
+    return;
+  }
+  var wrSrc = fs.readFileSync(WR, 'utf8');
+  var mdSrc = fs.readFileSync(MD, 'utf8');
+
+  /* القارئات الثلاث دوالُّ نقيّة — يُعاد استعمالها في الضوابط المعاكسة بنصٍّ مطفور. */
+  function cfgOf(s)  { var m = /"BULKHEAD_MODE"\s*:\s*"([^"]*)"/.exec(s); return m && m[1]; }
+  function codeOf(s) { var m = /env\.BULKHEAD_MODE\)\s*\|\|\s*'([^']*)'/.exec(s); return m && m[1]; }
+  function docOf(s)  { var m = /env\.BULKHEAD_MODE`\s*∈\s*`([^`]*)`\s*\(الافتراضي\)/.exec(s); return m && m[1]; }
+  /* 🔴 المجموعةُ المشروعة **مُشتقّةٌ من فروع المصدر** (`mode === 'x'` · `mode !== 'x'`)
+     زائداً افتراضَ الكود — فلا تُكتب قائمةٌ تتقادم. */
+  function modesOf(s) {
+    var set = {}, re = /\b_?(?:bh)?[Mm]ode\s*[!=]==\s*'([a-z]+)'/g, m;
+    while ((m = re.exec(s)) !== null) set[m[1]] = true;
+    var d = codeOf(s); if (d) set[d] = true;
+    return Object.keys(set).sort();
+  }
+
+  var cfg = cfgOf(wrSrc), code = codeOf(src), doc = docOf(mdSrc), modes = modesOf(src);
+
+  check(!!cfg,  '‏`vars.BULKHEAD_MODE` مقروءةٌ من `wrangler.jsonc` (لا يُنسَخ رقمُ سطر)');
+  check(!!code, 'افتراضُ الكود مقروءٌ من `school-app-proxy.js`');
+  check(!!doc,  'الافتراضُ المُعلَن مقروءٌ من `CLAUDE.md`');
+  check(modes.length >= 3, 'الأوضاعُ المشروعة **مُشتقّةٌ من فروع المصدر** لا مكتوبةً هنا — ' + modes.join('/'));
+
+  check(!!cfg && modes.indexOf(cfg) > -1,
+        '① القيمةُ المضبوطة وضعٌ **يتفرّع إليه الكود فعلاً** — خطأٌ مطبعيٌّ يسقط إلى الافتراض بصمت');
+  check(!!code && code === doc,
+        '② افتراضُ الكود = الافتراضُ المُعلَن في `CLAUDE.md`');
+  check(!!cfg && cfg === doc,
+        '🔴 ③ الإعدادُ المنشور = ما تُعلنه الوثيقة — وهي العلّةُ التي وقعت فعلاً');
+
+  /* ── الضوابطُ المعاكسة: يُطفَر النصُّ **في الذاكرة** ويجب أن ينقلب الحكم ────────
+     🔴 وشرطُ `mut !== src` في كلٍّ **مقصودٌ ويحمل نصفَ قيمتها**: طفرةٌ لا تُغيّر شيئاً
+     تُبلِغ نجاحاً كاذباً. وقع هذا مقيساً في المستودع الشقيق 2026-09-03 — طفرةٌ بـ`\n`
+     على ملفٍّ CRLF **لم تقع أصلاً**، فخرج الحارسُ بـ`EXIT=0` وقُرئ «أجوف» والاستنتاجُ
+     معكوس. ⇒ **أثبت أن الطفرةَ وقعت قبل أن تقرأ أثرَها.**
+     ⚠️ وأثرُه الجانبيُّ متوقَّعٌ لا عطل: حين يحمل القرصُ الانتهاكَ **فعلاً**، تحمرّ هذه
+     السطورُ أيضاً لأن الطفرةَ تصير بلا أثر — والحارسُ أحمرُ أصلاً بالفحص الحقيقيّ. */
+  var mutCfg  = wrSrc.replace(/"BULKHEAD_MODE"\s*:\s*"[^"]*"/, '"BULKHEAD_MODE": "shadow"');
+  var mutTypo = wrSrc.replace(/"BULKHEAD_MODE"\s*:\s*"[^"]*"/, '"BULKHEAD_MODE": "ON"');
+  var mutDoc  = mdSrc.replace(/env\.BULKHEAD_MODE`\s*∈\s*`[^`]*`\s*\(الافتراضي\)/,
+                              'env.BULKHEAD_MODE` ∈ `off` (الافتراضي)');
+  check(mutCfg !== wrSrc && cfgOf(mutCfg) !== doc,
+        '🔒 ضابطٌ معاكس: قيمةٌ مضبوطةٌ تخالف الوثيقة (`shadow`) ⇒ يُكشف');
+  check(mutTypo !== wrSrc && modes.indexOf(cfgOf(mutTypo)) === -1,
+        '🔒 ضابطٌ معاكس: خطأٌ مطبعيٌّ في الحالة (`ON`) ⇒ يُكشف — والمطابقةُ حسّاسةٌ عمداً');
+  check(mutDoc !== mdSrc && docOf(mutDoc) !== cfg,
+        '🔒 ضابطٌ معاكس: **انحرافُ الوثيقة وحدَها** (`off`) ⇒ يُكشف — وهو العطلُ الأصليّ حرفياً');
+  check(codeOf(src.replace(/env\.BULKHEAD_MODE\)\s*\|\|\s*'[^']*'/, "env.BULKHEAD_MODE) || 'off'")) !== doc,
+        '🔒 ضابطٌ معاكس: انحرافُ **افتراضِ الكود** وحدَه ⇒ يُكشف');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
