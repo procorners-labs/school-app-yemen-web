@@ -1,0 +1,112 @@
+# إعداد gitleaks لهذا المستودع — يُستهلَك من .github/workflows/secret-scan.yml
+#
+# 🔴 لماذا لا تكفي القواعد الافتراضية: قِيس 2026-08-29 بضابطٍ معاكس (طُعومٌ مصطنعة
+# باطلة بإنتروبيا واقعية) أن الافتراضيّ يلتقط ٣ من ٧ فقط، و**يُفلت بالتحديد**:
+#   ❌ sk-ant-api03-…      مفتاح Anthropic
+#   ❌ sk-proj-… / sk-…    مفتاح OpenAI — تسرّب فعلاً ٣ مرّات (2026-07-14)
+#   ❌ EAAG…               رمز Meta/واتساب — تسرّب فعلاً، وما زال في تاريخ git
+#   ❌ storePassword=…     كلمة سرّ keystore
+# أي أن الحارس الافتراضيّ كان سيكون **أعمى عن كل عائلةٍ سُجّل تسريبُها هنا**.
+#
+# ✅ والملتقَط افتراضياً ولا يُكرَّر هنا: private-key · github-pat · slack-bot-token ·
+#    gcp-api-key · generic-api-key (يلتقط توكن Cloudflare وسرّ الوسيط).
+#
+# 🔴 والملفُّ نسخةٌ حرفية من osama-workspace-root — لا يُعدَّل هنا وحده: أيُّ تحسينٍ
+#    يُطبَّق على النسخ كلِّها وإلّا تباعدت صامتةً (فئة بند 83-ب).
+
+title = "school-app-yemen-web secret rules"
+
+[extend]
+useDefault = true
+
+# ── Anthropic ─────────────────────────────────────────────────────────────
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key (sk-ant-…)"
+regex = '''sk-ant-(?:api|admin|sid)[0-9]{2}-[A-Za-z0-9_\-]{80,140}'''
+keywords = ["sk-ant-"]
+entropy = 3.5
+
+[[rules]]
+id = "anthropic-oauth-token"
+description = "Claude Code OAuth token (sk-ant-oat…)"
+regex = '''sk-ant-oat[0-9]{2}-[A-Za-z0-9_\-]{40,140}'''
+keywords = ["sk-ant-oat"]
+
+# ── OpenAI ────────────────────────────────────────────────────────────────
+[[rules]]
+id = "openai-project-key"
+description = "OpenAI project/service key (sk-proj-… · sk-svcacct-…)"
+regex = '''sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{40,200}'''
+keywords = ["sk-proj-", "sk-svcacct-", "sk-admin-"]
+entropy = 3.5
+
+[[rules]]
+id = "openai-legacy-key"
+description = "OpenAI legacy key (sk-…48)"
+regex = '''\bsk-[A-Za-z0-9]{48}\b'''
+keywords = ["sk-"]
+entropy = 3.5
+
+# ── Meta / WhatsApp ───────────────────────────────────────────────────────
+[[rules]]
+id = "meta-access-token"
+description = "Meta/Facebook/WhatsApp access token (EAA…)"
+regex = '''\bEAA[A-Za-z0-9]{60,}\b'''
+keywords = ["eaa"]
+entropy = 3.5
+
+# ── أسرار توقيع أندرويد ───────────────────────────────────────────────────
+[[rules]]
+id = "android-keystore-password"
+description = "Android keystore/key password assignment"
+regex = '''(?i)\b(store|key)Password\s*[=:]\s*["']?([^"'\s$#{][^"'\s]{5,})'''
+keywords = ["storepassword", "keypassword"]
+
+  # ⚠️ ضُبطت هذه القائمة بقياسٍ لا بتوقّع: أوّل تشغيلٍ للقاعدة على المستودعات الحقيقية
+  # أعطى **إيجابين كاذبين** في `school-app-yemen` — وكلاهما ممارسةٌ صحيحة:
+  #   · app/build.gradle.kts:49  →  storePassword = keystoreProps["storePassword"]
+  #   · build-release.ps1:34     →  نصُّ مساعدةٍ يطبع مثالاً `storePassword=123456`
+  # وحارسٌ يصرخ كذباً يُتجاهَل، فيسقط عملياً.
+  [rules.allowlist]
+  description = "ليست سرّاً: مرجعُ متغيّر/دالّة · نائبٌ صريح · قيمةُ مثالٍ تافهة"
+  # 🔴 إلزاميّ ولا يُحذف: gitleaks يطابق قائمة الاستثناء على **قيمة السرّ** وحدها
+  # افتراضياً (regexTarget = "secret")، وأنماطُنا تحتاج السطر كاملاً لأنها تُعرَّف
+  # بما **يسبق** القيمة (`storePassword =`). قِيس 2026-08-29: بلا هذا السطر ظلّ
+  # `keystoreProps["storePassword"]` يُرصَد إيجاباً كاذباً رغم وجود النمط في القائمة.
+  regexTarget = "line"
+  regexes = [
+    # ① نائبٌ أو متغيّر بيئة أو قيمةُ مثالٍ معروفة التفاهة
+    '''(?i)(store|key)Password\s*[=:]\s*["']?(\$|%|<|\{\{|xxx+|placeholder|changeme|your[_-]?|example|123456|1234567?8?9?0?|000000|abc123|password["'\s]|secret["'\s])''',
+    # ② قراءةٌ من خريطةٍ أو دالّة — لا قيمةَ حرفية: keystoreProps[…] · props.getProperty(…) · System.getenv(…)
+    '''(?i)(store|key)Password\s*[=:]\s*[A-Za-z_][A-Za-z0-9_.]*\s*[\[\(]''',
+  ]
+
+# ── سرّ الوسيط ────────────────────────────────────────────────────────────
+# ‏~/.claude/egress/relay.secret.json نصفُ السرّ، ونظيرُه RELAY_KEY في Cloudflare.
+# ‏generic-api-key يلتقطه غالباً، وهذه القاعدة تجعل الالتقاط مؤكَّداً لا محتملاً.
+[[rules]]
+id = "relay-key-assignment"
+description = "Anthropic relay shared secret (x-relay-key / RELAY_KEY)"
+regex = '''(?i)\b(x-relay-key|RELAY_KEY)\b\s*[=:]\s*["']?([A-Za-z0-9_\-]{16,})'''
+keywords = ["relay_key", "x-relay-key", "relay-key"]
+
+  [rules.allowlist]
+  description = "مرجعُ سرٍّ أو متغيّرِ بيئة لا قيمته"
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(x-relay-key|RELAY_KEY)\s*[=:]\s*["']?(\$|%|\{\{|secrets\.|env\.)''',
+  ]
+
+# ── استبعاداتٌ عامّة ──────────────────────────────────────────────────────
+[allowlist]
+description = "مساراتٌ لا تحمل أسراراً حيّة — واستبعادُها يمنع إيجاباً كاذباً يُفقد الثقة بالحارس"
+paths = [
+  '''(^|/)\.gitleaks\.toml$''',           # هذا الملفّ نفسه: أنماطٌ لا قيم
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)\.github/workflows/secret-scan\.yml$''',  # يحمل sha256 لا سرّاً
+
+  # 🟢 google-services.json: مفتاحُه **ليس سرّاً بالتصميم** — معرّفُ مشروع Firebase
+  # للعميل، حمايتُه من قواعد Firebase وبصمة التوقيع لا من إخفائه.
+  '''(^|/)google-services\.json$''',
+]
