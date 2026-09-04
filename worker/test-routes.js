@@ -1059,12 +1059,15 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
     'function _BrandField(v){this.val=v;}\n' +
     'function _Unhide(){}\n' +
     'function _LogoInner(u,a){this.url=u;this.alt=a;}\n' +
-    fnSrc('_brandDigits') + '\n' +
+    fnSrc('_brandText') + '\n' + fnSrc('_brandDigits') + '\n' + fnSrc('_brandPhone') + '\n' +
     fnSrc('_brandDocTitle') + '\n' + fnSrc('_brandRewrite') + '\n' +
     'function mkRw(sink){ return { on: function(sel, h){ sink.push([sel, h]); return this; } }; }', rwCtx);
   rwCtx.__sink = [];
+  /* 🔴 الحمولةُ هنا تحاكي **ما يُرجعه GAS فعلاً** (قِيس حيّاً 2026-09-03): الهاتفُ مطبَّعٌ
+     `+967…` وواتساب **خامٌ بأرقامٍ فقط** — عقدان مختلفان في الحمولة الواحدة. حمولةٌ
+     اختباريةٌ «مرتّبة» بشكلٍ واحد كانت ستُخفي علّةَ القفزة بدل أن تكشفها. */
   rwCtx.__brand = { name: 'مدارس ابن خلدون الاهلية', tagline: 'ت', description: 'وصف', logo: 'https://lh3.googleusercontent.com/d/X=w400',
-                    phone: '+967771234567', address: 'صنعاء — شارع الستين', whatsapp: '+967771234567' };
+                    phone: '+967771234567', address: 'صنعاء — شارع الستين', whatsapp: '771234567' };
   vm.runInContext('_brandRewrite(mkRw(__sink), __brand, "home")', rwCtx);
   var sels = rwCtx.__sink.map(function (p) { return p[0]; });
 
@@ -1109,7 +1112,14 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   check(telH && telH[1].val === 'tel:+967771234567', '`tel:` مبنيٌّ من الرقم كما ورد من GAS (بلا إعادة تطبيع)');
   var waH = rwCtx.__sink.filter(function (p) { return p[0] === '[data-brand-href="whatsapp"]'; })[0];
   check(waH && waH[1].val === 'https://wa.me/967771234567',
-        '🔴 `wa.me` بالأرقام وحدها — `+` فيه يكسر الرابط صامتاً');
+        '🔴 `wa.me` بالأرقام وحدها **ورمزُ الدولة مُضاف** — `+` يكسر الرابط، ونقصُ الرمز يُبطله');
+  /* 🔴 والوجهُ الثاني، وهو ما وقع فعلاً: **العرضُ يبقى خاماً.** واتساب عقدُه في الـgas
+     «أرقامٌ فقط» ويثبّته اختبارٌ هناك، فتطبيعُه للعرض يُنتج قفزةً معاكسة عند طلاء العميل. */
+  var waT = rwCtx.__sink.filter(function (p) { return p[0] === '[data-brand="whatsapp"]'; })[0];
+  check(waT && waT[1].val === '771234567',
+        '🔴 عرضُ واتساب يبقى خاماً كما يُرجعه GAS — لا يُطبَّع كالهاتف (قفزةٌ معاكسة)');
+  var waTb = rwCtx.__sink.filter(function (p) { return p[0] === '#tbWa'; })[0];
+  check(waTb && waTb[1].val === '771234567', '… و`#tbWa` كذلك — عقدٌ واحدٌ في الموضعين');
   ['[data-brand-host="phone"]', '[data-brand-host="address"]', '[data-brand-host="whatsapp"]',
    '[data-brand="phone"]', '#tbPhone', '#stuLoginContact'].forEach(function (s) {
     check(sels2.indexOf(s) === -1,
@@ -1199,7 +1209,7 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   check(vm.runInContext('_brandDigits(__v2)', phCtx) === '967775189922',
         '🔴 و`wa.me` يتلقّى الرقمَ الدوليّ كاملاً — وهو ما كان باطلاً قبل التطبيع');
 
-  ctx.__k = '/__brand-cache/v3/ibn-khaldoun';
+  ctx.__k = '/__brand-cache/v4/ibn-khaldoun';
   check(vm.runInContext('_schoolSlugFromPath(__k)', ctx) === '',
         '🔒 مسار مفتاح الكاش لا يُقرَأ slug مدرسة (لا يصير سطحاً مخدوماً)');
 

@@ -873,9 +873,11 @@ var BRAND_TTL_S = 21600;
 /* 🔁 `v2` منذ 2026-09-03: الحمولةُ صارت تحمل الهاتف/العنوان/واتساب (قرار المالك).
    🔁 و`v3` في اليوم نفسِه بعد قياسٍ حيّ: الهاتفُ يُطبَّع إلى E.164 (‏`_brandPhone`).
    **رفعُ النسخة ليس تجميلاً:** مدخلاتُ `v2` تحمل رقماً خاماً، وبلا الرفع تُخدَم ستّ
-   ساعاتٍ برقمٍ يقفز عند طلاء العميل وبرابط `wa.me` باطل. */
+   ساعاتٍ برقمٍ يقفز عند طلاء العميل وبرابط `wa.me` باطل.
+   🔁 و`v4` بعد قياسٍ حيٍّ ثانٍ: **واتساب رُدَّ إلى الخام** (‏`v3` طبّعه فأنتج القفزةَ
+   نفسَها معكوسةً). ولكلّ تغييرِ **قيمةٍ مخزَّنة** رفعٌ — لا لتغيير الشكل وحده. */
 function _brandCacheKey(origin, slug) {
-  return new Request(origin + '/__brand-cache/v3/' + encodeURIComponent(slug), { method: 'GET' });
+  return new Request(origin + '/__brand-cache/v4/' + encodeURIComponent(slug), { method: 'GET' });
 }
 
 async function _brandFromCache(origin, slug) {
@@ -930,7 +932,13 @@ async function _brandRefresh(origin, slug, env) {
       description: String(page.aboutText || ''),
       phone: _brandPhone(b.brand.phone),
       address: _brandText(b.brand.address, 200),
-      whatsapp: _brandPhone(b.brand.whatsapp),
+      /* 🔴 **واتساب يُترك خاماً عمداً — ولا يُطبَّع كالهاتف.** عقدُه في مستودع الـgas
+         «أرقامٌ فقط» **يثبّته اختبارٌ قائم هناك**، وتطبيعُه هنا يُنتج بالضبط العلّةَ التي
+         عالجناها للهاتف مقلوبةً: الخادمُ يكتب `+967775189922` ثمّ يعيد العميلُ طلاءه
+         `775189922` ⇒ **قفزةٌ في الاتجاه المعاكس**. رمزُ الدولة يُضاف عند بناء `wa.me`
+         وحده — انظر `_brandRewrite`. قِيس حيّاً 2026-09-03: GAS يُرجع
+         `phone = "+967775189922"` و`whatsapp = "775189922"` في الحمولة نفسِها. */
+      whatsapp: _brandText(b.brand.whatsapp, 32),
       facebook: _safeHttpUrl(b.brand.facebook),
       instagram: _safeHttpUrl(b.brand.instagram),
       youtube: _safeHttpUrl(b.brand.youtube),
@@ -1295,7 +1303,9 @@ function _brandRewrite(rw, brand, surface) {
     if (sf === 'teacher') rw = rw.on('#tchLoginAddress', new _TextSet('📍 ' + brand.address));
   }
   if (brand.whatsapp) {
-    var waDigits = _brandDigits(brand.whatsapp);
+    /* 🔴 رمزُ الدولة يُضاف **هنا وحده**: العرضُ يبقى خاماً (عقدُ الـgas) و`wa.me` يشترط
+       الرقمَ الدوليّ كاملاً — `wa.me/775189922` لا يفتح محادثةً أصلاً. */
+    var waDigits = _brandDigits(_brandPhone(brand.whatsapp));
     rw = rw.on('[data-brand="whatsapp"]', new _BrandField(brand.whatsapp))
            .on('[data-brand-host="whatsapp"]', new _Unhide());
     if (waDigits) rw = rw.on('[data-brand-href="whatsapp"]', new _AttrSet('href', 'https://wa.me/' + waDigits));
