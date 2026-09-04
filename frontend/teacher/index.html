@@ -29074,24 +29074,17 @@ function _tfTab(name){
   if(mt&&tb&&mt.scrollWidth>mt.clientWidth){ try{ tb.scrollIntoView({inline:'center',block:'nearest'}); }catch(e){} }
 }
 
-// زر «تحديث»: يطلب مزامنة فورية من برنامج Access (علم يلتقطه access-sync.ps1 خلال دقيقة)
-// ثم يعيد قراءة الشيت فورًا. الويب لا يقرأ Access مباشرة.
+/* زر «تحديث» — 🔴 **تغيّر معناه في 2026-09-04 ولم يُحذف.**
+   كان يطلب مزامنةً فورية من برنامج Access عبر علمٍ تلتقطه الأداةُ المحلّية. وقد
+   تقاعد Access بقرار مالك، وسقطت `requestFinancialSyncProtected` ⇒ لو بقي النداءُ لأعطى
+   «دالّة غير معروفة» عند كلّ ضغطة. والزرُّ نفسُه **يبقى** لأن غرضَه الثاني قائم: إعادةُ
+   قراءةِ الشيت **متجاوزةً الكاش** — والبياناتُ تُكتب مباشرةً الآن فهذا كلُّ ما يلزم. */
 function _tfSyncNow(){
   var btn=document.getElementById('tf-syncbtn');
   var prevHtml=btn?btn.innerHTML:'';
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ جارٍ التحديث...'; }
-  try { toast('⏳ جارٍ طلب المزامنة من برنامج Access...', 'info', 2500); } catch(e){}
-  callServer('requestFinancialSyncProtected', {}, function(res){
-    try {
-      if(res && res.success) toast('✅ طُلبت المزامنة — ستظهر أحدث بيانات Access خلال دقيقة.', 'success', 4000);
-      else toast('تعذّر طلب المزامنة — إعادة قراءة البيانات الحالية.', 'warning', 3500);
-    } catch(e){}
-    if(btn){ btn.disabled=false; btn.innerHTML=prevHtml; }
-    _tfLoad(true);
-  }, function(){
-    if(btn){ btn.disabled=false; btn.innerHTML=prevHtml; }
-    _tfLoad(true);
-  });
+  _tfLoad(true);
+  setTimeout(function(){ if(btn){ btn.disabled=false; btn.innerHTML=prevHtml; } }, 600);
 }
 
 function renderFinancial(){
@@ -29134,7 +29127,7 @@ function _tfRender(res){
      '<button id="tf-syncbtn" class="tf-abtn" onclick="_tfSyncNow()">🔄 تحديث</button>'+
      '<button class="tf-abtn" onclick="window.print()">🖨️ طباعة</button>'+
      '<button type="button" class="tf-abtn" title="مساعدة" onclick="_helpOpen(\'financial\')">❓</button>'+
-     '<span id="tf-sync-note" style="flex-basis:100%;font-size:11px;color:var(--text-light);">قد تستغرق المزامنة الكاملة مع Access حتى دقيقة واحدة.</span>'+
+     '<span id="tf-sync-note" style="flex-basis:100%;font-size:11px;color:var(--text-light);">تُكتب العمليات مباشرةً في سجلّ المدرسة وتظهر فورًا.</span>'+
      '</div>';
 
   if(!hasData){
@@ -29721,7 +29714,7 @@ function _tfPrintNotices(){
   _tfPrintWin('إشعارات أولياء الأمور ('+list.length+')', _tfNoticesCss(), body);
 }
 
-// ── أزرار العمليات: نماذج تكتب إلى Access عبر outbox ──
+// ── أزرار العمليات: نماذج تكتب مباشرةً في أوراق المدرسة (تقاعد مسار Access · 2026-09-04) ──
 function _tfTodayIso(){ var d=new Date(); function p(x){x=''+x;return x.length<2?'0'+x:x;} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 function _tfStuDatalist(){
   var res=window._tfRes||{}, acc=(res.studentAccounts||[]), s='<datalist id="tfop-stulist">';
@@ -29757,13 +29750,10 @@ function _tfFld(id,label,attrs){
   return '<label style="display:block;margin:9px 0 3px;font-size:13px;color:var(--text-muted);">'+label+'</label>'+
     '<input id="'+id+'" '+attrs+' style="width:100%;padding:9px 11px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;font-size:14px;box-sizing:border-box;">';
 }
-// مفتاح "إدخال مباشر" — receipt/expense فقط. مفعَّل افتراضيًا (غرض الميزة: ظهور فوري
-// بلا انتظار جهاز المدرسة). الحارس الحقيقي الوحيد خادمي (_tfinCanFinance) — هذا اختيار مسار فقط.
-function _tfOpDirectToggle(){
-  return '<label style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:13px;color:var(--text);cursor:pointer;">'+
-    '<input type="checkbox" id="tfop-direct" checked style="width:16px;height:16px;">'+
-    '⚡ إدخال مباشر — يظهر فورًا دون انتظار مزامنة Access</label>';
-}
+/* 🔴 سقطت خانةُ «إدخال مباشر» في 2026-09-04: كانت تختار بين مسارين، وقد **صار المسارُ
+   واحداً** بعد تقاعد Access. وإبقاءُ خانةٍ بلا بديلٍ يُوهم بوجود طريقٍ ثانٍ لا وجود له.
+   والحارسُ الحقيقيُّ خادميٌّ دائماً (`_tfinCanFinance`) — لم تكن الخانةُ حارساً قط. */
+function _tfOpDirectToggle(){ return ''; }
 function _tfOpForm(type, prefill){
   prefill=prefill||{};
   var title='', body='';
@@ -29804,13 +29794,13 @@ function _tfOpForm(type, prefill){
       _tfFld('tfop-code','كود الطالب','list="tfop-stulist" value="'+_tfEsc(prefill.code||'')+'" oninput="_tfOpFillName()"')+
       _tfFld('tfop-name','اسم الطالب','value="'+_tfEsc(prefill.name||'')+'"')+
       _tfFld('tfop-newfee','الرسوم الدراسية الجديدة (ريال)','type="number" inputmode="numeric" value="'+(prefill.newFee||'')+'"')+
-      '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.6;">تُحدِّث «الرسوم الدراسية» للطالب في برنامج Access.</div>';
+      '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.6;">تُحدِّث «الرسوم الدراسية» للطالب في سجلّ المدرسة فورًا.</div>';
   } else { return; }
   body+='<div id="tfop-status" style="margin-top:12px;font-size:13px;min-height:18px;"></div>'+
     '<div id="tfop-btns" style="margin-top:10px;display:flex;gap:8px;">'+
     '<button class="tf-abtn" style="background:var(--tf-green);color:#fff;border-color:var(--tf-green);" onclick="_tfOpSubmit(\''+type+'\')">💾 حفظ العملية</button>'+
     '<button class="tf-abtn" onclick="_tfModalClose()">إلغاء</button></div>'+
-    '<div style="font-size:11px;color:var(--text-light);margin-top:10px;line-height:1.6;">تُسجَّل العملية فورًا وتظهر «⏳ قيد المزامنة»، ثم تصل برنامج Access تلقائيًا خلال دقيقة عبر أداة المزامنة على جهاز المدرسة.</div>';
+    '<div style="font-size:11px;color:var(--text-light);margin-top:10px;line-height:1.6;">تُكتب العملية في سجلّ المدرسة فورًا وتظهر في التقرير مباشرةً.</div>';
   _tfModalOpen(title, body);
 }
 function _tfOpSubmit(type){
@@ -29824,15 +29814,15 @@ function _tfOpSubmit(type){
   else if(type==='supply') payload={amount:v('tfop-amount'),date:v('tfop-date'),note:v('tfop-note')};
   else if(type==='fee_adjust') payload={code:v('tfop-code'),name:v('tfop-name'),newFee:v('tfop-newfee')};
   else return;
-  var directEl=document.getElementById('tfop-direct');
-  var useDirect=(type==='receipt'||type==='expense')&&directEl&&directEl.checked;
-  var fn=useDirect?'addFinancialOperationDirectProtected':'addFinancialOperationProtected';
+  /* مسارٌ واحدٌ لكلّ الأنواع الأربعة منذ تقاعد Access — و`addFinancialOperationProtected`
+     تبقى شِيماً خادميّةً تُفوِّض إليها (متصفّحٌ بصفحةٍ مخبَّأة ينادي الاسمَ القديم). */
+  var fn='addFinancialOperationDirectProtected';
   var st=document.getElementById('tfop-status');
   if(st) st.innerHTML='<span style="color:var(--text-muted);">⏳ جارٍ الحفظ...</span>';
   callServer(fn, {type:type, payload:payload}, function(res){
     if(!res||!res.success){ if(st) st.innerHTML='<span style="color:var(--tf-red);font-weight:700;">⚠️ '+_tfEsc((res&&res.error)||'تعذّر الحفظ')+'</span>'; return; }
     if(type==='fee_adjust'){
-      if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">✅ سُجّلت العملية — ستظهر في برنامج Access خلال دقيقة.</span>';
+      if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">✅ عُدِّلت الرسوم — ظهرت في السجلّ فورًا.</span>';
       setTimeout(function(){ _tfModalClose(); _tfLoad(true); }, 1300);
       return;
     }
@@ -29840,8 +29830,8 @@ function _tfOpSubmit(type){
     window._tfLastOp={type:type, payload:payload};
     var bts=document.getElementById('tfop-btns'); if(bts) bts.style.display='none';
     var doneMsg=res.direct?
-      '✅ ظهرت فورًا في السجل — ستُطابَق تلقائيًا مع Access خلال دقائق.'+(res.outboxOk===false?' <span style="color:var(--tf-orange);">(تنبيه: لم تُسجَّل نسخة انتظار — تواصل مع الدعم الفني)</span>':''):
-      '✅ سُجّلت العملية — ستصل برنامج Access خلال دقيقة.';
+      '✅ ظهرت فورًا في السجل المالي.':
+      '✅ سُجّلت العملية في سجلّ المدرسة.';
     if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">'+doneMsg+'</span>'+
       '<div style="margin-top:10px;display:flex;gap:8px;">'+
       '<button class="tf-abtn" style="background:var(--tf-blue);color:#fff;border-color:var(--tf-blue);" onclick="_tfPrintLastOp()">🖨️ طباعة السند</button>'+
