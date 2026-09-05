@@ -1548,7 +1548,7 @@ function schools_save() {
                   (res.teacherUrl  ? '📊 <a href="' + res.teacherUrl  + '" target="_blank">منصة المعلم</a><br>' : '') +
                   (res.studentUrl  ? '🎒 <a href="' + res.studentUrl  + '" target="_blank">منصة الطالب</a><br>' : '') +
                   (res.cmsUrl      ? '📰 <a href="' + res.cmsUrl      + '" target="_blank">نظام CMS</a><br>' : '') +
-                  (res.scheduleUrl ? '📅 <a href="' + res.scheduleUrl + '" target="_blank">الحصص</a><br>' : '') +
+                  /* 🗑️ رابطُ «📅 الحصص» أُسقط 2026-09-05 — `res.scheduleUrl` لم يعد يُرسَل. */
                   '</div>';
       status.innerHTML = links;
       setTimeout(function() { schools_closeModal(); schools_load(); }, 5000);
@@ -1727,8 +1727,12 @@ function _renderPortals(res) {
   var defs = [
     { key:'teacher',  icon:'👨‍🏫', label:'منصة المعلمين', color:'#2563eb' },
     { key:'student',  icon:'🎓', label:'منصة الطلاب',   color:'#16a34a' },
-    { key:'cms',      icon:'📰', label:'إدارة المحتوى',  color:'#d97706' },
-    { key:'schedule', icon:'📅', label:'توزيع الحصص',    color:'#7c3aed' }
+    { key:'cms',      icon:'📰', label:'إدارة المحتوى',  color:'#d97706' }
+    /* 🗑️ بطاقةُ «📅 توزيع الحصص» أُسقطت 2026-09-05 — مشروعُ الحصص مُقاعَد، والتوزيعُ
+       يعيش داخل منصّة المعلم («📆 توزيع الحصص والتواقيت»).
+       🔴 **وكانت حيّةً فعلاً خلافاً لبقيّة روابط الحصص:** المسارُ يُبنى **عميلياً**
+       (`'/' + d.key + '/index.html?school='`) بلا فحصِ `scheduleFileId`، فبقيت البطاقةُ
+       قابلةً للنقر بينما كلُّ الروابط الخادمية تعود `''`. ⇒ لم تكن تسقط بسقوط بياناتها. */
   ];
   // معرّف المدرسة الحالية (للمدير = مدرسته، وللمالك = المدرسة المختارة)
   var sid = res.schoolId || App.viewSchoolId || App.schoolId || '';
