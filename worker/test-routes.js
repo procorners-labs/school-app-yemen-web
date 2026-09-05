@@ -95,6 +95,11 @@ var CASES = [
   //  سلوكياً أدناه — هذا الجدول يصف إعادة الكتابة وحدها ولا يرى العودة المبكرة.)
   ['/app',                '/app',                'ضابط: محجوز — لا يُقرَأ slug'],
   ['/download',           '/download',           'ضابط: محجوز — لا يُقرَأ slug'],
+  // ‏`schedule` — المشروع يُحذف من `SchoolApp-gas` والمسارُ يبقى صفحةً ثابتة (2026-09-05).
+  //  الحالتان تُثبتان أن **التوجيه عامّ**: لا إعادة كتابة ولا قراءة slug ⇒ الاثنان يخرجان
+  //  كما هما إلى `GITHUB_BASE`. وعقدُ بقاء الحجز في كتلته المستقلّة أدناه.
+  ['/schedule',           '/schedule',           'ضابط: محجوز — لا يُقرَأ slug'],
+  ['/schedule/index.html','/schedule/index.html','ضابط: المسار المجمَّد في الـAPK يُخدَم كما هو'],
 
   // ── المسارات العميقة للمنصّتين (2026-08-13) ────────────────────────────────
   ['/teacher/dashboard/abdaawatmuaz',  '/teacher/index.html', 'معلم: صفحة + slug'],
@@ -832,6 +837,58 @@ var apkFrozen = CASES.some(function (c) {
 if (!apkFrozen) failed++;
 console.log((apkFrozen ? '  ✅ ' : '  ❌ ') +
             '🔴 ضابط: `/student/index.html` (المسار المجمَّد في الـAPK) يُخدَم كما هو');
+
+// ── 🔴 عقد مسار `/schedule` — يبقى بعد حذف مشروع `schedule` من المصدر ─────────
+//
+// السياق المقيس (2026-09-05، جلسة `SchoolApp-gas`): مشروع `schedule/` يُحذف بالكامل
+// بقرار مالك — مفطومٌ منذ 2026-08-24، وعمود `schedule_file_id` أُفرِغ في السجلّ المركزي.
+// و`/schedule/index.html` **يبقى يردّ 200** عبر صفحةٍ ثابتة بديلة تُبنى هناك.
+//
+// 🔴 **ولماذا يلزم حارسٌ هنا رغم أن هذا المستودع لم يتغيّر:** التوجيه إلى المسار عامٌّ
+// بالكامل — لا فرعَ يذكر `/schedule` في الوركر — فبقاؤه 200 يتّكئ على شيءٍ **واحدٍ غير
+// بديهيّ**: أن `'schedule'` ما زال في `_RESERVED_TOP_PATHS`. وحذفُ المشروع من المصدر
+// يجعل ذلك المدخلَ يبدو لمنظِّفٍ لاحقٍ **بقيّةً من مشروعٍ ميت** — وإسقاطُه يقلب المسار
+// من صفحةٍ ثابتة إلى **مرشَّحِ slug مدرسة** ⇒ `_slugIsPublished` يخفق ⇒ صفحة «لم نجد
+// هذه المدرسة» بـ**404**. أي أن الكسر يقع في مستودعٍ آخر تماماً، بلا أيّ خطأ نحويّ.
+//
+// ⚠️ والمسار **مجمَّدٌ في ثنائيّ تطبيقَي الأندرويد** (‏`AppConfig.kt::matchesDeployment`
+//    يطابق `/(home|student|teacher|cms|schedule)/`) ⇒ لا Deep Link ولا مزامنة، والإصلاح
+//    الوحيد إصدارٌ جديد على Play. ومخزَّنٌ مسبقاً في `assets/sw.js` ⇒ كسرُه لا رجعة فيه.
+// 🔒 و`GAS.schedule` يبقى في جدول النشرات: النشرةُ حيّةٌ خاملة مسارَ تراجع، ولا
+//    `clasp undeploy` بحال (نفس قاعدة `student` — بند 124).
+console.log('');
+console.log('عقد مسار `/schedule` (يبقى بعد حذف المشروع من المصدر):');
+[[/'schedule': 1/,
+  "🔴 `'schedule'` محجوز في `_RESERVED_TOP_PATHS` ⇒ لا يُقرأ slug مدرسة"],
+ [/^\s*schedule:\s*'https:\/\/script\.google\.com\/macros\/s\/[^']+\/exec'/m,
+  '🔒 مدخل `schedule` في جدول GAS قائم — مسارُ تراجعٍ خامل، ومعرّف النشر لا يُحذف']
+].forEach(function (c) {
+  var good = c[0].test(src);
+  if (!good) failed++;
+  console.log((good ? '  ✅ ' : '  ❌ ') + c[1]);
+});
+
+// الضابط الإيجابي — **سلوكي لا نصّي**: الحجزُ مكتوبٌ *وفاعل*.
+ctx.__p = '/schedule';
+var schedNotSlug = vm.runInContext('_schoolSlugFromPath(__p)', ctx) === '';
+if (!schedNotSlug) failed++;
+console.log((schedNotSlug ? '  ✅ ' : '  ❌ ') +
+            '`/schedule` لا يُقرَأ slug مدرسة ⇒ يُخدَم من `GITHUB_BASE` كما هو');
+
+/* 🔴 **الضابط المعاكس — وبلاه يكون كلُّ ما سبق أجوف.** الفحصان النصّيّان يُثبتان أن
+   السطر مكتوب، والفحصُ السلوكيّ أعلاه يُثبت أن الناتج `''` — ولا يُثبت أيٌّ منها أن
+   **الحجزَ هو السبب**: لو صار `/schedule` يُردّ لعلّةٍ أخرى (تغيُّرُ الـregex مثلاً)
+   لبقي الحارسُ أخضرَ وهو لم يعد يقيس ما يدّعيه. فتُطبَّق الطفرةُ في نسخةٍ **في الذاكرة**
+   (‏لا تُمَسّ الشجرة): يُحذف المدخل ⇒ يجب أن ينقلب الناتج إلى `'schedule'` فعلاً. */
+var mctx = vm.createContext({});
+vm.runInContext(src.slice(rIdx, rEnd) + '\n' + src.slice(fIdx, fEnd), mctx);
+var mutated = vm.runInContext(
+  "delete _RESERVED_TOP_PATHS['schedule']; _schoolSlugFromPath('/schedule');", mctx);
+var mutFlips = (mutated === 'schedule');
+if (!mutFlips) failed++;
+console.log((mutFlips ? '  ✅ ' : '  ❌ ') +
+            '🔴 ضابط معاكس: بحذف الحجز يصير `/schedule` slug مدرسة ⇒ 404 [' +
+            (mutated === '' ? 'فارغ — الحارس أجوف' : mutated) + ']');
 
 // ── ص6 (2026-08-19): `/gas/student` ⇒ نشرة `teacher` + مُميِّز `app=student` ────
 //
