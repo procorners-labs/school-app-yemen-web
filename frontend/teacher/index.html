@@ -13388,7 +13388,11 @@ function renderDashboard() {
     loadMyTasksWidget();
     loadDashboardCirculars();
 
-    callServer('getMyActivitiesProtected', {}, 'my_activities_' + ((App.user && App.user.schoolId) || ''), 90,
+    // summary:true ⇒ الخادم يُرجِع العدّادات وأحدثَ ٨ فقط بدل ثلاث مصفوفات كاملة
+    // بحقول لا تستعملها هذه اللوحة (منها attachments غيرُ المحدود). المعروض نفسُه
+    // حرفياً — والفرزُ والقطعُ يقعان خادمياً بنفس الترتيب والحدّ.
+    // 🔴 ومفتاحُ الكاش تغيّر عمداً (`_sum`) وإلّا قرأ المتصفّحُ حمولةً قديمةَ الشكل.
+    callServer('getMyActivitiesProtected', { summary: true }, 'my_activities_sum_' + ((App.user && App.user.schoolId) || ''), 90,
       function(r) {
         if (r && r.success) loadDashboardStats(r.data);
         else document.getElementById('recentActivityContent').innerHTML = '<div class="alert alert-warning">لم يتم تحميل البيانات</div>';
@@ -13448,9 +13452,17 @@ function loadDashboardCirculars() {
  */
 function loadDashboardStats(data) {
   try {
-    var hw = (data.homework || []).length;
-    var vio = (data.violations || []).length;
-    var news = (data.news || []).length;
+    data = data || {};
+    // 🔴 شكلان مقبولان عمداً — لا تحسيناً بل ضرورةً بنيوية:
+    //   (أ) الملخّص {summary:true, counts, recent} — يُرجِعه الخادم بعد النشر.
+    //   (ب) الحمولة الكاملة {homework,news,violations} — يُرجِعها الخادمُ **قبل**
+    //       النشر، وذاك هو الوضعُ الحيّ فورَ الدمج: الواجهةُ تُبنى وتُنشَر آلياً
+    //       بالدمج بينما خلفيةُ GAS لا تصل المستخدمَ حتى `clasp deploy` (بند 221).
+    //       فبلا هذا الفرع تُعرَض اللوحةُ أصفاراً في النافذة بين الدمج والنشر.
+    var isSummary = !!(data && data.summary === true);
+    var hw   = isSummary ? ((data.counts && data.counts.homework)   || 0) : (data.homework   || []).length;
+    var vio  = isSummary ? ((data.counts && data.counts.violations) || 0) : (data.violations || []).length;
+    var news = isSummary ? ((data.counts && data.counts.news)       || 0) : (data.news       || []).length;
     var statsEl = document.getElementById('dashStats');
     if (statsEl) {
       function card(icon, bg, c, val, label, onclick) {
@@ -13465,23 +13477,40 @@ function loadDashboardStats(data) {
         card('📊', 'rgba(16,185,129,.1)', 'var(--success)',  (hw + vio + news), 'إجمالي النشاط', "showSection('reports')");
     }
 
+    // زيّ العرض لكل نوع — مصدرُ حقيقةٍ واحد يستعمله الشكلان معاً
+    var DASH_ACT_STYLE = {
+      hw  : { icon: '📝', color: 'var(--primary)',   label: 'واجب' },
+      vio : { icon: '📋', color: 'var(--primary)',   label: 'سلوك' },
+      news: { icon: '📢', color: 'var(--secondary)', label: 'خبر'  }
+    };
+
     var all = [];
-    var hw2 = data.homework || [];
-    var vio2 = data.violations || [];
-    var n2 = data.news || [];
+    if (isSummary) {
+      // الفرزُ والقطعُ وقعا خادمياً بنفس الترتيب والحدّ — لا يُعادان هنا
+      var rec = data.recent || [];
+      for (var ri = 0; ri < rec.length; ri++) {
+        var st = DASH_ACT_STYLE[rec[ri].type] || DASH_ACT_STYLE.hw;
+        all.push({ type: rec[ri].type, icon: st.icon, color: st.color,
+                   text: rec[ri].text || '', date: rec[ri].date || '', label: st.label });
+      }
+    } else {
+      var hw2 = data.homework || [];
+      var vio2 = data.violations || [];
+      var n2 = data.news || [];
 
-    for (var i = 0; i < hw2.length; i++) {
-      all.push({ type:'hw', icon:'📝', color:'var(--primary)', text: hw2[i].homework || '', date: hw2[i].date || '', label:'واجب' });
-    }
-    for (var j = 0; j < vio2.length; j++) {
-      all.push({ type:'vio', icon:'📋', color:'var(--primary)', text: vio2[j].violation || '', date: vio2[j].date || '', label:'سلوك' });
-    }
-    for (var k = 0; k < n2.length; k++) {
-      all.push({ type:'news', icon:'📢', color:'var(--secondary)', text: n2[k].news || '', date: n2[k].date || '', label:'خبر' });
-    }
+      for (var i = 0; i < hw2.length; i++) {
+        all.push({ type:'hw', icon:DASH_ACT_STYLE.hw.icon, color:DASH_ACT_STYLE.hw.color, text: hw2[i].homework || '', date: hw2[i].date || '', label:DASH_ACT_STYLE.hw.label });
+      }
+      for (var j = 0; j < vio2.length; j++) {
+        all.push({ type:'vio', icon:DASH_ACT_STYLE.vio.icon, color:DASH_ACT_STYLE.vio.color, text: vio2[j].violation || '', date: vio2[j].date || '', label:DASH_ACT_STYLE.vio.label });
+      }
+      for (var k = 0; k < n2.length; k++) {
+        all.push({ type:'news', icon:DASH_ACT_STYLE.news.icon, color:DASH_ACT_STYLE.news.color, text: n2[k].news || '', date: n2[k].date || '', label:DASH_ACT_STYLE.news.label });
+      }
 
-    all.sort(function(a,b) { return (b.date || '').localeCompare(a.date || ''); });
-    all = all.slice(0,8);
+      all.sort(function(a,b) { return (b.date || '').localeCompare(a.date || ''); });
+      all = all.slice(0,8);
+    }
     var ac = document.getElementById('recentActivityContent');
     if (!ac) return;
 
