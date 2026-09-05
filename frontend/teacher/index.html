@@ -3580,10 +3580,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     <div class="modal-header"><span id="confirmTitle">تأكيد العملية</span><button class="modal-close" onclick="closeModal('confirmModal')">✕</button></div>
     <div class="modal-body text-center">
       <div style="font-size:2.5rem;margin-bottom:12px;" id="confirmIcon">❓</div>
-      <p id="confirmMessage" style="font-size:.95rem;line-height:1.6;"></p>
+      <!-- 🔴 `pre-line` عقدٌ لا تنسيق: الرسائلُ تحمل `\n` (تفاصيلُ عمليةٍ هدّامة على
+           أسطر)، و`textContent` يُبقيها حرفيةً فتُعرَض سطراً واحداً مكدّساً. و`textContent`
+           **يبقى** لا `innerHTML` — الرسائلُ تحمل نصّاً من الشيت (اسمَ معلّم) وبند 15
+           يقفل هذا الباب. -->
+      <p id="confirmMessage" style="font-size:.95rem;line-height:1.6;white-space:pre-line;"></p>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('confirmModal')">إلغاء</button>
+      <!-- ⚠️ المعرّف إلزاميّ: `_js-news-cards-notes` كان يحاول إخفاء هذا الزرّ بـ
+           `getElementById('confirmCancelBtn')` وهو **غيرُ موجود** ⇒ `if (cancelBtn)`
+           يبتلع الإخفاق صامتاً، فيظهر «إلغاء» بجوار «✕ إغلاق» في نافذة إحصاءٍ لا تُلغى. -->
+      <button class="btn btn-secondary" id="confirmCancelBtn" onclick="closeModal('confirmModal')">إلغاء</button>
       <button class="btn btn-danger" id="confirmOkBtn">تأكيد</button>
     </div>
   </div>
@@ -6534,11 +6541,14 @@ function prAdmin_bulkAction(newStatus) {
   var ids = Object.keys(PRA.selected);
   if (!ids.length) return;
   var label = { 'معتمد': 'اعتماد', 'مرفوض': 'رفض', 'مؤرشف': 'أرشفة', 'بانتظار المراجعة': 'استعادة' }[newStatus] || newStatus;
-  if (!confirm('تنفيذ "' + label + '" على ' + ids.length + ' تقييماً؟')) return;
-  callServer('bulkSetPlatformReviewStatusProtected', { reviewIds: ids, newStatus: newStatus }, function (r) {
-    if (r && r.success) { toast('✅ تم تحديث ' + r.updated + ' تقييماً', 'success'); prAdmin_load(); }
-    else toast((r && r.error) || 'تعذّر التنفيذ', 'error');
-  }, function (e) { toast('تعذّر الاتصال بالخادم', 'error'); });
+  confirmAction(label + ' تقييمات',
+    'الإجراء: ' + label + '\nعدد التقييمات المحدَّدة: ' + ids.length,
+    '📝', function () {
+    callServer('bulkSetPlatformReviewStatusProtected', { reviewIds: ids, newStatus: newStatus }, function (r) {
+      if (r && r.success) { toast('✅ تم تحديث ' + r.updated + ' تقييماً', 'success'); prAdmin_load(); }
+      else toast((r && r.error) || 'تعذّر التنفيذ', 'error');
+    }, function (e) { toast('تعذّر الاتصال بالخادم', 'error'); });
+  }, { okText: '📝 ' + label, okClass: 'btn-primary' });
 }
 
 function prAdmin_toggleMarketing(id, checked) {
@@ -6569,11 +6579,14 @@ function prAdmin_approve(id) {
 }
 
 function prAdmin_archive(id) {
-  if (!confirm('أرشفة هذا التقييم؟ يمكن استعادته لاحقاً من فلتر "مؤرشف".')) return;
+  confirmAction('أرشفة تقييم',
+    'سيُنقَل هذا التقييم إلى الأرشيف.\n\n🟢 يمكن استعادته لاحقاً من فلتر «مؤرشف».',
+    '🗄️', function () {
   callServer('setPlatformReviewStatusProtected', { reviewId: id, newStatus: 'مؤرشف' }, function (r) {
     if (r && r.success) { toast('🗄️ تم الأرشفة', 'success'); prAdmin_load(); }
     else toast((r && r.error) || 'تعذّرت الأرشفة', 'error');
   }, function (e) { toast('تعذّر الاتصال بالخادم', 'error'); });
+  }, { okText: '🗄️ أرشِف', okClass: 'btn-primary' });
 }
 
 function prAdmin_restore(id) {
@@ -8180,15 +8193,44 @@ function closeAllModals() {
  * @param {string} icon - أيقونة (اختياري)
  * @param {function} cb - دالة رد عند التأكيد
  */
-function confirmAction(title, msg, icon, cb) {
+/**
+ * @param {Object} [opts] - {okText, okClass} اختيارية · التوافق الخلفي محفوظ
+ *
+ * 🔴 **تُعيد ضبط الحالة في كل نداء — والسبب مقيس لا احتياط.** المودال **مشترَك**
+ * (‏`confirmModal` واحد في `Teacher Dashboard.html`)، ومستهلكوه يعيدون تشكيله:
+ * `_js-news-cards-notes.html::showNewsViewers` يجعل زرّ التأكيد «✕ إغلاق» ويُسند إليه
+ * `onclick` يُغلق فقط، ويحاول إخفاء زرّ الإلغاء. فبلا إعادة ضبطٍ هنا يرث **أوّلُ
+ * تأكيدٍ بعده** نصَّ «✕ إغلاق» على زرٍّ يُنفّذ عمليةً هدّامة — تسميةٌ تقول عكسَ ما تفعل.
+ * ⇒ العنوانُ والأيقونةُ والرسالةُ **ونصُّ الزرّ وصنفُه وظهورُ الإلغاء** كلُّها تُكتب
+ * في كل نداء، فحالةُ المودال دالّةٌ في نداءِ اليوم لا في تاريخِه.
+ */
+function confirmAction(title, msg, icon, cb, opts) {
+  opts = opts || {};
   var titleEl = document.getElementById('confirmTitle');
   var msgEl = document.getElementById('confirmMessage');
   var iconEl = document.getElementById('confirmIcon');
   var okBtn = document.getElementById('confirmOkBtn');
+  var cancelBtn = document.getElementById('confirmCancelBtn');
   if (titleEl) titleEl.textContent = title;
+  /* 🔴 `textContent` لا `innerHTML` — الرسائل تحمل نصّاً من الشيت (اسم معلّم/مادة)،
+     وبند 15 يقفل هذا الباب. والأسطرُ تُحفَظ بـ`white-space:pre-line` في القالب. */
   if (msgEl) msgEl.textContent = msg;
   if (iconEl) iconEl.textContent = icon || '❓';
+  /* 🔴 `onCancel` ليس زينة: بعضُ المسارات تحمل **حالةً معلّقة** يفتحها الفعلُ الأول
+     (‏`SD_SWAP.first` في التبديل)، و«لا» يجب أن يُنهيها. `confirm()` كانت تعيد `false`
+     فيخرج المستدعي بـ`return` **تاركاً الحالةَ مُعيَّنة**، فتُقرأ الضغطةُ التالية طرفاً
+     ثانياً لعمليةٍ أُلغيت. ويُعاد ضبطُه في كل نداء وإلّا ورثه تأكيدٌ لا يخصّه. */
+  if (cancelBtn) {
+    cancelBtn.style.display = '';
+    cancelBtn.textContent = 'إلغاء';
+    cancelBtn.onclick = function () {
+      closeModal('confirmModal');
+      if (typeof opts.onCancel === 'function') opts.onCancel();
+    };
+  }
   if (okBtn) {
+    okBtn.textContent = opts.okText || 'تأكيد';
+    okBtn.className = 'btn ' + (opts.okClass || 'btn-danger');
     okBtn.onclick = function() {
       closeModal('confirmModal');
       if (typeof cb === 'function') cb();
@@ -8363,17 +8405,20 @@ function _initFcmBridge() {
 }
 // إصلاح مشاركة ملفات صور/فيديو الأخبار — للمدير (يجعلها متاحة للعرض بالرابط)
 function repairNewsMedia() {
-  if (!confirm('سيتم ضبط مشاركة كل صور/فيديو الأخبار على «أي شخص بالرابط — مشاهدة» لتظهر في الصفحة. متابعة؟')) return;
-  showLoading('جارٍ إصلاح روابط الصور...');
-  callServer('repairNewsMediaSharingProtected', {}, function (r) {
-    hideLoading();
-    if (r && r.success) {
-      toast('تم إصلاح ' + (r.fixed || 0) + ' من ' + (r.total || 0) + ' ملف' +
-        ((r.failed) ? (' · تعذّر ' + r.failed) : ''), 'success');
-    } else {
-      toast('تعذّر الإصلاح: ' + ((r && r.error) || 'خطأ غير معروف'), 'error');
-    }
-  }, function () { hideLoading(); toast('تعذّر الاتصال بالخادم', 'error'); });
+  confirmAction('إصلاح مشاركة وسائط الأخبار',
+    'ستُضبَط مشاركةُ كل صور وفيديوهات الأخبار على «أي شخص بالرابط — مشاهدة» حتى تظهر في الصفحة العامّة.\n\n⚠️ هذا يجعل الملفّات قابلةً للعرض لمن يملك رابطها.',
+    '🖼️', function () {
+    showLoading('جارٍ إصلاح روابط الصور...');
+    callServer('repairNewsMediaSharingProtected', {}, function (r) {
+      hideLoading();
+      if (r && r.success) {
+        toast('تم إصلاح ' + (r.fixed || 0) + ' من ' + (r.total || 0) + ' ملف' +
+          ((r.failed) ? (' · تعذّر ' + r.failed) : ''), 'success');
+      } else {
+        toast('تعذّر الإصلاح: ' + ((r && r.error) || 'خطأ غير معروف'), 'error');
+      }
+    }, function () { hideLoading(); toast('تعذّر الاتصال بالخادم', 'error'); });
+  }, { okText: '🖼️ أصلِح المشاركة', okClass: 'btn-primary' });
 }
 
 // اختبار بثّ إشعار الهاتف — للمدير (يُستدعى من زر الاختبار بعد تفعيل FCM)
@@ -9863,11 +9908,14 @@ function circToggle(id) {
 }
 
 function circDelete(id) {
-  if (!confirm('حذف هذا التعميم نهائياً؟')) return;
-  callServer('deleteCircularProtected', { id: id }, function (r) {
-    if (r && r.success) { toast('تم الحذف', 'success'); _circLoadList(true); }
-    else showError(r ? r.error : 'فشل الحذف');
-  });
+  confirmAction('حذف تعميم',
+    'سيُحذف هذا التعميم نهائياً.\n\n🔴 لا يمكن التراجع عن الحذف.',
+    '🗑️', function () {
+    callServer('deleteCircularProtected', { id: id }, function (r) {
+      if (r && r.success) { toast('تم الحذف', 'success'); _circLoadList(true); }
+      else showError(r ? r.error : 'فشل الحذف');
+    });
+  }, { okText: '🗑️ حذف نهائيّ' });
 }
 
 /**
@@ -11078,16 +11126,32 @@ function ec_loadCommittees() {
 // السعة القصوى للجنة الواحدة تُطلَب من المستخدم — كل مدرسة تعرف سعة قاعاتها الفعلية؛ الإجمالي
 // الذي يتجاوز هذه السعة يُقسَّم على عدّة لجان مرقَّمة متوازنة.
 function ec_seedDefaultCommittees() {
-  var maxCapacity = prompt('الحد الأقصى لسعة اللجنة الواحدة (سيُقسَّم إجمالي طلاب الصفوف الكبيرة إلى عدّة لجان بهذه السعة):', '30');
-  if (maxCapacity === null) return;
-  maxCapacity = Math.floor(Number(maxCapacity));
-  if (!maxCapacity || isNaN(maxCapacity) || maxCapacity < 5) { toast('أدخل رقماً صحيحاً 5 أو أكبر', 'error'); return; }
-  if (!confirm('سيتم إنشاء لجان عامة مرقّمة تسلسلياً (لجنة - 1، لجنة - 2...) تغطي كل طلاب الصفوف الكبيرة (الخامس فما فوق) معاً، بسعة أقصاها ' + maxCapacity + ' لكل لجنة (قابلة للتعديل فوراً) — متابعة؟')) return;
-  callServer('seedDefaultCommitteesProtected', { maxCapacity: maxCapacity }, function (res) {
-    if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'فشل التنفيذ'), 'error'); return; }
-    toast('✅ أُنشئت ' + res.created.length + ' لجنة', 'success');
-    ec_loadCommittees();
-  }, function (err) { toast('❌ ' + err.message, 'error'); });
+  /* 🟢 التحقّقُ داخل النافذة: `prompt()` كانت تُغلق على إدخالٍ خاطئ ثمّ تُظهر `toast`
+     عابراً، فيضيع ما كُتب. الآن الرسالةُ تحت الحقل والنافذةُ باقية. */
+  promptModal({
+    title: 'سعة اللجنة الواحدة',
+    icon: '🏛️',
+    msg: 'يُقسَّم إجمالي طلاب الصفوف الكبيرة إلى لجانٍ متوازنة بهذه السعة.',
+    label: 'الحد الأقصى للسعة (٥ فأكثر)',
+    type: 'number',
+    value: '30',
+    okText: 'التالي',
+    validate: function (v) {
+      var n = Math.floor(Number(v));
+      return (n && !isNaN(n) && n >= 5) ? '' : 'أدخل رقماً صحيحاً ٥ أو أكبر.';
+    }
+  }, function (v) {
+    var maxCapacity = Math.floor(Number(v));
+    confirmAction('إنشاء اللجان الافتراضية',
+      'ستُنشأ لجانٌ عامّة مرقّمة تسلسلياً (لجنة - 1، لجنة - 2 …) تغطّي كل طلاب الصفوف الكبيرة (الخامس فما فوق) معاً.\n\nالسعة القصوى لكل لجنة: ' + maxCapacity + ' طالباً — وتبقى قابلةً للتعديل فوراً.',
+      '🏛️', function () {
+      callServer('seedDefaultCommitteesProtected', { maxCapacity: maxCapacity }, function (res) {
+        if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'فشل التنفيذ'), 'error'); return; }
+        toast('✅ أُنشئت ' + res.created.length + ' لجنة', 'success');
+        ec_loadCommittees();
+      }, function (err) { toast('❌ ' + err.message, 'error'); });
+    }, { okText: '🏛️ أنشِئ اللجان', okClass: 'btn-primary' });
+  });
 }
 
 function ec_renderCommittees() {
@@ -11150,11 +11214,14 @@ function ec_saveCommittee() {
 }
 
 function ec_deleteCommittee(id) {
-  if (!confirm('هل تريد حذف هذه اللجنة؟')) return;
-  callServer('deleteExamCommitteeProtected', { committeeId: id }, function(res) {
-    if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'خطأ'), 'error'); return; }
-    ec_loadCommittees();
-  }, function(err) { toast('❌ ' + err.message, 'error'); });
+  confirmAction('حذف لجنة',
+    'ستُحذف هذه اللجنة من الكنترول.\n\n⚠️ الطلابُ الموزَّعون عليها يحتاجون إعادةَ توزيع.',
+    '🗑️', function () {
+    callServer('deleteExamCommitteeProtected', { committeeId: id }, function(res) {
+      if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'خطأ'), 'error'); return; }
+      ec_loadCommittees();
+    }, function(err) { toast('❌ ' + err.message, 'error'); });
+  }, { okText: '🗑️ حذف اللجنة' });
 }
 
 // ── طلاب الاختبار — قائمة مقروءة مباشرة من ورقة «الطلاب» الحقيقية (لا نسخة/CRUD هوية) ──
@@ -11262,7 +11329,9 @@ function ec_renderStudentsTable(list) {
 }
 
 function ec_runInferGenders() {
-  if (!confirm('سيُحلَّل اسم كل طالب بلا جنس محدَّد ويُملأ تلقائياً حيثما كانت الثقة عالية (لن يُكتَب فوق أي جنس محدَّد مسبقاً) — متابعة؟')) return;
+  confirmAction('استنتاج جنس الطلاب من الأسماء',
+    'سيُحلَّل اسمُ كل طالبٍ بلا جنسٍ محدَّد، ويُملأ تلقائياً حيثما كانت الثقةُ عالية.\n\n🟢 لن يُكتَب فوق أي جنسٍ محدَّد مسبقاً، والحالاتُ المشكوكة تُعرَض للمراجعة اليدوية.',
+    '🧠', function () {
   toast('⏳ جارٍ التحليل...', 'info');
   callServer('inferStudentGendersProtected', {}, function (res) {
     if (!res || !res.success) { toast('❌ ' + (res ? res.error : 'خطأ'), 'error'); return; }
@@ -11275,6 +11344,7 @@ function ec_runInferGenders() {
     }
     ec_loadStudents();
   }, function (err) { toast('❌ ' + err.message, 'error'); });
+  }, { okText: '🧠 ابدأ التحليل', okClass: 'btn-primary' });
 }
 
 // ── تدقيق بيانات الطلاب (بلا سجل مالي / كود شاذّ) + ربط بنظام الأخوة القائم ──
@@ -11328,13 +11398,16 @@ function ec_runPaymentBlock() {
   var pct = Number((document.getElementById('ec-pb-percent') || {}).value);
   var st = document.getElementById('ec-pb-status');
   if (isNaN(pct) || pct < 0 || pct > 100) { st.innerHTML = '<span style="color:#c62828;">أدخل نسبة صحيحة بين 0 و100</span>'; return; }
-  if (!confirm('سيُحجَب رقم الجلوس عن كل طالب مُوزَّع نسبة سداده أقل من ' + pct + '% — متابعة؟')) return;
-  st.innerHTML = '⏳ جارٍ التنفيذ...';
-  callServer('applyPaymentBlockProtected', { minPercent: pct }, function (res) {
-    if (!res || !res.success) { st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
-    st.innerHTML = '<span style="color:#2e7d32;">✅ حُجب ' + res.blocked + ' طالباً' + (res.skippedNoData ? ' | ⚠️ ' + res.skippedNoData + ' بلا بيانات مالية (لم يُحجبوا)' : '') + '</span>';
-    ec_loadStudents();
-  }, function (err) { st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+  confirmAction('حجب رقم الجلوس بنسبة السداد',
+    'سيُحجَب رقمُ الجلوس عن كل طالبٍ مُوزَّع نسبةُ سداده أقلّ من ' + pct + '%.\n\n⚠️ الطلابُ بلا بيانات مالية لا يُحجَبون.',
+    '💰', function () {
+    st.innerHTML = '⏳ جارٍ التنفيذ...';
+    callServer('applyPaymentBlockProtected', { minPercent: pct }, function (res) {
+      if (!res || !res.success) { st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+      st.innerHTML = '<span style="color:#2e7d32;">✅ حُجب ' + res.blocked + ' طالباً' + (res.skippedNoData ? ' | ⚠️ ' + res.skippedNoData + ' بلا بيانات مالية (لم يُحجبوا)' : '') + '</span>';
+      ec_loadStudents();
+    }, function (err) { st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+  }, { okText: '💰 طبِّق الحجب' });
 }
 
 function ec_showGenderModal(code) {
@@ -11432,24 +11505,30 @@ function ec_renderDistributePane() {
 }
 
 function ec_runDistributeYoung() {
-  if (!confirm('سيُعاد توزيع كل طلاب الصفوف الصغيرة (KG2 - الرابع) على أرقام الجلوس واللجان — هل تريد المتابعة؟')) return;
-  var st = document.getElementById('ec-dist-young-status'); if (st) st.innerHTML = '⏳ جارٍ التوزيع...';
-  callServer('distributeYoungStudentsProtected', {}, function(res) {
-    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
-    if (st) st.innerHTML = '<span style="color:#2e7d32;">✅ تم توزيع ' + res.distributed + ' طالباً</span>';
-  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+  confirmAction('توزيع الصفوف الصغيرة',
+    'سيُعاد توزيعُ كل طلاب الصفوف الصغيرة (KG2 — الرابع) على أرقام الجلوس واللجان.\n\n⚠️ التوزيعُ السابق لهذه الصفوف يُستبدَل بالكامل.',
+    '🎓', function () {
+    var st = document.getElementById('ec-dist-young-status'); if (st) st.innerHTML = '⏳ جارٍ التوزيع...';
+    callServer('distributeYoungStudentsProtected', {}, function(res) {
+      if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+      if (st) st.innerHTML = '<span style="color:#2e7d32;">✅ تم توزيع ' + res.distributed + ' طالباً</span>';
+    }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+  }, { okText: '🎓 وزِّع الآن' });
 }
 
 function ec_runDistributeLarge() {
-  if (!confirm('سيُعاد توزيع كل طلاب الصفوف الكبيرة (الخامس - ثالث ثانوي) على اللجان — هل تريد المتابعة؟')) return;
-  var st = document.getElementById('ec-dist-large-status'); if (st) st.innerHTML = '⏳ جارٍ التوزيع...';
-  callServer('distributeLargeStudentsProtected', {}, function(res) {
-    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
-    var msg = '✅ تم توزيع ' + res.distributed + ' طالباً';
-    if (res.noGenderCount) msg += ' | ⚠️ ' + res.noGenderCount + ' طالباً بلا جنس محدَّد (لم يُوزَّعوا)';
-    if (res.unassignedNoCapacity) msg += ' | ⚠️ ' + res.unassignedNoCapacity + ' طالباً بلا سعة لجان كافية';
-    if (st) st.innerHTML = '<span style="color:#2e7d32;">' + msg + '</span>';
-  }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+  confirmAction('توزيع الصفوف الكبيرة على اللجان',
+    'سيُعاد توزيعُ كل طلاب الصفوف الكبيرة (الخامس — ثالث ثانوي) على اللجان.\n\n⚠️ الطلابُ بلا جنسٍ محدَّد لا يُوزَّعون، ومن لا تكفيه سعةُ اللجان يبقى بلا تعيين.',
+    '🏛️', function () {
+    var st = document.getElementById('ec-dist-large-status'); if (st) st.innerHTML = '⏳ جارٍ التوزيع...';
+    callServer('distributeLargeStudentsProtected', {}, function(res) {
+      if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
+      var msg = '✅ تم توزيع ' + res.distributed + ' طالباً';
+      if (res.noGenderCount) msg += ' | ⚠️ ' + res.noGenderCount + ' طالباً بلا جنس محدَّد (لم يُوزَّعوا)';
+      if (res.unassignedNoCapacity) msg += ' | ⚠️ ' + res.unassignedNoCapacity + ' طالباً بلا سعة لجان كافية';
+      if (st) st.innerHTML = '<span style="color:#2e7d32;">' + msg + '</span>';
+    }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
+  }, { okText: '🏛️ وزِّع على اللجان' });
 }
 
 // ── طباعة أرقام الجلوس (المرحلة 5): اختيار فصل → بطاقات، 10 لكل A4 ──
@@ -14693,13 +14772,16 @@ function _stbRunActivate(uploadedFileId) {
 
 // 🧹 حذف صفوف الأمثلة — فعل غير تلقائي، يحتاج تأكيداً صريحاً (يحذف بيانات).
 function _stbClearExamples() {
-  if (!confirm('حذف كل صفوف الأمثلة (الطلاب/المعلمين/الحسابات المالية) الموسومة «مثال»؟ لا يمكن التراجع.')) return;
-  var st = document.getElementById('stbActivateStatus');
-  st.innerHTML = '⏳ جاري الحذف…';
-  callServer('teacherBridgeActionProtected', { action: 'clear' }, function (r) {
-    if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
-    st.innerHTML = '<span style="color:#2e7d32">✅ حُذف ' + (r.removed || 0) + ' صفّ مثال</span>';
-  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+  confirmAction('حذف صفوف الأمثلة',
+    'ستُحذف كل الصفوف الموسومة «مثال» من الطلاب والمعلمين والحسابات المالية.\n\nلا يمكن التراجع عن هذه العملية.',
+    '🗑️', function () {
+    var st = document.getElementById('stbActivateStatus');
+    st.innerHTML = '⏳ جاري الحذف…';
+    callServer('teacherBridgeActionProtected', { action: 'clear' }, function (r) {
+      if (!r || !r.success) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>'; return; }
+      st.innerHTML = '<span style="color:#2e7d32">✅ حُذف ' + (r.removed || 0) + ' صفّ مثال</span>';
+    }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml(e.message || e) + '</span>'; });
+  }, { okText: '🗑️ حذف الأمثلة' });
 }
 
 // ➕ إضافة فرع جديد — الاسم فقط؛ بريد/كلمة مرور مدير الفرع تُولَّد تلقائياً وتُعرَض في النتيجة.
@@ -15027,17 +15109,20 @@ function schedDist_loadProgress() {
   }, function (e) { box.innerHTML = '<div class="alert alert-danger" style="margin:0 0 6px">' + escapeHtml(e.message || e) + '</div>' + retryBtn; });
 }
 function schedDist_autoAll() {
-  if (!confirm('توزيع كل الحصص المتبقية تلقائياً لكل المعلمين؟')) return;
-  var st = document.getElementById('sdStatus');
-  st.innerHTML = '<div class="alert alert-info">⏳ جاري التوزيع التلقائي…</div>';
-  callServer('autoDistributeAllProtected', {}, function (r) {
-    if (r && r.success) {
-      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
-      toast('✅ ' + r.message, 'success');
-      schedDist_loadProgress();
-      schedDist_refreshView();
-    } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
-  }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+  confirmAction('توزيع تلقائي للكل',
+    'سيوزَّع ما تبقّى من حصص على كل المعلمين تلقائياً.\n\nالحصص المُدخَلة يدوياً تبقى كما هي — «فارغ يُولَّد، ومملوء يُحترَم».',
+    '🚀', function () {
+    var st = document.getElementById('sdStatus');
+    st.innerHTML = '<div class="alert alert-info">⏳ جاري التوزيع التلقائي…</div>';
+    callServer('autoDistributeAllProtected', {}, function (r) {
+      if (r && r.success) {
+        st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+        toast('✅ ' + r.message, 'success');
+        schedDist_loadProgress();
+        schedDist_refreshView();
+      } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+    }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+  }, { okText: '🚀 ابدأ التوزيع', okClass: 'btn-primary' });
 }
 function schedDist_autoOne() {
   var teacherName = document.getElementById('sd-auto-teacher').value;
@@ -15195,60 +15280,87 @@ function schedDist_swapPick(btn, ck, dayIdx, periodIdx, occupied) {
   // الخانة الثانية الفارغة بمنظور الفصل تحمل مفتاح جدولها؛ الفارغة بمنظور
   // المعلّم بلا سياق فصل — النقل إليها يعني «نفس فصل الحصة المنقولة بتوقيت جديد»
   var ckB = ck || f.ck;
-  if (!confirm('تبديل/نقل الحصة:\n' + f.label + '\n⇄\n' + (btn.textContent === '+' ? 'خانة فارغة' : btn.textContent) + '\nمتابعة؟')) return;
-  var st = document.getElementById('sdStatus');
-  st.innerHTML = '<div class="alert alert-info">⏳ جاري تبديل الحصتين…</div>';
-  callServer('swapPeriodsProtected', {
-    classNameA: f.ck, dayIdxA: f.dayIdx, periodIdxA: f.periodIdx,
-    classNameB: ckB, dayIdxB: dayIdx, periodIdxB: periodIdx
-  }, function (r) {
-    SD_SWAP.first = null;
-    if (r && r.success) {
-      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
-      toast('✅ ' + r.message, 'success');
-      schedDist_refreshView();
-    } else {
-      st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+  /* 🔴 **الإلغاء يجب أن يُنهي وضعَ التبديل** — لا أن يتركه معلّقاً. `confirm()` كانت
+     ترجع `false` فيخرج بـ`return` و`SD_SWAP.first` **يبقى مُعيَّناً**، فالضغطةُ
+     التالية تُقرأ الطرفَ الثاني لتبديلٍ ألغاه المستخدمُ للتوّ. ولمّا صار الإلغاءُ
+     مساراً صريحاً في المودال، أُغلق الوضعُ فيه أيضاً. */
+  confirmAction('تبديل/نقل حصّة',
+    f.label + '\n⇄\n' + (btn.textContent === '+' ? '(خانة فارغة)' : btn.textContent),
+    '🔀', function () {
+    var st = document.getElementById('sdStatus');
+    st.innerHTML = '<div class="alert alert-info">⏳ جاري تبديل الحصتين…</div>';
+    callServer('swapPeriodsProtected', {
+      classNameA: f.ck, dayIdxA: f.dayIdx, periodIdxA: f.periodIdx,
+      classNameB: ckB, dayIdxB: dayIdx, periodIdxB: periodIdx
+    }, function (r) {
+      SD_SWAP.first = null;
+      if (r && r.success) {
+        st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+        toast('✅ ' + r.message, 'success');
+        schedDist_refreshView();
+      } else {
+        st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+        schedDist_renderFullGrid();
+      }
+    }, function (e) {
+      SD_SWAP.first = null;
+      st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>';
       schedDist_renderFullGrid();
-    }
-  }, function (e) {
-    SD_SWAP.first = null;
-    st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>';
-    schedDist_renderFullGrid();
-  });
+    });
+  }, { okText: '🔀 نفّذ التبديل', okClass: 'btn-primary',
+       onCancel: function () { SD_SWAP.first = null; schedDist_renderFullGrid(); } });
 }
 // إعادة التوزيع الكاملة — عملية هدّامة بتأكيد مزدوج (confirm بالعدد الفعلي +
 // كتابة «نعم» حرفياً) فوق confirmToken الخادمي. لا تراجع عنها.
 function schedDist_redistributeAll() {
   var total = (SD_FULL_GRID.rows || []).length;
-  if (!confirm('⚠️ إعادة التوزيع الكاملة ستمحو كل الحصص الحالية (' + total + ' حصة — اليدوية والتلقائية معاً) ثم توزع من الصفر.\nلا يمكن التراجع عن هذه العملية.\nمتابعة؟')) return;
-  var typed = prompt('للتأكيد النهائي اكتب: نعم');
-  if (typed !== 'نعم') { toast('أُلغيت العملية', 'info'); return; }
-  var st = document.getElementById('sdStatus');
-  st.innerHTML = '<div class="alert alert-info">⏳ جاري المسح وإعادة التوزيع…</div>';
-  callServer('redistributeAllProtected', { confirmToken: 'REDISTRIBUTE' }, function (r) {
-    if (r && r.success) {
-      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
-      toast('✅ ' + r.message, 'success');
-      schedDist_loadProgress();
-      schedDist_refreshView();
-    } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
-  }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+  /* 🔴 **الحزامان يبقيان اثنين** — تأكيدٌ بالعدد الفعلي ثمّ كتابةُ «نعم» حرفياً، فوق
+     `confirmToken` الخادميّ. وتحسينُ الشكل لا يُنقص عدد الحواجز على عمليةٍ لا تراجعَ
+     عنها؛ الذي تغيّر أنّ `prompt()` الخام صار `promptModal` **بتحقّقٍ داخل النافذة**:
+     الكتابةُ الخاطئة تُبيّن سببَها ولا تُغلق النافذةَ برسالةِ إلغاءٍ غامضة. */
+  confirmAction('إعادة التوزيع الكاملة',
+    'ستُمحى كل الحصص الحالية (' + total + ' حصة — اليدوية والتلقائية معاً) ثم يُعاد التوزيع من الصفر.\n\n🔴 لا يمكن التراجع عن هذه العملية.',
+    '⚠️', function () {
+    promptModal({
+      title: 'التأكيد النهائي',
+      icon: '⚠️',
+      msg: 'اكتب «نعم» للمتابعة — هذه العملية لا رجعة فيها.',
+      label: 'اكتب: نعم',
+      okText: '⚠️ امحُ وأعِد التوزيع',
+      validate: function (v) {
+        return (String(v || '').trim() === 'نعم') ? '' : 'اكتب «نعم» بالضبط للمتابعة.';
+      }
+    }, function () {
+      var st = document.getElementById('sdStatus');
+      st.innerHTML = '<div class="alert alert-info">⏳ جاري المسح وإعادة التوزيع…</div>';
+      callServer('redistributeAllProtected', { confirmToken: 'REDISTRIBUTE' }, function (r) {
+        if (r && r.success) {
+          st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+          toast('✅ ' + r.message, 'success');
+          schedDist_loadProgress();
+          schedDist_refreshView();
+        } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+      }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+    });
+  }, { okText: '⚠️ متابعة' });
 }
 function schedDist_redistributeOne() {
   var teacherName = document.getElementById('sd-auto-teacher').value;
   if (!teacherName) { toast('اختر معلّماً أولاً', 'error'); return; }
-  if (!confirm('إعادة توزيع حصص ' + teacherName + '؟\nستُمحى حصصه الحالية ثم يُعاد توزيعها تلقائياً.')) return;
-  var st = document.getElementById('sdStatus');
-  st.innerHTML = '<div class="alert alert-info">⏳ جاري إعادة توزيع حصص ' + escapeHtml(teacherName) + '…</div>';
-  callServer('redistributeTeacherProtected', { teacherName: teacherName }, function (r) {
-    if (r && r.success) {
-      st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
-      toast('✅ ' + r.message, 'success');
-      schedDist_loadProgress();
-      schedDist_refreshView();
-    } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
-  }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+  confirmAction('إعادة توزيع حصص معلّم',
+    'المعلّم: ' + teacherName + '\n\nستُمحى حصصه الحالية ثم يُعاد توزيعها تلقائياً.\nحصصُ بقيّة المعلمين لا تُمَسّ.',
+    '🎯', function () {
+    var st = document.getElementById('sdStatus');
+    st.innerHTML = '<div class="alert alert-info">⏳ جاري إعادة توزيع حصص ' + escapeHtml(teacherName) + '…</div>';
+    callServer('redistributeTeacherProtected', { teacherName: teacherName }, function (r) {
+      if (r && r.success) {
+        st.innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(r.message) + '</div>';
+        toast('✅ ' + r.message, 'success');
+        schedDist_loadProgress();
+        schedDist_refreshView();
+      } else st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+    }, function (e) { st.innerHTML = '<div class="alert alert-danger">❌ ' + escapeHtml(e.message || e) + '</div>'; });
+  }, { okText: '🎯 أعِد التوزيع' });
 }
 function schedDist_openAssign(dayIdx, periodIdx) {
   schedDist_openModal(dayIdx, periodIdx, null);
@@ -15349,32 +15461,50 @@ function schedDist_submitAssign() {
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
 }
 function schedDist_deleteFromModal() {
-  if (!confirm('حذف هذه الحصة؟')) return;
+  /* ⚠️ القيَمُ تُقرأ **قبل** فتح نافذة التأكيد لا داخلها: مودالُ التعيين يبقى مفتوحاً
+     خلفها، وقراءةُ حقوله بعد تفاعلٍ لاحق تخاطر بقيمةٍ تغيّرت — نفسُ فئة «الحفظ المؤجَّل
+     يلتقط سياقه وقت الكتابة لا وقت الإطلاق» (بند 16 في teacher). */
   var dayIdx = parseInt(document.getElementById('sdAssignDay').value, 10);
   var periodIdx = parseInt(document.getElementById('sdAssignPeriod').value, 10);
-  var st = document.getElementById('sdAssignStatus');
-  st.innerHTML = '<span style="color:var(--text)">⏳ جاري الحذف…</span>';
-  callServer('deleteClassSessionProtected', { className: _sdModalClass(), dayIdx: dayIdx, periodIdx: periodIdx }, function (r) {
-    if (r && r.success) { toast('✅ ' + r.message, 'success'); closeModal('sdAssignModal'); SCHED_DIST.modalClassName = ''; schedDist_refreshView(); schedDist_loadProgress(); }
-    else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
-  }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+  var className = _sdModalClass();
+  confirmAction('حذف الحصّة',
+    'الفصل: ' + className + '\n\nستُحذف هذه الحصّة من الجدول.\nيمكن التراجع عنها بزرّ «↩️ تراجع».',
+    '🗑️', function () {
+    var st = document.getElementById('sdAssignStatus');
+    st.innerHTML = '<span style="color:var(--text)">⏳ جاري الحذف…</span>';
+    callServer('deleteClassSessionProtected', { className: className, dayIdx: dayIdx, periodIdx: periodIdx }, function (r) {
+      if (r && r.success) { toast('✅ ' + r.message, 'success'); closeModal('sdAssignModal'); SCHED_DIST.modalClassName = ''; schedDist_refreshView(); schedDist_loadProgress(); }
+      else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
+    }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
+  }, { okText: '🗑️ حذف الحصّة' });
 }
 function schedDist_undo() {
-  if (!confirm('التراجع عن آخر عملية (تعيين/تعديل) تم تسجيلها؟')) return;
-  callServer('undoLastAssignmentProtected', {}, function (r) {
-    if (r && r.success) { toast('✅ ' + r.message, 'success'); schedDist_refreshView(); schedDist_loadProgress(); }
-    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
-  }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+  confirmAction('التراجع عن آخر عملية',
+    'سيُعاد آخر تعيين أو تعديل أو حذف مسجَّل إلى حالته السابقة.\n\nيُرفض التراجع إن غيّر أحدٌ الخانةَ بعده — حمايةً من الكتابة فوق عمل غيرك.',
+    '↩️', function () {
+    callServer('undoLastAssignmentProtected', {}, function (r) {
+      if (r && r.success) { toast('✅ ' + r.message, 'success'); schedDist_refreshView(); schedDist_loadProgress(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
+  }, { okText: '↩️ تراجع', okClass: 'btn-primary' });
 }
 
-// «🔄 تحديث أوراق العرض» — بعد ح1 صار كل تعديل يصل المنصّتين فور حفظه، فلم تعد
-// ثمّة خطوة نشر ولا فرق يُعايَن. الزرّ يُعيد بناء أوراق العرض **الاثنتين** داخل ملف
-// Google Sheets وحدها (‏«عرض_الجدول_للمعلمين»/«عرض_الجدول_للفصول»).
+// «🔄 تحديث أوراق العرض» — كل تعديل يصل المنصّتين فور حفظه، فلا خطوة نشر بعده.
+// 🔴 **ودلالتُه انقلبت 2026-09-05 مع قلب المخزن:** صارت `عرض_الجدول_للمعلمين` هي
+//    **المرجع**، فالزرّ يقرؤها ويُعيد بناء `عرض_الجدول_للفصول` منها ⇒ **مزامنةُ
+//    الورقتين لا إعادةُ بناءٍ من ورقةٍ ثالثة**. والنصُّ المعروض يتبع هذه الدلالة.
 // 🗑️ و«الجدول_التفاعلي» أُسقطت نهائياً 2026-08-24 بقرار مالك — ٢١٠ صيغة QUERY حيّة
-//    تمسح كل صفوف «الجدول» عند كل فتح، وصفر قارئ لها في الكود. والزرّ **يحذفها**
-//    من الملف إن وُجدت، فتنظيف المدارس القائمة يقع بضغطة لا بجراحة يدوية.
+//    وصفر قارئ لها في الكود. والزرّ يحذفها إن وُجدت، فتنظيف المدارس القائمة بضغطة.
+//    ⚠️ **وهي سطرٌ ثانويّ في نصّ التأكيد لا عنوانُه** — كان يتصدّره فيُقرأ الزرُّ
+//    «زرَّ حذف»، وهو في الحقيقة زرُّ مزامنة.
 function schedDist_refreshViewSheets() {
-  if (!confirm('إعادة بناء أوراق العرض من الجدول الحالي؟\n(وحذف ورقة «الجدول_التفاعلي» المتقاعدة إن وُجدت)')) return;
+  confirmAction('تحديث أوراق العرض',
+    'ستُزامَن ورقتا العرض داخل ملف Google Sheets:\n' +
+    '• «عرض_الجدول_للمعلمين» — المرجع\n' +
+    '• «عرض_الجدول_للفصول» — تُبنى منها\n\n' +
+    'لا تتغيّر أي حصة، ولا يُنشَر شيء خارج الملف.\n' +
+    'وتُحذف ورقة «الجدول_التفاعلي» المتقاعدة إن وُجدت.',
+    '🔄', function () {
   toast('⏳ جاري تحديث أوراق العرض…', 'info');
   callServer('publishScheduleSyncProtected', {}, function (r) {
     if (r && r.success) { toast('✅ ' + r.message, 'success'); }
@@ -15403,6 +15533,7 @@ function schedDist_refreshViewSheets() {
     }
     toast('❌ ' + (e.message || e), 'error');
   });
+  }, { okText: '🔄 حدِّث الآن', okClass: 'btn-primary' });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -15684,42 +15815,48 @@ function tasks_bulkSetStatus(status) {
   var all = TASKS.mgmt || [];
   for (var key in TASKS.selected) { var t = all[parseInt(key, 10)]; if (t) ids.push(t.id); }
   if (!ids.length) return;
-  if (!confirm('تحديث ' + ids.length + ' مهمة إلى «' + status + '»؟')) return;
-  showLoading('جاري التحديث…');
-  callServer('updateTaskStatusBulkProtected', { ids: ids, status: status }, function(r) {
-    hideLoading();
-    if (r && r.success) {
-      toast('✅ تم تحديث ' + (r.updated || ids.length) + ' مهمة', 'success');
-      tasks_reloadMgmt();
-    } else {
-      toast('❌ ' + ((r && r.error) || 'فشل التحديث'), 'error');
-    }
-  });
+  confirmAction('تحديث حالة المهامّ',
+    'عدد المهامّ المحدَّدة: ' + ids.length + '\nالحالة الجديدة: ' + status,
+    '📋', function () {
+    showLoading('جاري التحديث…');
+    callServer('updateTaskStatusBulkProtected', { ids: ids, status: status }, function(r) {
+      hideLoading();
+      if (r && r.success) {
+        toast('✅ تم تحديث ' + (r.updated || ids.length) + ' مهمة', 'success');
+        tasks_reloadMgmt();
+      } else {
+        toast('❌ ' + ((r && r.error) || 'فشل التحديث'), 'error');
+      }
+    });
+  }, { okText: '📋 حدِّث الحالة', okClass: 'btn-primary' });
 }
 function tasks_bulkDelete() {
   var idxArr = [];
   for (var key in TASKS.selected) idxArr.push(parseInt(key, 10));
   if (!idxArr.length) return;
-  if (!confirm('حذف ' + idxArr.length + ' مهمة نهائياً؟')) return;
-  // الحذف بالتسلسل (لا توجد bulk delete API بعد — نستخدم deleteTaskProtected بشكل متتالٍ)
-  var all = TASKS.mgmt || [];
-  var pending = idxArr.length, failed = 0;
-  showLoading('جاري الحذف…');
-  for (var i = 0; i < idxArr.length; i++) {
-    (function(idx) {
-      var t = all[idx]; if (!t) { pending--; if (pending === 0) { hideLoading(); tasks_reloadMgmt(); } return; }
-      callServer('deleteTaskProtected', { id: t.id }, function(r) {
-        if (!r || !r.success) failed++;
-        pending--;
-        if (pending === 0) {
-          hideLoading();
-          if (failed) toast('⚠️ فشل حذف ' + failed + ' مهمة', 'warning');
-          else toast('🗑️ تم حذف المهام المحددة', 'success');
-          tasks_reloadMgmt();
-        }
-      });
-    })(idxArr[i]);
-  }
+  confirmAction('حذف مهامّ نهائياً',
+    'عدد المهامّ المحدَّدة: ' + idxArr.length + '\n\n🔴 الحذف نهائيّ ولا يمكن التراجع عنه.',
+    '🗑️', function () {
+    // الحذف بالتسلسل (لا توجد bulk delete API بعد — نستخدم deleteTaskProtected بشكل متتالٍ)
+    var all = TASKS.mgmt || [];
+    var pending = idxArr.length, failed = 0;
+    showLoading('جاري الحذف…');
+    for (var i = 0; i < idxArr.length; i++) {
+      (function(idx) {
+        var t = all[idx]; if (!t) { pending--; if (pending === 0) { hideLoading(); tasks_reloadMgmt(); } return; }
+        callServer('deleteTaskProtected', { id: t.id }, function(r) {
+          if (!r || !r.success) failed++;
+          pending--;
+          if (pending === 0) {
+            hideLoading();
+            if (failed) toast('⚠️ فشل حذف ' + failed + ' مهمة', 'warning');
+            else toast('🗑️ تم حذف المهام المحددة', 'success');
+            tasks_reloadMgmt();
+          }
+        });
+      })(idxArr[i]);
+    }
+  }, { okText: '🗑️ حذف نهائيّ' });
 }
 
 // ── قائمة إجراءات المهمة المنسدلة ──
@@ -16140,11 +16277,14 @@ function weeklySup_addRow() {
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
 function weeklySup_deleteRow(row) {
-  if (!confirm('حذف هذا الصف من القالب؟')) return;
-  callServer('deleteWeeklySupervisionRowProtected', { row: row }, function (r) {
-    if (r && r.success) { toast('تم الحذف', 'success'); weeklySup_reload(); }
-    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
-  });
+  confirmAction('حذف صفّ من قالب الإشراف',
+    'سيُحذف هذا الصفّ من قالب الإشراف الأسبوعيّ.\n\nمهامُّ الإشراف المولَّدة سابقاً لا تتأثّر.',
+    '🗑️', function () {
+    callServer('deleteWeeklySupervisionRowProtected', { row: row }, function (r) {
+      if (r && r.success) { toast('تم الحذف', 'success'); weeklySup_reload(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    });
+  }, { okText: '🗑️ حذف الصفّ' });
 }
 function weeklySup_generateToday() {
   var st = document.getElementById('ws-status');
@@ -16330,11 +16470,14 @@ function cal_add() {
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
 function cal_delete(id) {
-  if (!confirm('حذف هذا الحدث؟')) return;
-  callServer('deleteCalendarEventProtected', { id: id }, function (r) {
-    if (r && r.success) { toast('تم الحذف', 'success'); renderCalendar(); }
-    else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
-  });
+  confirmAction('حذف حدث من التقويم',
+    'سيُحذف هذا الحدث من التقويم المدرسيّ.',
+    '🗑️', function () {
+    callServer('deleteCalendarEventProtected', { id: id }, function (r) {
+      if (r && r.success) { toast('تم الحذف', 'success'); renderCalendar(); }
+      else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
+    });
+  }, { okText: '🗑️ حذف الحدث' });
 }
 
 // ── ويدجت حالة اليوم + القادم في لوحة التحكم ──
@@ -23573,12 +23716,15 @@ function tabs_details(i){ var el=document.getElementById('tabs-det-'+i); if(el) 
 // إلغاء (حذف) سجلّ غياب
 function tabs_recDelete(rowIndex){
   var r=_tabsRecMap[rowIndex]; if(!r) return;
-  if(!confirm('هل تريد إلغاء سجلّ الغياب التالي؟\n'+r.date+' — '+(r.kind==='يوم'?'يوم كامل':'حصة '+r.period)+' — '+r.type)) return;
-  callServer('deleteTeacherAbsenceProtected', {rowIndex:rowIndex, teacherName:r.teacher}, function(res){
-    if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; }
-    try { ClientCache.clear('tabs_'); } catch (eCc) {}
-    toast('✅ '+res.message,'success'); tabs_loadSummary();
-  }, function(err){ toast('❌ '+err.message, 'error'); });
+  confirmAction('إلغاء سجلّ غياب',
+    'المعلّم: ' + r.teacher + '\nالتاريخ: ' + r.date + '\nالنطاق: ' + (r.kind === 'يوم' ? 'يوم كامل' : 'حصة ' + r.period) + '\nالنوع: ' + r.type,
+    '🗑️', function () {
+    callServer('deleteTeacherAbsenceProtected', {rowIndex:rowIndex, teacherName:r.teacher}, function(res){
+      if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; }
+      try { ClientCache.clear('tabs_'); } catch (eCc) {}
+      toast('✅ '+res.message,'success'); tabs_loadSummary();
+    }, function(err){ toast('❌ '+err.message, 'error'); });
+  }, { okText: '🗑️ ألغِ السجلّ' });
 }
 
 // محرّر تعديل مضمّن (النوع + الملاحظات) — بلا prompt لتوافق WebView
@@ -23803,7 +23949,13 @@ function tm_onSecOptToggle(chk){ if(!chk.checked) return; var row=chk.closest('.
 function tm_removeAssignment(btn){ var row=btn.parentElement; if(document.getElementById('tm-assignments-list').children.length<=1){ toast('يجب أن يبقى تعيين واحد على الأقل', 'warning'); return; } row.remove(); }
 function tm_collectAssignments(){ var rows=document.getElementById('tm-assignments-list').children; var asgns=[]; for(var i=0;i<rows.length;i++){ var subj=rows[i].querySelector('.asgn-subject').value; var grd=rows[i].querySelector('.asgn-grade').value; var allBox=rows[i].querySelector('.asgn-sec-all'); if(allBox&&allBox.checked){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:'جميع الشعب'}); } else { var opts=rows[i].querySelectorAll('.asgn-sec-opt:checked'); if(opts.length===0){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:''}); } else { for(var k=0;k<opts.length;k++){ asgns.push({subject:subj, grade:grd, section:opts[k].value}); } } } } return asgns; }
 function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); tm_load(); },1200); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments}}); }
-function tm_deleteTeacher(name){ if(!confirm('هل أنت متأكد من حذف المعلم "'+name+'"؟\nسيتم حذف جميع تعييناته.')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ toast('❌ '+err.message, 'error'); }).adminDeleteTeacherByName({token:App.user.token, name:name}); }
+function tm_deleteTeacher(name){
+  confirmAction('حذف معلّم',
+    'المعلّم: ' + name + '\n\nستُحذف جميع تعييناته معه.\n\n🔴 لا يمكن التراجع عن هذه العملية.',
+    '🗑️', function () {
+    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ toast('❌ '+err.message, 'error'); }).adminDeleteTeacherByName({token:App.user.token, name:name});
+  }, { okText: '🗑️ حذف المعلّم' });
+}
 function tm_closeModal(){ document.getElementById('tm-modal').style.display='none'; _tmEditingName=null; }
 function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';font-size:14px;">'+msg+'</div>'; }
 
@@ -23814,7 +23966,14 @@ function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid)
 function lm_findRowIndex(rawRows,type,value){ if(!rawRows) return -1; var colMap={grade:'grade',subject:'subject',section:'section',violation:'violation'}; var col=colMap[type]; for(var i=0;i<rawRows.length;i++) if(rawRows[i][col]===value) return rawRows[i].rowIndex; return -1; }
 function lm_showAddModal(type,title){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
 function lm_editItem(type,rowIdx,currentVal){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
-function lm_deleteItem(type,rowIdx){ if(rowIdx<0){ toast('تعذر تحديد الصف', 'error'); return; } if(!confirm('هل أنت متأكد من الحذف؟')) return; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx}); }
+function lm_deleteItem(type,rowIdx){
+  if(rowIdx<0){ toast('تعذر تحديد الصف', 'error'); return; }
+  confirmAction('حذف عنصر من القوائم',
+    'القائمة: ' + type + '\n\nسيُحذف هذا العنصر من ورقة «القوائم».\n⚠️ لن تتأثّر البيانات المرتبطة به سابقاً.',
+    '🗑️', function () {
+    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx});
+  }, { okText: '🗑️ حذف العنصر' });
+}
 function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val}); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected({token:App.user.token, listType:_lmCurrentType, value:val}); } }
 function lm_closeModal(){ document.getElementById('lm-modal').style.display='none'; }
 function lm_setStatus(msg,color){ var el=document.getElementById('lm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';">'+msg+'</div>'; }
@@ -26885,10 +27044,22 @@ function _gecWaText(r, name) {
 
 // إضافة رقم غائب فوراً من داخل التقرير — مسار تصحيح بدل زرّ لا يفعل شيئاً.
 function gec_promptPhone(teacherName) {
-  var v = prompt('رقم جوال المعلّم «' + teacherName + '» (مثال: 771234567):', '');
-  if (v === null) return;
-  v = String(v).replace(/[^0-9+]/g, '');
-  if (!v) { toast('لم يُدخَل رقم', 'warning'); return; }
+  /* 🟢 التحقّقُ صار **داخل** النافذة لا بعد إغلاقها: `prompt()` كانت تُغلق ثمّ تُظهر
+     `toast` عابراً «لم يُدخَل رقم» — فيفقد المستخدمُ ما كتبه ويُعيد الفتح. الآن
+     يبقى الحقلُ مفتوحاً برسالةٍ تحت الحقل حتى يصحّ الإدخال. */
+  promptModal({
+    title: 'رقم جوال المعلّم',
+    icon: '📱',
+    msg: 'المعلّم: ' + teacherName,
+    label: 'رقم الجوال (مثال: 771234567)',
+    type: 'tel',
+    okText: '📱 حفظ الرقم',
+    validate: function (raw) {
+      var d = String(raw || '').replace(/[^0-9+]/g, '');
+      return d ? '' : 'أدخل رقماً صالحاً (أرقام فقط، ويجوز + في البداية).';
+    }
+  }, function (raw) {
+  var v = String(raw).replace(/[^0-9+]/g, '');
   showLoading('جاري الحفظ...');
   callServer('updateMyPhoneProtected', { teacherName: teacherName, phone: v }, function (r) {
     hideLoading();
@@ -26896,6 +27067,7 @@ function gec_promptPhone(teacherName) {
     toast('✅ حُفِظ رقم ' + teacherName, 'success');
     gec_open(true);   // إعادة الجلب كي يظهر زرّ واتساب مكان زرّ الإضافة
   }, function (err) { hideLoading(); showError(err.message); });
+  });
 }
 
 // مشاركة قائمة المتأخرين — نفس ثلاثية rep_shareReport لكن من _GEC_DATA لا _RPT_CACHE
@@ -26951,14 +27123,16 @@ function gec_notifyLate() {
     }
   }
   if (!names.length) { toast('لا يوجد معلمون متأخرون', 'success'); return; }
-  if (!confirm('سيُرسَل تنبيه داخل المنصّة إلى ' + names.length + ' معلّماً. متابعة؟')) return;
-
-  showLoading('جاري الإرسال...');
-  callServer('notifyLateGradeEntryProtected', { teachers: names, month: month }, function (r) {
-    hideLoading();
-    if (!r || !r.success) { showError((r && r.error) || 'تعذّر إرسال التنبيه'); return; }
-    toast('🔔 ' + r.message, 'success');
-  }, function (err) { hideLoading(); showError(err.message); });
+  confirmAction('تنبيه المتأخّرين عن الرصد',
+    'سيُرسَل تنبيهٌ داخل المنصّة إلى ' + names.length + ' معلّماً.\nالشهر: ' + month + '\n\nالتنبيهُ داخليٌّ فقط — لا رسائل خارجية.',
+    '🔔', function () {
+    showLoading('جاري الإرسال...');
+    callServer('notifyLateGradeEntryProtected', { teachers: names, month: month }, function (r) {
+      hideLoading();
+      if (!r || !r.success) { showError((r && r.error) || 'تعذّر إرسال التنبيه'); return; }
+      toast('🔔 ' + r.message, 'success');
+    }, function (err) { hideLoading(); showError(err.message); });
+  }, { okText: '🔔 أرسِل التنبيه', okClass: 'btn-primary' });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -28143,7 +28317,10 @@ function sdir_resetPw(i) {
       st.password = r.password; st.hasHash = false;
       if (SDIR.mode === 'manager') sdir_renderRows();
       toast('✅ كلمة المرور الجديدة: ' + r.password, 'success', 5000);
-      if (confirm('تم توليد كلمة المرور: ' + r.password + '\nهل تريد إرسالها لولي الأمر عبر واتساب؟')) sdir_sendOne(i);
+      confirmAction('إرسال كلمة المرور',
+        'الطالب: ' + (st.name || st.code) + '\nكلمة المرور الجديدة: ' + r.password + '\n\nهل تُرسَل لوليّ الأمر عبر واتساب؟',
+        '🔑', function () { sdir_sendOne(i); },
+        { okText: '📲 أرسِل عبر واتساب', okClass: 'btn-primary' });
     } else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
   }, function (e) { toast('❌ ' + (e.message || e), 'error'); });
 }
