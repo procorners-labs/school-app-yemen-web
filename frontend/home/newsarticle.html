@@ -500,7 +500,13 @@ function renderError(err){
   var rb = document.getElementById('errRetry');
   if (rb) rb.onclick = function(){ location.reload(); };
 }
-(function(){
+/* 🔴 لا تُعِد هذا إلى IIFE تُنفَّذ فوراً. هذا السكربتُ **مضمَّنٌ بلا `defer`** فيُنفَّذ أثناء
+   تحليل المستند، بينما `<script defer src="/assets/gas-bridge.js">` — وهو مَن يُعرِّف
+   `window.google` — يُنفَّذ **بعد** انتهاء التحليل (يحقنه `_build/build-frontend.js`).
+   ⇒ الاستدعاءُ يسبق التعريفَ حتماً وفي كلّ مرّة: `google is not defined`، والصفحةُ تبقى
+   «جاري التحميل» أبداً. وسكربتاتُ `defer` تُنفَّذ قبل إطلاق `DOMContentLoaded`، فالبوّابةُ
+   أدناه تضمن وجودَ الجسر. النمطُ نفسُه في `home/News.html` (‏`lbBoot`). */
+function naBoot(){
   var school = qparam('school') || qparam('schoolId');
   var backHref = school ? ('index.html?school='+encodeURIComponent(school)) : 'index.html';
   var backEl = document.getElementById('backLink');
@@ -524,7 +530,9 @@ function renderError(err){
     .withSuccessHandler(function(r){ if (r && r.ok) renderArticle(r); else renderError(); })
     .withFailureHandler(function(err){ renderError(err); })
     .getSharedNewsFull(newsId, school, token);
-})();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', naBoot);
+else naBoot();
 </script>
 </body>
 </html>
