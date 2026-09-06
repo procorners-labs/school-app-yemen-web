@@ -1081,6 +1081,20 @@ var API_CACHE_FNS = {
   },
   getHomeScheduleBundle: {
     args: _apiArgsSchedule,
+    /* 🔴 **`ttl` صريحٌ 1800 — والافتراضي `600` كان يُخفق حتماً، قِيس 2026-09-06:**
+       `uniq(k) = 33` مقابل `n = 167` في نافذةِ حركةٍ فعليّة ~١٤٤ دقيقة ⇒ **المفتاحُ
+       الواحد يُطلب كلّ ~٢٩ دقيقة وسطيّاً** — أي **خارج نافذة الـ١٠ دقائق**، فأكثرُ
+       النداءات المتكرّرة تُخفق ولا تُصيب. والتجزئةُ حقيقيةٌ لا وهمية (الضابطُ الوهميّ
+       ثابتٌ على 1 في نفس الاستعلام)، **والرافعةُ `ttl` أطول لا مفتاحٌ أوسع**:
+       إسقاطُ `class`/`section` يخلط جداولَ فصولٍ مختلفة.
+       السياق: `/gas/*` تُخفق **٢٤٫٦٪** (‏502+503 من 3374) بإشباع حصّة Google.
+       ⚖️ **والمقايضةُ مُقرَّةٌ من المالك 2026-09-06:** تعديلُ الجدول قد يتأخّر ظهورُه
+       حتى نصف ساعة.
+       ⚠️ **وحدُّ الاشتقاق يُقال:** «٢٩ دقيقة» **وسطيٌّ لا توزيع**. إن كان الاستعمالُ
+       رشقيّاً فبعضُ الإصابة واقعٌ عند 600 أصلاً والمكسبُ أقلُّ من المتوقَّع — لم يُفرَّق
+       بينهما، ويلزمه توزيعُ الفواصل. ⇒ **يُعاد قياسُ `hit/store` لهذه الدالّة بعد يوم
+       ويُراجَع الرقم**، ولا يُقرأ 1800 قيمةً نهائية. */
+    ttl: 1800,
     /* كلُّ عضوٍ مغلَّفٌ بمعالج خطئه في GAS ويردّ `{ok:false,error}` عند الإخفاق.
        فالشرط: العضوان حاضران **ولا أحدهما خطأ**.
        ⚠️ **وكان مكتوباً هنا «عند غياب ورقة الجدول» — وبطَل 2026-09-05:** المسطّحةُ
@@ -1817,13 +1831,32 @@ export default {
     //   يجلب بايتات الفيديو من Drive ويبثّها كـ video/mp4 مع دعم Range،
     //   ليُشغّل في وسم <video> الأصلي بدل مشغّل Drive المتعثّر
     //   ("تعذّر تحميل الفيديو. يُرجى إعادة المحاولة"). خفيف: بثّ مباشر بلا تخزين.
+    /* 🔴 **معرّفٌ فارغ أو غيرُ مطابق كان يسقط صامتاً** — الـregex أعلاه لا يطابق
+       `/media/drive/` بلا معرّف، فيمضي الطلبُ إلى خدمة الموقع الثابت **ويردّ صفحةَ
+       HTML بحالة 200** ⇒ `<video>` يفشل في الفكّ بلا أيّ أثرٍ في أيّ سجلّ، ويُقرأ
+       «الفيديو لا يعمل». وهو أحدُ الفرضيّات الحيّة لعطل منصّة المعلّم (2026-09-06).
+       ⇒ يُلتقط صراحةً ويردّ 400 مقروءاً غيرَ مكاش، **ويُسجَّل** فيصير مقيساً. */
+    if (/^\/media\/drive\/?$/.test(path)) {
+      _bhLog({ ev: 'media', act: 'badid' });
+      var bh = new Headers();
+      bh.set('Content-Type', 'text/plain; charset=utf-8');
+      bh.set('Access-Control-Allow-Origin', '*');
+      bh.set('Cache-Control', _mediaCacheControl(400));
+      return new Response('media proxy: missing or invalid fileId', { status: 400, headers: bh });
+    }
     var mediaMatch = path.match(/^\/media\/drive\/([a-zA-Z0-9_-]+)\/?$/);
     if (mediaMatch) {
       var fileId = mediaMatch[1];
       if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }));
-      // ردُّ فشلٍ نصّيٌّ مقروء — **لا يُكاش أبداً**، فأوّلُ محاولةِ تشغيلٍ بعد الرفع
-      // قد تفشل وحدَها (فحصُ فيروسات Drive) ثمّ تنجح بعد ثوانٍ.
-      var mediaFail = function (msg, st) {
+      /* ردُّ فشلٍ نصّيٌّ مقروء — **لا يُكاش أبداً**، فأوّلُ محاولةِ تشغيلٍ بعد الرفع
+         قد تفشل وحدَها (فحصُ فيروسات Drive) ثمّ تنجح بعد ثوانٍ.
+         🔴 **ويُسجَّل كلُّ فرعٍ لا فرعُ الاستثناء وحدَه** — كان `_bhLog` في `catch` فقط،
+         فخرج فرعا `status>=400` و«HTML بدل وسائط» بلا أثر ⇒ **«صفرُ حدث» كان يُقرأ
+         «صفرُ فشل» وهو لا يعني ذلك**، ولا يُميَّز «لم يُطلَب» من «طُلب وفشل».
+         🔒 و`fileId` يدخل السجلّ **مبصوماً** بـ`_apiKeyFp` لا خاماً: المسارُ عامٌّ بلا
+         مصادقة، والبصمةُ تكفي لربط الأحداث ولا تُسرّب هويّةَ ملفّ. (نفسُ قاعدة `argsKey`.) */
+      var mediaFail = function (msg, st, act, upstream) {
+        _bhLog({ ev: 'media', act: act || 'fail', st: upstream || 0, k: _apiKeyFp(fileId) });
         var fh = new Headers();
         fh.set('Content-Type', 'text/plain; charset=utf-8');
         fh.set('Access-Control-Allow-Origin', '*');
@@ -1855,10 +1888,10 @@ export default {
            `/preview` ⇒ **«تعذّر تحميل الفيديو»** — وهي بعينها الرسالةُ التي وُلد هذا
            المسارُ لقتلها. الصوابُ ردُّ فشلٍ صريحٍ غيرِ مكاشٍ. */
         if (dResp.status >= 400) {
-          return mediaFail('video proxy: upstream ' + dResp.status, 502);
+          return mediaFail('video proxy: upstream ' + dResp.status, 502, 'upstream', dResp.status);
         }
         if (_mediaIsHtml(ct)) {
-          return mediaFail('video proxy: upstream returned HTML, not media', 502);
+          return mediaFail('video proxy: upstream returned HTML, not media', 502, 'html', dResp.status);
         }
         var outHeaders = new Headers();
         outHeaders.set('Content-Type', ct || 'video/mp4');
@@ -1874,8 +1907,7 @@ export default {
            `fileId`) أو تفصيلاً من زمن التشغيل. والاسمُ يكفي للتشخيص: `AbortError`
            ⇒ تجاوزُ المهلة، وغيرُه ⇒ فشلُ نقل. (نفسُ منطق تعقيم السجلّ.) */
         var mName = (mErr && mErr.name) ? String(mErr.name) : 'Error';
-        _bhLog({ ev: 'media', act: 'err', e: mName });
-        return mediaFail('video proxy error: ' + mName, 502);
+        return mediaFail('video proxy error: ' + mName, 502, 'err:' + mName, 0);
       }
     }
 
