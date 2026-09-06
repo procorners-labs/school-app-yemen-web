@@ -31,6 +31,27 @@ if (rIdx < 0 || fIdx < 0) {
   process.exit(1);
 }
 
+/* نزعُ التعليقات **واعياً بالسلاسل الحرفية** — أداةُ فحصٍ مشتركة.
+   🔴 لا يُستبدَل بقناعٍ نمطيٍّ عامّ: `'https://…'` داخل سلسلةٍ يجعل القناعَ يبتلع
+   بقيّةَ سطرِ كودٍ سليم، فيخضرُّ الفحصُ **بالمصادفة** لأنه لم يعد يقرأ ما ظنّ.
+   ويُحرَس بضابطٍ ثلاثيِّ الأطراف عند أوّل مستهلكٍ له (وسيطُ الفيديو). */
+function _stripComments(s) {
+  var out = '', i = 0, n = s.length, q = null, e;
+  while (i < n) {
+    var c = s.charAt(i), d = s.charAt(i + 1);
+    if (q) {                                   // داخل سلسلة: لا تعليقَ ولا نهايةَ إلّا بالمُغلِق
+      if (c === '\\') { out += c + d; i += 2; continue; }
+      if (c === q) q = null;
+      out += c; i++; continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { q = c; out += c; i++; continue; }
+    if (c === '/' && d === '*') { e = s.indexOf('*' + '/', i + 2); i = (e < 0 ? n : e + 2); out += ' '; continue; }
+    if (c === '/' && d === '/') { e = s.indexOf('\n', i); i = (e < 0 ? n : e); out += ' '; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
 var ctx = vm.createContext({});
 vm.runInContext(src.slice(rIdx, rEnd) + '\n' + src.slice(fIdx, fEnd), ctx);
 
@@ -2123,18 +2144,25 @@ console.log('وسيطُ الفيديو — سياسةُ الكاش والنوع 
      🔴 **والتعليقاتُ تُنزَع أوّلاً — وهذا الحارسُ نفسُه وقع في الفخّ وقتَ كتابته:**
      نصُّ التعليق الشارح كان يذكر النمطَ المحظور، فبقي الفحصُ **أحمرَ بعد عكسِ الطفرة**
      وكاد يُقرأ «الإصلاحُ لم يُطبَّق». فئةُ «‏`grep` يعدّ التعليقات» حرفياً. */
-  var codeOnly = block.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+  var codeOnly = _stripComments(block);
   var rawErr = codeOnly.replace(/String\(mErr\.name\)/g, '«name»');
   check(!/String\(mErr\)/.test(rawErr),
         '🔒 صفرُ تسريبٍ لنصّ الاستثناء الخام في جسم الفشل (‏النوعُ وحدَه يخرج)');
   check(/mErr\.name/.test(codeOnly),
         '🔒 ضابط معاكس: نوعُ الخطأ **ما زال** يخرج — `AbortError` يميّز المهلةَ من فشل النقل');
-  // ضابطُ الأداة نفسِها: النازعُ يُسقط ما في التعليق ويُبقي ما في الكود.
-  var strip = function (s) { return s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' '); };
-  check(!/String\(mErr\)/.test(strip('/* ذِكرٌ في تعليق: String(mErr) */ var a = 1;')) &&
-        !/String\(mErr\)/.test(strip('// ذِكرٌ في سطر: String(mErr)\nvar b = 2;')) &&
-        /String\(mErr\)/.test(strip('var c = String(mErr); /* شرح */')),
+  /* ضابطُ الأداة نفسِها — بثلاثة أطراف لا طرفين.
+     🔴 والثالثُ أُضيف بعد عطبٍ مقيس: النسخةُ الأولى كانت قناعاً عامّاً — تعبيرٌ
+     نمطيٌّ يمسح من شرطتين مائلتين إلى آخر السطر — وكتلةُ الوسيط تحوي
+     `'https://drive.usercontent.google.com/...'` ⇒ القناعُ يبتلع **بقيّةَ سطرِ كودٍ
+     سليم** ابتداءً من `//` داخل السلسلة الحرفية. قِيس: `var u = 'https:` وحدَها تبقى.
+     ولم يحمرَّ شيءٌ وقتها لأن الفحوصَ تستهدف أسطراً أخرى — **أخضرُ بالمصادفة**،
+     وهي أخطرُ من الأحمر. ⇒ النازعُ صار واعياً بالسلاسل، والطرفُ الثالث يحرسه. */
+  check(!/String\(mErr\)/.test(_stripComments('/* ذِكرٌ في تعليق: String(mErr) */ var a = 1;')) &&
+        !/String\(mErr\)/.test(_stripComments('// ذِكرٌ في سطر: String(mErr)\nvar b = 2;')) &&
+        /String\(mErr\)/.test(_stripComments('var c = String(mErr); /* شرح */')),
         'ضابط الأداة: النازعُ يُسقط ذِكرَ التعليق ويُبقي ذِكرَ الكود');
+  check(/drive\.example\.com/.test(_stripComments("var u = 'https://drive.example.com/d?id=' + id; var k = 1;")),
+        '🔒 ضابط الأداة (٣): `//` داخل سلسلةٍ حرفية **ليس تعليقاً** — سطرُ الكود يبقى كاملاً');
 })();
 
 console.log('');
