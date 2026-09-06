@@ -5837,9 +5837,14 @@ function _fltRestore(page, ids) {
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i], el = document.getElementById(id);
       if (!el || typeof o[id] !== 'string' || o[id] === '' || el.value === o[id]) continue;
+      // 🔴 القيمةُ السابقة تُحفَظ **قبل** الإسناد وتُعاد عند عدم المطابقة (بند 230):
+      // كان التعليقُ يقول «تُتجاهل بصمت» والإسنادُ قد وقع فعلاً — وإسنادُ قيمةٍ ليست
+      // ضمن الخيارات يجعل `value === ''` و`selectedIndex === -1` ⇒ القائمةُ تُترَك
+      // **فارغةً** لا على افتراضها. فكان الحارسُ يمنع رفعَ `any` ولا يمنع الأثر.
+      var prev = el.value;
       el.value = o[id];
-      // قيمة select لم تعد ضمن الخيارات (تغيّرت القوائم): تُتجاهل بصمت
-      if (el.tagName === 'SELECT' && el.value !== o[id]) continue;
+      // قيمة select لم تعد ضمن الخيارات (تغيّرت القوائم): تُعاد ولا تُترَك فارغة
+      if (el.tagName === 'SELECT' && el.value !== o[id]) { el.value = prev; continue; }
       any = true;
     }
     return any;
