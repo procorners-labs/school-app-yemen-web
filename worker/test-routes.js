@@ -2173,6 +2173,77 @@ console.log('وسيطُ الفيديو — سياسةُ الكاش والنوع 
   check(!/String\(mErr\)/.test(_stripComments('var a = 1;  // ذيليّ: String(mErr)\nvar b = 2;')) &&
         /var b = 2/.test(_stripComments('var a = 1;  // ذيليّ: String(mErr)\nvar b = 2;')),
         '🔒 ضابط الأداة (٤): التعليقُ **الذيليّ** يسقط والسطرُ التالي ينجو');
+
+  /* ═══ سدُّ عمى السجلّ — كلُّ فرعِ فشلٍ يُسجَّل، لا فرعُ الاستثناء وحدَه ══════════
+     🔴 العلّةُ المقيسة 2026-09-06: `_bhLog` كان في `catch` فقط، ففرعا `status>=400`
+     و«HTML بدل وسائط» يخرجان بلا أثر ⇒ **«صفرُ حدث» يُقرأ «صفرُ فشل»** ولا يُميَّز
+     «لم يُطلَب» من «طُلب وفشل». وهذا بعينه ما عطّل تشخيصَ عطل منصّة المعلّم. */
+  var failCalls = codeOnly.split('mediaFail(').length - 1;
+  check(failCalls >= 3,
+        'ثلاثةُ استدعاءاتٍ لـ`mediaFail` على الأقلّ (‏upstream · html · err) — وُجد ' + failCalls);
+  check(/_bhLog\(\{\s*ev:\s*'media'/.test(codeOnly),
+        '🔴 `mediaFail` نفسُها تُسجّل — فالتسجيلُ يعمّ الفروعَ كلَّها بلا نسيانِ فرع');
+  /* ⚠️ الوسائطُ **موضعيّةٌ لا مسمّاة** (`mediaFail(msg, st, act, upstream)`) — وأوّلُ
+     صياغةٍ لهذا الفحص بحثت عن `act: 'upstream'` فحمّرت على كودٍ سليم. الفحصُ يطابق
+     شكلَ الاستدعاء الفعليّ، لا شكلاً يتخيّله كاتبُ الحارس. */
+  check(/'upstream'/.test(codeOnly) && /'html'/.test(codeOnly) && /'err:'\s*\+/.test(codeOnly),
+        '🔴 كلُّ فرعٍ يمرّر `act` يميّز سببَه (‏`upstream` · `html` · `err:<النوع>`)');
+  // 🔒 وهويّةُ الملفّ لا تدخل السجلّ خاماً — نفسُ قاعدة `argsKey` في كاش الحافّة.
+  var mediaLogs = codeOnly.replace(/_apiKeyFp\([^)]*\)/g, '«fp»');
+  check(!/ev:\s*'media'[\s\S]{0,120}fileId/.test(mediaLogs),
+        '🔒 صفرُ `fileId` عارٍ في سجلّ الوسائط (‏يدخل مبصوماً بـ`_apiKeyFp`)');
+  check(/k:\s*_apiKeyFp\(fileId\)/.test(codeOnly),
+        '🔒 ضابط معاكس: البصمة **موجودةٌ فعلاً** — السجلُّ يربط الأحداث ولم يُفرَّغ من معناه');
+})();
+
+// ── 🔴 معرّفٌ فارغ ⇒ 400 صريح لا صفحةَ HTML صامتة ───────────────────────────
+//
+// كان `/media/drive/` بلا معرّف **لا يطابق الـregex** فيمضي إلى خدمة الموقع الثابت
+// ويردّ **HTML بحالة 200** ⇒ `<video>` يفشل بلا أثرٍ في أيّ سجلّ. وهي إحدى الفرضيّات
+// الحيّة لعطل «الفيديو لا يُعرض في منصّة المعلّم» (2026-09-06).
+console.log('');
+console.log('وسيطُ الفيديو — المعرّفُ الفارغ (سلوكي):');
+(function () {
+  var bIdx = src.indexOf("if (/^\\/media\\/drive\\/?$/.test(path))");
+  check(bIdx !== -1, 'ضابط: فرعُ المعرّف الفارغ موجودٌ في المصدر');
+  if (bIdx === -1) return;
+  var mIdx = src.indexOf('var mediaMatch = path.match(');
+  check(mIdx > bIdx,
+        '🔴 فرعُ المعرّف الفارغ **يسبق** مطابقةَ المعرّف الصحيح — وإلّا لم يُبلَغ أبداً');
+  var blk = src.slice(bIdx, mIdx);
+  check(/status:\s*400/.test(blk) && /_mediaCacheControl\(400\)/.test(blk),
+        '🔴 يردّ 400 **غيرَ مكاش** (‏`_mediaCacheControl(400)` ⇒ `no-store`)');
+  check(/act:\s*'badid'/.test(blk),
+        '🔴 ويُسجَّل بـ`act:\'badid\'` — فشلٌ صامتٌ صار حدثاً مقيساً');
+  // 🔒 ضابط معاكس: لا `fileId` هنا أصلاً (لا يوجد)، ولا يُكاش الفشلُ بحال.
+  check(!/max-age/.test(blk),
+        '🔒 ضابط معاكس: صفرُ `max-age` في فرع المعرّف الفارغ');
+})();
+
+// ── 🔴 `ttl` جدول الحصص: 1800 لهذه الدالّة **وحدها** ─────────────────────────
+console.log('');
+console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي عبر `vm`):');
+(function () {
+  var aIdx = src.indexOf('var API_CACHE_FNS = {');
+  var aEnd = src.indexOf('\n};', aIdx) + 3;
+  check(aIdx >= 0 && aEnd > aIdx, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
+  if (aIdx < 0 || aEnd <= aIdx) return;
+  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {} });
+  var fns;
+  try { vm.runInContext(src.slice(aIdx, aEnd), actx); fns = vm.runInContext('API_CACHE_FNS', actx); }
+  catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
+  check(!!fns && typeof fns === 'object', 'ضابط: الكائنُ قابلٌ للقراءة فعلاً');
+
+  check(fns.getHomeScheduleBundle && fns.getHomeScheduleBundle.ttl === 1800,
+        '🔴 `getHomeScheduleBundle.ttl === 1800` — الافتراضي 600 كان يُخفق حتماً (المفتاحُ كلّ ~٢٩ دقيقة)');
+  /* 🔒 الضابطُ المعاكس الجوهريّ: **رفعُ الـttl لم يعمّ الجميع.** رفعٌ شاملٌ بلا قصد
+     يكسر قاعدةً مقيسة: `getTeacherSchoolBrand` بلا `ttl` **عمداً** — «شاشةُ دخولٍ بلا
+     هويّة أسوأ من العطل»، وتثبيتُها يجعل ملءَ الخانة لاحقاً لا يظهر. */
+  check(fns.getTeacherSchoolBrand && fns.getTeacherSchoolBrand.ttl === undefined &&
+        fns.getStudentSchoolBrand && fns.getStudentSchoolBrand.ttl === undefined,
+        '🔒 ضابط معاكس: البراندان **بلا `ttl`** كما كانا — الرفعُ لم يعمّ بلا قصد');
+  check(fns.getHomePageBundle && fns.getHomePageBundle.ttl === 120,
+        '🔒 ضابط معاكس: `getHomePageBundle` باقٍ على 120 (‏أقصرُ عنصرٍ مُكاشٌ خادمياً ٣٠ث)');
 })();
 
 console.log('');
