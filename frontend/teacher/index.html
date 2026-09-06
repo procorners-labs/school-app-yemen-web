@@ -18525,10 +18525,16 @@ function loadNewsPage(isFirst) {
   // مفتاح الكاش يشمل الفلاتر — كان «news_page_N» فقط فيعيد نتائج فلاتر قديمة لنفس الصفحة.
   // وschoolId في ذيله (بند 85-ب) لعزل المستأجرين عند تبديل ?school= بنفس التبويب —
   // البادئة تبقى news_p حرفياً لأن الإبطال بعد النشر يعتمدها (ClientCache.clear('news_p')).
+  // 🔴 والهويةُ (الدور + اسم المعلّم) جزءٌ من المفتاح إلزاماً (بند 229): حمولةُ
+  // getAllNewsProtected **مفلترةٌ بالدور خادمياً**، والكاش في sessionStorage يخصّ
+  // التبويب لا الحساب ⇒ تبديلُ الحساب في نفس التبويب كان يخدم قائمةَ الحساب السابق
+  // حتى ١٢٠ ثانية (و٣٠ دقيقة عبر getStale). والاتجاهُ الأخطر أن يسبق حسابُ إدارةٍ
+  // حسابَ معلّم: فيرى المعلّمُ أخبارَ فصولٍ ليست له. عزلٌ لا تحسين.
+  var _who = (App.user ? ((App.user.role || '') + '~' + (App.user.teacherName || '')) : '');
   var _ck = 'news_p' + _newsCurrentPage + '_' +
             [reqParams.grade, reqParams.section, reqParams.sortOrder, reqParams.dateFrom,
              reqParams.dateTo, reqParams.teacher, reqParams.pageSize,
-             ((App.user && App.user.schoolId) || '')].join('|');
+             ((App.user && App.user.schoolId) || ''), _who].join('|');
   callServer('getAllNewsProtected', reqParams, _ck, 120, function(r){
     if (!r || !r.success) {
       if (area) area.innerHTML =
