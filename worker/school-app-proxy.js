@@ -363,6 +363,22 @@ function _bhLog(o) {
   } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
 }
 
+/* ═══ سياسةُ وسيط الفيديو `/media/drive/<fileId>` — دالّتان نقيّتان ═══════════════
+   🔴 العلّةُ المقيسة (2026-09-06): `Cache-Control: public, max-age=86400, immutable`
+   كان يُلحَق بالردّ **أيّاً كانت حالتُه** ⇒ فشلُ الجلب (فحصُ فيروسات Drive ما زال جارياً
+   على ملفٍّ كبيرٍ رُفع للتوّ) يُكاش ٢٤ ساعة، و`immutable` تمنع إعادةَ التحقّق **حتى عند
+   التحديث** ⇒ «رفعتُه ولا يعمل، وما زال لا يعمل».
+   ⚠️ ونقيّتان عمداً كي يقيسهما `test-routes.js` **سلوكياً** لا بـ`grep` على المصدر. */
+var MEDIA_CACHE_OK = 'public, max-age=86400, immutable';
+var MEDIA_TIMEOUT_MS = 20000;
+function _mediaCacheControl(status) {
+  // النجاحُ وحده يُكاش — محتوى الفيديو ثابتٌ لكلّ `fileId` فيُسرَّع إعادةُ التشغيل والتموضع.
+  return (status === 200 || status === 206) ? MEDIA_CACHE_OK : 'no-store';
+}
+function _mediaIsHtml(ct) {
+  return String(ct || '').indexOf('text/html') !== -1;
+}
+
 function withCors(resp) {
   resp.headers.set('Access-Control-Allow-Origin', '*');
   resp.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1805,31 +1821,55 @@ export default {
     if (mediaMatch) {
       var fileId = mediaMatch[1];
       if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }));
+      // ردُّ فشلٍ نصّيٌّ مقروء — **لا يُكاش أبداً**، فأوّلُ محاولةِ تشغيلٍ بعد الرفع
+      // قد تفشل وحدَها (فحصُ فيروسات Drive) ثمّ تنجح بعد ثوانٍ.
+      var mediaFail = function (msg, st) {
+        var fh = new Headers();
+        fh.set('Content-Type', 'text/plain; charset=utf-8');
+        fh.set('Access-Control-Allow-Origin', '*');
+        fh.set('Cache-Control', _mediaCacheControl(st || 502));
+        return new Response(msg, { status: st || 502, headers: fh });
+      };
       try {
         var range = request.headers.get('Range');
-        var fInit = { method: 'GET', redirect: 'follow', headers: {} };
+        // ⚠️ مهلةٌ صريحة: هذا المسار كان **بلا سقفٍ زمنيّ إطلاقاً** بخلاف `/gas/*`.
+        //    مُجهِضٌ واحد للجلبتين معاً ⇒ الميزانيةُ كلّية لا لكلِّ محاولةٍ على حدة.
+        var mAbort = new AbortController();
+        var mTimer = setTimeout(function () { mAbort.abort(); }, MEDIA_TIMEOUT_MS);
+        var fInit = { method: 'GET', redirect: 'follow', headers: {}, signal: mAbort.signal };
         if (range) fInit.headers['Range'] = range;
-        // نقطة التنزيل المباشر الحديثة (تتجاوز صفحة فحص الفيروسات بـ confirm=t)
-        var driveUrl = 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
-        var dResp = await fetch(driveUrl, fInit);
-        var ct = dResp.headers.get('Content-Type') || '';
-        // لو رجعت صفحة HTML (تأكيد/خطأ) جرّب نقطة uc التقليدية
-        if (ct.indexOf('text/html') !== -1) {
-          dResp = await fetch('https://drive.google.com/uc?export=download&id=' + fileId + '&confirm=t', fInit);
-          ct = dResp.headers.get('Content-Type') || '';
+        try {
+          // نقطة التنزيل المباشر الحديثة (تتجاوز صفحة فحص الفيروسات بـ confirm=t)
+          var driveUrl = 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
+          var dResp = await fetch(driveUrl, fInit);
+          var ct = dResp.headers.get('Content-Type') || '';
+          // لو رجعت صفحة HTML (تأكيد/خطأ) جرّب نقطة uc التقليدية
+          if (_mediaIsHtml(ct)) {
+            dResp = await fetch('https://drive.google.com/uc?export=download&id=' + fileId + '&confirm=t', fInit);
+            ct = dResp.headers.get('Content-Type') || '';
+          }
+        } finally { clearTimeout(mTimer); }
+
+        /* 🔴 لا تُوسَم بايتاتُ HTML بأنها `video/mp4`. كان السطرُ يفرض النوعَ فرضاً بعد
+           المحاولة الثانية ⇒ `<video>` يفشل في الفكّ ⇒ `onerror` ⇒ تراجعٌ إلى إطار
+           `/preview` ⇒ **«تعذّر تحميل الفيديو»** — وهي بعينها الرسالةُ التي وُلد هذا
+           المسارُ لقتلها. الصوابُ ردُّ فشلٍ صريحٍ غيرِ مكاشٍ. */
+        if (dResp.status >= 400) {
+          return mediaFail('video proxy: upstream ' + dResp.status, 502);
+        }
+        if (_mediaIsHtml(ct)) {
+          return mediaFail('video proxy: upstream returned HTML, not media', 502);
         }
         var outHeaders = new Headers();
-        outHeaders.set('Content-Type', (ct && ct.indexOf('text/html') === -1) ? ct : 'video/mp4');
+        outHeaders.set('Content-Type', ct || 'video/mp4');
         outHeaders.set('Accept-Ranges', 'bytes');
         outHeaders.set('Access-Control-Allow-Origin', '*');
-        // محتوى الفيديو ثابت لكل fileId (لا يتغيّر) → كاش طويل على حافة Cloudflare لتسريع
-        // إعادة التشغيل والتموضع (seek)؛ immutable يمنع إعادة التحقّق غير الضرورية.
-        outHeaders.set('Cache-Control', 'public, max-age=86400, immutable');
+        outHeaders.set('Cache-Control', _mediaCacheControl(dResp.status));
         var cr = dResp.headers.get('Content-Range'); if (cr) outHeaders.set('Content-Range', cr);
         var cl = dResp.headers.get('Content-Length'); if (cl) outHeaders.set('Content-Length', cl);
         return new Response(dResp.body, { status: dResp.status, headers: outHeaders });
       } catch (mErr) {
-        return withCors(new Response('video proxy error: ' + String(mErr), { status: 502 }));
+        return mediaFail('video proxy error: ' + String(mErr), 502);
       }
     }
 

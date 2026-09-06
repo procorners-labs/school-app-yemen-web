@@ -2062,6 +2062,60 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
         'بصمةُ مسار التخزين تُحسَب قبل `ctx.waitUntil` لا داخل الكولباك');
 })();
 
+// ── 🔴 وسيطُ الفيديو `/media/drive/<id>`: الفشلُ لا يُكاش (سلوكي عبر `vm`) ─────
+//
+// العلّةُ المقيسة حيّاً (2026-09-06، جلسةُ `SchoolApp-gas`):
+//   curl -s -D - -o /dev/null "https://yemenschoolz.com/media/drive/NOT_A_REAL_ID"
+//   ⇒ 404 + `Cache-Control: public, max-age=86400, immutable`
+// أي أن **الفشلَ نفسَه** يُكاش يوماً كاملاً، و`immutable` تمنع إعادةَ التحقّق حتى عند
+// التحديث. وكان المسارُ **بلا حالةِ اختبارٍ واحدة** في هذا الملفّ (صفرُ ذكرٍ لـ`media`).
+console.log('');
+console.log('وسيطُ الفيديو — سياسةُ الكاش والنوع (سلوكي):');
+(function () {
+  var mIdx = src.indexOf('var MEDIA_CACHE_OK');
+  var mEnd = src.indexOf('\n}', src.indexOf('function _mediaIsHtml(')) + 2;
+  check(mIdx >= 0 && mEnd > mIdx,
+        'ضابط: استُخرجت كتلةُ سياسة الوسيط الإعلامي من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
+  if (mIdx < 0 || mEnd <= mIdx) return;
+
+  var mctx = vm.createContext({});
+  vm.runInContext(src.slice(mIdx, mEnd), mctx);
+  var cc = vm.runInContext('_mediaCacheControl', mctx);
+  var isHtml = vm.runInContext('_mediaIsHtml', mctx);
+  check(typeof cc === 'function' && typeof isHtml === 'function',
+        'ضابط: الدالّتان قابلتان للتشغيل فعلاً (لا نصٌّ مستخرَجٌ فارغ)');
+
+  // ① الجوهر: أيُّ فشلٍ ⇒ لا `max-age` إطلاقاً.
+  [404, 403, 500, 502, 429].forEach(function (st) {
+    check(!/max-age/.test(cc(st)) && cc(st) === 'no-store',
+          '🔴 الحالة ' + st + ' لا تُكاش (‏' + cc(st) + ')');
+  });
+  // ② الضابطُ المعاكس: الحارسُ ليس سياجاً — النجاحُ **ما زال** يُكاش بـ`immutable`،
+  //    وهو المطلوب (تسريعُ إعادة التشغيل والتموضع). بلا هذا يمرّ «no-store دائماً».
+  check(/max-age=86400/.test(cc(200)) && /immutable/.test(cc(200)),
+        '🔒 ضابط معاكس: 200 ما زالت تُكاش يوماً بـ`immutable`');
+  check(cc(206) === cc(200),
+        '🔒 ضابط معاكس: 206 (‏Range) تُكاش كالنجاح الكامل — التموضعُ لا يُبطَّأ');
+
+  // ③ HTML لا يُوسَم مطلقاً `video/mp4`: الكاشفُ يعمل على الأشكال الحيّة كلّها.
+  check(isHtml('text/html; charset=utf-8') === true && isHtml('text/html') === true,
+        'كاشفُ HTML يلتقط النوعَ بمعاملٍ وبدونه');
+  check(isHtml('video/mp4') === false && isHtml('') === false && isHtml(null) === false,
+        '🔒 ضابط معاكس: النوعُ الإعلاميّ والفارغُ والمعدومُ ليست HTML');
+
+  // ④ ولا يبقى في الفرع فرضٌ أعمى للنوع على بايتاتِ HTML.
+  var mediaIdx = src.indexOf("var mediaMatch = path.match(");
+  var mediaEnd = src.indexOf("// ── 1هـ)", mediaIdx);
+  var block = mediaIdx >= 0 && mediaEnd > mediaIdx ? src.slice(mediaIdx, mediaEnd) : '';
+  check(block.length > 0, 'ضابط: التُقط فرعُ `/media/drive/` من المصدر');
+  check(block.indexOf("'video/mp4'") !== -1 && !/indexOf\('text\/html'\) === -1\) \? ct : 'video\/mp4'/.test(block),
+        '🔴 لا فرضَ أعمى لـ`video/mp4` على نوعٍ فُحص أنه HTML');
+  check(/_mediaCacheControl\(dResp\.status\)/.test(block),
+        '🔴 `Cache-Control` يُبنى من حالة الردّ لا ثابتاً');
+  check(/new AbortController\(\)/.test(block) && /MEDIA_TIMEOUT_MS/.test(block),
+        '⚠️ للمسار مهلةٌ صريحة (‏كان بلا سقفٍ زمنيّ إطلاقاً)');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
