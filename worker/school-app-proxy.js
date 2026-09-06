@@ -1098,6 +1098,33 @@ function _apiCacheKey(origin, app, fn, argsKey) {
                      { method: 'GET' });
 }
 
+/* 🔬 **بصمةُ مفتاحٍ للسجلّ — بصمةٌ لا قيمة** (2026-09-06).
+ *
+ * **لماذا وُجدت:** سطورُ `ev:'apicache'` كانت تحمل `app`+`fn` **ولا تحمل هويّةَ مفتاح**
+ * إطلاقاً ⇒ السؤالُ الوحيد الذي يفسّر نسبةَ الإصابة — **كم مفتاحاً مميّزاً لكلّ دالّة
+ * داخل نافذة الـttl؟** — كان **غيرَ قابلٍ للقياس بالأدوات القائمة**. وهو حرفياً العائقُ
+ * المسجَّل على بندَي `edge-cache-stores-more-than-it-hits` و
+ * `worker-schedule-bundle-cache-fragmented`: بلاه يبقى البندان مفتوحَين أبداً أو
+ * يُغلقان بلا دليل. ⇒ **الأداةُ قبل القياس، والقياسُ قبل الحكم.**
+ *
+ * 🔴 **ولماذا بصمةٌ لا القيمة نفسُها:** `argsKey` يحمل `schoolId` (‏UUID) واسمَ الصفّ
+ * والشعبة عربيّاً. وكتابتُه خاماً تُدخل بياناتِ مستأجرٍ في سجلّات Cloudflare **بلا أيّ
+ * حاجة** — لأن الاستعلامَ المطلوب `uniq(k)` مقابل `count()` مجمَّعاً بـ`fn`، وهو
+ * **لا يحتاج القيمةَ بحال**. ⇒ ‏FNV‑1a 32‑بت ⇒ ثمانيةُ محارف hex.
+ *
+ * ⚠️ **وحدُّه يُقال حيث يُقرأ: بصمةٌ لا تعمية، وعدٌّ تقريبيٌّ لا هويّةٌ قاطعة.** فضاءُ
+ * ‏2³² يعطي احتمالَ تصادمٍ ~0.01٪ عند ألفِ مفتاحٍ مميّز، و~1.2٪ عند عشرة آلاف
+ * (‏تقريبُ عيد الميلاد) ⇒ `uniq(k)` **يُقلّل قليلاً** ولا يُبالغ أبداً، فالخطأُ في
+ * الاتّجاه الآمن للسؤال المطروح. 🔴 **ولا يُبنى عليه قرارُ عزلٍ بين مستأجرين ولا مفتاحُ
+ * كاش** — العزلُ يبقى على `_apiCacheKey` بقيمته الكاملة، وهذه للسجلّ وحده. */
+function _apiKeyFp(argsKey) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < argsKey.length; i++) {
+    h = Math.imul(h ^ argsKey.charCodeAt(i), 16777619) >>> 0;
+  }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+
 /* يُحلّل الجسم ويُرجِع `{fn, argsKey}` إن كان مؤهَّلاً، وإلّا `null`.
    🔴 **بـ`JSON.parse` لا برجيكس** — نفس درس `_bhIsLoginBody`: الرجيكس يأخذ **أوّل** قيمةٍ
    لمفتاحٍ مكرَّر و`JSON.parse` يأخذ **آخرها**، فجسمٌ مصنوع
@@ -1436,6 +1463,7 @@ export default {
           var _acHit = await _apiCacheGet(url.origin, app, _acProbe);
           if (_acHit) {
             _bhLog({ ev: 'apicache', act: 'hit', app: app, fn: _acProbe.fn,
+                     k: _apiKeyFp(_acProbe.argsKey),
                      age: _acHit.age, n: _bhN, q: _bhQ.length });
             return withCors(new Response(_acHit.text, {
               status: 200,
@@ -1612,8 +1640,12 @@ export default {
          ويُقرأ «الإصلاح لم يعمل». */
       if (_acProbe && good && ctx && ctx.waitUntil) {
         var _acFn = _acProbe.fn, _acOrigin = url.origin, _acApp = app, _acText = lastText;
+        /* 🔴 البصمةُ تُحسَب **هنا** لا داخل `then`: نفسُ سببِ التقاط `_acFn`/`_acApp` —
+           الكولباك يجري بعد انتهاء الطلب، و`_acProbe` قد لا يبقى ما نظنّه حينها. */
+        var _acKeyFp = _apiKeyFp(_acProbe.argsKey);
         ctx.waitUntil(_apiCachePut(_acOrigin, _acApp, _acProbe, _acText).then(function (stored) {
-          _bhLog({ ev: 'apicache', act: stored ? 'store' : 'skip', app: _acApp, fn: _acFn });
+          _bhLog({ ev: 'apicache', act: stored ? 'store' : 'skip',
+                   app: _acApp, fn: _acFn, k: _acKeyFp });
         }));
       }
       return withCors(new Response(lastText, {

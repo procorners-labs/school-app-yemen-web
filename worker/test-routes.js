@@ -1994,6 +1994,74 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
         '🔒 ضابط معاكس: وسمٌ غير موجود يُقرأ غائباً (المطابقة ليست سامحة)');
 })();
 
+/* ── 🔬 بصمةُ مفتاح الكاش في السجلّ — حارس **سلوكيّ** + ضابطُ خصوصية ─────────────
+ *
+ * ما يحرسه شيئان لا واحد:
+ *  ① **أن الأداة تعمل:** `_apiKeyFp` تُستخرَج من المصدر نفسِه وتُشغَّل — لا تُعاد كتابتها
+ *     هنا، وإلّا اختُبِرت نسخةُ الاختبار لا الوركر (نفسُ درس بند 116).
+ *  ② 🔴 **وأن القيمةَ الخام لا تُسجَّل أبداً:** `argsKey` يحمل `schoolId` واسمَ الصفّ
+ *     والشعبة. فأيُّ نداء `_bhLog({ ev:'apicache' … })` يحمل `argsKey` **أحمرُ فوراً**.
+ *     وهذا هو الضابطُ المعاكس القابلُ للتشغيل: استبدِل `_apiKeyFp(_acProbe.argsKey)`
+ *     بـ`_acProbe.argsKey` ⇒ يجب أن يحمرّ. بلا هذا الضابط يكون الحارسُ نصفَ حارس:
+ *     يُثبت أن السجلّ يحمل حقلاً، ولا يُثبت أنه لا يحمل ما لا يجوز.
+ *  🔒 وغيابُ الدالّة من المصدر **فشلٌ لا تخطٍّ صامت** — إعادةُ تسميتها كانت ستُطفئ
+ *     الحارسَ ويبقى الملفُّ أخضرَ لأنه لم يقِس شيئاً. */
+(function () {
+  console.log('');
+  console.log('بصمةُ مفتاح كاش الحافّة في السجلّ (‏`_apiKeyFp`):');
+
+  var kIdx = src.indexOf('function _apiKeyFp(');
+  if (kIdx < 0) {
+    check(false, '🔴 API_KEY_FP_MISSING — تعذّر استخراج `_apiKeyFp` من الوركر');
+    return;
+  }
+  vm.runInContext(src.slice(kIdx, src.indexOf('\n}', kIdx) + 2), ctx);
+  var fp = function (s) { return vm.runInContext('_apiKeyFp(' + JSON.stringify(s) + ')', ctx); };
+
+  var A = '%5B%5B%22uuid-a%22%5D%2C%22s1%22%5D';
+  var B = '%5B%5B%22uuid-b%22%5D%2C%22s1%22%5D';
+
+  check(/^[0-9a-f]{8}$/.test(fp(A)), 'البصمة ثمانيةُ محارف hex بالضبط');
+  check(fp(A) === fp(A), 'حتميّة: نفسُ المدخل ⇒ نفسُ البصمة');
+  check(fp(A) !== fp(B), 'مدخلان مختلفان ⇒ بصمتان مختلفتان (وإلّا فالعدُّ بلا معنى)');
+  check(/^[0-9a-f]{8}$/.test(fp('')), 'المدخلُ الفارغ لا يكسرها ولا يُقصّر الطول');
+  /* ضابطٌ معاكس على الحارس نفسه: لو كانت الدالّةُ ثابتةً تُرجِع قيمةً واحدة لمرّ كلُّ ما
+     سبق عدا هذا السطر — فهو الذي يمنع «حارساً أخضرَ لا يقيس شيئاً». */
+  check(fp('a') !== fp('b') && fp('ab') !== fp('ba'),
+        '🔒 ضابط معاكس: البصمة تتبع الترتيب والمحتوى معاً لا قيمةٌ ثابتة');
+
+  // ── سطورُ السجلّ: كلٌّ يُقرأ من المصدر ويُفحَص نصّاً على شرطين ──
+  var calls = [], at = 0;
+  while ((at = src.indexOf("_bhLog({ ev: 'apicache'", at)) !== -1) {
+    var end = src.indexOf('});', at);
+    calls.push(src.slice(at, end + 3));
+    at = end + 3;
+  }
+  check(calls.length >= 3,
+        'ثلاثةُ نداءات سجلٍّ على الأقلّ (‏`nokey` · `hit` · `store/skip`) — وُجد ' + calls.length);
+
+  /* 🔴 **الشرطُ الصحيح: `argsKey` لا يظهر إلّا ملفوفاً بـ`_apiKeyFp(...)`** — لا «لا
+     يظهر إطلاقاً». الصياغةُ الأولى حمّرت على استعمالٍ **مشروع** (`_apiKeyFp(probe.argsKey)`)
+     وهي فئةُ «الحارسِ الذي يمنع الهدفَ الذي كُتب لحمايته». ⇒ تُنزع اللفّاتُ أوّلاً ثمّ
+     يُبحَث عمّا بقي؛ فيبقى الضابطُ المعاكس فاعلاً حرفياً: `k: _acProbe.argsKey` يترك
+     الاسمَ عارياً ⇒ أحمر. */
+  var leaks = calls.filter(function (c) {
+    return /argsKey/.test(c.replace(/_apiKeyFp\([^)]*\)/g, '«fp»'));
+  });
+  check(leaks.length === 0,
+        '🔴 صفرُ نداءِ سجلٍّ يحمل `argsKey` عارياً (‏بياناتُ مستأجرٍ لا تدخل السجلّ)');
+
+  var needK = calls.filter(function (c) { return !/act: 'nokey'/.test(c); });
+  check(needK.length > 0 && needK.every(function (c) { return /\bk:/.test(c); }),
+        'كلُّ نداءٍ له مفتاحٌ فعلاً يحمل الحقل `k` (‏`nokey` مستثنىً — لا مفتاحَ له)');
+
+  /* 🔴 الحسابُ **قبل** `ctx.waitUntil` لا داخل الكولباك — نفسُ سببِ التقاط `_acFn`. */
+  var vIdx = src.indexOf('var _acKeyFp = _apiKeyFp(');
+  var wIdx = src.indexOf('ctx.waitUntil(_apiCachePut(');
+  check(vIdx !== -1 && wIdx !== -1 && vIdx < wIdx,
+        'بصمةُ مسار التخزين تُحسَب قبل `ctx.waitUntil` لا داخل الكولباك');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
