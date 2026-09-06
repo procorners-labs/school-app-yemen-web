@@ -9295,18 +9295,21 @@ function _callServerWithRetry(fnName, params, callback, errorCallback, maxRetrie
 }
 
 // ── ثوابت الرفع المقطَّع (chunked resumable) لمرفقات الأخبار ──────────────────────────
-// حجم الشريحة ديناميكي: يبدأ معتدلاً ويكبر مع النجاح المتتالي حتى سقف، ويصغر عند الفشل — كل
-// حجم مضاعف لـ256KiB إلزامياً (قيد بروتوكول Google لكل شريحة عدا الأخيرة). السقف مرتفع عمداً
-// (256MiB، عملياً بلا أثر لأي فيديو حتى 300MB — Math.min(offset+chunkSize,total) في sendChunk
-// يحدّه تلقائياً عند نهاية الملف): بروتوكول Google يتتبّع البايتات المقبولة فعلياً على مستوى
-// الجلسة نفسها لا حدود الشريحة، فاستعلام الاستئناف بعد أي فشل يُرجِع دوماً آخر بايت وصل حقيقةً
-// حتى لو كانت الشريحة المُرسَلة ضخمة — تكبير السقف يقلّل عدد جولات الشبكة (المحرّك الفعلي لسرعة
-// الرفع الملموسة) بلا إعادة لمخاطرة "إعادة الرفع من الصفر" التي يحلّها التقطيع أصلاً. عدد الملفات
-// المتزامنة افتراضي بداية للتحقّق التجريبي على اتصال حقيقي بطيء، لا رقماً نهائياً.
-var _TNEWS_CONCURRENT_UPLOADS = 3;
+// حجم الشريحة ديناميكي: يبدأ صغيراً ويكبر مع النجاح المتتالي حتى سقف، ويصغر عند الفشل — كل
+// حجم مضاعف لـ256KiB إلزامياً (قيد بروتوكول Google لكل شريحة عدا الأخيرة).
+//
+// 🔴 خُفِّضت القيم 2026-09-06 بعد بلاغ «الرفع بطيء» — وكانت 8MiB بداية و256MiB سقفاً بحجّة
+// أن تقليل جولات الشبكة يزيد السرعة. والحجّة صحيحة على وصلة سريعة وتنقلب على وصلة يمنية
+// بطيئة: البايتات المُرسَلة فوق آخر إزاحة قبِلَها Google تضيع كلّها عند أي انقطاع في منتصف
+// شريحة، فشريحةٌ أكبر = خسارةٌ أكبر لكل انقطاع، وانقطاعٌ واحد يبتلع ما كسبته كل الجولات
+// المُوفَّرة. والشريحة الأولى 8MiB وحدها دقائق قبل أن يتحرّك المؤشّر أصلاً. المضاعفة تبقى
+// (تكافئ الوصلة الجيدة) لكن بسقف يحدّ خسارة الانقطاع الواحد.
+// عدد الملفات المتزامنة خُفِّض إلى 2: ثلاثة ملفات تتنافس على منفذ صاعد واحد لا تزيد
+// الإنتاجية الكلية وتؤخّر اكتمال أوّل ملف.
+var _TNEWS_CONCURRENT_UPLOADS = 2;
 var _TNEWS_CHUNK_UNIT = 256 * 1024;
-var _TNEWS_CHUNK_START = 8 * 1024 * 1024;
-var _TNEWS_CHUNK_MAX = 256 * 1024 * 1024;
+var _TNEWS_CHUNK_START = 2 * 1024 * 1024;
+var _TNEWS_CHUNK_MAX = 32 * 1024 * 1024;
 var _TNEWS_CHUNK_MIN = 1 * 1024 * 1024;
 var _TNEWS_CHUNK_RETRY_DELAYS = [1000, 2000, 4000, 8000, 15000];
 
@@ -9340,18 +9343,24 @@ function _newsResumableUpload(file, onDone, onFail) {
 }
 
 // رفع مقطَّع (chunked resumable) لبايتات الملف — بديل عن PUT واحد ضخم:
-// - يبدأ بحجم شريحة معتدل ويُضاعفه عند نجاح متتالٍ حتى سقف، ويُنصِّفه عند الفشل.
-// - عند فشل شريحة: يجرّب فوراً مرّة واحدة عبر الرابط المباشر لـ googleapis (تراجع الوسيط)، ثم
-//   يُعيد المحاولة حتى 5 مرّات بتأخير تصاعدي — مستعلماً في كل مرّة عن آخر بايت قبِلَه Google
-//   فعلياً لهذه الجلسة (Content-Range: bytes */total فارغ) بدل افتراض إعادة الإرسال من الصفر.
+// - يبدأ بحجم شريحة صغير ويُضاعفه عند نجاح متتالٍ حتى سقف، ويُنصِّفه عند الفشل.
+// - عند فشل شريحة: يُعيد المحاولة حتى 5 مرّات بتأخير تصاعدي — مستعلماً في كل مرّة عن آخر
+//   بايت قبِلَه Google فعلياً لهذه الجلسة (Content-Range: bytes */total فارغ) بدل افتراض
+//   إعادة الإرسال من الصفر.
+//
+// 🔴 كل البايتات تمرّ عبر وسيط الـWorker حصراً — أُسقط 2026-09-06 «تراجعٌ» كان يجرّب
+// sessionUri المباشر لـ googleapis عند أوّل فشل شريحة. المسار المباشر **مُثبَتٌ فشلُه من
+// اليمن** (حجب + CORS ⇒ status 0) وهو بعينه سببُ وجود الوسيط أصلاً
+// (_docs/2026-06-29-رفع-الملفات-الكبيرة-ومزامنة-أخبار-المعلمين.md سطر 46) ⇒ كان يُهدر
+// محاولةً كاملةً مضمونةَ الفشل قبل كل انتظار في سلسلة 1+2+4+8+15 ثانية.
+// و sessionUri يبقى مُمرَّراً لأن استعلام الاستئناف يحتاجه معرّفاً للجلسة لا وجهةً للطلب.
 // onId(fileId) عند اكتمال آخر شريحة · onFail(msg) عند فشل نهائي (استنفاد المحاولات أو جلسة منتهية).
 function _newsChunkedUpload(proxyUrl, sessionUri, file, onId, onFail) {
   var total = file.size;
   var offset = 0;
   var chunkSize = _TNEWS_CHUNK_START;
-  var useProxy = true;
 
-  function currentUrl() { return useProxy ? proxyUrl : sessionUri; }
+  function currentUrl() { return proxyUrl; }
 
   function reportProgress(extra) {
     var done = offset + (extra || 0);
@@ -9386,9 +9395,7 @@ function _newsChunkedUpload(proxyUrl, sessionUri, file, onId, onFail) {
   }
 
   function handleChunkFailure(attempt) {
-    // أولاً: مرّة واحدة عبر الرابط المباشر قبل اعتبارها فشلاً حقيقياً لهذه المحاولة.
-    if (useProxy) { useProxy = false; sendChunk(attempt); return; }
-    useProxy = true;
+    // بلا تراجع إلى الرابط المباشر — انظر تعليق رأس الدالّة: مسارٌ مضمون الفشل من اليمن.
     if (attempt >= _TNEWS_CHUNK_RETRY_DELAYS.length) {
       onFail('تعذّر رفع الملف بعد عدّة محاولات — تحقّق من الاتصال وأعد المحاولة');
       return;
@@ -19159,7 +19166,10 @@ function _tcPlayVideo(el) {
   var kind = el.getAttribute('data-kind') || 'iframe', inner;
   if (kind === 'drive') {
     var fid = el.getAttribute('data-fid') || '';
-    inner = '<video src="' + _drvVideoSrc(fid) + '" poster="https://drive.google.com/thumbnail?id=' + fid + '&sz=w1000" ' +
+    // 🔴 الملصق من lh3 لا من drive.google.com/thumbnail — الأخير يردّ 302 يفشل داخل WebView
+    // أندرويد (قرار موثَّق في teacher/DriveUrlUtils.js:30-36)، فيظهر إطارٌ أسود داخل التطبيق
+    // ويُقرأ «الفيديو لا يظهر». والسطر النظير في _tcNewsMediaHtml كان على lh3 أصلاً.
+    inner = '<video src="' + _drvVideoSrc(fid) + '" poster="https://lh3.googleusercontent.com/d/' + fid + '=w1000" ' +
       'controls autoplay playsinline preload="metadata" ' +
       'style="position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#0F2C5C,#1e4d8b)" ' +
       'onerror="_tcVideoFallback(this,\'' + fid + '\')"></video>';
