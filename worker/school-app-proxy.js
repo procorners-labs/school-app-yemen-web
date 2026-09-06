@@ -1869,7 +1869,13 @@ export default {
         var cl = dResp.headers.get('Content-Length'); if (cl) outHeaders.set('Content-Length', cl);
         return new Response(dResp.body, { status: dResp.status, headers: outHeaders });
       } catch (mErr) {
-        return mediaFail('video proxy error: ' + String(mErr), 502);
+        /* 🔒 **نوعُ الخطأ وحدَه يخرج للعميل** — لا نصُّه. المسارُ عامٌّ بلا مصادقة،
+           و`String(mErr)` سلسلةٌ غيرُ محدودةِ المنشأ قد تحمل عنوانَ الطلب (ومعه
+           `fileId`) أو تفصيلاً من زمن التشغيل. والاسمُ يكفي للتشخيص: `AbortError`
+           ⇒ تجاوزُ المهلة، وغيرُه ⇒ فشلُ نقل. (نفسُ منطق تعقيم السجلّ.) */
+        var mName = (mErr && mErr.name) ? String(mErr.name) : 'Error';
+        _bhLog({ ev: 'media', act: 'err', e: mName });
+        return mediaFail('video proxy error: ' + mName, 502);
       }
     }
 
