@@ -2246,6 +2246,62 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
         '🔒 ضابط معاكس: `getHomePageBundle` باقٍ على 120 (‏أقصرُ عنصرٍ مُكاشٌ خادمياً ٣٠ث)');
 })();
 
+/* ── 🔒 عزلُ مفتاح كاش الحافّة — بُعدُ الهويّة لا المستأجرِ وحدَه ──────────────────
+   🔴 **الفئةُ وقعت فعلاً في المستودع الشقيق (2026-09-06 · بند 229):** مفتاحُ كاشِ
+   أخبارٍ في العميل عزل **المستأجرَ** (`schoolId`) والحمولةُ مفلترةٌ **بالدور** خادمياً
+   ⇒ تبديلُ الحساب في نفس التبويب يخدم قائمةَ الحساب السابق. والأخطرُ عكسُ المُبلَّغ:
+   حسابُ إدارةٍ يسبق معلّماً ⇒ **يرى المعلّمُ أخبارَ فصولٍ ليست له — تسريبُ نطاقٍ لا
+   بطءُ تحديث**.
+   ⚠️ **والدرسُ المنقول: وجودُ بُعدِ عزلٍ واحدٍ يُقرأ عزلاً تامّاً**، فيطمئنّ قارئُه.
+   ⇒ يُثبَّت هنا **سلوكياً** أن هذا المستودع مُحصَّنٌ بنيويّاً لا بحسن الظنّ:
+   ① أيُّ مفتاحِ جسمٍ خارج `{fn,args,schoolId}` **يُعطّل الكاش كلّياً** (لا يُتجاهَل)
+     — فتوكنٌ في حقلٍ رابع يمنع التخزين بدل أن يُسمّم مدخلاً مشتركاً.
+   ② `argsKey` يحمل **كلَّ الوسائط** لا `schoolId` وحدَه ⇒ أيُّ بُعدٍ يسافر في `args`
+     (هويّةً كان أو غيرَها) **داخلٌ في المفتاح حتماً**.
+   🔴 **وحدُّ الإثبات يُقال:** هذا يُحصّن ضدّ هويّةٍ في **الجسم**، ولا يشهد لهويّةٍ
+   تسافر في **ترويسة**. والقائمةُ البيضاء اليوم أربعُ دوالَّ عامّةٍ لا تتبدّل حمولتُها
+   بالهويّة — **فإن أُضيفت دالّةٌ تتبدّل، لزم بُعدٌ صريحٌ في المفتاح.** */
+console.log('');
+console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):');
+(function () {
+  var pIdx = src.indexOf('var API_CACHE_TTL_S');
+  var pEnd = src.indexOf('\n}', src.indexOf('function _apiCacheProbe(')) + 2;
+  check(pIdx >= 0 && pEnd > pIdx, 'ضابط: استُخرجت كتلةُ المِجَسّ من المصدر');
+  if (pIdx < 0 || pEnd <= pIdx) return;
+  var pctx = vm.createContext({ JSON: JSON, Object: Object, encodeURIComponent: encodeURIComponent });
+  var probe;
+  try { vm.runInContext(src.slice(pIdx, pEnd), pctx); probe = vm.runInContext('_apiCacheProbe', pctx); }
+  catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
+  check(typeof probe === 'function', 'ضابط: المِجَسُّ قابلٌ للتشغيل فعلاً');
+
+  var body = function (o) { return JSON.stringify(o); };
+  var base = { fn: 'getHomePageBundle', args: ['SID-A'], schoolId: 'SID-A' };
+
+  // ضابطٌ موجب: النداءُ المشروع يُنتج مفتاحاً — وإلّا كان ما يليه فراغاً.
+  var ok = probe(body(base));
+  check(!!ok && !!ok.argsKey, 'ضابط موجب: النداءُ المشروع يُنتج `argsKey` (لا فحصَ على فراغ)');
+
+  // ① حقلٌ رابعٌ (توكنٌ مثلاً) ⇒ **لا كاشَ إطلاقاً**، لا تجاهلاً للحقل.
+  check(probe(body({ fn: 'getHomePageBundle', args: ['SID-A'], schoolId: 'SID-A', token: 'T' })) === null,
+        '🔒 ① حقلُ جسمٍ رابع (‏توكن) **يُعطّل الكاش** — لا يُتجاهَل فيُسمّم مدخلاً مشتركاً');
+
+  // ② اختلافُ الوسائط ⇒ اختلافُ المفتاح، ولو تطابق `schoolId`.
+  var a = probe(body({ fn: 'getHomePageBundle', args: ['SID-A', 'm1'], schoolId: 'SID-A' }));
+  var b = probe(body({ fn: 'getHomePageBundle', args: ['SID-A', 'm2'], schoolId: 'SID-A' }));
+  check(!!a && !!b && a.argsKey !== b.argsKey,
+        '🔒 ② `argsKey` يتبع **كلَّ الوسائط** لا `schoolId` وحدَه — بُعدٌ في `args` داخلٌ في المفتاح حتماً');
+  // 🔒 وضابطٌ معاكس: نفسُ المدخل ⇒ نفسُ المفتاح (وإلّا كان الاختلافُ عشوائياً لا دالّياً).
+  check(probe(body({ fn: 'getHomePageBundle', args: ['SID-A', 'm1'], schoolId: 'SID-A' })).argsKey === a.argsKey,
+        '🔒 ضابط معاكس: نفسُ المدخل ⇒ نفسُ المفتاح (الاختلافُ دالّيٌّ لا عشوائيّ)');
+  // ③ واختلافُ المستأجر يبقى فارقاً أيضاً — البُعدُ القديم لم يُفقَد بإضافة الحديث.
+  check(probe(body({ fn: 'getHomePageBundle', args: ['SID-A'], schoolId: 'SID-B' })).argsKey !== ok.argsKey,
+        '🔒 ③ ضابط معاكس: `schoolId` ما زال بُعداً — مدرستان لا تتشاركان مدخلاً');
+  // ④ ومفتاحٌ مجهولٌ داخل كائن الجدول يُرفض (احتمالُ توكن).
+  var sched = probe(body({ fn: 'getHomeScheduleBundle', args: [{ schoolId: 'S', klass: 'K', tok: 'T' }], schoolId: 'S' }));
+  check(!!sched && sched.reject === 'args',
+        '🔒 ④ مفتاحٌ مجهولٌ في كائن الجدول **يُرفض** (‏`reject:args`) — لا يدخل الكاشَ بصمت');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
