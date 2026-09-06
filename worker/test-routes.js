@@ -31,6 +31,27 @@ if (rIdx < 0 || fIdx < 0) {
   process.exit(1);
 }
 
+/* نزعُ التعليقات **واعياً بالسلاسل الحرفية** — أداةُ فحصٍ مشتركة.
+   🔴 لا يُستبدَل بقناعٍ نمطيٍّ عامّ: `'https://…'` داخل سلسلةٍ يجعل القناعَ يبتلع
+   بقيّةَ سطرِ كودٍ سليم، فيخضرُّ الفحصُ **بالمصادفة** لأنه لم يعد يقرأ ما ظنّ.
+   ويُحرَس بضابطٍ ثلاثيِّ الأطراف عند أوّل مستهلكٍ له (وسيطُ الفيديو). */
+function _stripComments(s) {
+  var out = '', i = 0, n = s.length, q = null, e;
+  while (i < n) {
+    var c = s.charAt(i), d = s.charAt(i + 1);
+    if (q) {                                   // داخل سلسلة: لا تعليقَ ولا نهايةَ إلّا بالمُغلِق
+      if (c === '\\') { out += c + d; i += 2; continue; }
+      if (c === q) q = null;
+      out += c; i++; continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { q = c; out += c; i++; continue; }
+    if (c === '/' && d === '*') { e = s.indexOf('*' + '/', i + 2); i = (e < 0 ? n : e + 2); out += ' '; continue; }
+    if (c === '/' && d === '/') { e = s.indexOf('\n', i); i = (e < 0 ? n : e); out += ' '; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
 var ctx = vm.createContext({});
 vm.runInContext(src.slice(rIdx, rEnd) + '\n' + src.slice(fIdx, fEnd), ctx);
 
@@ -2060,6 +2081,88 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
   var wIdx = src.indexOf('ctx.waitUntil(_apiCachePut(');
   check(vIdx !== -1 && wIdx !== -1 && vIdx < wIdx,
         'بصمةُ مسار التخزين تُحسَب قبل `ctx.waitUntil` لا داخل الكولباك');
+})();
+
+// ── 🔴 وسيطُ الفيديو `/media/drive/<id>`: الفشلُ لا يُكاش (سلوكي عبر `vm`) ─────
+//
+// العلّةُ المقيسة حيّاً (2026-09-06، جلسةُ `SchoolApp-gas`):
+//   curl -s -D - -o /dev/null "https://yemenschoolz.com/media/drive/NOT_A_REAL_ID"
+//   ⇒ 404 + `Cache-Control: public, max-age=86400, immutable`
+// أي أن **الفشلَ نفسَه** يُكاش يوماً كاملاً، و`immutable` تمنع إعادةَ التحقّق حتى عند
+// التحديث. وكان المسارُ **بلا حالةِ اختبارٍ واحدة** في هذا الملفّ (صفرُ ذكرٍ لـ`media`).
+console.log('');
+console.log('وسيطُ الفيديو — سياسةُ الكاش والنوع (سلوكي):');
+(function () {
+  var mIdx = src.indexOf('var MEDIA_CACHE_OK');
+  var mEnd = src.indexOf('\n}', src.indexOf('function _mediaIsHtml(')) + 2;
+  check(mIdx >= 0 && mEnd > mIdx,
+        'ضابط: استُخرجت كتلةُ سياسة الوسيط الإعلامي من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
+  if (mIdx < 0 || mEnd <= mIdx) return;
+
+  var mctx = vm.createContext({});
+  vm.runInContext(src.slice(mIdx, mEnd), mctx);
+  var cc = vm.runInContext('_mediaCacheControl', mctx);
+  var isHtml = vm.runInContext('_mediaIsHtml', mctx);
+  check(typeof cc === 'function' && typeof isHtml === 'function',
+        'ضابط: الدالّتان قابلتان للتشغيل فعلاً (لا نصٌّ مستخرَجٌ فارغ)');
+
+  // ① الجوهر: أيُّ فشلٍ ⇒ لا `max-age` إطلاقاً.
+  [404, 403, 500, 502, 429].forEach(function (st) {
+    check(!/max-age/.test(cc(st)) && cc(st) === 'no-store',
+          '🔴 الحالة ' + st + ' لا تُكاش (‏' + cc(st) + ')');
+  });
+  // ② الضابطُ المعاكس: الحارسُ ليس سياجاً — النجاحُ **ما زال** يُكاش بـ`immutable`،
+  //    وهو المطلوب (تسريعُ إعادة التشغيل والتموضع). بلا هذا يمرّ «no-store دائماً».
+  check(/max-age=86400/.test(cc(200)) && /immutable/.test(cc(200)),
+        '🔒 ضابط معاكس: 200 ما زالت تُكاش يوماً بـ`immutable`');
+  check(cc(206) === cc(200),
+        '🔒 ضابط معاكس: 206 (‏Range) تُكاش كالنجاح الكامل — التموضعُ لا يُبطَّأ');
+
+  // ③ HTML لا يُوسَم مطلقاً `video/mp4`: الكاشفُ يعمل على الأشكال الحيّة كلّها.
+  check(isHtml('text/html; charset=utf-8') === true && isHtml('text/html') === true,
+        'كاشفُ HTML يلتقط النوعَ بمعاملٍ وبدونه');
+  check(isHtml('video/mp4') === false && isHtml('') === false && isHtml(null) === false,
+        '🔒 ضابط معاكس: النوعُ الإعلاميّ والفارغُ والمعدومُ ليست HTML');
+
+  // ④ ولا يبقى في الفرع فرضٌ أعمى للنوع على بايتاتِ HTML.
+  var mediaIdx = src.indexOf("var mediaMatch = path.match(");
+  var mediaEnd = src.indexOf("// ── 1هـ)", mediaIdx);
+  var block = mediaIdx >= 0 && mediaEnd > mediaIdx ? src.slice(mediaIdx, mediaEnd) : '';
+  check(block.length > 0, 'ضابط: التُقط فرعُ `/media/drive/` من المصدر');
+  check(block.indexOf("'video/mp4'") !== -1 && !/indexOf\('text\/html'\) === -1\) \? ct : 'video\/mp4'/.test(block),
+        '🔴 لا فرضَ أعمى لـ`video/mp4` على نوعٍ فُحص أنه HTML');
+  check(/_mediaCacheControl\(dResp\.status\)/.test(block),
+        '🔴 `Cache-Control` يُبنى من حالة الردّ لا ثابتاً');
+  check(/new AbortController\(\)/.test(block) && /MEDIA_TIMEOUT_MS/.test(block),
+        '⚠️ للمسار مهلةٌ صريحة (‏كان بلا سقفٍ زمنيّ إطلاقاً)');
+
+  /* ⑤ 🔒 جسمُ الفشل لا يحمل نصَّ الاستثناء الخام — المسارُ عامٌّ بلا مصادقة،
+     ونصُّ الاستثناء سلسلةٌ غيرُ محدودةِ المنشأ قد تحمل عنوانَ الطلب (ومعه `fileId`)
+     أو تفصيلَ زمنِ تشغيل. 🔴 والشرطُ على **الخام** لا على الاسم: `mErr.name` استعمالٌ
+     مشروعٌ يبقى أخضر، وإلّا انقلب الحارسُ سياجاً يمنع التشخيصَ الذي كُتب ليُبقيه.
+
+     🔴 **والتعليقاتُ تُنزَع أوّلاً — وهذا الحارسُ نفسُه وقع في الفخّ وقتَ كتابته:**
+     نصُّ التعليق الشارح كان يذكر النمطَ المحظور، فبقي الفحصُ **أحمرَ بعد عكسِ الطفرة**
+     وكاد يُقرأ «الإصلاحُ لم يُطبَّق». فئةُ «‏`grep` يعدّ التعليقات» حرفياً. */
+  var codeOnly = _stripComments(block);
+  var rawErr = codeOnly.replace(/String\(mErr\.name\)/g, '«name»');
+  check(!/String\(mErr\)/.test(rawErr),
+        '🔒 صفرُ تسريبٍ لنصّ الاستثناء الخام في جسم الفشل (‏النوعُ وحدَه يخرج)');
+  check(/mErr\.name/.test(codeOnly),
+        '🔒 ضابط معاكس: نوعُ الخطأ **ما زال** يخرج — `AbortError` يميّز المهلةَ من فشل النقل');
+  /* ضابطُ الأداة نفسِها — بثلاثة أطراف لا طرفين.
+     🔴 والثالثُ أُضيف بعد عطبٍ مقيس: النسخةُ الأولى كانت قناعاً عامّاً — تعبيرٌ
+     نمطيٌّ يمسح من شرطتين مائلتين إلى آخر السطر — وكتلةُ الوسيط تحوي
+     `'https://drive.usercontent.google.com/...'` ⇒ القناعُ يبتلع **بقيّةَ سطرِ كودٍ
+     سليم** ابتداءً من `//` داخل السلسلة الحرفية. قِيس: `var u = 'https:` وحدَها تبقى.
+     ولم يحمرَّ شيءٌ وقتها لأن الفحوصَ تستهدف أسطراً أخرى — **أخضرُ بالمصادفة**،
+     وهي أخطرُ من الأحمر. ⇒ النازعُ صار واعياً بالسلاسل، والطرفُ الثالث يحرسه. */
+  check(!/String\(mErr\)/.test(_stripComments('/* ذِكرٌ في تعليق: String(mErr) */ var a = 1;')) &&
+        !/String\(mErr\)/.test(_stripComments('// ذِكرٌ في سطر: String(mErr)\nvar b = 2;')) &&
+        /String\(mErr\)/.test(_stripComments('var c = String(mErr); /* شرح */')),
+        'ضابط الأداة: النازعُ يُسقط ذِكرَ التعليق ويُبقي ذِكرَ الكود');
+  check(/drive\.example\.com/.test(_stripComments("var u = 'https://drive.example.com/d?id=' + id; var k = 1;")),
+        '🔒 ضابط الأداة (٣): `//` داخل سلسلةٍ حرفية **ليس تعليقاً** — سطرُ الكود يبقى كاملاً');
 })();
 
 console.log('');
