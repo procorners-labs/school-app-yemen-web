@@ -46,7 +46,8 @@ function verdict(cmd) {
 
   // ① `curl` + `-w`/`--write-out` — بأيّ ترتيب، وبأيّ اسمٍ للثنائيّة.
   if (/\bcurl(\.exe)?\b/.test(c) && /(^|\s)(-w\b|--write-out\b)/.test(c)) {
-    return '🚫 حُظر: `curl -w` يعيد `code=000` كاذباً على هذا الجهاز (schannel · خروج ٤٣).\n\n' +
+    return 'BLOCKED: curl -w  ->  USE: curl.exe -s -D - -o /dev/null --max-time 60 "<url>"\n\n' +
+      '🚫 حُظر: `curl -w` يعيد `code=000` كاذباً على هذا الجهاز (schannel · خروج ٤٣).\n\n' +
       'قِيس بثلاث جلسات مستقلّة: نفسُ الرابط بلا `-w` ⇒ **200**، وبإضافة `-w` وحدها ⇒ `code=000`.\n' +
       'وأنتج هذا الفخُّ بلاغَ «سقوطِ متجر» كاذباً عاش ساعةً في `pending.json`.\n\n' +
       '✅ الصيغة الصحيحة لقراءة الحالة:\n' +
@@ -58,7 +59,8 @@ function verdict(cmd) {
 
   // ② أمرُ حكمٍ يُنبَّب إلى `tail`/`head`/… بلا `pipefail` ⇒ رمزُ الخروج للأنبوب لا للأمر.
   if (VERDICT_RE.test(c) && PIPE_SINK_RE.test(c) && !PIPEFAIL_RE.test(c)) {
-    return '🚫 حُظر: أمرُ حكمٍ مُنبَّبٌ إلى `tail`/`head` بلا `pipefail`.\n\n' +
+    return 'BLOCKED: pipe swallows exit code  ->  USE: set -o pipefail; <cmd> | tail -5\n\n' +
+      '🚫 حُظر: أمرُ حكمٍ مُنبَّبٌ إلى `tail`/`head` بلا `pipefail`.\n\n' +
       'رمزُ الخروج يصير رمزَ الأنبوب لا رمزَ الأمر ⇒ **بوّابةٌ تُعلَن خضراءَ وهي حمراء**.\n' +
       'ووجهُه المعاكس مقيسٌ أيضاً: مخرَجٌ فارغ بعد `| tail` يُقرأ «تعليقاً» وهو أنبوب.\n\n' +
       '✅ إمّا:  set -o pipefail; <الأمر> | tail -5\n' +

@@ -57,6 +57,7 @@ if (typeof ti.content === 'string') {
   } catch (e) {
     if (!e || e.code !== 'ENOENT') {
       process.stderr.write(
+        'BLOCKED: cannot read file on disk, comparison impossible  ->  FIX READ ACCESS, RETRY\n\n' +
         '🚫 حُظر التعديل: تعذّر قراءةُ الملفّ على القرص، فتعذّرت المقارنة.\n\n' +
         '  الملفّ : ' + target + '\n' +
         '  السبب : ' + ((e && e.code) || 'غير معروف') + '\n\n' +
@@ -92,6 +93,7 @@ function brief(list) {
 }
 
 process.stderr.write(
+  'BLOCKED: GAS deployment id changed  ->  KEEP THE ID, deploy a new version of the same deployment\n\n' +
   '🚫 حُظر التعديل: تغييرُ معرّف نشر Apps Script داخل الوركر.\n\n' +
   '  الملفّ : ' + target + '\n' +
   '  قبل   : ' + brief(before) + '\n' +

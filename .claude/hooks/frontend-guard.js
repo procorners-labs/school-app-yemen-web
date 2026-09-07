@@ -33,6 +33,7 @@ if (!/\/frontend\//i.test(target)) process.exit(0);
 var rel = target.slice(target.toLowerCase().indexOf('/frontend/') + 1);
 
 process.stderr.write(
+  'BLOCKED: frontend/ is generated  ->  EDIT IN: C:\\Users\\osama\\SchoolApp-gas/<app>/*.html\n\n' +
   '🚫 حُظر التعديل: `frontend/` مخرَجٌ مُولَّد لا مصدر.\n\n' +
   '  الملفّ: ' + rel + '\n\n' +
   'يبنيه `_build/build-frontend.js` في `school-app-yemen-gas`، ويدفعه CI إلى هنا عند كل دفعة\n' +
