@@ -45,7 +45,10 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 | `media/covers/` | ✅ يُكتَب هنا (غير كود) | أغلفة الأخبار النصية المُستضافة علناً (يكتب رابطها CMS عبر `_build/social/` من مستودع gas) |
 | `frontend/` | ❌ لا تعدِّل | يُبنى تلقائياً من gas repo عبر CI |
 
-**أي تعديل في GAS (teacher/student/home/home-all-school/cms/schedule/master-admin) → اذهب إلى `C:\Users\osama\SchoolApp-gas`.**
+**أي تعديل في GAS → اذهب إلى `C:\Users\osama\SchoolApp-gas`** — والمشاريعُ:
+`home` · `teacher` · `cms` · `master-admin` (حيّة) · `home-all-school` (مفطومٌ عملياً) ·
+`schedule` (متقاعدٌ كمصدرِ حقيقة) · و🔴 **`student` مفطوم: `/gas/student` يُخدَم من نشرة
+`teacher`، والتعديلُ الذي يخصّه يقع في `teacher/`**.
 
 ---
 
@@ -53,10 +56,13 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 
 **طبقة البيانات:** Google Sheets لكل مدرسة + سجل مركزي `Master_Admin_School`
 - ID: `10Zk0vwjrHagydYlU0kyjB6X9uoyVCN6sl5nSet1_c7w`
-- أعمدة مفتاحية: school_id(0)، teacher_file_id(4)، student_file_id(5)، cms_file_id(6)، schedule_file_id(7)، subscription_end(9)، is_active(10).
+- أعمدة مفتاحية: school_id(0)، teacher_file_id(4)، student_file_id(5)، cms_file_id(6)، subscription_end(9)، is_active(10).
+  ⚠️ و`schedule_file_id(7)` **لم يعُد عموداً مفتاحياً — أُفرِغ في السجلّ المركزيّ 2026-09-05**
+  مع تقاعد `schedule`؛ يوثّقه `worker/test-routes.js` (‏`grep -n "schedule_file_id" worker/test-routes.js`).
 
-**طبقة الخلفية:** 7 مشاريع GAS كاملة (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية) + نقطة توجيه ثامنة
+**طبقة الخلفية:** 7 مشاريع GAS (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية) + نقطة توجيه ثامنة
 - `home · home-all-school · teacher · student · cms · schedule · master-admin`
+- 🔴 **و«كاملة» بطَلت لثلاثةٍ منها** — الجدولُ التالي هو الحاكم، ويُقرأ قبل أيّ توجيه.
 
 🔴 **وثلاثةٌ منها لم تعُد «كاملة» — حالةٌ تُقرأ قبل أي توجيه (مُصحَّحة 2026-08-29):**
 
@@ -91,7 +97,8 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 إضافي على نفس الـWorker (لحل تعارض Google OAuth Console Branding مع `procorners.com`). في هذا
 المستودع تحديداً، الكود يُصرِّح ذاتياً بهذا النطاق **حصراً في صفحة `/pricing`** (الوحيدة التي يبنيها
 `worker/school-app-proxy.js` مباشرة كـHTML، وسوم `canonical`/`og:url`/`og:image`/`twitter:image`،
-PR#105، الأسطر ~196-208) — لا كتحويل توجيه شامل؛ صفحات أخرى (`home-all-school`/`Terms`/`Privacy`)
+PR#105 — الموضعُ يُقاس بـ`grep -n "og:url" worker/school-app-proxy.js`؛ 🔴 **كان مكتوباً
+«الأسطر ~196-208» وهو بائتٌ بمراحل**) — لا كتحويل توجيه شامل؛ صفحات أخرى (`home-all-school`/`Terms`/`Privacy`)
 تُبنى في `school-app-yemen-gas` وتصريحها لهذا النطاق موثَّق هناك. التفصيل الكامل:
 `school-app-yemen-gas/_docs/2026-07-25-تعارض-نطاق-مشترك-oauth-branding-ونطاق-مخصص.md`.
 
@@ -132,7 +139,8 @@ GET يقبل HTML طبيعياً)، ويرجع JSON خطأ صالح (503) لا H
 تنفيذاً **ثانياً** على حصّةٍ مشبَعة أصلاً ⇒ مضاعفةُ الاستهلاك لحظةَ الإشباع بعينها.
 والحساب القديم ‏11,500×٢+700 = **23,700ms** يطابق الـ24,339 المقيسة حرفياً.
 🔴 **ولا يُقرأ ذلك الحسابُ اشتقاقاً قائماً — هو أثرٌ تاريخيّ، وبقاؤه هنا للسرد لا للحكم.**
-الاشتقاقُ المعمولُ به اليوم — ومطابقٌ لتعليق `worker/school-app-proxy.js:1361` —
+الاشتقاقُ المعمولُ به اليوم — ومطابقٌ لتعليق المصدر (‏`grep -n "GAS_ATTEMPT_MARGIN_MS" worker/school-app-proxy.js`
+— 🔴 **ولا يُثبَّت رقمُ سطرٍ هنا: كان مكتوباً `:1361` وصار ذلك الموضعُ كودَ `_brandRewrite`**) —
 **`TOTAL_BUDGET_MS (24,000) − GAS_ATTEMPT_MARGIN_MS (300)` = 23,700ms**، أي أن **العددَين
 تصادفا ولم يشتقّ أحدُهما من الآخر**. 🔴 **والفرقُ يقلب حكماً:** تغييرُ `GAS_MAX_ATTEMPTS`
 أو مهلةِ المحاولة الواحدة **لا يغيّر هذا السقف إطلاقاً** — من قرأ الاشتقاقَ القديم ظنّ عكسَ
@@ -212,11 +220,22 @@ GET يقبل HTML طبيعياً)، ويرجع JSON خطأ صالح (503) لا H
 
 **🟢 كاشُ الحافّة لنداءات GAS العامّة** (‏`school-app-proxy.js` · `API_CACHE_FNS`): قائمةٌ بيضاء
 ضيّقة — `getHomePageBundle` (ttl 120) · `getTeacherSchoolBrand` · `getStudentSchoolBrand` ·
-`getHomeScheduleBundle`. `API_CACHE_TTL_S = 600` · حدُّ الجسم 4096.
+`getHomeScheduleBundle` (**ttl 1800** — صريحٌ لا افتراضيّ، ومقايضتُه مُقرَّةٌ من المالك:
+تعديلُ الجدول قد يتأخّر ظهورُه حتى نصف ساعة). `API_CACHE_TTL_S = 600` · حدُّ الجسم 4096.
 🔴 **والاعتراضُ يقع قبل حجز المقعد** ⇒ الإصابةُ لا تستهلك من سقف المنظّم ولا من حصّة GAS.
 🔒 ولا كاشَ سلبيّاً أبداً: التخزين مشروطٌ بـ`good` **و**`ok(b)` الخاصّ بكلّ دالّة، ومقصورٌ على
-استعلامٍ فارغ (يمنع تسميم الاستعلام ويُعفي `?action=health` معاً)، والمفتاح يحمل `app` و`fn`
-و`schoolId` ⇒ مدرستان لا تتشاركان مدخلاً.
+استعلامٍ فارغ (يمنع تسميم الاستعلام ويُعفي `?action=health` معاً).
+
+🔴 **والمفتاحُ رباعيُّ الأبعاد لا ثلاثيّ — صُحِّح 2026-09-08، وكان مكتوباً هنا أنه يحمل
+«`app` و`fn` و`schoolId`» فقط:** أوّلُ مقاطعه **`origin`**
+(‏`_apiCacheKey(origin, app, fn, argsKey)` — وكذلك `_brandCacheKey` و`_slugsCacheKey`).
+⇒ **مدرستان لا تتشاركان مدخلاً** (وهو المقصود)، **ومضيفان لا يتشاركانه أيضاً** (وهو أثرٌ
+جانبيّ لم يكن موثَّقاً). والوركرُ يُخدَم من **خمسة مضيفات مقيسةِ الحركة** ⇒ الحمولةُ
+الواحدة تُخزَّن مرّةً لكلّ مضيف.
+⚠️ **ولا يُسقَط `origin` من المفتاح:** الأصلُ يدخل في الحمولة المحقونة (‏`_brandRewrite`
+والوسومُ القانونية) فخلطُ الأصول يخدم صفحةً بأصلٍ ليس أصلَها. **الرافعةُ `ttl` أطول أو
+تقليلُ المضيفات، لا مفتاحٌ أوسع.**
+📄 القياسُ ونافذتُه وحدودُه: `_docs/2026-09-08-قياس-كاش-الحافة-وجرد-cloudflare.md`.
 
 **🟢 هويةُ المدرسة خادميّاً — والسطوحُ ثلاثةٌ منذ 2026-09-03 لا واحد.** `_brandRewrite` كان
 محصوراً بـ`/home/index.html` بمستأجرٍ معروف؛ صار يشمل بوّابتَي الدخول أيضاً حين يُعرَف
@@ -255,6 +274,9 @@ GET يقبل HTML طبيعياً)، ويرجع JSON خطأ صالح (503) لا H
 بـ`no-store` بلا أيّ مُصادِق.
 
 **Deployment IDs الثابتة في الـWorker (لا تغيّرها):** انظر `var GAS` أعلى `worker/school-app-proxy.js`.
+🔴 **والجدولُ وحده لا يكفي — اقرأ السطرَ الذي يليه:** `GAS.student = GAS.teacher;` ⇒ القيمةُ
+المكتوبة تحت `student:` **ليست وجهةَ `/gas/student`**، بل مسارُ تراجعٍ خامل. ومن يقرأ الجدولَ
+مفرداً يخرج بثمانِ وجهاتٍ مستقلّة وهي **سبع**. (‏`grep -n "GAS.student" worker/school-app-proxy.js`.)
 
 ---
 
