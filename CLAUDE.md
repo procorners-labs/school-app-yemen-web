@@ -93,7 +93,20 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 `school-app-yemen-gas/_docs/2026-07-16-حجب-يمن-نت-workers-dev-ونطاق-مخصص.md`)؛ النطاق القديم
 `school-teacher-proxy.procorners-shop.workers.dev` لا يزال حيّاً بالتوازي (تطبيق أندرويد يعتمده).
 
-**نطاق ثانٍ منذ 2026-07-25 لهوية OAuth فقط — لا بديل:** `https://yemenschoolz.com` Custom Domain
+🔴 **و«لهوية OAuth فقط» بطَل 2026-09-09 بقرار المالك — `yemenschoolz.com` سطحُ خدمةٍ لتطبيقٍ
+حيّ، لا نطاقُ هويّةٍ خامل.** القرار: **تطبيق `com.proconrers.schoolzyemen`** (يمن سكولز
+للأندرويد) ينتقل من `school.procorners.com` — وهو **نطاقُ متجر ركن التسوق** — إلى نطاقه.
+**والتبديلُ لا يمسّ هذا المستودعَ إطلاقاً:** النطاقان **Custom Domain على الوركر نفسِه**
+فالحمولةُ متطابقة، والتعديلُ كلُّه في `AppConfig.kt` بمستودع `YemenSchoolz`.
+**قِيس 2026-09-09:** `/home-all-school/index.html` · `/cms/` · `/teacher/` · `/student/` ·
+`/schedule/` · `/.well-known/assetlinks.json` ⇒ **ستّتُها `200` على `yemenschoolz.com`.**
+⚠️ **وحدُّ الأثر يُقال:** المفتاحُ يحمل `origin` (§كاش الحافّة) ⇒ **الحمولةُ تُخزَّن مرّةً
+لكلّ مضيف**، فتحويلُ تطبيقٍ إلى مضيفٍ آخر **يضيف مضيفاً سادساً بحمله لا ينقل حملاً**.
+⚠️ **و`assetlinks.json` المخدومُ يحوي `com.proconrers.schoolappyemen` وحدَه** — ولا أثرَ لذلك
+اليوم لأن `YemenSchoolz` **بلا App Links إطلاقاً** (‏صفرُ `autoVerify`/`<data>` في مانيفستِه)،
+**لكنه يصير حاجزاً لحظةَ أن يُراد App Links أو «الدخول بالبصمة»** ⇒ بندٌ مستقلٌّ لا يُخلط بالتبديل.
+
+**نطاق ثانٍ منذ 2026-07-25 — نشأ لهوية OAuth (وتوسّع أعلاه) — لا بديل:** `https://yemenschoolz.com` Custom Domain
 إضافي على نفس الـWorker (لحل تعارض Google OAuth Console Branding مع `procorners.com`). في هذا
 المستودع تحديداً، الكود يُصرِّح ذاتياً بهذا النطاق **حصراً في صفحة `/pricing`** (الوحيدة التي يبنيها
 `worker/school-app-proxy.js` مباشرة كـHTML، وسوم `canonical`/`og:url`/`og:image`/`twitter:image`،
@@ -408,7 +421,7 @@ Before editing, confirm you're editing `worker/school-app-proxy.js` (the real so
 
 - **Worker health (النطاق القانوني):** `https://school.procorners.com/gas/teacher?action=health`
 - **Worker health (workers.dev، لا يزال حيّاً):** `https://school-teacher-proxy.procorners-shop.workers.dev/gas/teacher?action=health`
-- **Worker health (يمن سكولز، نطاق هوية/OAuth ثانوي — لا وصول تشغيلي أساسي):**
+- **Worker health (يمن سكولز — 🔴 صار سطحَ خدمةٍ لتطبيق `com.proconrers.schoolzyemen` منذ 2026-09-09، لا نطاقَ هويّةٍ فقط):**
   `https://yemenschoolz.com/gas/teacher?action=health`
 - **GitHub Pages:** `https://procorners-labs.github.io/school-app-yemen-web/`
 - **CI gas repo:** `https://github.com/procorners-labs/school-app-yemen-gas/actions`
