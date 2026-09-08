@@ -310,7 +310,11 @@ GET يقبل HTML طبيعياً)، ويرجع JSON خطأ صالح (503) لا H
 **gas repo → web repo (تلقائي):**
 ```
 push to school-app-yemen-gas/main
-  → CI: البوّابة كاملةً (`npm run gate`) — والعددُ يُقرأ من سطر `RESULT` في مخرَج التشغيل
+  → CI: البوّابة كاملةً (**`npm run gate:full`** — لا `gate`) — والعددُ يُقرأ من سطر `RESULT`
+     🔴 **والاسمان ليسا مترادفَين، قِيسا من المصدر 2026-09-08:** في `SchoolApp-gas/package.json`
+     ‏`gate` = البناءُ والاختباراتُ والحرّاس · و`gate:docs` = فحوصُ الوثائق ·
+     و**`gate:full` = `gate && gate:docs`**. و`build-and-deploy.yml` يشغّل **`gate:full`**.
+     ⇒ من يكتب «‏`gate` الكاملة» يصف **أضيقَ** ممّا يجري فعلاً.
      لا يُكتب هنا (كان مكتوباً «24 test» وهو بائدٌ بمراحل — فئة بند 83-ب)
   → rsync frontend/ → school-app-yemen-web/main
   → GitHub Pages يُحدَّث + Worker يُنشر تلقائياً (Cloudflare Workers Builds)
