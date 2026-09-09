@@ -63,8 +63,25 @@ function extractRunLines(source) {
   return out;
 }
 
-/* backtick **غيرُ مهرَّب**: يسبقه بدايةُ السطر أو محرفٌ ليس `\`. */
-var BARE_TICK = /(^|[^\\])`/;
+/* backtick **غيرُ مهرَّب** = يسبقه عددٌ **زوجيّ** من الشرطات المائلة (والصفرُ زوجيّ).
+ *
+ * 🔴 **ولماذا عدٌّ لا نمطُ `(^|[^\\])` — ثغرةٌ مُثبَتةٌ بالتنفيذ لا مفترَضة:** النمطُ يستثني
+ *    ما قبله شرطةٌ مائلة **كيفما كانت**، و`\\` تصير عند الشِلّ شرطةً حرفيّةً **واحدة**
+ *    والـbacktick بعدها **عارٍ**. قِيس: `echo "x \\`+'`'+`echo PWNED`+'`'+`"` ⇒ طُبع
+ *    **`x \PWNED`** — أي **نُفِّذ**، والنمطُ **لا يراه**.
+ *    ⚠️ **وما يُخفيها:** السطرُ المكتملُ الزوجَين يُلتقط بالـbacktick **الثاني** فتبدو
+ *    مغطّاةً وليست كذلك؛ والمفلتُ هو ذو الـbacktick **المفتوحِ الواحد**.
+ * 🟢 **والعدُّ يغلقها بلا إنذارٍ كاذبٍ إضافيّ** — وهو الفارقُ عن «نمطٍ أعقد»: يُصحّح
+ *    الحكمَ في الحالتين معاً بدل مقايضةِ فجوةٍ بضجيج. */
+function hasBareTick(s) {
+  for (var i = 0; i < s.length; i++) {
+    if (s.charAt(i) !== '`') continue;
+    var back = 0, j = i - 1;
+    while (j >= 0 && s.charAt(j) === '\\') { back++; j--; }
+    if (back % 2 === 0) return true;
+  }
+  return false;
+}
 
 function scanSource(file, source) {
   var hits = [];
@@ -76,7 +93,7 @@ function scanSource(file, source) {
       if (body.indexOf('`') >= 0) comments++;
       return;
     }
-    if (BARE_TICK.test(r.text)) {
+    if (hasBareTick(r.text)) {
       hits.push({ file: file, line: r.line, text: r.text.trim() });
     } else if (r.text.indexOf('`') >= 0) {   // مهرَّبٌ وحدَه ⇒ نصٌّ حرفيّ، مشروع
       escaped++;
@@ -98,6 +115,7 @@ function selfTest() {
     '          # تعليقٌ فيه `backtick` ولا يجوز الإنذارُ عنه',
     '          echo "premise gone: `git rev-parse HEAD` missing"',
     '          echo "escaped: \\`git rev-parse HEAD\\` literal"',
+    '          echo "double-slash: \\\\`echo PWNED`"',
     '          echo "intended: $(git rev-parse HEAD)"',
     '          echo clean',
     '      - run: echo "inline \'`date`\' looks-quoted-but-runs"',
@@ -106,7 +124,7 @@ function selfTest() {
 
   var r = scanSource('<self-test>', fixture);
   var problems = [];
-  if (r.hits.length !== 2) problems.push('توقّعنا مطابقتين حمراوَين، فجاءت ' + r.hits.length);
+  if (r.hits.length !== 3) problems.push('توقّعنا ثلاثَ مطابقاتٍ حمراء، فجاءت ' + r.hits.length);
   if (r.comments !== 1) problems.push('توقّعنا backtick واحداً مستثنىً في تعليق، فجاء ' + r.comments);
   if (r.escaped !== 1) problems.push('توقّعنا سطراً مهرَّباً واحداً يخضرّ، فجاء ' + r.escaped);
   if (!r.hits.some(function (h) { return h.text.indexOf('premise gone') >= 0; })) {
@@ -114,6 +132,9 @@ function selfTest() {
   }
   if (!r.hits.some(function (h) { return h.text.indexOf('looks-quoted-but-runs') >= 0; })) {
     problems.push('لم يُلتقط المفردَ داخل المزدوج — وهو الأخطر لأنه يبدو محميّاً');
+  }
+  if (!r.hits.some(function (h) { return h.text.indexOf('double-slash:') >= 0; })) {
+    problems.push('لم يُلتقط `\\\\` ثمّ backtick — الشرطةُ تصير حرفيّةً والـtick عارٍ (مُثبَتٌ بالتنفيذ)');
   }
   if (r.hits.some(function (h) { return h.text.indexOf('escaped:') >= 0; })) {
     problems.push('أنذرَ كاذباً عن backtick مهرَّب');
@@ -149,8 +170,9 @@ files.forEach(function (f) {
   escapedTicks += r.escaped;
 });
 
-console.log('الضابطُ ثنائيُّ القطب: ✅ احمرَّ على العاري وعلى المفردِ داخل المزدوج،');
-console.log('                      واخضرَّ على المهرَّب وعلى $(...) وعلى التعليق.');
+console.log('الضابطُ ثنائيُّ القطب: ✅ احمرَّ على العاري · وعلى المفردِ داخل المزدوج ·');
+console.log('                      وعلى `\\\\` ثمّ tick — واخضرَّ على المهرَّب وعلى $(...)');
+console.log('                      وعلى التعليق.');
 console.log('ملفّات: ' + files.length + ' · مستثنىً: ' + commentTicks + ' في تعليقات · ' +
             escapedTicks + ' مهرَّباً');
 console.log('RESULT: ' + all.length + ' backtick غيرِ مهرَّبٍ في أسطرِ كودٍ داخل كتل run:');
