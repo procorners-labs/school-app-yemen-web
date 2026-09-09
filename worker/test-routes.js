@@ -1453,8 +1453,22 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   if (!gasOk) {
     console.log('  ⏭️  SKIPPED: مصدر GAS غير متاح (' + GAS + ') — لم تُطابَق أسماء الدخول');
   } else {
+    /* 🔴 **يُقرأ الموجودُ لا المفترَض — وقع الانهيارُ فعلاً 2026-09-10:** كانت القائمة
+       `['teacher','student']` تُقرأ بلا فحصِ وجود، فلمّا حُذف `SchoolApp-gas/student/`
+       (تقاعدُ المشروع بقرار المالك) **انهار الملفُّ كلُّه بـ`ENOENT`** — لا فحصٌ أحمرُ
+       ولا `SKIPPED`، بل توقّفٌ قبل بلوغ بقيّة الفحوص.
+       ⚠️ **وفحصُ `gasOk` أعلاه لم يمنعه**: يفحص `teacher/` وحدَه فيمرّ، ثمّ يُقرأ مجلدٌ
+       ثانٍ غيرُ مفحوص ⇒ **حارسُ توفّرٍ يفحص أحدَ مدخلَيه**.
+       🟢 والدلالةُ باقيةٌ بعد الفطم: دوالُّ الطالب لها توأمٌ منفَّذٌ في `teacher/`
+       (‏`GAS.student = GAS.teacher`) ⇒ قراءةُ `teacher/` وحدَها تكفي، و`student/` يُقرأ
+       **إن وُجد** بوصفه أرشيفاً لا مصدراً. */
+    var apps = ['teacher', 'student'].filter(function (app) {
+      try { return fs.statSync(path.join(GAS, app)).isDirectory(); } catch (e) { return false; }
+    });
+    check(apps.length > 0, 'ضابط: مجلدُ تطبيقٍ واحدٌ على الأقلّ قائم (صفرٌ = عمى لا نجاح) — ' +
+                           'المقروء: ' + (apps.join(' · ') || 'لا شيء'));
     var defs = '';
-    ['teacher', 'student'].forEach(function (app) {
+    apps.forEach(function (app) {
       fs.readdirSync(path.join(GAS, app)).forEach(function (f) {
         if (/\.js$/.test(f)) defs += fs.readFileSync(path.join(GAS, app, f), 'utf8');
       });
