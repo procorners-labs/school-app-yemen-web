@@ -15,9 +15,19 @@
 //    ونظيرُه المعاكس مسجَّل: `js-yaml` يصدّق الـYAML **ولا يرى الشِلَّ داخله** ⇒ طبقتان
 //    لازمتان معاً، وهذا الملفُّ يغطّي الطبقة الثانية وحدَها.
 //
-// ⚠️ **واستثناءُ أسطر التعليق `#` إلزاميٌّ لا تحسين:** backtick داخل تعليقِ شِلٍّ غيرُ
-//    ضارٍّ مقيساً (٩ منها في تعليقات ملفٍّ واحد، و٧ في آخر) ⇒ فحصٌ لا يستثنيها يُنذر
-//    كاذباً **دائماً** فيُتجاهَل — وهو الحارسُ الذي يُعلّم تجاهُلَ نفسِه: سياجٌ لا حارس.
+// ⚠️ **واستثناءان إلزاميّان لا تحسين — كلٌّ منهما يمنع إنذاراً كاذباً دائماً:**
+//    ① **أسطرُ التعليق `#`** — backtick في تعليقِ شِلٍّ غيرُ ضارٍّ مقيساً (٩ في تعليقات
+//       ملفٍّ واحد، و٧ في آخر).
+//    ② **المهرَّبُ ``\` ``** — قِيس بالأثر في bash على ثلاث حالاتٍ في سطرٍ واحد:
+//         "…`echo X`…"      ⇒ **نُفِّذ**   (فخّ)
+//         "…\`echo X\`…"    ⇒ **نصٌّ حرفيّ، لم يُنفَّذ**   (مشروع)
+//         "…'`echo X`'…"    ⇒ **نُفِّذ** — 🔴 **المفردُ لا يحمي داخل المزدوج**، وهي الأخطر
+//                                        لأنها تبدو محميّة.
+//       ⇒ الكاشفُ `(^|[^\])` ` لا «أيُّ backtick». وشاهدٌ ميدانيّ: مِجَسٌّ بلا هذا
+//       الاستثناء بلّغ ١٤ مطابقةً **كلُّها مشروعة** (‏٧ مهرَّبة في نصّ Markdown و٧ `$(...)`).
+//
+// 🎯 **وحدُّ ما يُصاد يُقال: `$(...)` استبدالٌ مقصودٌ لا فخّ** — الفخُّ **استبدالٌ غيرُ
+//    مقصودٍ داخل سلسلةِ رسالة**، لا كلُّ استبدال. ولذلك لا يُلاحَق `$(...)` هنا إطلاقاً.
 //
 // 🟢 **وضابطُه المعاكس مدمَجٌ فيه ويجري في كلّ تشغيلة** (`selfTest` أدناه): يُثبت أنه
 //    **يحمرّ** على انتهاكٍ مصطنَع في سطرِ كود، و**يخضرّ** على backtick داخل تعليقٍ وعلى
@@ -53,21 +63,32 @@ function extractRunLines(source) {
   return out;
 }
 
+/* backtick **غيرُ مهرَّب**: يسبقه بدايةُ السطر أو محرفٌ ليس `\`. */
+var BARE_TICK = /(^|[^\\])`/;
+
 function scanSource(file, source) {
   var hits = [];
   var comments = 0;
+  var escaped = 0;
   extractRunLines(source).forEach(function (r) {
     var body = r.text.replace(/^\s*/, '');
     if (body.charAt(0) === '#') {            // سطرُ تعليقٍ كامل — مستثنىً إلزامياً
       if (body.indexOf('`') >= 0) comments++;
       return;
     }
-    if (r.text.indexOf('`') >= 0) hits.push({ file: file, line: r.line, text: r.text.trim() });
+    if (BARE_TICK.test(r.text)) {
+      hits.push({ file: file, line: r.line, text: r.text.trim() });
+    } else if (r.text.indexOf('`') >= 0) {   // مهرَّبٌ وحدَه ⇒ نصٌّ حرفيّ، مشروع
+      escaped++;
+    }
   });
-  return { hits: hits, comments: comments };
+  return { hits: hits, comments: comments, escaped: escaped };
 }
 
-/* ضابطٌ معاكسٌ يجري قبل أيّ حكم: حارسٌ لا يُثبت أنه يحمرّ يُعامَل معطوباً. */
+/* ضابطٌ **ثنائيُّ القطب** يجري قبل أيّ حكم: حارسٌ يُثبت أنه يحمرّ ولا يُثبت أنه يخضرّ
+   على المشروع **سياجٌ لا حارس** — يُنذر كاذباً فيُتجاهَل، فيسقط معه الحارسُ الأصليّ.
+   القطبُ الأحمر: العاري · وذو المفردِ داخل المزدوج (‏المفردُ لا يحمي).
+   القطبُ الأخضر: المهرَّب · والتعليق · والنظيف · و`$(...)` المقصود. */
 function selfTest() {
   var fixture = [
     'jobs:',
@@ -76,20 +97,29 @@ function selfTest() {
     '      - run: |',
     '          # تعليقٌ فيه `backtick` ولا يجوز الإنذارُ عنه',
     '          echo "premise gone: `git rev-parse HEAD` missing"',
+    '          echo "escaped: \\`git rev-parse HEAD\\` literal"',
+    '          echo "intended: $(git rev-parse HEAD)"',
     '          echo clean',
-    '      - run: echo "inline `date`"',
+    '      - run: echo "inline \'`date`\' looks-quoted-but-runs"',
     '      - run: echo inline-clean'
   ].join('\n');
 
   var r = scanSource('<self-test>', fixture);
   var problems = [];
-  if (r.hits.length !== 2) problems.push('توقّعنا مطابقتين في أسطر الكود، فجاءت ' + r.hits.length);
+  if (r.hits.length !== 2) problems.push('توقّعنا مطابقتين حمراوَين، فجاءت ' + r.hits.length);
   if (r.comments !== 1) problems.push('توقّعنا backtick واحداً مستثنىً في تعليق، فجاء ' + r.comments);
+  if (r.escaped !== 1) problems.push('توقّعنا سطراً مهرَّباً واحداً يخضرّ، فجاء ' + r.escaped);
   if (!r.hits.some(function (h) { return h.text.indexOf('premise gone') >= 0; })) {
     problems.push('لم يُلتقط انتهاكُ الكتلة متعدّدة الأسطر');
   }
-  if (!r.hits.some(function (h) { return h.text.indexOf('inline') >= 0; })) {
-    problems.push('لم يُلتقط انتهاكُ السطر الواحد');
+  if (!r.hits.some(function (h) { return h.text.indexOf('looks-quoted-but-runs') >= 0; })) {
+    problems.push('لم يُلتقط المفردَ داخل المزدوج — وهو الأخطر لأنه يبدو محميّاً');
+  }
+  if (r.hits.some(function (h) { return h.text.indexOf('escaped:') >= 0; })) {
+    problems.push('أنذرَ كاذباً عن backtick مهرَّب');
+  }
+  if (r.hits.some(function (h) { return h.text.indexOf('intended:') >= 0; })) {
+    problems.push('أنذرَ كاذباً عن `$(...)` وهو استبدالٌ مقصود');
   }
   return problems;
 }
@@ -110,23 +140,28 @@ if (!fs.existsSync(dir)) {
 var files = fs.readdirSync(dir).filter(function (f) { return /\.ya?ml$/i.test(f); });
 var all = [];
 var commentTicks = 0;
+var escapedTicks = 0;
 
 files.forEach(function (f) {
   var r = scanSource(f, fs.readFileSync(path.join(dir, f), 'utf8'));
   all = all.concat(r.hits);
   commentTicks += r.comments;
+  escapedTicks += r.escaped;
 });
 
-console.log('الضابطُ المعاكس: ✅ اخضرَّ على النظيف واحمرَّ على المصطنَع');
-console.log('ملفّات: ' + files.length + ' · backtick في تعليقات (مستثنى): ' + commentTicks);
-console.log('RESULT: ' + all.length + ' backtick في أسطرِ كودٍ داخل كتل run:');
+console.log('الضابطُ ثنائيُّ القطب: ✅ احمرَّ على العاري وعلى المفردِ داخل المزدوج،');
+console.log('                      واخضرَّ على المهرَّب وعلى $(...) وعلى التعليق.');
+console.log('ملفّات: ' + files.length + ' · مستثنىً: ' + commentTicks + ' في تعليقات · ' +
+            escapedTicks + ' مهرَّباً');
+console.log('RESULT: ' + all.length + ' backtick غيرِ مهرَّبٍ في أسطرِ كودٍ داخل كتل run:');
 
 if (all.length) {
   all.forEach(function (h) { console.error('  ' + h.file + ':' + h.line + ': ' + h.text); });
   console.error('');
-  console.error('🔴 backtick في كتلة run: يُنفَّذ كأمر — استعمل $(...) صراحةً إن أردتَ ذلك،');
-  console.error('   أو اقتبس النصّ بعلامةٍ مفردة إن كان نصّاً. والفشلُ هنا صامتٌ: الرسالةُ');
-  console.error('   تفقد مضمونَها والخطوةُ تخرج بحالتها المقصودة كما لو نجحت.');
+  console.error('🔴 backtick غيرُ مهرَّبٍ في كتلة run: يُنفَّذ كأمر — ولا يحميه الاقتباسُ');
+  console.error('   المفرد داخل المزدوج (مقيسٌ بالأثر). إن أردتَ الاستبدالَ فاكتبه $(...)');
+  console.error('   صراحةً، وإن أردتَ النصَّ فهرِّبه \\`. والفشلُ هنا صامت: الرسالةُ تفقد');
+  console.error('   مضمونَها والخطوةُ تخرج بحالتها المقصودة كما لو نجحت.');
   process.exit(1);
 }
 process.exit(0);
