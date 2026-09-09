@@ -2246,6 +2246,62 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
         '🔒 ضابط معاكس: `getHomePageBundle` باقٍ على 120 (‏أقصرُ عنصرٍ مُكاشٌ خادمياً ٣٠ث)');
 })();
 
+/* ── 🔴 عقدُ كاش الحافّة المنشور = مفاتيحُ `API_CACHE_FNS` حرفياً ────────────────
+ *
+ * **العلّةُ التي يغلقها (2026-09-10):** أسماءُ هذه الدوالّ تعيش في مستودعٍ آخر
+ * (‏`school-app-yemen-gas` · خاصّ). وإعادةُ تسميةِ إحداها هناك **تُبرّد الكاشَ صامتاً**:
+ * الوسيطُ لا يجد الاسمَ فيمرّر النداءَ بلا كاش — لا خطأ · لا 502 · لا سطرٌ أحمر — فقط
+ * حملٌ إضافيٌّ على حصّةٍ مشبَعة. ولا يملك هذا المستودعُ كشفَه: المستودعُ الخاصّ **غيرُ
+ * مُحضَرٍ في CI هنا**، فحارسٌ يقرؤه يعمل على قرصٍ واحدٍ ويُقرأ حمايةً قائمةً وهو ليس كذلك.
+ *
+ * ⇒ الاتّجاهُ المعكوس هو الممكن: هذا المستودعُ **عامّ**، فيَشتقّ مستهلكُ GAS الأسماءَ من
+ * `worker/edge-cache-contract.json` عبر الخام بلا توكن. **والنسخُ اليدويُّ مرفوض** — هو
+ * العطلُ نفسُه بثوبٍ ثالث.
+ *
+ * 🔴 **وهذا التأكيدُ هو ما يمنع الملفَّ من أن يصير النسخةَ الثالثة**: ثنائيُّ القطب —
+ * يحمرّ على **زيادةٍ** في الكود لا يعلنها الملفّ، وعلى **نقصٍ** يعلنه الملفُّ ولا يوجد.
+ * ⚠️ وحدُّه يُقال: يحرس **الأسماء** لا الشكلَ ولا الـ`ttl`؛ وتلك يحرسها ما قبله.
+ */
+console.log('');
+console.log('عقدُ كاش الحافّة المنشور — مطابقةٌ ثنائيّةُ القطب مع المصدر:');
+(function () {
+  var CJ = path.join(__dirname, 'edge-cache-contract.json');
+  if (!fs.existsSync(CJ)) {
+    check(false, '🔴 `worker/edge-cache-contract.json` مفقود — المستهلكُ الخارجيُّ يجلب فراغاً');
+    return;
+  }
+  var doc;
+  try { doc = JSON.parse(fs.readFileSync(CJ, 'utf8')); }
+  catch (e) { check(false, '🔴 العقدُ ليس JSON صالحاً — ' + e.message); return; }
+
+  var declared = doc && doc.cachedFunctions;
+  check(Object.prototype.toString.call(declared) === '[object Array]' && declared.length > 0,
+        'ضابط: `cachedFunctions` مصفوفةٌ غيرُ فارغة (‏مجموعةٌ فارغة لا تُقرأ نجاحاً)');
+  if (Object.prototype.toString.call(declared) !== '[object Array]' || !declared.length) return;
+
+  var aIdx2 = src.indexOf('var API_CACHE_FNS = {');
+  var aEnd2 = src.indexOf('\n};', aIdx2) + 3;
+  check(aIdx2 >= 0 && aEnd2 > aIdx2, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
+  if (aIdx2 < 0 || aEnd2 <= aIdx2) return;
+  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {} });
+  var live;
+  try { vm.runInContext(src.slice(aIdx2, aEnd2), cctx); live = Object.keys(vm.runInContext('API_CACHE_FNS', cctx)); }
+  catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
+  check(live.length > 0, 'ضابط: المصدرُ أعطى دالّةً واحدةً على الأقلّ (‏صفرٌ = لم يُقَس شيء)');
+
+  var missing = live.filter(function (k) { return declared.indexOf(k) === -1; });
+  var extra = declared.filter(function (k) { return live.indexOf(k) === -1; });
+
+  check(missing.length === 0,
+        '🔴 قطبٌ ①: كلُّ دالّةٍ مُكاشةٍ في الكود **معلَنةٌ** في العقد' +
+        (missing.length ? ' — الناقصُ: ' + missing.join(' · ') : ''));
+  check(extra.length === 0,
+        '🔴 قطبٌ ②: كلُّ اسمٍ في العقد **موجودٌ** في الكود' +
+        (extra.length ? ' — الزائدُ: ' + extra.join(' · ') : ''));
+  check(declared.length === live.length,
+        '🔒 ضابط: العددان متطابقان (‏' + live.length + ') — لا تكرارَ يُخفي فرقاً');
+})();
+
 // ── 🔴 `len` في سطر `ev:'gas'` — طولٌ لا محتوى ──────────────────────────────
 //
 // أُضيف لقياس الفرضيّة المرشَّحة لإخفاق `getTeacherBootBundle` (‏٥٩٫٥٪ مقابل ١٠٫٥٪):
