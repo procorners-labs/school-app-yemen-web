@@ -35,6 +35,14 @@ jobs:
       - name: Check Worker routing
         run: node worker/test-routes.js
 
+      # backtick داخل كتلة `run:` يُنفَّذ كأمر لا يُطبع كنصّ — وأثرُه فشلٌ صامتٌ داخل
+      # رسالة الفشل نفسِها (رسالةٌ تفقد مضمونَها وخطوةٌ تخرج بحالتها المقصودة). ولا
+      # يكشفه `bash -n`: استبدالُ الأمر صحيحٌ نحوياً. الكاشفُ والضابطُ ثنائيُّ القطب معاً
+      # في السكربت — يُلاحق **غيرَ المهرَّب** وحدَه ويستثني التعليقَ و`$(...)` المقصود،
+      # وإلّا أنذر كاذباً دائماً فيُتجاهَل ⇒ سياجٌ لا حارس.
+      - name: Check run-block backticks
+        run: node .github/scripts/check-run-backticks.js
+
       - name: Verify frontend directory exists
         run: |
           if [ ! -d "frontend" ]; then
