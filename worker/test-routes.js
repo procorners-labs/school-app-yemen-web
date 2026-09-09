@@ -911,6 +911,70 @@ console.log((mutFlips ? '  ✅ ' : '  ❌ ') +
             '🔴 ضابط معاكس: بحذف الحجز يصير `/schedule` slug مدرسة ⇒ 404 [' +
             (mutated === '' ? 'فارغ — الحارس أجوف' : mutated) + ']');
 
+/* ── 🔴 عقدُ المسارات المجمَّدة في APK منشور — فئةٌ لا حالات (2026-09-10) ──────────
+ *
+ * **السياقُ المقيس:** فوّض المالكُ بحذف `student` · `schedule` · `pricing` ·
+ * `home-all-school` نهائياً. والقياسُ فصَل ثلاثَ طبقاتٍ كانت تُقرأ طبقةً واحدة:
+ *   ① **مصدرُ GAS** ⇒ يُحذف (‏وقد حُذف `schedule/` فعلاً 09-05، و`student/` أرشيفٌ محضٌ
+ *      لا يولّد شيئاً بعد انقلاب اتجاه التوليد إلى `teacher/`).
+ *   ② **النشراتُ** ⇒ تبقى حيّةً خاملةً — «لا `clasp undeploy` أبداً».
+ *   ③ **المساراتُ المخدومة** ⇒ 🔴 **تبقى تردّ 200، وهذا عقدٌ لا إهمال.**
+ *
+ * **ولماذا ③ ليست تهاوناً — مقيسٌ من مستودعَي الأندرويد قراءةً (2026-09-10):**
+ *   · `SchoolAppyemen` **منشورٌ على Play والمستخدمون على `vc31`**، و`AppConfig.kt:69`
+ *     يحمل `DEFAULT_STUDENT = …/student/index.html` وهو **`startUrl` لشاشة
+ *     `StudentActivity`**؛ ومعه **Deep Links مُتحقَّقٌ منها** (‏`autoVerify` على
+ *     `/student/abdaawatmuaz` — `AndroidManifest.xml:162-167`) ⇒ رابطُ المشاركة يفتح
+ *     التطبيقَ ثمّ يعرض ٤٠٤ **داخله**، وهو أسوأُ من ألّا يفتح.
+ *   · `home-all-school/index.html` هو **`DEFAULT_HOME` لتطبيق `YemenSchoolz`** — شاشةُ
+ *     إقلاعه كلُّها.
+ *   · 🔴 **ولا طريقَ إصلاح:** `syncIfNeeded()` **معطَّلةٌ بالتعليق في التطبيقين**،
+ *     و`isValidUrl` ترفض كلَّ رابطٍ ليس `script.google.com/…/exec` ⇒ **حتى لو فُعّلت
+ *     لأسقطت أيَّ بديل**. والتفعيلُ نفسُه يحتاج إصداراً جديداً لا يُحدّثه الجميع.
+ *
+ * 🎯 **ونقطةُ الانهيار واحدةٌ وغيرُ بديهيّة:** لا فرعَ في الوركر يذكر هذه المسارات —
+ * بقاؤها 200 يتّكئ **حصراً** على وجود اسمها في `_RESERVED_TOP_PATHS`. وحذفُ الاسم
+ * **أوّلُ ما يبدو «تنظيفاً بريئاً»** بعد حذف المشروع من المصدر، **ويقلب المسارَ سلكياً
+ * إلى مرشَّحِ slug مدرسة ⇒ 404**، في مستودعٍ آخرَ تماماً وبلا أيّ خطإٍ نحويّ.
+ *
+ * ⚠️ **ولماذا فئةٌ لا حالات:** التغطيةُ كانت غيرَ متكافئة — `student` ٥٥ سطرَ فحص ·
+ * `schedule` ٢٧ · و**`home-all-school` سطرٌ واحد**. ⇒ حارسٌ لكلّ اسمٍ على حدة يترك
+ * البابَ مفتوحاً لأوّل اسمٍ يُنسى؛ والفئةُ تُغطّي الثلاثةَ بنفس الشرط.
+ * 🔒 **و`pricing` مستثنىً عمداً من هذه الفئة** — الوحيدُ **بلا مجلدٍ في `frontend/`
+ *    وبلا ثابتٍ مجمَّدٍ في أيّ تطبيق** ⇒ حذفُه قرارُ مالكٍ منفَّذ، لا عقدَ APK يحميه.
+ */
+console.log('');
+console.log('عقدُ المسارات المجمَّدة في APK منشور (فئةٌ — بطفرةٍ لكلّ اسم):');
+['student', 'schedule', 'home-all-school'].forEach(function (name) {
+  var p = '/' + name;
+
+  /* ① نصّيّ: الاسمُ ما زال محجوزاً. */
+  var declared = new RegExp("'" + name + "':\\s*1").test(src);
+  if (!declared) failed++;
+  console.log((declared ? '  ✅ ' : '  ❌ ') +
+              '🔴 `' + name + '` محجوز في `_RESERVED_TOP_PATHS` — مجمَّدٌ في APK منشور، والحذفُ لا يُعكَس');
+
+  /* ② سلوكيّ: الحجزُ **فاعل** لا مكتوبٌ فقط. */
+  ctx.__p = p;
+  var notSlug = vm.runInContext('_schoolSlugFromPath(__p)', ctx) === '';
+  if (!notSlug) failed++;
+  console.log((notSlug ? '  ✅ ' : '  ❌ ') +
+              '`' + p + '` لا يُقرَأ slug مدرسة ⇒ يُخدَم كما هو');
+
+  /* ③ 🔴 الضابطُ المعاكس — وبلاه يكون ما سبق أجوف: يُثبت أن **الحجزَ هو السبب**.
+     الطفرةُ في نسخةٍ بالذاكرة، ولا تُمَسّ الشجرة. ويُطبَع **ما اشتُقّ لا عدَدُه**:
+     الناتجُ الفعليّ يظهر بين قوسين، فيفضح الحارسَ الأجوف في سطر. */
+  var fctx = vm.createContext({});
+  vm.runInContext(src.slice(rIdx, rEnd) + '\n' + src.slice(fIdx, fEnd), fctx);
+  var flipped = vm.runInContext(
+    "delete _RESERVED_TOP_PATHS['" + name + "']; _schoolSlugFromPath('" + p + "');", fctx);
+  var flips = (flipped === name);
+  if (!flips) failed++;
+  console.log((flips ? '  ✅ ' : '  ❌ ') +
+              '🔴 طفرة: بحذف الحجز يصير `' + p + '` slug مدرسة ⇒ 404 [' +
+              (flipped === '' ? 'فارغ — الحارس أجوف' : flipped) + ']');
+});
+
 // ── ص6 (2026-08-19): `/gas/student` ⇒ نشرة `teacher` + مُميِّز `app=student` ────
 //
 // 🔴 **الضابطان معاً أو لا:** تبديلُ الوجهة بلا المُميِّز يجعل `/gas/student` يخدم
@@ -1389,8 +1453,22 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   if (!gasOk) {
     console.log('  ⏭️  SKIPPED: مصدر GAS غير متاح (' + GAS + ') — لم تُطابَق أسماء الدخول');
   } else {
+    /* 🔴 **يُقرأ الموجودُ لا المفترَض — وقع الانهيارُ فعلاً 2026-09-10:** كانت القائمة
+       `['teacher','student']` تُقرأ بلا فحصِ وجود، فلمّا حُذف `SchoolApp-gas/student/`
+       (تقاعدُ المشروع بقرار المالك) **انهار الملفُّ كلُّه بـ`ENOENT`** — لا فحصٌ أحمرُ
+       ولا `SKIPPED`، بل توقّفٌ قبل بلوغ بقيّة الفحوص.
+       ⚠️ **وفحصُ `gasOk` أعلاه لم يمنعه**: يفحص `teacher/` وحدَه فيمرّ، ثمّ يُقرأ مجلدٌ
+       ثانٍ غيرُ مفحوص ⇒ **حارسُ توفّرٍ يفحص أحدَ مدخلَيه**.
+       🟢 والدلالةُ باقيةٌ بعد الفطم: دوالُّ الطالب لها توأمٌ منفَّذٌ في `teacher/`
+       (‏`GAS.student = GAS.teacher`) ⇒ قراءةُ `teacher/` وحدَها تكفي، و`student/` يُقرأ
+       **إن وُجد** بوصفه أرشيفاً لا مصدراً. */
+    var apps = ['teacher', 'student'].filter(function (app) {
+      try { return fs.statSync(path.join(GAS, app)).isDirectory(); } catch (e) { return false; }
+    });
+    check(apps.length > 0, 'ضابط: مجلدُ تطبيقٍ واحدٌ على الأقلّ قائم (صفرٌ = عمى لا نجاح) — ' +
+                           'المقروء: ' + (apps.join(' · ') || 'لا شيء'));
     var defs = '';
-    ['teacher', 'student'].forEach(function (app) {
+    apps.forEach(function (app) {
       fs.readdirSync(path.join(GAS, app)).forEach(function (f) {
         if (/\.js$/.test(f)) defs += fs.readFileSync(path.join(GAS, app, f), 'utf8');
       });
