@@ -393,8 +393,40 @@
       .smmGetPlan({ filters: {}, token: token });
   }
 
-  loadStats();
-  loadPlanStats();
+  /* 🔴 لا تُعِد `loadStats()`/`loadPlanStats()` إلى أعلى المستوى. هذا السكربتُ **مضمَّنٌ بلا
+     `defer`** فيُنفَّذ أثناء تحليل المستند، بينما `<script defer src="/assets/gas-bridge.js">`
+     — وهو مَن يُعرِّف `window.google` على السطح الثابت — يُنفَّذ **بعد** انتهاء التحليل
+     (يحقنه `_build/build-frontend.js`). ⇒ الاستدعاءُ يسبق التعريفَ **حتماً وفي كلّ تحميل**:
+     `Uncaught ReferenceError: google is not defined at loadStats`، واللوحةُ تبقى بلا إحصاءات.
+     وسكربتاتُ `defer` تُنفَّذ قبل إطلاق `DOMContentLoaded`، فالبوّابةُ أدناه تضمن وجودَ الجسر.
+     النمطُ نفسُه في `home/NewsArticle.html` (‏`naBoot`) و`home/News.html` (‏`lbBoot`) — بند 225. */
+  function cmsBoot() {
+    loadStats();
+    loadPlanStats();
+    _cmsFlushErrs();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cmsBoot);
+  else cmsBoot();
+
+  /* 🔴 والمُبلِّغ عن الخطأ كان يفشل بعلّةِ ما يُبلِّغ عنه: المعالجان أدناه كانا ينادِيان
+     `google.script.run` مباشرةً، و`window.google` غيرُ معرَّفٍ في اللحظة التي يقع فيها
+     `ReferenceError` الناتج عن غيابه ⇒ **صفرُ بلاغٍ يصل الخادم عن أشيع خطإٍ في الصفحة**.
+     ⇒ يُسجَّل المعالجان فوراً (كي يلتقطا خطأَ وقتِ التحليل) ويُطابَر البلاغُ حتى جاهزية الجسر. */
+  var _cmsErrQ = [];
+  function _cmsSendErr(page, msg, stack) {
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      if (_cmsErrQ.length < 20) _cmsErrQ.push([page, msg, stack]);
+      return;
+    }
+    try {
+      google.script.run.withFailureHandler(function () {})
+        .logClientError(page, msg, stack || '', navigator.userAgent);
+    } catch (e) { /* لا يُعاد رميُ خطإٍ من داخل معالج الأخطاء */ }
+  }
+  function _cmsFlushErrs() {
+    var q = _cmsErrQ; _cmsErrQ = [];
+    for (var i = 0; i < q.length; i++) _cmsSendErr(q[i][0], q[i][1], q[i][2]);
+  }
 
   window.addEventListener('error', function(event) {
     var msg = event.message || 'Unknown error';
@@ -402,16 +434,12 @@
     var lineno = event.lineno || 0;
     var colno = event.colno || 0;
     var fullMsg = msg + ' at ' + filename + ':' + lineno + ':' + colno;
-    google.script.run
-      .withFailureHandler(function() {})
-      .logClientError('Index', fullMsg, event.error ? event.error.stack : '', navigator.userAgent);
+    _cmsSendErr('Index', fullMsg, event.error ? event.error.stack : '');
   });
 
   window.addEventListener('unhandledrejection', function(event) {
     var reason = event.reason || 'Unknown rejection';
-    google.script.run
-      .withFailureHandler(function() {})
-      .logClientError('Index', 'Unhandled Promise: ' + String(reason), '', navigator.userAgent);
+    _cmsSendErr('Index', 'Unhandled Promise: ' + String(reason), '');
   });
 </script>
 </body>
