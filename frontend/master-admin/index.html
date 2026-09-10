@@ -880,11 +880,36 @@ function showSection(name) {
     audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات'
   };
 
+  /* 🔴 **حارسُ الفراغ يُجعَل يُعلِن — ولا يُنزَع.** `if (el)` لازمٌ (الحلقةُ تمرّ على أقسامٍ
+     قد تغيب بحقّ)، **لكنه ابتلع عطلاً حيّاً**: نداءُ إقلاعٍ على قسمٍ محذوف نزع `active` عن
+     الجميع ولم يجد بديلاً ⇒ **لوحةٌ تفتح فارغةً بصفر خطإٍ في الكونسول**.
+     🎯 **والفرقُ بين «حارسٍ يبتلع» و«حارسٍ يُعلن» سطرٌ واحد** — ولولا الصمتُ لصرخت الصفحةُ
+     فأُصلحت في دقيقة بدل أن تُوصَف «تجميليّة».
+     ⚠️ **ولا يُرفَع استثناء** — التنقّلُ يجب أن يعمل ولو نقص قسم؛ **المطلوبُ أن يُرى.** */
+  var _shownAny = false;
   for (var i = 0; i < sections.length; i++) {
     var el  = document.getElementById('section-' + sections[i]);
     var nav = document.getElementById('nav-' + sections[i]);
+    if (!el && typeof console !== 'undefined' && console.warn) {
+      console.warn('[showSection] قسمٌ مُعلَنٌ بلا عنصرٍ في الصفحة: section-' + sections[i]);
+    }
     if (el)  el.className  = 'section' + (sections[i] === name ? ' active' : '');
     if (nav) nav.className = 'nav-item' + (sections[i] === name ? ' active' : '');
+    if (el && sections[i] === name) _shownAny = true;
+  }
+
+  /* 🔴 **والأهمّ: اسمٌ لا يقابله قسمٌ معروض** — هذه بعينها الحالةُ التي أفرغت اللوحة.
+     تُعلَن **ويُتراجَع إلى `dashboard`** بدل ترك الشاشة بيضاء: **الإعلانُ للمطوّر
+     والتراجعُ للمستخدم**، ولا يُكتفى بأحدهما. */
+  if (!_shownAny) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[showSection] لا قسمَ معروضٌ للاسم «' + name + '» — تراجعٌ إلى dashboard');
+    }
+    var _fb = document.getElementById('section-dashboard');
+    var _fbNav = document.getElementById('nav-dashboard');
+    if (_fb) _fb.className = 'section active';
+    if (_fbNav) _fbNav.className = 'nav-item active';
+    name = 'dashboard';
   }
 
   document.getElementById('top-bar-title').textContent = titles[name] || name;
