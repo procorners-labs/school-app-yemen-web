@@ -40,7 +40,14 @@ for (var j = start; j < lines.length; j++) {
 }
 var script = body.join('\n');
 
-var MUST = ['unchecked', 'checked', 'wf_new', 'workflow-file-is-new', 'تعذّر الاستعلام'];
+/* 🔴 **بصماتٌ بنيويّةٌ لا نصوصُ رسائل — صُحِّح 2026-09-10 بعد فئةٍ رفعتها جلسةُ الخلفية:**
+   كانت القائمةُ تضمّ `'تعذّر الاستعلام'` وهو **نصُّ رسالةٍ للقارئ**. ⇒ **إعادةُ صياغته
+   إلى ما هو أدقُّ (‏«تعذّر القياس») تُحمِّر المِجَسَّ على تحسين.**
+   🎯 **والفئة: حارسُ توثيقٍ يُقاس بالشكل يعاقب على استيفاء المضمون** — 🔴 **وضررُه العمليّ
+   أنه يدفع لترك الصياغة كما هي كي يبقى أخضر، وهو عكسُ غرضه.**
+   🟢 **والمرساةُ على ما يعنيه لا على ما كُتب به:** أسماءُ متغيّراتٍ وحقولٍ مطبوعة —
+   `queried` يفرّق «تعذّر الاستعلام» عن «لا تعليق»، وهو **بنيةٌ لا عبارة**. */
+var MUST = ['unchecked', 'checked', 'wf_new', 'workflow-file-is-new', 'queried'];
 var missing = MUST.filter(function (m) { return script.indexOf(m) < 0; });
 if (missing.length) { console.error('🔴 تعذّر القياس: بصماتٌ مفقودةٌ من الكتلة المستخرَجة: ' + missing.join(' · ')); process.exit(2); }
 console.log('المستخرَج: ' + body.length + ' سطراً · والبصماتُ الخمسُ حاضرة');
@@ -74,30 +81,62 @@ var partial = '**Claude finished the task**\n' + A + '\n- [x] أ\n- [ ] ب\n';
 var noList  = '**Claude finished the task**\n' + A + '\nلا قائمةَ تتبّعٍ إطلاقاً.\n';
 var errHead = '**Claude encountered an error**\n' + A + '\n- [x] أ\n- [x] ب\n';
 
+/* 🔴 **العقدُ سلوكيٌّ لا لفظيّ — أُعيد تصميمُه 2026-09-10.**
+   كانت كلُّ حالةٍ مرساةً على **نصّ رسالةٍ** (‏«لم تكتمل» · «يُنشئ» · «تعذّر الاستعلام») ⇒
+   **أيُّ إعادةِ صياغةٍ للرسالة — ولو إلى ما هو أدقّ — تُحمِّر المِجَسَّ على تحسين.**
+   🎯 **فئةُ «حارسُ توثيقٍ يُقاس بالشكل يعاقب على استيفاء المضمون»** (رفعتها جلسةُ الخلفية).
+   🟢 **والتصميمُ الآن طبقتان مفصولتان:**
+     • **`rc` + `probe` (بنيةٌ مطبوعة) = العقدُ الحاكم** ⇒ سقوطُه **فشل**.
+     • **`msg` (نصُّ الرسالة) = تشخيصٌ** ⇒ سقوطُه **تحذيرٌ يُطبَع ولا يُفشِل**.
+   ⇒ **إعادةُ الصياغة لا تكسر شيئاً، وتغييرُ السلوك يكسر فوراً.** */
 var cases = [
-  ['🟢 مراجعةٌ كاملة ⇒ أخضر',                                      { FAKE_BODY: full },                     0, 'مراجعةٌ منشورة'],
-  ['🔴 قائمةٌ ناقصة ⇒ أحمر',                                       { FAKE_BODY: partial },                  1, 'لم تكتمل'],
-  ['🔴 لا قائمةَ إطلاقاً (٠ و٠) ⇒ أحمر — يمنع الخضورَ بالمصادفة',  { FAKE_BODY: noList },                   1, 'لم تكتمل'],
-  ['🟢 رأسُ خطإٍ وقائمةٌ كاملة ⇒ أخضر — الرأسُ لا يفصل',           { FAKE_BODY: errHead },                  0, 'مراجعةٌ منشورة'],
-  ['🔴 صفرُ تعليقٍ والملفُّ جديد ⇒ أحمرُ «يُنشئ»',                 { FAKE_BODY: '', FAKE_SHA_MISS: '1' },   1, 'يُنشئ'],
-  ['🔴 صفرُ تعليقٍ والملفُّ معدَّل ⇒ أحمرُ «يعدّل»',               { FAKE_BODY: '' },                       1, 'يعدّل'],
-  ['🔴 تعذّرُ الاستعلام ⇒ أحمرٌ يفرّقه عن «لا تعليق»',             { FAKE_BODY: full, FAKE_QFAIL: '1' },    1, 'تعذّر الاستعلام']
+  // الوصف · البيئة · rc · فحصٌ بنيويٌّ على المخرَج (العقد) · نصٌّ للتشخيص (تحذيرٌ فقط)
+  ['🟢 مراجعةٌ كاملة ⇒ أخضر',                                     { FAKE_BODY: full },
+    0, function (o) { return /`unchecked` = `0`/.test(o) && /`checked` = `[1-9]/.test(o); }, 'مراجعةٌ منشورة'],
+  ['🔴 قائمةٌ ناقصة ⇒ أحمر',                                      { FAKE_BODY: partial },
+    1, function (o) { return /`unchecked` = `[1-9]/.test(o); }, 'لم تكتمل'],
+  ['🔴 لا قائمةَ إطلاقاً (٠ و٠) ⇒ أحمر — يمنع الخضورَ بالمصادفة', { FAKE_BODY: noList },
+    1, function (o) { return /`unchecked` = `0`/.test(o) && /`checked` = `0`/.test(o); }, 'لم تكتمل'],
+  ['🟢 رأسُ خطإٍ وقائمةٌ كاملة ⇒ أخضر — الرأسُ لا يفصل',          { FAKE_BODY: errHead },
+    0, function (o) { return /`unchecked` = `0`/.test(o); }, 'مراجعةٌ منشورة'],
+  ['🔴 صفرُ تعليقٍ والملفُّ جديد ⇒ `workflow-file-is-new` = 1',   { FAKE_BODY: '', FAKE_SHA_MISS: '1' },
+    1, function (o) { return /`workflow-file-is-new` = `1`/.test(o); }, 'يُنشئ'],
+  ['🔴 صفرُ تعليقٍ والملفُّ معدَّل ⇒ `workflow-file-is-new` = 0', { FAKE_BODY: '' },
+    1, function (o) { return /`workflow-file-is-new` = `0`/.test(o) && /`workflow-file-differs-from-base` = `1`/.test(o); }, 'يعدّل'],
+  // 🟢 تعذّرُ الاستعلام هو الفرعُ **الوحيدُ** الذي لا يطبع حقولَ الوركفلو إطلاقاً ⇒ غيابُها بنيةٌ لا عبارة.
+  ['🔴 تعذّرُ الاستعلام ⇒ لا حقولَ وركفلو أصلاً (يفرّقه عن «لا تعليق»)', { FAKE_BODY: full, FAKE_QFAIL: '1' },
+    1, function (o) { return o.indexOf('workflow-file-') < 0; }, 'تعذّر']
 ];
 
 var base = { GH_TOKEN: 'x', REPO: 'o/r', PR: '243', RUN_ID: '999', HEAD_SHA: 'abc', BASE_REF: 'main',
              GITHUB_STEP_SUMMARY: path.join(tmp, 'summary.txt'), PATH: shim + path.delimiter + process.env.PATH };
-var fail = 0;
+var fail = 0, warned = 0;
 cases.forEach(function (c) {
   var res = cp.spawnSync('bash', [sh], { env: Object.assign({}, process.env, base, c[1]), encoding: 'utf8' });
-  var out = (res.stdout || '') + (res.stderr || '');
-  if (res.status === c[2] && out.indexOf(c[3]) >= 0) { console.log('  ✅ ' + c[0] + ' ⇒ rc=' + res.status); return; }
+  var sum = '';
+  try { sum = fs.readFileSync(base.GITHUB_STEP_SUMMARY, 'utf8'); } catch (e) { sum = ''; }
+  var out = (res.stdout || '') + (res.stderr || '') + '\n' + sum;
+  try { fs.unlinkSync(base.GITHUB_STEP_SUMMARY); } catch (e) { /* أوّلُ حالةٍ بلا ملفّ */ }
+
+  var rcOk = res.status === c[2], structOk = c[3](out), msgOk = out.indexOf(c[4]) >= 0;
+  if (rcOk && structOk) {
+    console.log('  ✅ ' + c[0] + ' ⇒ rc=' + res.status);
+    if (!msgOk) { warned++; console.log('     ⚠️ تشخيصٌ فقط: لم تظهر «' + c[4] + '» — **الصياغةُ تغيّرت والسلوكُ سليم، فلا فشل.**'); }
+    return;
+  }
   fail = 1;
-  console.log('  ❌ ' + c[0] + ' ⇒ rc=' + res.status + ' (المتوقَّع ' + c[2] + ')' +
-    (out.indexOf(c[3]) >= 0 ? '' : ' · لم تظهر «' + c[3] + '»'));
-  console.log('     ' + out.split('\n').slice(0, 3).join(' | ').slice(0, 200));
+  console.log('  ❌ ' + c[0] + ' ⇒ rc=' + res.status + ' (المتوقَّع ' + c[2] + ')' + (structOk ? '' : ' · سقط الفحصُ البنيويّ'));
+  console.log('     ' + out.split('\n').slice(0, 4).join(' | ').slice(0, 240));
 });
 
 console.log('');
 if (fail) { console.log('RESULT: 🔴 سقط ضابط'); process.exit(1); }
-console.log('RESULT: ✅ ' + cases.length + ' حالةً على نصّ البوّابة نفسِه — ومنها المسارُ الأخضرُ الأساسيُّ وقطبُ «٠ و٠»');
+/* 🟢 `warned` يُطبَع في سطر النتيجة — رصدت مراجعةُ `claude[bot]` على PR #251 أنه كان
+   **يُجمَّع ولا يُستهلَك**. والتحذيرُ الفرديُّ كان يُطبَع فالمعلومةُ لم تُفقَد، **لكنّ
+   قارئَ سطر `RESULT` وحدَه كان يرى «✅ ٧ حالات» ولا يعرف أن صياغةً تبدّلت.**
+   🎯 **وفئتُه: عدّادٌ يُحسَب ولا يظهر حيث يُقرأ الحكم** — أختُ «رقمٌ يصف نشاطاً»، ووجهُها
+   هنا **معلومةٌ صحيحةٌ في موضعٍ لا يُقرأ**. 🔴 **ولا يُجعَل مُفشِلاً**: تبدُّلُ الصياغة
+   ليس عطلاً، وإفشالُه يعيد الفئةَ التي أُصلحت في هذه الدفعة بعينها. */
+console.log('RESULT: ✅ ' + cases.length + ' حالةً على نصّ البوّابة نفسِه — ومنها المسارُ الأخضرُ الأساسيُّ وقطبُ «٠ و٠»' +
+  (warned ? ' · ⚠️ ' + warned + ' تحذيرَ صياغةٍ (تشخيصٌ لا فشل)' : ''));
 process.exit(0);
