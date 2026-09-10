@@ -390,7 +390,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
   <div class="main-content">
     <!-- Top Bar -->
     <div class="top-bar">
-      <div class="top-bar-title" id="top-bar-title">🚀 منصاتي</div>
+      <!-- ⚠️ النصُّ الافتراضيُّ يُدهَس بأوّل `showSection`، **لكنه يُعرَض في اللحظة التي
+           تسبقها** — فبقاؤه «🚀 منصاتي» كان يومض باسم قسمٍ محذوف. -->
+      <div class="top-bar-title" id="top-bar-title">📊 Dashboard</div>
       <div class="user-info">
         <span id="user-name-display">مدير النظام</span>
         <button class="btn-logout" onclick="app_logout()">خروج</button>
@@ -812,8 +814,16 @@ function _showApp() {
   if (sel) sel.style.display = 'block';
   owner_loadSchoolSelector();
 
-  // ✅ عرض تبويب "منصاتي" أولاً بعد الدخول
-  showSection('portals');
+  /* 🔴 **كان `showSection('portals')` — وهو عطلٌ حيٌّ بعد حذف القسم، لا بقيّةٌ تجميليّة.**
+     الحلقةُ في `showSection` تنزع `active` عن **كلّ** قسمٍ لا يطابق الاسم، ثمّ تبحث عن
+     `section-portals` **فلا تجده** (‏محروسٌ بـ`if (el)` فلا يرمي) ⇒ **اللوحةُ تفتح بلا
+     أيّ قسمٍ معروضٍ وبعنوان «🚀 منصاتي»** — أي **الصفحةُ الفارغةُ بعينها** التي ظننتُ أنّي
+     منعتُها بنقل `active` في الترميز، **ونداءُ الإقلاع يدهسه بعد لحظة**.
+     🎯 **والفئة: وسمٌ ساكنٌ في الترميز لا يصمد أمام نداءٍ يعيد الحسابَ عند الإقلاع** —
+     ولا يكشفه فحصُ الترميز وحدَه. **يكشفه تتبّعُ ما يجري بعد التحميل.**
+     ⚠️ **ووُصفت لي «تجميليّة» من قياسٍ نظر إلى المصفوفة والعنوان ولم ينظر إلى هذا السطر**
+     ⇒ **قياسٌ صحيحٌ في نطاقه، والنطاقُ هو الذي قصُر.** */
+  showSection('dashboard');
 }
 
 // يجلب هوية المدرسة (الاسم/الهاتف/الشعار) ويحقنها في الشريط الجانبي ديناميكيًا
@@ -858,12 +868,16 @@ function app_logout() {
 // ── التنقل بين الأقسام ────────────────────────────────────────
 
 function showSection(name) {
-  var sections = ['dashboard','sync','reports','schools','referrals','requests','audit','settings','portals'];
+  /* 🗑️ أُسقط `'portals'` (2026-09-10) و`'reports'` (بند 182 · 2026-08-23) — **أقسامٌ محذوفة**.
+     ⚠️ **وبقاؤهما لم يكن يرمي** (‏`if (el)`/`if (nav)` يحرسان الحلقة) — **لكنه ليس بلا أثر**:
+     `titles[name]` يبقى يحمل عنوانَ قسمٍ معدوم، **وأيُّ نداءٍ باسمه يُفرِغ اللوحة** بنزع
+     `active` عن الجميع بلا بديل. وهو ما وقع فعلاً في نداء الإقلاع أعلاه.
+     🎯 ⇒ **بياناتٌ ميّتةٌ في جدولِ توجيهٍ ليست حياديّة: تجعل الاسمَ المعدومَ يبدو صالحاً.** */
+  var sections = ['dashboard','sync','schools','referrals','requests','audit','settings'];
   var titles   = {
-    dashboard:'📊 Dashboard', sync:'🔄 المزامنة', reports:'📈 التقارير',
+    dashboard:'📊 Dashboard', sync:'🔄 المزامنة',
     schools:'🏫 المدارس', referrals:'🎁 الإحالات', requests:'📥 طلبات التسجيل',
-    audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات',
-    portals:'🚀 منصاتي'
+    audit:'📋 سجل التدقيق', settings:'⚙️ الإعدادات'
   };
 
   for (var i = 0; i < sections.length; i++) {
