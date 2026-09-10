@@ -8386,11 +8386,43 @@ function handleViewportResize() {
    على رمز جهاز FCM، فنخزّنه عبر registerDeviceTokenProtected ليصله البث عند
    نشر أي خبر. كما نقرأ رمزاً محقوناً مسبقاً إن وُجد. خامل دون أي ضرر إن لم
    يكن داخل التطبيق الأصلي. */
+/* 🔴 نفسُ حارس التكرار المطبَّق على سطح الطالب (‏`_stu-js-shell.html`) — والعلّةُ واحدة:
+   إطلاقٌ‑ونسيانٌ عند كلّ فتحةِ صفحة يحجز مقعداً من ثمانيةٍ في الوسيط طوال ٢٣٫٧ث على عملٍ
+   لا ينتظره أحد. ⚠️ **والمقيسُ كان على العارية لا هذه** (‏`registerDeviceToken` ⇒ ٥٩/٥٩)،
+   **وهذه غيرُ مقيسةٍ بالإخفاق** — تُعالَج لأنها **نفسُ الشكل** لا لأنها ظهرت في جرد.
+   🎯 **ويُقال ذلك صراحةً بدل الإيهام بأن الرقمَ يخصّها** (قاعدةُ «حدٌّ يُذكَر معه هل أُطلق
+   فعلاً»): عائدُها هنا وقائيٌّ لا مُثبَتٌ بقياس. 🔴 **والنظيرتان لا تتقاسمان المفتاح** —
+   ورقةُ الأجهزة تميّز الدور (`session.role` مقابل `parent` الحرفيّة)، فمفتاحٌ واحدٌ كان
+   يُسكت تسجيلَ سطحٍ لأن الآخر سجّل. */
+var _TC_FCM_KEY = 'tc_fcm_reg_v1';
+var _TC_FCM_TTL_TRIED = 30 * 60 * 1000;
+var _TC_FCM_TTL_OK    = 12 * 60 * 60 * 1000;
+
+function _tcFcmShouldSend(tok, sid) {
+  try {
+    var raw = localStorage.getItem(_TC_FCM_KEY);
+    if (!raw) return true;
+    var o = JSON.parse(raw);
+    if (!o || o.t !== tok || o.s !== sid) return true;
+    var ttl = o.ok ? _TC_FCM_TTL_OK : _TC_FCM_TTL_TRIED;
+    return (Date.now() - (o.at || 0)) >= ttl;
+  } catch (e) { return true; }
+}
+function _tcFcmMark(tok, sid, confirmed) {
+  try {
+    localStorage.setItem(_TC_FCM_KEY,
+      JSON.stringify({ t: tok, s: sid, at: Date.now(), ok: !!confirmed }));
+  } catch (e) {}
+}
+
 window.registerFcmToken = function (deviceToken) {
   try {
     if (!deviceToken || typeof App === 'undefined' || !App || !App.user) return;
+    var sid = App.user.schoolId || '';
+    if (!_tcFcmShouldSend(deviceToken, sid)) return;
+    _tcFcmMark(deviceToken, sid, false);
     callServer('registerDeviceTokenProtected', { deviceToken: deviceToken, platform: 'android' },
-      function () {}, function () {});
+      function () { _tcFcmMark(deviceToken, sid, true); }, function () {});
   } catch (e) {}
 };
 function _initFcmBridge() {

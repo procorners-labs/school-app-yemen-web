@@ -4290,14 +4290,55 @@ function resetLogin() {
    المبكر يقع دوماً ⇒ أولياء أمور مدرسة المالك وحدهم بلا أي رمز جهاز مسجَّل، بصمت.
    التطبيع هنا **عميلي موضعي** بنفس نمط `returnHomeLink` (أعلاه) و`nsShareNews` (أدناه): صفر أثر
    على فضاء مفاتيح الكاش (فلا خروج قسري لأحد) وصفر مساس بقرار بند 97 وحارسه. */
+/* 🔴 حارسُ تكرارٍ أُضيف 2026-09-10 بعد قياسٍ حيّ — والعلّةُ ليست في الدالّة الخادميّة.
+   المقيس (سجلّ الوسيط · ١٣ ساعة): `registerDeviceToken` ⇒ **٥٩ نداءً · صفرُ 200**، كلُّها
+   عند `23,568ms` = سقفُ ميزانية الوسيط. 🟢 **والورقةُ الحيّة تُثبت أنها تعمل**: ٧٨ صفَّ
+   `parent` في `أجهزة_الإشعارات` وتحديثاتُ «آخر ظهور» داخل النافذة نفسِها.
+   ⇒ **إجهاضُ نقلٍ لا فشلُ تنفيذ** — الوسيطُ يتخلّى والسكربتُ يمضي وينجح.
+
+   🔴 **والضررُ ليس على هذا النداء بل على غيره:** إطلاقٌ‑ونسيانٌ بلا حارسِ تكرارٍ ولا مرورٍ
+   بـ`_stuRunGated` (‏`google.script.run` خام) ⇒ يحجز مقعداً من `BH_ISO_GLOBAL = 8` في
+   الوسيط **طوال ٢٣٫٧ ثانية، عند كلّ فتحةِ صفحة، على عملٍ لا ينتظره أحد** ⇒ ~١٤ دقيقةً من
+   إشغال المقاعد في ١٣ ساعة، **تُدفَع من نداءات المستخدم الحقيقيّة**.
+   🎯 والفئةُ مسجَّلةٌ سلفاً في `StudentLogic.js:4478` عن `markNewsViewed` — **موضعٌ ثانٍ
+   لم يُغلَق**، لا عطلٌ جديد.
+
+   ⚠️ **ولماذا TTL مزدوجٌ لا حارسٌ دائم:** التسجيلُ يُحدِّث «آخر ظهور» أيضاً، فمنعُه
+   للأبد يُجمّد إشارةَ الحياة. **و«محاولةٌ» ليست «نجاحاً»**: تُوسَم عند الإطلاق بـ٣٠ دقيقةً
+   وحدها كي لا يبقى جهازٌ بلا تسجيلٍ نصفَ يومٍ إن سقطت الشبكة حقاً، وتُرقَّى إلى ١٢ ساعة
+   **عند تأكيد النجاح**. 🔒 و`localStorage` قد يرمي (وضعُ التصفّح الخاصّ) ⇒ كلُّ لمسةٍ له
+   في `try` **والتراجعُ إرسالٌ لا منع** — فالحارسُ لا يُسكت التسجيلَ حين يعجز عن التذكّر. */
+var _STU_FCM_KEY = 'stu_fcm_reg_v1';
+var _STU_FCM_TTL_TRIED = 30 * 60 * 1000;        //  محاولةٌ لم تُؤكَّد
+var _STU_FCM_TTL_OK    = 12 * 60 * 60 * 1000;   //  نجاحٌ مؤكَّد
+
+function _stuFcmShouldSend(tok, sid) {
+  try {
+    var raw = localStorage.getItem(_STU_FCM_KEY);
+    if (!raw) return true;
+    var o = JSON.parse(raw);
+    if (!o || o.t !== tok || o.s !== sid) return true;   // رمزٌ أو مدرسةٌ جديدة ⇒ أرسِل
+    var ttl = o.ok ? _STU_FCM_TTL_OK : _STU_FCM_TTL_TRIED;
+    return (Date.now() - (o.at || 0)) >= ttl;
+  } catch (e) { return true; }                            // fail-open: العجزُ عن التذكّر لا يمنع
+}
+function _stuFcmMark(tok, sid, confirmed) {
+  try {
+    localStorage.setItem(_STU_FCM_KEY,
+      JSON.stringify({ t: tok, s: sid, at: Date.now(), ok: !!confirmed }));
+  } catch (e) {}
+}
+
 window.registerFcmToken = function (deviceToken) {
   try {
     if (!deviceToken) return;
     var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
     var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID ||
       (new URLSearchParams(window.location.search)).get('school') || OWNER_SCHOOL_ID;
+    if (!_stuFcmShouldSend(deviceToken, sid)) return;
+    _stuFcmMark(deviceToken, sid, false);           // وسمُ المحاولة **قبل** الإطلاق
     google.script.run
-      .withSuccessHandler(function () {})
+      .withSuccessHandler(function () { _stuFcmMark(deviceToken, sid, true); })
       .withFailureHandler(function () {})
       .registerDeviceToken({ deviceToken: deviceToken, schoolId: sid, platform: 'android' });
   } catch (e) {}
