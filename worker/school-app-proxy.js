@@ -25,6 +25,15 @@ var GAS = {
   teacher:  'https://script.google.com/macros/s/AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND/exec',
   // ⚠️ هذه القيمة **لم تعد وجهةَ `/gas/student`** منذ ص6 — انظر التحويل أسفل الجدول
   //    مباشرةً. تبقى مكتوبةً هنا لأنها **مسار التراجع الفوري**، ولأن حذفها يقطع العقد.
+  // 🗑️ **و`pricing` تقاعد 2026-09-10** بقرار المالك: **معالجُ `/pricing` حُذف** من هذا
+  //    الملفّ (انظر شاهدةَ القبر في موضعه)، **ومعرّفُه أدناه بقي كما هو ولم يُمسّ.**
+  // 🔴 ولماذا بقي — سببان، والثاني منهما وقع فعلاً:
+  //    ① نفسُ قاعدة `student`/`schedule`: **النشرةُ تبقى حيّةً خاملةً مسارَ تراجع**، ولا
+  //       `clasp undeploy` بحال. وهذا الجدولُ **سجلُّ معرّفاتِ نشرٍ لا قائمةُ مساراتٍ فاعلة**.
+  //    ② 🔴 **وحاولتُ حذفَ السطر فحجبه `protect-deploy-ids`** — يقرأ **مجموعةَ** المعرّفات
+  //       ولا يميّز «إسقاطَ مدخلٍ خامل» من «تغييرِ معرّفٍ حيّ**، ونصُّه: إن كان مقصوداً فهو
+  //       **قرارُ مالكٍ صريحٌ يُنفَّذ بتعطيل الحارس لا بالالتفاف عليه**. ⇒ **لم يُتجاوَز.**
+  //    ⚠️ وأثرُ بقائه صفرٌ: **صفرُ قارئٍ لـ`GAS.pricing` بعد حذف المعالج** — يحرسه فحصٌ.
   student:  'https://script.google.com/macros/s/AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec',
   schedule: 'https://script.google.com/macros/s/AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag/exec',
   'master-admin': 'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec',
@@ -1788,63 +1797,39 @@ export default {
       return Response.redirect(oauthTarget, 302);
     }
 
-    // ── 1ج) صفحة التسعيرة (HTML من GAS) عبر الوكيل: /pricing ─────
-    //   تُضمَّن عبر <iframe> بدل توجيه المتصفّح أو جلب+بثّ البايتات:
-    //   - جلب+بثّ (المحاولة الأولى) يكسر إطار Sandbox في جوجل (نفس شرح
-    //     /oauth أعلاه) ويترك الصفحة فارغة تماماً (goog is not defined).
-    //   - توجيه 302 مباشر (المحاولة الثانية) يُصلح ذلك، لكنه ينقل شريط
-    //     عنوان المتصفّح إلى نطاق جوجل — غير مناسب لصفحة تصفّح دائمة
-    //     (بخلاف /oauth، نقطة عبور لحظية) يُفضَّل بقاء الزائر فيها على
-    //     نطاق المشروع عند الضغط على روابط "خطط الأسعار".
-    //   - الحل: iframe مصدره رابط جوجل الحقيقي مباشرة (لا جلب من طرف
-    //     الخادم) — المتصفّح يحمّل محتوى الإطار من أصل جوجل الحقيقي فيعمل
-    //     Sandbox طبيعياً (المسارات النسبية تُحل صحيحاً)، بينما يبقى شريط
-    //     العنوان على نطاقنا. appsscript.json لتطبيق pricing مضبوط على
-    //     XFrameOptionsMode.ALLOWALL فيسمح بهذا التضمين. تحقّق حيّ بمتصفح
-    //     فعلي: عرض كامل بلا أخطاء، وشريط تحذير جوجل العلوي يختفي أيضاً
-    //     (يظهر فقط عند التنقّل المباشر، لا داخل iframe).
-    if (path === '/pricing' || path === '/pricing/') {
-      var prSrc = (GAS.pricing + url.search).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-      var prTitle = 'يمن سكولز | Yemen Schoolz — خطط الأسعار';
-      var prDesc = 'خطط أسعار منصّة يمن سكولز لإدارة المدارس: اختر الخطّة المناسبة لمدرستك — لوحات المعلمين والطلاب، إدارة المحتوى والجداول، التقارير المالية، ودعم فني كامل.';
-      // meta/OG/Twitter ثابتة (لا ديناميكية — صفحة تسويقية عامة بلا بيانات مدرسة بعينها).
-      // ملاحظة: محتوى الـiframe نفسه (من script.google.com) لا يُفهرَس كجزء من هذه الصفحة —
-      // هذه الوسوم تُحسِّن فقط عنوان/وصف/مشاركة نتيجة البحث والروابط الاجتماعية للغلاف الخارجي.
-      var prHtml = '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-        '<title>' + prTitle + '</title>' +
-        '<meta name="description" content="' + prDesc + '">' +
-        '<link rel="canonical" href="https://yemenschoolz.com/pricing">' +
-        '<meta property="og:type" content="website">' +
-        // أحادي اللغة عمداً (ملاحظة تشغيلية #66 + #75 بمستودع GAS): الاسم المختلط
-        // يُعرَض معكوساً داخل dir="rtl"، والحقول التي تقرأها محرّكات البحث لتحديد
-        // اسم الموقع يجب أن تبقى سلسلة واحدة لا لبس فيها عبر كل الصفحات.
-        // ⚠️ هذا الغلاف هو ما يراه الزاحف على /pricing — الصفحة الحقيقية داخل
-        // <iframe>، فتعديل pricing/Index.html بمستودع GAS لا يظهر هنا إطلاقاً.
-        // «Yemen Schoolz» تطابق سلسلة النطاق yemenschoolz.com حرفياً، وتطابق
-        // App name في كونسول Google OAuth. تغييرها هنا يلزمه تغييرهما معاً.
-        '<meta property="og:site_name" content="Yemen Schoolz">' +
-        '<meta name="application-name" content="Yemen Schoolz">' +
-        '<meta name="apple-mobile-web-app-title" content="يمن سكولز">' +
-        '<meta property="og:title" content="' + prTitle + '">' +
-        '<meta property="og:description" content="' + prDesc + '">' +
-        '<meta property="og:url" content="https://yemenschoolz.com/pricing">' +
-        '<meta property="og:image" content="https://yemenschoolz.com/assets/schoolz-yemen-og.png">' +
-        '<meta property="og:image:width" content="1200">' +
-        '<meta property="og:image:height" content="630">' +
-        '<meta name="twitter:card" content="summary_large_image">' +
-        '<meta name="twitter:title" content="' + prTitle + '">' +
-        '<meta name="twitter:description" content="' + prDesc + '">' +
-        '<meta name="twitter:image" content="https://yemenschoolz.com/assets/schoolz-yemen-og.png">' +
-        '<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#060e1e}' +
-        'iframe{width:100%;height:100vh;border:0;display:block}</style></head><body>' +
-        '<iframe src="' + prSrc + '" title="يمن سكولز — خطط الأسعار" allowfullscreen></iframe>' +
-        '</body></html>';
-      var prHeaders = new Headers();
-      prHeaders.set('Content-Type', 'text/html; charset=utf-8');
-      prHeaders.set('Access-Control-Allow-Origin', '*');
-      return new Response(prHtml, { status: 200, headers: prHeaders });
-    }
+    /* ── 🗑️ 1ج) `/pricing` — حُذف المعالجُ 2026-09-10 بقرار المالك ─────────────────
+     *
+     * **الترتيبُ الذي نُفِّذ به، ولا يُقلَب:** ① أسقطت جلسةُ `SchoolApp-gas` الروابطَ الستّة
+     * من مصدر HTML ودمجت ⇒ ② وصلت دفعةُ `frontend` الآلية (`7212bb9`) ⇒ ③ **قِيس الشرطُ
+     * من هذه الشجرة**: `grep -c "/pricing"` على `home/schools.html` و`home/news.html`
+     * و`sitemap.xml` ⇒ **`0 · 0 · 0`** ⇒ ④ حُذف المعالج.
+     * 🔴 **وعكسُه كان يُنتج ٤٠٤ من الجذر** — `home/schools.html` هو ما يُخدَم به `/`.
+     * 🟢 والمطابقةُ الباقيةُ الوحيدةُ (`frontend/master-admin/register.html:1665`) **تعليقُ
+     *    JS لا رابطٌ حيّ** — قِيس بالبحث عن سمة href تشير إليه ⇒ **صفر**.
+     * ⚠️ **وفخٌّ وقع في كتابة هذا التعليق نفسِه ويُسجَّل:** كانت الجملةُ أعلاه تحمل نمطَ
+     *    `grep` بمحارف اقتباسٍ داخلية، **فأربكت نازعَ التعليقات في `test-routes.js`**
+     *    (‏وهو واعٍ بالسلاسل الحرفية) ⇒ خرج من التعليق مبكّراً ⇒ **قرأ فحصٌ نصّيٌّ بقيّةَ
+     *    التعليق كوداً فأحمرّ بحقٍّ لسببٍ خاطئ**. ⇒ **لا محارفَ اقتباسٍ في تعليقٍ يقرؤه
+     *    فحصٌ نصّيّ.** (كشفه الفحصُ الجديد أدناه في أوّل تشغيلة.)
+     *
+     * ⚠️ **وما لم يُحذف ولماذا:**
+     *   · **`GAS.pricing`** باقٍ في الجدول — النشرةُ حيّةٌ خاملةٌ مسارَ تراجع، **وحجبَ
+     *     `protect-deploy-ids` حذفَه بحقّ** (انظر تعليقَ الجدول).
+     *   · **`'pricing': 1` باقٍ في `_RESERVED_TOP_PATHS`** — 🔴 **وهذا مقصودٌ لا سهو:**
+     *     إسقاطُه يجعل `/pricing` **مرشَّحَ slug مدرسة**، فتستطيع مدرسةٌ تسجيلُ الاسم
+     *     واختطافُ المسار. والحجزُ يُبقي الجوابَ ٤٠٤ **متوقَّعاً لا قابلاً للاختطاف**.
+     *     وهو تطبيقُ درسٍ مسجَّل: «قائمةُ حارسٍ بيضاءُ للاختصاص، وحذفُ عنصرٍ منها
+     *     «تنظيفاً» يفتح تخطّياً صامتاً».
+     *
+     * 🔴 **والدَّينُ الذي كشفه هذا الحذفُ أُغلق في نفس الدفعة:** كان إسقاطُ
+     * `x-frame-options` من **كلّ** الردود مبرَّراً بأن `/pricing` يُضمَّن في `<iframe>` —
+     * والمبرِّرُ زال معه، **فأُعيد الرأسُ**. وبلا ذلك كان يبقى تدهورٌ أمنيٌّ **بلا سببٍ ولا
+     * إشارةٍ حمراء**. (‏و`content-security-policy` تبقى دَيناً مُعلَناً — بندُ
+     * `csp-absent-on-worker-responses`.)
+     *
+     * والسردُ الأصليّ للحلّ المحذوف (لماذا `<iframe>` لا جلبٌ ولا 302) في تاريخ git عند
+     * هذا الموضع — لا يُعاد نسخُه هنا.
+     * ─────────────────────────────────────────────────────────────────────────── */
 
     // ── 1د) بثّ فيديو Google Drive عبر الوكيل: /media/drive/<fileId> ──
     //   يجلب بايتات الفيديو من Drive ويبثّها كـ video/mp4 مع دعم Range،
@@ -2268,8 +2253,19 @@ export default {
     //    و`same-origin` الصارمة تقطع `window.opener` عنها فتكسر عودة OAuth تحديداً.
     //    هذه القيمة تُعطي العزل عن أي نافذة تفتحنا، وتُبقي نوافذنا تعمل.
     headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-    // 🚫 ولا تُعاد `content-security-policy` ولا `x-frame-options` هنا: حذفهما أعلاه
-    // **مقصود** — `/pricing` يُخدَم داخل `<iframe>` من هذا الوركر نفسه.
+    /* 🔴 **`x-frame-options` أُعيد 2026-09-10 — ومبرِّرُ إسقاطه زال في نفس الدفعة.**
+     * كان محذوفاً لأن `/pricing` **يُضمَّن في `<iframe>` من هذا الوركر نفسه**؛ وقد حُذف
+     * ذلك المعالجُ بقرار المالك (انظر شاهدةَ القبر عند `1ج`) ⇒ **زال المبرِّرُ فعاد الرأس.**
+     * ⚠️ **ولولا ذلك لبقي الوركرُ بلا الرأس مع اختفاء سببه** — تدهورٌ أمنيٌّ بلا أيّ إشارةٍ
+     *    حمراء، وهو الصنفُ الذي لا يُكتشَف إلّا بجردٍ مقصود.
+     * 🟢 و`SAMEORIGIN` لا `DENY`: تُبقي تضميناً من أصلنا إن لزم، وتمنع الأجانب.
+     *    وتأطيرُنا لجوجل (كان في `/pricing`) **خارجٌ** لا يمسّه هذا الرأس أصلاً.
+     * 🔴 **و`content-security-policy` تبقى محذوفةً — دَينٌ مُعلَنٌ لا حمايةٌ مُدّعاة:**
+     *    سكربتاتُ هذه الصفحات **مضمَّنةٌ داخل HTML بكثافة** (‏`frontend/teacher/index.html`
+     *    وحدها 2,016,145 حرفاً) ⇒ سياسةٌ صارمةٌ تكسرها **صامتةً**. تلزمها جردةُ مصادرَ
+     *    ثمّ `Content-Security-Policy-Report-Only` أوّلاً — بندُ
+     *    `csp-absent-on-worker-responses`. */
+    headers.set('X-Frame-Options', 'SAMEORIGIN');
 
     // سياسة تخزين ذكية حسب نوع الملف:
     //  - sw.js / manifest: **لا تخزين إطلاقاً** — عاملُ خدمةٍ مُكاشٌ بخطأ يُثبّت نفسه.

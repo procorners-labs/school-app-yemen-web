@@ -75,7 +75,13 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 ⇒ **الحصّةُ المشتركة تُقرأ من هنا:** ‏٣٠ تنفيذاً متزامناً **لكلّ حساب** لا لكلّ مشروع، وكلُّها
 Execute-as-Me بنفس الحساب. وطيُّ `student` في نشرة `teacher` يجعل حملَ المنصّتين على **مشروع
 Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المعلّم (مقيسٌ 2026-08-26).
-- + `pricing` — مشروع GAS مستقلّ ثامن يُخدَّم عبر مسار `/pricing` في الـWorker (صفحة تسعيرة فقط، لا `doPost`/API كامل مثل السبعة الرئيسية).
+- 🗑️ **و`pricing` تقاعد 2026-09-10 بقرار المالك — كان مشروعَ GAS ثامناً يُخدَّم عبر مسار
+  `/pricing`.** حُذف **معالجُ المسار** من الوركر، وأُسقطت روابطُه الستّةُ من مصدر HTML، ومجلدُ
+  المصدر يُحذف في `SchoolApp-gas`. ⇒ **`/pricing` يردّ ٤٠٤ الآن، مقصوداً.**
+  🔴 **وشيئان بقيا عمداً ولا يُقرآن سهواً:** **`GAS.pricing`** في جدول النشرات (‏النشرةُ حيّةٌ
+  خاملةٌ مسارَ تراجع، **وحجب `protect-deploy-ids` حذفَه بحقّ**، ويحرسه فحصُ «صفرُ قارئ») ·
+  و**`'pricing': 1`** في `_RESERVED_TOP_PATHS` (‏إسقاطُه يجعل المسارَ **مرشَّحَ slug مدرسة**
+  فيصير قابلاً للاختطاف). 📄 التفصيل: `_docs/2026-09-10-تقاعد-المشاريع-الأربعة-وازدواج-المستودعات.md`.
 - كل مشروع: `doGet` (HTML) + `doPost` عبر `ApiEndpoint.js` (JSON API).
 - النشر: Execute as **Me** · Access **Anyone** — **لا تغيير Deployment IDs أبداً**.
 
@@ -127,10 +133,14 @@ SSL داخل التطبيق**: مطابقُها `host === domain || host.endsWit
 
 **نطاق ثانٍ منذ 2026-07-25 — نشأ لهوية OAuth (وتوسّع أعلاه) — لا بديل:** `https://yemenschoolz.com` Custom Domain
 إضافي على نفس الـWorker (لحل تعارض Google OAuth Console Branding مع `procorners.com`). في هذا
-المستودع تحديداً، الكود يُصرِّح ذاتياً بهذا النطاق **حصراً في صفحة `/pricing`** (الوحيدة التي يبنيها
-`worker/school-app-proxy.js` مباشرة كـHTML، وسوم `canonical`/`og:url`/`og:image`/`twitter:image`،
-PR#105 — الموضعُ يُقاس بـ`grep -n "og:url" worker/school-app-proxy.js`؛ 🔴 **كان مكتوباً
-«الأسطر ~196-208» وهو بائتٌ بمراحل**) — لا كتحويل توجيه شامل؛ صفحات أخرى (`home-all-school`/`Terms`/`Privacy`)
+المستودع تحديداً، **كان** الكود يُصرِّح ذاتياً بهذا النطاق **حصراً في صفحة `/pricing`** — وهي
+الوحيدةُ التي كان يبنيها `worker/school-app-proxy.js` مباشرةً كـHTML (‏وسوم
+`canonical`/`og:url`/`og:image`/`twitter:image`، PR#105).
+🗑️ **وذلك المعالجُ حُذف 2026-09-10** (تقاعدُ `pricing`) ⇒ **صفرُ HTML يُبنى في الوركر الآن،
+وصفرُ تصريحٍ ذاتيٍّ بالنطاق فيه.** 🔴 **ولا يُقرأ ذلك «فقدَ النطاقُ تصريحَه»:** التصريحُ
+الفاعلُ للصفحات المخدومة **يُبنى في `school-app-yemen-gas`** كما يقول السطرُ التالي، وهذا
+الموضعُ كان **إضافةً لغلافٍ لم يُفهرَس محتواه أصلاً** (الصفحةُ الحقيقيّةُ كانت داخل `<iframe>`).
+— لا كتحويل توجيه شامل؛ صفحات أخرى (`home-all-school`/`Terms`/`Privacy`)
 تُبنى في `school-app-yemen-gas` وتصريحها لهذا النطاق موثَّق هناك. التفصيل الكامل:
 `school-app-yemen-gas/_docs/2026-07-25-تعارض-نطاق-مشترك-oauth-branding-ونطاق-مخصص.md`.
 
@@ -140,7 +150,7 @@ PR#105 — الموضعُ يُقاس بـ`grep -n "og:url" worker/school-app-pro
 | `/qr-img?url=...` | Proxy لصور QR من `api.qrserver.com` (fallback عند الحجب) |
 | `/qr-download?url=&name=` | تحميل QR كـ attachment |
 | `/oauth` | إعادة توجيه OAuth من فيسبوك/إنستغرام → GAS CMS |
-| `/pricing` | عرض HTML صفحة التسعيرة من GAS منفصل |
+| ~~`/pricing`~~ | 🗑️ **حُذف 2026-09-10** — يردّ ٤٠٤ مقصوداً. الاسمُ **يبقى محجوزاً** في `_RESERVED_TOP_PATHS` كي لا يُقرأ slug مدرسةٍ فيُختطَف |
 | `/media/drive/<fileId>` | بثّ فيديو Google Drive كـ `video/mp4` مع دعم Range requests (بثّ مباشر بلا تخزين، يتجاوز فحص الفيروسات لملفات Drive الكبيرة) |
 | `/drive-upload` | وسيط رفع resumable إلى جلسة Drive (PUT مباشر)، مع تحقّق SSRF مقيَّد بنطاق `*.googleapis.com` فقط |
 | `/app` · `/download` | **302** إلى صفحة التطبيق على Play (‏`no-store`، ويمرّر `?ref=` كـ`referrer`) — رابط قصير ثابت يُرسَل في واتساب والإشعارات ويُطبَع، فنقطة تغييره واحدة هنا. الاسمان محجوزان في `_RESERVED_TOP_PATHS` **دفاعياً** (المعالج يسبق حساب الـslug أصلاً)، والرؤوس الأمنية تُكرَّر يدوياً لأن المسار يعود مبكراً |
