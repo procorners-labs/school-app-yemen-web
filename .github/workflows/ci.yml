@@ -43,6 +43,15 @@ jobs:
       - name: Check run-block backticks
         run: node .github/scripts/check-run-backticks.js
 
+      # 🔴 بوّابةُ «تعليقٌ منشور» في `claude-review.yml` هي ما يفرّق «راجعت» من «لم تُراجَع»،
+      # والفئةُ المخيفةُ فيها **الأخضرُ المُصدَّق**. وضابطُها كان موجوداً **بصفر استدعاءٍ من
+      # أيّ وركفلو** حتى 2026-09-10 ⇒ **ضابطٌ قائمٌ لا يجري = أخضرٌ مُصدَّق** — وهي الفئةُ
+      # نفسُها التي كُتب لأجلها. ⇒ يُوصَل هنا لا يُترَك لتشغيلٍ يدويٍّ يُنسى.
+      # 🟢 ويُشغَّل على **نصّ البوّابة نفسِه** (استخراجُ `run:` وتنفيذُه مع `gh` مُزيَّف)
+      # فلا تتباعد نسخةُ منطقٍ عن الأصل؛ ويخرج بـ`2` لتعذّر القياس فلا يُقرأ صفرُ حالاتٍ سلامةً.
+      - name: Probe review gate
+        run: node .github/scripts/probe-review-gate.js
+
       - name: Verify frontend directory exists
         run: |
           if [ ! -d "frontend" ]; then
