@@ -43,6 +43,14 @@
 <script defer src="/assets/offline-sync.js"></script>
 <script defer src="/assets/gas-bridge.js"></script>
 <script>
+  (function(){var Q=window.__errQ=window.__errQ||[];
+   function push(a){try{if(Q.length<20)Q.push(a);}catch(e){}}
+   window.addEventListener("error",function(ev){try{push(["js",(ev.message||"Unknown error")+" @ "+(ev.filename||"")+":"+(ev.lineno||0)+":"+(ev.colno||0),ev.error?ev.error.stack:"",""]);}catch(e){}});
+   window.addEventListener("unhandledrejection",function(ev){try{var r=ev.reason;push(["promise",(r&&r.message)?r.message:String(r),(r&&r.stack)?r.stack:"",""]);}catch(e){}});
+  })();
+</script>
+<script defer src="/assets/error-reporter.js"></script>
+<script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('/sw.js').catch(function(){});
@@ -365,6 +373,12 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
             style="display:none;margin-inline-start:auto;background:#c62828;color:#fff;
                    border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;"></span>
     </div>
+    <div class="nav-item" onclick="showSection('errors')" id="nav-errors">
+      <span class="nav-icon">🩺</span><span>كشف الأخطاء</span>
+      <span id="nav-errors-badge"
+            style="display:none;margin-inline-start:auto;background:#c62828;color:#fff;
+                   border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;"></span>
+    </div>
     <div class="nav-item" onclick="showSection('audit')" id="nav-audit">
       <span class="nav-icon">📋</span><span>سجل التدقيق</span>
     </div>
@@ -532,6 +546,46 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     </div>
 
     <!-- ═══ سجل التدقيق ═══ -->
+    <!-- ═══ كشف الأخطاء ═══
+         🔴 **لوحةُ المطوّر لا لوحةُ مدرسة** — تعرض بلاغاتِ واجهةٍ من كلّ المدارس، مطويّةً
+         ببصمةٍ ومرتَّبةً **بالتكرار** لا بالوقت: خطأٌ وقع ألفَ مرّةٍ يسبق واحداً وقع مرّة،
+         مهما تأخّر ظهورُه. والترتيبُ هو ما يجعل اللوحةَ قابلةً للتصرّف. -->
+    <div id="section-errors" class="section">
+      <div class="section-title">🩺 كشف أخطاء المستخدمين</div>
+      <div class="panel" style="margin-bottom:14px;">
+        <div style="font-size:13px;color:#475569;line-height:1.9;">
+          كلُّ خطإٍ يقع في متصفّح مستخدمٍ حقيقيّ يصل هنا مصنَّفاً بـ<strong>المدرسة والتطبيق
+          والصفحة والدالّة</strong>. والمكرّرُ يُطوى في صفٍّ واحدٍ بعدّاد، فالقائمةُ تبقى مقروءة.
+          <br>⚠️ وهذه القناةُ ترى <strong>الواجهة</strong>؛ واستثناءاتُ خادم Apps Script تُقرأ
+          من <code>npm run gas:logs</code> — والقناتان لا تُغني إحداهما عن الأخرى.
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <button class="btn btn-primary" onclick="errors_load()">🔄 تحميل البلاغات</button>
+        <select id="err-filter-app" onchange="errors_render()" style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;">
+          <option value="">كل التطبيقات</option>
+          <option value="teacher">teacher</option>
+          <option value="student">student</option>
+          <option value="cms">cms</option>
+          <option value="home">home</option>
+          <option value="master-admin">master-admin</option>
+        </select>
+        <select id="err-filter-status" onchange="errors_render()" style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;">
+          <option value="">كل الحالات</option>
+          <option value="جديد">جديد</option>
+          <option value="مُعالَج">مُعالَج</option>
+          <option value="متجاهَل">متجاهَل</option>
+        </select>
+        <input type="text" id="err-filter-text" placeholder="🔍 فلترة بالنصّ..." oninput="errors_render()" style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;flex:1;">
+      </div>
+      <div class="panel" style="padding:0;overflow:auto;">
+        <table class="master-table">
+          <thead><tr><th>التكرار</th><th>المدرسة</th><th>التطبيق</th><th>الصفحة</th><th>الدالّة</th><th>الرسالة</th><th>آخر ظهور</th><th>الحالة</th><th>إجراء</th></tr></thead>
+          <tbody id="errors-tbody"><tr><td colspan="9" style="text-align:center;padding:20px;color:#999;">اضغط "تحميل البلاغات"</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="section-audit" class="section">
       <div class="section-title">📋 سجل التدقيق المركزي</div>
       <div class="form-row" style="margin-bottom:14px;">
@@ -796,7 +850,8 @@ function _showApp() {
   document.getElementById('user-name-display').textContent = App.userName + ' — مطوّر النظام';
 
   // 🔒 قائمةُ الحصر تبقى — بوّابةٌ صريحةٌ لو أُعيد فتحُ الدخول يوماً (انظر التعليق أعلاه).
-  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals', 'nav-requests'];
+  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals', 'nav-requests',
+                   'nav-errors'];
   for (var i = 0; i < ownerOnly.length; i++) {
     var el = document.getElementById(ownerOnly[i]);
     if (el) el.style.display = App.isOwner ? '' : 'none';
@@ -873,7 +928,7 @@ function showSection(name) {
      `titles[name]` يبقى يحمل عنوانَ قسمٍ معدوم، **وأيُّ نداءٍ باسمه يُفرِغ اللوحة** بنزع
      `active` عن الجميع بلا بديل. وهو ما وقع فعلاً في نداء الإقلاع أعلاه.
      🎯 ⇒ **بياناتٌ ميّتةٌ في جدولِ توجيهٍ ليست حياديّة: تجعل الاسمَ المعدومَ يبدو صالحاً.** */
-  var sections = ['dashboard','sync','schools','referrals','requests','audit','settings'];
+  var sections = ['dashboard','sync','schools','referrals','requests','errors','audit','settings'];
   var titles   = {
     dashboard:'📊 Dashboard', sync:'🔄 المزامنة',
     schools:'🏫 المدارس', referrals:'🎁 الإحالات', requests:'📥 طلبات التسجيل',
@@ -1566,6 +1621,93 @@ function schools_renew(schoolId) {
 }
 
 // ── سجل التدقيق ───────────────────────────────────────────────
+
+/* ── كشف أخطاء المستخدمين ─────────────────────────────────────────────────────
+   🔴 **كلُّ حقلٍ يُهرَّب قبل الحقن بلا استثناء.** رسالةُ الخطأ ومكدّسُه و`user-agent`
+   **نصٌّ يتحكّم فيه طرفٌ خارجيّ** يصل عبر نقطةٍ **بلا توكن** — فحقنُه خاماً في `innerHTML`
+   يجعل لوحةَ المطوّر نفسَها سطحَ XSS مخزَّن، ويكفي لاختراقها أن يفتحها المطوّرُ مرّة.
+   ⚠️ ولا يُقاس هذا على `_renderAudit` المجاورة: مصدرُها `Audit_Master` وكاتبُه الخادمُ
+   بعد مصادقة، ومصدرُ هذه **متصفّحُ أيِّ زائر**. **المصدرُ يحدّد التهريب لا الشكل.** */
+var _allErrors = [];
+function _errEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function errors_load() {
+  var tb = document.getElementById('errors-tbody');
+  if (tb) tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;">جارٍ التحميل…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) {
+        if (tb) tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#c62828;">' +
+          _errEsc((res && res.error) || 'تعذّر التحميل') + '</td></tr>';
+        return;
+      }
+      _allErrors = res.errors || [];
+      errors_render();
+      var badge = document.getElementById('nav-errors-badge');
+      if (badge) {
+        var open = 0;
+        for (var i = 0; i < _allErrors.length; i++) if (_allErrors[i].status === 'جديد') open++;
+        badge.textContent = String(open);
+        badge.style.display = open > 0 ? '' : 'none';
+      }
+    })
+    .withFailureHandler(function () {
+      if (tb) tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#c62828;">تعذّر الاتصال</td></tr>';
+    })
+    .getErrorLogProtected({ token: App.token });
+}
+
+function errors_render() {
+  var tb = document.getElementById('errors-tbody');
+  if (!tb) return;
+  var fApp    = (document.getElementById('err-filter-app')    || {}).value || '';
+  var fStatus = (document.getElementById('err-filter-status') || {}).value || '';
+  var fText   = ((document.getElementById('err-filter-text')  || {}).value || '').toLowerCase();
+
+  var rows = [];
+  for (var i = 0; i < _allErrors.length; i++) {
+    var e = _allErrors[i];
+    if (fApp    && e.app    !== fApp)    continue;
+    if (fStatus && e.status !== fStatus) continue;
+    if (fText && (e.message + ' ' + e.page + ' ' + e.fn + ' ' + e.schoolId).toLowerCase().indexOf(fText) === -1) continue;
+    rows.push(e);
+  }
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;">لا بلاغات مطابقة</td></tr>';
+    return;
+  }
+  var html = '';
+  for (var k = 0; k < rows.length; k++) {
+    var r = rows[k];
+    var hot = r.count >= 10 ? '#c62828' : (r.count >= 3 ? '#ef6c00' : '#1a237e');
+    html += '<tr>' +
+      '<td><strong style="color:' + hot + ';">' + _errEsc(r.count) + '</strong></td>' +
+      '<td style="font-size:12px;">' + _errEsc(r.schoolId || '—') + '</td>' +
+      '<td style="font-size:12px;">' + _errEsc(r.app) + '</td>' +
+      '<td style="font-size:12px;color:#666;">' + _errEsc(r.page || '—') + '</td>' +
+      '<td style="font-size:12px;color:#666;"><code>' + _errEsc(r.fn || '—') + '</code></td>' +
+      '<td style="font-size:12px;max-width:360px;word-break:break-word;" title="' + _errEsc(r.stack) + '">' + _errEsc(r.message) + '</td>' +
+      '<td style="font-size:11px;color:#aaa;">' + _errEsc(r.lastSeen) + '</td>' +
+      '<td style="font-size:12px;">' + _errEsc(r.status) + '</td>' +
+      '<td><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;min-width:0;" ' +
+        'onclick="errors_setStatus(\'' + _errEsc(r.id) + '\',\'مُعالَج\')">✅</button> ' +
+        '<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;min-width:0;" ' +
+        'onclick="errors_setStatus(\'' + _errEsc(r.id) + '\',\'متجاهَل\')">🔇</button></td>' +
+      '</tr>';
+  }
+  tb.innerHTML = html;
+}
+
+function errors_setStatus(id, status) {
+  google.script.run
+    .withSuccessHandler(function (res) { if (res && res.success) errors_load(); })
+    .withFailureHandler(function () {})
+    .updateErrorStatusProtected({ token: App.token, id: id, status: status });
+}
 
 function audit_load() {
   google.script.run
