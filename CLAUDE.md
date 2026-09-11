@@ -62,9 +62,29 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
 
 **طبقة البيانات:** Google Sheets لكل مدرسة + سجل مركزي `Master_Admin_School`
 - ID: `10Zk0vwjrHagydYlU0kyjB6X9uoyVCN6sl5nSet1_c7w`
-- أعمدة مفتاحية: school_id(0)، teacher_file_id(4)، student_file_id(5)، cms_file_id(6)، subscription_end(9)، is_active(10).
-  ⚠️ و`schedule_file_id(7)` **لم يعُد عموداً مفتاحياً — أُفرِغ في السجلّ المركزيّ 2026-09-05**
-  مع تقاعد `schedule`؛ يوثّقه `worker/test-routes.js` (‏`grep -n "schedule_file_id" worker/test-routes.js`).
+- أعمدة مفتاحية: school_id(0)، teacher_file_id(4)، cms_file_id(6)، subscription_end(9)، is_active(10).
+
+  🔴 **وعمودان متقاعدان — `student_file_id(5)` و`schedule_file_id(7)`: فارغا القيمة ·
+  محجوزا الموضع — ولا يُحذف العمود.** وُحِّدت الصيغةُ 2026-09-11 بقرار المالك، بعد أن كان
+  هذا الملفّ يقول «لم يعُد عموداً مفتاحياً» **ويُدرج `student_file_id` مفتاحياً في آنٍ معاً**
+  — **ونصفان صحيحان يُقرآن منفردَين أسوأُ من خطإٍ صريح.**
+
+  🔴 **والخطرُ بنيويٌّ لا تحريريّ — ولذلك يُكتب هنا:** «لم يعُد مفتاحياً» **تُقرأ إذناً بحذف
+  العمود من الورقة** (وقد سُئل عنها حرفياً). والترتيبُ مشتقٌّ من **مصفوفةٍ مثبَّتةٍ في الكود**
+  (`MASTER_SCHOOLS_HEADERS` في `SchoolApp-gas/master-admin/_MasterSchema.js`) **لا من ترويسة
+  الشيت**، والسجلُّ الحيُّ يحمل الأعمدةَ على القرص ⇒ **حذفُ عمودٍ يُزحزح كلَّ ما بعده يساراً
+  في القراءة والكتابة معاً:**
+
+  | الحقل | موضعُه | ما يُقرأ بعد الحذف |
+  |---|---|---|
+  | `subscription_end` | ٩ | `is_active` ⇒ **اشتراكٌ من الخانة الخطأ** |
+  | `is_active` | ١٠ | `plan_type` ⇒ **مدرسةٌ تبدو معطَّلة** |
+
+  ⇒ **اشتراكاتٌ خاطئةٌ ومدارسُ تُغلَق — بصمتٍ تامٍّ وبلا رسالةِ خطإٍ واحدة.**
+  🟢 **والقيمةُ فارغةٌ فعلاً** (أُفرِغت 2026-09-05 مع تقاعد `schedule`، وصفرُ قارئٍ
+  لـ`student_file_id` منذ 2026-09-11) — **والفراغُ لا يعني جوازَ الحذف.**
+  🔗 والطرفُ المقابلُ مطبَّقٌ في `SchoolApp-gas` بنفس الصيغة؛ يوثّقه هنا
+  `worker/test-routes.js` (‏`grep -n "schedule_file_id" worker/test-routes.js`).
 
 **طبقة الخلفية:** 7 مشاريع GAS (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية) + نقطة توجيه ثامنة
 - `home · home-all-school · teacher · student · cms · schedule · master-admin`
