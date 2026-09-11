@@ -373,6 +373,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
             style="display:none;margin-inline-start:auto;background:#c62828;color:#fff;
                    border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;"></span>
     </div>
+    <div class="nav-item" onclick="showSection('plans')" id="nav-plans">
+      <span class="nav-icon">💳</span><span>أنواع الاشتراكات</span>
+    </div>
     <div class="nav-item" onclick="showSection('errors')" id="nav-errors">
       <span class="nav-icon">🩺</span><span>كشف الأخطاء</span>
       <span id="nav-errors-badge"
@@ -546,6 +549,29 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     </div>
 
     <!-- ═══ سجل التدقيق ═══ -->
+    <!-- ═══ أنواع الاشتراكات ═══
+         🔴 **واجهةٌ على `Settings_Master.plans_json` لا مخزنٌ ثانٍ** — ما يُحفظ هنا هو
+         بعينه ما تقرؤه صفحةُ التسجيل العامّة `/master-admin/register.html`. -->
+    <div id="section-plans" class="section">
+      <div class="section-title">💳 أنواع الاشتراكات</div>
+      <div class="panel" style="margin-bottom:14px;">
+        <div style="font-size:13px;color:#475569;line-height:1.9;">
+          هذه الباقاتُ هي ما يراه صاحبُ المدرسة في <strong>صفحة تسجيل مدرسة جديدة</strong>،
+          وهي مصدرُ الحقيقة الوحيد للتسعير.
+          <br>⚠️ <strong>حدُّ الطلاب <code>0</code> يعني «غير محدود»</strong>، و«السعر/المدّة»
+          نصٌّ حرٌّ يُعرَض كما هو (مثل <code>سنوي</code> أو <code>30 يوم</code>).
+          <div id="plans-origin" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <button class="btn btn-primary" onclick="plans_load()">🔄 تحميل الباقات</button>
+        <button class="btn btn-secondary" onclick="plans_add()">➕ باقة جديدة</button>
+        <button class="btn btn-success" onclick="plans_save()">💾 حفظ الكلّ</button>
+      </div>
+      <div id="plans-status"></div>
+      <div id="plans-container" style="display:grid;gap:14px;"></div>
+    </div>
+
     <!-- ═══ كشف الأخطاء ═══
          🔴 **لوحةُ المطوّر لا لوحةُ مدرسة** — تعرض بلاغاتِ واجهةٍ من كلّ المدارس، مطويّةً
          ببصمةٍ ومرتَّبةً **بالتكرار** لا بالوقت: خطأٌ وقع ألفَ مرّةٍ يسبق واحداً وقع مرّة،
@@ -851,7 +877,7 @@ function _showApp() {
 
   // 🔒 قائمةُ الحصر تبقى — بوّابةٌ صريحةٌ لو أُعيد فتحُ الدخول يوماً (انظر التعليق أعلاه).
   var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals', 'nav-requests',
-                   'nav-errors'];
+                   'nav-errors', 'nav-plans'];
   for (var i = 0; i < ownerOnly.length; i++) {
     var el = document.getElementById(ownerOnly[i]);
     if (el) el.style.display = App.isOwner ? '' : 'none';
@@ -928,7 +954,7 @@ function showSection(name) {
      `titles[name]` يبقى يحمل عنوانَ قسمٍ معدوم، **وأيُّ نداءٍ باسمه يُفرِغ اللوحة** بنزع
      `active` عن الجميع بلا بديل. وهو ما وقع فعلاً في نداء الإقلاع أعلاه.
      🎯 ⇒ **بياناتٌ ميّتةٌ في جدولِ توجيهٍ ليست حياديّة: تجعل الاسمَ المعدومَ يبدو صالحاً.** */
-  var sections = ['dashboard','sync','schools','referrals','requests','errors','audit','settings'];
+  var sections = ['dashboard','sync','schools','referrals','requests','plans','errors','audit','settings'];
   var titles   = {
     dashboard:'📊 Dashboard', sync:'🔄 المزامنة',
     schools:'🏫 المدارس', referrals:'🎁 الإحالات', requests:'📥 طلبات التسجيل',
@@ -1164,9 +1190,21 @@ function _renderSchools(schools) {
        🔴 وحُذف زرّ «📥 تنزيل البرنامج» ومعه مسارُ حزمة المزامنة كاملاً (قرار مالك، نفس
        التاريخ). ويُعلَن صراحةً: هذا يقطع طريقَ **إعادة تثبيت** المزامنة على جهازٍ جديد.
        🟢 ولا يوقف المزامنة القائمة — `_sync/` يعمل على جهاز المدرسة مباشرةً ولا يُمَسّ. */
-    html += '<button class="btn btn-sm" style="background:#ff9800;color:#fff;" onclick="schools_downloadTemplate(\'' + s.schoolId + '\',this)">⬇️ قالب البيانات</button>';
-    html += '<button class="btn btn-sm" style="background:#43a047;color:#fff;" onclick="schools_importTemplate(\'' + s.schoolId + '\',this)">📤 استيراد القالب</button>';
-    html += '<button class="btn btn-sm" style="background:#3949ab;color:#fff;" onclick="_brandModal(\'' + s.schoolId + '\',' + i + ')">🔗 روابط السوشل</button>';
+    /* 🗑️ وحُذفت ثلاثةُ أزرارٍ 2026-09-11 بقرار مالك — «⬇️ قالب البيانات» و«📤 استيراد
+       القالب» و«🔗 روابط السوشل»: هذه لوحةُ **إدارةِ العملاء والاشتراكات**، والثلاثةُ
+       تحرّر **بياناتِ مدرسةٍ بعينها** وهي اختصاصُ منصّة المعلّمين بالميثاق.
+       🟢 والبديلُ الحيُّ للقالب: `teacher/_SchoolTemplateEngine.js::_tstImportSchoolWorkbookLocal`.
+       🔴 **والنقاطُ الخادميةُ الثلاثُ لم تُحذف** (`generateSchoolTemplateProtected` ·
+       `importSchoolTemplateProtected` · `updateSchoolBrandProtected`) — متصفّحٌ بصفحةٍ
+       مخبّأة ينادي الاسمَ القديم ساعاتٍ بعد النشر (سابقةُ بند 35).
+
+       🔴 **والزرّان أدناه نُقلا لا أُضيفا — وهذا تطبيقُ بند 182 لا توسيعُ نطاق:** كانا
+       يعيشان **داخل** مودال القالب (`_tplModal`) الذي حُذف، وهو **مستدعيهما الوحيد**
+       مقيساً ⇒ حذفُه وحدَه كان يُيتّمهما فيصيران كوداً ميّتاً بصمت، **وهما مسارٌ حيٌّ
+       موثَّق** في `master-admin/CLAUDE.md` («والافتراضياتُ تُبذَر عبر ♻️ بذر الافتراضيات»).
+       ⇒ نُقلا إلى الصفّ ليبقى لهما مدخل. */
+    html += '<button class="btn btn-sm" style="background:#8e24aa;color:#fff;" onclick="schools_seedDefaults(\'' + s.schoolId + '\')">♻️ بذر الافتراضيات</button>';
+    html += '<button class="btn btn-sm" style="background:#e53935;color:#fff;" onclick="schools_clearExamples(\'' + s.schoolId + '\')">🧹 حذف الأمثلة</button>';
     html += '</div></td></tr>';
   }
   tbody.innerHTML = html;
@@ -1427,48 +1465,12 @@ function referrals_backfill() {
 // 🔴 حُذفت `schools_downloadPackage` 2026-08-23 (بند 182) — ومعها كلُّ مسار حزمة المزامنة
 // خادمياً (`generateSchoolPackageProtected` وأصولُها المُضمَّنة). قرار مالك.
 
-// ── قالب بيانات المدرسة (6 أوراق بأمثلة): توليد/فتح + استيراد + بذر/تنظيف ──
-function schools_downloadTemplate(schoolId, btn) {
-  var orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ تجهيز...'; }
-  google.script.run
-    .withSuccessHandler(function (res) {
-      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      if (!res || !res.success) { alert('تعذّر توليد القالب: ' + ((res && res.error) || 'خطأ')); return; }
-      try { window.open(res.editUrl, '_blank'); } catch (e) {}
-      _tplModal(schoolId, res);
-    })
-    .withFailureHandler(function (err) {
-      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      alert('خطأ: ' + (err && err.message ? err.message : err));
-    })
-    .generateSchoolTemplateProtected({ token: App.token, schoolId: schoolId });
-}
+/* 🗑️ حُذفت `schools_downloadTemplate` و`schools_importTemplate` 2026-09-11 بقرار مالك
+   مع زرَّيهما — تحريرُ بياناتِ مدرسةٍ بعينها اختصاصُ منصّة المعلّمين بالميثاق.
+   🔴 والنقطتان الخادميتان باقيتان (`generateSchoolTemplateProtected` ·
+   `importSchoolTemplateProtected`) — سابقةُ بند 35. */
 
-function schools_importTemplate(schoolId, btn) {
-  if (!confirm('سيُستورَد محتوى القالب إلى بيانات المدرسة (بلا حذف؛ صفوف «مثال» تُتجاهَل). متابعة؟')) return;
-  var orig = btn ? btn.innerHTML : '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ استيراد...'; }
-  google.script.run
-    .withSuccessHandler(function (res) {
-      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      if (!res || !res.success) { alert('تعذّر الاستيراد: ' + ((res && res.error) || 'خطأ')); return; }
-      var w = (res.warnings && res.warnings.length) ? ('\n\nتنبيهات:\n- ' + res.warnings.join('\n- ')) : '';
-      alert('تم الاستيراد ✅\n' +
-        '• طلاب: +' + res.students.added + ' / تحديث ' + res.students.updated + '\n' +
-        '• معلّمون: +' + res.teachers.added + ' / تحديث ' + res.teachers.updated + '\n' +
-        '• رسوم: +' + res.fees.added + ' / تحديث ' + res.fees.updated + '\n' +
-        '• حسابات طلاب: +' + res.studentFinance.added + ' / تحديث ' + res.studentFinance.updated + '\n' +
-        '• جدول: +' + res.schedule.added + ' / تحديث ' + res.schedule.updated + w);
-      schools_load();
-    })
-    .withFailureHandler(function (err) {
-      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      alert('خطأ: ' + (err && err.message ? err.message : err));
-    })
-    .importSchoolTemplateProtected({ token: App.token, schoolId: schoolId });
-}
-
+// ── بذرُ الافتراضيات وتنظيفُ الأمثلة (مدخلُهما الآن الصفُّ مباشرةً) ──
 function schools_clearExamples(schoolId) {
   if (!confirm('حذف كل صفوف الأمثلة «مثال» من بيانات المدرسة؟')) return;
   google.script.run
@@ -1493,83 +1495,15 @@ function schools_seedDefaults(schoolId) {
     .seedSchoolDefaultsProtected({ token: App.token, schoolId: schoolId });
 }
 
-// مودال روابط القالب (فتح/تنزيل Excel/استيراد/بذر/تنظيف)
-function _tplModal(schoolId, res) {
-  var ex = document.getElementById('tpl-modal');
-  if (ex) { try { ex.parentNode.removeChild(ex); } catch (e) {} }
-  var d = document.createElement('div');
-  d.id = 'tpl-modal';
-  d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
-  d.innerHTML =
-    '<div style="background:#fff;border-radius:12px;padding:22px;max-width:460px;width:92%;text-align:right;">' +
-      '<h3 style="margin:0 0 10px;">📋 قالب بيانات المدرسة</h3>' +
-      '<p style="color:#555;margin:0 0 14px;line-height:1.8;">افتح القالب واملأ أوراقه ببياناتك الحقيقية ثم اضغط «استيراد بيانات القالب». الأوراق الفارغة تعمل بالإعداد الافتراضي؛ صفوف «مثال» تُتجاهَل.</p>' +
-      '<div style="display:flex;flex-direction:column;gap:8px;">' +
-        '<a href="' + res.editUrl + '" target="_blank" rel="noopener" class="btn" style="background:#1a73e8;color:#fff;text-decoration:none;text-align:center;">📝 فتح القالب للتعبئة</a>' +
-        '<a href="' + res.xlsxUrl + '" target="_blank" rel="noopener" class="btn" style="background:#0f9d58;color:#fff;text-decoration:none;text-align:center;">⬇️ تنزيل نسخة Excel</a>' +
-        '<button class="btn" style="background:#43a047;color:#fff;" onclick="document.getElementById(\'tpl-modal\').remove();schools_importTemplate(\'' + schoolId + '\',null)">📤 استيراد بيانات القالب الآن</button>' +
-        '<button class="btn" style="background:#8e24aa;color:#fff;" onclick="schools_seedDefaults(\'' + schoolId + '\')">♻️ بذر الافتراضيات (لمدرسة قائمة)</button>' +
-        '<button class="btn" style="background:#e53935;color:#fff;" onclick="schools_clearExamples(\'' + schoolId + '\')">🧹 حذف صفوف الأمثلة</button>' +
-        '<button class="btn" style="background:#777;color:#fff;" onclick="document.getElementById(\'tpl-modal\').remove()">إغلاق</button>' +
-      '</div>' +
-    '</div>';
-  document.body.appendChild(d);
-}
+/* 🗑️ حُذف `_tplModal` 2026-09-11 مع الزرّ الذي يفتحه.
+   🔴 **وكان مستدعيَ `schools_seedDefaults`/`schools_clearExamples` الوحيد مقيساً** ⇒
+   حذفُه وحدَه كان يُيتّمهما؛ ولذلك نُقل زرّاهما إلى صفّ المدرسة في `_renderSchools`
+   (تطبيقُ بند 182: حذفُ سطحٍ يكشف تبعياتٍ بقيت لأجله وحدَه). */
 
-// روابط السوشل ميديا العامة (عرض فقط) + لون الثيم لمدرسة قائمة — مطوّر النظام فقط.
-// منفصلة تماماً عن ربط OAuth الحقيقي لفيسبوك/إنستغرام (ذاك في تبويب CMS "⚙️ حسابات السوشل").
-function _brandModal(schoolId, idx) {
-  var s = (_allSchools && _allSchools[idx]) || {};
-  var ex = document.getElementById('brand-modal');
-  if (ex) { try { ex.parentNode.removeChild(ex); } catch (e) {} }
-  var d = document.createElement('div');
-  d.id = 'brand-modal';
-  d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
-  d.innerHTML =
-    '<div style="background:#fff;border-radius:12px;padding:22px;max-width:420px;width:92%;text-align:right;">' +
-      '<h3 style="margin:0 0 10px;">🔗 روابط السوشل — ' + (s.name || '') + '</h3>' +
-      '<p style="color:#777;font-size:12.5px;margin:0 0 14px;">روابط عرض عامة تظهر بدليل المدارس فقط — لا علاقة لها بربط النشر التلقائي (فيسبوك/إنستغرام) الذي يتم من لوحة CMS.</p>' +
-      '<div style="display:flex;flex-direction:column;gap:8px;">' +
-        '<input id="brand-whatsapp" type="text" placeholder="واتساب (رقم بصيغة دولية)" value="' + (s.whatsapp || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;">' +
-        '<input id="brand-facebook" type="text" placeholder="رابط فيسبوك" value="' + (s.facebook || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;" dir="ltr">' +
-        '<input id="brand-instagram" type="text" placeholder="رابط إنستغرام" value="' + (s.instagram || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;" dir="ltr">' +
-        '<input id="brand-youtube" type="text" placeholder="رابط يوتيوب" value="' + (s.youtube || '') + '" style="padding:8px;border:1px solid #ddd;border-radius:6px;" dir="ltr">' +
-        '<div style="display:flex;align-items:center;gap:8px;">' +
-          '<label style="font-size:13px;color:#555;">لون الثيم:</label>' +
-          '<input id="brand-color" type="color" value="' + (s.primaryColor || '#0F5C8C') + '" style="width:44px;height:32px;border:1px solid #ddd;border-radius:6px;padding:2px;">' +
-        '</div>' +
-        '<div id="brand-status"></div>' +
-        '<button class="btn btn-success" onclick="_brandSave(\'' + schoolId + '\')">💾 حفظ</button>' +
-        '<button class="btn" style="background:#777;color:#fff;" onclick="document.getElementById(\'brand-modal\').remove()">إغلاق</button>' +
-      '</div>' +
-    '</div>';
-  document.body.appendChild(d);
-}
-function _brandSave(schoolId) {
-  var statusEl = document.getElementById('brand-status');
-  statusEl.innerHTML = '<div class="status-msg">⏳ جارٍ الحفظ...</div>';
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (res && res.success) {
-        statusEl.innerHTML = '<div class="status-msg status-success">✅ تم الحفظ</div>';
-        setTimeout(function() { var m = document.getElementById('brand-modal'); if (m) m.remove(); schools_load(); }, 900);
-      } else {
-        statusEl.innerHTML = '<div class="status-msg status-error">❌ ' + ((res && res.error) || 'خطأ') + '</div>';
-      }
-    })
-    .withFailureHandler(function(err) {
-      statusEl.innerHTML = '<div class="status-msg status-error">❌ ' + (err && err.message ? err.message : err) + '</div>';
-    })
-    .updateSchoolBrandProtected({
-      token: App.token,
-      schoolId: schoolId,
-      whatsapp: document.getElementById('brand-whatsapp').value.trim(),
-      facebook: document.getElementById('brand-facebook').value.trim(),
-      instagram: document.getElementById('brand-instagram').value.trim(),
-      youtube: document.getElementById('brand-youtube').value.trim(),
-      primaryColor: document.getElementById('brand-color').value
-    });
-}
+/* 🗑️ حُذف `_brandModal` و`_brandSave` 2026-09-11 مع زرّ «🔗 روابط السوشل» بقرار مالك —
+   روابطُ السوشل وألوانُ الثيم **هويّةُ مدرسةٍ بعينها**، وتحريرُها من لوحة إدارة العملاء
+   يخالف جدولَ الاختصاص. 🔴 والنقطةُ الخادمية `updateSchoolBrandProtected` باقيةٌ عمداً
+   (سابقةُ بند 35)، ومسارُ الهوية الحيّ يبقى في `getSchoolBrandProtected`. */
 
 function schools_showAdd() { document.getElementById('add-school-modal').style.display = 'flex'; document.getElementById('add-school-status').innerHTML = ''; }
 function schools_closeModal() { document.getElementById('add-school-modal').style.display = 'none'; }
@@ -1621,6 +1555,141 @@ function schools_renew(schoolId) {
 }
 
 // ── سجل التدقيق ───────────────────────────────────────────────
+
+/* ── أنواع الاشتراكات ─────────────────────────────────────────────────────────
+   🔴 **الحالةُ تُقرأ من الحقول لا من `_plans` عند الحفظ.** لو بنيتُ الحمولةَ من المصفوفة
+   المحمَّلة لضاع كلُّ ما كتبه المطوّرُ ولم يُصيَّر بعد — وهو **حفظٌ يُعلن نجاحاً ولا يحفظ
+   ما يراه المستخدمُ أمامه**، أخبثُ من فشلٍ صريح. ⇒ `plans_collect()` تقرأ الـDOM. */
+var _plans = [];
+function _plEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function plans_load() {
+  var box = document.getElementById('plans-container');
+  if (box) box.innerHTML = '<div style="color:#999;padding:14px;">جارٍ التحميل…</div>';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) {
+        if (box) box.innerHTML = '<div style="color:#c62828;padding:14px;">' +
+          _plEsc((res && res.error) || 'تعذّر التحميل') + '</div>';
+        return;
+      }
+      _plans = res.plans || [];
+      var o = document.getElementById('plans-origin');
+      if (o) {
+        o.innerHTML = res.explicit
+          ? '<span style="color:#2e7d32;">✅ هذه الباقات <strong>محفوظة</strong> في الإعدادات.</span>'
+          : '<span style="color:#ef6c00;">⚠️ لا باقاتٍ محفوظةً بعد — المعروضُ هو <strong>الافتراضيُّ</strong> الذي تخدمه صفحةُ التسجيل الآن. وأوّلُ حفظٍ يُثبّته.</span>';
+      }
+      plans_render();
+    })
+    .withFailureHandler(function () {
+      if (box) box.innerHTML = '<div style="color:#c62828;padding:14px;">تعذّر الاتصال</div>';
+    })
+    .getPlansProtected({ token: App.token });
+}
+
+function plans_render() {
+  var box = document.getElementById('plans-container');
+  if (!box) return;
+  if (!_plans.length) {
+    box.innerHTML = '<div style="color:#999;padding:14px;">لا باقات — اضغط «➕ باقة جديدة»</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < _plans.length; i++) {
+    var p = _plans[i] || {};
+    var bc = _plEsc(p.badgeClass || 'standard');
+    html += '<div class="panel" data-plan-row="' + i + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<strong>باقة ' + (i + 1) + '</strong>' +
+        '<button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;min-width:0;" onclick="plans_remove(' + i + ')">🗑️ حذف</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">' +
+        '<label style="font-size:12px;color:#555;">المعرّف (لاتيني)<input class="pl-id" type="text" dir="ltr" value="' + _plEsc(p.id) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+        '<label style="font-size:12px;color:#555;">الاسم المعروض<input class="pl-name" type="text" value="' + _plEsc(p.name) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+        '<label style="font-size:12px;color:#555;">نصّ الشارة<input class="pl-badge" type="text" value="' + _plEsc(p.badge) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+        '<label style="font-size:12px;color:#555;">لون الشارة' +
+          '<select class="pl-badgeclass" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+            '<option value="trial"' + (bc === 'trial' ? ' selected' : '') + '>تجريبي (برتقالي)</option>' +
+            '<option value="standard"' + (bc === 'standard' ? ' selected' : '') + '>قياسي (أخضر)</option>' +
+            '<option value="premium"' + (bc === 'premium' ? ' selected' : '') + '>مميّز (أزرق)</option>' +
+          '</select></label>' +
+        '<label style="font-size:12px;color:#555;">السعر/المدّة<input class="pl-price" type="text" value="' + _plEsc(p.price) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+        '<label style="font-size:12px;color:#555;">حدّ الطلاب (0 = غير محدود)<input class="pl-limit" type="number" min="0" value="' + _plEsc(p.limit == null ? 0 : p.limit) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+      '</div>' +
+      '<label style="font-size:12px;color:#555;display:block;margin-top:10px;">المميّزات (سطرٌ لكلّ ميزة)' +
+        '<textarea class="pl-features" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+        _plEsc((p.features || []).join('\n')) + '</textarea></label>' +
+      '</div>';
+  }
+  box.innerHTML = html;
+}
+
+/* 🔴 يُصيَّر من الحقول لا من `_plans` — وإلّا فُقد ما كُتب ولم يُحفَظ بعد. */
+function plans_collect() {
+  var rows = document.querySelectorAll('[data-plan-row]');
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    function v(sel) { var el = r.querySelector(sel); return el ? el.value : ''; }
+    var feats = String(v('.pl-features') || '').split('\n');
+    var clean = [];
+    for (var f = 0; f < feats.length; f++) {
+      var t = feats[f].replace(/^\s+|\s+$/g, '');
+      if (t) clean.push(t);
+    }
+    out.push({
+      id        : String(v('.pl-id') || '').replace(/^\s+|\s+$/g, ''),
+      name      : String(v('.pl-name') || '').replace(/^\s+|\s+$/g, ''),
+      badge     : String(v('.pl-badge') || '').replace(/^\s+|\s+$/g, ''),
+      badgeClass: String(v('.pl-badgeclass') || 'standard'),
+      price     : String(v('.pl-price') || '').replace(/^\s+|\s+$/g, ''),
+      limit     : parseInt(v('.pl-limit'), 10) || 0,
+      features  : clean
+    });
+  }
+  return out;
+}
+
+function plans_add() {
+  _plans = plans_collect();
+  _plans.push({ id: '', name: '', badge: '', badgeClass: 'standard', price: 'سنوي',
+                limit: 0, features: ['جميع المنصات'] });
+  plans_render();
+}
+
+function plans_remove(i) {
+  var cur = plans_collect();
+  if (!confirm('حذف الباقة ' + (i + 1) + '؟ (لا يُحفَظ حتى تضغط «💾 حفظ الكلّ»)')) return;
+  cur.splice(i, 1);
+  _plans = cur;
+  plans_render();
+}
+
+function plans_save() {
+  var st = document.getElementById('plans-status');
+  var payload = plans_collect();
+  if (st) st.innerHTML = '<div class="status-msg">⏳ جارٍ الحفظ…</div>';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (res && res.success) {
+        if (st) st.innerHTML = '<div class="status-msg status-success">✅ حُفظت ' + res.count + ' باقة — وصفحةُ التسجيل تعرضها فوراً</div>';
+        plans_load();
+      } else {
+        /* 🔴 رسالةُ التحقّق تُعرَض كما هي — الخادمُ يسمّي الباقةَ والحقلَ، والإخفاءُ
+           خلف «تعذّر الحفظ» يترك المطوّرَ يخمّن أيَّ حقلٍ رُفض. */
+        if (st) st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc((res && res.error) || 'تعذّر الحفظ') + '</div>';
+      }
+    })
+    .withFailureHandler(function (err) {
+      if (st) st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc(err && err.message ? err.message : err) + '</div>';
+    })
+    .savePlansProtected({ token: App.token, plans: payload });
+}
 
 /* ── كشف أخطاء المستخدمين ─────────────────────────────────────────────────────
    🔴 **كلُّ حقلٍ يُهرَّب قبل الحقن بلا استثناء.** رسالةُ الخطأ ومكدّسُه و`user-agent`
