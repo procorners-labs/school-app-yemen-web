@@ -2417,8 +2417,24 @@ export default {
            🎯 **والدرسُ: جردُ المصدر لا يرى ما يُحقَن على الحافّة ولا ما تبنيه السكربتاتُ وقتَ
            التشغيل** ⇒ **لا تُنشَر سياسةٌ نافذةٌ على جردٍ ساكنٍ أبداً.**
            🔴 **ولو نُشرت نافذةً من أوّل يومٍ لكسرت التتبّعَ كلَّه صامتاً** — عشرةُ طلباتٍ في
-           أربعين دقيقة. */
-        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com https://analytics.google.com https://www.google.com https://stats.g.doubleclick.net https://static.cloudflareinsights.com https://cloudflareinsights.com",
+           أربعين دقيقة.
+
+           🔴 **ووُسّعت ثانيةً في اليوم نفسِه — والنقصُ الأوّلُ بنيويٌّ لا سهو، وهذا هو الدرس:**
+           بلاغٌ من طرفيّة المالك أظهر انتهاكَين على **`region1.analytics.google.com`** و
+           **`region1.google-analytics.com`**. و**GA4 يوجّه `/g/collect` إلى نقطةٍ إقليميّةٍ
+           مشتقّةٍ من موقع الزائر** (‏`region1` · `region2` · …) ⇒ **الأسماءُ المجرّدةُ لا
+           تكفي أبداً، وكلُّ زائرٍ من إقليمٍ جديدٍ يُنتج مخالفةً جديدة.**
+           🎯 **والفئةُ تُسمّى: القائمةُ عدّدت _ما رأيناه_ لا _ما يمكن أن يقع_** ⇒ **تغطيةٌ
+           تبدو مكتملةً لأن عيّنتَنا كانت من إقليمٍ واحد.** وقِيس ذلك بعينه هنا بضابطٍ
+           ثنائيِّ القطب على سجلّات ‏2026-09-10→11: `region1` ⇒ **٣ أحداثٍ فأكثر** ·
+           `region2` ⇒ **صفر** · ونصٌّ مختلَقٌ ⇒ **صفر** (‏فالمِجَسُّ يفرز، والصفرُ صادق)
+           ⇒ **التعدادُ كان سيضيف `region1` وحدَه ويُخالف أوّلَ زائرٍ من إقليمٍ ثانٍ.**
+           🟢 **فالعلاجُ نمطٌ لا اسم:** `https://*.analytics.google.com` و
+           `https://*.google-analytics.com` — سطران يغطّيان الأقاليمَ كلَّها بدل قائمةٍ تنمو أبداً.
+           🔴 **ولا يُوسَّع إلى `*.google.com`** — يبتلع نطاقاتٍ لا علاقةَ لها بالقياس.
+           ⚠️ **والمضيفاتُ المرصودةُ تبقى مكتوبةً صراحةً ولو غطّاها البدل** (‏`www.google-analytics.com`):
+           البدلُ في CSP **يطابق النطاقاتِ الفرعيّةَ لا النطاقَ المجرَّد**، والصريحُ يوثّق ما قِيس فعلاً. */
+        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.google.com https://stats.g.doubleclick.net https://static.cloudflareinsights.com https://cloudflareinsights.com",
         'report-uri /csp-report'
       ].join('; '));
     }

@@ -345,6 +345,13 @@ console.log('الرؤوس الأمنية وحقن og:url:');
    *      `Report-Only` بلا وجهةٍ تُسجّل **زينةٌ لا حارس**، ولا يُكتشَف غيابُها بالنظر.
    *   ④ و`'csp-report'` **محجوزٌ في `_RESERVED_TOP_PATHS`** — إسقاطُه يجعل المسارَ
    *      مرشَّحَ slug مدرسةٍ فيصير قابلاً للاختطاف.
+   *   ⑤ 🟢 **وعائلتا GA4 مغطّاتان ببدلٍ لا باسم** (أُضيف 2026-09-11 بعد انتكاسةٍ مقيسة):
+   *      GA4 يوجّه `/g/collect` إلى نقطةٍ **إقليميّة** (‏`region1.` · `region2.` · …) مشتقّةٍ
+   *      من موقع الزائر ⇒ **قائمةُ أسماءٍ مجرّدةٍ تُخالَف بأوّل زائرٍ من إقليمٍ لم نره.**
+   *      🎯 **والفئةُ: قائمةٌ تُعدِّد _ما رأيناه_ لا _ما يمكن أن يقع_** — تبدو مكتملةً لأن
+   *      العيّنةَ من إقليمٍ واحد. **والفحصُ يمنع الانتكاسَ إلى التعداد**، لا يضيف مضيفاً.
+   *      ⚠️ **ولا يُقبل `*.google.com`** — يبتلع نطاقاتٍ لا علاقةَ لها بالقياس؛ ولذلك
+   *      يُطابَق البدلُ على **العائلتين بعينهما** لا على أيّ بدلٍ كان.
    * ⚠️ ويبقى `delete('content-security-policy')` مفروضاً: رأسُ المنبع يُحذف ثمّ يُضبَط رأسُنا. */
   var cDel = /headers\.delete\('content-security-policy'\)/.test(src);
   var cRep = /headers\.set\('Content-Security-Policy-Report-Only'/.test(src);
@@ -352,12 +359,15 @@ console.log('الرؤوس الأمنية وحقن og:url:');
   var cUri = /report-uri \/csp-report/.test(src);
   var cHnd = /path === '\/csp-report'/.test(src);
   var cRes = /'csp-report':\s*1/.test(src);
-  var okC = cDel && cRep && !cEnf && cUri && cHnd && cRes;
+  var cGaW = /"connect-src[^"]*https:\/\/\*\.google-analytics\.com/.test(src);
+  var cGaA = /"connect-src[^"]*https:\/\/\*\.analytics\.google\.com/.test(src);
+  var okC = cDel && cRep && !cEnf && cUri && cHnd && cRes && cGaW && cGaA;
   if (!okC) failed++;
   console.log((okC ? '  ✅ ' : '  ❌ ') +
-    '🔒 CSP في وضع الإبلاغ وحده · موصولةٌ بمعالجٍ قائم · والمسارُ محجوز [del=' + cDel +
+    '🔒 CSP في وضع الإبلاغ وحده · موصولةٌ بمعالجٍ قائم · والمسارُ محجوز · وعائلتا GA4 ببدل [del=' + cDel +
     ' report-only=' + cRep + ' enforced=' + cEnf + ' uri=' + cUri +
-    ' handler=' + cHnd + ' reserved=' + cRes + ']');
+    ' handler=' + cHnd + ' reserved=' + cRes +
+    ' ga-wild=' + cGaW + ' ga-analytics-wild=' + cGaA + ']');
 
   /* ③ 🗑️ **`GAS.pricing` مدخلٌ خاملٌ — صفرُ قارئ.** التعليقُ عند الجدول يَعِد بأن «أثرَ
    *    بقائه صفرٌ يحرسه فحص» — وهذا هو. والمدخلُ باقٍ لأن `protect-deploy-ids` حجب
