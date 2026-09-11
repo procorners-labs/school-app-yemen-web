@@ -2401,13 +2401,24 @@ export default {
         "base-uri 'self'",
         "object-src 'none'",
         "form-action 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://www.googletagmanager.com https://www.google-analytics.com",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://www.googletagmanager.com https://www.google-analytics.com https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
         "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
         "img-src 'self' data: blob: https:",
         "media-src 'self' blob: https:",
         "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com https://drive.google.com https://docs.google.com",
-        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com",
+        /* 🟢 **وُسّعت 2026-09-11 بعد ٤٠ دقيقةً من نشر الإبلاغ — والقائمةُ الأصليّةُ كانت ناقصة،
+           وهذا بعينه ما وُضع `Report-Only` لأجله.** التقاريرُ الواردة (‏`ev:'csp'`) أعطت
+           **٩ انتهاكاتِ `connect-src` و١ `script-src-elem` من مستخدمين حقيقيّين** — كلُّها
+           تتبّعٌ تحليليّ: GA4 يرسل إلى **`www.google.com/g/collect`** و**`analytics.google.com`**
+           و**`stats.g.doubleclick.net`** (لا إلى `www.google-analytics.com` وحدَه كما يوحي
+           المصدر)، و**`static.cloudflareinsights.com/beacon.min.js`** **يحقنه Cloudflare على
+           الحافّة فلا أثرَ له في `frontend/` إطلاقاً**.
+           🎯 **والدرسُ: جردُ المصدر لا يرى ما يُحقَن على الحافّة ولا ما تبنيه السكربتاتُ وقتَ
+           التشغيل** ⇒ **لا تُنشَر سياسةٌ نافذةٌ على جردٍ ساكنٍ أبداً.**
+           🔴 **ولو نُشرت نافذةً من أوّل يومٍ لكسرت التتبّعَ كلَّه صامتاً** — عشرةُ طلباتٍ في
+           أربعين دقيقة. */
+        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com https://analytics.google.com https://www.google.com https://stats.g.doubleclick.net https://static.cloudflareinsights.com https://cloudflareinsights.com",
         'report-uri /csp-report'
       ].join('; '));
     }
