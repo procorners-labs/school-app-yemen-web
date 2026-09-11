@@ -207,17 +207,9 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
              font-size:24px;cursor:pointer;color:#aaa}
 .modal-title{font-size:17px;font-weight:700;color:#1a237e;margin-bottom:20px}
 
-/* ── Sync Timeline ── */
-.sync-step{display:flex;align-items:center;gap:12px;padding:10px 14px;
-           border-radius:8px;margin-bottom:6px;background:#f8f9ff;
-           border-right:3px solid #e0e0e0;transition:.3s}
-.sync-step.running{border-right-color:#1a237e;background:#e8eaf6}
-.sync-step.done{border-right-color:#2e7d32;background:#e8f5e9}
-.sync-step.error{border-right-color:#c62828;background:#ffebee}
-.sync-step-icon{font-size:18px;width:26px;text-align:center}
-.sync-step-info{flex:1}
-.sync-step-name{font-size:13px;font-weight:600}
-.sync-step-detail{font-size:11px;color:#888;margin-top:2px}
+/* 🗑️ `.sync-step*` — ثمانيةُ قواعدَ حُذفت 2026-09-11 مع «مركز المزامنة».
+   🟢 **وكانت ميّتةً قبل الحذف مقيساً**: صفرُ ورودٍ لـ`sync-step` في الترميز أو الـJS —
+   بقيّةُ خطِّ زمنٍ متعدّدِ الخطوات أُسقطت خطواتُه في ح2 وبقي طلاؤه. */
 
 /* ── المالية ── */
 .info-box{background:#e3f2fd;border-right:3px solid #1565c0;color:#1565c0;
@@ -358,9 +350,13 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
     <div class="nav-item active" onclick="showSection('dashboard')" id="nav-dashboard">
       <span class="nav-icon">📊</span><span>Dashboard</span>
     </div>
-    <div class="nav-item" onclick="showSection('sync')" id="nav-sync">
-      <span class="nav-icon">🔄</span><span>المزامنة</span>
-    </div>
+    <!-- 🗑️ تبويبُ «🔄 المزامنة» حُذف 2026-09-11 بقرار مالك — «صفحةٌ خاصّةٌ فقط بالمطوّر».
+         🔴 **والاسمُ وحدَه كان يكذب منذ ح2:** لم يبقَ في «مركز المزامنة» أيُّ مزامنةِ
+         بياناتِ مدرسة — خطواتُه المالية والأوراقية أُسقطت كلُّها، و`_masterSyncAllInternal`
+         **تفعل شيئاً واحداً**: `collectAllStats()` أي إعادةُ احتساب لوحةِ المطوّر نفسِها.
+         ⇒ تبويبٌ كاملٌ باسمٍ مُقلِقٍ لزرٍّ واحدٍ مكانُه اللوحة.
+         🟢 **والزرُّ نُقل ولم يُحذف** (بند 182: حذفُ سطحٍ يكشف تبعيةً بقيت لأجله وحدَه) —
+         صار «🔄 إعادةُ احتساب الإحصاءات» داخل قسم Dashboard، و**صفرُ قدرةٍ فُقدت**. -->
     <div class="nav-item" onclick="showSection('schools')" id="nav-schools">
       <span class="nav-icon">🏫</span><span>إدارة المدارس</span>
     </div>
@@ -439,23 +435,21 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       <!-- 🗑️ لوحة «آخر عمليات المزامنة» أُسقِطت 2026-08-26 (بند 192): ورقة `Sync_Log`
            حُذفت من ملفّ Master بقرار مالك، وكانت تحمل نقلاً مالياً يناقض جدول ٠ من الميثاق.
            سجلُّ عمليات المالك صار `Audit_Master` وحده. -->
-    </div>
 
-    <!-- ═══ المزامنة ═══ -->
-    <div id="section-sync" class="section">
-      <div class="section-title">🔄 مركز المزامنة</div>
+      <!-- ⬇️ نُقل من قسم «🔄 المزامنة» المحذوف 2026-09-11 — **وموضعُه هنا هو الصحيح**:
+           الزرُّ يعيد احتسابَ **هذه اللوحة بعينها**، فكان في تبويبٍ آخر بلا سبب. -->
       <div class="panel">
-        <div class="panel-title">⚡ تحديث الإحصاءات فوراً</div>
+        <div class="panel-title">⚡ إعادةُ احتساب الإحصاءات</div>
         <p style="color:#666;font-size:13px;margin-bottom:14px;">
-          تُعيد احتساب لوحة الإحصاءات من ملفات المدرسة الحيّة (المعلمين · CMS · الحصص).
+          تُعيد احتساب الأرقام أعلاه من ملفات المدارس الحيّة. تجري تلقائياً كلّ يوم ٣ صباحاً.
         </p>
-        <button class="btn btn-primary" onclick="sync_runAll()" id="btn-sync-all">
-          🔄 تحديث الإحصاءات
+        <button class="btn btn-primary" onclick="stats_recalc()" id="btn-stats-recalc">
+          🔄 إعادة الاحتساب
         </button>
-        <div class="progress-bar" id="sync-progress" style="margin-top:12px;display:none;">
-          <div class="progress-fill" id="sync-progress-fill"></div>
+        <div class="progress-bar" id="stats-progress" style="margin-top:12px;display:none;">
+          <div class="progress-fill" id="stats-progress-fill"></div>
         </div>
-        <div id="sync-all-status" style="margin-top:10px;"></div>
+        <div id="stats-recalc-status" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -900,7 +894,7 @@ function _showApp() {
   document.getElementById('user-name-display').textContent = App.userName + ' — مطوّر النظام';
 
   // 🔒 قائمةُ الحصر تبقى — بوّابةٌ صريحةٌ لو أُعيد فتحُ الدخول يوماً (انظر التعليق أعلاه).
-  var ownerOnly = ['nav-schools', 'nav-sync', 'nav-settings', 'nav-referrals', 'nav-requests',
+  var ownerOnly = ['nav-schools', 'nav-settings', 'nav-referrals', 'nav-requests',
                    'nav-errors', 'nav-plans'];
   for (var i = 0; i < ownerOnly.length; i++) {
     var el = document.getElementById(ownerOnly[i]);
@@ -978,7 +972,7 @@ function showSection(name) {
      `titles[name]` يبقى يحمل عنوانَ قسمٍ معدوم، **وأيُّ نداءٍ باسمه يُفرِغ اللوحة** بنزع
      `active` عن الجميع بلا بديل. وهو ما وقع فعلاً في نداء الإقلاع أعلاه.
      🎯 ⇒ **بياناتٌ ميّتةٌ في جدولِ توجيهٍ ليست حياديّة: تجعل الاسمَ المعدومَ يبدو صالحاً.** */
-  var sections = ['dashboard','sync','schools','referrals','requests','plans','errors','audit','settings'];
+  var sections = ['dashboard','schools','referrals','requests','plans','errors','audit','settings'];
   var titles   = {
     dashboard:'📊 Dashboard', sync:'🔄 المزامنة',
     schools:'🏫 المدارس', referrals:'🎁 الإحالات', requests:'📥 طلبات التسجيل',
@@ -1109,19 +1103,23 @@ function _fmt(num) {
   return n.toString();
 }
 
-// ── المزامنة ──────────────────────────────────────────────────
-
-function sync_runAll() {
-  var btn  = document.getElementById('btn-sync-all');
-  var prog = document.getElementById('sync-progress');
-  var fill = document.getElementById('sync-progress-fill');
-  var stat = document.getElementById('sync-all-status');
+// ── إعادةُ احتساب الإحصاءات (كانت «المزامنة» حتى 2026-09-11) ───────────────
+/* 🔴 **اسمُ «المزامنة» كان يصف ماضياً لا حاضراً** — خطواتُ المزامنة الفعلية أُسقطت في ح2،
+   ولم يبقَ خلف الزرّ إلّا `collectAllStats()` واحدة. ⇒ أُعيدت التسميةُ إلى ما تفعله فعلاً.
+   🔒 **والنقطةُ الخادميةُ `masterSyncAll` باقيةٌ باسمها** — متصفّحٌ بصفحةٍ مخبّأة ينادي
+   الاسمَ القديم ساعاتٍ بعد النشر (سابقةُ بند 35)، **و`_masterSyncAllInternal` لها مشغّلٌ
+   يوميٌّ قائم** (`setupMasterTriggers` ⇒ 03:00) فحذفُها يكسر تحديثَ اللوحة الصامت. */
+function stats_recalc() {
+  var btn  = document.getElementById('btn-stats-recalc');
+  var prog = document.getElementById('stats-progress');
+  var fill = document.getElementById('stats-progress-fill');
+  var stat = document.getElementById('stats-recalc-status');
 
   btn.disabled = true;
-  btn.textContent = '⏳ جارٍ المزامنة...';
+  btn.textContent = '⏳ جارٍ الاحتساب...';
   prog.style.display = 'block';
   fill.style.width = '5%';
-  stat.innerHTML = '<div class="status-msg status-info">⏳ بدأت المزامنة الشاملة... (قد تستغرق 3-5 دقائق)</div>';
+  stat.innerHTML = '<div class="status-msg status-info">⏳ جارٍ إعادة احتساب الإحصاءات...</div>';
 
   var pct = 5;
   var interval = setInterval(function() {
@@ -1134,7 +1132,7 @@ function sync_runAll() {
       clearInterval(interval);
       fill.style.width = '100%';
       btn.disabled = false;
-      btn.textContent = '🔄 تشغيل مزامنة شاملة';
+      btn.textContent = '🔄 إعادة الاحتساب';
       if (!res || !res.ok) {
         stat.innerHTML = '<div class="status-msg status-error">❌ حدث خطأ</div>';
         return;
@@ -1156,7 +1154,7 @@ function sync_runAll() {
       clearInterval(interval);
       fill.style.width = '0%';
       btn.disabled = false;
-      btn.textContent = '🔄 تشغيل مزامنة شاملة';
+      btn.textContent = '🔄 إعادة الاحتساب';
       stat.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
     })
     .masterSyncAll({ token: App.token });
@@ -1227,8 +1225,15 @@ function _renderSchools(schools) {
        مقيساً ⇒ حذفُه وحدَه كان يُيتّمهما فيصيران كوداً ميّتاً بصمت، **وهما مسارٌ حيٌّ
        موثَّق** في `master-admin/CLAUDE.md` («والافتراضياتُ تُبذَر عبر ♻️ بذر الافتراضيات»).
        ⇒ نُقلا إلى الصفّ ليبقى لهما مدخل. */
-    html += '<button class="btn btn-sm" style="background:#8e24aa;color:#fff;" onclick="schools_seedDefaults(\'' + s.schoolId + '\')">♻️ بذر الافتراضيات</button>';
-    html += '<button class="btn btn-sm" style="background:#e53935;color:#fff;" onclick="schools_clearExamples(\'' + s.schoolId + '\')">🧹 حذف الأمثلة</button>';
+    /* 🗑️ وحُذف الزرّان «♻️ بذر الافتراضيات» و«🧹 حذف الأمثلة» 2026-09-11 بقرار مالك —
+       إتماماً لِما بدأ أعلاه: **كلاهما يكتب داخل ملفّ مدرسةٍ بعينها** (رسومٌ وأدوارٌ
+       وأمثلةُ طلابٍ ومعلّمين · وحذفُ صفوف)، وهو اختصاصُ منصّة المعلّمين بالميثاق.
+       🟢 **وصفرُ قدرةٍ فُقدت — مقيسٌ لا مُطمئِن:** البذرُ يجري **تلقائياً** في التزويد
+       (‏`Master_Admin.js:3958` الخطوةُ ٥ · و`teacher/_SchoolProvision.js` نظيرُها)،
+       وله مدخلٌ ثانٍ حيٌّ في مسار الإصلاح (`:2198` ⇒ `out.steps.seed`).
+       🔴 **والنقطتان الخادميتان باقيتان** (`seedSchoolDefaultsProtected` ·
+       `clearSchoolExamplesProtected`) — سابقةُ بند 35: متصفّحٌ بصفحةٍ مخبّأة ينادي
+       الاسمَ القديم ساعاتٍ بعد النشر. */
     html += '</div></td></tr>';
   }
   tbody.innerHTML = html;
@@ -1494,35 +1499,12 @@ function referrals_backfill() {
    🔴 والنقطتان الخادميتان باقيتان (`generateSchoolTemplateProtected` ·
    `importSchoolTemplateProtected`) — سابقةُ بند 35. */
 
-// ── بذرُ الافتراضيات وتنظيفُ الأمثلة (مدخلُهما الآن الصفُّ مباشرةً) ──
-function schools_clearExamples(schoolId) {
-  if (!confirm('حذف كل صفوف الأمثلة «مثال» من بيانات المدرسة؟')) return;
-  google.script.run
-    .withSuccessHandler(function (res) {
-      if (!res || !res.success) { alert('تعذّر: ' + ((res && res.error) || 'خطأ')); return; }
-      alert('تم حذف ' + res.removed + ' صفّ مثال ✅');
-      schools_load();
-    })
-    .withFailureHandler(function (err) { alert('خطأ: ' + (err && err.message ? err.message : err)); })
-    .clearSchoolExamplesProtected({ token: App.token, schoolId: schoolId });
-}
-
-function schools_seedDefaults(schoolId) {
-  if (!confirm('بذر البيانات الافتراضية والأمثلة (رسوم لكل صف + أدوار + مدخلات جدول)؟ لا يحذف بياناتك.')) return;
-  google.script.run
-    .withSuccessHandler(function (res) {
-      if (!res || !res.success) { alert('تعذّر: ' + ((res && res.error) || 'خطأ')); return; }
-      var sd = res.seeded || {};
-      alert('تم البذر ✅\nرسوم: ' + (sd.fees || 0) + ' · أمثلة معلّمين: ' + (sd.teacherExamples || 0) + ' · أمثلة طلاب: ' + (sd.studentExamples || 0));
-    })
-    .withFailureHandler(function (err) { alert('خطأ: ' + (err && err.message ? err.message : err)); })
-    .seedSchoolDefaultsProtected({ token: App.token, schoolId: schoolId });
-}
-
-/* 🗑️ حُذف `_tplModal` 2026-09-11 مع الزرّ الذي يفتحه.
-   🔴 **وكان مستدعيَ `schools_seedDefaults`/`schools_clearExamples` الوحيد مقيساً** ⇒
-   حذفُه وحدَه كان يُيتّمهما؛ ولذلك نُقل زرّاهما إلى صفّ المدرسة في `_renderSchools`
-   (تطبيقُ بند 182: حذفُ سطحٍ يكشف تبعياتٍ بقيت لأجله وحدَه). */
+/* 🗑️ حُذفت `schools_seedDefaults` و`schools_clearExamples` 2026-09-11 مع زرَّيهما — بقرار
+   مالك: «صفحةٌ خاصّةٌ فقط بالمطوّر وبما يحتاجه». وكلتاهما تكتب **داخل ملفّ مدرسةٍ بعينها**.
+   🟢 **والبذرُ لم يُفقَد:** يجري تلقائياً في التزويد (`Master_Admin.js` الخطوةُ ٥) وله
+   مدخلٌ ثانٍ في مسار الإصلاح (`out.steps.seed`).
+   🔴 **والنقطتان الخادميتان باقيتان عمداً** — سابقةُ بند 35.
+   ➕ **وسقط معهما `_tplModal` سابقاً (المستدعي الأصليّ)**، فلم يبقَ لهما يتيمٌ يُشار إليه. */
 
 /* 🗑️ حُذف `_brandModal` و`_brandSave` 2026-09-11 مع زرّ «🔗 روابط السوشل» بقرار مالك —
    روابطُ السوشل وألوانُ الثيم **هويّةُ مدرسةٍ بعينها**، وتحريرُها من لوحة إدارة العملاء
