@@ -2190,7 +2190,14 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
   /* القارئات الثلاث دوالُّ نقيّة — يُعاد استعمالها في الضوابط المعاكسة بنصٍّ مطفور. */
   function cfgOf(s)  { var m = /"BULKHEAD_MODE"\s*:\s*"([^"]*)"/.exec(s); return m && m[1]; }
   function codeOf(s) { var m = /env\.BULKHEAD_MODE\)\s*\|\|\s*'([^']*)'/.exec(s); return m && m[1]; }
-  function docOf(s)  { var m = /env\.BULKHEAD_MODE`\s*∈\s*`([^`]*)`\s*\(الافتراضي\)/.exec(s); return m && m[1]; }
+  /* 🔴 الارتساءُ على **علامةٍ تُعلن أنها مقروءةٌ آلياً** لا على النثر — صُحِّح 2026-09-12
+     بعد عطلٍ وقع فعلاً: كان يطابق ``env.BULKHEAD_MODE` ∈ `on` (الافتراضي)`` في النثر،
+     و**تغليظُ الصياغة وحدَه** (نقلُ `**` فصار بين الـbacktick و`∈`) أسقط المطابقةَ
+     ⇒ `RESULT: ❌ 4 فشل` **على عملٍ سليمٍ تماماً**.
+     🎯 والعلاجُ نقلُ العقد من التنسيق إلى العلامة: **النثرُ صار حرّاً**، والعلامةُ
+     تُجاور ما تحكمه فيراها مَن ينقل الكتلة. و`check(!!doc)` أدناه يُبقي **الغيابَ فشلاً**
+     فلا ينقلب المِجَسُّ إلى النوع الأعمى (الذي يخضرّ على العدم). §١٤ `_docs/قواعد-التنظيف.md`. */
+  function docOf(s)  { var m = /probe:BULKHEAD_MODE_DEFAULT=([a-z]+)/.exec(s); return m && m[1]; }
   /* 🔴 المجموعةُ المشروعة **مُشتقّةٌ من فروع المصدر** (`mode === 'x'` · `mode !== 'x'`)
      زائداً افتراضَ الكود — فلا تُكتب قائمةٌ تتقادم. */
   function modesOf(s) {
@@ -2223,16 +2230,88 @@ console.log('‏`BULKHEAD_MODE` — الإعدادُ مقابل الكود وا�
      السطورُ أيضاً لأن الطفرةَ تصير بلا أثر — والحارسُ أحمرُ أصلاً بالفحص الحقيقيّ. */
   var mutCfg  = wrSrc.replace(/"BULKHEAD_MODE"\s*:\s*"[^"]*"/, '"BULKHEAD_MODE": "shadow"');
   var mutTypo = wrSrc.replace(/"BULKHEAD_MODE"\s*:\s*"[^"]*"/, '"BULKHEAD_MODE": "ON"');
-  var mutDoc  = mdSrc.replace(/env\.BULKHEAD_MODE`\s*∈\s*`[^`]*`\s*\(الافتراضي\)/,
-                              'env.BULKHEAD_MODE` ∈ `off` (الافتراضي)');
+  var mutDoc  = mdSrc.replace(/probe:BULKHEAD_MODE_DEFAULT=[a-z]+/, 'probe:BULKHEAD_MODE_DEFAULT=off');
+  var mutGone = mdSrc.replace(/probe:BULKHEAD_MODE_DEFAULT=[a-z]+/, 'probe:BULKHEAD_MODE_WAS_HERE');
+  /* 🟢 الطفرةُ الموجبة — وهي **الخاصّيّةُ الجديدةُ بعينها**: يُعاد تنسيقُ الوثيقة كلِّها
+     ويجب أن **يبقى الحكمُ كما هو**. وبلا هذا الطرف يبقى التغييرُ دعوى: «لم يعُد يكسره
+     النثر» لا تُثبتها خُضرةٌ على نصٍّ لم يتغيّر.
+     🔴 **والطفرةُ نزعُ كلّ تغليظٍ (`**`) لا استبدالُ جملةٍ بعينها — وهذا مقصودٌ ومقيس:**
+     أوّلُ صيغةٍ لها ارتست على صياغةِ السطر نفسِه، فلمّا أُعيدت صياغتُه على القرص
+     **لم تقع الطفرةُ أصلاً** فسقط الضابطُ بينما المِجَسُّ الحقيقيُّ أخضر ⇒ **ضابطٌ يقيس
+     صياغةً بدل أن يقيس مناعةً منها**. والتغليظُ موجودٌ في الوثيقة بكثرة وغائبٌ عن
+     العلامة ⇒ الطفرةُ تقع دائماً ولا تمسّ المقيس. */
+  var mutProse = mdSrc.replace(/\*\*/g, '');
   check(mutCfg !== wrSrc && cfgOf(mutCfg) !== doc,
         '🔒 ضابطٌ معاكس: قيمةٌ مضبوطةٌ تخالف الوثيقة (`shadow`) ⇒ يُكشف');
   check(mutTypo !== wrSrc && modes.indexOf(cfgOf(mutTypo)) === -1,
         '🔒 ضابطٌ معاكس: خطأٌ مطبعيٌّ في الحالة (`ON`) ⇒ يُكشف — والمطابقةُ حسّاسةٌ عمداً');
   check(mutDoc !== mdSrc && docOf(mutDoc) !== cfg,
         '🔒 ضابطٌ معاكس: **انحرافُ الوثيقة وحدَها** (`off`) ⇒ يُكشف — وهو العطلُ الأصليّ حرفياً');
+  check(mutGone !== mdSrc && !docOf(mutGone),
+        '🔒 ضابطٌ معاكس: **حذفُ العلامة** ⇒ `!!doc` يسقط — فلا ينقلب المِجَسُّ أعمى يخضرّ على العدم');
+  check(mutProse !== mdSrc && docOf(mutProse) === doc,
+        '🟢 ضابطٌ موجب: **إعادةُ صياغةِ النثر لا تكسر المِجَسّ** — وهي العلّةُ التي وقعت 2026-09-12');
   check(codeOf(src.replace(/env\.BULKHEAD_MODE\)\s*\|\|\s*'[^']*'/, "env.BULKHEAD_MODE) || 'off'")) !== doc,
         '🔒 ضابطٌ معاكس: انحرافُ **افتراضِ الكود** وحدَه ⇒ يُكشف');
+})();
+
+/* ── 🔴 ضابطُ **الفئة**: كلُّ وثيقةٍ تُقرأ هنا تُقرأ بعلامةِ `probe:` ──────────────
+   **العلّةُ التي يُغلقها:** مِجَسٌّ يرتسي على **نثر** ينكسر بإعادة صياغةٍ بريئة — وقع
+   2026-09-12 حرفياً. وإصلاحُ الحالة وحدَها يترك الفئةَ مفتوحة: أوّلُ مِجَسٍّ يُضاف غداً
+   بارتساءٍ نثريٍّ يُعيد العطلَ نفسَه.
+   🔴 **والوجهُ الأخطرُ ليس هذا:** مِجَسٌّ نثريٌّ **بلا فحصِ وجود** لا يحمرّ أصلاً — **يخضرّ
+   على العدم** ويُطمئن وهو أعمى. (مقيسٌ في المستودع الشقيق: `counts-registry.json` يسمّي
+   `CLAUDE.md` لستّة ادّعاءاتِ عدد، ونقلُ نصٍّ يحمل عدداً يجعله يخضرّ على لا شيء.)
+   **الآليّة:** كلُّ مسارِ `.md` يُبنى بـ`path.join` في هذا الملفّ **يقابله اسمُ علامةٍ**
+   في تعبيرٍ نمطيٍّ `probe:<NAME>=` — والعددان يتطابقان أو **خروجٌ أحمر**.
+   ⚠️ **وحدُّه يُقال:** مداه **هذا الملفّ وحدَه**؛ مِجَسٌّ يُكتب في هوكٍ أو وركفلو يقرأ
+   وثيقةً **خارج مداه**، ويُقال صراحةً بدل الإيهام بحمايةٍ غير قائمة. */
+console.log('');
+console.log('ضابطُ الفئة — «مَن يقرأ هذا نصّاً؟»:');
+(function () {
+  var SELF = path.join(__dirname, 'test-routes.js');
+  if (!fs.existsSync(SELF)) {
+    check(false, '🔴 الملفُّ يقرأ نفسَه — غيابُه فشلٌ لا تخطٍّ صامت');
+    return;
+  }
+  var selfSrc = fs.readFileSync(SELF, 'utf8');
+
+  /* قارئتان نقيّتان — يُعاد استعمالهما على نصٍّ مطفورٍ في الضابطين المعاكسين. */
+  function docPathsOf(s) {
+    var out = {}, re = /path\.join\([^)]*'([^']*\.md)'\s*\)/g, m;
+    while ((m = re.exec(s)) !== null) { out[m[1]] = true; }
+    return Object.keys(out).sort();
+  }
+  function probeNamesOf(s) {
+    var out = {}, re = /probe:([A-Z][A-Z0-9_]*)=/g, m;
+    while ((m = re.exec(s)) !== null) { out[m[1]] = true; }
+    return Object.keys(out).sort();
+  }
+
+  var docPaths = docPathsOf(selfSrc), probes = probeNamesOf(selfSrc);
+
+  check(docPaths.length > 0,
+        'ضابط: وُجدت وثيقةٌ واحدةٌ على الأقلّ تُقرأ هنا — ' + docPaths.join('/') +
+        ' (‏مجموعةٌ فارغة لا تُقرأ نجاحاً)');
+  check(probes.length > 0, 'ضابط: وُجد اسمُ علامةٍ واحدٌ على الأقلّ — ' + probes.join('/'));
+  check(docPaths.length === probes.length,
+        '🔴 كلُّ وثيقةٍ تُقرأ نصّاً لها علامةُ `probe:` — وثائق ' + docPaths.length +
+        ' مقابل علامات ' + probes.length);
+
+  /* ── الضابطان المعاكسان: بلاهما يمرّ القسمُ أخضرَ لأنه لم يقِس شيئاً ────────────
+     🔴 وشرطُ `mut !== selfSrc` يحمل نصفَ قيمتهما: طفرةٌ لا تقع تُبلِغ نجاحاً كاذباً. */
+  /* 🔴 يُبنى اسمُ الوثيقة الوهميّة **وقتَ التشغيل** لا كنصٍّ حرفيّ — وقع الفخُّ فعلاً
+     2026-09-12: كتابتُه حرفيّاً تجعل `docPathsOf` يعدّه في **المصدر غيرِ المطفور** أيضاً
+     ⇒ الحارسُ يحمرّ على نفسه. وهي فئةُ **المِجَسِّ الذي يقيس أثرَ وجودِه هو**. */
+  var ZZ_MD = 'zz' + 'Unguarded' + '.m' + 'd';
+  var SELF_ANCHOR = "var selfSrc = fs.readFileSync(SELF, 'utf8');";
+  var mutNewDoc = selfSrc.replace(SELF_ANCHOR,
+                                  SELF_ANCHOR + "\n  var ZZ = path.join(__dirname, '..', '" + ZZ_MD + "');");
+  var mutNoProbe = selfSrc.replace(/probe:([A-Z][A-Z0-9_]*)=/g, 'zzWasProbe:$1=');
+  check(mutNewDoc !== selfSrc && docPathsOf(mutNewDoc).length !== probeNamesOf(mutNewDoc).length,
+        '🔒 ضابطٌ معاكس: **وثيقةٌ جديدةٌ تُقرأ بلا علامة** ⇒ يُكشف عند إضافتها لا بعد أشهر');
+  check(mutNoProbe !== selfSrc && probeNamesOf(mutNoProbe).length === 0,
+        '🔒 ضابطٌ معاكس: **نزعُ العلامات** ⇒ يُكشف — والمِجَسُّ لا يُجيب دائماً');
 })();
 
 /* ═══════════════════════════════════════════════════════════════════════════════
