@@ -498,7 +498,13 @@ var _RESERVED_TOP_PATHS = {
   // ⚠️ ولا يُبرَّر بأن `/app` كان يُخدَم `home-all-school` — ذاك وصفٌ بائد: منذ 404
   //    الحقيقي للـslug غير المنشور (‏#129) يُرجِع `/app` **404** لا 200. والحجز يمنع
   //    كذلك تسجيل مدرسة بأيّ من الاسمين.
-  'app': 1, 'download': 1
+  'app': 1, 'download': 1,
+  // 'csp-report' — وجهةُ تقارير `Content-Security-Policy-Report-Only` (2026-09-11).
+  // 🔴 الحجزُ **ليس دفاعياً هنا بل لازم**: معالجُه يعترض المسارَ قبل حساب الـslug، لكنّ
+  //    إسقاطَ الاسم يجعله **مرشَّحَ slug مدرسة** فيصير قابلاً للاختطاف بتسجيل مدرسةٍ
+  //    بهذا الاسم ⇒ تُوجَّه تقاريرُ الانتهاك إلى صفحةِ مستأجرٍ بدل أن تُسجَّل.
+  //    وهي نفسُ العلّة التي أبقت `'pricing'` محجوزاً بعد حذف معالجه.
+  'csp-report': 1
 };
 function _schoolSlugFromPath(path) {
   var m = /^\/([a-z0-9-]+)\/?$/i.exec(path);
@@ -2107,6 +2113,37 @@ export default {
       });
     }
 
+    /* ── 1ح) وجهةُ تقارير CSP: /csp-report ─────────────────────────────────
+       🔴 **لماذا مسارٌ أصلاً، ولماذا يسبق نشرَ السياسة:** `Report-Only` بلا وجهةٍ تُسجّل
+       **زينةٌ لا حارس** — المتصفّحُ يطبع الانتهاكَ في كونسول الزائر، **ولا أحد يقرأ
+       كونسولَ مستخدميه**. فتبقى السياسةُ «منشورةً» ويُظنُّ أنها تقيس، وهي تقيس لا أحد.
+       ⇒ الوجهةُ تُنشَر **مع** السياسة لا بعدها، وإلّا وُلد الحارسُ أجوف.
+       🟢 والتسجيلُ عبر `console.log` يلتقطه Workers Observability ⇒ يُستعلَم عنه
+       بـ`ev:'csp'`. ⚠️ **واحتفاظُه سبعةُ أيامٍ متدحرجة** ⇒ ما يُراد الاحتجاجُ به لاحقاً
+       **يُستخرَج إلى وثيقةٍ وقتَ القياس** لا يُترك في القناة.
+       🔒 وثلاثةُ قيودٍ مقصودة: **POST حصراً** · **حدُّ جسمٍ 8KB** (التقريرُ قد يأتي من
+       عميلٍ معادٍ فلا يُبتلع بلا حدّ) · و**204 بلا جسمٍ ولا كاش** — لا يُعاد شيءٌ للمُبلِّغ.
+       ⚠️ ولا يُسجَّل الجسمُ خاماً: تُقتطَف أربعةُ حقولٍ بأسمائها، فلا يُضخُّ نصٌّ لا نملكه. */
+    if (path === '/csp-report') {
+      if (request.method !== 'POST') {
+        return new Response(null, { status: 405, headers: { 'Allow': 'POST', 'Cache-Control': 'no-store' } });
+      }
+      return request.text().then(function (raw) {
+        var cut = (raw || '').slice(0, 8192);
+        var rep = null;
+        try { rep = JSON.parse(cut); } catch (e) { rep = null; }
+        var body = (rep && (rep['csp-report'] || rep)) || {};
+        console.log(JSON.stringify({
+          ev: 'csp',
+          d: String(body['violated-directive'] || body.violatedDirective || '').slice(0, 120),
+          b: String(body['blocked-uri'] || body.blockedURI || '').slice(0, 200),
+          doc: String(body['document-uri'] || body.documentURI || '').slice(0, 200),
+          ln: Number(body['line-number'] || body.lineNumber || 0) || 0
+        }));
+        return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+      });
+    }
+
     // ── 2) خدمة الموقع الثابت من GitHub Pages ───────────────────
     // الجذر / يخدم **home/Schools.html** منذ 2026-08-07: صفحة هبوط كاملة (هيرو · about-app ·
     // features · platform-details · faq) + دليل المدارس في قسم واحد — أي كل ما كان يخدمه
@@ -2316,6 +2353,63 @@ export default {
       headers.set('Cache-Control', 'no-cache, must-revalidate');
     } else {
       headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    }
+
+    /* ── CSP في وضع الإبلاغ وحده (‏2026-09-11) ────────────────────────────────
+       🔴 **`Report-Only` حصراً — ولا `Content-Security-Policy` نافذةٌ في هذه الدفعة.**
+       سكربتاتُ المنصّة **مضمَّنةٌ داخل HTML بكثافة** (‏`frontend/teacher/index.html` وحدها
+       2,016,145 حرفاً) ⇒ سياسةٌ نافذةٌ تكسر الصفحاتِ **صامتةً** على مستخدمٍ حقيقيّ.
+       ⇒ تُنشَر مُبلِّغةً، تُقرأ تقاريرُها، **ثمّ** يُقرَّر التنفيذ.
+
+       **والقائمةُ مشتقّةٌ من جردٍ على `frontend/` المخدوم لا من تخمين** (2026-09-11):
+       `cdn.jsdelivr.net` (‏xlsx) · `www.googletagmanager.com` (‏gtag) · `unpkg.com`
+       (‏`teacher/index.html`) · `cdnjs.cloudflare.com` · `fonts.googleapis.com` ·
+       `lh3.googleusercontent.com` · `drive.google.com` · `img.youtube.com` ·
+       `api.qrserver.com` · `chart.googleapis.com` · ويوتيوب للتأطير.
+
+       🟢 **و`'unsafe-eval'` مُسقَطةٌ عمداً — بدليلٍ لا بصفرِ مطابقة:** أوّلُ مِجَسٍّ
+       (`"eval("`) أعطى **صفراً كاذباً**؛ وضابطٌ موجبٌ كشف **أربعَ ورودات** لـ`eval`،
+       وقراءةُ مواضعها أثبتت أنها **مفتاحُ `eval` في امتداد WebAuthn PRF**
+       (‏`extensions:{prf:{eval:{first:…}}}` — الدخولُ بالبصمة) **لا الدالّةَ التنفيذيّة**.
+       ⇒ صفرُ `eval()` و`new Function` ⇒ لا حاجةَ للراية.
+
+       🔴 **و`'unsafe-inline'` في `script-src` دَينٌ مُعلَنٌ لا سهو** — تفرضها السكربتاتُ
+       المضمَّنة، **وهي تُضعف الحمايةَ كثيراً**. والبديلُ الصحيحُ `nonce` يلزمه أن يحمل كلُّ
+       `<script>` سمةً ⇒ **تغييرٌ في مصدر `SchoolApp-gas` لا في هذا المخرَج المولَّد**.
+       ⇒ يُسجَّل مقايضةً مرئيّةً، ولا يُترك ديناً خفيّاً.
+
+       ⚠️ **و`img-src https:` واسعةٌ عمداً:** صورُ المدارس تأتي من Drive بمضيفاتٍ متغيّرة
+       (‏`lh3` · `lh4` · `*.googleusercontent`)، وتضييقُها يكسر عرضَ الشعارات **صامتاً**
+       — وهو بعينه ما تتجنّبه هذه المرحلة. والصورةُ لا تُنفَّذ.
+       🔒 **والحدُّ الحقيقيُّ في `script-src` و`object-src 'none'` و`base-uri 'self'`.**
+       ⚠️ ولا `frame-ancestors` هنا: `X-Frame-Options: SAMEORIGIN` يغطّيها، وتكرارُها
+          في وضع الإبلاغ يُنتج تقاريرَ عن شيءٍ محجوبٍ أصلاً.
+       🔒 **وتُحقَن على HTML وحده** — على أصلٍ ثابتٍ بلا DOM هي بايتاتٌ بلا أثر.
+
+       🔴 **وزونُ `procorners.com` مشتركٌ مع متجرٍ آخر، والكتلةُ بلا شرطِ مضيف** ⇒ **وجب
+       الضابطُ المعاكس قبل النشر، وشُغّل 2026-09-11:**
+         · موجب : `school.procorners.com/teacher/index.html` ⇒ رؤوسُنا **حاضرة**.
+         · معاكس: `procorners.com/` ⇒ **200 وصفرُ رأسٍ من رؤوسنا** (لا `x-content-type-options`
+           ولا `referrer-policy` ولا `cross-origin-opener-policy`) ⇒ **المتجرُ لا يمرّ بهذه
+           الكتلة أصلاً** (مسارُ الوركر `school.procorners.com/*` وحدَه) ⇒ **صفرُ إصابة**.
+       ⚠️ **وفخُّ قياسٍ وقع في الطريق ويُسجَّل:** `/home/index.html` أعطى **صفرَ رؤوسٍ أيضاً**
+          — **وليس عطلاً**: يردّ **302** إلى النطاق القانونيّ فيخرج **قبل** هذه الكتلة.
+          ⇒ **لا يُقاس سطحٌ يعيد تحويلاً ويُستنتَج منه غيابُ رأس.** */
+    if (isHtml) {
+      headers.set('Content-Security-Policy-Report-Only', [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "form-action 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://www.googletagmanager.com https://www.google-analytics.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+        "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
+        "img-src 'self' data: blob: https:",
+        "media-src 'self' blob: https:",
+        "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com https://drive.google.com https://docs.google.com",
+        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com",
+        'report-uri /csp-report'
+      ].join('; '));
     }
 
     // ── هوية الرابط والنطاق (راجع `_identityHeaders` أعلاه للسبب الكامل) ─────

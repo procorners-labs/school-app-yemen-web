@@ -332,13 +332,32 @@ console.log('الرؤوس الأمنية وحقن og:url:');
     '🔒 `X-Frame-Options: SAMEORIGIN` مضبوطٌ **بعد** حذف رأس المنبع [delete@' +
     xDel + ' set@' + xSet + ']');
 
+  /* 🔴 **صُحِّح 2026-09-11 — وكان الفحصُ السابقُ يمرّ خضراءَ على تغييرٍ يناقض وسمَه.**
+   * كان يزعم «CSP تبقى محذوفةً **وغيرَ مضبوطة**» بنمطٍ `headers.set('Content-Security-Policy'`
+   * — **والاقتباسُ بعد `Policy` يمنعه من مطابقة `…-Report-Only'`** ⇒ نُشرت سياسةُ الإبلاغ
+   * **وبقي الفحصُ أخضرَ ووسمُه كاذباً**. 🎯 وهي فئةُ «حارسٌ يفحص صيغةً لا حالة».
+   *
+   * والحالُ الآن **أربعةُ أقطابٍ مستقلّة، وسقوطُ أيٍّ منها يُحمِّر**:
+   *   ① `Content-Security-Policy-Report-Only` **مضبوطة** — وإلّا فلا سياسةَ أصلاً.
+   *   ② و`Content-Security-Policy` النافذةُ **غيرُ مضبوطة** — الحدُّ الباقي: سياسةٌ نافذةٌ
+   *      تكسر صفحاتٍ سكربتاتُها مضمَّنةٌ بكثافة، **صامتةً على مستخدمٍ حقيقيّ**.
+   *   ③ و`report-uri` **موصولٌ بمعالجٍ قائم** — 🔴 **وهذا القطبُ هو جوهرُ الفحص:**
+   *      `Report-Only` بلا وجهةٍ تُسجّل **زينةٌ لا حارس**، ولا يُكتشَف غيابُها بالنظر.
+   *   ④ و`'csp-report'` **محجوزٌ في `_RESERVED_TOP_PATHS`** — إسقاطُه يجعل المسارَ
+   *      مرشَّحَ slug مدرسةٍ فيصير قابلاً للاختطاف.
+   * ⚠️ ويبقى `delete('content-security-policy')` مفروضاً: رأسُ المنبع يُحذف ثمّ يُضبَط رأسُنا. */
   var cDel = /headers\.delete\('content-security-policy'\)/.test(src);
-  var cSet = /headers\.set\('Content-Security-Policy'/i.test(src);
-  var okC = cDel && !cSet;
+  var cRep = /headers\.set\('Content-Security-Policy-Report-Only'/.test(src);
+  var cEnf = /headers\.set\('Content-Security-Policy'\s*,/.test(src);
+  var cUri = /report-uri \/csp-report/.test(src);
+  var cHnd = /path === '\/csp-report'/.test(src);
+  var cRes = /'csp-report':\s*1/.test(src);
+  var okC = cDel && cRep && !cEnf && cUri && cHnd && cRes;
   if (!okC) failed++;
   console.log((okC ? '  ✅ ' : '  ❌ ') +
-    '🔴 CSP تبقى محذوفةً وغيرَ مضبوطة — دَينٌ مُعلَنٌ لا حمايةٌ مُدّعاة [delete=' +
-    cDel + ' set=' + cSet + ']');
+    '🔒 CSP في وضع الإبلاغ وحده · موصولةٌ بمعالجٍ قائم · والمسارُ محجوز [del=' + cDel +
+    ' report-only=' + cRep + ' enforced=' + cEnf + ' uri=' + cUri +
+    ' handler=' + cHnd + ' reserved=' + cRes + ']');
 
   /* ③ 🗑️ **`GAS.pricing` مدخلٌ خاملٌ — صفرُ قارئ.** التعليقُ عند الجدول يَعِد بأن «أثرَ
    *    بقائه صفرٌ يحرسه فحص» — وهذا هو. والمدخلُ باقٍ لأن `protect-deploy-ids` حجب
