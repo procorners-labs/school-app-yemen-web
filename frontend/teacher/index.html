@@ -18709,6 +18709,38 @@ function loadNewsPage(isFirst) {
     if (loadMoreWrap) {
       loadMoreWrap.style.display = _newsHasMore ? 'block' : 'none';
     }
+  /* 🔴 **معالجُ الخطأ كان غائباً — وهو جذرُ بلاغ «خبري لا يظهر» (2026-09-12).**
+     `callServer` يفصل مسارَين: ردٌّ تطبيقيٌّ فاشل (‏`r.success === false`) يعالجه
+     المعالجُ أعلاه برسالةٍ ظاهرة؛ أمّا **فشلُ النقل** (‏502 من الوسيط عند الإشباع ·
+     انقطاعُ شبكة) فلا يبلغ المعالجَ أصلاً — وبلا هذا الوسيط **لا يقع شيءٌ إطلاقاً**:
+     لا رسالةَ ولا سجلَّ ولا إعادةَ محاولة، ويبقى الهيكلُ العظميّ أو القائمةُ القديمة
+     على الشاشة ⇒ **يُقرأ «لا توجد أخبار» وهو «تعذّر الجلب»**.
+     🎯 **والفارقُ حاسمٌ للمستخدم:** الأوّلُ يعني «ليس لك أخبار» والثاني «حاول ثانيةً»،
+     وهما علاجان متعاكسان — وقد أضلّ الصمتُ المالكَ فعلاً فقرأه عطلَ صلاحيات.
+     ⚠️ **ولا يُعاد الطلبُ تلقائياً:** 502 من الوسيط إجهاضٌ عند سقف ميزانيته **بينما GAS
+     يواصل التنفيذ خادمياً** ⇒ إعادةُ المحاولة تُضاعف الحملَ الذي سبّب الإشباع (بند 226).
+     ⇒ زرٌّ يضغطه المستخدمُ بإرادته، لا مؤقّتٌ يُعيد المحاولة.
+     🟢 **والقائمةُ المعروضةُ لا تُمسح** عند فشل «تحميل المزيد» — الرسالةُ تُلحَق ولا تدهس. */
+  }, function (err) {
+    var msg = (err && err.message) ? String(err.message) : 'تعذّر الاتصال بالخادم';
+    try { console.warn('[news] فشلُ جلب الأخبار: ' + msg); } catch (eL) {}
+    var errArea = document.getElementById('newsListArea');
+    var box = '<div class="empty-state"><div class="es-icon">📡</div>' +
+              '<div class="es-title">تعذّر تحميل الأخبار</div>' +
+              '<div class="es-sub">' + escapeHtml(msg) + '</div>' +
+              '<button class="btn btn-secondary btn-sm" style="margin-top:10px" ' +
+              'onclick="loadNewsPage(' + (isFirst ? 'true' : 'false') + ')">↻ إعادة المحاولة</button>' +
+              '</div>';
+    if (!errArea) return;
+    if (isFirst) errArea.innerHTML = box;           // لا قائمةَ بعد ⇒ الرسالةُ تملأ المنطقة
+    else {                                           // «تحميل المزيد» فشل ⇒ تُلحَق بلا دهس
+      var tail = document.createElement('div');
+      tail.innerHTML = box;
+      errArea.appendChild(tail);
+      _newsCurrentPage--;                            // كي لا تُتخطّى صفحةٌ عند إعادة المحاولة
+    }
+    var lw = document.getElementById('newsLoadMoreWrap');
+    if (lw) lw.style.display = 'none';
   });
 }
 
