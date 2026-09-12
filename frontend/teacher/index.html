@@ -5884,6 +5884,40 @@ function _fltKey(page) {
   var who = (typeof App !== 'undefined' && App.user && App.user.teacherName) ? App.user.teacherName : '';
   return 'tcflt_' + (window.SCHOOL_ID || '') + '_' + who + '_' + page;
 }
+/* 🔤 **تسمياتُ الأدوار — مصدرٌ واحدٌ لكلّ سطح (2026-09-13، بلاغُ مالك).**
+ * التفصيلُ والعلّةُ في `_js-news-cards-notes.html::_roleLabelFull`.
+ * **الخلاصة:** كان `admin` يُعرض «مدير النظام» في صفحةٍ و«المدير» في أخرى و«مدير»
+ * في ثالثة ⇒ **المستخدمُ يظنّها أدواراً مختلفة**. والاسمُ الكنسيُّ يتبع عمودَ «الدور»
+ * في ورقة «المدرسين» — فما يقرؤه المالكُ في بياناته هو ما يراه في واجهته.
+ * 🔴 **وأيُّ دورٍ جديدٍ يُضاف هنا فقط**، ويحرس الوحدةَ `roleLabelsSingleSourceGuard`.
+ * 🔒 **والمقبولُ أوسعُ من المعروض عمداً:** `TeacherAuth.js::_auth_canonRole` يظلّ يقبل
+ * «مدير النظام» وغيرَها **إدخالاً من الشيت** — التوحيدُ في العرض لا في القبول،
+ * وتضييقُ القبول كان سيُسقط صفوفاً مكتوبةً بيد المالك. */
+var TC_ROLE_LABELS = {
+  admin:      'المدير',
+  deputy:     'وكيل المدير',
+  accountant: 'محاسب',
+  supervisor: 'مشرف',
+  activities: 'مشرف الأنشطة',
+  it:         'مسؤول الحاسوب',
+  media:      'مسؤول الوسائط',
+  teacher:    'معلم',
+  student:    'طالب'
+};
+/* رمزُ الدور — يُجاور التسمية كي لا يتباعدا، وكان مكتوباً حرفياً في `_roleIcon`. */
+var TC_ROLE_ICONS = {
+  admin: '👑', deputy: '🗂️', accountant: '🧮', supervisor: '🛡️',
+  activities: '🎯', it: '💻', media: '🎬', teacher: '👨‍🏫', student: '🎓'
+};
+function _tcRoleLabel(role) {
+  var k = (role === undefined || role === null) ? '' : String(role);
+  return TC_ROLE_LABELS[k] || TC_ROLE_LABELS.teacher;
+}
+function _tcRoleIcon(role) {
+  var k = (role === undefined || role === null) ? '' : String(role);
+  return TC_ROLE_ICONS[k] || TC_ROLE_ICONS.teacher;
+}
+
 function _fltSave(page, ids) {
   try {
     var o = {};
@@ -8180,13 +8214,14 @@ function updateNavUser() {
   if (nameEl)   nameEl.textContent   = name;
 
   // تحديد نص الدور
-  var roleLabel = 'معلم';
+  /* 🔤 من `TC_ROLE_LABELS` — كان `admin` يُسمّى هنا «مدير النظام» وفي صفحةٍ أخرى «المدير». */
+  var roleLabel = _tcRoleLabel('teacher');
   if (u.role === 'admin') {
-    roleLabel = 'مدير النظام';
+    roleLabel = _tcRoleLabel('admin');
   } else if (u.role === 'deputy') {
-    roleLabel = 'وكيل المدير';
+    roleLabel = _tcRoleLabel('deputy');
   } else if (u.role === 'supervisor') {
-    roleLabel = 'مشرف';
+    roleLabel = _tcRoleLabel('supervisor');
   } else if (u.subjects && u.subjects.length > 0) {
     roleLabel = u.subjects[0]; // عرض المادة الأولى
   }
@@ -13532,11 +13567,12 @@ function renderDashboard() {
     var s = mySection();
     var sub = mySubject();
 
+    /* 🔤 التسميةُ من `TC_ROLE_LABELS` والوصفُ يبقى محلّياً — الاسمُ موحَّدٌ والسياقُ خاصّ. */
     var roleDesc = '';
-    if (u.role === 'admin') roleDesc = 'مدير النظام — صلاحيات كاملة';
-    else if (u.role === 'accountant') roleDesc = 'محاسب — صلاحيات كاملة';
-    else if (u.role === 'deputy') roleDesc = 'وكيل المدير — صلاحيات موسّعة';
-    else if (u.role === 'supervisor') roleDesc = 'مشرف — ' + (g || '') + ' ' + (s || '');
+    if (u.role === 'admin') roleDesc = _tcRoleLabel('admin') + ' — صلاحيات كاملة';
+    else if (u.role === 'accountant') roleDesc = _tcRoleLabel('accountant') + ' — صلاحيات كاملة';
+    else if (u.role === 'deputy') roleDesc = _tcRoleLabel('deputy') + ' — صلاحيات موسّعة';
+    else if (u.role === 'supervisor') roleDesc = _tcRoleLabel('supervisor') + ' — ' + (g || '') + ' ' + (s || '');
     else roleDesc = (sub || '') + ' • ' + (g || '') + ' ' + (s || '');
 
     // ── شارات الترويسة: التاريخ + الدور ──
@@ -23074,27 +23110,37 @@ function exportStudentsList() {
   });
 }
 // ==================== PROFILE ====================
-// التسمية العربية الكاملة لدور المستخدم (تُظهر المشرف «مشرف» لا «مدير»)
+/* 🔤 **التسميةُ العربيّةُ للدور — مصدرٌ واحد (2026-09-13، بلاغُ مالك).**
+ *
+ * 🔴 **العلّةُ المقيسة: ثلاثةُ أسماءٍ لدورٍ واحد.** `admin` كان يُعرض **«مدير النظام»**
+ * هنا · و**«المدير»** في `TeacherStaffAdmin.js::roleMap` · و**«مدير»** في
+ * `_js-visits.html::VT_ROLE_LABELS` — والشيتُ الحيُّ يكتب **«المدير»**.
+ * ⇒ **المستخدمُ يرى اسمَين مختلفَين لحسابه في صفحتين، فيظنّهما دورَين**، وهو بالضبط
+ * بلاغُ المالك: «سواء كان المدير أو مدير النظام هو شيءٌ واحد».
+ * وليست `admin` وحدَها: `it` = «تقنية»/«مسؤول الحاسوب (IT)»/«الحاسوب» ·
+ * و`activities` = «أنشطة»/«مشرف الأنشطة» · و`media` = «وسائط»/«فنية».
+ *
+ * 🎯 **والقاعدةُ المطبَّقة هنا هي قاعدةُ `SIDEBAR_PERMISSIONS_MANIFEST` نفسُها** (بند
+ * teacher 20): **خريطةٌ واحدةٌ مُصدَّرة، وكلُّ سطحٍ يقرأ منها** — بدل قوائمَ مُحرَّرةٍ
+ * يدوياً تتباعد بصمت. وأيُّ دورٍ جديدٍ يُضاف **هنا فقط**.
+ *
+ * 🔴 **والاسمُ الكنسيُّ يتبع الشيت لا الذوق:** عمودُ «الدور» في «المدرسين» يكتب
+ * **«المدير»** (مقيسٌ حيّاً: `المدير` ×٢ · `الوكيل` · `محاسب` · `مشرف` ·
+ * `مشرف أنشطة` · `فنية` · `الحاسوب`) — فما يقرؤه المالكُ في بياناته هو ما يراه في
+ * واجهته. 🔒 **و«مدير النظام» تبقى مقبولةً في `_auth_canonRole`** إدخالاً من الشيت
+ * (‏`TeacherAuth.js::_auth_canonRole`) — **المقبولُ أوسعُ من المعروض عمداً.**
+ */
+ * 🔴 **وموضعُها `_js-core-bridge` لا هنا — والترتيبُ ليس ذوقاً:** الأجزاءُ كتلُ
+ * `<script>` متتابعةٌ في صفحةٍ واحدة، و`_js-core-bridge` **أوّلُ مُدرَجٍ** (‏السطر 1169)
+ * بينما `_js-visits` **آخرُها** (‏1249). فتعريفُ الخريطة هنا يجعل أيَّ قراءةٍ **وقتَ
+ * التحميل** في جزءٍ أسبقَ تقرأ `undefined` بلا خطإٍ ظاهر. ⇒ المصدرُ يسبق مستهلكيه.
+ */
 function _roleLabelFull(u) {
-  if (!u) return 'معلم';
-  switch (u.role) {
-    case 'admin':       return 'مدير النظام';
-    case 'deputy':      return 'وكيل المدير';
-    case 'accountant':  return 'محاسب';
-    case 'supervisor':  return 'مشرف';
-    case 'activities':  return 'مشرف الأنشطة';
-    case 'it':          return 'مسؤول الحاسوب (IT)';
-    case 'media':       return 'مسؤول الوسائط';
-    default:            return 'معلم';
-  }
+  return _tcRoleLabel(u && u.role);
 }
-// الأيقونة المناسبة للدور
+// الأيقونة المناسبة للدور — من `TC_ROLE_ICONS` كي لا تتباعد عن التسمية
 function _roleIcon(u) {
-  switch (u && u.role) {
-    case 'admin': return '👑'; case 'deputy': return '🗂️'; case 'accountant': return '🧮';
-    case 'supervisor': return '🛡️'; case 'activities': return '🎯';
-    case 'it': return '💻'; case 'media': return '🎬'; default: return '👨‍🏫';
-  }
+  return _tcRoleIcon(u && u.role);
 }
 // عرض الصفحات المتاحة فعلياً للمستخدم (تعكس بوابة الدور في القائمة الجانبية)
 function _profileAvailablePages() {
@@ -31115,7 +31161,12 @@ function _tfExportDisc(){
 <script>
 var _visitsPollTimer = null;
 var _visitsRecentAll = [];
-var VT_ROLE_LABELS = { admin:'مدير', deputy:'وكيل', supervisor:'مشرف', accountant:'محاسب', activities:'أنشطة', it:'تقنية', media:'وسائط', teacher:'معلم', student:'طالب' };
+/* 🔤 **كانت خريطةً ثالثةً مستقلّة** (‏`admin:'مدير'` · `it:'تقنية'` · `media:'وسائط'`)
+   ⇒ نفسُ الحساب يُسمّى ثلاثةَ أسماءٍ عبر ثلاث صفحات. صارت **غلافاً** على المصدر الواحد
+   `_js-core-bridge.html::TC_ROLE_LABELS` (مُدرَجٌ أوّلاً فهو متاحٌ هنا وقتَ التحميل).
+   🔒 **ويبقى الاسمُ `VT_ROLE_LABELS` قائماً** لأن له مستهلكين في هذا الجزء — إعادةُ
+   التسمية عملٌ مجاورٌ خارج البلاغ، وتوحيدُ **القيَم** هو المطلوب. */
+var VT_ROLE_LABELS = TC_ROLE_LABELS;
 var VT_ROLE_COLORS = ['#1149a3','#16a34a','#f59e0b','#ef4444','#0ea5e9','#a855f7','#14b8a6','#64748b','#ec4899'];
 var _visitsCumulLoaded = false;
 var _visitsCumulRes = null;
