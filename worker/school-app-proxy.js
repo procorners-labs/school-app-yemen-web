@@ -1041,6 +1041,17 @@ var API_CACHE_BODY_MAX   = 4096;   // نفس حدّ `_bhIsLoginBody`: لا `JSON
    كلّياً. والأسوأ أنه صامت: `null` بلا سطر سجلّ ⇒ ميزةٌ خامدةٌ وسجلٌّ يبدو طبيعياً.
    القياسُ على الخام يجعل الحدّ يعني ما يقوله، ويُسجَّل الرفضُ بـ`act:'nokey'` أدناه. */
 var API_CACHE_ARGSKEY_MAX = 200;
+/* ‏نافذةُ البيات (‏`stale-if-error`) — تُخدَم **عند إجهاضنا نحن وحده** لا عند أيّ فشلٍ آخر.
+   🔴 **لماذا لزمت، بقياسٍ لا بتقدير:** نافذةٌ نظيفةٌ من البناء (‏2026-09-12T12:05→15:05Z)
+   أعطت **٤٧٩ من ٥٠٤ إخفاقاً (٩٥٪) بسبب `abort_budget`** — أي أن المنبعَ لم يُخفق مرّةً
+   واحدة (`upstream_status` = ٠)، بل **لم يردّ داخل الميزانية**. ومنها **٤٦** على دالّتين
+   عامّتين مُكاشتين أصلاً (`getHomePageBundle` 26 · `getHomeScheduleBundle` 20) ⇒ كان عندنا
+   ردٌّ صالحٌ على الحافّة **ونخدم ٥٠٢ فوقه**.
+   🔒 **ولا ينقض هذا «لا كاش سلبيّ»:** تلك القاعدةُ تمنع **تخزينَ** ردٍّ فاشل، وهذا **يخدم
+   ردّاً كان ناجحاً** والمنبعُ مشبَع. وشرطا التخزين المزدوجان (`good` **و**`ok(b)`) لم يُمَسّا.
+   ⚠️ **والمقايضةُ معلَنة:** عشرُ دقائق **أضيقُ ممّا أُقرّ فعلاً** — `getHomeScheduleBundle`
+   مقبولٌ فيها بياتُ ١٨٠٠ث بقرار مالك. والبديلُ عن «محتوى أقدمَ قليلاً» صفحةٌ مكسورة. */
+var API_STALE_MAX_S      = 600;
 
 /** قيمةٌ قياديّة مقبولة في مفتاح الكاش: نصٌّ قصير بلا أحرف تحكّم. */
 function _apiSafeScalar(v) {
@@ -1218,6 +1229,31 @@ async function _apiCacheGet(origin, app, probe) {
   } catch (e) { return null; }
 }
 
+/** مدّةُ طزاجةِ دالّةٍ بعينها — الجدولُ أوّلاً ثمّ الافتراضُ العامّ. */
+function _apiTtlFor(fn) {
+  return (API_CACHE_FNS[fn] && API_CACHE_FNS[fn].ttl) || API_CACHE_TTL_S;
+}
+
+/* يصنّف مدخلاً **بعمره** إلى ثلاثة: `fresh` يُخدَم دائماً · `stale` يُخدَم عند إجهاضنا
+   وحده · `expired` لا يُخدَم بحال.
+
+   🔴 **ولماذا هذه الدالّةُ جوهرُ الدفعة لا زينتُها:** الطزاجةُ كانت مفروضةً بـ
+   `caches.default.match` نفسِها — تُهمل المدخلَ بعد `max-age`. ومدُّ العمر في `_apiCachePut`
+   أدناه (كي يبقى البائتُ **موجوداً** للتراجع) **يُلغي ذلك الفرضَ الضمنيّ** ⇒ بلا هذه
+   البوّابة يصير المدخلُ البائتُ **إصابةً طازجةً تُخدَم بصمت**، وهو انحدارٌ أخطرُ من العطل
+   الذي جاءت الدفعةُ لعلاجه: الصفحةُ تعمل، والبياناتُ قديمةٌ، ولا شيء يحمرّ.
+   ⇒ **الفرضُ انتقل من الأداة إلينا، فصار لازماً أن يكون مقيساً.**
+
+   🔒 و`age < 0` (‏مدخلٌ بلا `X-Api-Ts` فلا يُحكَم على عمره) ⇒ `expired` — **fail-closed**:
+   ما لا نعرف عمرَه لا نخدمه، لا طازجاً ولا بائتاً. */
+function _apiCacheFreshness(fn, age) {
+  if (typeof age !== 'number' || age < 0) return 'expired';
+  var ttl = _apiTtlFor(fn);
+  if (age <= ttl) return 'fresh';
+  if (age <= ttl + API_STALE_MAX_S) return 'stale';
+  return 'expired';
+}
+
 /* يُخزّن **`text` خاماً كما هو** (بذيله `"_ms"`) — `assets/gas-bridge.js` يستهلكه نصّاً،
    فإعادةُ بنائه تُلوّث المخرَج المخدوم. والطابعُ الزمنيّ في **رأس مدخل الكاش** لا داخل
    الحمولة، أسوةً بـ`X-Brand-Ts`. يُرجِع `true` إن خُزّن فعلاً (للسجلّ). */
@@ -1233,7 +1269,11 @@ async function _apiCachePut(origin, app, probe, text) {
       new Response(text, {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'max-age=' + (API_CACHE_FNS[probe.fn].ttl || API_CACHE_TTL_S),
+          /* 🔴 **العمرُ = الطزاجةُ + نافذةُ البيات** — كي يبقى المدخلُ **مطابَقاً** بعد
+             انقضاء طزاجته فيصلح للتراجع عند `abort_budget`. والطزاجةُ صارت تُفرَض في
+             `_apiCacheFreshness` أعلاه لا هنا — **ولا يُعاد هذا السطرُ إلى `ttl` وحده
+             ظنّاً أنه تضييقٌ آمن**: ذلك يُعيد البائتَ إلى الإهمال فيعود الـ٥٠٢ صامتاً. */
+          'Cache-Control': 'max-age=' + (_apiTtlFor(probe.fn) + API_STALE_MAX_S),
           'X-Api-Ts': String(Date.now())
         }
       })
@@ -1512,6 +1552,9 @@ export default {
          البُعد كلَّه بسطرٍ واحد بدل أن يعتمد على بقاء حقيقةٍ في مستودعٍ آخر.
          (‏`app=student` يُلحقه الوسيط **بعد** هذه النقطة فلا يتأثّر.) */
       var _acProbe = null;
+      /* مدخلٌ فقد طزاجتَه وما زال داخل نافذة البيات — يُخدَم **عند `abort_budget` وحده**
+         (أدناه عند نقطة الخروج). لا يُخدَم هنا، ولا عند أيّ سببِ فشلٍ آخر. */
+      var _acStale = null;
       if (request.method !== 'GET' && url.search === '') {
         _acProbe = _apiCacheProbe(init.body);
         /* دالّةٌ مؤهَّلةٌ اسماً لكنّ شكلَها رُفض ⇒ سطرٌ واحد. بلا هذا تبقى الميزةُ خامدةً
@@ -1523,13 +1566,20 @@ export default {
         if (_acProbe) {
           var _acHit = await _apiCacheGet(url.origin, app, _acProbe);
           if (_acHit) {
-            _bhLog({ ev: 'apicache', act: 'hit', app: app, fn: _acProbe.fn,
-                     k: _apiKeyFp(_acProbe.argsKey),
-                     age: _acHit.age, n: _bhN, q: _bhQ.length });
-            return withCors(new Response(_acHit.text, {
-              status: 200,
-              headers: { 'Content-Type': 'application/json; charset=utf-8' }
-            }));
+            /* 🔴 البوّابةُ صريحةٌ هنا لأن `match` لم تعُد تفرضها (انظر `_apiCacheFreshness`).
+               والبائتُ **لا يُخدَم في هذا الموضع بحال** — يُحتفَظ به للتراجع أدناه فقط. */
+            var _acFresh = _apiCacheFreshness(_acProbe.fn, _acHit.age);
+            if (_acFresh === 'fresh') {
+              _bhLog({ ev: 'apicache', act: 'hit', app: app, fn: _acProbe.fn,
+                       k: _apiKeyFp(_acProbe.argsKey),
+                       age: _acHit.age, n: _bhN, q: _bhQ.length });
+              return withCors(new Response(_acHit.text, {
+                status: 200,
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+              }));
+            }
+            /* 🔒 يُلتقَط **من نفس القراءة** — صفرُ مراجعةٍ إضافيّةٍ للكاش على المسار الحارّ. */
+            if (_acFresh === 'stale') _acStale = _acHit;
           }
         }
       }
@@ -1707,6 +1757,30 @@ export default {
           if (_nap > 0) await new Promise(function (r) { setTimeout(r, _nap); });
         }
       }
+      /* ── تراجعٌ إلى نسخةٍ بائتة — **عند إجهاضنا نحن وحده** ────────────────────────
+         🔴 **الشرطُ `abort_budget` لا `!good`، والفرقُ هو الميزةُ كلُّها:** `upstream_status`
+         يعني أن الدالّةَ نفسَها أخفقت، و`upstream_html` اعتراضاً من Google — وخدمةُ نسخةٍ
+         قديمةٍ فوق أيٍّ منهما **تُخفي عطلاً حقيقياً** بدل أن تسدّ فجوةَ إشباع. والإجهاضُ
+         وحدَه يعني «كان لدينا ردٌّ صالحٌ ولم يَصِل في الوقت».
+         ⚠️ **وسجلُّ `ev:'gas'` في `finally` يبقى `ok:false · why:abort_budget · st:502`
+         عمداً** — فالمنبعُ أخفق فعلاً، والعميلُ خُدِم من الحافّة. ⇒ **لا يُقرأ هذا تناقضاً
+         ولا «يُصلَح»:** لولاه لانخفض عدّادُ الإشباع بلا أن يتحسّن الإشباعُ نفسُه، وهو أسوأُ
+         ما يمكن أن يحدث لقياسٍ نبني عليه قرارَ نشرٍ حيّ. القياسُ يبقى على المنبع، والراحةُ
+         تُقاس بـ`act:'stale'` وحدَه. */
+      if (!good && _bhWhy === 'abort_budget' && _acProbe && _acStale) {
+        _bhLog({ ev: 'apicache', act: 'stale', app: app, fn: _acProbe.fn,
+                 k: _apiKeyFp(_acProbe.argsKey), age: _acStale.age });
+        return withCors(new Response(_acStale.text, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            /* رأسٌ تشخيصيٌّ لا يمسّ الجسم: الجسرُ يستهلك النصَّ خاماً، فأيُّ حقلٍ نضيفه
+               داخل الحمولة قد يكسر مستهلكاً. والرأسُ يُقرأ بـ`curl -D -` وفي السجلّ. */
+            'X-Api-Stale': String(_acStale.age)
+          }
+        }));
+      }
+
       // عند استنفاد المحاولات لطلب JSON (POST) باستجابة غير صالحة (HTML/4xx):
       // أعِد JSON خطأ واضح بدل تمرير HTML يفشل JSON.parse في الجسر (netError مضلِّل «رد غير صالح»).
       if (!good && isPost) {
