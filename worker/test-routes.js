@@ -1564,6 +1564,10 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
      ② **عودةُ التصادف** `BH_MAX_WAIT_MS == BOOT_SCHEMA_RELEASE_MS` — الجِتَر يفكّه،
         وحذفُه يُعيد الرنين بلا أثرٍ ظاهر.
    ═══════════════════════════════════════════════════════════════════════════ */
+/* 🔗 يُصدَّران إلى حارس العقد المنشور أدناه — **قيمةٌ واحدةٌ محسوبةٌ مرّةً**، فلا
+   تُعاد المحاكاةُ هناك فيصير الحارسُ يقيس نسختَه بدل المصدر. */
+var LOGIN_WORST_MS = -1;
+var LOGIN_MARGIN_MIN_MS = 2000;
 (function bulkheadWaitAndLoginWindowGuard() {
   var loginBlock = /var BH_LOGIN_FNS = \{([\s\S]*?)\};/.exec(src);
   check(!!loginBlock, 'تعذّر اقتطاع `BH_LOGIN_FNS` ⇒ الحارس عمي (يجب أن يحمرّ)');
@@ -1639,14 +1643,89 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
   check(/\r?\n\s*var TOTAL_BUDGET_MS = 24000 - _bhWaited;/.test(src),
         '🔴 الانتظار **يُخصَم** من ميزانية المحاولات ⇒ السقف الكلّي يبقى ~24ث');
 
-  /* ③ الأسماء تُطابَق بمصدر GAS حين يتوفّر — وغيابُه `SKIPPED` صريحة لا نجاحٌ صامت. */
+  /* ③ الأسماء تُطابَق بمصدر GAS حين يتوفّر — وغيابُه `SKIPPED` صريحة لا نجاحٌ صامت.
+     🔴 **وأُعيدت قسمةُ الفرع 2026-09-13 بعد قياسٍ يوسّع العلّة:** كان فرعُ `else` يبتلع
+     **١٨ فحصاً**، والمقيسُ أن **خمسةً منها فقط** تلمس المستودعَ الشقيق فعلاً
+     (‏`520` فحصاً بمصدر GAS مقابل **`502`** بدونه — نفسُ الملفّ، بيئتان).
+     ⇒ محاكاةُ الميزانية وسياسةُ المحاولة — **وثوابتُهما كلُّها من مصدر هذا المستودع** —
+     كانتا مبوَّبتين خلف توفّر مستودعٍ خاصٍّ لا علاقةَ لهما به ⇒ **لا تُشغَّلان في CI
+     إطلاقاً**، وهي البيئةُ التي تُلزم وحدَها. 🎯 **وحارسٌ يتخطّى صامتاً في البيئة
+     المُلزِمة ليس حارساً** — والقسمةُ الصحيحةُ بمصدر المُدخَل لا بموضع الكتلة. */
   var GAS = process.env.SCHOOLAPP_GAS_DIR ||
             path.join(path.dirname(path.dirname(__dirname)), 'SchoolApp-gas');
   var gasOk = false;
   try { gasOk = fs.statSync(path.join(GAS, 'teacher')).isDirectory(); } catch (e) { gasOk = false; }
+
+  /* ═══ أسوأُ زمنِ دخولٍ مُحاكىً — كلُّ ثوابته من `school-app-proxy.js` ⇒ **دائماً** ═══
+     🔴 **النموذج أُعيد بناؤه 2026-08-29 مع علاج تضخيم إعادة المحاولة.** لم تعُد ثمّة
+     `PER_ATTEMPT_TIMEOUT_MS` ثابتة: مهلةُ المحاولة = ما تبقّى من الميزانية ناقصَ الهامش،
+     وفشلُ المهلة **لا يُعيد المحاولة**. فالمساران الممكنان:
+       ① مهلة على المحاولة الأولى ⇒ خروجٌ فوراً.
+       ② فشلُ نقلٍ سريع ⇒ نومٌ مقصوص ⇒ محاولةٌ ثانية بما تبقّى.
+     وأسوأُ زمنٍ هو الأكبر منهما — ويجب أن يبقى تحت `BASE` في الحالتين.
+     🔗 **والناتجُ يُنشَر في `worker/login-fns-contract.json`** ليطرحه CI الـGAS من مهلة
+     عميله، فالمقارنةُ عبر المستودعين لا تموت بغياب أحدهما عن قرص الآخر. */
+  var winM = /var BH_LOGIN_WAIT_MS = (\d+);/.exec(src);
+  var attM = /var GAS_ATTEMPT_MARGIN_MS = (\d+);/.exec(src);
+  var budM = /var TOTAL_BUDGET_MS = (\d+) - _bhWaited;/.exec(src);
+  var napM = /var delays = \[(\d+)\];/.exec(src);
+  var minM = /var GAS_MIN_ATTEMPT_MS = (\d+);/.exec(src);
+  check(!!winM && !!attM && !!budM && !!napM && !!minM,
+        'قُرئت ثوابتُ الحلقة الخمسة من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
+  var worstLoginMs = -1;
+  if (winM && attM && budM && napM && minM) {
+    var MARGIN = Number(attM[1]), MINATT = Number(minM[1]);
+    var NAP = Number(napM[1]), BASE = Number(budM[1]);
+    var _planT = function (elapsed, budget) {
+      var t = budget - elapsed - MARGIN;
+      return (t < MINATT) ? 0 : t;
+    };
+    var worstFor = function (W) {
+      var budget = BASE - W;
+      // ① مسارُ المهلة: محاولةٌ واحدة تستهلك كلَّ المتبقّي ثمّ تخرج بلا إعادة.
+      var timeoutPath = _planT(0, budget);
+      // ② مسارُ فشلِ النقل السريع (‏≈0ms) ثمّ نومٌ ثمّ محاولةٌ ثانية.
+      var e = 0;
+      e += Math.min(NAP, Math.max(0, budget - e));
+      e += _planT(e, budget);
+      return W + Math.max(timeoutPath, e);
+    };
+    var worstAll = 0, w;
+    for (w = 0; w <= Number(winM[1]); w += 100) {
+      var t = worstFor(w);
+      if (t > worstAll) worstAll = t;
+      worstLoginMs = Math.max(worstLoginMs, t);   // نافذةُ الدخول هي الأوسع أصلاً
+    }
+    check(worstAll <= BASE,
+          '🔴 الزمنُ الكلّي مسقوفٌ بالميزانية (' + worstAll + 'ms ≤ ' + BASE +
+          'ms) مهما بلغ انتظارُ الطابور — الحارسُ يستشرف نهاية المحاولة');
+    /* 🔒 ضابطٌ معاكس: المحاكاة تُميّز فعلاً. النموذجُ الذي **يُعيد المحاولة على المهلة**
+       (‏ما كان قائماً حتى 2026-08-29) يجب أن يتجاوز السقف — وإلّا كانت المحاكاة
+       تُصادق على أي شيء. وهذا بعينه ما كان يُنتج 502 المقيسة عند 24,339ms. */
+    var worstIfRetryOnTimeout = function (W) {
+      var budget = BASE - W, e = 0;
+      for (var a = 0; a < 2; a++) {
+        var t2 = _planT(e, budget);
+        if (!t2) break;
+        e += t2;                                  // مهلةٌ استهلكت كلَّ المتبقّي
+        if (a < 1) e += NAP;                      // 🔴 ثمّ يُعيد المحاولة رغم المهلة
+      }
+      return W + e;
+    };
+    check(worstIfRetryOnTimeout(0) > BASE,
+          '🔒 ضابط معاكس: نموذجُ «أعِد المحاولة على المهلة» يتجاوز الميزانية (' +
+          worstIfRetryOnTimeout(0) + 'ms > ' + BASE + 'ms) — فالمحاكاة تُميّز لا تُصادق');
+    LOGIN_WORST_MS = worstLoginMs;   // 🔗 يقرؤه حارسُ العقد المنشور
+  }
+
   if (!gasOk) {
-    console.log('  ⏭️  SKIPPED: مصدر GAS غير متاح (' + GAS + ') — لم تُطابَق أسماء الدخول');
-  } else {
+    console.log('  ⏭️  SKIPPED: مصدر GAS غير متاح (' + GAS + ') — لم تُطابَق أسماءُ الدخول عبر المستودعين');
+    /* 🔴 **والتخطّي مشروطٌ بقيام بديله، وإلّا صار عمىً كاملاً يُقرأ تخطّياً بريئاً.**
+       البديلُ عقدٌ منشورٌ يقرؤه CI الـGAS بلا توكن — وغيابُه **فشلٌ صريحٌ يُقرأ**. */
+    check(fs.existsSync(path.join(__dirname, 'login-fns-contract.json')),
+          '🔴 التخطّي مشروطٌ ببديله: `worker/login-fns-contract.json` منشورٌ ليقرأه CI الـGAS');
+  }
+  if (gasOk) {
     /* 🔴 **يُقرأ الموجودُ لا المفترَض — وقع الانهيارُ فعلاً 2026-09-10:** كانت القائمة
        `['teacher','student']` تُقرأ بلا فحصِ وجود، فلمّا حُذف `SchoolApp-gas/student/`
        (تقاعدُ المشروع بقرار المالك) **انهار الملفُّ كلُّه بـ`ENOENT`** — لا فحصٌ أحمرُ
@@ -1683,75 +1762,20 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
     var cli = fs.readFileSync(
       path.join(GAS, 'teacher', '_js-platform-reviews.html'), 'utf8');
     var cliM  = /var _LOGIN_TIMEOUT\s*=\s*(\d+)/.exec(cli);
-    var winM  = /var BH_LOGIN_WAIT_MS = (\d+);/.exec(src);
-    var attM  = /var GAS_ATTEMPT_MARGIN_MS = (\d+);/.exec(src);
-    check(!!cliM && !!winM && !!attM,
-          'قُرئت الثوابت الثلاثة من الطرفين (فشلُ الاستخراج = عمى لا نجاح)');
-    /* 🔴 **النموذج صُحِّح 2026-08-26 — كان يُصادق على تجاوزٍ حقيقيّ.** الحساب القديم
-       `worst = BH_LOGIN_WAIT_MS + PER_ATTEMPT` (‏= 23,500) يفترض **محاولةً واحدة**،
-       والحلقة تسمح باثنتين: الثانية تبدأ عند ~12,200 وتنتهي عند 23,700 ⇒ الحقيقة
-       ‏`W + 23,700` = **34,700ms** عند `W = 11,000`. أي أن الحارس كان أخضرَ على سيناريو
-       يقطع فيه العميلُ الاتصالَ فعلاً. ⇒ لا رقمٌ مُخمَّن بعد الآن: **تُحاكى الحلقة نفسها**
-       بثوابتها المقروءة من المصدر، عبر مدى الانتظار كلّه. */
-    var budM = /var TOTAL_BUDGET_MS = (\d+) - _bhWaited;/.exec(src);
-    var napM = /var delays = \[(\d+)\];/.exec(src);
-    check(!!budM && !!napM, 'قُرئت ميزانيةُ الحلقة وفاصلُها من المصدر (فشلُ الاستخراج = عمى)');
-    var minM = /var GAS_MIN_ATTEMPT_MS = (\d+);/.exec(src);
-    check(!!minM, 'قُرئ `GAS_MIN_ATTEMPT_MS` من المصدر (فشلُ الاستخراج = عمى)');
-    if (cliM && winM && attM && budM && napM && minM) {
-      var MARGIN = Number(attM[1]), MINATT = Number(minM[1]);
-      var NAP = Number(napM[1]), BASE = Number(budM[1]);
-      /* 🔴 **النموذج أُعيد بناؤه 2026-08-29 مع علاج تضخيم إعادة المحاولة.** لم تعُد ثمّة
-         `PER_ATTEMPT_TIMEOUT_MS` ثابتة: مهلةُ المحاولة = ما تبقّى من الميزانية ناقصَ
-         الهامش، وفشلُ المهلة **لا يُعيد المحاولة**. فالمساران الممكنان:
-         ① مهلة على المحاولة الأولى ⇒ خروجٌ فوراً.
-         ② فشلُ نقلٍ سريع ⇒ نومٌ مقصوص ⇒ محاولةٌ ثانية بما تبقّى.
-         وأسوأُ زمنٍ هو الأكبر منهما — ويجب أن يبقى تحت `BASE` في الحالتين. */
-      function _planT(elapsed, budget) {
-        var t = budget - elapsed - MARGIN;
-        return (t < MINATT) ? 0 : t;
-      }
-      function worstFor(W) {
-        var budget = BASE - W;
-        // ① مسارُ المهلة: محاولةٌ واحدة تستهلك كلَّ المتبقّي ثمّ تخرج بلا إعادة.
-        var timeoutPath = _planT(0, budget);
-        // ② مسارُ فشلِ النقل السريع (‏≈0ms) ثمّ نومٌ ثمّ محاولةٌ ثانية.
-        var e = 0;
-        e += Math.min(NAP, Math.max(0, budget - e));
-        e += _planT(e, budget);
-        return W + Math.max(timeoutPath, e);
-      }
-      var worstAll = 0, worstLogin = 0, w;
-      for (w = 0; w <= Number(winM[1]); w += 100) {
-        var t = worstFor(w);
-        if (t > worstAll) worstAll = t;
-        worstLogin = Math.max(worstLogin, t);   // نافذةُ الدخول هي الأوسع أصلاً
-      }
-      check(worstAll <= BASE,
-            '🔴 الزمنُ الكلّي مسقوفٌ بالميزانية (' + worstAll + 'ms ≤ ' + BASE +
-            'ms) مهما بلغ انتظارُ الطابور — الحارسُ يستشرف نهاية المحاولة');
-      var margin = Number(cliM[1]) - worstLogin;
-      check(margin >= 2000,
-            '🔴 أسوأ زمنِ دخولٍ مُحاكىً (' + worstLogin + 'ms) تحت مهلة العميل (' +
-            cliM[1] + 'ms) بهامش ' + margin + 'ms ≥ 2000');
-      /* 🔒 ضابطٌ معاكس: المحاكاة تُميّز فعلاً. النموذجُ الذي **يُعيد المحاولة على المهلة**
-         (‏ما كان قائماً حتى 2026-08-29) يجب أن يتجاوز السقف — وإلّا كانت المحاكاة
-         تُصادق على أي شيء. وهذا بعينه ما كان يُنتج 502 المقيسة عند 24,339ms. */
-      function worstIfRetryOnTimeout(W) {
-        var budget = BASE - W, e = 0;
-        for (var a = 0; a < 2; a++) {
-          var t = _planT(e, budget);
-          if (!t) break;
-          e += t;                                   // مهلةٌ استهلكت كلَّ المتبقّي
-          if (a < 1) e += NAP;                      // 🔴 ثمّ يُعيد المحاولة رغم المهلة
-        }
-        return W + e;
-      }
-      check(worstIfRetryOnTimeout(0) > BASE,
-            '🔒 ضابط معاكس: نموذجُ «أعِد المحاولة على المهلة» يتجاوز الميزانية (' +
-            worstIfRetryOnTimeout(0) + 'ms > ' + BASE + 'ms) — فالمحاكاة تُميّز لا تُصادق');
+    check(!!cliM, 'قُرئت مهلةُ العميل `_LOGIN_TIMEOUT` من مصدر GAS (فشلُ الاستخراج = عمى لا نجاح)');
+    check(worstLoginMs > 0, 'ضابط: أسوأُ زمنٍ مُحاكىً مقيسٌ فعلاً قبل طرحه (‏' + worstLoginMs + 'ms)');
+    if (cliM && worstLoginMs > 0) {
+      var margin = Number(cliM[1]) - worstLoginMs;
+      check(margin >= LOGIN_MARGIN_MIN_MS,
+            '🔴 أسوأ زمنِ دخولٍ مُحاكىً (' + worstLoginMs + 'ms) تحت مهلة العميل (' +
+            cliM[1] + 'ms) بهامش ' + margin + 'ms ≥ ' + LOGIN_MARGIN_MIN_MS);
     }
+  }
 
+  /* ═══ 🔴 ما لا يحتاج مصدرَ GAS خرج من فرعه — كان يُتخطّى في CI بلا أن يعلم أحد ═══
+     الكتلةُ التالية تُشغّل دالّتَي المصدر نفسِه؛ **صفرُ مُدخَلٍ من المستودع الشقيق**،
+     فتبويبُها خلف توفّره كان خطأً بنيويّاً لا مقايضة. */
+  {
     /* ═══ سياسةُ المحاولة — سلوكيّاً عبر `vm` لا محاكاةً موازية ═══════════════════
        🔴 لماذا: المحاكاةُ أعلاه تُعيد كتابة المنطق في ملفّ الاختبار، فتصير حارساً
        يقيس **نسخته** لا الكود. هذا القسم يُشغّل الدالّتين الحقيقيّتين من المصدر —
@@ -2332,6 +2356,21 @@ console.log('ضابطُ الفئة — «مَن يقرأ هذا نصّاً؟»:'
   /* 🔴 يُبنى اسمُ الوثيقة الوهميّة **وقتَ التشغيل** لا كنصٍّ حرفيّ — وقع الفخُّ فعلاً
      2026-09-12: كتابتُه حرفيّاً تجعل `docPathsOf` يعدّه في **المصدر غيرِ المطفور** أيضاً
      ⇒ الحارسُ يحمرّ على نفسه. وهي فئةُ **المِجَسِّ الذي يقيس أثرَ وجودِه هو**. */
+  /* 🔴 **وأيُّ الوقايتين هي الحاملة؟ قِيس بالطفرة 2026-09-13، والجوابُ صحّح ما كان مكتوباً
+     هنا:** كان مكتوباً أن بناءَ الاسم **وقتَ التشغيل** هو ما يمنع الحارسَ من الاحمرار على
+     نفسه. **والمقيس: تحويلُه إلى نصٍّ حرفيٍّ (`'zzUnguarded.md'`) ⇒ `EXIT=0` · صفرُ حمرة.**
+     🎯 **فالحاملُ هو الإسنادُ إلى متغيّرٍ:** `docPathsOf` يشترط نداءَ `path.join` واسمَ
+     وثيقةٍ **متجاورَين في نصّ المصدر**، والقوالبُ أدناه تركّبه بالتسلسل فلا يتجاور.
+     🔴 **ووقع ذلك على كاتب هذا التعليق نفسِه في المرور نفسِه:** صياغةٌ أولى ضربت المثالَ
+     **بالصيغة المطابِقة داخل التعليق** ⇒ `❌ غيرُ معلَن: x.md` — **فالنثرُ هنا مُدخَلُ
+     حارسٍ لا زخرفة**، وهو بعينه ما تقوله §١٤ في `_docs/قواعد-التنظيف.md`. ⇒ **لو كُتب
+     المسارُ داخل القالب حرفيّاً لاحمرَّ الحارسُ على نفسه** — سواءٌ بُني الاسمُ بالتسلسل أم لا.
+     🔒 **ونظيرُه `ZZ_PROBE` أدناه عكسُه تماماً، وقِيس بنفس المرور:** تحويلُه إلى حرفيٍّ
+     ⇒ **`❌ … غيرُ منسوب: ZZ_UNRELATED` · `EXIT=1`** — لأن `probeNamesOf` يطابق العلامةَ
+     **أينما وردت** بلا سياق. ⇒ **هناك التسلسلُ حاملٌ، وهنا ليس** — والوصفُ الواحدُ
+     للاثنين كان يُعلّم مناعةً في غير موضعها.
+     ⚠️ **ويبقى التسلسلُ هنا احتياطاً مقصوداً لا زينة:** أوّلُ قالبٍ يُكتب لاحقاً بمسارٍ
+     متجاورٍ يُحيي الفخَّ، والتسلسلُ يجعل **قيمةَ** الاسم غيرَ قابلةٍ للمطابقة أصلاً. */
   var ZZ_MD = 'zz' + 'Unguarded' + '.m' + 'd';
   var SELF_ANCHOR = "var selfSrc = fs.readFileSync(SELF, 'utf8');";
   var mutNewDoc = selfSrc.replace(SELF_ANCHOR,
@@ -2725,6 +2764,85 @@ console.log('عقدُ كاش الحافّة المنشور — مطابقةٌ ث
         (extra.length ? ' — الزائدُ: ' + extra.join(' · ') : ''));
   check(declared.length === live.length,
         '🔒 ضابط: العددان متطابقان (‏' + live.length + ') — لا تكرارَ يُخفي فرقاً');
+})();
+
+/* ── 🔴 عقدُ نافذة الدخول المنشور = `BH_LOGIN_FNS` حرفياً + أسوأُ زمنٍ مُحاكىً ──────
+ *
+ * **العلّةُ التي يغلقها (2026-09-13):** حارسُ مطابقةِ هذه الأسماء بمصدر GAS يقرأ المستودعَ
+ * الشقيق **من القرص**، وهو خاصٌّ وغيرُ مُحضَرٍ في CI هذا ⇒ `SKIPPED`. فإعادةُ تسميةِ إحداها
+ * هناك **تُسقط نافذةَ القبول الأوسع صامتاً**: لا خطأ · لا سطرٌ أحمر — فقط **رفضُ دخولٍ
+ * أكثرُ في أسوأ لحظة**. 🎯 **وحارسٌ يتخطّى في البيئة التي تُلزم وحدَها ليس حارساً** —
+ * وهذا هو نمطُ `edge-cache-contract.json` نفسُه، لعلّةٍ من فئته.
+ *
+ * 🔴 **والتأكيدُ ثنائيُّ القطب هو ما يمنع الملفَّ من أن يصير النسخةَ الثالثة:** يحمرّ على
+ * **زيادةٍ** في الكود لا يعلنها العقد، وعلى **نقصٍ** يعلنه العقدُ ولا وجودَ له.
+ * 🔗 **و`workerWorstCaseLoginMs` يُقارَن بالقيمة المحسوبة أعلاه لا بمحاكاةٍ ثانيةٍ هنا** —
+ * محاكاتان تتباعدان، والحارسُ حينها يقيس نسختَه.
+ * ⚠️ **وحدُّه يُقال: يُمكِّن مستهلكَ GAS من الإحمرار ولا يجعله يحمرّ** — الفحصُ هناك، وهذا
+ * الملفُّ يضمن أن ما يجلبه **مطابقٌ للمصدر** لا أنه **يُجلَب**.
+ */
+console.log('');
+console.log('عقدُ نافذة الدخول المنشور — مطابقةٌ ثنائيّةُ القطب مع المصدر:');
+(function () {
+  var LJ = path.join(__dirname, 'login-fns-contract.json');
+  if (!fs.existsSync(LJ)) {
+    check(false, '🔴 `worker/login-fns-contract.json` مفقود — المستهلكُ الخارجيُّ يجلب فراغاً');
+    return;
+  }
+  var doc;
+  try { doc = JSON.parse(fs.readFileSync(LJ, 'utf8')); }
+  catch (e) { check(false, '🔴 العقدُ ليس JSON صالحاً — ' + e.message); return; }
+
+  var declared = doc && doc.loginFunctions;
+  check(Object.prototype.toString.call(declared) === '[object Array]' && declared.length > 0,
+        'ضابط: `loginFunctions` مصفوفةٌ غيرُ فارغة (‏مجموعةٌ فارغة لا تُقرأ نجاحاً)');
+  if (Object.prototype.toString.call(declared) !== '[object Array]' || !declared.length) return;
+
+  /* يُشغَّل المصدرُ نفسُه لا يُقرأ نصّاً — تعليقٌ في الكتلة لا يُنتج اسماً وهمياً. */
+  var lIdx = src.indexOf('var BH_LOGIN_FNS = {');
+  var lEnd = src.indexOf('\n};', lIdx) + 3;
+  check(lIdx >= 0 && lEnd > lIdx, 'ضابط: استُخرجت `BH_LOGIN_FNS` من المصدر');
+  if (lIdx < 0 || lEnd <= lIdx) return;
+  var lctx = vm.createContext({}), liveFns;
+  try { vm.runInContext(src.slice(lIdx, lEnd), lctx); liveFns = Object.keys(vm.runInContext('BH_LOGIN_FNS', lctx)); }
+  catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
+  check(liveFns.length > 0, 'ضابط: المصدرُ أعطى اسماً واحداً على الأقلّ (‏صفرٌ = لم يُقَس شيء)');
+
+  var missing = liveFns.filter(function (k) { return declared.indexOf(k) === -1; });
+  var extra = declared.filter(function (k) { return liveFns.indexOf(k) === -1; });
+  check(missing.length === 0,
+        '🔴 قطبٌ ①: كلُّ اسمٍ في `BH_LOGIN_FNS` **معلَنٌ** في العقد' +
+        (missing.length ? ' — الناقصُ: ' + missing.join(' · ') : ''));
+  check(extra.length === 0,
+        '🔴 قطبٌ ②: كلُّ اسمٍ في العقد **موجودٌ** في الكود' +
+        (extra.length ? ' — الزائدُ: ' + extra.join(' · ') : ''));
+  check(declared.length === liveFns.length,
+        '🔒 ضابط: العددان متطابقان (‏' + liveFns.length + ') — لا تكرارَ يُخفي فرقاً');
+
+  /* ═ الرقمان المنشوران يُطابَقان بما حُسب من المصدر — لا يُكتبان بيدٍ فيتقادما ═ */
+  check(LOGIN_WORST_MS > 0,
+        'ضابط: أسوأُ زمنٍ مُحاكىً حُسب فعلاً قبل مطابقته (‏' + LOGIN_WORST_MS + 'ms)');
+  check(doc.workerWorstCaseLoginMs === LOGIN_WORST_MS,
+        '🔴 `workerWorstCaseLoginMs` المنشور = المحسوبُ من ثوابت المصدر (‏' +
+        doc.workerWorstCaseLoginMs + ' مقابل ' + LOGIN_WORST_MS + ')');
+  check(doc.requiredClientMarginMs === LOGIN_MARGIN_MIN_MS,
+        '🔴 `requiredClientMarginMs` المنشور = العتبةُ المفروضةُ هنا (‏' +
+        doc.requiredClientMarginMs + ' مقابل ' + LOGIN_MARGIN_MIN_MS + ')');
+
+  /* ── الضوابطُ المعاكسة: يُطفَر **العقد** في الذاكرة ويجب أن ينقلب الحكمُ في الاتّجاهين.
+     🔴 وبلاها تبقى المطابقةُ دعوى: مجموعتان متساويتان تُنتجان خُضرةً بلا أن تُثبت
+     أن عدمَ التساوي يُنتج حمرة. وشرطُ «الطفرةُ وقعت» محمولٌ في كلٍّ. */
+  var mutDrop = declared.slice(1);
+  check(mutDrop.length !== declared.length &&
+        liveFns.filter(function (k) { return mutDrop.indexOf(k) === -1; }).length > 0,
+        '🔒 ضابطٌ معاكس ①: **حذفُ اسمٍ من العقد** (إعادةُ تسميةٍ في GAS) ⇒ يُكشف');
+  var ZZ_FN = 'zz' + 'Login' + 'Ghost';
+  var mutAdd = declared.concat([ZZ_FN]);
+  check(mutAdd.length !== declared.length &&
+        mutAdd.filter(function (k) { return liveFns.indexOf(k) === -1; }).length > 0,
+        '🔒 ضابطٌ معاكس ②: **اسمٌ في العقد بلا وجودٍ في الكود** ⇒ يُكشف');
+  check(doc.workerWorstCaseLoginMs + 1 !== LOGIN_WORST_MS,
+        '🔒 ضابطٌ معاكس ③: رقمٌ منشورٌ منحرفٌ بمللي‑ثانيةٍ واحدة ⇒ يُكشف — والمطابقةُ صارمةٌ عمداً');
 })();
 
 // ── 🔴 `len` في سطر `ev:'gas'` — طولٌ لا محتوى ──────────────────────────────
