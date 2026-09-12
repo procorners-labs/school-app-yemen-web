@@ -5662,6 +5662,32 @@ function renderGradesVisChips() {
   box.style.display = html ? 'block' : 'none';
 }
 
+// ── تضييق قائمة شعب إلى شعب فصلٍ بعينه ───────────────────────────
+// المصدر `App.lists.sectionsByGrade` = `_getRealSectionsMap()` الخادمية (من ورقة
+// «الطلاب»). الغرض: أن يرى المديرُ/المشرفُ **شعبَ الفصل المختار** لا اتحادَ شعب
+// المدرسة كلِّها لكل فصل (كان يُعرَض «د» لفصلٍ لا يملكها، بل لا تملكها المدرسةُ أصلاً).
+//
+// 🔴 ثلاث قواعد لا تُخالَف — كلٌّ منها له ضابطٌ معاكس في test-offline:
+//  ① التضييقُ **فقط** عند `grade` غيرِ فارغ. `grade === ''` تعني «بلا سياق فصل»
+//    (صفحةُ الشهادات تستدعيها كذلك) ⇒ تُرجَع القائمةُ كما هي، وإلّا كُسرت صفحةٌ تعمل.
+//  ② خريطةٌ غائبةٌ أو بلا مدخلٍ لهذا الفصل أو بمدخلٍ فارغ ⇒ **تراجعٌ إلى القائمة
+//    الكاملة**. مدرسةٌ مزوَّدةٌ حديثاً بلا طلاب تُعطي خريطةً فارغة، وحجبُ الشعب
+//    حينها يمنع النشرَ أصلاً — والتراجعُ هنا مقصودٌ ومُختبَر لا إغفال.
+//  ③ **تضييقٌ لا توسيع**: النتيجةُ مجموعةٌ فرعيةٌ من `list` دائماً — فلا يتجاوز
+//    المشرفُ المقيَّدُ تقييدَه لأن فصلاً يملك شعبةً ليست في نطاقه.
+function _secNarrowByGrade(list, grade) {
+  list = list || [];
+  if (!grade) return list;                                   // ①
+  var map = (App.lists && App.lists.sectionsByGrade) ? App.lists.sectionsByGrade : null;
+  var real = (map && map[grade]) ? map[grade] : null;
+  if (!real || !real.length) return list;                    // ②
+  var out = [];
+  for (var i = 0; i < list.length; i++) {                    // ③ الترتيبُ يتبع `list`
+    if (real.indexOf(list[i]) !== -1) out.push(list[i]);
+  }
+  return out.length ? out : list;                            // ② تراجعٌ عند صفر تقاطع
+}
+
 // ── تتالي الصف (+ المادة اختيارياً) → الشعبة ─────────────────────
 // شعب صف محدد ضمن سياق المادة إن مُرِّرت. ترجع الشعب «الخام» (بلا خيار «جميع
 // الشعب») — مناسبة لفلاتر العرض. الشعب محلولة فعلياً من الخادم في assignments.
@@ -5672,10 +5698,14 @@ function getMySectionsForGradeSubject(subject, grade) {
   // (المقيَّد إن وُجد تقييد، أو الكامل إن لم يُقيَّد)؛ لا نعتمد isAdmin() هنا
   // كي لا نتجاوز التقييد بعرض كل شعب المدرسة.
   if (isSupervisor()) {
-    return (App.user.sections && App.user.sections.length) ? App.user.sections.slice() : [];
+    var supRaw = (App.user.sections && App.user.sections.length) ? App.user.sections.slice() : [];
+    // المشرف: نطاقُه المحلَّل خادميّاً **يُقاطَع** بشعب الفصل الحقيقية — تضييقٌ لا توسيع.
+    // (لو وُسِّع لتجاوز تقييد «ضبط صلاحيات المشرف» — وهو ما حذّر منه التعليق أعلاه.)
+    return _secNarrowByGrade(supRaw, grade);
   }
   if (isAdmin()) {
-    return (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
+    var allFlat = (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
+    return _secNarrowByGrade(allFlat, grade);
   }
   var asg = _myAssignments();
   if (!asg) {
@@ -5712,10 +5742,10 @@ function getMySectionsForGradeSubject(subject, grade) {
 // نسخة لإدخال البيانات: تُضيف خيار «جميع الشعب» عند تعدّد الشعب (يحفظ سلوك
 // المودالات السابق الذي كان يتيح الإرسال لكل الشعب دفعةً واحدة).
 function getMySectionsForGradeSubjectWithAll(subject, grade) {
-  if (isAdmin()) {
-    var allSec = (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
-    return (allSec.length > 1) ? ['جميع الشعب'].concat(allSec) : allSec;
-  }
+  // ★ لا فرعَ `isAdmin` مسطّحاً هنا — التفويضُ إلى المُحكِّم الوحيد
+  //   `getMySectionsForGradeSubject` فيرث المديرُ وعيَه بالفصل تلقائياً. وكان الفرعُ
+  //   المحذوف يُرجع اتحادَ شعب المدرسة لكل فصل ⇒ الواجباتُ والدرجاتُ والحضورُ
+  //   والتعاميمُ كلُّها كانت تعرض شعباً لا يملكها الفصلُ المختار.
   var raw = getMySectionsForGradeSubject(subject, grade);
   return (raw.length > 1) ? ['جميع الشعب'].concat(raw) : raw;
 }
@@ -5727,19 +5757,26 @@ function getMySectionsForGrade(grade) {
 }
 
 // السلوك القديم (بُعداً بُعداً) — يُستخدم للأدوار الخاصة (assignments=null) لضمان التوافق.
+// ★ صار واعياً بالفصل عبر `_secNarrowByGrade` في كل مخرَج: الأدوارُ الخاصّة
+//   (activities/it/media) نطاقُها «جميع الشعب» فتُوسَّع إلى شعب المدرسة كلِّها — والتضييقُ
+//   يجعلها شعبَ الفصل المختار وحدَه. 🔴 والتضييقُ **قبل** إضافة بادئة «جميع الشعب» لأن
+//   المستدعي يقتطع العنصرَ الأوّل بالموضع لا بالقيمة.
 function _legacyMySectionsForGrade(grade) {
   if (!App.user) return [];
   if (isAdmin()) {
     var allSec = (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
+    allSec = _secNarrowByGrade(allSec, grade);
     if (allSec.length > 1) return ['جميع الشعب'].concat(allSec);
     return allSec;
   }
   var mySec = App.user.sections || [];
   if (mySec.indexOf('جميع الشعب') !== -1) {
     var allSecForTeacher = (App.lists && App.lists.sections) ? App.lists.sections.slice() : ['أ', 'ب', 'ج'];
+    allSecForTeacher = _secNarrowByGrade(allSecForTeacher, grade);
     if (allSecForTeacher.length > 1) return ['جميع الشعب'].concat(allSecForTeacher);
     return allSecForTeacher;
   }
+  mySec = _secNarrowByGrade(mySec, grade);
   if (mySec.length > 1) return ['جميع الشعب'].concat(mySec);
   return mySec;
 }
@@ -7101,7 +7138,7 @@ function loadSession() {
 }
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
-  try { sessionStorage.removeItem('teacherLists_v2'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v3'); } catch(e) {}
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
   try { ClientCache.clear(); } catch(e) {} // ✅ يمسح أيضاً كل كاش callServer المخزَّن بـsessionStorage
                                            // (كان يبقى من مدرسة/جلسة سابقة عند تبديل ?school=)
@@ -7868,7 +7905,7 @@ function bootApp() {
   // ── تحميل القوائم + تحميل Schema ──
   var cachedLists = null;
   try {
-    var raw = sessionStorage.getItem('teacherLists_v2');
+    var raw = sessionStorage.getItem('teacherLists_v3');
     if (raw) {
       var parsed = JSON.parse(raw);
       if (parsed._ts && (Date.now() - parsed._ts) < 30 * 60 * 1000) {
@@ -8046,12 +8083,15 @@ function _fetchListsFromServer(callback) {
         sections       : r.sections   || [],
         violations     : r.violations || [],
         subjectsByGrade: r.subjectsByGrade || {},
+        // ★ خريطة شعب كل فصل — إسقاطُها هنا يُبطل وعيَ الواجهة بالفصل **صامتاً**
+        //   (هذه الكتلةُ أسقطت مفاتيحَ قبلاً — بند 3 في teacher/CLAUDE.md).
+        sectionsByGrade: r.sectionsByGrade || {},
         nonGradedSubjects: r.nonGradedSubjects || {},
         curriculumByGrade: r.curriculumByGrade || {},
         subjectExpansionMap: r.subjectExpansionMap || {},
         _ts            : Date.now()
       };
-      try { sessionStorage.setItem('teacherLists_v2', JSON.stringify(App.lists)); } catch(e) {}
+      try { sessionStorage.setItem('teacherLists_v3', JSON.stringify(App.lists)); } catch(e) {}
       if (callback) callback(true);
     } else {
       console.warn('getListsDataProtected returned success=false');
@@ -8093,6 +8133,9 @@ function _getDefaultLists() {
       'عدم احترام المعلم', 'تميّز أكاديمي', 'مشاركة فعّالة',
       'سلوك مثالي', 'إنجاز متميز', 'تعاون وروح الفريق', 'انضباط واتزان'
     ],
+    // ★ حاضرٌ فارغاً بعقدٍ معلَن: `_secNarrowByGrade` تتراجع إلى القائمة المسطّحة عند
+    //   الفراغ — وغيابُ المفتاح يُنتج التراجعَ نفسَه لكن بلا أيّ إعلان.
+    sectionsByGrade: {},
     _ts        : Date.now()
   };
 }
@@ -8964,8 +9007,11 @@ function _newsRenderGradeSectionTree() {
   var grades = myGrades();
   var html = '';
   if (grades.length > 1) {
+    // التسميةُ تتبع الدور: `myGrades()` تُرجع للمدير/الوكيل/المحاسب **كلَّ فصول المدرسة**
+    // لا فصولَه هو — فـ«فصولي وشعبي» كانت تُقرأ نطاقاً شخصياً وهي نطاقُ المدرسة كاملةً.
+    var allLbl = isAdmin() ? 'تحديد كل فصول المدرسة وشعبها' : 'تحديد كل فصولي وشعبي';
     html += '<label class="asgn-sec-lbl" style="font-weight:600;display:block;margin-bottom:6px">' +
-      '<input type="checkbox" id="newsAllGradesChk" onchange="_newsOnAllGradesToggle(this)"> تحديد كل فصولي وشعبي</label>' +
+      '<input type="checkbox" id="newsAllGradesChk" onchange="_newsOnAllGradesToggle(this)"> ' + allLbl + '</label>' +
       '<hr style="margin:4px 0 8px;border-color:var(--border,#ddd)">';
   }
   for (var i = 0; i < grades.length; i++) {
@@ -10550,7 +10596,7 @@ var HELP_TOPICS_CATALOG = [
     {type:'p', text:"لتوثيق أي حصة أو نشاط أو مناسبة قمت بها — بصورة أو فيديو أو نص فقط."},
     {type:'ol', items:[
       "اضغط «➕ انشر الخبر من هنا».",
-      "اختر الفصل/الفصول والشعب المعنيّة — يمكنك تفعيل أكثر من فصل، وكل فصل تُظهِر شعبه تلقائياً (أو زر «تحديد كل فصولي وشعبي» إن كان لديك أكثر من فصل).",
+      "اختر الفصل/الفصول والشعب المعنيّة — يمكنك تفعيل أكثر من فصل، وكل فصل يُظهِر شعبه الحقيقية وحدها تلقائياً (أو مربّع «تحديد الكل» أعلى القائمة إن كان لديك أكثر من فصل).",
       "اكتب نص الخبر، وأرفق صورة (حتى ٣٠MB) أو فيديو (حتى ٣٠٠MB) إن أردت — يمكن إرفاق أكثر من ملف.",
       "اضغط نشر — الخبر يظهر فوراً لأولياء أمور الطلاب المعنيّين."
     ]},
