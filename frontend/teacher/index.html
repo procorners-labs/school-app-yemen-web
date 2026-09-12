@@ -5343,6 +5343,27 @@ function isAdmin() {
   return !!(App.user && App.user.isAdmin);
 }
 
+/* ★ هل دورُ المستخدم هو `r`، **أو** يحمله ضمن أدواره التشغيليّة المضافة؟
+ *
+ * 🔴 **الفئةُ التي وُجدت لها:** `#1556` أضاف الدورَ المركَّب خادميّاً (`session.extraRoles`)
+ * فبقي `role === 'teacher'` بقصد — **وكلُّ فحصٍ واجهيٍّ حرفيٍّ `App.user.role === 'x'`
+ * صار أعمى عنه**. وأخطرُ صورةٍ لذلك رابطٌ **ظاهرٌ ومضمونُ الفشل**: القائمةُ تُظهره
+ * (بعد `_sbEffectiveRoles`) والصفحةُ ترفضه فتُعيد المستخدمَ إلى اللوحة برسالة —
+ * وهو **أسوأُ من الإخفاء** لأنه يُعيد بند teacher 30 مرئيّاً بدل صامت.
+ * ⇒ تُستعمل هذه بدل المساواة الحرفيّة في **كلّ** فحصٍ واجهيٍّ يخصّ `activities`/`media`.
+ * ⚠️ **ولا تُستعمل للأدوار الإداريّة** (‏admin·deputy·accountant·supervisor): تلك
+ * **لا تدخل `extraRoles` بنيويّاً** (مستثناةٌ في `TeacherAuth.js` بقرارِ مالك)، فاستعمالُها
+ * هناك يوهم بمسارٍ لا وجودَ له.
+ * 🔴 **وهذه واجهةٌ لتجربةِ الاستخدام لا حاجزَ صلاحية** — الحجبُ الحقيقيُّ خادميٌّ
+ * بـ`_authCan` (بند 13: الإخفاءُ الواجهيُّ ليس إخفاءً). */
+function _tcHasRoleOrExtra(r) {
+  if (!App.user) return false;
+  if (String(App.user.role || '') === r) return true;
+  var x = App.user.extraRoles || [];
+  for (var i = 0; i < x.length; i++) { if (String(x[i] || '') === r) return true; }
+  return false;
+}
+
 function isFullAdmin() {
   return !!(App.user && App.user.role === 'admin');
 }
@@ -10417,13 +10438,50 @@ function _sbSyncSections() {
   }
 }
 
+/* ★ الأدوارُ الفعّالة = الدورُ الأساسيُّ **+ الأدوارُ التشغيليّةُ المضافة**.
+ *
+ * 🔴 **العلّةُ التي جاءت لها — ونصفُ التوصيل أخطرُ من عدمه:** `#1556` أضاف الدورَ
+ * المركَّب خادميّاً (‏`session.extraRoles` يقرؤها `_authCan` فتمنح القدرات فوق التكليف)،
+ * **وصفرُ ذِكرٍ لها في العميل** ⇒ مشرفةُ أنشطةٍ تُدرّس تملك القدراتَ خادميّاً
+ * **والقائمةُ الجانبيّةُ تُخفي صفحاتِها** (‏`si-activitySup` · `si-adminActivities`
+ * أدوارُها admin·deputy·activities وهي `teacher`).
+ * 🎯 **وهو بند teacher 30 حرفياً** («الخادمُ يسمح والعرضُ يمنع») — مُستنسَخاً بأثر `#1556`.
+ * ⚠️ **ولا يُصلَح بتحويل `role` إلى `activities`** — ذاك يُعيد دهسَ التكليف الذي جاء
+ * `#1556` ليمنعه.
+ *
+ * 🔴 **والاتجاهُ محدَّدٌ بقصد: الاتّحادُ يُظهِر ولا يُخفي.** المركَّبُ يرى اتحادَ صفحاتِ
+ * دورَيه، **ولا تُخفى صفحةٌ كان يراها**. ومَن بلا `extraRoles` مخرَجُه **مطابقٌ حرفياً**
+ * لما قبل التغيير — ويفرضه ضابطٌ يحسب مجموعةَ صفحاتِ كلِّ دورٍ من الثمانية قبل/بعد.
+ * ⚠️ وتُقصَر على الأدوار القانونية الثمانية فلا تُسرّب قيمةً غريبةً من الجلسة. */
+function _sbEffectiveRoles(role, u) {
+  var LEGAL = { admin:1, deputy:1, supervisor:1, accountant:1, activities:1, it:1, media:1, teacher:1 };
+  var out = [];
+  if (LEGAL[role]) out.push(role);
+  var extra = (u && u.extraRoles) ? u.extraRoles : [];
+  for (var i = 0; i < extra.length; i++) {
+    var e = String(extra[i] || '');
+    if (LEGAL[e] && out.indexOf(e) === -1) out.push(e);
+  }
+  if (!out.length) out.push('teacher');   // نفسُ تراجعِ `_sbResolveRole`
+  return out;
+}
+
+/* هل يملك أيُّ دورٍ فعّالٍ هذه الصفحة؟ — تقاطعُ مجموعةٍ بدل مساواةِ عنصر. */
+function _sbAnyRoleAllows(allowed, roles) {
+  for (var i = 0; i < roles.length; i++) {
+    if (allowed.indexOf(roles[i]) >= 0) return true;
+  }
+  return false;
+}
+
 // الأدوار المدفوعة بالجدول (admin/deputy/activities/it/media/teacher).
 function _sbApplyTable(role) {
+  var effRoles = _sbEffectiveRoles(role, App.user);
   for (var id in SIDEBAR_ROLE_RULES) {
     if (!SIDEBAR_ROLE_RULES.hasOwnProperty(id)) continue;
     var el = document.getElementById(id);
     if (!el) continue;
-    el.style.display = (SIDEBAR_ROLE_RULES[id].indexOf(role) >= 0) ? '' : 'none';
+    el.style.display = _sbAnyRoleAllows(SIDEBAR_ROLE_RULES[id], effRoles) ? '' : 'none';
   }
   // ★ معلّم مادة تخصصية غير مرصودة بدرجات بالكامل (رياضة/مكتبة/تدبير منزلي وأمثالها) —
   //   لا يُدخل درجات إطلاقاً (محكوم أصلاً خادمياً عبر _tcAssertGradableSubject)، فإخفاء
@@ -19021,7 +19079,9 @@ function _newsIsOfficial() {
   try {
     if (isAdmin()) return true;
     if (typeof isSupervisor === 'function' && isSupervisor()) return true;
-    return !!(App.user && App.user.role === 'activities');
+    // ★ والمركَّبُ (‏`extraRoles:['activities']`) رسميٌّ أيضاً — وإلّا لزمه اعتمادٌ
+    //   لخبرٍ يملك سلطةَ نشره، وهو نقضٌ لنيّة #1556 لا مجرّدُ اختلافِ عرض.
+    return _tcHasRoleOrExtra('activities');
   } catch (e) { return false; }
 }
 
@@ -22427,7 +22487,13 @@ function doImportTeachers(inp) {
 
 // ==================== ADMIN ACTIVITIES ====================
 function renderAdminActivities() {
-  if (!isAdmin() && !(App.user && App.user.role === 'activities')) { toast('ليس لديك صلاحية', 'error'); showSection('dashboard'); return; }
+  // 🔴 ويُسأل الدورُ المركَّبُ أيضاً (‏`extraRoles` — #1556): الفحصُ الحرفيُّ وحدَه كان
+  //    يجعل رابطاً **ظاهراً** في القائمة يُعيد المستخدمَ إلى اللوحة برسالة رفض.
+  //    **إضافةٌ لا إبدال:** `isAdmin()` يبقى شرطاً أوّلَ حرفياً (يشمل المحاسبَ الذي كان
+  //    يرى الصفحة)، والطرفُ الجديد يُضيف المركَّبَ وحدَه. ونظيرُه الخادميُّ في
+  //    `TeacherCore.js::getAllActivitiesProtected` — والطبقتان تُغيَّران معاً وإلّا بقي
+  //    نصفُ توصيلٍ يظهر رابطاً ويمنعه الخادم.
+  if (!isAdmin() && !_tcHasRoleOrExtra('activities')) { toast('ليس لديك صلاحية', 'error'); showSection('dashboard'); return; }
   var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(245,158,11,.1)">📋</div><div class="section-header-title">جميع الأنشطة</div><button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'adminActivities\')" style="padding:4px 8px">❓</button></div><div class="section-body"><div class="tabs mb-3"><button class="tab-btn active" onclick="switchActivitiesTab(\'homework\',this)">📝 الواجبات</button><button class="tab-btn" onclick="switchActivitiesTab(\'news\',this)">📢 الأخبار</button><button class="tab-btn" onclick="switchActivitiesTab(\'violations\',this)">⚠️ السلوكيات</button></div><div id="adminActivitiesContent"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div></div>';
   document.getElementById('dynamicContent').innerHTML = html;
   loadAdminActivities();
@@ -32488,8 +32554,26 @@ function _prInApp() {
 }
 
 /* استعلامُ الرابط بلا `school`/`schoolId` — يُستعمل فقط حين يحمل المسارُ المكتوب
-   slug (فالمعامل صار زائداً؛ الشقيقان يُعالَجان معاً — فئة بند 127). ما عداهما
-   (`open=financial` مثلاً) يبقى. بلا `URLSearchParams` — WebView قديم. */
+   slug (فالمعامل صار زائداً؛ الشقيقان يُعالَجان معاً — فئة بند 127).
+   بلا `URLSearchParams` — WebView قديم.
+
+   🔴 **و`open` يُسقَط أيضاً منذ 2026-09-12 — وكان بقاؤه مكتوباً هنا صراحةً («ما عداهما
+   `open=financial` مثلاً يبقى») وهو مصدرُ عطلٍ مقيسٍ من بلاغ المالك:**
+
+   `open` **معاملُ رابطٍ عميقٍ لمرّةٍ واحدة** يستهلكه الإقلاعُ **بعد** `initSidebarByRole`
+   فينادي `showSection(open)`. وبقاؤه في الرابط بعد كتابةِ المسار يُنتج **رابطاً يناقض
+   نفسَه**: `‎/teacher/news/<slug>?open=financial` — فيقرأ المُوجِّهُ `news` من المسار
+   ثمّ **يخطفه المعاملُ إلى `financial`** عند كلّ إعادةِ تحميل.
+   ⇒ **الأثرُ المُبلَّغُ حرفياً:** «الرابطُ لا يتغيّر بطريقةٍ صحيحة» و«لا أرى صفحةَ نشر
+   الأخبار» — **لأن القسمَ المطلوبَ لا يُفتَح أصلاً**، لا لأن الأخبارَ محجوبة
+   (‏`TeacherNewsRead.js` يُعطي المديرَ كلَّ الأخبار بلا فلتر — قِيس).
+
+   🟢 **وإسقاطُه ليس فقداً بل ترجمة:** هذه الدالّةُ تُستدعى **حين يُكتَب مسارٌ يسمّي
+   القسمَ** ⇒ القسمُ محفوظٌ في المسار، فالمعاملُ صار **تمثيلاً ثانياً متنافساً**
+   (نفسُ علّةِ «تمثيلَين لنفس القسم» التي يحرسها هذا الملفّ أصلاً).
+   ⚠️ وروابطُ `getMyPlatformLinksProtected` التي تحمل `?open=` **تبقى تعمل**: تُستهلَك
+   عند أوّل تحميل، ثمّ تُترجَم إلى مسارٍ وتُسقَط — لا تُبطَل.
+   🔴 **ولا مساسَ بالرابط داخل التطبيق ولا على المضيف الإرثيّ** — المُهاجِرُ يخرج قبلها. */
 function _prCleanSearch() {
   var raw = '';
   try { raw = String(window.location.search || ''); } catch (e) { raw = ''; }
@@ -32498,7 +32582,7 @@ function _prCleanSearch() {
   for (var i = 0; i < parts.length; i++) {
     if (!parts[i]) continue;
     var k = parts[i].split('=')[0].toLowerCase();
-    if (k === 'school' || k === 'schoolid') continue;
+    if (k === 'school' || k === 'schoolid' || k === 'open') continue;
     keep.push(parts[i]);
   }
   return keep.length ? ('?' + keep.join('&')) : '';
@@ -32516,7 +32600,37 @@ function _prCleanSearch() {
 function _prMigrateLegacy(name) {
   try {
     var path = String(window.location.pathname || '').toLowerCase();
-    if (path !== '/teacher/index.html') return;
+    /* ★ ويُقبَل **مسارُ الـslug القصير** `/<slug>` إلى جانب الشكل القديم (2026-09-12).
+     *
+     * 🔴 **العلّةُ مقيسةٌ من بلاغ المالك:** لوحةُ المعلّم تُخدَم أيضاً على
+     * `/<slug>?open=<قسم>`، و`_prParsePath` لا تعرف ذلك المسارَ فتُرجع `null`،
+     * فيُستدعى هذا المُهاجِرُ **ويخرج صامتاً لأن الشرطَ كان مساواةً حرفيّةً لـ
+     * `/teacher/index.html`** ⇒ **الرابطُ متجمّدٌ على `?open=financial` مهما تنقّل
+     * المستخدم**، ومعه: إعادةُ التحميل لا تعود لنفس القسم، ولا رابطَ مشاركةٍ لقسم.
+     *
+     * 🟢 **والمسارُ الهدفُ مقيسٌ حيّاً لا مفترَضاً:** `curl` على
+     * `/teacher/financial/<slug>` و`/teacher/dashboard/<slug>` ⇒ **`200`** ⇒ الوركرُ
+     * يخدمها فعلاً فلا ٤٠٤ عند إعادة التحميل (‏والافتراضُ بلا قياسٍ كان سيكسرها).
+     *
+     * ⚠️ **وكلُّ الشروط الأخرى تبقى حرفيّةً:** خروجٌ داخل التطبيق (`_prInApp`) وعلى
+     * المضيف الإرثيّ — **روابطُ الـAPK تبقى تُخدَم كما هي للأبد** — وبلا slug لا هجرة،
+     * وقسمٌ قانونيٌّ فقط، و`replaceState` حصراً (الهجرةُ ليست تنقّلاً).
+     * 🔴 **والقبولُ بمطابقةِ الـslug نفسِه لا بأيّ مسارٍ ذي مقطعٍ واحد** — وإلّا هاجر
+     * المُوجِّهُ من مساراتٍ لا يملكها (‏`/pricing` · `/portal` · أيُّ مسارٍ محجوز). */
+    var legacyPath = (path === '/teacher/index.html');
+    var slugPath = false;
+    if (!legacyPath) {
+      var seg = path.replace(/^\/+|\/+$/g, '');
+      if (seg && seg.indexOf('/') === -1) {
+        var brandSlug = '';
+        try {
+          var bb = window._schoolBrand;
+          brandSlug = (bb && bb.slug) ? String(bb.slug).trim().toLowerCase() : '';
+        } catch (eb) { brandSlug = ''; }
+        slugPath = !!brandSlug && seg === brandSlug;
+      }
+    }
+    if (!legacyPath && !slugPath) return;
     var host = '';
     try { host = String(window.location.hostname || '').toLowerCase(); } catch (eH) { host = ''; }
     if (host === 'school.procorners.com') return;
