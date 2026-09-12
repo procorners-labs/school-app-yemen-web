@@ -15816,12 +15816,24 @@ function renderTasksMgmt() {
   // تعبئة قوائم الفلاتر
   var stSel = document.getElementById('tf-status');
   for (var i = 0; i < TASK_STATUSES.length; i++) stSel.innerHTML += '<option value="' + TASK_STATUSES[i] + '">' + TASK_STATUSES[i] + '</option>';
+  /* 🔴 فشلُ النقل (502 عند الإشباع · انقطاعُ شبكة) لا يصمت في الجسر: `callServer` يسلّم
+     إلى هذا الـcallback كائناً مُصطنَعاً `{success:false,error}` (‏`_js-core-bridge.html:986`).
+     وبلا هذا الفحص يُقرأ ذلك الكائنُ «صفرَ معلّمين» ⇒ قائمةٌ فارغةٌ بلا رسالة، ويُشخَّص
+     «لا بيانات» بدل «تعذّر الجلب» — وهما تشخيصان متعاكسان. */
   callServer('getTeacherNamesProtected', {}, function (r) {
+    if (r && r.success === false) {
+      try { toast('⚠️ تعذّر جلب أسماء المعلمين — أعد المحاولة', 'warning'); } catch (eT) {}
+      return;
+    }
     TASKS.teachers = (r && (r.teachers || r.names)) || [];
     var tSel = document.getElementById('tf-teacher');
     if (tSel) for (var j = 0; j < TASKS.teachers.length; j++) tSel.innerHTML += '<option value="' + escapeHtml(TASKS.teachers[j]) + '">' + escapeHtml(TASKS.teachers[j]) + '</option>';
   });
   callServer('getTaskTypesProtected', {}, function (r) {
+    if (r && r.success === false) {
+      try { toast('⚠️ تعذّر جلب أنواع المهام — أعد المحاولة', 'warning'); } catch (eT) {}
+      return;
+    }
     TASKS.types = (r && r.types) || [];
     var tySel = document.getElementById('tf-type');
     if (tySel) { for (var i = 0; i < TASKS.types.length; i++) tySel.innerHTML += '<option value="' + escapeHtml(TASKS.types[i]) + '">' + escapeHtml(TASKS.types[i]) + '</option>'; }
@@ -22519,8 +22531,15 @@ function saveTeacher() {
 }
 function editTeacherAdmin(rowIndex) {
   showLoading();
+  /* 🔴 أخطرُ الثلاثة: بلا هذا الفحص يُفتَح مودال التعديل على كائن الفشل المُصطنَع
+     (`{success:false,error}`) فتظهر حقولُ معلّمٍ حقيقيٍّ **فارغة**، وأوّلُ حفظٍ يكتب الفراغَ
+     فوق بياناته. ⇒ التوقّفُ هنا ليس تحسينَ رسالة بل منعُ كتابةٍ خاطئة. */
   callServer('adminGetTeacher', { rowIndex: rowIndex }, function(t) {
     hideLoading();
+    if (t && t.success === false) {
+      showError((t && t.error) || 'تعذّر جلب بيانات المعلم — أعد المحاولة');
+      return;
+    }
     openTeacherModal(rowIndex, t);
   });
 }
