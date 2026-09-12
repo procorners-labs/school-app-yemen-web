@@ -2035,7 +2035,8 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
     caches: { default: {
       match: function (req) { hits.match++; var e = store[req.url];
                               return e ? new FakeResponse(e.text, { headers: { 'X-Api-Ts': e.ts } }) : undefined; },
-      put:   function (req, resp) { hits.put++; store[req.url] = { text: resp._t, ts: String(Date.now()) }; }
+      put:   function (req, resp) { hits.put++; store[req.url] = { text: resp._t, ts: String(Date.now()),
+                                                                  cc: resp.headers.get('Cache-Control') }; }
     } }
   });
   vm.runInContext(aSrc, actx);
@@ -2133,6 +2134,50 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
   // ⑫ إخفاقُ الكاش يُرجِع null لا يرمي.
   check(get('https://x', 'teacher', probe(JSON.stringify({ fn: 'getStudentSchoolBrand', args: ['zzz'] }))) === null,
         'إخفاقُ الكاش يُرجِع `null` بلا رمي');
+
+  /* ⑬ 🔴 **بوّابةُ الطزاجة — الفرضُ انتقل من `caches.match` إلينا (2026-09-12).**
+     `_apiCachePut` صار يخزّن بعمرٍ **أطول** من الطزاجة كي يبقى البائتُ مطابَقاً للتراجع
+     ⇒ **`match` لم تعُد تُهمل البائتَ**، فلو خُدِم بلا بوّابةٍ صار **إصابةً طازجةً بصمت**:
+     الصفحةُ تعمل، والبياناتُ قديمةٌ، ولا شيء يحمرّ — انحدارٌ أخطرُ من العطل الأصليّ.
+     **ولماذا سلوكيّةٌ لا نصّية:** `grep` يُثبت أن الدالّةَ مكتوبة، لا أنها تصنّف `ttl+1`
+     بائتاً، ولا أنها تقرأ **جدولَ الدوالّ** بدل ثابتٍ موحَّد. */
+  var freshOf  = vm.runInContext('_apiCacheFreshness', actx);
+  var ttlOf    = vm.runInContext('_apiTtlFor', actx);
+  var staleMax = vm.runInContext('API_STALE_MAX_S', actx);
+  var gateOk = typeof freshOf === 'function' && typeof ttlOf === 'function' && staleMax > 0;
+  check(gateOk, 'ضابط: بوّابةُ الطزاجة قابلةٌ للتشغيل فعلاً (وإلّا الفحصُ أجوف)');
+  if (gateOk) {
+    var tHome = ttlOf('getHomePageBundle');
+    check(freshOf('getHomePageBundle', 0) === 'fresh' &&
+          freshOf('getHomePageBundle', tHome) === 'fresh',
+          'عمرٌ داخل الطزاجة ⇒ `fresh` (والحدُّ شامل)');
+    check(freshOf('getHomePageBundle', tHome + 1) === 'stale' &&
+          freshOf('getHomePageBundle', tHome + staleMax) === 'stale',
+          '🔴 بعد الطزاجة وداخل نافذة البيات ⇒ `stale` **لا** `fresh`');
+    check(freshOf('getHomePageBundle', tHome + staleMax + 1) === 'expired',
+          '🔒 بعد نافذة البيات ⇒ `expired` — البياتُ محدودٌ لا مفتوح');
+    /* 🔒 fail-closed: `_apiCacheGet` يعيد `age = -1` لمدخلٍ بلا `X-Api-Ts`. ولو قُرئ
+       `fresh` لخُدِم محتوىً **مجهولُ العمر** أبداً — وهو أسوأُ من غياب الميزة كلِّها. */
+    check(freshOf('getHomePageBundle', -1) === 'expired' &&
+          freshOf('getHomePageBundle', undefined) === 'expired',
+          '🔒 عمرٌ مجهول ⇒ `expired` (fail-closed) لا `fresh`');
+    /* 🔴 **أقوى ضابطٍ في المجموعة:** يُثبت أن البوّابةَ تقرأ الجدولَ لا ثابتاً واحداً.
+       `getHomeScheduleBundle` طزاجتُها 1800 و`getHomePageBundle` 120 ⇒ عمرُ 600 **طازجٌ
+       للأولى وليس للثانية**. وثابتٌ موحَّدٌ يجعلهما متساويَين فيحمرّ هذا وحدَه. */
+    check(ttlOf('getHomeScheduleBundle') !== tHome,
+          'ضابط: الدالّتان مختلفتا الطزاجة أصلاً (وإلّا الفحصُ التالي بلا معنى)');
+    check(freshOf('getHomeScheduleBundle', 600) === 'fresh' &&
+          freshOf('getHomePageBundle', 600) !== 'fresh',
+          '🔴 الطزاجةُ **لكلّ دالّةٍ من جدولها** لا ثابتٌ موحَّد');
+
+    /* ⑭ 🔴 العمرُ المخزَّن = طزاجة + بيات. ورجوعُه إلى `ttl` وحده يبدو تضييقاً آمناً
+       **وهو يُسقط التراجعَ صامتاً**: يعود البائتُ إلى الإهمال فيعود الـ٥٠٢ بلا أن يحمرّ شيء. */
+    put('https://x', 'teacher', pBrand, goodBrand);
+    var ccKey = keyOf('https://x', 'teacher', 'getTeacherSchoolBrand', pBrand.argsKey).url;
+    check(!!store[ccKey] &&
+          store[ccKey].cc === 'max-age=' + (ttlOf('getTeacherSchoolBrand') + staleMax),
+          '🔴 `Cache-Control` = طزاجة+بيات — لا الطزاجةَ وحدها');
+  }
 })();
 
 /* ── 🔴 موضعُ الاعتراض — بنيويّ لا سلوكيّ، وهو نصفُ الميزة ─────────────────────
@@ -2161,6 +2206,32 @@ console.log('كاشُ الحافّة — موضعُ الاعتراض (بنيوي
         'التخزينُ في `ctx.waitUntil` — خارج مسار الاستجابة فلا يُبطئ نداءً');
   check(/_acProbe && good && ctx/.test(seg),
         '🔒 التخزين مشروطٌ بـ`good` أيضاً — نقلٌ فاشل أو HTML لا يُخزَّن');
+
+  /* ── 🔴 التراجعُ إلى نسخةٍ بائتة (2026-09-12) — نصّيٌّ **بحدٍّ يُقال** ─────────────
+     المعالجُ دالّةُ `fetch` كاملةٌ ولا تُحاكى في هذا الملفّ، فالمقيسُ هنا **صيغةُ الشرط
+     وترتيبُه** لا سلوكُه. 🟢 **والسلوكُ مقيسٌ حيث يمكن:** بوّابةُ الطزاجة (⑬ أعلاه)
+     سلوكيّةٌ بـ`vm` بستّة فحوصٍ — فلا يُقرأ هذا القسمُ وحدَه شهادةً على الميزة. */
+  check(/_apiCacheFreshness\(_acProbe\.fn, _acHit\.age\)/.test(seg),
+        '🔴 الإصابةُ تمرّ بالبوّابة — لا تُخدَم بمجرّد وجود المدخل');
+  var iGate = seg.indexOf('_apiCacheFreshness');
+  var iHit  = seg.indexOf("act: 'hit'");
+  check(iGate > -1 && iHit > -1 && iGate < iHit,
+        '🔒 ضابط معاكس: البوّابةُ **تسبق** خدمةَ الإصابة');
+  check(/if \(!good && _bhWhy === 'abort_budget' && _acProbe && _acStale\)/.test(seg),
+        '🔴 التراجعُ البائت مشروطٌ بـ`abort_budget` لا بـ`!good` وحده');
+  /* 🔒 ضابطٌ معاكس للصيغة الخطأ بعينها: لو كان الشرطُ `!good` وحدَه لخُدِمت نسخةٌ قديمةٌ
+     فوق `upstream_status` (‏دالّةٌ أخفقت) و`upstream_html` (‏اعتراضُ Google) ⇒ **إخفاءُ
+     عطلٍ حقيقيّ** بدل سدِّ فجوةِ إشباع. */
+  check(!/if \(!good && _acStale\)/.test(seg) && !/if \(_acStale\)/.test(seg),
+        '🔒 ضابط معاكس: صفرُ صيغةٍ تخدم البائتَ بلا شرط السبب');
+  check(seg.indexOf("act: 'stale'") > -1 && seg.indexOf("'X-Api-Stale'") > -1,
+        'التراجعُ مرئيٌّ في السجلّ (`act:stale`) وفي الردّ (`X-Api-Stale`)');
+  /* 🔴 وقياسُ الإشباع يبقى صادقاً على المنبع: لو قلب التراجعُ `good` لانخفض عدّادُ
+     `abort_budget` **بلا أن يتحسّن الإشباع**، فيُبنى قرارُ نشرٍ حيّ على رقمٍ كاذب. */
+  var iStale = seg.indexOf("act: 'stale'");
+  var staleBlk = iStale > -1 ? seg.slice(Math.max(0, iStale - 400), iStale + 600) : '';
+  check(iStale > -1 && staleBlk.indexOf('good = true') === -1,
+        '🔒 التراجعُ لا يقلب `good` — عدّادُ الإشباع يبقى على المنبع');
 })();
 
 /* ── 🔴 `BULKHEAD_MODE` — تطابقُ الإعدادِ المنشور مع الكود ومع الوثيقة ────────────
