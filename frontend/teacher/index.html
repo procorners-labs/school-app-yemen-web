@@ -3745,6 +3745,97 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   }
   _tcApplyReturnHref('');
 
+  /* ══════════════════════════════════════════════════════════════════════════
+     بوّابةُ «لا مستأجرَ ⇒ لا خدمة» — قرارُ مالك 2026-09-14
+     ══════════════════════════════════════════════════════════════════════════
+     **نصُّ القرار:** «ورغم عدم وجود شيءٍ اسمه مدرسة مالك — يجب ألّا يوجد شيءٌ يعمل
+     بلا معرّف.»
+
+     🔴 **وهو ينقض سلوكاً قائماً وموثَّقاً:** التعليقُ أسفلَه مباشرةً كان يقول
+     «`sid` فارغ … `getTeacherSchoolBrand('')` تحلّه ديناميكياً لصفّ المدرسة
+     الافتراضية»، و`_Tenant.js::_setActiveTenant('')` يسقط على `SPREADSHEET_ID` =
+     **ملفّ مدرسة المالك** (بند 145). ⇒ زائرٌ بلا معرّفٍ كان يُوجَّه إلى مدرسةٍ
+     بعينها **صامتاً**.
+
+     🎯 **وهي إصلاحُ أداءٍ أيضاً لا تنظيفاً فقط — مقيسٌ حيّاً 2026-09-14:**
+     `/teacher/index.html` **بلا** معرّف = **21,622ms** · ومعه = **7,235ms**
+     (‏`curl -s -D - -o` · نفسُ الصفحةِ حجماً). والسببُ أن الغيابَ يفتح Master
+     ويقرأ ورقةَ Schools في كلّ دالّةٍ تسلك `_resolveActiveSchoolId()`، ويُفرِّغ
+     دلاءَ الكاش العميليّ (`boot_config_v3_` بلا لاحقة) ⇒ **إقلاعٌ باردٌ دائماً**.
+     ⇒ منعُ النداء من جذره يضرب نفسَ العنق (‏تزامنُ `SpreadsheetApp`).
+
+     🔴 **ولماذا هنا لا في `_setActiveTenant`:** للأخيرة **٧١ مُستدعياً** بينها
+     مساراتٌ داخليّةٌ مشروعةٌ تمرّر فراغاً عمداً (‏`cms/_Tenant.js::_activeFileId`)
+     ⇒ التشديدُ هناك **يكسر مساراتٍ سليمة**. البوّابةُ عند **مدخل السطح** لا عند
+     دالّة الحلّ.
+
+     🟢 **والأمانُ مقيسٌ لا مفترَض — قِيس `AppConfig.kt` في المشروعين:**
+     `SchoolAppyemen` (‏**المنشورُ على Play**) يفتح
+     `…/teacher/index.html?school=$EBDAA_SCHOOL_ID` ⇒ **صفرُ أثرٍ عليه**.
+     و`YemenSchoolz` يُلحِق `?school=` عبر `withSchool()` «إن وُجد» ⇒ بلا اختيارٍ
+     يرى هذه الشاشة، **وهو سلوكُه المقصود أصلاً** (اختيارُ المدرسة داخل التطبيق).
+
+     🔒 **ونطاقُها المعلّمُ وحدَه:** `Student Portal.html` لا تُضمِّن هذا الجزء
+     (لها `_stu-js-core`) ⇒ سطحُ الطالب غيرُ ممسوس.
+
+     ⚠️ **وصفرُ نداءِ خادمٍ في هذا المسار عمداً** — التوجيهُ رابطٌ إلى دليل المدارس
+     القائم، لا قائمةٌ تُجلَب. فلا استثناءَ في قائمة سماحٍ يُنسى، ولا نداءٌ يضرب
+     نفسَ الطابور الذي جئنا نخفّفه.
+     ══════════════════════════════════════════════════════════════════════════ */
+  function _tcTenantIdFromAnySource() {
+    var v = '';
+    try {
+      if (window.__SCHOOL_BRAND__ && window.__SCHOOL_BRAND__.schoolId) v = window.__SCHOOL_BRAND__.schoolId;
+    } catch (e) {}
+    if (!v && typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) v = SERVER_SCHOOL_ID;
+    if (!v && window.SCHOOL_ID) v = window.SCHOOL_ID;
+    if (!v) {
+      try {
+        var q = new URLSearchParams(window.location.search);
+        // 🔴 الاسمان معاً — رابطٌ بـ`schoolId=` كان يُقرأ فراغاً (نفسُ فخّ بند 99).
+        v = q.get('school') || q.get('schoolId') || '';
+      } catch (e2) {}
+    }
+    return (v === null || v === undefined) ? '' : String(v).trim();
+  }
+
+  window.__TC_NO_TENANT__ = !_tcTenantIdFromAnySource();
+
+  if (window.__TC_NO_TENANT__) {
+    (function () {
+      function _tcShowTenantGate() {
+        if (document.getElementById('tcTenantGate')) return;
+        var d = document.createElement('div');
+        d.id = 'tcTenantGate';
+        d.setAttribute('role', 'alertdialog');
+        d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;' +
+          'align-items:center;justify-content:center;padding:24px;' +
+          'background:#0f172a;color:#f8fafc;font-family:inherit;direction:rtl;text-align:center;';
+        var box = document.createElement('div');
+        box.style.cssText = 'max-width:520px;line-height:1.9;';
+        var h = document.createElement('h1');
+        h.style.cssText = 'font-size:1.5rem;margin:0 0 12px;';
+        h.textContent = 'اختر مدرستك أولاً';
+        var p = document.createElement('p');
+        p.style.cssText = 'margin:0 0 22px;opacity:.85;';
+        p.textContent = 'هذا الرابط لا يحدّد مدرسةً بعينها، ولا تُفتح المنصّة بلا تحديد المدرسة. '
+          + 'اختر مدرستك من الدليل، أو استخدم الرابط الذي زوّدتك به مدرستك.';
+        var a = document.createElement('a');
+        a.href = (typeof SITE_ORIGIN_PUBLIC !== 'undefined' && SITE_ORIGIN_PUBLIC)
+          ? (SITE_ORIGIN_PUBLIC + '/') : '/';
+        a.textContent = 'دليل المدارس';
+        a.style.cssText = 'display:inline-block;padding:12px 28px;border-radius:10px;' +
+          'background:#38bdf8;color:#0f172a;font-weight:700;text-decoration:none;';
+        box.appendChild(h); box.appendChild(p); box.appendChild(a);
+        d.appendChild(box);
+        document.body.appendChild(d);
+        try { if (typeof hideLoading === 'function') hideLoading(); } catch (e) {}
+      }
+      if (document.body) _tcShowTenantGate();
+      else document.addEventListener('DOMContentLoaded', _tcShowTenantGate);
+    })();
+  }
+
   /* هوية المدرسة ديناميكيًا (اسم/شعار حسب schoolId) — يطبّق على كل .school-brand-name
      (تستخدمها دوال الطباعة/الشهادات/الكشوفات) والشعارات وعنوان الصفحة */
   (function () {
