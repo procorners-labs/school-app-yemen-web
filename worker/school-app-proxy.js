@@ -1727,8 +1727,21 @@ export default {
           var looksHtml = lastText.charAt(0) === '<';
           good = gasResp.status >= 200 && gasResp.status < 400 && !(isPost && looksHtml);
           /* المنبعُ ردّ فعلاً — فالإخفاقُ إن وقع منه لا منّا. و`html` تُفصَل عن `status`
-             لأن علاجَهما مختلف: الأولى اعتراضُ صفحةٍ من Google، والثانية خطأُ دالّة. */
-          _bhWhy = good ? 'ok' : (isPost && looksHtml ? 'upstream_html' : 'upstream_status');
+             لأن علاجَهما مختلف: الأولى اعتراضُ صفحةٍ من Google، والثانية خطأُ دالّة.
+             🔴 **ورمزُ الحالة يُفحَص قبل شكل الجسم — قِيس 2026-09-14 (بند 243).** كان
+             الشرطُ يبدأ بـ`isPost && looksHtml`، **وصفحةُ خطإ Google نفسُها HTML** ⇒ كلُّ
+             ٤٠٤ تُصنَّف `upstream_html`، و`upstream_status` **فئةٌ لا تُملأ أبداً**.
+             الأثرُ المقيس: `upstream_status = 0` مع `st:404 = 10` في النافذة نفسِها —
+             **تطابقٌ تامّ بين عدّادَين يفترض أن يفترقا**، و١٨ حدثاً في ٢٤ ساعة على
+             `doPost` حقيقيّ منها مساراتُ دخول. 🔴 **والخطرُ أن العَلَمَ يكذب في الاتّجاه
+             الذي يُطمئن:** «صفرُ خطإ دالّة» تُقرأ صحّةً، وهي **نقصُ قياسٍ** لا سلامة.
+             ⚠️ والترتيبُ الجديد يُبقي `upstream_html` على معناها الأصليّ وحدَه: ردٌّ
+             **ناجحُ الحالة** يحمل صفحةً بدل JSON — وهو ما وُضعت له. */
+          _bhWhy = good
+            ? 'ok'
+            : ((gasResp.status >= 200 && gasResp.status < 400 && isPost && looksHtml)
+                ? 'upstream_html'
+                : 'upstream_status');
           if (good) break;
         } catch (err) {
           lastStatus = 502;
