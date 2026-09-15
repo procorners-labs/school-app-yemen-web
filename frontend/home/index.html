@@ -1098,6 +1098,57 @@ img,video,iframe{max-width:100%;display:block}
     pointer-events: auto !important;
   }
 }
+
+/* ── 💳 شاشةُ تسديد الاشتراك (2026-09-15) ─────────────────────────────────────
+   🔴 **`position:fixed; inset:0` لا `display:none` على المحتوى** — الإخفاءُ الواجهيُّ
+   ليس إخفاءً (بند 13)، لكنّ الغرضَ هنا **عرضٌ بديلٌ لا حجبُ سرّ**: البياناتُ عامّةٌ
+   أصلاً، والمطلوبُ ألّا يظن الزائرُ أن المدرسةَ تعمل. والغطاءُ الكاملُ يمنع التمرير
+   والنقرَ على ما خلفه بلا حاجةٍ لتفكيك الصفحة.
+   ⚠️ **و`overflow:hidden` على الجذر** لأن الغطاءَ وحدَه يترك شريطَ تمريرٍ يوحي بمحتوى. */
+:root.sub-gated { overflow: hidden; }
+.sub-gate{
+  position: fixed; inset: 0; z-index: 99999;
+  background: #fff; color: #0f172a;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 28px 20px; text-align: center;
+  overflow-y: auto;                      /* شاشةٌ قصيرةٌ لا تبتلع الأزرار */
+  font-family: inherit;
+}
+.sub-gate .sg-head{ display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.sub-gate .sg-logo{ width: 84px; height: 84px; object-fit: contain; border-radius: 14px; }
+.sub-gate .sg-name{ font-size: 22px; margin: 0; font-weight: 800; }
+.sub-gate .sg-why{ font-size: 17px; margin: 0; color: #b45309; font-weight: 700; }
+.sub-gate .sg-end{ margin: 0; font-size: 14px; color: #64748b; }
+.sub-gate .sg-load{ color: #64748b; font-size: 14px; }
+.sub-gate .sg-body{ display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; }
+.sub-gate .sg-amts{ display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.sub-gate .sg-amt{
+  background: #f1f5f9; border-radius: 10px; padding: 6px 14px;
+  font-weight: 800; font-size: 17px;
+}
+.sub-gate .sg-btn{
+  display: block; width: 100%; box-sizing: border-box;
+  padding: 13px 16px; border-radius: 12px; border: 0;
+  font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none;
+}
+.sub-gate .sg-local{ background: #e2e8f0; color: #0f172a; }
+.sub-gate .sg-wa{ background: #25d366; color: #fff; }
+.sub-gate .sg-local-box{
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px;
+}
+.sub-gate .sg-local-box p{ margin: 4px 0; }
+.sub-gate .sg-num{ font-size: 20px; letter-spacing: .5px; direction: ltr; }
+.sub-gate .sg-nm{ font-size: 14px; color: #475569; }
+.sub-gate .sg-lw{ font-size: 14px; color: #475569; }
+.sub-gate .sg-note{ font-size: 13px; color: #64748b; margin: 0; max-width: 340px; }
+
+@media (prefers-color-scheme: dark){
+  .sub-gate{ background: #0f172a; color: #e2e8f0; }
+  .sub-gate .sg-amt{ background: #1e293b; }
+  .sub-gate .sg-local{ background: #334155; color: #e2e8f0; }
+  .sub-gate .sg-local-box{ background: #1e293b; border-color: #334155; }
+  .sub-gate .sg-nm, .sub-gate .sg-lw, .sub-gate .sg-note, .sub-gate .sg-end{ color: #94a3b8; }
+}
 </style>
 </head>
 <body>
@@ -3143,6 +3194,11 @@ function loadHomeBundle(){
         // في الذيل لَما كُتب الكاش أبداً على صفحةٍ تفشل فيها خطوة عرض واحدة — أي تبقى
         // تلك الصفحة تحديداً بلا كاش للأبد وهي الأحوج إليه.
         _homeSafeApply('brandcache', function(){ _homeCacheBrand(b); });
+        /* 💳 **بوّابةُ الاشتراك — موضعُها هنا بالضبط لا قبلَه ولا بعدَه (2026-09-15).**
+           **بعد** تخبئة الهوية: شاشةُ التسديد تعرض **اسمَ المدرسة وشعارَها**، فلو سبقت
+           الكاشَ لظهرت بلا هويّة. و**قبل** كلّ خطوات العرض: لا معنى لرسم أخبارٍ ومعرضٍ
+           ثمّ تغطيتها. ⇒ **تُرجِع `true` فيتوقّف الموكبُ كلُّه.** */
+        if (_homeSubGate(b)) return;
         // الوسائط أولاً — هي التي تُزيل مؤشّرات التحميل الثلاثة، فتبقى الصفحة قابلة
         // للاستعمال حتى لو فشلت خطوة تالية.
         _homeSafeApply('news',    function(){
@@ -3201,6 +3257,166 @@ function loadHomeBundle(){
       .getHomePageBundle(_homeActiveSchoolId());
   } catch(e){_homeBundleFallback('');}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   💳 بوّابةُ تسديد الاشتراك (2026-09-15 · قرارُ مالك)
+   ═══════════════════════════════════════════════════════════════════════════
+   **العطلُ الذي تُغلقه:** مدرسةٌ منتهيةُ الاشتراك كانت تُعامَل **كأنها غيرُ موجودة**
+   (‏٤٠٤ من الوسيط) — فالمدرسةُ التي تأخّرت عن الدفع تختفي صفحتُها بلا أن يعرف أحدٌ لماذا،
+   **ولا سبيلَ أمامها للتسديد**. ⇒ صارت `listPublicSlugsPublic` تمرّر المتوقّفة، وهذه
+   الشاشةُ تشرح وتفتح مسارَ الدفع.
+
+   🔴 **fail-closed بثلاثة أوجه — وكلُّ وجهٍ يُغلق طريقاً لعرض الخدمة مجّاناً:**
+     ① **غيابُ الحقل يُعامَل توقّفاً لا نشاطاً.** حمولةٌ قديمةٌ مخبَّأةٌ بلا `subscription`
+        كانت ستُقرأ «نشطة» لو كان الشرط `b.subscription && !b.subscription.active`.
+     ② **و`reason: 'unknown'`** (تعذّرَ القراءة خادمياً) **يعرض الشاشةَ** برسالةٍ محايدة —
+        لا يُتّهم المستخدمُ بعدم الدفع، ولا تُفتَح له الخدمة.
+     ③ **وأيُّ رميٍ داخل الرسم يُبقي الشاشةَ ظاهرةً** ولا يُكمل الموكب.
+
+   ⚠️ **وحدٌّ يُقال صراحةً بدل الإيهام بحمايةٍ غير قائمة:** هذا **حجبُ عرضٍ لا حجبُ
+   بيانات**. بياناتُ الصفحة العامّة (اسمٌ وشعارٌ وأخبار) **عامّةٌ أصلاً** وتصل المتصفّحَ في
+   الحمولة، فمن يفتح الأدوات يراها. 🟢 **وذلك مقصود:** الشاشةُ تعرض هويّةَ المدرسة نفسَها،
+   وحجبُها خادمياً كان سيمنع الشاشةَ من أداء غرضها. **والحجبُ الحقيقيُّ للمنصّات المصادَقة
+   قائمٌ في مكانه** (`_assertActiveSchoolSubscription` في `teacher/`).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var _HOME_SUB_MSG = {
+  inactive: 'حسابُ مدرستكم غيرُ مفعَّل حالياً.',
+  expired : 'انتهت صلاحيةُ اشتراك مدرستكم.',
+  unknown : 'تعذّر التحقّق من حالة الاشتراك حالياً.'
+};
+
+/** يُرجِع `true` إن عُرضت شاشةُ التسديد — فيتوقّف موكبُ العرض. */
+function _homeSubGate(b){
+  try{
+    /* 🔴 الشرطُ **موجَبٌ** (`!== true`) لا سالب: غيابُ الحقل أو الحمولةُ القديمة
+       يسقطان في فرع المنع، لا في فرع السماح. */
+    var st = (b && b.subscription) ? b.subscription : { active:false, reason:'unknown', endDate:'' };
+    if (st.active === true) return false;
+
+    _homeRenderSubGate(b, st);
+    return true;
+  }catch(e){
+    /* رميٌ هنا يعني شاشةً لم تُرسَم — **ولا يجوز أن يفتح الخدمة**. يُعرَض بديلٌ نصّيٌّ
+       بسيط ويُوقَف الموكبُ على كلّ حال. */
+    try{ _homeSubGateBareFallback(); }catch(e2){}
+    return true;
+  }
+}
+
+function _homeSubGateBareFallback(){
+  var host = document.body;
+  if(!host) return;
+  var d = document.createElement('div');
+  d.id = 'subGate';
+  d.setAttribute('role','alert');
+  d.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;display:flex;'
+    + 'align-items:center;justify-content:center;padding:24px;text-align:center;font-size:18px';
+  d.textContent = 'اشتراكُ هذه المدرسة متوقّف حالياً. يرجى التواصل مع إدارة المنصّة.';
+  host.appendChild(d);
+}
+
+/* 🔴 **صفرُ رقمٍ ثابتٍ في هذه الصفحة — والقاعدةُ أمسكها حارسٌ عليَّ لا مراجعة.**
+   أوّلُ صياغةٍ وضعت رقمَ التواصل ثابتاً «احتياطاً»، فأحمرَّ حارسُ «صفرُ هويةٍ في
+   `home/Index.html` المخدوم» — **وهو محقٌّ لسببٍ أعمقَ من نصّه**: الصفحةُ تُخدَم لكلّ
+   مدرسةٍ، وأيُّ رقمٍ مكتوبٍ فيها يصير **جزءاً من مخرَجٍ ثابتٍ لا يُغيَّر إلّا بنشر**.
+   ⇒ المصدرُ **`Settings_Master` وحدَه** عبر `getSubscriptionPayInfoPublic`، وحين يفشل
+   النداءُ **تُعرَض رسالةٌ بلا رقم** بدل رقمٍ قد يكون بائتاً. */
+
+function _homeRenderSubGate(b, st){
+  var brand = (b && b.brand) ? b.brand : {};
+  var name  = String(brand.name || brand.schoolName || 'مدرستكم');
+  var logo  = String(brand.logo || '');
+  var sid   = String((b && b.schoolId) || '');
+
+  var wrap = document.createElement('div');
+  wrap.id = 'subGate';
+  wrap.setAttribute('role','alert');
+  wrap.className = 'sub-gate';
+
+  var head = '<div class="sg-head">'
+    + (logo ? '<img class="sg-logo" src="' + _sgAttr(logo) + '" alt="" loading="eager"'
+            + ' onerror="this.style.display=\'none\'">' : '')
+    + '<h1 class="sg-name">' + _sgEsc(name) + '</h1></div>';
+
+  var why = '<p class="sg-why">' + _sgEsc(_HOME_SUB_MSG[st.reason] || _HOME_SUB_MSG.unknown) + '</p>'
+    + (st.endDate && st.reason === 'expired'
+        ? '<p class="sg-end">تاريخ الانتهاء: <b>' + _sgEsc(st.endDate) + '</b></p>' : '');
+
+  wrap.innerHTML = head + why
+    + '<div class="sg-body"><p class="sg-load">جارٍ تحميل وسائل التسديد…</p></div>'
+    + '<p class="sg-note">سيُفعَّل اشتراككم في أقرب وقت بعد استلام الإيصال.</p>';
+
+  document.body.appendChild(wrap);
+  document.documentElement.classList.add('sub-gated');
+
+  /* الإعداداتُ تُجلَب **بعد** رسم الهوية والسبب — فالمستخدم يعرف ما جرى فوراً،
+     ووسائلُ الدفع تصل بعد جزءٍ من الثانية. ولو فشل النداءُ بقيت الهويّةُ والسببُ
+     ورقمُ التواصل الاحتياطيّ. */
+  try{
+    google.script.run
+      .withSuccessHandler(function(p){ _sgRenderPay(wrap, p, name, sid); })
+      .withFailureHandler(function(){ _sgRenderPay(wrap, null, name, sid); })
+      .getSubscriptionPayInfoPublic();
+  }catch(e){ _sgRenderPay(wrap, null, name, sid); }
+}
+
+function _sgRenderPay(wrap, p, schoolName, sid){
+  var body = wrap.querySelector('.sg-body');
+  if(!body) return;
+  p = p || {};
+  /* 🔴 بلا رقمٍ احتياطيٍّ ثابت (انظر التعليق عند `_homeSubGateBareFallback`): رقمٌ فارغ
+     ⇒ **يُخفى زرُّ واتساب ويُعرَض نصٌّ بدلَه**، ولا يُبنى رابطٌ إلى `wa.me/` فارغ. */
+  var wa = String(p.whatsapp || '');
+
+  /* نصُّ واتساب **مُعبَّأٌ باسم المدرسة ومعرّفها** — فالمالك يعرف صاحبَ الإيصال بلا سؤال،
+     وهو ما يجعل التفعيلَ اليدويَّ ممكناً في دقائق. */
+  var waText = encodeURIComponent(
+    'السلام عليكم، أرغب بتجديد اشتراك مدرسة: ' + schoolName +
+    (sid ? ' (معرّف: ' + sid + ')' : '') + '. مرفق إيصال التحويل.');
+
+  var amount = '';
+  if(p.amountUsd) amount += '<span class="sg-amt">' + _sgEsc(p.amountUsd) + ' $</span>';
+  if(p.amountYer) amount += '<span class="sg-amt">' + _sgEsc(p.amountYer) + ' ريال</span>';
+
+  var html = (amount ? '<div class="sg-amts">' + amount + '</div>' : '');
+
+  /* 🔒 زرُّ PayPal **مشروطٌ بـ`paypalReady` من الخادم** — لا بوجود المعرّف في الواجهة.
+     الخادمُ يُفرغ المعرّفَ ما لم يُفعَّل صراحةً، فلا يظهر زرٌّ بإعدادٍ نصفِ مضبوط. */
+  if(p.paypalReady && p.paypalClientId){
+    html += '<div id="sgPaypal" class="sg-pp" data-env="' + _sgAttr(p.paypalEnv || 'sandbox') + '"></div>';
+  }
+
+  html += '<button type="button" class="sg-btn sg-local" id="sgLocalBtn">💵 تحويل محلّي</button>'
+    + '<div id="sgLocal" class="sg-local-box" hidden>'
+    +   '<p class="sg-lw">' + _sgEsc(p.localWallets || 'كريمي · فلوسك · جيب') + '</p>'
+    +   (p.localNumber ? '<p class="sg-num"><b>' + _sgEsc(p.localNumber) + '</b></p>' : '')
+    +   '<p class="sg-nm">باسم: ' + _sgEsc(p.localName || 'منصة يمن سكولز') + '</p>'
+    + '</div>'
+    /* 🔒 الزرُّ يُبنى **فقط** إن وصل رقمٌ من الخادم — و`wa.me/` بلا رقمٍ يفتح صفحةَ خطأ،
+       وهو أسوأُ من غيابِ زرّ: يوحي بمسارٍ يعمل وهو مكسور. */
+    + (wa
+        ? '<a class="sg-btn sg-wa" target="_blank" rel="noopener"'
+          + ' href="https://wa.me/' + _sgAttr(wa) + '?text=' + waText + '">📩 إرسال الإيصال عبر واتساب</a>'
+        : '<p class="sg-nm">يرجى التواصل مع إدارة المنصّة لإتمام التسديد.</p>');
+
+  body.innerHTML = html;
+
+  var lb = document.getElementById('sgLocalBtn'), lx = document.getElementById('sgLocal');
+  if(lb && lx) lb.addEventListener('click', function(){ lx.hidden = !lx.hidden; });
+}
+
+/* تهريبٌ محلّيٌّ صغير — الصفحةُ تحمل `esc` عامّةً، لكنّ هذه الكتلة قد تُرسَم **قبل**
+   أيّ خطوة عرضٍ أخرى، فلا تُبنى على ترتيب تحميلٍ لا يضمنه شيء. */
+function _sgEsc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+/* 🔴 وللسمات: الهروبُ من `'` **يسبق** `escapeHtml` لا يتبعه (بند 15 في `teacher/`:
+   الترتيبُ المعكوس كان XSS مخزّناً حقيقياً داخل سمةٍ مضمّنة). و`_sgEsc` تفعلهما بالترتيب
+   الصحيح أصلاً، فهذه غلافٌ بالاسم يوضّح السياق. */
+function _sgAttr(s){ return _sgEsc(s); }
 
 /** المسار القديم — يبقى للتراجع حصراً (أربعة نداءات · بيانات CMS · إحصاء افتراضي). */
 function loadHomeBundleLegacy(){
