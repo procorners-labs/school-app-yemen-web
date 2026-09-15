@@ -893,7 +893,7 @@ console.log('سطح الفهرسة اللانهائي (soft-404):');
    (`!_KNOWN_SCHOOL_SLUGS[_pathSlug]`)، فأحمرَّ على **جعلِ السجلّ ديناميكياً** — وهو عملٌ
    صحيح. والثابتةُ التي يحرسها فعلاً ليست صياغةَ الشرط بل **وجودَ فحصٍ مشروطٍ قبل إعادة
    الكتابة**: مقطعٌ غيرُ منشور ⇒ 404، ومنشورٌ ⇒ يُعاد كتابته. */
-[[/if \(_pathSlug && !\(await _slugIsPublished\(/, 'الـslug يُفحَص ضدّ السجلّ قبل إعادة الكتابة'],
+[[/if \(_pathSlug && !\(await _slugIsKnown\(/, 'الـslug يُفحَص ضدّ السجلّ قبل إعادة الكتابة'],
  [/status: 404/, 'الحالة المُرجَعة 404 لا 200'],
  [/'X-Robots-Tag': 'noindex, follow'/, 'ورأس noindex معها (حزام وحمّالة)']
 ].forEach(function (c) {
@@ -903,7 +903,7 @@ console.log('سطح الفهرسة اللانهائي (soft-404):');
 });
 // ضابط الاتجاه المعاكس: الـslugs المنشورة **لا** تُرجَع 404 — يقيسه جدول `_canonicalFor`
 // أعلاه ضمناً (يُرجِع لها عنواناً صحيحاً)، ويؤكّده هنا أن الفحص مشروط بالنفي لا مطلق.
-var guardIsConditional = /!\(await _slugIsPublished\(/.test(src) &&
+var guardIsConditional = /!\(await _slugIsKnown\(/.test(src) &&
                          /if \(_pathSlug\) path = '\/home\/index\.html';/.test(src);
 if (!guardIsConditional) failed++;
 console.log((guardIsConditional ? '  ✅ ' : '  ❌ ') +
@@ -915,10 +915,10 @@ console.log((guardIsConditional ? '  ✅ ' : '  ❌ ') +
    تُقاس بالتنفيذ لا بالقراءة. */
 console.log('');
 console.log('سجلّ الـslugs الديناميكيّ (سلوكي):');
-var spIdx = src.indexOf('async function _slugIsPublished(');
+var spIdx = src.indexOf('async function _slugIsKnown(');
 var spEnd = spIdx < 0 ? -1 : src.indexOf('\n}', spIdx) + 2;
 if (spIdx < 0 || spEnd <= 1) {
-  console.log('  ❌ ضابط: تعذّر استخراج `_slugIsPublished` — الفحص أجوف');
+  console.log('  ❌ ضابط: تعذّر استخراج `_slugIsKnown` — الفحص أجوف');
   failed++;
 } else {
   /* 🔴 **الدالّة `async` والسكربتُ متزامن** — و`.then` هنا كان سيُطبَع **بعد** سطر
@@ -948,7 +948,7 @@ if (spIdx < 0 || spEnd <= 1) {
   function run(slug, cached, fresh) {
     spCtx.__cached = cached; spCtx.__fresh = fresh;
     calls.cache = 0; calls.refresh = 0;
-    return vm.runInContext('_slugIsPublished(' + JSON.stringify(slug) + ', "https://x", {})', spCtx);
+    return vm.runInContext('_slugIsKnown(' + JSON.stringify(slug) + ', "https://x", {})', spCtx);
   }
   [
     ['🔴 البذرةُ الساكنة تُجيب **بلا أيّ نداء** (وإلّا كلّفت كلَّ زيارة)',
@@ -1088,7 +1088,7 @@ console.log((apkFrozen ? '  ✅ ' : '  ❌ ') +
 // بالكامل — لا فرعَ يذكر `/schedule` في الوركر — فبقاؤه 200 يتّكئ على شيءٍ **واحدٍ غير
 // بديهيّ**: أن `'schedule'` ما زال في `_RESERVED_TOP_PATHS`. وحذفُ المشروع من المصدر
 // يجعل ذلك المدخلَ يبدو لمنظِّفٍ لاحقٍ **بقيّةً من مشروعٍ ميت** — وإسقاطُه يقلب المسار
-// من صفحةٍ ثابتة إلى **مرشَّحِ slug مدرسة** ⇒ `_slugIsPublished` يخفق ⇒ صفحة «لم نجد
+// من صفحةٍ ثابتة إلى **مرشَّحِ slug مدرسة** ⇒ `_slugIsKnown` يخفق ⇒ صفحة «لم نجد
 // هذه المدرسة» بـ**404**. أي أن الكسر يقع في مستودعٍ آخر تماماً، بلا أيّ خطأ نحويّ.
 //
 // ⚠️ والمسار **مجمَّدٌ في ثنائيّ تطبيقَي الأندرويد** (‏`AppConfig.kt::matchesDeployment`
@@ -2021,7 +2021,7 @@ console.log('منظّم التزاحم — استردادُ المقاعد ال�
      المقعد، لمرّ كلُّ شيءٍ أخضرَ بينما `_bhRelease(true)` تجد `indexOf === -1` فلا تُنقِص
      شيئاً ⇒ **إعادةُ إنتاج سقّاطة تسرّب المقاعد نفسها، والسقفُ نافذ هذه المرّة.** */
   /* ⚠️ **والوعدُ يُشَمّ متزامناً عمداً**: `.then` الحقيقيّ microtask يُنفَّذ **بعد** سطر
-     `RESULT` النهائي فيصير الفحصُ زينةً لا حارساً (نفس فخّ `_slugIsPublished` أعلاه).
+     `RESULT` النهائي فيصير الفحصُ زينةً لا حارساً (نفس فخّ `_slugIsKnown` أعلاه).
      الشيمُ يستدعي المستمعَ لحظةَ `resolve`. **ويُقاس قبل أن يُصدَّق حكمُه** — الضابطُ
      الأوّل أدناه يُثبت أنه يُطلق فعلاً، وإلّا بقي `_got` عند `"PENDING"` وكلُّ ما يليه أخضر. */
   vm.runInContext(
@@ -2071,7 +2071,7 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
     failed++;
     return;
   }
-  /* تجريدُ `async`/`await` بنفس نمط `_slugIsPublished` — والدوالّ هنا كذلك بلا فروعٍ
+  /* تجريدُ `async`/`await` بنفس نمط `_slugIsKnown` — والدوالّ هنا كذلك بلا فروعٍ
      تعتمد توقيت الوعد. ⚠️ والتجريدُ يُقاس قبل أن يُصدَّق حكمُه. */
   var aSrc = src.slice(aIdx, aEnd).replace(/async function/g, 'function').replace(/await /g, '');
   var stripOk = aSrc.indexOf('await ') === -1 &&
