@@ -2203,14 +2203,41 @@ export default {
         //    (من Play Console ← إعداد ← تكامل التطبيق، 2026-08-13)
         'CF:63:D5:66:10:1F:6C:1D:4D:3D:90:29:BD:8D:A6:89:A8:80:1A:BC:6A:2D:1F:F6:EE:62:87:F3:49:E0:FE:C9'
       ];
-      var alBody = JSON.stringify([{
-        relation: ['delegate_permission/common.handle_all_urls'],
-        target: {
-          namespace: 'android_app',
-          package_name: 'com.proconrers.schoolappyemen',
-          sha256_cert_fingerprints: alFingerprints
-        }
-      }]);
+      // 🆕 **«يمن سكولز» — أُضيف 2026-09-15، وبصمتُه واحدةٌ عمداً لا اثنتان.**
+      //    مفتاحُ الرفع مقيسٌ من مصدرين مستقلَّين (وثيقةُ `YemenSchoolz/CLAUDE.md`
+      //    §حالة التوقيع · ولوحةُ Firebase — تطابقٌ تامّ)، **ولم تُمرَّر كلمةُ سرٍّ
+      //    عبر أيّ أمرِ شِلّ.**
+      // 🔴 **ومفتاحُ توقيع Play غائبٌ عمداً لا سهواً:** التطبيقُ **لم يُنشر بعد**
+      //    (`versionCode 1`)، ومصدرُ ذلك المفتاح الوحيد *Play Console ← إعداد ←
+      //    تكامل التطبيق* — **ولا يوجد قبل أوّل رفع.** ⇒ بهذه البصمة وحدَها
+      //    **تعمل الروابطُ في التثبيت اليدويّ وتفشل لكلّ مستخدمٍ من Play** صامتةً
+      //    (`Domain verification state: none`). **بندٌ إلزاميٌّ باسم المالك:**
+      //    `assetlinks-needs-play-signing-key-after-first-upload`.
+      // ⚠️ **ولا تُكمِلها جلسةٌ لاحقةٌ ببصمةٍ من الـkeystore** — ذاك مفتاحُ الرفع
+      //    نفسُه، ومفتاحُ التوقيع **يديره Google ولا يُشتقّ محلّياً**.
+      var alSchoolzUpload = 'BD:65:0C:2E:9E:21:78:46:A3:52:57:3B:97:FE:52:2B:AD:09:97:6C:01:40:EE:85:23:88:1B:C7:7E:D9:7B:FD';
+
+      // 🔴 **ولماذا مُعرِّفان لتطبيقٍ واحد — وهي حالةٌ مؤقّتةٌ بشرطٍ مكتوب:**
+      //    `applicationId` ينتقل بقرار مالكٍ (2026-09-15) من `com.proconrers.schoolzyemen`
+      //    إلى `com.yemenschoolz.app`، **والنافذةُ مفتوحةٌ لأن التطبيقَ غيرُ منشورٍ
+      //    وتُغلق عند أوّل رفع.** وملفٌّ يعلن القديمَ وحدَه **يصير باطلاً بصمتٍ لحظةَ
+      //    التسمية**. ⇒ الاثنان معاً: القديمُ يخدم **الاختبارَ على جهازٍ حقيقيٍّ اليوم**
+      //    (البناءُ المحلّيُّ يحمله)، والجديدُ ما بعدها.
+      //    🟢 و`assetlinks.json` **مصفوفةُ تصريحاتٍ مستقلّة**: فشلُ التحقّق من حزمةٍ
+      //    غيرِ موجودة **لا يُسقط غيرَها** — كلُّ `statement` يُتحقَّق منه على حدة.
+      //    ⚠️ **ويُحذف القديمُ بعد إتمام التسمية** — وإلّا قُرئ لاحقاً حزمةً حيّةً ولا وجودَ لها.
+      var alStatement = function (pkg, fps) {
+        return {
+          relation: ['delegate_permission/common.handle_all_urls'],
+          target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: fps }
+        };
+      };
+      var alBody = JSON.stringify([
+        // 🔒 عقدُ التطبيق **المنشور** — لا يُمَسّ، وبصمتاه إلزاميّتان معاً (انظر أعلاه).
+        alStatement('com.proconrers.schoolappyemen', alFingerprints),
+        alStatement('com.proconrers.schoolzyemen', [alSchoolzUpload]),
+        alStatement('com.yemenschoolz.app', [alSchoolzUpload])
+      ]);
       return new Response(alBody, {
         status: 200,
         headers: {

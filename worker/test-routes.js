@@ -3101,6 +3101,82 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
   });
 })();
 
+/* ── عقدُ Digital Asset Links ───────────────────────────────────────────────
+ * 🔴 **لماذا حارسٌ على ملفٍّ يبدو ثابتاً:** `assetlinks.json` يخدم **ميزتين**
+ * (‏App Links و**WebAuthn** — «الدخول بالبصمة»)، و**عطبُه صامتٌ تماماً**: أثرُه
+ * الوحيدُ `Domain verification state: none` على جهاز المستخدم — **بلا خطإٍ في أيّ
+ * سجلّ، وبلا فرقٍ في رمز الحالة.** ⇒ رمزُ `200` يُثبت **خدمةَ الملفّ** لا
+ * **تحقّقَ النظام منه** — طبقتان لا تُخلطان، والفحصُ هنا يمسك الأولى وحدَها.
+ *
+ * ⚠️ **والفحصُ سلوكيٌّ لا نصّيّ:** تُستخرَج الكتلةُ وتُنفَّذ في `vm` ثمّ يُحلَّل
+ * ناتجُها — فـ`grep` على اسم حزمةٍ يمرّ على تعليقٍ يذكرها، ويسقط على إعادةِ تنسيق.
+ * 🔴 **وفشلُ الاستخراج أحمرُ لا تخطٍّ صامت:** إعادةُ تسميةِ متغيّرٍ في الوركر كانت
+ * ستُطفئ الحارسَ بلا أن يحمرّ شيء — وهو بعينه ما يجعل حارساً يبدو عاملاً وهو ميّت.
+ */
+(function () {
+  console.log('');
+  console.log('عقدُ `assetlinks.json` (استخراجٌ سلوكيٌّ بـ`vm` + طفرةٌ مقصودة):');
+
+  var s = src.indexOf('var alFingerprints = [');
+  var b = src.indexOf('var alBody = JSON.stringify([', s);
+  var e = b < 0 ? -1 : src.indexOf('\n', src.indexOf(']);', b));
+  if (s < 0 || b < 0 || e < 0) {
+    failed++;
+    console.log('  ❌ 🔴 تعذّر استخراجُ كتلة `assetlinks` من الوركر — **عطبُ مُدخَلٍ لا نجاح**');
+    return;
+  }
+  var block = src.slice(s, e);
+
+  function evalBlock(txt) {
+    var c = vm.createContext({ JSON: JSON });
+    vm.runInContext(txt, c);
+    return JSON.parse(vm.runInContext('alBody', c));
+  }
+
+  var list;
+  try { list = evalBlock(block); }
+  catch (err) {
+    failed++;
+    console.log('  ❌ 🔴 الكتلةُ لا تُنتج JSON صالحاً: ' + String(err.message).slice(0, 60));
+    return;
+  }
+
+  var okArr = Array.isArray(list) && list.length === 3;
+  if (!okArr) failed++;
+  console.log((okArr ? '  ✅ ' : '  ❌ ') +
+    'مصفوفةُ تصريحاتٍ بطول ٣ [المقيس: ' + (Array.isArray(list) ? list.length : 'ليست مصفوفة') + ']');
+
+  var EXPECT = {
+    'com.proconrers.schoolappyemen': 2,   // 🔒 المنشور: مفتاحُ الرفع + مفتاحُ توقيع Play
+    'com.proconrers.schoolzyemen': 1,     // «يمن سكولز» بالمعرّف القديم — يُحذف بعد التسمية
+    'com.yemenschoolz.app': 1             // 🆕 المعرّفُ الجديد — بصمةُ الرفع وحدَها حتى أوّل رفع
+  };
+  Object.keys(EXPECT).forEach(function (pkg) {
+    var st = (list || []).filter(function (x) { return x && x.target && x.target.package_name === pkg; })[0];
+    var fps = st && st.target && st.target.sha256_cert_fingerprints;
+    var good = !!st &&
+      Array.isArray(st.relation) && st.relation.length > 0 &&
+      st.target.namespace === 'android_app' &&
+      Array.isArray(fps) && fps.length === EXPECT[pkg] &&
+      fps.every(function (f) { return typeof f === 'string' && /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/.test(f); });
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + '`' + pkg + '` — ' + EXPECT[pkg] +
+      ' بصمةً صالحةَ الشكل [المقيس: ' + (Array.isArray(fps) ? fps.length : 'غائبة') + ']');
+  });
+
+  /* 🔴 الضابطُ المعاكس — وبلاه يكون ما سبق أجوف: تُسقَط حزمةُ المعرّف الجديد من
+     **نسخةٍ في الذاكرة** (الشجرةُ لا تُمَسّ) ويُتوقَّع أن يتغيّر الناتج. ويُطبَع
+     **ما اشتُقّ لا عدَدُه**، فيفضح الفحصَ الأجوف في سطر. */
+  var mutated = block.replace(/\n\s*alStatement\('com\.yemenschoolz\.app'[^\n]*\n/, '\n');
+  var mutatedLen = -1;
+  try { mutatedLen = evalBlock(mutated.replace(/,(\s*\]\);)/, '$1')).length; } catch (e2) { mutatedLen = -2; }
+  var mutationBites = (mutated !== block) && mutatedLen === 2;
+  if (!mutationBites) failed++;
+  console.log((mutationBites ? '  ✅ ' : '  ❌ ') +
+    '🔴 طفرة: بإسقاط `com.yemenschoolz.app` يصير الطولُ ٢ [المقيس: ' + mutatedLen +
+    (mutated === block ? ' · **الطفرةُ لم تُطبَّق — النمطُ لا يطابق**' : '') + ']');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
