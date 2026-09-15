@@ -190,6 +190,9 @@ body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;
 .pb-premium{background:#e8eaf6;color:var(--primary)}
 .plan-name{font-size:13px;font-weight:700;color:#333;margin-bottom:4px}
 .plan-price{font-size:18px;font-weight:800;color:var(--primary);margin-bottom:6px}
+/* 💳 المبلغُ أصغرُ من «السعر/المدّة» عمداً: ذاك عنوانُ الباقة وهذا تفصيلُها،
+   وتساويهما يُنتج سطرين متنافسين على العين. */
+.plan-amt{font-size:13px;font-weight:700;color:#334155;margin-bottom:6px}
 .plan-feat{font-size:11px;color:#777;line-height:1.7}
 
 /* ── Summary ── */
@@ -914,10 +917,42 @@ function _renderPlans(plans) {
             '<div class="plan-badge pb-' + badgeClass + '">' + _esc(p.badge || '') + '</div>' +
             '<div class="plan-name">' + _esc(p.name || '') + '</div>' +
             '<div class="plan-price">' + _esc(p.price || '') + '</div>' +
+            /* 💳 **المبلغُ يُعرَض تحت «السعر/المدّة» لا بدلاً منه (2026-09-15).**
+               `price` نصٌّ يصف **المدّة** («سنوي» · «30 يوم»)، وهذان **رقما الدفع**.
+               ⇒ يجتمعان فيقرأ المسجِّل «سنوي» ثمّ **كم** — وهو ما كان ناقصاً.
+               🔒 **ويُخفى السطرُ كلُّه حين لا مبلغ** — لا يُعرض صفرٌ ولا شرطةٌ مضلّلة،
+               فالباقةُ غيرُ المسعَّرة تبقى كما كانت تماماً (صفرُ انحدارٍ على القائم). */
+            _planAmountRow(p) +
             '<div class="plan-feat">' + feats + '</div>' +
             '</div>';
   }
   grid.innerHTML = html;
+}
+
+/**
+ * 💳 سطرُ مبلغِ الباقة — يُعرَض تحت «السعر/المدّة» حين يكون للباقة مبلغٌ فعليّ.
+ *
+ * 🔴 **والباقةُ التجريبيّةُ مستثناةٌ صراحةً لا بالصدفة (قرارُ مالك 2026-09-15):**
+ * هي **مجّانيّة**، وسعرُها النصّيُّ «30 يوم» يصف المدّة. ولو كُتب لها مبلغٌ سهواً في
+ * لوحة المطوّر **لَعُرض للمسجِّل رقمٌ على باقةٍ مجّانية** ⇒ **يُسقَط هنا صراحةً**،
+ * والاستثناءُ بالصنف `trial` لا بالمعرّف: المعرّفُ يحرّره المطوّر، **وصنفُ الشارة
+ * قائمةُ سماحٍ مغلقة** (‏`trial`/`standard`/`premium`) فلا ينحرف.
+ *
+ * ⚠️ **ولا يُعرَض صفرٌ ولا شرطة** — باقةٌ بلا مبلغٍ تبقى كما كانت حرفياً.
+ */
+function _planAmountRow(p) {
+  if (!p) return '';
+  var bc = String(p.badgeClass || '').trim().toLowerCase();
+  if (bc === 'trial') return '';                 // مجّانيّة — لا مبلغ ولا مسارَ دفع
+
+  var usd = String(p.amountUsd || '').trim();
+  var yer = String(p.amountYer || '').trim();
+  var parts = [];
+  if (usd) parts.push(_esc(usd) + ' $');
+  if (yer) parts.push(_esc(yer) + ' ريال');
+  if (!parts.length) return '';
+
+  return '<div class="plan-amt">' + parts.join(' · ') + '</div>';
 }
 
 function _setWa(id, href) {

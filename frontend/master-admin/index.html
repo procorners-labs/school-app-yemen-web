@@ -1631,6 +1631,22 @@ function plans_render() {
         '<label style="font-size:12px;color:#555;">السعر/المدّة<input class="pl-price" type="text" value="' + _plEsc(p.price) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
         '<label style="font-size:12px;color:#555;">حدّ الطلاب (0 = غير محدود)<input class="pl-limit" type="number" min="0" value="' + _plEsc(p.limit == null ? 0 : p.limit) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
       '</div>' +
+      /* 💳 **مبلغا الباقة — أُضيفا 2026-09-15 بقرار مالك.**
+         🔴 **ومنفصلان عن «السعر/المدّة» عمداً ولا يحلّان محلَّه:** ذاك حقلٌ **نصّيٌّ
+         للعرض** («سنوي» · «30 يوم») تقرؤه صفحةُ التسجيل، وهذان **رقمان للدفع** تقرؤهما
+         بوّابةُ التسديد وصفحةُ التسجيل معاً. **ودمجُهما كان يكسر أحدَ السطحين.**
+         ⚠️ **و`type="number"` لا يكفي حارساً** — المتصفّحُ يسمح باللصق، والتحقّقُ
+         الحاسمُ خادميٌّ في `savePlansProtected` (يرفض غيرَ الرقميّ بصراحة). */
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">' +
+        '<label style="font-size:12px;color:#555;">المبلغ بالدولار (اختياري — للدفع بالبطاقة)' +
+          '<input class="pl-amtusd" type="number" min="0" step="any" placeholder="مثال: 50" value="' +
+          _plEsc(p.amountUsd == null ? '' : p.amountUsd) +
+          '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+        '<label style="font-size:12px;color:#555;">المبلغ بالريال (اختياري — للتحويل المحلّي)' +
+          '<input class="pl-amtyer" type="number" min="0" step="any" placeholder="مثال: 25000" value="' +
+          _plEsc(p.amountYer == null ? '' : p.amountYer) +
+          '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+      '</div>' +
       '<label style="font-size:12px;color:#555;display:block;margin-top:10px;">المميّزات (سطرٌ لكلّ ميزة)' +
         '<textarea class="pl-features" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
         _plEsc((p.features || []).join('\n')) + '</textarea></label>' +
@@ -1659,6 +1675,11 @@ function plans_collect() {
       badgeClass: String(v('.pl-badgeclass') || 'standard'),
       price     : String(v('.pl-price') || '').replace(/^\s+|\s+$/g, ''),
       limit     : parseInt(v('.pl-limit'), 10) || 0,
+      /* 💳 يُحصَدان **نصّاً مُقلَّماً لا `parseInt`** — الفراغُ يجب أن يبقى فراغاً
+         (‏«لا يُعرض»)، و`parseInt('')` يعطي `NaN` فيُحفَظ `null` أو `0`، **و`0` سعرٌ
+         معروضٌ للمشترك لا «بلا سعر»**. والتحقّقُ الرقميُّ خادميٌّ. */
+      amountUsd : String(v('.pl-amtusd') || '').replace(/^\s+|\s+$/g, ''),
+      amountYer : String(v('.pl-amtyer') || '').replace(/^\s+|\s+$/g, ''),
       features  : clean
     });
   }
