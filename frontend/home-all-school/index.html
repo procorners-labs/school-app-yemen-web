@@ -1,3 +1,16 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════════════════
+     الصفحة الرئيسية العامّة لمنصّة يمن سكولز — صفحة الهبوط + دليل المدارس.
+
+     المحتوى التسويقي (الهيرو · #about-app · #features · #platform-details · #faq · التذييل)
+     **منقول من `home-all-school/Index.html`** الذي يبقى حيّاً بلا لمسة كشبكة أمان: معرّف
+     نشره لا يُحذف أبداً (بند 104)، وثلاثة ملفات و~60 تأكيداً تقرؤه بمساره الحرفي، ويشير
+     إليه تطبيق أندرويد `SchoolzYemen`. المنقول ≈828 سطراً من 1739 — والباقي (‏#schoolView
+     وبوّابة الـslug ونصف السكربت) **ميّت للتوجيه** لأن `/<slug>` يذهب إلى `/home/index.html`
+     منذ 2026-08-07 (بند 104).
+
+     دليل المدارس يستهلك `listPartnerSchoolsPublic()` (‏`home/_PublicPage.js`، نُقلت بـ#933
+     وهي وحدها التي تُرجِع حقل `slug`). نداء واحد لكل فتح صفحة؛ كل التصفية عميلية.
+     ═══════════════════════════════════════════════════════════════════════════════════════ -->
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -80,12 +93,8 @@
 </script>
 <!-- ▲▲ نهاية الحقن ▲▲ -->
 
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- اسم المنتج القانوني الموحَّد: «Yemen Schoolz» لاتيني بحت — مطابق حرفياً لحقل App name في
-       شاشة موافقة Google OAuth. لا تُدخِل شرطة عمودية ولا حروفاً عربية في `og:site_name` أو
-       JSON-LD `name`: الصيغة المختلطة كانت تُعرَض معكوسة بصرياً داخل dir="rtl" فتُنتج رفض
-       «الاسم لا يطابق» (بند 64). الاسم العربي يبقى ظاهراً كـ`alternateName` وكسطر مستقل بالهيرو. -->
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>Yemen Schoolz — يمن سكولز | نظام إدارة المدارس</title>
   <meta name="description" content="Yemen Schoolz (يمن سكولز) — نظام إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.">
   <!-- ⚠️ canonical ثابت لا يُلمَس ديناميكياً أبداً (لا تُضِفه إلى setMeta): الجذر يمثّل المنصّة
@@ -133,7 +142,19 @@
   "inLanguage": "ar"
 }
   </script>
-  <style>
+<!-- 🔴 بلا وسم البيان وبلا الأيقونات وبلا robots هنا عمداً: `injectionBlock` و
+     `identityBlock` يحقنونها، والإعلان في المصدر فوقها يُنتج وسمَين (بند 75-ب).
+     ما يُعلَن هنا حصراً هو ما يتخطّاه الحقن عند وجوده: canonical · og:site_name ·
+     كتلتا ld+json — فيصير مخرَج الجذر مطابقاً بنيوياً لمخرَجه اليوم. -->
+<!-- لا وسم robots هنا: الحقن يضع index,follow للصفحات العامّة، وإعلانٌ
+     في المصدر يُلغي الحقن (hasRobotsTag) فيصير الجذر noindex بصمت. -->
+<!-- 🔴 لا `preconnect` إلى `lh3.googleusercontent.com` هنا (‏2026-08-12): رصده PageSpeed
+     **اتصالاً مُسبَقاً غير مستخدَم**. والسبب بنيوي لا تجميلي: شعارات المدارس لا تُطلَب إلا
+     بعد عودة `/gas/home` — وهي **10,543 ملي ثانية** على المسار الحرج بالقياس نفسه، أي بعد
+     انقضاء نافذة الاتصال المُسبَق بمراحل. فالوسم يستهلك ميزانية اتصال بلا عائد.
+     ويبقى في `home/News.html` حيث الصور تُطلَب فعلاً مبكراً. -->
+
+<style>
     :root{
       --brand:#0F5C8C; --brand2:#0A4266; --ink:#1a2233; --muted:#667085;
       --bg:#f6f8fc; --card:#ffffff; --line:#e6eaf2; --ok:#0f9d58; --shadow:0 8px 30px rgba(20,40,80,.08);
@@ -161,30 +182,6 @@
     a{color:inherit;text-decoration:none}
     img{max-width:100%;display:block}
     .wrap{max-width:1160px;margin:0 auto;padding:0 18px}
-
-    /* هوية حركية سينمائية خاصة بـ home-all-school — «شبكة المدارس المتصلة» (مصمَّمة خصيصاً لهذا
-       التطبيق، متمايزة عن مكتبة home/Index.html). Timeline:
-         0.05s–0.85s : كشف العنوان بستارة تُفتح من اليمين إلى اليسار (clip-path، تناسب RTL)
-         0.40s–1.10s : انزلاق الفقرة من الأسفل
-         0.62s/0.74s/0.86s : ظهور أزرار CTA الثلاثة فردياً بارتداد خفيف (overshoot)
-         0.70s       : عقدة "المنصّة" المركزية تظهر (hub) في كوكبة الـHero
-         1.25s→1.70s : ست خطوط تُرسَم من العقدة المركزية إلى ست عُقَد "مدارس" فردياً (تتابع .09s)
-         1.90s→2.35s : عُقَد المدارس تظهر تباعاً عند اكتمال كل خط (تأثير "الاتصال يكتمل فعقدة تُضاء")
-         مستمر (loop) : شبكة نقاط الـHero تنجرف قطرياً (42s) + عُقَد/خطوط الكوكبة تنبض ببطء بعد اكتمال
-                        الرسم + تدرّج الخلفية (14s) — كلّها transform/opacity/stroke-dashoffset فقط
-         مستمر (loop) : نسيج نقاط خافت جداً على مستوى الصفحة كاملة (لا الـHero فقط) ينجرف ببطء شديد
-                        (70s) خلف كل قسم — يمنح إحساس "الصفحة حيّة باستمرار" حتى بعد نهاية حركات الدخول
-         عند التمرير  : بطاقات المميزات/المدارس/الأخبار تدخل بتأثير "focus pull" (ضبابية تتّضح + تكبير خفيف)
-                        + أيقونات المميزات تنبض ببطء شديد (بالكاد محسوسة) بعد ظهورها بدل الجمود التام
-         تحسين تدريجي : على المتصفحات الداعمة لـanimation-timeline (~83% عالمياً 2026 — Chrome/Edge/Safari،
-                        ليس Firefox المستقر بعد؛ راجع @supports أدناه) تُربَط الكوكبة وHero وكل الأقسام
-                        (المميزات/المدارس/التذييل) بموضع التمرير مباشرة على طول الصفحة كاملة — لا اختطاف
-                        scroll، فقط قراءة موضعه (scroll()/view()) — فوق نظام الكشف القائم بلا تعديله؛
-                        على غير الداعمة تبقى الصفحة تماماً كما كانت (بلا أي تغيير سلوكي).
-       @media(prefers-reduced-motion:reduce) أدناه يُسقِط كل ما سبق فوراً لحالته النهائية الثابتة
-       (animation/transition-duration:.01ms على * — يُنهي كل حركة هنا خلال إطار واحد تقريباً؛ ولحركات
-       التمرير الأصلية تحديداً animation-timeline:none!important صريحة، لأن تصفير المدة الزمنية وحدها
-       لا تُحيِّد حركة مرتبطة بموضع التمرير لا بالزمن). */
     @keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
     @keyframes netDrift{0%{background-position:0 0}100%{background-position:-120px -60px}}
     @keyframes pageAmbientDrift{0%{background-position:0 0}100%{background-position:-160px -160px}}
@@ -274,10 +271,6 @@
     .btn-primary{background:var(--brand);color:#fff}
     .btn-primary:hover{background:#0b5ed7}
     .btn-ghost{background:#eef2ff;color:var(--brand)}
-    .btn-ok{background:var(--ok);color:#fff}
-    .btn-sm{padding:8px 12px;font-size:13.5px;border-radius:10px}
-
-    /* Hero */
     header.hero{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:64px 0 72px;position:relative;overflow:hidden}
     header.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(120deg,var(--brand),#1b7ab8,var(--brand2),var(--brand));background-size:300% 300%;animation:gradShift 14s ease-in-out infinite;opacity:.55;will-change:background-position}
     header.hero .wrap{position:relative;z-index:1}
@@ -321,115 +314,8 @@
     .features .feature:nth-child(7) .ico{animation-delay:1.9s}
     .features .feature:nth-child(8) .ico{animation-delay:2.2s}
     .features .feature:hover{transition-delay:0s}
-
-    /* Partners */
-    .partners{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
-    .school{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;transition:opacity var(--t2) var(--ease-out),transform var(--t2) var(--ease-out),filter var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out),border-color var(--t2) var(--ease-out)}
-    .school:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(20,40,80,.16);border-color:var(--brand)}
-    .school .top{display:flex;align-items:center;gap:14px}
-    .school .logo{width:64px;height:64px;border-radius:14px;object-fit:cover;background:#eef2ff;flex:0 0 auto}
-    .school .logo.ph{display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--brand)}
-    .school h3{margin:0;font-size:19px}
-    .school .addr{color:var(--muted);font-size:13.5px;margin-top:2px}
-    .school .meta{display:flex;flex-wrap:wrap;gap:8px;font-size:13.5px;color:var(--muted)}
-    .school .meta a{color:var(--brand)}
-    .school .social{display:flex;gap:10px;font-size:19px}
-    .school .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
-    .badge-default{display:inline-block;background:#e7f7ee;color:var(--ok);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700}
-
-    /* School view — يستهلك لون هوية المدرسة الديناميكي (--sv-*) عبر applySchoolTheme، مع
-       fallback إلزامي على --brand/--brand2 العامّين كي لا ينكسر الشكل قبل وصول استجابة الخادم */
-    #schoolView{display:none}
-
-    /* ── وضع «صفحة المدرسة» (`/<slug>`) — يُفعّله السكربت المتزامن بصنف html.school-page ──
-       أقسام المنصّة تُخفى، وقسم المدرسة يظهر عند أول طلاء بلا انتظار أي استجابة خادم.
-       `.sp-full` (الأقسام الموسّعة) مخفيّة افتراضياً كي يبقى سلوك الجذر `/` — الذي يعرض بانر
-       المدرسة المحفوظة محلياً — **كما هو حرفياً** بلا أقسام إضافية. */
-    html.school-page > body > header.hero,
-    html.school-page #about-app,
-    html.school-page #features,
-    html.school-page #platform-details,
-    html.school-page #faq,
-    html.school-page #partners{display:none!important}
-    html.school-page #schoolView{display:block}
-    #schoolView .sp-full{display:none}
-    html.school-page #schoolView .sp-full{display:block}
-    /* 🔴 لا `opacity:0` كحالة أساسية لأي قسم هنا (بند 66): الإخفاء بـ`display` صريح ويُلغيه
-       JS فور وصول البيانات؛ قسم بلا محتوى يبقى مخفياً كلياً بدل عنوان فوق فراغ. */
-    .sp-sec{display:none;margin-top:38px}
-    /* رؤوس أقسام صفحة المدرسة تتبع نمط `.sec-head` القائم حرفياً (متمركز + نفس
-       المقاس/الوزن) — وإلا ظهر «أخبار المدرسة» وحده متمركزاً وسط سبعة عناوين
-       محاذية للبداية، وهو تفاوت رصده تحقّق بصري حيّ بعد النشر. اللون وحده يبقى
-       مختلفاً: `--sv-primary-ink` (مُعتَّم -45%) يضمن تباين AA على أي لون علامة. */
-    .sp-sec > h2{text-align:center;font-size:clamp(22px,3vw,32px);margin:0 0 8px;font-weight:800;color:var(--sv-primary-ink,var(--brand))}
-    .sp-sec > .sp-lead{text-align:center;color:var(--muted);margin:0 0 26px;font-size:16px}
-    /* الأقسام بلا سطر تعريفي (الإحصائيات/الفيديوهات/التواصل) يلزمها نفس الفراغ
-       الذي يوفّره `.sp-lead` وإلا التصقت الشبكة بالعنوان بـ8px فقط. */
-    .sp-sec > h2 + :not(.sp-lead){margin-top:26px}
-    .sp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
-    .sp-stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      padding:18px 14px;text-align:center;box-shadow:var(--shadow)}
-    .sp-stat b{display:block;font-size:clamp(24px,3.4vw,34px);line-height:1.15;
-      color:var(--sv-primary-ink,var(--brand));font-weight:900}
-    .sp-stat span{display:block;margin-top:4px;color:var(--muted);font-size:13.5px}
-    .sp-about{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      padding:22px;box-shadow:var(--shadow);white-space:pre-line;line-height:1.95;font-size:15.5px}
-    .sp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
-    .sp-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      padding:18px;box-shadow:var(--shadow);border-top:4px solid var(--sv-primary,var(--brand))}
-    .sp-card h3{margin:0 0 6px;font-size:17px}
-    .sp-card p{margin:0;color:var(--muted);font-size:14px;line-height:1.8}
-    .sp-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
-    .sp-gal a{display:block;aspect-ratio:4/3;border-radius:12px;overflow:hidden;
-      border:1px solid var(--line);background:#0b1220}
-    .sp-gal img{width:100%;height:100%;object-fit:cover;transition:scale var(--t2) var(--ease-out)}
-    .sp-gal a:hover img{scale:1.06}
-    .sp-vids{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-    .sp-vid{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      padding:14px;box-shadow:var(--shadow)}
-    .sp-vid a{display:inline-flex;align-items:center;gap:8px;color:var(--sv-primary-ink,var(--brand));
-      font-weight:700;text-decoration:none}
-    .sp-vid .cap{display:block;margin-top:6px;color:var(--muted);font-size:13px}
-    .sp-contact{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
-    .sp-contact .row{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      padding:16px;box-shadow:var(--shadow);font-size:14.5px;word-break:break-word}
-    .sp-contact .row a{color:var(--sv-primary-ink,var(--brand))}
-    .sp-hosted{margin:42px 0 8px;text-align:center;color:var(--muted);font-size:14px}
-    .sp-hosted a{color:var(--sv-primary-ink,var(--brand));font-weight:700}
-
-    .school-banner{
-      background:linear-gradient(135deg,var(--sv-primary,var(--brand)) 0%,var(--sv-primary-dark,var(--brand2)) 100%);
-      border:1px solid var(--line);border-radius:var(--radius);padding:24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;box-shadow:var(--shadow);
-      transition:background var(--t3) ease;
-    }
-    .school-banner .logo{width:84px;height:84px;border-radius:18px;object-fit:cover;background:rgba(255,255,255,.16)}
-    .school-banner h2{margin:0 0 4px;color:var(--sv-on-primary,#fff);transition:color var(--t2) ease}
-    .school-banner .sb-meta{color:var(--sv-on-primary,#fff);opacity:.85;font-size:14.5px;transition:color var(--t2) ease}
-    .school-banner .sb-actions{margin-inline-start:auto;display:flex;gap:10px;flex-wrap:wrap}
-    #schoolView .sb-actions .btn-primary{background:#fff;color:var(--sv-primary,var(--brand))}
-    #schoolView .sb-actions .btn-ghost{background:rgba(255,255,255,.18);color:var(--sv-on-primary,#fff)}
-
-    .news{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-top:22px}
-    .ncard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;transition:opacity var(--t2) var(--ease-out),transform var(--t2) var(--ease-out),filter var(--t2) var(--ease-out),box-shadow var(--t2) var(--ease-out)}
-    .ncard:hover{transform:translateY(-5px);box-shadow:0 14px 34px rgba(20,40,80,.14)}
-    .ncard .media{aspect-ratio:16/10;background:#0b1220;position:relative}
-    .ncard .media img{width:100%;height:100%;object-fit:cover}
-    .ncard .media .count{position:absolute;inset-block-start:8px;inset-inline-start:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:999px;padding:3px 9px;font-size:12px}
-    .ncard .body{padding:16px;display:flex;flex-direction:column;gap:6px}
-    .ncard h4{margin:0;font-size:17px}
-    .ncard .txt{color:#39435a;font-size:14px;white-space:pre-line;max-height:8.4em;overflow:hidden}
-    .ncard .foot{color:var(--muted);font-size:12.5px;margin-top:auto;padding-top:6px;border-top:1px dashed var(--line);display:flex;justify-content:space-between}
-    .ncard.text-card .body{background:linear-gradient(135deg,#0d6efd08,#6610f210)}
-    .ncard.text-card h4{color:var(--brand)}
-    .ncard-highlight{outline:3px solid var(--brand);outline-offset:2px;box-shadow:0 0 0 6px rgba(13,110,253,.18)}
-
-    .state{text-align:center;color:var(--muted);padding:34px 0;font-size:15px}
     footer{background:#0f1830;color:#c7d2e6;padding:34px 0;text-align:center;font-size:14px}
     footer a{color:#9ec1ff}
-
-    /* ═══════════════════════════════
-       الأقسام التسويقية المنقولة من pricing/ (2026-07-27) — انظر --pmkt-* أعلاه
-    ═══════════════════════════════ */
     .pmkt-section-title { text-align: center; margin: 70px 0 40px; }
     .pmkt-section-title h2 {
       font-size: 2.3rem; font-weight: 900; color: var(--pmkt-ink); display: inline-block;
@@ -517,54 +403,84 @@
       .pmkt-highlight-box { padding: 28px 20px; }
       .pmkt-plat-grid { grid-template-columns: 1fr; }
     }
-  </style>
+
+  /* ── توكنات دليل المدارس (تُضاف جنباً، لا تستبدل توكنات الصفحة) ── */
+  :root{
+    --cobalt:#0F5C8C; --cobalt-v:#0b476d; --teal:#1dbfa6;
+    --txt:#334155; --soft:#64748b; --border:#e6eaf2; --border2:#cbd5e1;
+    --g-cobalt:linear-gradient(135deg,#0F5C8C 0%,#0b476d 100%);
+    --g-brand:linear-gradient(135deg,#0F5C8C 0%,#1dbfa6 100%);
+    --glow-cobalt:0 10px 30px rgba(15,92,140,.18); --r:16px;
+  }
+  .sp-bar{background:var(--card);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:20;padding:12px 0}
+  .sp-search{width:100%;border:1px solid var(--border2);border-radius:999px;
+    padding:10px 18px;font-size:.92rem;font-family:inherit;color:var(--txt);background:#fff}
+  .sp-search:focus{outline:2px solid var(--cobalt);outline-offset:1px}
+
+  .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px;padding:22px 0 34px}
+  /* `position:relative` أساسٌ للرابط الممتدّ أدناه — البطاقة `div` لا `a` كي تحمل
+     روابط البوّابتين بلا تعشيش `<a>` داخل `<a>`. */
+  .sc{position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--r);
+    padding:18px;display:flex;flex-direction:column;gap:11px;
+    box-shadow:0 2px 10px rgba(15,23,42,.05);color:inherit;
+    transition:box-shadow .15s,border-color .15s,translate .15s}
+  .sc:hover{border-color:var(--cobalt);box-shadow:var(--glow-cobalt);translate:0 -2px}
+  /* 🔴 شريط لون الهوية عنصرٌ **ساكن** (بلا `position`) عمداً — بند 112 والتحذير أسفله:
+     `.sc-go::after` يقيس أقرب سلفٍ موضَّع وهو `.sc`، فأيّ عنصرٍ مطلق أو `relative` يُضاف
+     هنا كان سيصير كتلةَ الاحتواء وينكمش الرابط الممتدّ **بلا أن يحمرّ أيّ حارس نصّي**.
+     عنصرٌ ساكن في تدفّق `flex` يتجنّب الفئة كلَّها بدل أن يحرسها. */
+  .sc-bar{height:4px;border-radius:999px;flex:0 0 auto;margin-block-end:2px}
+  .sc-top{display:flex;align-items:center;gap:12px}
+  .sc-logo{width:54px;height:54px;border-radius:13px;object-fit:contain;background:#f1f5f9;
+    padding:4px;flex:0 0 auto}
+  .sc-ph{width:54px;height:54px;border-radius:13px;background:var(--g-brand);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:1.32rem;font-weight:800;flex:0 0 auto}
+  .sc-nm{font-weight:800;color:var(--ink);font-size:1.02rem;margin:0;line-height:1.4}
+  .sc-addr{font-size:.83rem;color:var(--soft);margin:3px 0 0}
+  .sc-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--soft);
+    margin-top:auto;padding-top:6px;align-items:center}
+  .sc-chip{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;color:var(--cobalt-v)}
+  /* شارة المرحلة — تُحقَن فقط حين يحمل الصفُّ قيمةً؛ لا نصَّ بديل عند الغياب. */
+  .sc-lvl{background:#eef4f9;border-radius:999px;padding:3px 10px;font-weight:700;
+    color:var(--cobalt-v);font-size:.78rem}
+  /* الرابط الرئيسيّ ممتدّ على البطاقة كلّها — يبقى رابطاً واحداً دلالياً للزاحف
+     ولقارئ الشاشة، وتبقى البطاقة كلّها قابلة للنقر. */
+  /* 🔴 لا `position` على `.sc-go` أبداً: أقرب سلفٍ موضَّع هو `.sc`، وهو ما يجعل طبقة
+     `::after` تمتدّ على البطاقة كلّها. إعطاؤها `position:relative` (أو إعطاؤه لـ`.sc-meta`)
+     يجعلها هي كتلة الاحتواء فينكمش الرابط إلى الزرّ وحده — **بلا أن يحمرّ أي حارس نصّي**،
+     لأن السلسلتين تبقيان حرفياً كما هما. `inline-flex` لا يضبط `position` فهو آمن. */
+  .sc-go{margin-inline-start:auto;background:var(--g-cobalt);color:#fff;font-weight:800;
+    text-decoration:none;border-radius:999px;padding:7px 15px;font-size:.82rem;
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+    box-shadow:0 2px 9px rgba(15,92,140,.22);transition:box-shadow .15s,filter .15s}
+  .sc-go::after{content:'';position:absolute;inset:0;border-radius:var(--r)}
+  .sc:hover .sc-go{box-shadow:0 4px 14px rgba(15,92,140,.32);filter:brightness(1.06)}
+  .sc-go-ar{font-size:1.05em;line-height:1}
+  /* روابط البوّابتين **فوق** الرابط الممتدّ — بدونها تبتلعها طبقة `::after`. */
+  .sc-ports{position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap;
+    border-top:1px solid var(--border);padding-top:10px}
+  .sc-port{flex:1 1 auto;text-align:center;background:#f1f5f9;color:var(--cobalt-v);
+    border-radius:999px;padding:7px 12px;font-size:.82rem;font-weight:800;text-decoration:none;
+    transition:background .15s,color .15s}
+  .sc-port:hover{background:var(--g-cobalt);color:#fff}
+
+  .sp-state{text-align:center;color:var(--soft);padding:56px 16px;font-size:.98rem}
+  .sp-empty{max-width:430px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:9px}
+  .sp-empty-ic{font-size:2.6rem;line-height:1}
+  .sp-empty-ttl{font-size:1.06rem;font-weight:800;color:var(--ink);margin:0}
+  .sp-empty-sub{font-size:.9rem;color:var(--soft);margin:0;line-height:1.75}
+  .sp-empty-btn{margin-top:5px;background:var(--g-cobalt);color:#fff;border:0;border-radius:999px;
+    padding:10px 24px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit}
+
+  @media (max-width:560px){
+    .sp-ttl{font-size:1.08rem}
+    .sp-grid{grid-template-columns:1fr;gap:13px}
+  }
+</style>
 </head>
 <body>
-  <!-- بوّابة الحركة: قواعد إخفاء الكشف عند التمرير (.reveal-s/.card-reveal) مقيَّدة كلّها بـ`.js`،
-       فبيئة بلا JavaScript ترى الصفحة كاملة بدل صفحة بيضاء. يجب أن يبقى هذا أول سطر داخل <body>. -->
   <script>document.documentElement.className += ' js';</script>
-
-  <!-- ═══════════════════════════════════════════════════════════════════════════════════════
-       بوّابة المسار — **متزامنة عمداً، قبل أي طلاء**، لا مؤجَّلة إلى boot().
-       على `/<slug>` تُبدِّل الصفحة من «بوّابة المنصّة» إلى «صفحة المدرسة»، وتصحّح canonical
-       وog:url فوراً. لماذا متزامنة: لو أُجِّلت إلى DOMContentLoaded لطُلِيت أقسام المنصّة أولاً
-       ثم اختفت (وميض)، والأهمّ أن أي زاحف/أداة لقطة تقرأ canonical قبل تنفيذ السكربتات
-       المؤجَّلة كانت سترى الأربع صفحات كلّها تعلن `canonical=/` فيوحّدها Google ويُسقِط صفحات
-       المدارس (بند 68/75). صمّام `_revealSafetyValve` يعمل بعد ٦ ثوانٍ — أبطأ من أن يُعتمَد هنا.
-       ⚠️ قائمة المحجوزات مُعرَّفة **مرّة واحدة** هنا ويعيد `_pathSlug()` أدناه استخدامها —
-       لا تُنشئ نسخة ثانية (نسختان تنحرفان صامتاً؛ يحرسه test-regression-guards.js).
-       ═══════════════════════════════════════════════════════════════════════════════════════ -->
-  <script>
-    window.__hasPathSlug = function () {
-      var m = /^\/([a-z0-9-]+)\/?$/i.exec(location.pathname);
-      if (!m) return '';
-      var seg = m[1].toLowerCase();
-      /* نسخة من `_RESERVED_TOP_PATHS` في `worker/school-app-proxy.js` (مستودع
-         SchoolApp المنفصل) — يُصانان يدوياً ويحرس تطابقهما حارس تراجع.
-         عملياً الـWorker هو البوّابة الأولى فلا يصل أي مسار محجوز إلى هنا؛
-         هذه الطبقة الثانية تحمي حالة تغيّر التوجيه أو فتح الملف مباشرةً. */
-      var reserved = {
-        'home': 1, 'home-all-school': 1, 'teacher': 1, 'student': 1, 'cms': 1,
-        'schedule': 1, 'master-admin': 1, 'pricing': 1, 'gas': 1, 'qr-img': 1,
-        'qr-download': 1, 'oauth': 1, 'drive-upload': 1, 'media': 1, 'assets': 1,
-        'index.html': 1, 'manifest.webmanifest': 1, 'sw.js': 1, 'robots.txt': 1,
-        'sitemap.xml': 1, 'favicon.ico': 1, 'newsarticle.html': 1
-      };
-      return reserved[seg] ? '' : seg;
-    };
-    (function () {
-      var slug = window.__hasPathSlug();
-      if (!slug) return;
-      document.documentElement.className += ' school-page';
-      var url = 'https://yemenschoolz.com/' + slug;
-      var c = document.querySelector('link[rel="canonical"]');
-      if (c) c.setAttribute('href', url);
-      var o = document.querySelector('meta[property="og:url"]');
-      if (o) o.setAttribute('content', url);
-      // ⚠️ `og:site_name` لا يُلمَس هنا ولا في أي مسار — يبقى «Yemen Schoolz» ثابتاً.
-      // كتابة اسم مدرسة فوقه كانت سبب ظهور اسم غريب في نتائج البحث (بند 75).
-    })();
-  </script>
 
   <header class="hero">
     <div class="hero-net" aria-hidden="true"></div>
@@ -593,11 +509,15 @@
       <p class="hero-sub">منصّة متكاملة لإدارة المدارس: منصّات للمعلمين والطلاب، وإدارة محتوى وأخبار، وجداول ذكية، ومالية وتقارير — يعمل حتى دون اتصال. اكتشف مدارسنا الشريكة واختر مدرستك.</p>
       <p style="margin-top:10px;color:#fff;opacity:1;font-size:1.05em;font-weight:600;line-height:1.6">Yemen Schoolz is an integrated school-management platform for teachers, students, and school administrators — content publishing, smart scheduling, attendance, finance, and reports.</p>
       <div class="cta">
-        <a class="btn btn-primary cta-pop" href="/master-admin/register.html">🏫 سجّل مدرستك</a>
+        <!-- 🔴 لا زرَّ دخولٍ في هذه الكتلة — لا للمدارس ولا للمطوّر (قرار مالك 2026-08-22).
+             السببان مقيسان: ① `/master-admin/` لوحةُ **المطوّر** و`masterLogin` ترفض كلّ دورٍ
+             غير `owner` ⇒ زرٌّ عامٌّ اسمه «دخول الإدارة» يقود مديري المدارس إلى بابٍ يرفضهم.
+             ② والمدارس تدخل من **منصّاتها**: `/teacher` أو صفحة مدرستها `/<slug>`.
+             ويحرس خلوَّ هذه الكتلة `schoolFacingPagesNeverLinkMasterAdminGuard`. -->
+        <a class="btn btn-primary cta-pop" href="/master-admin/register.html">🏫 أنشئ حساب مدرستك</a>
         <a class="btn btn-ghost cta-pop" href="#partners">استعرض المدارس</a>
         <a class="btn btn-ghost cta-pop" href="#features">مميّزات المنصّة</a>
         <a class="btn btn-ghost cta-pop" href="/master-admin/register.html">🏫 سجّل مدرستك</a>
-        <a class="btn btn-ghost cta-pop" href="/master-admin/index.html?returnTo=%2Fhome-all-school%2Findex.html%23partners">🔐 دخول الإدارة</a>
       </div>
     </div>
   </header>
@@ -629,59 +549,22 @@
   </section>
 
   <main>
-  <!-- عرض المدرسة المختارة (يظهر عند اختيار مدرسة افتراضية) -->
-  <section id="schoolView" class="wrap" style="padding-top:38px">
-    <div id="schoolBanner"></div>
 
-    <!-- الأقسام الموسّعة لصفحة `/<slug>` — مخفيّة على الجذر `/` عبر `.sp-full` كي يبقى سلوكه
-         حرفياً كما كان. كل قسم يبقى `display:none` حتى تصله بيانات فعلية: قسم بعنوان بلا محتوى
-         = محتوى رقيق أمام الزاحف (بند 66/75)، والإخفاء بـ`display` لا بـ`opacity`. -->
-    <div class="sp-full">
-      <section id="spStats" class="sp-sec" aria-labelledby="spStatsH">
-        <h2 id="spStatsH">أرقام تتحدّث عنّا</h2>
-        <div class="sp-stats" id="spStatsGrid"></div>
-      </section>
-
-      <section id="spAbout" class="sp-sec" aria-labelledby="spAboutH">
-        <h2 id="spAboutH">عن المدرسة</h2>
-        <div class="sp-about" id="spAboutBody"></div>
-      </section>
-
-      <section id="spStages" class="sp-sec" aria-labelledby="spStagesH">
-        <h2 id="spStagesH">المراحل الدراسية</h2>
-        <p class="sp-lead">المراحل التي تخدمها المدرسة</p>
-        <div class="sp-cards" id="spStagesGrid"></div>
-      </section>
-
-      <section id="spFeatures" class="sp-sec" aria-labelledby="spFeaturesH">
-        <h2 id="spFeaturesH">لماذا مدرستنا؟</h2>
-        <div class="sp-cards" id="spFeaturesGrid"></div>
-      </section>
-    </div>
-
-    <div class="sec-head" style="margin:34px 0 0"><h2>أخبار المدرسة</h2><p>آخر الأخبار والفعاليات المنشورة</p></div>
-    <div id="schoolNews" class="grid news"></div>
-
-    <div class="sp-full">
-      <section id="spGallery" class="sp-sec" aria-labelledby="spGalleryH">
-        <h2 id="spGalleryH">من ألبوم المدرسة</h2>
-        <p class="sp-lead">صور من الأخبار والفعاليات المنشورة</p>
-        <div class="sp-gal" id="spGalleryGrid"></div>
-      </section>
-
-      <section id="spVideos" class="sp-sec" aria-labelledby="spVideosH">
-        <h2 id="spVideosH">فيديوهات</h2>
-        <div class="sp-vids" id="spVideosGrid"></div>
-      </section>
-
-      <section id="spContact" class="sp-sec" aria-labelledby="spContactH">
-        <h2 id="spContactH">تواصل معنا</h2>
-        <div class="sp-contact" id="spContactGrid"></div>
-      </section>
-
-      <div class="sp-hosted">
-        مستضافة على منصّة <a href="/">Yemen Schoolz — يمن سكولز</a>
+  <!-- دليل المدارس — في الفتحة التي كان يشغلها #schoolView: #platform-details وحده
+       411 سطراً، ودفن «جد مدرستك» تحته يكلّف تمريراً طويلاً. المرساة #partners محفوظة
+       فيعمل CTA الهيرو و`returnTo` من MasterAdmin بلا تغيير. -->
+  <section id="partners" style="background:#eef2fb">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>مدارس منصّة يمن سكولز</h2>
+        <p id="spSub">جارٍ التحميل…</p>
       </div>
+      <div class="sp-bar">
+        <input class="sp-search" id="spSearch" type="search"
+               placeholder="ابحث باسم المدرسة أو المدينة…" aria-label="بحث عن مدرسة"/>
+      </div>
+      <div id="spGrid" class="sp-grid"></div>
+      <div id="spState" class="sp-state">جارٍ تحميل المدارس…</div>
     </div>
   </section>
 
@@ -703,7 +586,6 @@
       </div>
     </div>
   </section>
-
   <section id="platform-details" class="wrap" style="padding-top:20px">
   <!-- ═══════════════════════════════
        WHY MADRASTI
@@ -1047,9 +929,16 @@
     </div>
     <div class="pmkt-feat-item reveal-s">
       <div class="pmkt-feat-icon">♾️</div>
+      <!-- 🔴 صُحِّح 2026-09-11 بقرار مالك: كان يقول «تدفع مرة واحدة وتملك النظام. لا
+           اشتراكات شهرية» — و**`Settings_Master.plans_json` هو مصدرُ الحقيقة الوحيد
+           للتسعير**، وفيه باقاتٌ بمدّةٍ سنوية تعرضها صفحةُ التسجيل `/master-admin/register.html`.
+           ⇒ **نصٌّ تسويقيٌّ يَعِد بعكس ما يراه المسجِّلُ بعد نقرةٍ واحدة** — وهو أسوأُ من
+           غياب النصّ: يُبنى عليه قرارُ شراءٍ ثمّ يُنقَض عند أوّل خطوة.
+           🟢 والبديلُ يصف ما هو قائمٌ فعلاً: بلا رسومٍ شهرية وبلا حدٍّ على المستخدمين،
+           **والمدّةُ سنويّة** — ولا يُثبَّت هنا سعرٌ ولا اسمُ باقة فيتقادم مع المصدر. -->
       <div class="pmkt-feat-text">
-        <strong>ملكية دائمة – بدون رسوم شهرية</strong>
-        <span>تدفع مرة واحدة وتملك النظام. لا اشتراكات شهرية، لا رسوم خفية، لا قيود على عدد المستخدمين</span>
+        <strong>اشتراك سنوي – بدون رسوم شهرية</strong>
+        <span>اشتراك سنوي واحد يشمل كل المنصات. لا رسوم شهرية، لا رسوم خفية، ولا قيود على عدد المستخدمين</span>
       </div>
     </div>
     <div class="pmkt-feat-item reveal-s">
@@ -1115,7 +1004,6 @@
   </div>
 
   </section>
-
   <section id="faq" class="wrap">
     <div class="pmkt-section-title reveal-s">
       <h2>❓ أسئلة شائعة</h2>
@@ -1199,635 +1087,280 @@
     </div>
   </section>
 
-  <section id="partners" style="background:#eef2fb">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>مدارسنا الشريكة</h2>
-        <p>اختر مدرستك لتعتمدها كمدرستك الافتراضية وتطّلع على أخبارها</p>
-      </div>
-      <div id="partnersGrid" class="grid partners"></div>
-      <div id="partnersState" class="state">جارٍ تحميل المدارس…</div>
-    </div>
-  </section>
   </main>
 
   <footer>
     <div class="wrap">
       <div>منصّة يمن سكولز &copy; <span id="yr"></span></div>
       <div style="margin-top:6px;opacity:.8">نظام إدارة مدرسي متكامل — اليمن</div>
-      <div style="margin-top:10px"><a href="/master-admin/register.html" style="color:#fff;text-decoration:underline">سجّل مدرستك في يمن سكولز</a></div>
-      <div style="margin-top:6px"><a href="/master-admin/index.html" style="color:#fff;text-decoration:underline">دخول الإدارة</a></div>
+      <div style="margin-top:10px"><a href="/master-admin/register.html" style="color:#fff;text-decoration:underline">أنشئ حساب مدرستك في يمن سكولز</a></div>
+      <div style="margin-top:6px"><a href="/master-admin/register.html" style="color:#fff;text-decoration:underline">إنشاء حساب مدرسة</a></div>
       <div style="margin-top:6px"><a href="/home/privacy.html" style="color:#fff;text-decoration:underline">سياسة الخصوصية</a> · <a href="/home/terms.html" style="color:#fff;text-decoration:underline">شروط الخدمة</a></div>
+      <!-- ==DEV-CONSOLE-ENTRY== مدخلُ المطوّر — الموضعُ الوحيد المسموح به لرابط `/master-admin/`
+           في هذا الملفّ، ويستثنيه `schoolFacingPagesNeverLinkMasterAdminGuard` بهذه المرساة
+           حصراً. 🔴 وهذا **تنحيةٌ لا حاجزٌ أمنيّ**: `MasterAdmin.html` تُخدَم لأيّ زائر
+           (`Master_Admin.js::doGet` بلا تحقّق)، والحمايةُ الحقيقية `masterLogin` + شرطُ الدور
+           `owner`. و`/master-admin/` محجوبٌ عن الفهرسة في `assets/robots.txt` — حجبُ فهرسةٍ
+           لا حجبُ وصول. فلا يُكتب هنا نصٌّ يدعو مدرسةً إلى النقر. -->
+      <div style="margin-top:10px;opacity:.45;font-size:.78em"><a href="/master-admin/index.html" style="color:#fff;text-decoration:none">وحدة تحكّم المطوّر</a></div>
     </div>
   </footer>
 
-  <script>
-    (function () {
-      'use strict';
-      var HAS_DEFAULT_KEY = 'has_default_school';
+<script>
+var SP = { all: [], q: '' };
 
-      // ── مساعدات ──
-      function $(id) { return document.getElementById(id); }
-      function esc(s) {
-        s = (s === null || s === undefined) ? '' : String(s);
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-      }
-      function attr(s) { return esc(s); }
-      // يؤمّن رابط href: يقبل http(s)، ويرفض أي مخطّط آخر (javascript:/data:…)،
-      // ويُضيف https:// للنطاق المجرّد (بيانات السوشل في الشيت مخزّنة بلا مخطّط مثل facebook.com/x)
-      function safeUrl(u) {
-        u = (u === null || u === undefined) ? '' : String(u).trim();
-        // يزيل أحرف التحكّم (\t\r\n) قبل فحص بادئة المخطّط — المتصفح يُسقِطها فعلياً قبل تفسير
-        // المخطّط (معيار WHATWG URL)، فقيمة مثل "ja[TAB]vascript:" تبقى تُنفَّذ كـjavascript:
-        // حتى لو فشلت مطابقة الرجيكس أدناه بلا هذه الإزالة أولاً (CLAUDE.md بند 35 — نفس الثغرة
-        // المُصلَحة أصلاً في master-admin/Master_Admin.js::_isSafeSocialLinkValue، مُرحَّلة هنا).
-        u = u.replace(/[\t\r\n]/g, '');
-        if (!u) return '';
-        if (/^https?:\/\//i.test(u)) return u;          // مخطّط آمن أصلاً
-        if (/^\/\//.test(u)) return 'https:' + u;        // بروتوكولي-نسبي //host → https://host
-        if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return '';  // مخطّط آخر صريح (javascript:/data:/tel:…) → يُرفَض
-        return 'https://' + u;                           // نطاق/مسار مجرّد → أضِف https
-      }
-      function qparam(name) {
-        var m = new RegExp('[?&]' + name + '=([^&]+)').exec(location.search);
-        return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
-      }
-      // رابط مدرسة قصير (yemenschoolz.com/<slug>) — الـWorker يُعيد كتابة المسار داخلياً ليجلب
-      // نفس هذا الملف، لكن عنوان المتصفّح الفعلي (location.pathname) يبقى /<slug> كما طلبه
-      // الزائر؛ لا فائدة من ?school= بالـquery string هنا (لم يُصل أصلاً). قائمة الأسماء المحجوزة
-      // هنا هي المجموعة الوحيدة الممكن أن تصل فعلياً بـlocation.pathname لهذا الملف — مجموعة جزئية
-      // (لا مطابقة حرفية) من قائمة أوسع في worker/school-app-proxy.js (مستودع school-app-yemen-web،
-      // `_RESERVED_TOP_PATHS`)، لأن بقية أسمائها (qr-img/oauth/media/إلخ) تُعترَض هناك بمسارات Worker
-      // مبكرة قبل الوصول لهذا الملف إطلاقاً، وأسماء الملفات فيها (index.html/manifest.webmanifest)
-      // مستبعَدة أصلاً من مطابقة الـregex هنا (لا نقطة ضمن [a-z0-9-]). عند إضافة مسار Worker جديد
-      // بلا اعتراض مبكر، أضِفه هنا أيضاً.
-      // مصدر واحد للحقيقة: التعريف الفعلي (والقائمة المحجوزة) في السكربت المتزامن أعلى <body>،
-      // لأن بوّابة المسار تحتاجه **قبل** تحميل هذه الكتلة. نسخة ثانية هنا كانت ستنحرف صامتاً.
-      function _pathSlug() {
-        return (typeof window.__hasPathSlug === 'function') ? window.__hasPathSlug() : '';
-      }
-      function _isSchoolPage() {
-        return document.documentElement.classList.contains('school-page');
-      }
-      function callServer(fn, args, onOk, onErr) {
-        try {
-          google.script.run
-            .withSuccessHandler(function (r) { onOk(r); })
-            .withFailureHandler(function (e) { if (onErr) onErr(e); })[fn].apply(null, args || []);
-        } catch (ex) { if (onErr) onErr(ex); }
-      }
+function spEsc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function spEl(id){ return document.getElementById(id); }
 
-      // ── دليل الشركاء ──
-      var _partners = null;   // مخبّأ العميل لقائمة الشركاء (تفادي طلب شبكي متكرّر)
-      function loadPartners() {
-        callServer('listPartnerSchoolsPublic', [], function (res) {
-          if (!res || !res.success || !res.schools || !res.schools.length) {
-            $('partnersState').textContent = 'لا توجد مدارس متاحة حاليًّا.';
-            return;
-          }
-          _partners = res.schools;
-          $('partnersState').style.display = 'none';
-          renderPartners(_partners);
-        }, function () {
-          $('partnersState').textContent = 'تعذّر تحميل المدارس. حاول لاحقًا.';
-        });
-      }
+/**
+ * رابط صفحة المدرسة. دالّة **نقيّة** — الـslug يُفضَّل لأنه المسار العام المفهرَس،
+ * والمعرّف تراجعٌ لمدرسة لم يُضبَط slugها بعد (وقعت فعلاً بالبيانات الحيّة).
+ * 🔴 مسار **مطلق** لا نسبي: الصفحة قد تُخدَم لاحقاً على الجذر، والنسبي يتكسّر هناك.
+ */
+function _spSchoolHref(s){
+  if(!s) return '/';
+  var slug = String(s.slug || '').trim();
+  if(slug) return '/' + encodeURIComponent(slug);
+  var sid = String(s.schoolId || '').trim();
+  return sid ? '/home/index.html?school=' + encodeURIComponent(sid) : '/';
+}
 
-      function socialHtml(s) {
-        var out = '';
-        var wa = String(s.whatsapp || '').replace(/[^0-9]/g, '');
-        if (wa) { out += '<a href="https://wa.me/' + attr(wa) + '" target="_blank" rel="noopener" title="واتساب" aria-label="تواصل عبر واتساب">🟢</a>'; }
-        var fb = safeUrl(s.facebook); if (fb) { out += '<a href="' + attr(fb) + '" target="_blank" rel="noopener" title="فيسبوك" aria-label="صفحة فيسبوك">📘</a>'; }
-        var ig = safeUrl(s.instagram); if (ig) { out += '<a href="' + attr(ig) + '" target="_blank" rel="noopener" title="إنستغرام" aria-label="حساب إنستغرام">📷</a>'; }
-        var yt = safeUrl(s.youtube); if (yt) { out += '<a href="' + attr(yt) + '" target="_blank" rel="noopener" title="يوتيوب" aria-label="قناة يوتيوب">▶️</a>'; }
-        return out ? '<div class="social">' + out + '</div>' : '';
-      }
+/**
+ * رابط **بوّابة منصّة** (معلم/طالب) لمدرسة. دالّة نقيّة عدا كشف WebView.
+ *
+ * 🔴 العطل الذي تُغلقه (قِيس 2026-09-15 من بلاغ مالك): بطاقةُ المدرسة كانت تبني رابطَي
+ * المنصّتين بـ`'?school=' + schoolId` **حرفياً ودائماً** — بينما زرُّ «عرض الصفحة» في
+ * البطاقة نفسها (`_spSchoolHref` أعلاه) يفضّل الـslug منذ إنشائه. ⇒ **معياران لهويّةٍ
+ * واحدة داخل بطاقةٍ واحدة**: «عرض الصفحة» ⇒ `/abdaawatmuaz`، و«المعلمون» ⇒
+ * `/teacher/index.html?school=12725ed7-…` للمدرسة نفسها في نفس اللحظة.
+ * ⚠️ **ولم يكن غيابَ بيانات:** الثلاثُ المدارسُ النشطةُ كلُّها تحمل `slug` في السجلّ
+ * المركزيّ — الصفحةُ لم تكن تنظر إليه أصلاً.
+ *
+ * والشكلُ النظيف `/<app>/<slug>` **مخدومٌ اليوم بلا أيّ تغيير في الوسيط**:
+ * `_DEEP_PORTAL_RE` هناك هو `/^\/(teacher|student)\/[a-z0-9-]+(?:\/[a-z0-9-]+)?\/?$/i`.
+ *
+ * 🔴 **وكشفُ WebView يبقى fail-closed حرفياً كنظيره** في
+ * `home-all-school/Index.html::portalEntryHref`: أيُّ تعذّرٍ في الكشف يُحسَب «داخل
+ * التطبيق» فيُعاد الشكلُ القديم. والسببُ ليس حذراً عامّاً بل مقيسٌ: تطبيقا الأندرويد
+ * يوجّهان **بمقطع المسار**، والمقاطعُ العميقة قد تُقذَف إلى المتصفّح الخارجي على vc31 —
+ * وكسرُ حزمةٍ منشورةٍ لا رجعةَ فيه، بينما بقاءُ الرابط القديم في المتصفّح تأجيلٌ فقط.
+ */
+function _spPortalHref(app, s){
+  var sl = (s && s.slug) ? String(s.slug).trim().toLowerCase() : '';
+  var inApp = true;
+  try {
+    var ua = String(navigator.userAgent || '');
+    inApp = /SchoolAppYemen|YemenSchoolz/i.test(ua) || /\bwv\b/.test(ua);
+  } catch (e) { inApp = true; }
+  if (sl && !inApp && /^[a-z0-9-]+$/.test(sl)) return '/' + app + '/' + encodeURIComponent(sl);
+  var sid = (s && s.schoolId) ? String(s.schoolId).trim() : '';
+  return '/' + app + '/index.html' + (sid ? '?school=' + encodeURIComponent(sid) : '');
+}
 
-      // ── تحريك بطاقات مُنشأة ديناميكياً بعد استجابة الخادم (لا تدعم كلاسات .reveal الساكنة) ──
-      // كشف نهائي عبر كلاس (.card-reveal.in) لا inline-style: كي يبقى :hover قادراً على الفوز على
-      // transform (inline-style يتفوّق دوماً على أي قاعدة CSS غير !important، ما كان سيُسقِط رفعة
-      // hover الجديدة على بطاقات المدارس/الأخبار بصمت).
-      function animateCards(grid) {
-        if (!grid) return;
-        if (grid._cardObserver) { try { grid._cardObserver.disconnect(); } catch (eD) {} }
-        var cards = grid.children;
-        var co = new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) {
-            if (e.isIntersecting) { e.target.classList.add('in'); co.unobserve(e.target); }
-          });
-        }, { threshold: .06, rootMargin: '0px 0px -24px 0px' });
-        grid._cardObserver = co;
-        for (var i = 0; i < cards.length; i++) {
-          cards[i].classList.add('card-reveal');
-          cards[i].style.transitionDelay = (i * .07) + 's';
-          co.observe(cards[i]);
-        }
-      }
+/** تصفية نقيّة بالاسم والعنوان — تُستخرَج ويُشغّلها الاختبار السلوكي. */
+function _spFilter(list, q){
+  var needle = String(q == null ? '' : q).trim().toLowerCase();
+  if(!needle) return (list || []).slice();
+  var out = [], i;
+  for(i = 0; i < (list || []).length; i++){
+    var s = list[i]; if(!s) continue;
+    var hay = ((s.name || '') + ' ' + (s.address || '')).toLowerCase();
+    if(hay.indexOf(needle) !== -1) out.push(s);
+  }
+  return out;
+}
 
-      /* رابط دخول منصّة: slug صالح + متصفّح ⇒ مسار نظيف `/app/<page>/<slug>`؛ داخل
-         WebView تطبيق أو بلا slug ⇒ الشكل القديم `index.html?school=` حرفياً (المقاطع
-         العميقة قد تُقذَف للمتصفّح الخارجي على vc31 — تطبيقا الأندرويد يوجّهان بمقطع
-         المسار). تعذّر الكشف ⇒ الشكل القديم (الاتجاه الآمن). */
-      function portalEntryHref(app, page, s) {
-        var sl = (s && s.slug) ? String(s.slug).trim().toLowerCase() : '';
-        var inApp = true;
-        try {
-          var ua = String(navigator.userAgent || '');
-          inApp = /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
-        } catch (e) { inApp = true; }
-        if (sl && !inApp && /^[a-z0-9-]+$/.test(sl)) return '/' + app + '/' + page + '/' + encodeURIComponent(sl);
-        return '/' + app + '/index.html?school=' + encodeURIComponent((s && s.schoolId) || '');
-      }
+/* هوية المنتج — الافتراضيّ حين لا يكون للمدرسة لونٌ صالح. */
+var SP_BRAND_COLOR = '#0F5C8C';
 
-      function renderPartners(schools) {
-        var def = getDefault();
-        var html = '';
-        for (var i = 0; i < schools.length; i++) {
-          var s = schools[i];
-          var logo = s.logo
-            ? '<img class="logo" src="' + attr(s.logo) + '" alt="' + attr(s.name) + '" loading="lazy" onerror="this.outerHTML=\'<div class=\\\'logo ph\\\'>🏫</div>\'">'
-            : '<div class="logo ph">🏫</div>';
-          var isDef = (def && def === s.schoolId);
-          html += '<div class="school">'
-            +   '<div class="top">' + logo
-            +     '<div><h3>' + esc(s.name) + '</h3>'
-            +       (s.address ? '<div class="addr">📍 ' + esc(s.address) + '</div>' : '')
-            +       (isDef ? '<span class="badge-default">مدرستك الافتراضية</span>' : '')
-            +     '</div>'
-            +   '</div>'
-            +   '<div class="meta">'
-            +     (s.phone ? '<span>📞 <a href="tel:' + attr(s.phone) + '">' + esc(s.phone) + '</a></span>' : '')
-            +   '</div>'
-            +   socialHtml(s)
-            +   '<div class="actions">'
-            +     '<button class="btn btn-ok btn-sm" data-choose="' + attr(s.schoolId) + '" data-name="' + attr(s.name) + '">اعتمدها كمدرستي</button>'
-            +     '<a class="btn btn-ghost btn-sm" href="' + portalEntryHref('teacher', 'dashboard', s) + '">دخول المعلمين</a>'
-            +     '<a class="btn btn-ghost btn-sm" href="' + portalEntryHref('student', 'home', s) + '">دخول الطلاب</a>'
-            +   '</div>'
-            + '</div>';
-        }
-        $('partnersGrid').innerHTML = html;
-        var btns = $('partnersGrid').querySelectorAll('[data-choose]');
-        for (var b = 0; b < btns.length; b++) {
-          btns[b].setAttribute('aria-label', 'اعتماد ' + btns[b].getAttribute('data-name') + ' كمدرستي الافتراضية');
-          btns[b].addEventListener('click', function () {
-            chooseSchool(this.getAttribute('data-choose'), this.getAttribute('data-name'));
-          });
-        }
-        animateCards($('partnersGrid'));
-      }
+/* 🔴 **سماحٌ مغلق لا تطهيرٌ سامح.** القيمة تدخل سمة `style` مباشرةً، والاتجاه الصحيح هنا
+   مقيسٌ في بند 133: البوّابة السامحة تنقلب — حذفُ الأحرف المرفوضة يصنع قيمةً صالحة من
+   قيمةٍ خبيثة. فيُقبَل نمطُ hex وحده حرفياً، وكلُّ ما عداه (بما فيه الفراغ) يسقط على
+   هوية المنتج. ولا `spEsc` هنا: الهروب يعالج السياق النصّي لا سياق السمة. */
+function _spSafeColor(v){
+  var c = String(v || '').trim();
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c) ? c : SP_BRAND_COLOR;
+}
 
-      // ── الافتراضي (localStorage) ──
-      function getDefault() {
-        try { return localStorage.getItem(HAS_DEFAULT_KEY) || ''; } catch (e) { return ''; }
-      }
-      function setDefault(id) {
-        try { localStorage.setItem(HAS_DEFAULT_KEY, id); } catch (e) {}
-      }
-      function clearDefault() {
-        try { localStorage.removeItem(HAS_DEFAULT_KEY); } catch (e) {}
-        $('schoolView').style.display = 'none';
-        resetSchoolTheme();
-        resetSchoolSeo();
-        if (_partners) renderPartners(_partners); else loadPartners();
-        location.hash = '#partners';
-      }
-      function chooseSchool(id, name) {
-        if (!id) return;
-        setDefault(id);
-        loadSchoolView(id, true);   // نقر صريح من المستخدم ⇒ تحديث وسوم الصفحة لهوية المدرسة مقصود
-        // إعادة رسم الشارة من المخبّأ المحلي — بلا طلب شبكي جديد
-        if (_partners) renderPartners(_partners); else loadPartners();
-      }
+function _spCard(s){
+  var nm = String(s.name || '').trim();
+  var logo = String(s.logo || '').trim();
+  var head = logo
+    ? '<img class="sc-logo" loading="lazy" src="' + spEsc(logo) + '" alt=""/>'
+    : '<div class="sc-ph">' + spEsc(nm.charAt(0) || '؟') + '</div>';
+  var meta = '';
+  /* شارةُ المرحلة تُحقَن **فقط** حين يحمل الصفُّ قيمةً — لا «غير محدَّدة» ولا نصَّ بديل.
+     ⚠️ والعمودُ فارغٌ اليوم عند كلّ مدرسة حيّة (قِيس 2026-08-23) ⇒ القدرةُ مشحونة والشارةُ
+     غيرُ ظاهرة حتى يُملأ العمود. */
+  var lvl = String(s.level || '').trim();
+  if(lvl)       meta += '<span class="sc-lvl">' + spEsc(lvl) + '</span>';
+  if(s.address) meta += '<span class="sc-chip">' + spEsc(s.address) + '</span>';
+  if(s.phone)   meta += '<span>' + spEsc(s.phone) + '</span>';
+  /* 🔴 البطاقة `<div>` لا `<a>` تغلّفها: الجذر اليوم يحمل روابط **بوّابتَي المعلم والطالب**
+     لكل مدرسة، و`<a>` داخل `<a>` HTML غير صالح ⇒ كانت ستسقط. الحلّ رابط رئيسيّ ممتدّ
+     (`.sc-go::after` مطلق يغطّي البطاقة) وروابط البوّابتين فوقه بـ`z-index`. */
+  return '<div class="sc">' +
+    '<div class="sc-bar" style="background:' + _spSafeColor(s.primaryColor) + '"></div>' +
+    '<div class="sc-top">' + head +
+      '<div><h2 class="sc-nm">' + spEsc(nm) + '</h2>' +
+      (s.address ? '<p class="sc-addr">' + spEsc(s.address) + '</p>' : '') + '</div>' +
+    '</div>' +
+    '<div class="sc-meta">' + meta +
+      /* `aria-label` باسم المدرسة: كل بطاقة كانت تحمل النصّ نفسه، فقارئ الشاشة يسمع
+         «عرض الصفحة» مكرَّرةً بعدد المدارس بلا ما يميّزها. */
+      '<a class="sc-go" href="' + spEsc(_spSchoolHref(s)) + '"' +
+        ' aria-label="عرض صفحة ' + spEsc(nm) + '">' +
+        'عرض الصفحة <span class="sc-go-ar" aria-hidden="true">←</span></a>' +
+    '</div>' +
+    '<div class="sc-ports">' +
+      '<a class="sc-port" href="' + spEsc(_spPortalHref('teacher', s)) + '">👩‍🏫 المعلمون</a>' +
+      '<a class="sc-port" href="' + spEsc(_spPortalHref('student', s)) + '">🎒 الطلاب</a>' +
+    '</div>' +
+    '</div>';
+}
 
-      // ── عرض المدرسة المختارة ──
-      // ── تمييز بصري لخبر مشارَك (?news=<id>) بعد تحميل قائمة الأخبار — لا صفحة تفصيل منفصلة ──
-      var _pendingNewsHighlight = '';
-      function highlightSharedNews(newsId) {
-        if (!newsId) return;
-        try {
-          var card = $('schoolNews') && $('schoolNews').querySelector('[data-news-id="' + newsId.replace(/"/g, '') + '"]');
-          if (!card) return;   // الخبر أقدم من آخر 12 المعروضة — قيد معروف ومقبول
-          try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e2) { card.scrollIntoView(); }
-          card.classList.add('ncard-highlight');
-          setTimeout(function () { card.classList.remove('ncard-highlight'); }, 2600);
-        } catch (e) { /* محدِّد CSS غير صالح لمعرّف غير متوقَّع — تجاهل بصمت */ }
-      }
+/* حالة الفراغ تفصل السببين كما بالمكتبة (بند 80-أ): «لا مدارس مفعّلة» غيابٌ بنيويّ بلا
+   زرّ مسح، و«لا نتيجة للبحث» فلترٌ ضيّق يُتاح مسحه. */
+function _spEmptyHtml(){
+  if(!SP.all.length){
+    return '<div class="sp-empty"><div class="sp-empty-ic">🏫</div>' +
+      '<p class="sp-empty-ttl">لا توجد مدارس مفعّلة حالياً</p>' +
+      '<p class="sp-empty-sub">لم تُفعَّل أي مدرسة على المنصّة بعد.</p></div>';
+  }
+  return '<div class="sp-empty"><div class="sp-empty-ic">🔍</div>' +
+    '<p class="sp-empty-ttl">لا توجد مدرسة بهذا الاسم</p>' +
+    '<p class="sp-empty-sub">المنصّة تضمّ ' + SP.all.length + ' مدرسة — امسح البحث لعرضها كلّها.</p>' +
+    '<button class="sp-empty-btn" id="spClear" type="button">مسح البحث</button></div>';
+}
 
-      // applySeo: تُمرَّر true فقط عند نيّة صريحة (رابط عميق ?school=/slug، أو نقر المستخدم على
-      // مدرسة). الاستعادة الصامتة من localStorage عند الإقلاع تُمرِّر false — راجع applySchoolSeo.
-      // على `/<slug>` نستدعي `getSchoolPageData` (حزمة كاملة بنداء **واحد**: هوية + محتوى +
-      // إحصائيات + أخبار + معرض + فيديو)، وعلى الجذر `/` تبقى `getSchoolPublicData` كما كانت
-      // حرفياً — لا تغيير سلوك للمسار القديم. نداء واحد لا اثنان: حصّة الـ30 تنفيذاً (بند 55/62).
-      function loadSchoolView(id, applySeo) {
-        var full = _isSchoolPage();
-        $('schoolView').style.display = 'block';
-        applyCachedTheme(id);
-        $('schoolBanner').innerHTML = '<div class="state">جارٍ تحميل بيانات المدرسة…</div>';
-        $('schoolNews').innerHTML = '';
-        function fail() { $('schoolBanner').innerHTML = '<div class="state">تعذّر تحميل بيانات المدرسة.</div>'; }
-        callServer(full ? 'getSchoolPageData' : 'getSchoolPublicData', [id], function (res) {
-          if (!res || !res.success) { fail(); return; }
-          if (full) {
-            _spPage = res.page || null;
-            renderBanner(res.brand, applySeo);
-            renderPageSections(res);
-          } else {
-            renderBanner(res.brand, applySeo);
-          }
-          renderNews(res.news || []);
-          if (_pendingNewsHighlight) {
-            var target = _pendingNewsHighlight;
-            _pendingNewsHighlight = '';
-            setTimeout(function () { highlightSharedNews(target); }, 60);
-          } else if (!full) {
-            // على صفحة السلاگ الزائر وصل لتوّه من رابط خارجي — لا تخطف تمريره لأعلى.
-            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
-          }
-        }, fail);
-      }
+function spRender(){
+  var view = _spFilter(SP.all, SP.q);
+  if(!view.length){
+    spEl('spGrid').innerHTML = '';
+    spEl('spState').innerHTML = _spEmptyHtml();
+    spEl('spState').hidden = false;
+    return;
+  }
+  spEl('spState').hidden = true;
+  var h = '', i;
+  for(i = 0; i < view.length; i++) h += _spCard(view[i]);
+  spEl('spGrid').innerHTML = h;
+}
 
-      // ── أقسام صفحة المدرسة الموسّعة ──
-      // القاعدة الثابتة: `_spShow(id, html)` تُظهر القسم **فقط** عند وجود محتوى فعلي، وتُبقيه
-      // `display:none` عند الفراغ — لا عنوان فوق شبكة فارغة ولا «لا توجد صور» (محتوى رقيق).
-      function _spShow(secId, gridId, html) {
-        var sec = $(secId), grid = gridId ? $(gridId) : null;
-        if (!sec) return;
-        if (!html) { sec.style.display = 'none'; return; }
-        if (grid) grid.innerHTML = html; else sec.innerHTML = html;
-        sec.style.display = 'block';
+function spBoot(){
+  google.script.run
+    .withSuccessHandler(function(r){
+      if(!r || r.success !== true){
+        spEl('spState').textContent = 'تعذّر تحميل قائمة المدارس — أعد المحاولة.';
+        return;
       }
+      SP.all = r.schools || [];
+      spEl('spSub').textContent = SP.all.length + ' مدرسة على المنصّة';
+      spRender();
+    })
+    .withFailureHandler(function(err){
+      /* التمييز من الجسر: مزدحم ≠ مقطوع ≠ خطأ منطقي — علاج كلٍّ معاكس للآخر. */
+      spEl('spState').textContent = window.gasErrorInfo
+        ? window.gasErrorInfo(err).text
+        : 'تعذّر الاتصال (عبر خادم Google مباشرةً) — أعد المحاولة.';
+    })
+    .listPartnerSchoolsPublic();
+}
 
-      function renderPageSections(res) {
-        var page = res.page || {};
+document.addEventListener('click', function(e){
+  if(e.target.closest && e.target.closest('#spClear')){
+    SP.q = ''; spEl('spSearch').value = ''; spRender();
+  }
+});
+spEl('spSearch').addEventListener('input', function(){ SP.q = this.value; spRender(); });
 
-        // (١) إحصائيات — من بيانات حقيقية فقط (الخادم لا يُرسِل بلاطة بلا مصدر).
-        var stats = res.stats || [], sHtml = '';
-        for (var i = 0; i < stats.length; i++) {
-          sHtml += '<div class="sp-stat"><b>' + esc(stats[i].value) + esc(stats[i].suffix || '') + '</b>'
-                +  '<span>' + esc(stats[i].label) + '</span></div>';
-        }
-        _spShow('spStats', 'spStatsGrid', sHtml);
+/* ═══ صفحة الهبوط: الكشف عند التمرير + الأكورديون — منقولة من home-all-school ═══
+   🔴 دالّة `animateCards` **مُسقَطة عمداً** (لم تُنقَل): `spRender()` تُستدعى عند كل ضغطة
+   مفتاح بالبحث وتستبدل `innerHTML` كاملاً ⇒ إعادة تشغيل حركة الكشف على كل حرف = وميض.
+   حركة كشفٍ عند التمرير غير متوافقة بنيوياً مع شبكة تُعاد فلترتها حيّاً.
+   ⚠️ قواعد `.card-reveal` بالـCSS **باقية خاملة** (لا عنصر يحمل الصنف) — تُركت لأنها
+   مشتركة السطر مع `.reveal-s` الحيّة، وتشذيبها يمسّ سبعة محدِّدات بلا مكسب. */
+function initScrollReveal() {
+  var els = document.querySelectorAll('.reveal-s');
+  try {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: .09, rootMargin: '0px 0px -44px 0px' });
+    for (var i = 0; i < els.length; i++) io.observe(els[i]);
+  } catch (e) {
+    // لا يوجد IntersectionObserver (بيئة قديمة) — أظهر العناصر فوراً بدل بقائها مخفية للأبد
+    for (var j = 0; j < els.length; j++) els[j].classList.add('in');
+  }
+  _revealSafetyValve();
+}
 
-        // (٢) عن المدرسة — العنوان من المحتوى إن وُجد، والقسم يختفي كلياً بلا نصّ.
-        if (page.aboutText) {
-          var h = $('spAboutH');
-          if (h && page.aboutTitle) h.textContent = page.aboutTitle;
-          _spShow('spAbout', 'spAboutBody', esc(page.aboutText));
-        } else { _spShow('spAbout', null, ''); }
+// صمّام أمان: بيئة تُنفِّذ JS لكن لا تُمرِّر إطلاقاً (زاحف يُصيِّر الصفحة، أداة لقطة، قارئ
+// آلي) كانت ترى كل ما تحت الطيّة فارغاً لأن `opacity:0` هي الحالة الأساسية. بعد 6 ثوانٍ بلا
+// أي تفاعل بشري نكشف كل شيء دفعة واحدة — مستخدم حقيقي لم يتفاعل خلال 6s لم يرَ التأثير
+// أصلاً، فلا خسارة بصرية. يكمّل بوّابة `.js` (تغطّي حالة «بلا JS» فقط).
+function _revealSafetyValve() {
+  var interacted = false;
+  var evs = ['scroll', 'pointerdown', 'touchstart', 'keydown', 'wheel'];
+  function mark() { interacted = true; }
+  for (var i = 0; i < evs.length; i++) {
+    window.addEventListener(evs[i], mark, { once: true, passive: true });
+  }
+  setTimeout(function () {
+    if (interacted) return;
+    // `.in` وحدها لا تكفي على المتصفّحات الداعمة لـ`animation-timeline`: الحركة النشطة
+    // تتحكّم بـopacity وتغلب أي إعلان عادي (مواصفة CSS Animations) — لذا نضيف صنفاً على
+    // <html> يُلغي الحركة نفسها بـ!important. `.in` تبقى للمسار الاحتياطي (transition).
+    document.documentElement.classList.add('reveal-all');
+    var all = document.querySelectorAll('.reveal-s,.card-reveal');
+    for (var k = 0; k < all.length; k++) all[k].classList.add('in');
+  }, 6000);
+}
 
-        // (٣) المراحل الدراسية · (٤) لماذا مدرستنا
-        _spShow('spStages', 'spStagesGrid', _spCards(page.stages));
-        _spShow('spFeatures', 'spFeaturesGrid', _spCards(page.features));
+// ── أكورديون الأسئلة الشائعة (منقول من pricing/، بنمط addEventListener لا onclick مضمّن) ──
+function initFaqAccordion() {
+  var qs = document.querySelectorAll('.pmkt-faq-q');
+  for (var i = 0; i < qs.length; i++) {
+    qs[i].addEventListener('click', function () {
+      var item = this.parentElement;
+      var answer = item.querySelector('.pmkt-faq-a');
+      var isOpen = this.classList.contains('open');
+      var allQs = document.querySelectorAll('.pmkt-faq-q');
+      for (var j = 0; j < allQs.length; j++) {
+        allQs[j].classList.remove('open');
+        allQs[j].parentElement.querySelector('.pmkt-faq-a').style.maxHeight = '0';
+      }
+      if (!isOpen) {
+        this.classList.add('open');
+        answer.style.maxHeight = answer.scrollHeight + 'px';
+      }
+    });
+  }
+}
 
-        // (٥) المعرض — الصور مطبَّعة إلى lh3 خادمياً؛ لا تُعِد تطبيعها، اضبط الحجم بـCSS.
-        var gal = res.gallery || [], gHtml = '';
-        for (var g = 0; g < gal.length; g++) {
-          var gu = safeUrl(gal[g].url);
-          if (!gu) continue;
-          gHtml += '<a href="' + attr(gu) + '" target="_blank" rel="noopener" title="' + attr(gal[g].title || '') + '">'
-                +  '<img src="' + attr(gu) + '" alt="' + attr(gal[g].title || 'صورة من المدرسة') + '" loading="lazy"'
-                +  ' onerror="this.parentNode.style.display=\'none\'"></a>';
-        }
-        _spShow('spGallery', 'spGalleryGrid', gHtml);
+/* الإقلاع — 🔴 التحويلة **مطلقة**: النسبية على الجذر تُعطي `/newsarticle.html` وهو 404
+   (لا ملف بذلك المسار ولا يعيد الـWorker كتابته). إصلاح لخلل قائم لا انحدار. */
+function _spBootPage(){
+  try{
+    var q = /[?&]news=/.test(location.search);
+    if(q){ location.replace('/home/newsarticle.html' + location.search); return; }
+  }catch(e){}
+  try{ var y = document.getElementById('yr'); if(y) y.textContent = String(new Date().getFullYear()); }catch(e){}
+  initScrollReveal();
+  initFaqAccordion();
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _spBootPage);
+else _spBootPage();
 
-        // (٦) الفيديوهات — رابط خارجي لا مشغّل مضمّن (تفادي إطارات ثقيلة على شبكة ضعيفة).
-        var vids = res.videos || [], vHtml = '';
-        for (var v = 0; v < vids.length; v++) {
-          var vu = safeUrl(vids[v].url);
-          if (!vu) continue;
-          vHtml += '<div class="sp-vid"><a href="' + attr(vu) + '" target="_blank" rel="noopener">▶️ '
-                +  esc(vids[v].title || 'فيديو') + '</a>'
-                +  (vids[v].date ? '<span class="cap">' + esc(vids[v].date) + '</span>' : '')
-                +  '</div>';
-        }
-        _spShow('spVideos', 'spVideosGrid', vHtml);
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', spBoot);
+else spBoot();
+</script>
+</script>
 
-        // (٧) تواصل معنا — كل سطر يظهر فقط إن كانت قيمته موجودة فعلاً.
-        var b = res.brand || {}, cHtml = '';
-        if (page.address) cHtml += '<div class="row">📍 ' + esc(page.address) + '</div>';
-        if (page.phone)   cHtml += '<div class="row">📞 <a href="tel:' + attr(page.phone) + '" dir="ltr">' + esc(page.phone) + '</a></div>';
-        if (page.email)   cHtml += '<div class="row">✉️ <a href="mailto:' + attr(page.email) + '" dir="ltr">' + esc(page.email) + '</a></div>';
-        var wa = String(b.whatsapp || '').replace(/[^0-9]/g, '');
-        if (wa) cHtml += '<div class="row">🟢 <a href="https://wa.me/' + attr(wa) + '" target="_blank" rel="noopener">واتساب</a></div>';
-        var mp = safeUrl(page.mapUrl);
-        if (mp) cHtml += '<div class="row">🗺️ <a href="' + attr(mp) + '" target="_blank" rel="noopener">الموقع على الخريطة</a></div>';
-        var soc = socialHtml(b);
-        if (soc) cHtml += '<div class="row">' + soc + '</div>';
-        _spShow('spContact', 'spContactGrid', cHtml);
-      }
-
-      function _spCards(list) {
-        if (!list || !list.length) return '';
-        var html = '';
-        for (var i = 0; i < list.length; i++) {
-          html += '<div class="sp-card"><h3>' + esc(list[i].title) + '</h3>'
-               +  (list[i].desc ? '<p>' + esc(list[i].desc) + '</p>' : '') + '</div>';
-        }
-        return html;
-      }
-
-      // ── لون هوية المدرسة الديناميكي (نطاقه محدود لقسم #schoolView فقط — بلا مسّ --brand العام) ──
-      var SV_THEME_KEY = 'hasTheme_';
-      function _thClamp(n) { return Math.max(0, Math.min(255, Math.round(n))); }
-      function _thHex2(n) { var h = _thClamp(n).toString(16); return h.length === 1 ? '0' + h : h; }
-      function _thParse(hex) {
-        if (!hex) return null;
-        var h = String(hex).replace('#', '').trim();
-        if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
-        if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
-        return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
-      }
-      function _thShade(rgb, pct) {
-        function f(c) { return pct < 0 ? c * (1 + pct) : c + (255 - c) * pct; }
-        return '#' + _thHex2(f(rgb[0])) + _thHex2(f(rgb[1])) + _thHex2(f(rgb[2]));
-      }
-      // تقريب عملي لسطوع اللون (صيغة YIQ) لاختيار نص أبيض/أسود تلقائياً — ليس حساب WCAG الدقيق الكامل.
-      function _thLuma(rgb) { return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000; }
-
-      // ── SEO ديناميكي (نفس نمط applySchoolSeo في home/Index.html، منسوخ لا مُخترَع) ──
-      // القيم الافتراضية (هوية يمن سكولز) مضبوطة سلفاً كـ<meta> ثابتة في <head>؛ هذه الدوال
-      // تُستبدَل ديناميكياً بشعار/اسم/لون المدرسة الفعلية عند اختيارها فقط، وتعود للافتراضي عند
-      // «تغيير المدرسة».
-      var DEFAULT_SEO = {
-        title: 'Yemen Schoolz — يمن سكولز | نظام إدارة المدارس',
-        description: 'Yemen Schoolz (يمن سكولز) — نظام إدارة المدارس: منصّات المعلمين والطلاب وإدارة المحتوى والجداول والمالية والتقارير. اكتشف مدارسنا الشريكة واختر مدرستك.',
-        image: 'https://yemenschoolz.com/assets/yemenschoolz-og.png',
-        siteName: 'Yemen Schoolz'
-      };
-      function setMeta(selector, value) {
-        if (value == null) return;
-        var el = document.head.querySelector(selector);
-        if (!el) {
-          var m = selector.match(/\[(name|property)="([^"]+)"\]/);
-          if (!m) return;
-          el = document.createElement('meta');
-          el.setAttribute(m[1], m[2]);
-          document.head.appendChild(el);
-        }
-        el.setAttribute('content', value);
-      }
-      function injectLd(id, obj) {
-        var old = document.getElementById(id);
-        if (old) old.parentNode.removeChild(old);
-        var s = document.createElement('script');
-        s.type = 'application/ld+json';
-        s.id = id;
-        s.textContent = JSON.stringify(obj);
-        document.head.appendChild(s);
-      }
-      // ⚠️ هوية المستند (title/og/twitter/JSON-LD) لا تتبدّل أبداً لمجرّد اختيار محفوظ محلياً:
-      // الجذر «/» يجب أن يبقى دائماً صفحة المنصّة Yemen Schoolz لأي زائر أو مراجِع Google يصلها
-      // بلا رابط عميق — وإلا ظهر اسم مدرسة واحدة مكان اسم التطبيق وتكرّر رفض «الاسم لا يطابق»
-      // (بند 64). البانر البصري للمدرسة يُعرَض كما هو في كل الحالات؛ الوسوم وحدها هي المحميّة.
-      // بيانات المحتوى المعروضة حالياً (email/foundingDate/mapUrl) — تُثري JSON-LD للمدرسة.
-      // مفصولة عن `b` لأن `renderBanner` يُستدعى من مسارَي الجذر وصفحة السلاگ، والثاني وحده
-      // يملك حزمة `page`.
-      var _spPage = null;
-      function applySchoolSeo(b, applySeo) {
-        if (!applySeo) return;
-        b = b || {};
-        var title = b.name ? (b.name + ' | Yemen Schoolz') : DEFAULT_SEO.title;
-        var desc = b.name ? ('صفحة ' + b.name + ' على منصّة يمن سكولز — دخول المعلمين والطلاب وآخر الأخبار.') : DEFAULT_SEO.description;
-        var image = b.logo || DEFAULT_SEO.image;
-        document.title = title;
-        setMeta('meta[name="description"]', desc);
-        setMeta('meta[property="og:title"]', title);
-        setMeta('meta[property="og:description"]', desc);
-        setMeta('meta[property="og:image"]', image);
-        setMeta('meta[name="twitter:title"]', title);
-        setMeta('meta[name="twitter:description"]', desc);
-        setMeta('meta[name="twitter:image"]', image);
-        if (b.schoolId) {
-          // عنوان الكيان = الرابط القانوني القصير `/​<slug>` متى وُجد slug — وهو نفسه
-          // canonical الذي يضبطه السكربت المتزامن. القديم `/?school=<id>` كان يُعلن الجذر
-          // مع query، فيتنافس مع كيان المنصّة على نفس العنوان (بند 68).
-          var pg = _spPage || {};
-          var canon = b.slug ? ('https://yemenschoolz.com/' + encodeURIComponent(b.slug))
-                             : ('https://yemenschoolz.com/?school=' + encodeURIComponent(b.schoolId));
-          injectLd('ld-school', {
-            '@context': 'https://schema.org',
-            '@type': ['School', 'EducationalOrganization'],
-            // كيان المدرسة تابع صراحةً لكيان المنصّة ولا يدّعي تمثيل النطاق نفسه —
-            // بلا هذين المرجعين يظهر كيانان متنافسان على نفس الموقع لدى محرّكات البحث.
-            isPartOf: { '@id': 'https://yemenschoolz.com/#website' },
-            provider: { '@id': 'https://yemenschoolz.com/#organization' },
-            name: b.name,
-            description: desc,
-            url: canon,
-            logo: image,
-            image: image,
-            telephone: b.phone || undefined,
-            email: pg.email || undefined,
-            foundingDate: pg.foundedYear || undefined,
-            hasMap: safeUrl(pg.mapUrl) || undefined,
-            address: b.address ? { '@type': 'PostalAddress', streetAddress: b.address } : undefined,
-            sameAs: [b.facebook, b.instagram, b.youtube].filter(function (u) { return !!u; })
-          });
-        }
-      }
-      function resetSchoolSeo() {
-        document.title = DEFAULT_SEO.title;
-        setMeta('meta[name="description"]', DEFAULT_SEO.description);
-        setMeta('meta[property="og:title"]', DEFAULT_SEO.title);
-        setMeta('meta[property="og:description"]', DEFAULT_SEO.description);
-        setMeta('meta[property="og:image"]', DEFAULT_SEO.image);
-        setMeta('meta[name="twitter:title"]', DEFAULT_SEO.title);
-        setMeta('meta[name="twitter:description"]', DEFAULT_SEO.description);
-        setMeta('meta[name="twitter:image"]', DEFAULT_SEO.image);
-        var old = document.getElementById('ld-school');
-        if (old) old.parentNode.removeChild(old);
-      }
-
-      function applySchoolTheme(color) {
-        var rgb = _thParse(color);
-        if (!rgb) return; // يبقى fallback على --brand العام عبر CSS
-        var sv = $('schoolView');
-        if (!sv) return;
-        var s = sv.style;
-        s.setProperty('--sv-primary', '#' + _thHex2(rgb[0]) + _thHex2(rgb[1]) + _thHex2(rgb[2]));
-        s.setProperty('--sv-primary-dark', _thShade(rgb, -0.30));
-        s.setProperty('--sv-glow', 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.18)');
-        // العتبة 150 لا 128: لون متوسط السطوع (luma≈135) كان يُنتِج نصّاً أبيض فوقه بتباين دون
-        // WCAG AA. رفعها يُرجِّح النصّ الداكن في المنطقة الرمادية — أكثر أماناً لأي لون مستقبلي.
-        s.setProperty('--sv-on-primary', _thLuma(rgb) >= 150 ? '#1a2233' : '#ffffff');
-        // نسخة داكنة من لون الهوية للنصّ الملوَّن **فوق خلفية بيضاء** (عناوين/أرقام/روابط).
-        // استخدام `--sv-primary` نفسه هناك يفشل AA لأي لون فاتح (بند 24) — التغميق 45٪ يضمن
-        // تجاوز 4.5:1 على أبيض لكامل مدى الألوان الممكنة.
-        s.setProperty('--sv-primary-ink', _thShade(rgb, -0.45));
-      }
-      function resetSchoolTheme() {
-        var sv = $('schoolView');
-        if (!sv) return;
-        var s = sv.style;
-        s.removeProperty('--sv-primary');
-        s.removeProperty('--sv-primary-dark');
-        s.removeProperty('--sv-glow');
-        s.removeProperty('--sv-on-primary');
-        s.removeProperty('--sv-primary-ink');
-      }
-      // تطبيق فوري من آخر لون مخزَّن محلياً (قبل وصول استجابة الخادم) — يمنع وميض لون مدرسة سابقة.
-      function applyCachedTheme(schoolId) {
-        try {
-          var c = localStorage.getItem(SV_THEME_KEY + schoolId);
-          if (c) applySchoolTheme(c);
-        } catch (e) {}
-      }
-      function cacheTheme(schoolId, color) {
-        try { if (schoolId && color) localStorage.setItem(SV_THEME_KEY + schoolId, color); } catch (e) {}
-      }
-
-      function renderBanner(b, applySeo) {
-        b = b || {};
-        if (b.color) { applySchoolTheme(b.color); cacheTheme(b.schoolId, b.color); }
-        applySchoolSeo(b, applySeo);
-        var logo = b.logo
-          ? '<img class="logo" src="' + attr(b.logo) + '" alt="' + attr(b.name) + '" onerror="this.style.display=\'none\'">'
-          : '';
-        var meta = '';
-        if (b.address) meta += '📍 ' + esc(b.address) + '  ';
-        if (b.phone) meta += '📞 ' + esc(b.phone);
-        // السطر التعريفي يأتي من حزمة `page` (صفحة السلاگ وحدها) — غيابه على الجذر متعمَّد.
-        var tagline = (_spPage && _spPage.tagline) ? _spPage.tagline : '';
-        // «تغيير المدرسة» يمسح الاختيار المحلي ويعود لدليل المنصّة — بلا معنى على `/<slug>`
-        // (الرابط نفسه هو المدرسة)، فيُستبدَل هناك برابط صريح لبوّابة المنصّة.
-        var lastAction = _isSchoolPage()
-          ? '<a class="btn btn-ghost btn-sm" href="/">بوّابة المنصّة</a>'
-          : '<button class="btn btn-ghost btn-sm" id="btnChange">تغيير المدرسة</button>';
-        $('schoolBanner').innerHTML =
-          '<div class="school-banner">' + logo
-          + '<div><h2>' + esc(b.name || 'المدرسة') + '</h2>'
-          +   (tagline ? '<div class="sb-meta" style="font-size:15.5px;opacity:.95">' + esc(tagline) + '</div>' : '')
-          +   (meta ? '<div class="sb-meta">' + meta + '</div>' : '')
-          + '</div>'
-          + '<div class="sb-actions">'
-          +   '<a class="btn btn-primary btn-sm" href="' + portalEntryHref('teacher', 'dashboard', b) + '">دخول المعلمين</a>'
-          +   '<a class="btn btn-ghost btn-sm" href="' + portalEntryHref('student', 'home', b) + '">دخول الطلاب</a>'
-          +   lastAction
-          + '</div></div>';
-        var bc = $('btnChange');
-        if (bc) bc.addEventListener('click', clearDefault);
-      }
-
-      function renderNews(news) {
-        if (!news || !news.length) {
-          $('schoolNews').innerHTML = '<div class="state">لا توجد أخبار منشورة حاليًّا لهذه المدرسة.</div>';
-          return;
-        }
-        var html = '';
-        for (var i = 0; i < news.length; i++) {
-          var n = news[i];
-          var isText = n.isTextCard && !n.image;
-          var media = '';
-          if (!isText && n.image) {
-            var cnt = (n.gallery && n.gallery.length > 1) ? '<span class="count">🖼️ ' + n.gallery.length + '</span>' : '';
-            media = '<div class="media">' + cnt
-                  + '<img src="' + attr(n.image) + '" alt="' + attr(n.title) + '" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></div>';
-          } else if (!isText && n.videos && n.videos.length) {
-            media = '<div class="media"><div class="count">🎬 فيديو</div></div>';
-          }
-          html += '<div class="ncard' + (isText ? ' text-card' : '') + '" data-news-id="' + attr(String(n.id || '').replace(/^news_/, '')) + '">' + media
-            +   '<div class="body">'
-            +     '<h4>' + esc(n.title || 'خبر') + '</h4>'
-            +     (n.content ? '<div class="txt">' + esc(n.content) + '</div>' : '')
-            +     '<div class="foot"><span>' + esc(n.author || '') + '</span><span>' + esc(n.date || '') + '</span></div>'
-            +   '</div>'
-            + '</div>';
-        }
-        $('schoolNews').innerHTML = html;
-        animateCards($('schoolNews'));
-      }
-
-      // ── كشف عناصر المميزات عند التمرير (حركة الـHero نفسها CSS-only تلقائية — لا علاقة لهذه الدالة بها) ──
-      function initScrollReveal() {
-        var els = document.querySelectorAll('.reveal-s');
-        try {
-          var io = new IntersectionObserver(function (entries) {
-            entries.forEach(function (e) {
-              if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-            });
-          }, { threshold: .09, rootMargin: '0px 0px -44px 0px' });
-          for (var i = 0; i < els.length; i++) io.observe(els[i]);
-        } catch (e) {
-          // لا يوجد IntersectionObserver (بيئة قديمة) — أظهر العناصر فوراً بدل بقائها مخفية للأبد
-          for (var j = 0; j < els.length; j++) els[j].classList.add('in');
-        }
-        _revealSafetyValve();
-      }
-
-      // صمّام أمان: بيئة تُنفِّذ JS لكن لا تُمرِّر إطلاقاً (زاحف يُصيِّر الصفحة، أداة لقطة، قارئ
-      // آلي) كانت ترى كل ما تحت الطيّة فارغاً لأن `opacity:0` هي الحالة الأساسية. بعد 6 ثوانٍ بلا
-      // أي تفاعل بشري نكشف كل شيء دفعة واحدة — مستخدم حقيقي لم يتفاعل خلال 6s لم يرَ التأثير
-      // أصلاً، فلا خسارة بصرية. يكمّل بوّابة `.js` (تغطّي حالة «بلا JS» فقط).
-      function _revealSafetyValve() {
-        var interacted = false;
-        var evs = ['scroll', 'pointerdown', 'touchstart', 'keydown', 'wheel'];
-        function mark() { interacted = true; }
-        for (var i = 0; i < evs.length; i++) {
-          window.addEventListener(evs[i], mark, { once: true, passive: true });
-        }
-        setTimeout(function () {
-          if (interacted) return;
-          // `.in` وحدها لا تكفي على المتصفّحات الداعمة لـ`animation-timeline`: الحركة النشطة
-          // تتحكّم بـopacity وتغلب أي إعلان عادي (مواصفة CSS Animations) — لذا نضيف صنفاً على
-          // <html> يُلغي الحركة نفسها بـ!important. `.in` تبقى للمسار الاحتياطي (transition).
-          document.documentElement.classList.add('reveal-all');
-          var all = document.querySelectorAll('.reveal-s,.card-reveal');
-          for (var k = 0; k < all.length; k++) all[k].classList.add('in');
-        }, 6000);
-      }
-
-      // ── أكورديون الأسئلة الشائعة (منقول من pricing/، بنمط addEventListener لا onclick مضمّن) ──
-      function initFaqAccordion() {
-        var qs = document.querySelectorAll('.pmkt-faq-q');
-        for (var i = 0; i < qs.length; i++) {
-          qs[i].addEventListener('click', function () {
-            var item = this.parentElement;
-            var answer = item.querySelector('.pmkt-faq-a');
-            var isOpen = this.classList.contains('open');
-            var allQs = document.querySelectorAll('.pmkt-faq-q');
-            for (var j = 0; j < allQs.length; j++) {
-              allQs[j].classList.remove('open');
-              allQs[j].parentElement.querySelector('.pmkt-faq-a').style.maxHeight = '0';
-            }
-            if (!isOpen) {
-              this.classList.add('open');
-              answer.style.maxHeight = answer.scrollHeight + 'px';
-            }
-          });
-        }
-      }
-
-      // ── الإقلاع ──
-      function boot() {
-        // إعادة توجيه روابط مشاركة الأخبار القديمة (?news=...) إلى الصفحة المخصّصة الجديدة
-        // newsarticle.html — تحافظ على عمل الروابط المُشارَكة فعلياً مع أشخاص حقيقيين قبل هذا
-        // الإصلاح دون كسرها، بدل الاكتفاء بتمييز الخبر ضمن أعلى الأخبار العامة فقط (السلوك القديم).
-        try {
-          if (qparam('news')) { location.replace('newsarticle.html' + location.search); return; }
-        } catch (e) {}
-        try { $('yr').textContent = String(new Date().getFullYear()); } catch (e) {}
-        // عناصر الـHero (hero-title/hero-sub/cta-pop) تُشغَّل تلقائياً عبر CSS keyframes بلا JS —
-        // تعمل حتى لو تأخّر تحميل السكربت، وتبقى "autoplay" حقيقية بلا اعتماد على مراقب التمرير.
-        initScrollReveal();
-        initFaqAccordion();
-        // على `/<slug>` قسم «مدارسنا الشريكة» مخفيّ بالكامل ⇒ استدعاء `listPartnerSchoolsPublic`
-        // كان سيحجز تنفيذاً كاملاً من حصّة الثلاثين لبيانات لا تُعرَض إطلاقاً (بند 55/62/74).
-        if (!_isSchoolPage()) loadPartners();
-        var deep = qparam('school') || qparam('schoolId') || _pathSlug();
-        var def = getDefault();
-        var initial = deep || def;
-        var newsParam = qparam('news');
-        if (newsParam) _pendingNewsHighlight = String(newsParam).replace(/^news_/, '');
-        // وسوم هوية المدرسة تُطبَّق فقط مع رابط عميق صريح (`deep`)؛ الاستعادة من التخزين المحلي
-        // (`def`) تعرض البانر بلا المساس بهوية المستند — راجع التعليق فوق applySchoolSeo.
-        if (initial) { if (deep) setDefault(deep); loadSchoolView(initial, !!deep); }
-      }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
-      } else { boot(); }
-    })();
-  </script>
 </body>
 </html>

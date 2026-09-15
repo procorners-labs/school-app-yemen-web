@@ -96,7 +96,7 @@
 (function() {
   var ua = navigator.userAgent || '';
   var isAndroidWV = (ua.indexOf('wv') !== -1) ||
-                    (ua.indexOf('SchoolAppYemen') !== -1) ||
+                    ((ua.indexOf('SchoolAppYemen') !== -1 || ua.indexOf('YemenSchoolz') !== -1)) ||
                     (ua.indexOf('Android') !== -1 && ua.indexOf('Version/') !== -1 && ua.indexOf('Chrome') !== -1);
   window.__SchoolAppEnv = { isAndroidWebView: isAndroidWV, ua: ua };
   if (isAndroidWV) {
@@ -3697,7 +3697,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   function _tcInAppCtx() {
     var ua = '';
     try { ua = String(navigator.userAgent || ''); } catch (e) {}
-    return /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+    /* 🔴 **وسمان لتطبيقين — ولا يُحذف أحدُهما ظنّاً أنه تكرار (أُضيف 2026-09-15).**
+       · `SchoolAppYemen` ⇒ **حزمةُ «مدارس الإبداع» المنشورةُ على Play**. قِيس من `dex`
+         الحزم الثلاث (`vc31`/`vc34`/`vc35`) أن الـUA **سلسلةٌ واحدةٌ حرفياً** تحمله،
+         **ولا تحمل رقمَ إصدار** (`1.0` ثابتةٌ في `WebViewSupport.kt`) ⇒ **يميّز التطبيقَ
+         لا إصدارَه**. 🔴 **وأجهزةُ مستخدميه لا تملك طريقَ تحديثٍ لوسمها** ⇒ حذفُه كسرٌ
+         لا رجعةَ فيه.
+       · `YemenSchoolz` ⇒ تطبيقُ «يمن سكولز» المستقلّ، يرسل الوسمين معاً اليومَ **وسيحذف
+         الأوّل** بعد أن صرنا نقبل الثاني. ⇒ **الترتيبُ لا يُعكَس**: القبولُ هنا أوّلاً،
+         ثمّ الحذفُ عنده — وعكسُه **فشلٌ صامتٌ كامل** (روابطُ تفتح في متصفّحٍ خارجيّ داخل
+         التطبيق · ولافتةُ «حمّل التطبيق» تظهر لمن هو داخله · ووضعُ عدم الاتصال يُقرأ `web`). */
+    return /SchoolAppYemen|YemenSchoolz/i.test(ua) || /\bwv\b/.test(ua);
   }
 
   /**
@@ -32742,7 +32752,7 @@ function _prInApp() {
     if (window.__SchoolAppEnv && window.__SchoolAppEnv.isAndroidWebView === true) return true;
     if (typeof _tcInAppCtx === 'function') return !!_tcInAppCtx();
     var ua = String(navigator.userAgent || '');
-    return /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+    return /SchoolAppYemen|YemenSchoolz/i.test(ua) || /\bwv\b/.test(ua);
   } catch (e) { return true; }
 }
 
