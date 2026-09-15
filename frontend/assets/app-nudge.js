@@ -71,7 +71,7 @@
 
   /** داخل تطبيقنا؟ العلامة `SchoolAppYemen` ثابتة في كل الإصدارات المنشورة. */
   function inApp() {
-    return ua.indexOf('SchoolAppYemen') !== -1;
+    return (ua.indexOf('SchoolAppYemen') !== -1 || ua.indexOf('YemenSchoolz') !== -1);
   }
 
   function isAndroidBrowser() {
