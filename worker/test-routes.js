@@ -3141,16 +3141,26 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
     return;
   }
 
-  var okArr = Array.isArray(list) && list.length === 3;
+  var okArr = Array.isArray(list) && list.length === 2;
   if (!okArr) failed++;
   console.log((okArr ? '  ✅ ' : '  ❌ ') +
-    'مصفوفةُ تصريحاتٍ بطول ٣ [المقيس: ' + (Array.isArray(list) ? list.length : 'ليست مصفوفة') + ']');
+    'مصفوفةُ تصريحاتٍ بطول ٢ [المقيس: ' + (Array.isArray(list) ? list.length : 'ليست مصفوفة') + ']');
 
   var EXPECT = {
     'com.proconrers.schoolappyemen': 2,   // 🔒 المنشور: مفتاحُ الرفع + مفتاحُ توقيع Play
-    'com.proconrers.schoolzyemen': 1,     // «يمن سكولز» بالمعرّف القديم — يُحذف بعد التسمية
-    'com.yemenschoolz.app': 1             // 🆕 المعرّفُ الجديد — بصمةُ الرفع وحدَها حتى أوّل رفع
+    'com.yemenschoolz.app': 1             // «يمن سكولز»: بصمةُ الرفع وحدَها حتى أوّل رفع
   };
+
+  /* 🔴 **والمعرّفُ القديم ممنوعٌ صراحةً — قرارُ مالكٍ 2026-09-15: الجديدُ وحدَه.**
+     وفحصُ الوجود لا يكفي: قائمةٌ تُضاف إليها حزمةٌ ثالثةٌ سهواً تمرّ ما دام
+     المطلوبُ موجوداً. ⇒ يُفحَص **الغياب** صراحةً، وبطولِ المصفوفة أعلاه معاً. */
+  var hasOld = (list || []).some(function (x) {
+    return x && x.target && x.target.package_name === 'com.proconrers.schoolzyemen';
+  });
+  if (hasOld) failed++;
+  console.log((!hasOld ? '  ✅ ' : '  ❌ ') +
+    '🔴 المعرّفُ القديم `com.proconrers.schoolzyemen` **غائبٌ** [المقيس: ' +
+    (hasOld ? 'حاضرٌ — مخالفةُ قرار' : 'غائب') + ']');
   Object.keys(EXPECT).forEach(function (pkg) {
     var st = (list || []).filter(function (x) { return x && x.target && x.target.package_name === pkg; })[0];
     var fps = st && st.target && st.target.sha256_cert_fingerprints;
@@ -3170,10 +3180,10 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
   var mutated = block.replace(/\n\s*alStatement\('com\.yemenschoolz\.app'[^\n]*\n/, '\n');
   var mutatedLen = -1;
   try { mutatedLen = evalBlock(mutated.replace(/,(\s*\]\);)/, '$1')).length; } catch (e2) { mutatedLen = -2; }
-  var mutationBites = (mutated !== block) && mutatedLen === 2;
+  var mutationBites = (mutated !== block) && mutatedLen === 1;
   if (!mutationBites) failed++;
   console.log((mutationBites ? '  ✅ ' : '  ❌ ') +
-    '🔴 طفرة: بإسقاط `com.yemenschoolz.app` يصير الطولُ ٢ [المقيس: ' + mutatedLen +
+    '🔴 طفرة: بإسقاط `com.yemenschoolz.app` يصير الطولُ ١ [المقيس: ' + mutatedLen +
     (mutated === block ? ' · **الطفرةُ لم تُطبَّق — النمطُ لا يطابق**' : '') + ']');
 })();
 
