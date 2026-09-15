@@ -369,8 +369,15 @@ Before editing, confirm you're editing `worker/school-app-proxy.js` (the real so
 
 - **Worker health (النطاق القانوني):** `https://school.procorners.com/gas/teacher?action=health`
 - **Worker health (workers.dev، لا يزال حيّاً):** `https://school-teacher-proxy.procorners-shop.workers.dev/gas/teacher?action=health`
-- **Worker health (يمن سكولز — 🔴 صار سطحَ خدمةٍ لتطبيق `com.proconrers.schoolzyemen` منذ 2026-09-09، لا نطاقَ هويّةٍ فقط):**
+- **Worker health (يمن سكولز — 🔴 صار سطحَ خدمةٍ لتطبيق «يمن سكولز» منذ 2026-09-09، لا نطاقَ هويّةٍ فقط):**
   `https://yemenschoolz.com/gas/teacher?action=health`
+  🔴 **ومعرّفُ ذلك التطبيق ينتقل إلى `com.yemenschoolz.app`** (قرارُ مالكٍ 2026-09-15 ·
+  مستودعُه `AndroidStudioProjects\YemenSchoolz`)، **والقديمُ `com.proconrers.schoolzyemen`
+  يبقى صالحاً حتى تكتمل التسمية.** ⇒ `assetlinks.json` يعلن **الاثنين معاً** عمداً
+  (‏`school-app-proxy.js` · `grep -n alStatement`)، **ويُحذف القديمُ بعد إتمامها.**
+  ⚠️ **ولا يُخلط بـ`com.proconrers.schoolappyemen`** — ذاك **تطبيقٌ آخرُ منشورٌ على Play**،
+  والاسمان يختلفان بحرفين في المنتصف (`school**app**yemen` مقابل `school**z**yemen`).
+  🔴 **والخلطُ لا يُعكَس:** توقيعُ أحدهما بمفتاح الآخر **يجعل Play يرفض التحديثَ أبداً**.
 - **GitHub Pages:** `https://procorners-labs.github.io/school-app-yemen-web/`
 - **CI gas repo:** `https://github.com/procorners-labs/school-app-yemen-gas/actions`
 
