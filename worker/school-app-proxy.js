@@ -2234,11 +2234,27 @@ export default {
           target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: fps }
         };
       };
-      var alBody = JSON.stringify([
+      // 🎯 **تضييقُ نطاقِ السلطة بالمضيف — أُضيف 2026-09-15، والحجّةُ تُسمّى بدقّة:**
+      //    كان الملفُّ **كائناً واحداً لكلّ المضيفات** (مقيسٌ 2026-09-07: `app.` و
+      //    `school.procorners.com` أعادا نفسَ البايتات). ⇒ كلُّ حزمةٍ كانت تُعلَن على
+      //    **كلّ** مضيف.
+      // 🔴 **وما لا يُقال — ادُّعي سابقاً ونُقض في اليوم نفسِه:** ذلك **لا يُنتج تنازعَ
+      //    نطاق**. التحقّقُ يُقاد بما يُعلنه المانيفست بـ`autoVerify`، والعناصرُ غيرُ
+      //    المطابِقة **تُتجاهَل** ⇒ **مُدخَلٌ بلا مُطالِبٍ على المضيف خامل**،
+      //    **والتنازعُ شرطُه تطبيقان يُعلنان نفسَ المضيف.**
+      // 🟢 **والحجّةُ الصحيحةُ للتفريع: تضييقُ نطاقِ سلطة** — لو أَعلن تطبيقٌ مضيفاً
+      //    سهواً يوماً، **يفشل تحقّقُه وحدَه** بدل أن ينجح صامتاً على مضيفٍ لا يخصّه.
+      //    ⇒ الفصلُ يتبع **مَن يخدمه المضيفُ فعلاً**:
+      //      · `app.yemenschoolz.com` ⇒ «يمن سكولز» وحدَه (‏`CANONICAL_ORIGIN` عنده).
+      //      · وما عداه ⇒ التطبيقُ **المنشور** وحدَه — وهو يطلب `school.procorners.com`
+      //        في `vc31` و`yemenschoolz.com` في `vc34/35`، **وكلاهما حيٌّ على أجهزة.**
+      // ⚠️ **والافتراضيُّ عمداً هو المنشور** (‏`workers.dev` وأيُّ مضيفٍ يُضاف لاحقاً):
+      //    **فشلُ تحقّقٍ لتطبيقٍ لم يُنشر أرخصُ من فشلِه لتطبيقٍ على أجهزةِ مستخدمين.**
+      var alIsSchoolzHost = (url.hostname === 'app.yemenschoolz.com');
+      var alBody = JSON.stringify(alIsSchoolzHost
+        ? [alStatement('com.yemenschoolz.app', [alSchoolzUpload])]
         // 🔒 عقدُ التطبيق **المنشور** — لا يُمَسّ، وبصمتاه إلزاميّتان معاً (انظر أعلاه).
-        alStatement('com.proconrers.schoolappyemen', alFingerprints),
-        alStatement('com.yemenschoolz.app', [alSchoolzUpload])
-      ]);
+        : [alStatement('com.proconrers.schoolappyemen', alFingerprints)]);
       return new Response(alBody, {
         status: 200,
         headers: {

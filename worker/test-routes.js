@@ -3118,7 +3118,7 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
   console.log('عقدُ `assetlinks.json` (استخراجٌ سلوكيٌّ بـ`vm` + طفرةٌ مقصودة):');
 
   var s = src.indexOf('var alFingerprints = [');
-  var b = src.indexOf('var alBody = JSON.stringify([', s);
+  var b = src.indexOf('var alBody = JSON.stringify(', s);
   var e = b < 0 ? -1 : src.indexOf('\n', src.indexOf(']);', b));
   if (s < 0 || b < 0 || e < 0) {
     failed++;
@@ -3127,64 +3127,75 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
   }
   var block = src.slice(s, e);
 
-  function evalBlock(txt) {
-    var c = vm.createContext({ JSON: JSON });
+  function evalBlock(txt, host) {
+    /* 🔴 `url.hostname` يُحقَن لأن الملفَّ صار **مُفرَّعاً بالمضيف** (تضييقُ سلطة).
+       وبلا الحقن ترمي الكتلةُ ويُقرأ ذلك «عطبَ استخراج» لا «عطبَ عقد». */
+    var c = vm.createContext({ JSON: JSON, url: { hostname: host } });
     vm.runInContext(txt, c);
     return JSON.parse(vm.runInContext('alBody', c));
   }
 
-  var list;
-  try { list = evalBlock(block); }
-  catch (err) {
-    failed++;
-    console.log('  ❌ 🔴 الكتلةُ لا تُنتج JSON صالحاً: ' + String(err.message).slice(0, 60));
-    return;
-  }
+  /* 🎯 **العقدُ صار مشروطاً بالمضيف، فيُقاس على كلّ مضيفٍ حقيقيّ لا على واحد.**
+     ولكلِّ صفٍّ **حزمةٌ متوقَّعةٌ وحزمةٌ ممنوعة** — لأن فحصَ الوجود وحدَه يمرّ على
+     ملفٍّ يعلن الجميعَ في كلّ مكان، وهو بالضبط ما جاء التضييقُ ليمنعه. */
+  var SCOPE = [
+    { host: 'app.yemenschoolz.com', want: 'com.yemenschoolz.app', fps: 1,
+      deny: 'com.proconrers.schoolappyemen', label: 'مضيفُ «يمن سكولز»' },
+    { host: 'yemenschoolz.com', want: 'com.proconrers.schoolappyemen', fps: 2,
+      deny: 'com.yemenschoolz.app', label: 'مضيفُ المنشور (‏vc34/35)' },
+    { host: 'school.procorners.com', want: 'com.proconrers.schoolappyemen', fps: 2,
+      deny: 'com.yemenschoolz.app', label: 'مضيفُ المنشور (‏vc31)' },
+    { host: 'school-teacher-proxy.procorners-shop.workers.dev', want: 'com.proconrers.schoolappyemen',
+      fps: 2, deny: 'com.yemenschoolz.app', label: 'الافتراضيُّ ⇒ المنشور' }
+  ];
 
-  var okArr = Array.isArray(list) && list.length === 2;
-  if (!okArr) failed++;
-  console.log((okArr ? '  ✅ ' : '  ❌ ') +
-    'مصفوفةُ تصريحاتٍ بطول ٢ [المقيس: ' + (Array.isArray(list) ? list.length : 'ليست مصفوفة') + ']');
-
-  var EXPECT = {
-    'com.proconrers.schoolappyemen': 2,   // 🔒 المنشور: مفتاحُ الرفع + مفتاحُ توقيع Play
-    'com.yemenschoolz.app': 1             // «يمن سكولز»: بصمةُ الرفع وحدَها حتى أوّل رفع
-  };
-
-  /* 🔴 **والمعرّفُ القديم ممنوعٌ صراحةً — قرارُ مالكٍ 2026-09-15: الجديدُ وحدَه.**
-     وفحصُ الوجود لا يكفي: قائمةٌ تُضاف إليها حزمةٌ ثالثةٌ سهواً تمرّ ما دام
-     المطلوبُ موجوداً. ⇒ يُفحَص **الغياب** صراحةً، وبطولِ المصفوفة أعلاه معاً. */
-  var hasOld = (list || []).some(function (x) {
-    return x && x.target && x.target.package_name === 'com.proconrers.schoolzyemen';
-  });
-  if (hasOld) failed++;
-  console.log((!hasOld ? '  ✅ ' : '  ❌ ') +
-    '🔴 المعرّفُ القديم `com.proconrers.schoolzyemen` **غائبٌ** [المقيس: ' +
-    (hasOld ? 'حاضرٌ — مخالفةُ قرار' : 'غائب') + ']');
-  Object.keys(EXPECT).forEach(function (pkg) {
-    var st = (list || []).filter(function (x) { return x && x.target && x.target.package_name === pkg; })[0];
+  SCOPE.forEach(function (row) {
+    var list;
+    try { list = evalBlock(block, row.host); }
+    catch (err) {
+      failed++;
+      console.log('  ❌ 🔴 `' + row.host + '` — الكتلةُ لا تُنتج JSON صالحاً: ' +
+        String(err.message).slice(0, 50));
+      return;
+    }
+    var st = (list || []).filter(function (x) {
+      return x && x.target && x.target.package_name === row.want;
+    })[0];
     var fps = st && st.target && st.target.sha256_cert_fingerprints;
-    var good = !!st &&
+    var denied = (list || []).some(function (x) {
+      return x && x.target && x.target.package_name === row.deny;
+    });
+    /* 🔴 والمعرّفُ القديم ممنوعٌ على **كلّ** مضيف — قرارُ مالكٍ 2026-09-15: الجديدُ وحدَه. */
+    var hasOld = (list || []).some(function (x) {
+      return x && x.target && x.target.package_name === 'com.proconrers.schoolzyemen';
+    });
+    var good = Array.isArray(list) && list.length === 1 && !!st && !denied && !hasOld &&
       Array.isArray(st.relation) && st.relation.length > 0 &&
       st.target.namespace === 'android_app' &&
-      Array.isArray(fps) && fps.length === EXPECT[pkg] &&
+      Array.isArray(fps) && fps.length === row.fps &&
       fps.every(function (f) { return typeof f === 'string' && /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/.test(f); });
     if (!good) failed++;
-    console.log((good ? '  ✅ ' : '  ❌ ') + '`' + pkg + '` — ' + EXPECT[pkg] +
-      ' بصمةً صالحةَ الشكل [المقيس: ' + (Array.isArray(fps) ? fps.length : 'غائبة') + ']');
+    console.log((good ? '  ✅ ' : '  ❌ ') + row.label + ' ⇒ `' + row.want + '` وحدَه بـ' +
+      row.fps + ' بصمة [طول: ' + (Array.isArray(list) ? list.length : '?') +
+      ' · بصمات: ' + (Array.isArray(fps) ? fps.length : 'غائبة') +
+      (denied ? ' · 🔴 **الممنوعُ حاضر**' : '') +
+      (hasOld ? ' · 🔴 **المعرّفُ القديم حاضر**' : '') + ']');
   });
 
-  /* 🔴 الضابطُ المعاكس — وبلاه يكون ما سبق أجوف: تُسقَط حزمةُ المعرّف الجديد من
-     **نسخةٍ في الذاكرة** (الشجرةُ لا تُمَسّ) ويُتوقَّع أن يتغيّر الناتج. ويُطبَع
-     **ما اشتُقّ لا عدَدُه**، فيفضح الفحصَ الأجوف في سطر. */
-  var mutated = block.replace(/\n\s*alStatement\('com\.yemenschoolz\.app'[^\n]*\n/, '\n');
-  var mutatedLen = -1;
-  try { mutatedLen = evalBlock(mutated.replace(/,(\s*\]\);)/, '$1')).length; } catch (e2) { mutatedLen = -2; }
-  var mutationBites = (mutated !== block) && mutatedLen === 1;
+  /* 🔴 الضابطُ المعاكس — وبلاه يكون ما سبق أجوف: يُلغى التفريعُ في **نسخةٍ بالذاكرة**
+     (الشجرةُ لا تُمَسّ) بجعل شرط المضيف `false` دائماً ⇒ **يصير مضيفُ «يمن سكولز»
+     يخدم حزمةَ المنشور**. ويُطبَع **ما اشتُقّ لا عدَدُه**، فيفضح الفحصَ الأجوف في سطر. */
+  var mutated = block.replace(/url\.hostname === 'app\.yemenschoolz\.com'/, 'false');
+  var mutatedPkg = '(لم تُطبَّق)';
+  if (mutated !== block) {
+    try {
+      mutatedPkg = (evalBlock(mutated, 'app.yemenschoolz.com')[0] || {}).target.package_name;
+    } catch (e2) { mutatedPkg = '(خطأ)'; }
+  }
+  var mutationBites = (mutated !== block) && mutatedPkg === 'com.proconrers.schoolappyemen';
   if (!mutationBites) failed++;
   console.log((mutationBites ? '  ✅ ' : '  ❌ ') +
-    '🔴 طفرة: بإسقاط `com.yemenschoolz.app` يصير الطولُ ١ [المقيس: ' + mutatedLen +
-    (mutated === block ? ' · **الطفرةُ لم تُطبَّق — النمطُ لا يطابق**' : '') + ']');
+    '🔴 طفرة: بإلغاء التفريع يخدم مضيفُ «يمن سكولز» حزمةَ المنشور [المقيس: ' + mutatedPkg + ']');
 })();
 
 console.log('');
