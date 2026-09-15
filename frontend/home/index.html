@@ -1121,6 +1121,7 @@ img,video,iframe{max-width:100%;display:block}
 .sub-gate .sg-end{ margin: 0; font-size: 14px; color: #64748b; }
 .sub-gate .sg-load{ color: #64748b; font-size: 14px; }
 .sub-gate .sg-body{ display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; }
+.sub-gate .sg-plan{ margin: 0; font-size: 14px; color: #475569; }
 .sub-gate .sg-amts{ display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .sub-gate .sg-amt{
   background: #f1f5f9; border-radius: 10px; padding: 6px 14px;
@@ -3354,10 +3355,13 @@ function _homeRenderSubGate(b, st){
      ووسائلُ الدفع تصل بعد جزءٍ من الثانية. ولو فشل النداءُ بقيت الهويّةُ والسببُ
      ورقمُ التواصل الاحتياطيّ. */
   try{
+    /* 💳 **باقةُ المدرسة تُمرَّر فيُعرَض سعرُها هي لا سعرٌ واحدٌ للجميع (2026-09-15).**
+       المصدرُ `st.plan` من حالة الاشتراك نفسِها — **لا نداءَ ثانياً ولا قراءةَ صفٍّ ثانية**.
+       وفراغُه مقبولٌ: الخادمُ يتراجع إلى المبلغ العامّ. */
     google.script.run
       .withSuccessHandler(function(p){ _sgRenderPay(wrap, p, name, sid); })
       .withFailureHandler(function(){ _sgRenderPay(wrap, null, name, sid); })
-      .getSubscriptionPayInfoPublic();
+      .getSubscriptionPayInfoPublic(String((st && st.plan) || ''));
   }catch(e){ _sgRenderPay(wrap, null, name, sid); }
 }
 
@@ -3379,7 +3383,13 @@ function _sgRenderPay(wrap, p, schoolName, sid){
   if(p.amountUsd) amount += '<span class="sg-amt">' + _sgEsc(p.amountUsd) + ' $</span>';
   if(p.amountYer) amount += '<span class="sg-amt">' + _sgEsc(p.amountYer) + ' ريال</span>';
 
-  var html = (amount ? '<div class="sg-amts">' + amount + '</div>' : '');
+  /* 💳 اسمُ الباقة يُعرض **مع مبلغها وحدَه** — بلا مبلغٍ يصير سطراً بلا فائدة،
+     ومع المبلغ يجيب سؤالَ «هذا سعرُ ماذا؟» قبل أن يُسأل. */
+  var html = '';
+  if(amount){
+    if(p.planName) html += '<p class="sg-plan">باقة: <b>' + _sgEsc(p.planName) + '</b></p>';
+    html += '<div class="sg-amts">' + amount + '</div>';
+  }
 
   /* 🔒 زرُّ PayPal **مشروطٌ بـ`paypalReady` من الخادم** — لا بوجود المعرّف في الواجهة.
      الخادمُ يُفرغ المعرّفَ ما لم يُفعَّل صراحةً، فلا يظهر زرٌّ بإعدادٍ نصفِ مضبوط. */
