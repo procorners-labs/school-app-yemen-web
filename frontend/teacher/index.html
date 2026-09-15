@@ -14675,7 +14675,7 @@ function _helpCatColor(cat) { return HELP_CATEGORY_COLORS[cat] || 'var(--primary
 .help-callout-t{ font-weight:700; color:var(--text); font-size:.86rem; line-height:1.8; }
 .help-note{ background:var(--surface2); border-inline-start:3px solid var(--cat-color,var(--primary)); border-radius:8px; padding:8px 12px; margin:8px 0; font-size:.85rem; color:var(--text); line-height:1.8; }
 
-.help-video-admin{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+/* 🗑️ `.help-video-admin` حُذف 2026-09-16 — سقط الصنفُ مع مدخل الفيديو، وصفرُ باثٍّ له. */
 
 @media (max-width:860px){
   .help-layout{ grid-template-columns:1fr; }
@@ -14689,7 +14689,9 @@ function _helpCatColor(cat) { return HELP_CATEGORY_COLORS[cat] || 'var(--primary
 
 function renderHelp(topicId) {
   var el = document.getElementById('dynamicContent');
-  var canEdit = isFullAdmin(); // admin فقط — راجع ملاحظة session.role مقابل isAdmin في CLAUDE.md
+  /* 🗑️ سقط `canEdit` مع حذف مدخل الفيديو — **كان مستهلكُه الوحيد** ⇒ متغيّرٌ ميّتٌ
+     يستدعي `isFullAdmin()` بلا قارئ. (‏صفحةُ التعليمات نصوصٌ ثابتةٌ في الكود، فلا
+     تحريرَ فيها أصلاً.) */
   // لا تعليمات عن صفحة لا يصل إليها المستخدم — الفلترة آلية من حالة الشريط الجانبي الفعلية،
   // لا قائمة أدوار موازية (راجع _helpVisibleTopics أعلاه وteacher/CLAUDE.md).
   var visibleTopics = _helpVisibleTopics();
@@ -14747,15 +14749,16 @@ function renderHelp(topicId) {
           '<span class="help-card-title">' + escapeHtml(tp.label) + '</span>' +
           '<span class="help-chevron">›</span>' +
         '</summary>' +
+        /* 🗑️ **حُذفت حاوية الفيديو ومدخلُ المدير نهائياً 2026-09-16 بقرار مالك:**
+           «لا تُنشَر فيديوهاتٌ لأيّ منصّة — اكتفِ بالنصوص في كلّ المنصّات».
+           🔴 **والعلّةُ البنيويّة أقوى من التبسيط: الرابطُ كان يُخزَّن بمفتاحٍ واحدٍ
+           لمشروع `teacher` كلِّه بلا `schoolId`** (‏`HELP_TOPIC_VIDEOS_PROP`) ⇒ **مديرُ
+           مدرسةٍ واحدةٍ يكتبه فيظهر لكلّ مستخدمي كلّ المدارس** — وهو بعينه «الارتباكُ
+           بين المنصّات والمستأجرين» الذي أمر المالكُ بإزالته.
+           ⚠️ **ولم يكن ثغرةً مفتوحةً:** قائمةُ نطاقٍ مغلقةٌ وفحصُ مخطَّطٍ و`sandbox`
+           حرسته بثلاث طبقات — **الساقطُ هو الميزةُ لا حارسُها.** */
         '<div class="help-body">' +
-          _helpRenderBlocks(tp.body) +
-          '<div id="help-video-wrap-' + tp.id + '"></div>';
-      if (canEdit) {
-        html += '<div class="help-video-admin">' +
-          '<input class="form-control" id="help-video-input-' + tp.id + '" placeholder="رابط فيديو تعليمي (اختياري)" style="max-width:320px;flex:1" dir="ltr">' +
-          '<button type="button" class="btn btn-secondary btn-sm" onclick="_helpSaveVideo(\'' + tp.id + '\')">💾 حفظ الرابط</button>' +
-          '</div>';
-      }
+          _helpRenderBlocks(tp.body);
       html += '</div></details>';
     }
     html += '</div></section>';
@@ -14818,45 +14821,13 @@ function _helpObserveSections() {
   for (var k = 0; k < sections.length; k++) obs.observe(sections[k]);
 }
 
-// نفس قائمة teacher/HelpCenter.js::HELP_VIDEO_HOST_ALLOWLIST حرفياً — دفاع بعمق فقط، الحارس
-// الإلزامي هو الخادمي (saveHelpTopicVideoProtected). يُبقي sandbox="allow-scripts allow-same-origin"
-// أدناه آمنة فعلياً بمنع أي رابط يشير لنطاق التطبيق نفسه أو نطاق غير معروف.
-var HELP_VIDEO_HOST_ALLOWLIST = ['youtube.com', 'youtube-nocookie.com', 'youtu.be', 'vimeo.com', 'drive.google.com'];
-function _helpIsAllowedVideoHost(url) {
-  var host;
-  try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return false; }
-  for (var i = 0; i < HELP_VIDEO_HOST_ALLOWLIST.length; i++) {
-    var allowed = HELP_VIDEO_HOST_ALLOWLIST[i];
-    if (host === allowed || host.slice(-(allowed.length + 1)) === '.' + allowed) return true;
-  }
-  return false;
-}
-
-// يعرض/يخفي حاوية الفيديو لموضوع واحد — بلا حاوية فارغة عند غياب الرابط (الحاوية بأكملها لا تُبنى).
-// دفاع بعمق: فحص مخطّط https:// + نطاق مسموح مكرَّران هنا عميلياً رغم الفحص الخادمي الإلزامي في
-// saveHelpTopicVideoProtected (teacher/HelpCenter.js) — بيانات محفوظة سابقاً على الفحص الخادمي
-// يجب ألا تنفَّذ أبداً كـjavascript:/data: في iframe::src؛ + sandbox كطبقة حماية إضافية.
-function _helpRenderVideo(topicId, url) {
-  var wrap = document.getElementById('help-video-wrap-' + topicId);
-  if (!wrap) return;
-  var safe = url && /^https:\/\//i.test(url) && _helpIsAllowedVideoHost(url);
-  wrap.innerHTML = safe
-    ? '<iframe src="' + escapeHtml(url) + '" sandbox="allow-scripts allow-same-origin" style="width:100%;max-width:480px;aspect-ratio:16/9;border:0;border-radius:8px;display:block;margin-top:6px" allowfullscreen loading="lazy"></iframe>'
-    : '';
-}
+/* 🗑️ **حُذف هنا ثلاثةٌ نهائياً 2026-09-16** (قرارُ مالك: نصوصٌ فقط، وصفرُ فيديو):
+   `HELP_VIDEO_HOST_ALLOWLIST` · `_helpIsAllowedVideoHost` · `_helpRenderVideo`
+   ومعها **نداءُ `getHelpTopicVideosProtected` عند كلّ فتحٍ لصفحة التعليمات**.
+   🟢 **ومكسبٌ لم يكن مقصوداً: نداءُ خادمٍ أقلُّ في مسارٍ يُفتَح كثيراً** — على مشروعٍ
+   تاريخُه إشباعُ حصّةِ التنفيذ (502)، وكان يُنفَّذ ليُعيد **خريطةً فارغةً** دائماً. */
 
 function _helpInit(topicId, visibleTopics) {
-  callServer('getHelpTopicVideosProtected', {}, function (res) {
-    if (!res || !res.ok) return;
-    var videos = res.videos || {};
-    for (var i = 0; i < HELP_TOPICS_CATALOG.length; i++) {
-      var id = HELP_TOPICS_CATALOG[i].id;
-      var url = (videos[id] && videos[id].videoUrl) || '';
-      _helpRenderVideo(id, url);
-      var input = document.getElementById('help-video-input-' + id);
-      if (input && url) input.value = url;
-    }
-  });
   // رابط عميق لموضوع غير موجود ضمن المواضيع الظاهرة فعلاً (معرّف خاطئ، أو دور فقد الوصول)
   // لا يُعطِّل الصفحة — تُعرَض القائمة الكاملة المتاحة بلا فتح مسبق + رسالة توست محايدة.
   if (topicId) {
@@ -14872,21 +14843,7 @@ function _helpInit(topicId, visibleTopics) {
   }
 }
 
-// حفظ/مسح رابط فيديو موضوع — admin فقط (تحقّق مُكرَّر خادمياً في saveHelpTopicVideoProtected).
-// القيمة مشتركة عبر كل مدارس المنصة عمداً — راجع HELP_TOPIC_VIDEOS_PROP في teacher/HelpCenter.js.
-function _helpSaveVideo(topicId) {
-  var input = document.getElementById('help-video-input-' + topicId);
-  if (!input) return;
-  var url = (input.value || '').toString().trim();
-  callServer('saveHelpTopicVideoProtected', { topicId: topicId, videoUrl: url }, function (res) {
-    if (res && res.ok) {
-      toast(url ? 'تم حفظ رابط الفيديو' : 'تم مسح رابط الفيديو', 'success');
-      _helpRenderVideo(topicId, url);
-    } else {
-      toast((res && res.error) || 'تعذّر الحفظ', 'error');
-    }
-  });
-}
+/* 🗑️ **و`_helpSaveVideo` حُذفت معها** — كانت وحدَها كاتبةَ المفتاح المشترك عبر المدارس. */
 
 // ⬇️ تنزيل/فتح القالب — نفس إجراء generate القائم، بتوقيع HMAC طازج بدل توكن مخزَّن.
 function _stbDownloadTemplate() {
