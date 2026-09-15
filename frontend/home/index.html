@@ -1549,11 +1549,20 @@ window.__homeApplyCachedBrand();
 
 <!-- ══════════ HERO ══════════ -->
 <section id="home" class="hero">
+  <!-- 🔴 **صفرُ صورةٍ مثبَّتةٍ هنا — حُذفت نهائياً 2026-09-16 بقرار مالك.**
+       كانت أربعُ صورٍ من درايف **مدرسةٍ بعينها** مكتوبةً في الترميز، وأولاها
+       `loading="eager"` ⇒ **تُحمَّل وتُعرَض فوراً لكلّ زائرِ أيِّ مدرسة**، ثمّ يستبدلها
+       `_homeApplyHeroSlides` بعد وصول الحمولة.
+       🎯 **والعَرَضُ المُبلَّغ عنه بالضبط: «تظهر صورُ مدرسةٍ أخرى ثمّ تختفي».**
+       ⇒ **لا `src` في الترميز إطلاقاً** — تبدأ الشرائحُ بتدرّجٍ محايدٍ من لون العلامة،
+       ويملؤها معرضُ المدرسة نفسِها وحدَه. **وهذا هو الحلُّ الجذريُّ للفئة:** أيُّ أصلٍ
+       بصريٍّ مثبَّتٍ في صفحةٍ متعدّدةِ المستأجرين **يُسرّب هويّةَ مستأجرٍ إلى غيره**،
+       ولو لثانية. -->
   <div class="hero-track" id="heroTrack">
-    <div class="h-slide on"><img src="https://lh3.googleusercontent.com/d/1zT4bdv9pv_BX1JU_WdmznqeEGMJgDOM1=w1920" alt="" loading="eager"></div>
-    <div class="h-slide"><img src="https://lh3.googleusercontent.com/d/1GkAM99BYRhyqJvv5ZZuW-LCNCtUnxHFZ=w1920" alt="" width="1920" height="1080" loading="lazy"></div>
-    <div class="h-slide"><img src="https://lh3.googleusercontent.com/d/1ig5KjZHKpevcvSIb8lY3F02Xc-dx7AwO=w1920" alt="" width="1920" height="1080" loading="lazy"></div>
-    <div class="h-slide"><img src="https://lh3.googleusercontent.com/d/10T4oMlVnowzFzT8N2oUnm6hHjjD2JV-L=w1920" alt="" width="1920" height="1080" loading="lazy"></div>
+    <div class="h-slide on"><img alt="" width="1920" height="1080" loading="lazy" hidden></div>
+    <div class="h-slide"><img alt="" width="1920" height="1080" loading="lazy" hidden></div>
+    <div class="h-slide"><img alt="" width="1920" height="1080" loading="lazy" hidden></div>
+    <div class="h-slide"><img alt="" width="1920" height="1080" loading="lazy" hidden></div>
   </div>
   <div class="hero-fog"></div>
   <div class="hero-mesh"></div>
@@ -1566,7 +1575,10 @@ window.__homeApplyCachedBrand();
       <span class="dot"></span>
       رائدون في التعليم منذ أكثر من ٢٠ عاماً
     </div>
-    <h1 class="hero-h1" id="heroH1">نحو جيل <span class="shine">مبدع ومتميز</span></h1>
+    <!-- 🔴 كان هنا شعارُ **مدرسةٍ بعينها** مثبَّتاً، **ولا مسارَ كودٍ يستبدله** ⇒ كان
+         يُعرَض لكلّ مدرسةٍ على الدوام لا لحظةَ تحميلٍ فقط. صار **محايداً**، ويحمل اسمَ
+         المدرسة عبر `.school-brand-name` كبقيّة مواضع الهوية في الصفحة. -->
+    <h1 class="hero-h1" id="heroH1">نحو جيلٍ <span class="shine">واعدٍ</span> مع <span class="school-brand-name">يمن سكولز</span></h1>
     <p class="hero-sub" id="heroSub">منصة تعليمية ذكية متكاملة تجمع بين الأصالة والمعاصرة، وتعرض الأخبار والصور والفيديوهات والإنجازات بطريقة ديناميكية حديثة ومناسبة لكل الأجهزة.</p>
     <div class="hero-btns">
       <a href="/teacher/index.html"
@@ -2410,12 +2422,16 @@ function _homeApplyHeroSlides(b){
     for(i=0;i<slides.length;i++){
       im=slides[i].querySelector('img');
       if(!im) continue;
-      if(g[i]&&g[i].url){ im.src=g[i].url; slides[i].style.display=''; }
+      /* 🔴 `hidden` يُرفَع هنا فقط — الصورةُ تبدأ مخفيّةً **وبلا `src`** في الترميز،
+         فلا يُحمَّل أصلٌ بصريٌّ واحدٌ قبل أن تُعرَف المدرسة. */
+      if(g[i]&&g[i].url){ im.src=g[i].url; im.hidden=false; slides[i].style.display=''; }
       else slides[i].style.display='none';
     }
     return;
   }
-  if(b&&b.isOwner) return;            // المالك يُبقي صوره الساكنة
+  /* 🗑️ **حُذف هنا استثناءُ المالك «يُبقي صوره الساكنة» (2026-09-16)** — لم تعُد هناك
+     صورٌ ساكنة أصلاً، فالفرعُ صار يُنتج **هيروَ صورٍ فارغة** لمدرسة المالك بدل التدرّج.
+     🟢 ولا تفقد شيئاً: معرضُها يأتي من شيتها كأيّ مدرسة. */
   // اللون يمرّ بـ`_thParse` الصارمة نفسها التي يستعملها `_homeApplyBrandTheme` — لا خاماً.
   // خليّة مموّهة (مسافة/فاصلة منقوطة) تُسقِط التدرّج بصمت لو حُقِنت مباشرةً؛ CSSOM يتجاهل
   // القيمة غير الصالحة بلا أي أثر تشخيصي، فالمدرسة تظهر بهيرو أسود بلا سبب ظاهر.

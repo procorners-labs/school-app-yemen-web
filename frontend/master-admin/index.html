@@ -554,12 +554,18 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
           وهي مصدرُ الحقيقة الوحيد للتسعير.
           <br>⚠️ <strong>حدُّ الطلاب <code>0</code> يعني «غير محدود»</strong>، و«السعر/المدّة»
           نصٌّ حرٌّ يُعرَض كما هو (مثل <code>سنوي</code> أو <code>30 يوم</code>).
+          <br>💰 <strong>و«المبلغ بالدولار» هو ما تعرضه بوّابةُ التسديد</strong> لمدرسةٍ
+          انتهى اشتراكُها — <strong>بحسب باقتها هي</strong>. وباقةٌ بلا مبلغٍ تعرض
+          وسائلَ التواصل بلا سعر.
           <div id="plans-origin" style="margin-top:8px;"></div>
         </div>
       </div>
       <div class="form-row" style="margin-bottom:14px;">
         <button class="btn btn-primary" onclick="plans_load()">🔄 تحميل الباقات</button>
         <button class="btn btn-secondary" onclick="plans_add()">➕ باقة جديدة</button>
+        <!-- 💰 يملأ المحرّرَ بباقات المنصّة المعتمَدة بأسعارها. **لا يحفظ** — الحفظُ
+             ضغطةٌ مستقلّةٌ بعد المراجعة، فيرى المطوّرُ ما سيُكتب قبل أن يُكتب. -->
+        <button class="btn btn-secondary" onclick="plans_defaults()">💰 استعادة الباقات الموصى بها</button>
         <button class="btn btn-success" onclick="plans_save()">💾 حفظ الكلّ</button>
       </div>
       <div id="plans-status"></div>
@@ -1571,6 +1577,7 @@ function schools_renew(schoolId) {
    المحمَّلة لضاع كلُّ ما كتبه المطوّرُ ولم يُصيَّر بعد — وهو **حفظٌ يُعلن نجاحاً ولا يحفظ
    ما يراه المستخدمُ أمامه**، أخبثُ من فشلٍ صريح. ⇒ `plans_collect()` تقرأ الـDOM. */
 var _plans = [];
+var _planDefaults = [];
 function _plEsc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1588,11 +1595,16 @@ function plans_load() {
         return;
       }
       _plans = res.plans || [];
+      /* 💰 يُحفَظ الافتراضيُّ **من نفس الردّ** لا من نسخةٍ في الصفحة — وإلّا صار
+         للتسعير مخزنان ينحرفان، وهو بعينه ما تمنعه `_maDefaultPlans` في الخادم. */
+      _planDefaults = res.defaults || [];
       var o = document.getElementById('plans-origin');
       if (o) {
         o.innerHTML = res.explicit
-          ? '<span style="color:#2e7d32;">✅ هذه الباقات <strong>محفوظة</strong> في الإعدادات.</span>'
-          : '<span style="color:#ef6c00;">⚠️ لا باقاتٍ محفوظةً بعد — المعروضُ هو <strong>الافتراضيُّ</strong> الذي تخدمه صفحةُ التسجيل الآن. وأوّلُ حفظٍ يُثبّته.</span>';
+          ? '<span style="color:#2e7d32;">✅ هذه الباقات <strong>محفوظة</strong> في الإعدادات، وهي ما تخدمه المنصّة الآن.</span>'
+          /* 🔴 الرسالةُ تصف **ما يُخدَم** لا ما في المفتاح — ومحفوظٌ بلا سعرٍ لا يُخدَم
+             أصلاً، فوصفُه «محفوظاً» يُطمئن المطوّرَ إلى تسعيرٍ لا يراه أحد. */
+          : '<span style="color:#ef6c00;">⚠️ لا تسعيرَ محفوظاً بعد — المعروضُ هو <strong>الافتراضيُّ المعتمَد</strong> الذي تخدمه المنصّة الآن. اضغط «💾 حفظ الكلّ» لتثبيته، أو «💰 استعادة الباقات الموصى بها» لتحميله أوّلاً.</span>';
       }
       plans_render();
     })
@@ -1638,7 +1650,7 @@ function plans_render() {
          ⚠️ **و`type="number"` لا يكفي حارساً** — المتصفّحُ يسمح باللصق، والتحقّقُ
          الحاسمُ خادميٌّ في `savePlansProtected` (يرفض غيرَ الرقميّ بصراحة). */
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">' +
-        '<label style="font-size:12px;color:#555;">المبلغ بالدولار (اختياري — للدفع بالبطاقة)' +
+        '<label style="font-size:12px;color:#555;">المبلغ بالدولار <strong>(مطلوب لكلّ باقة مدفوعة)</strong>' +
           '<input class="pl-amtusd" type="number" min="0" step="any" placeholder="مثال: 50" value="' +
           _plEsc(p.amountUsd == null ? '' : p.amountUsd) +
           '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
@@ -1691,6 +1703,27 @@ function plans_add() {
   _plans.push({ id: '', name: '', badge: '', badgeClass: 'standard', price: 'سنوي',
                 limit: 0, features: ['جميع المنصات'] });
   plans_render();
+}
+
+/* 💰 **استعادةُ باقات المنصّة المعتمَدة — بأسعارها.**
+   🔴 **ولا تكتب على الخادم إطلاقاً:** تملأ المحرّرَ فقط، والحفظُ ضغطةٌ مستقلّة ⇒ يرى
+   المطوّرُ الأسعارَ **قبل** أن تصل إلى صفحةِ تسجيلٍ عامّةٍ وبوّابةِ تسديدٍ يراها العملاء.
+   ⚠️ **والافتراضيُّ يأتي من الخادم لا من هذه الصفحة** — فالصفحةُ تُخدَم من GitHub Pages
+   وقد تكون نسخةً مخبّأةً أقدمَ من النشرة، **فنسخةٌ محلّيّةٌ منه كانت ستُعيد أسعاراً بائتة.** */
+function plans_defaults() {
+  if (!_planDefaults.length) {
+    var st0 = document.getElementById('plans-status');
+    if (st0) st0.innerHTML = '<div class="status-msg status-error">❌ اضغط «🔄 تحميل الباقات» أوّلاً</div>';
+    return;
+  }
+  if (!confirm('استبدالُ ما في المحرّر بباقات المنصّة المعتمَدة (' + _planDefaults.length +
+               ' باقات بأسعارها)؟\n\nلا يُحفَظ شيءٌ حتى تضغط «💾 حفظ الكلّ».')) return;
+  /* نسخةٌ عميقةٌ — وإلّا عدّل المطوّرُ حقلاً فغيّر المرجعَ الذي سيُستعاد منه لاحقاً. */
+  _plans = JSON.parse(JSON.stringify(_planDefaults));
+  plans_render();
+  var st = document.getElementById('plans-status');
+  if (st) st.innerHTML = '<div class="status-msg">📋 حُمّلت ' + _plans.length +
+    ' باقة في المحرّر — راجِعها ثمّ اضغط «💾 حفظ الكلّ» لتصير حيّة.</div>';
 }
 
 function plans_remove(i) {
