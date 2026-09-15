@@ -1129,6 +1129,38 @@ function _spSchoolHref(s){
   return sid ? '/home/index.html?school=' + encodeURIComponent(sid) : '/';
 }
 
+/**
+ * رابط **بوّابة منصّة** (معلم/طالب) لمدرسة. دالّة نقيّة عدا كشف WebView.
+ *
+ * 🔴 العطل الذي تُغلقه (قِيس 2026-09-15 من بلاغ مالك): بطاقةُ المدرسة كانت تبني رابطَي
+ * المنصّتين بـ`'?school=' + schoolId` **حرفياً ودائماً** — بينما زرُّ «عرض الصفحة» في
+ * البطاقة نفسها (`_spSchoolHref` أعلاه) يفضّل الـslug منذ إنشائه. ⇒ **معياران لهويّةٍ
+ * واحدة داخل بطاقةٍ واحدة**: «عرض الصفحة» ⇒ `/abdaawatmuaz`، و«المعلمون» ⇒
+ * `/teacher/index.html?school=12725ed7-…` للمدرسة نفسها في نفس اللحظة.
+ * ⚠️ **ولم يكن غيابَ بيانات:** الثلاثُ المدارسُ النشطةُ كلُّها تحمل `slug` في السجلّ
+ * المركزيّ — الصفحةُ لم تكن تنظر إليه أصلاً.
+ *
+ * والشكلُ النظيف `/<app>/<slug>` **مخدومٌ اليوم بلا أيّ تغيير في الوسيط**:
+ * `_DEEP_PORTAL_RE` هناك هو `/^\/(teacher|student)\/[a-z0-9-]+(?:\/[a-z0-9-]+)?\/?$/i`.
+ *
+ * 🔴 **وكشفُ WebView يبقى fail-closed حرفياً كنظيره** في
+ * `home-all-school/Index.html::portalEntryHref`: أيُّ تعذّرٍ في الكشف يُحسَب «داخل
+ * التطبيق» فيُعاد الشكلُ القديم. والسببُ ليس حذراً عامّاً بل مقيسٌ: تطبيقا الأندرويد
+ * يوجّهان **بمقطع المسار**، والمقاطعُ العميقة قد تُقذَف إلى المتصفّح الخارجي على vc31 —
+ * وكسرُ حزمةٍ منشورةٍ لا رجعةَ فيه، بينما بقاءُ الرابط القديم في المتصفّح تأجيلٌ فقط.
+ */
+function _spPortalHref(app, s){
+  var sl = (s && s.slug) ? String(s.slug).trim().toLowerCase() : '';
+  var inApp = true;
+  try {
+    var ua = String(navigator.userAgent || '');
+    inApp = /SchoolAppYemen/i.test(ua) || /\bwv\b/.test(ua);
+  } catch (e) { inApp = true; }
+  if (sl && !inApp && /^[a-z0-9-]+$/.test(sl)) return '/' + app + '/' + encodeURIComponent(sl);
+  var sid = (s && s.schoolId) ? String(s.schoolId).trim() : '';
+  return '/' + app + '/index.html' + (sid ? '?school=' + encodeURIComponent(sid) : '');
+}
+
 /** تصفية نقيّة بالاسم والعنوان — تُستخرَج ويُشغّلها الاختبار السلوكي. */
 function _spFilter(list, q){
   var needle = String(q == null ? '' : q).trim().toLowerCase();
@@ -1171,8 +1203,6 @@ function _spCard(s){
   /* 🔴 البطاقة `<div>` لا `<a>` تغلّفها: الجذر اليوم يحمل روابط **بوّابتَي المعلم والطالب**
      لكل مدرسة، و`<a>` داخل `<a>` HTML غير صالح ⇒ كانت ستسقط. الحلّ رابط رئيسيّ ممتدّ
      (`.sc-go::after` مطلق يغطّي البطاقة) وروابط البوّابتين فوقه بـ`z-index`. */
-  var sid = String(s.schoolId || '').trim();
-  var q   = sid ? ('?school=' + encodeURIComponent(sid)) : '';
   return '<div class="sc">' +
     '<div class="sc-bar" style="background:' + _spSafeColor(s.primaryColor) + '"></div>' +
     '<div class="sc-top">' + head +
@@ -1187,8 +1217,8 @@ function _spCard(s){
         'عرض الصفحة <span class="sc-go-ar" aria-hidden="true">←</span></a>' +
     '</div>' +
     '<div class="sc-ports">' +
-      '<a class="sc-port" href="/teacher/index.html' + q + '">👩‍🏫 المعلمون</a>' +
-      '<a class="sc-port" href="/student/index.html' + q + '">🎒 الطلاب</a>' +
+      '<a class="sc-port" href="' + spEsc(_spPortalHref('teacher', s)) + '">👩‍🏫 المعلمون</a>' +
+      '<a class="sc-port" href="' + spEsc(_spPortalHref('student', s)) + '">🎒 الطلاب</a>' +
     '</div>' +
     '</div>';
 }
