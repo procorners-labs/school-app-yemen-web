@@ -92,6 +92,7 @@
   })();
 </script>
 <!-- ▲▲ نهاية الحقن ▲▲ -->
+<script>window.__SP_SNAPSHOT__=[{"slug":"abdaawatmuaz","name":"مدارس الإبداع والتميز الدولية"},{"slug":"ibn-khaldoun","name":"مدارس ابن خلدون الاهلية"},{"slug":"aljil-al-hadith","name":"مدارس الجيل الحديث الاهلية"}];</script>
 
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -1290,10 +1291,37 @@ function spRender(){
   spEl('spGrid').innerHTML = h;
 }
 
+/* 🏫 **رسمٌ فوريٌّ من لقطةِ البناء — قبل أيّ نداءٍ خادميّ (2026-09-16).**
+ *
+ * 🔴 **العلّةُ مقيسةٌ على أرضيّة GAS لا على دالّةٍ بعينها:** `?action=health` — أخفُّ
+ * نداءٍ ممكن وصفرُ قراءةِ شيت — قِيس **24.4ث · 10.8ث · 5.8ث**. ⇒ كانت الصفحةُ الرئيسيّةُ
+ * **تنتظر تنفيذَ GAS لتعرض ثلاثَ مدارسَ تتغيّر شهرياً**، وتعرض «الخدمة مزدحمة» وتبقى
+ * فارغةً كلّما تجاوز السقف. **والتسريعُ لا يُجدي — الانتظارُ نفسُه هو العطل.**
+ *
+ * 🟢 **واللقطةُ تُحقَن وقتَ البناء من `_build/schools.public.json`** — نفسِ الملفّ الذي
+ * يقرؤه `gen-sitemap.js` ويحرسه `check-slug-mirror.js` ⇒ **صفرُ مصدرٍ جديدٍ وصفرُ نسخةٍ
+ * في هذا الملفّ.** تحمل **الاسمَ والـslug** فقط — يكفيان لعرضِ الدليل والنقرِ إلى المدرسة.
+ * ثمّ يُثريها نداءُ GAS بالشعار والعنوان والهاتف واللون حين يصل.
+ *
+ * 🎯 **والمكسبُ أن الصفحةَ لم تعد تملك حالةَ «فارغة»:** فشلُ النداء صار **نقصَ زينةٍ لا
+ * غيابَ محتوى**، ورسالةُ العطل لا تُعرَض إلّا إن لم تكن هناك لقطةٌ أصلاً. */
+function spSnapshotBoot(){
+  var snap = null;
+  try { snap = window.__SP_SNAPSHOT__; } catch (e) { snap = null; }
+  if(!snap || !snap.length) return false;
+  SP.all = snap;
+  spEl('spSub').textContent = snap.length + ' مدرسة على المنصّة';
+  spRender();
+  return true;
+}
+
 function spBoot(){
+  var hadSnapshot = spSnapshotBoot();
   google.script.run
     .withSuccessHandler(function(r){
       if(!r || r.success !== true){
+        /* 🔒 اللقطةُ معروضةٌ أصلاً ⇒ صمتٌ مقصودٌ لا رسالةُ عطلٍ فوق محتوىً صحيح. */
+        if(hadSnapshot) return;
         spEl('spState').textContent = 'تعذّر تحميل قائمة المدارس — أعد المحاولة.';
         return;
       }
@@ -1302,6 +1330,9 @@ function spBoot(){
       spRender();
     })
     .withFailureHandler(function(err){
+      /* 🔒 **اللقطةُ تغلب رسالةَ العطل** — وإلّا استُبدل دليلٌ صحيحٌ معروضٌ برسالةِ
+         «الخدمة مزدحمة»، وهي الشكوى التي وُلد منها هذا المسار. */
+      if(hadSnapshot) return;
       /* التمييز من الجسر: مزدحم ≠ مقطوع ≠ خطأ منطقي — علاج كلٍّ معاكس للآخر. */
       spEl('spState').textContent = window.gasErrorInfo
         ? window.gasErrorInfo(err).text
