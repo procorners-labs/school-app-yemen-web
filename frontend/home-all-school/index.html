@@ -1350,7 +1350,26 @@ function spRenderPlans(plans){
   grid.innerHTML = html;
   sec.hidden = false;
 }
+/* 🔴 **لا يُنادى عند الإقلاع — قِيس أن ذلك أضرَّ بدليل المدارس (2026-09-16).**
+ *
+ * **العلّةُ مقيسةٌ لا مفترَضة:** `listPartnerSchoolsPublic` وسيطُه **2.0–2.5ث** وذيلُه بلغ
+ * **17.3ث**، وسقفُ الوسيط **~23.7ث** ⇒ ما تجاوزه يُرى **502** فتعرض الصفحةُ «الخدمة
+ * مزدحمة». **وإطلاقُ نداءٍ ثانٍ في نفس اللحظة يُنشئ تنفيذَين متزامنَين على نفس ملفّ
+ * Master لكلّ زائرٍ للجذر** — وحصّةُ GAS المخنوقة هي **عددُ التنفيذات المتزامنة**، لا
+ * سرعةُ الدالّة ⇒ **مضاعفةُ النداءات على أكثرِ صفحةٍ زيارةً تدفع الذيلَ فوق السقف.**
+ *
+ * 🟢 **والعلاجُ يستغلّ الموضع لا يُساوم عليه:** قسمُ الأسعار **أسفلُ الصفحة بكثير** ودليلُ
+ * المدارس في أعلاها ⇒ **التأجيلُ حتى يقترب القسمُ من الشاشة يُنتج صفرَ نداءٍ عند الإقلاع**،
+ * ويُنفَّذ **متى فُتحت الحصّةُ فعلاً**. وأكثرُ الزوّار لا يبلغونه أصلاً ⇒ **حملٌ أقلُّ من
+ * قبل إضافة الميزة، لا مجرّدَ عودةٍ إلى ما كان.**
+ * ⇒ وهذا **أفضلُ من مجرّد تسلسلِ النداءين** (الذي يُبقي الحملَ ويؤخّره فقط).
+ *
+ * 🔒 **وتراجعٌ إلزاميٌّ عند غياب `IntersectionObserver`** — متصفّحٌ قديمٌ بلا مراقبٍ كان
+ * سيرى القسمَ **مخفيّاً للأبد**، وهي فئةُ «ميزةٌ تسقط صامتةً على أقلّية». */
+var _spPlansLoaded = false;
 function spBootPlans(){
+  if(_spPlansLoaded) return;
+  _spPlansLoaded = true;
   google.script.run
     .withSuccessHandler(function(r){
       if(r && r.ok === true) spRenderPlans(r.plans);
@@ -1358,6 +1377,18 @@ function spBootPlans(){
     })
     .withFailureHandler(function(){ /* يبقى مخفيّاً */ })
     .getPublicPlansPublic();
+}
+function spWatchPlans(){
+  var sec = spEl('pricing');
+  if(!sec) return;
+  if(typeof IntersectionObserver !== 'function'){ spBootPlans(); return; }
+  /* هامشٌ سخيٌّ (600px) كي تكتمل البطاقاتُ قبل أن يبلغها البصر. */
+  var io = new IntersectionObserver(function(entries){
+    for(var i = 0; i < entries.length; i++){
+      if(entries[i].isIntersecting){ io.disconnect(); spBootPlans(); return; }
+    }
+  }, { rootMargin: '600px 0px' });
+  io.observe(sec);
 }
 
 document.addEventListener('click', function(e){
@@ -1449,9 +1480,10 @@ else _spBootPage();
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', spBoot);
 else spBoot();
 
-/* 💰 نداءٌ ثانٍ مستقلٌّ — فشلُ دليل المدارس لا يمنع الأسعارَ ولا العكس. */
-if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', spBootPlans);
-else spBootPlans();
+/* 💰 **مراقبةٌ لا نداء** — النداءُ يقع حين يقترب قسمُ الأسعار من الشاشة وحدَه.
+   ⇒ صفرُ نداءٍ عند الإقلاع، ودليلُ المدارس يبقى التنفيذَ الوحيد. */
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', spWatchPlans);
+else spWatchPlans();
 </script>
 </script>
 
