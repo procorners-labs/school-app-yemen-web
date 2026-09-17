@@ -149,8 +149,24 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 
 | المضيف | حاملُه اليوم |
 |---|---|
-| `school.procorners.com` · `yemenschoolz.com` | **`SchoolAppyemen` المنشور** (‏vc31 على الأوّل · vc34/35 على الثاني) |
-| **`app.yemenschoolz.com`** | **`YemenSchoolz`** — غيرُ منشورٍ بعد |
+| `school.procorners.com` · `yemenschoolz.com` | **`SchoolAppyemen` المنشور** (‏vc31 على الأوّل · vc34/35/36 على الثاني) |
+| **`app.yemenschoolz.com`** | 🔴 **`YemenSchoolz` — صار منشوراً في الإنتاج 2026-09-17** (‏`vc4` · طرحٌ كامل · Managed publishing) |
+
+🔴 **وانقلب هذا السطرُ في اليوم نفسِه، فلا يُقرأ ما قبله:** كان «غيرُ منشورٍ بعد»، وعليه
+بُنيت جملةُ «نافذةُ التغيير مجّانية». **والمقيس (‏لوحةُ Play، نقلَتها جلسةُ `yemenschoolz-e5`):
+مرحلةُ الإنتاج · 4 (1.0) · بدءُ الطرح الكامل.** ⇒ **النافذةُ أُغلقت**، و`vc4` على أجهزةٍ
+لا نملك تحديثَها، والرقمُ التالي `5`.
+
+🔒 **والأثرُ المُلزِم على هذا المستودع — عقدٌ مع أجهزةٍ حقيقيةٍ لا تفضيلٌ:**
+- **`app.yemenschoolz.com` سطحُ خدمةٍ حيٌّ ٢٠٠ للأبد، ولا يُحوَّل إلى مضيفٍ آخرَ بحال** —
+  الكوكيز والتخزين لكلّ أصلٍ على حدة، فالتحويلُ يُسقط جلسةَ الدخول، والتطبيقُ لا يثق
+  بغيره في `onReceivedSslError`.
+- **تبقى ٢٠٠:** `/home/schools.html` · `/home/index.html` · `/teacher/index.html` ·
+  `/student/index.html` · `/cms/index.html` · `/schedule/index.html`.
+- **ولا تتغيّر دلالةُ المقاطع** `/home/ · /teacher/ · /student/ · /cms/ · /schedule/` —
+  بها يوجّه التطبيق.
+- **و`?school=` يقبل slugاً منشوراً أو UUID** ولا يُشترَط غيرُه على `/home/index.html`.
+- **وقناةُ التحديث `checkAppVersion` تحفظ شكلَها** — هي الطريقُ الوحيدُ إلى بناءٍ قديم.
 
 🔴 **والأثرُ الذي يجب أن يُقرأ قبل أيّ خطّةِ تراجع:** أزال `YemenSchoolz` (‏PR #26)
 **`procorners.com` و`school-teacher-proxy.procorners-shop.workers.dev` من
