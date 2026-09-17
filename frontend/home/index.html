@@ -3202,6 +3202,11 @@ function loadHomeBundle(){
   setLoading('dynamicNewsGrid','جاري تحميل الأخبار…');
   setLoading('dynamicImagesGrid','جاري تحميل الصور…');
   setLoading('dynamicVideoGrid','جاري تحميل الفيديوهات…');
+  /* ★ بلا معرّفٍ لا نداء (2026-09-17): الخادم يُرجِع `{ok:false, reason:'no_tenant'}` حرفياً
+     للمعرّف الفارغ (`home/_PublicPage.js::getHomePageBundle`)، والوسيط يرفض تخبئته لغياب
+     المعرّف ⇒ كلُّ نداءٍ منها تنفيذُ GAS كاملٌ على الحصّة المشبعة ليُعيد جواباً معروفاً سلفاً
+     (‏٢٦ في ٢٤س مقيسةً في سجلّ الوسيط). ⇒ نسلك نفسَ فرع الردّ مباشرةً — السلوكُ المرئيُّ هو هو. */
+  if(!_homeActiveSchoolId()){ _homeBundleFallback('no_tenant'); return; }
   try{
     google.script.run
       .withSuccessHandler(function(b){

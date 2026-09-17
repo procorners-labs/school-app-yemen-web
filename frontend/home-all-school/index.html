@@ -1317,6 +1317,12 @@ function spSnapshotBoot(){
 
 function spBoot(){
   var hadSnapshot = spSnapshotBoot();
+  /* فشلُ تحميل `gas-bridge.js` يترك `google` غيرَ معرَّف (‏×٢ في سجلّ الأخطاء 2026-09-16).
+     اللقطةُ معروضةٌ أصلاً ⇒ صمت؛ وإلّا رسالةٌ بدل استثناءٍ يوقف بقيّة الإقلاع. */
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    if (!hadSnapshot) { try { var st = document.getElementById('spState'); if (st) st.textContent = 'تعذّر تحميل عناصر الصفحة — أعد تحميل الصفحة.'; } catch (eSt) {} }
+    return;
+  }
   google.script.run
     .withSuccessHandler(function(r){
       if(!r || r.success !== true){
