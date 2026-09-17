@@ -811,6 +811,20 @@ function _canonicalFor(path, pathSlug, schoolParam) {
   return '';   // ← لا حقن: الوسم الساكن في المصدر صحيح وأدقّ من أي اشتقاق من المسار
 }
 
+/* 🟢 **زواحفُ المعاينة وحدَها تنتظر `getNewsOg` (2026-09-17).**
+   وسومُ OG لا يقرؤها إلّا مُولِّدُ بطاقة المشاركة؛ والإنسانُ كان ينتظر نداءَ GAS قبل أن
+   يصله بايتٌ واحد — قِيس من هاتف المالك: TTFB لـ`/home/newsarticle.html` **2.7–8.4 ث**،
+   فيسبق مهلةَ عامل الخدمة (3.5 ث) فيسقط إلى `/index.html`.
+   🔒 **والاتجاهُ الآمن عند الشكّ هو «زاحف»:** UA فارغٌ ⇒ زاحف. خطأُ هذا الاتجاه **نداءُ
+   GAS زائدٌ نادر**، وخطأُ عكسه **بطاقةُ مشاركةٍ بلا صورةٍ لا تُصحَّح** (المنصّاتُ تُخزّنها).
+   ⚠️ **وحدُّها:** زاحفٌ غيرُ مُدرَجٍ يرى وسومَ الهوية العامّة — نفسُ ما يراه اليومَ حين
+   يُتخطّى النداءُ بالمنظّم أو المهلة. */
+var _PREVIEW_CRAWLER_RE = /facebookexternalhit|facebot|meta-externalagent|whatsapp|twitterbot|telegrambot|slackbot|linkedinbot|discordbot|googlebot|google-inspectiontool|bingbot|applebot|pinterest|redditbot|skypeuripreview|viber|snapchat|embedly|iframely|vkshare|mastodon/i;
+function _isPreviewCrawler(ua) {
+  if (typeof ua !== 'string' || ua.trim() === '') return true;
+  return _PREVIEW_CRAWLER_RE.test(ua);
+}
+
 // النطاق الرسمي للمشروع (قرار مالك 2026-07-28). المضيف الوحيد الذي يُحوَّل إليه.
 var CANONICAL_ORIGIN = 'https://yemenschoolz.com';
 // 🔴 مضيف واحد بالضبط يُحوَّل — **لا قائمة قابلة للتوسّع بلا تفكير**.
@@ -2699,7 +2713,9 @@ export default {
        ?t=<توكن> (2026-07-27): توكن معاينة موقَّع (HMAC) — وصار **مستهلَكاً فعلاً** على
        كلّ المسارات لا على `/home/` وحدها. */
     var _newsId = url.searchParams.get('news');
-    if (_newsId && isHtml) {
+    /* 🔴 `_isPreviewCrawler` — الإنسانُ يأخذ الصفحةَ فوراً بلا نداء GAS (انظر تعريفها).
+       و`_newsId` نفسُه لا يُمسّ: كتلُ المُصادِق والهوية أدناه تستثني `?news=` لكلّ زائر كما كانت. */
+    if (_newsId && isHtml && _isPreviewCrawler(request.headers.get('User-Agent'))) {
       var _ogApp = 'home';
       // «افتحْ الآن أو تخطَّ» (maxWait = 0): وسوم OG لزائر مشاركة يجب ألّا تُزاحم تسجيل
       // دخول معلّم في الطابور أبداً. عند عدم توفّر مقعد فوراً نتخطّى الحقن ونخدم الصفحة
