@@ -277,10 +277,19 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 
 ### كاشُ الحافّة لنداءات GAS العامّة
 
-قائمةٌ بيضاءُ ضيّقةٌ حصراً (`API_CACHE_FNS`): `getHomePageBundle` (ttl 120) ·
-`getTeacherSchoolBrand` · `getStudentSchoolBrand` · `getHomeScheduleBundle` (**ttl 1800**
-— صريحٌ ومقايضتُه مُقرَّةٌ من المالك: تعديلُ الجدول قد يتأخّر ظهورُه حتى نصف ساعة).
-`API_CACHE_TTL_S = 600` · حدُّ الجسم 4096.
+قائمةٌ بيضاءُ ضيّقةٌ حصراً — **والعددُ يُقرأ من الكود لا من هنا**
+(‏`worker/edge-cache-contract.json` نشرٌ مقروءٌ آلياً، يحرسه تأكيدٌ ثنائيُّ القطب يحمرّ على
+زيادةٍ ونقصٍ سواءً). المدُدُ غيرُ الافتراضيّة وحدَها تُذكَر لأن لكلٍّ مقايضةً مُقرَّة:
+`getHomePageBundle` **120** · `getHomeScheduleBundle` **1800** (تعديلُ الجدول قد يتأخّر
+ظهورُه حتى نصف ساعة) · `listPartnerSchoolsPublic` **120** (مدرسةٌ جديدةٌ قد تتأخّر في
+الدليل دقيقتين — لا قناةَ إبطالٍ للحافّة) · `checkAppVersion` **3600** (تغييرُ خاصيّة
+الإصدار يظهر خلال ساعة، والتطبيقُ يكبح فحصَه ٦ ساعات أصلاً).
+`API_CACHE_TTL_S = 600` (الافتراضيُّ لما لا مدّةَ له) · حدُّ الجسم 4096.
+
+🔴 **واستثناءُ `tenantless` يُقال لأنه ينقض قاعدةً أعلى:** «لا مدخلَ كاشٍ بلا هويّةِ
+مستأجر» تسري على الكلّ **إلّا** ما أُعلن `tenantless` صراحةً — اليومَ `checkAppVersion`
+(‏وسيطُه اسمُ حزمةٍ حرفيّاً) و`listPartnerSchoolsPublic` (‏بلا وسائطَ إطلاقاً). وكلاهما
+**عامٌّ بلا جلسةٍ ولا توكن**، ووسيطُهما محصورُ الشكل فلا يصير الاستثناءُ بوّابةً لحمولةٍ حرّة.
 
 - 🔴 **والاعتراضُ يقع قبل حجز المقعد** ⇒ الإصابةُ لا تستهلك من سقف المنظّم ولا من حصّة GAS.
 - 🔒 **ولا كاشَ سلبيّاً أبداً:** التخزينُ مشروطٌ بـ`good` **و**`ok(b)` الخاصّ بكلّ دالّة،
@@ -411,10 +420,15 @@ Before editing, confirm you're editing `worker/school-app-proxy.js` (the real so
 - **Worker health (workers.dev، لا يزال حيّاً):** `https://school-teacher-proxy.procorners-shop.workers.dev/gas/teacher?action=health`
 - **Worker health (يمن سكولز — 🔴 صار سطحَ خدمةٍ لتطبيق «يمن سكولز» منذ 2026-09-09، لا نطاقَ هويّةٍ فقط):**
   `https://yemenschoolz.com/gas/teacher?action=health`
-  🔴 **ومعرّفُ ذلك التطبيق ينتقل إلى `com.yemenschoolz.app`** (قرارُ مالكٍ 2026-09-15 ·
-  مستودعُه `AndroidStudioProjects\YemenSchoolz`)، **والقديمُ `com.proconrers.schoolzyemen`
-  يبقى صالحاً حتى تكتمل التسمية.** ⇒ `assetlinks.json` يعلن **الاثنين معاً** عمداً
-  (‏`school-app-proxy.js` · `grep -n alStatement`)، **ويُحذف القديمُ بعد إتمامها.**
+  🔴 **وتصحيحٌ مقيس 2026-09-17 — الجملتان التاليتان كانتا باطلتين:** كان مكتوباً أن
+  المعرّفَ «ينتقل» وأن القديمَ `com.proconrers.schoolzyemen` «يبقى صالحاً»، وأن
+  `assetlinks.json` «يعلن الاثنين معاً». **والمقيسُ من الملفّ الحيّ:** المعرّفُ
+  **`com.yemenschoolz.app` وحدَه** يُعلَن على `app.yemenschoolz.com`، والقديمُ **لا يُعلَن
+  إطلاقاً** (‏حُسم 2026-09-15)، و`yemenschoolz.com` يُعلن `com.proconrers.schoolappyemen`
+  وحدَه. (‏`grep -n alStatement worker/school-app-proxy.js`.)
+  🟢 **وبصمتان لا واحدة على مضيف «يمن سكولز» (2026-09-17):** مفتاحُ الرفع **و**مفتاحُ توقيع
+  Play. وبالأوّل وحدَه **يفشل `autoVerify` لكلّ تثبيتٍ من المتجر بلا أيّ رسالة** — قِيست
+  بصمةُ Play بـ`apksigner` من حزمةِ `vc4`/`vc3` المسحوبةِ من جهاز المالك.
   ⚠️ **ولا يُخلط بـ`com.proconrers.schoolappyemen`** — ذاك **تطبيقٌ آخرُ منشورٌ على Play**،
   والاسمان يختلفان بحرفين في المنتصف (`school**app**yemen` مقابل `school**z**yemen`).
   🔴 **والخلطُ لا يُعكَس:** توقيعُ أحدهما بمفتاح الآخر **يجعل Play يرفض التحديثَ أبداً**.
