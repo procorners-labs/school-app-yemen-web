@@ -2258,6 +2258,44 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
           store[ccKey].cc === 'max-age=' + (ttlOf('getTeacherSchoolBrand') + staleMax),
           '🔴 `Cache-Control` = طزاجة+بيات — لا الطزاجةَ وحدها');
   }
+
+  /* ⑮ 🟢 **`checkAppVersion` — الاستثناءُ الوحيدُ من «لا كاشَ بلا هويّة» (2026-09-17).**
+     التطبيقُ يرسل `{fn,args:[pkg]}` بلا `schoolId` ⇒ بلا `tenantless` يُرفض كلُّ نداء.
+     🔴 **والضوابطُ المعاكسةُ هي الفحص:** الاستثناءُ لا يتسرّب إلى دالّةٍ أخرى، ولا يقبل
+     وسيطاً غيرَ اسمِ حزمة، ولا يُثبّت «غيرَ مضبوط» ساعة. */
+  var PKG = 'com.proconrers.schoolappyemen';
+  var pVer = probe(JSON.stringify({ fn: 'checkAppVersion', args: [PKG] }));
+  check(!!pVer && !!pVer.argsKey && !pVer.reject,
+        '🟢 `checkAppVersion` بلا `schoolId` ⇒ مؤهَّلٌ (شكلُ `UpdateChecker.kt` حرفياً)');
+  check(!!pNoSid && pNoSid.reject === 'sid',
+        '🔒 ضابط معاكس: الاستثناءُ **لا يتسرّب** — `getHomePageBundle` بلا هويّة ما زال يُرفض');
+  var pVer2 = probe(JSON.stringify({ fn: 'checkAppVersion', args: ['com.yemenschoolz.app'] }));
+  check(!!pVer2 && pVer2.argsKey !== pVer.argsKey,
+        '🔒 حزمتان ⇒ مفتاحان — لا يخدم تطبيقٌ إصدارَ الآخر');
+  var pVerBad = probe(JSON.stringify({ fn: 'checkAppVersion', args: ['{"t":"x"}'] }));
+  var pVerTwo = probe(JSON.stringify({ fn: 'checkAppVersion', args: [PKG, 'tok'] }));
+  check(!!pVerBad && pVerBad.reject === 'args' && !!pVerTwo && pVerTwo.reject === 'args',
+        '🔒 وسيطٌ ليس اسمَ حزمة، أو وسيطٌ ثانٍ ⇒ رفضٌ مسجَّل');
+  check(probe(JSON.stringify({ fn: 'checkAppVersion', args: [PKG], token: 'x' })) === null,
+        '🔒 مفتاحٌ إضافيّ في الجسم ⇒ لا كاش (الاستثناءُ لا يُرخي فحصَ الجسم)');
+  hits.put = 0;
+  check(put('https://x', 'teacher', pVer, JSON.stringify({ result: { latestVersionCode: 36,
+          minSupportedVersionCode: 0, playUrl: 'p', updateMessage: '' } })) === true && hits.put === 1,
+        'ردٌّ بـ`latestVersionCode: 36` ⇒ يُخزَّن');
+  var vHit = get('https://x', 'teacher', pVer);
+  check(!!vHit && vHit.text.indexOf('"latestVersionCode":36') !== -1,
+        '🟢 الإصابةُ تخدم الإصدارَ بلا GAS');
+  hits.put = 0;
+  check(put('https://x', 'teacher', pVer2, JSON.stringify({ latestVersionCode: 0 })) === false &&
+        put('https://x', 'teacher', pVer2, JSON.stringify({ ok: false, error: 'x' })) === false &&
+        hits.put === 0,
+        '🔒 `latestVersionCode: 0` («غيرُ مضبوط») أو خطأ ⇒ صفرُ تخزين');
+  if (gateOk) {
+    check(ttlOf('checkAppVersion') === 3600 &&
+          freshOf('checkAppVersion', 3600) === 'fresh' &&
+          freshOf('checkAppVersion', 3601) === 'stale',
+          '🔴 تغييرُ الخاصيّة يظهر بعد ساعة: بعد `ttl` لا يُخدَم المدخلُ طازجاً (يُعاد إلى GAS)');
+  }
 })();
 
 /* ── 🔴 موضعُ الاعتراض — بنيويّ لا سلوكيّ، وهو نصفُ الميزة ─────────────────────
