@@ -1160,6 +1160,26 @@ var API_CACHE_FNS = {
       if (!b.settings || !b.schedule) return false;
       return b.settings.ok !== false && b.schedule.ok !== false;
     }
+  },
+  /* 🟢 **`checkAppVersion(pkg)` — 2026-09-17.** تقرأ خصائصَ السكربت وحدها
+     (‏`teacher/AppVersionCheck.js`) ⇒ لا جلسة ولا توكن ولا مستأجر. وقِيس أنها تبلغ
+     **gasMs ≥ 23000 ×45 في ٢٤ ساعة** وهي قراءةُ خاصيّةٍ واحدة ⇒ الانتظارُ طابورٌ لا عمل.
+     🔴 **`tenantless` صريحٌ لهذه الدالّة وحدَها** — التطبيقُ يرسل `{fn,args:[pkg]}` بلا
+     `schoolId` (‏`UpdateChecker.kt:96`) فكانت قاعدةُ «لا كاشَ بلا هويّة» ترفضها. والاستثناءُ
+     مقيَّدٌ بوسيطٍ **يطابق اسمَ حزمةٍ حرفياً** فلا يصير بوّابةً لحمولةٍ حرّة.
+     ⚖️ **والمقايضة:** تغييرُ `ANDROID_LATEST_VERSION_CODE_*` يظهر خلال ساعةٍ لا فوراً —
+     والتطبيقُ نفسُه يكبح فحصَه ٦ ساعات، فالساعةُ داخل تقادمٍ قائمٍ أصلاً. */
+  checkAppVersion: {
+    /* ‏`[pkg]` — اسمُ حزمة أندرويد حرفياً ولا شيءَ غيره. مضمَّنةٌ هنا لا دالّةً مستقلّة:
+       حرّاسُ `test-routes.js` يشغّلون هذه الكتلةَ وحدَها بـ`vm`. */
+    args: function (a) {
+      return a.length === 1 && typeof a[0] === 'string' && a[0].length <= 64 &&
+             /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(a[0]);
+    },
+    tenantless: true,
+    ttl: 3600,
+    /* ‏`latestVersionCode = 0` تعني «غيرُ مضبوط» — لا يُثبَّت ساعةً فيُخفي ضبطاً لاحقاً. */
+    ok: function (b) { return typeof b.latestVersionCode === 'number' && b.latestVersionCode > 0; }
   }
 };
 
@@ -1245,7 +1265,7 @@ function _apiCacheProbe(body) {
        القائمة البيضاء ⇒ **صفرُ تغييرٍ فيما يراه المستخدم**، وحدَه الكاشُ يمتنع. */
     var _a0 = (args.length > 0 && args[0] && typeof args[0] === 'object') ? args[0] : null;
     var _argSid = (_a0 && typeof _a0.schoolId === 'string') ? _a0.schoolId : '';
-    if (sid === '' && _argSid === '') return { fn: o.fn, reject: 'sid' };
+    if (sid === '' && _argSid === '' && !API_CACHE_FNS[o.fn].tenantless) return { fn: o.fn, reject: 'sid' };
     /* 🔴 `schoolId` **داخل المفتاح** — يُحلّ المستأجر خادمياً، فإسقاطُه من المفتاح يخلط
        مدرسةً بأخرى. والحدُّ يُقاس على الخام لا على المُرمَّز (انظر تبريره أعلى الكتلة). */
     var raw = JSON.stringify([args, sid]);
