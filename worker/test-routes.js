@@ -3279,6 +3279,72 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
    الإنسانُ كان ينتظر نداءَ GAS قبل أوّل بايت (TTFB 2.7–8.4 ث مقيساً). ⇒ قطبان:
    الزاحفُ **يحصل** على الحقن، والمتصفّحُ **لا ينتظر**. وبنيويّاً: البوّابةُ على شرط
    الكتلة نفسِها قبل `fetch` لا بعده — بوّابةٌ بعد النداء تُبقي الانتظارَ وتُخفي الوسوم فقط. */
+/* ── 🎯 المعرّفُ القانونيُّ واحدٌ في وقت التشغيل (سلوكي + بنيوي · 2026-09-17) ────────
+   قرارُ مالك: «أسلوبٌ واحد». والتنفيذُ **حلٌّ عند الباب لا حذفُ سطح**: الاسمُ المختصرُ
+   يُحَلّ إلى UUID مرّةً، وما بعده بمعرّفٍ واحد. وهذه الفحوصُ تُثبت الأمرين معاً:
+   أن الحلَّ يقع، وأن غيابَ الأزواج **لا يُنتج هويّةً خاطئة** بل سلوكَ الأمس. */
+console.log('');
+console.log('المعرّفُ القانونيُّ واحد (slug ⇒ UUID):');
+(function () {
+  var sIdx = src.indexOf('function _slugsCacheKey(');
+  var sEnd = src.indexOf('\n}', src.indexOf('async function _tenantCanonical(')) + 2;
+  if (sIdx < 0 || sEnd <= sIdx) {
+    check(false, 'ضابط: تعذّر استخراج كتلةِ سجلّ الـslugs — الفحص أجوف'); return;
+  }
+  var blk = src.slice(sIdx, sEnd).replace(/async function/g, 'function').replace(/await /g, '');
+  var stripOk = blk.indexOf('await ') === -1 && blk.indexOf('function _tenantCanonical(') !== -1;
+  check(stripOk, 'ضابط: التجريدُ نجح والجسمُ باقٍ');
+  if (!stripOk) return;
+  var store = {}, refreshed = 0;
+  var ctx = vm.createContext({
+    JSON: JSON, Object: Object, Array: Array, String: String,
+    Request: function (u) { this.url = u; },
+    Response: function (b) { this._t = b; this.json = function () { return JSON.parse(b); }; },
+    caches: { default: { match: function (r) { return store[r.url]; },
+                         put: function (r, resp) { store[r.url] = resp; } } },
+    _RESERVED_TOP_PATHS: { 'teacher': 1 },
+    _SCHOOL_UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    _slugsRefresh: function () { refreshed++; return null; }
+  });
+  vm.runInContext(blk, ctx);
+  var canon = vm.runInContext('_tenantCanonical', ctx);
+  var keyOf = vm.runInContext('_slugsCacheKey', ctx);
+  var EB = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+  var put = function (doc) {
+    store[keyOf('https://x').url] = { json: function () { return doc; } };
+  };
+  put({ slugs: ['ibn-khaldoun', 'abdaawatmuaz'], pairs: { 'ibn-khaldoun': EB } });
+  check(canon('ibn-khaldoun', 'https://x', null) === EB,
+        '🎯 الاسمُ المختصرُ يُحَلّ إلى المعرّف القانونيّ');
+  check(canon('IBN-KHALDOUN', 'https://x', null) === EB,
+        'والحالةُ الكبيرةُ تُطبَّع قبل الحلّ');
+  check(canon(EB, 'https://x', null) === EB && canon(EB.toUpperCase(), 'https://x', null) === EB,
+        '🔒 المعرّفُ يمرّ كما هو (لا حلَّ لما هو قانونيٌّ أصلاً)');
+  check(canon('abdaawatmuaz', 'https://x', null) === 'abdaawatmuaz',
+        '🔒 ضابط معاكس: slug بلا زوجٍ في السجلّ ⇒ يبقى كما وصل (fail-open لا هويّةٌ خاطئة)');
+  put({ slugs: ['ibn-khaldoun'] });
+  check(canon('ibn-khaldoun', 'https://x', null) === 'ibn-khaldoun',
+        '🔒 ضابط معاكس: سجلٌّ بالشكل القديم (بلا `pairs`) ⇒ سلوكُ الأمس بلا كسر');
+  check(canon('', 'https://x', null) === '',
+        '🔒 مفتاحٌ فارغ ⇒ فارغ');
+  var before = refreshed;
+  canon('ibn-khaldoun', 'https://x', null);
+  check(refreshed === before,
+        '🔴 وصفرُ تحديثٍ إضافيٍّ والسجلُّ حاضر — لا نداءَ GAS على مسارِ صفحةٍ يراها إنسان');
+
+  /* بنيويّ: السلسلةُ تستهلك المفتاحَ **بعد** التوحيد، وإلّا بقي الحلُّ بلا أثر. */
+  var chain = src.indexOf('_tenantKeyFrom(_rawPath, url.search)');
+  var afterChain = src.slice(chain, chain + 1200);
+  check(/_tenantKey = await _tenantCanonical\(_tenantKey, url\.origin, env\)/.test(afterChain),
+        '🔴 بنيوي: التوحيدُ يقع مباشرةً بعد اشتقاق المفتاح');
+  check(afterChain.indexOf('_tenantCanonical') < afterChain.indexOf('_brandFromCache'),
+        '🔴 بنيوي: **قبل** قراءة كاش الهويّة — وإلّا بقي مدخلان للمدرسة الواحدة');
+  /* 🔒 والسطحُ العامّ لا يُمَسّ: الرابطُ القانونيُّ يبقى بالاسم المختصر. */
+  check(/function _canonicalFor\(path, pathSlug, schoolParam\)/.test(src) &&
+        src.indexOf('_canonicalFor(path, _pathSlug') !== -1,
+        '🔒 `_canonicalFor` ما زال يُبنى من مقطع المسار (الفهرسةُ بالاسم المختصر)');
+})();
+
 console.log('');
 console.log('حقنُ OG لزواحف المعاينة وحدَها:');
 (function () {

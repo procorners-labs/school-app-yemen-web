@@ -627,13 +627,20 @@ function _slugsCacheKey(origin) {
   return new Request(origin + '/__slugs-cache/v1/all', { method: 'GET' });
 }
 
-async function _slugsFromCache(origin) {
+/** الوثيقةُ كاملةً: `{slugs:[…], pairs:{slug:uuid}}` — و`pairs` قد تغيب (شكلٌ قديمٌ مخزَّن). */
+async function _slugsDocFromCache(origin) {
   try {
     var hit = await caches.default.match(_slugsCacheKey(origin));
     if (!hit) return null;
     var o = await hit.json();
-    return (o && Array.isArray(o.slugs)) ? o.slugs : null;
+    if (!o || !Array.isArray(o.slugs)) return null;
+    return { slugs: o.slugs, pairs: (o.pairs && typeof o.pairs === 'object') ? o.pairs : {} };
   } catch (e) { return null; }
+}
+
+async function _slugsFromCache(origin) {
+  var doc = await _slugsDocFromCache(origin);
+  return doc ? doc.slugs : null;
 }
 
 /* 🔴 **حاجبةٌ بالضرورة** خلافاً لـ`_brandRefresh` التي تعمل في `ctx.waitUntil`: القرارُ
@@ -677,9 +684,26 @@ async function _slugsRefresh(origin, env) {
          أصلاً، وتخزينُها يُوهم بتغطيةٍ غير قائمة. */
       if (/^[a-z0-9-]+$/.test(s) && !_RESERVED_TOP_PATHS[s]) clean.push(s);
     }
+    /* 🟢 **الأزواج (slug ⇒ UUID) — أُضيفت 2026-09-17 مع `home@145`.** نفسُ النداء ونفسُ
+       الكاش ⇒ **صفرُ نداءٍ إضافيٍّ على GAS**، وبها يحلّ الوركرُ الاسمَ المختصرَ إلى
+       المعرّف القانونيّ على الحافّة. 🔒 وكلُّ طرفٍ يُصفَّى بشكله: الاسمُ بصيغة المسار،
+       والمعرّفُ بـ`_SCHOOL_UUID_RE` — فزوجٌ مشوَّهٌ يسقط ولا يُخزَّن.
+       ⚠️ **والغيابُ مقبولٌ عمداً:** نشرةُ GAS أقدمُ (أو مدخلٌ مخزَّنٌ بالشكل القديم) ⇒
+       `pairs` فارغة ⇒ يبقى المفتاحُ كما وصل. **fail-open: لا هويّةَ خاطئة، وأسوأُ حالةٍ
+       سلوكُ الأمس.** */
+    var pairs = {};
+    var rows = (b && Object.prototype.toString.call(b.schools) === '[object Array]') ? b.schools : [];
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j] || {};
+      var rs = String(r.slug || '').toLowerCase();
+      var rid = String(r.schoolId || '');
+      if (/^[a-z0-9-]+$/.test(rs) && !_RESERVED_TOP_PATHS[rs] && _SCHOOL_UUID_RE.test(rid)) {
+        pairs[rs] = rid.toLowerCase();
+      }
+    }
     await caches.default.put(
       _slugsCacheKey(origin),
-      new Response(JSON.stringify({ slugs: clean }), {
+      new Response(JSON.stringify({ slugs: clean, pairs: pairs }), {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
           'Cache-Control': 'max-age=' + SLUGS_TTL_S
@@ -712,6 +736,33 @@ async function _slugsRefresh(origin, env) {
  *    نصف المواضع أسوأُ من اسمٍ قديمٍ متّسق. **وحارسُ `test-routes.js` حمرّ فعلاً عند
  *    التسمية قبل تحديثه** (تأكيداتُه نصّيّةٌ على اسم الدالّة) ⇒ **مُثبَتٌ أنه ليس أجوف.**
  */
+/* 🎯 **المعرّفُ القانونيُّ واحدٌ في وقت التشغيل (قرارُ مالكٍ 2026-09-17).**
+ *
+ * الاسمُ المختصرُ **مدخلٌ** يُحَلّ هنا مرّةً واحدةً إلى UUID، وكلُّ ما بعده — مفتاحُ كاش
+ * الهويّة، والنداءُ الذي يجلبها، والحمولةُ المحقونة — يعمل بمعرّفٍ واحد. ⇒ **تنتهي
+ * الهويّتان** بلا حذفِ سطحٍ عامّ: `/<slug>` وصيغُ App Link في حزمتين منشورتين تبقى كما هي،
+ * و`_canonicalFor` يبقى **بالاسم المختصر** عمداً (هو ما نُعلنه للفهرسة).
+ * 🟢 **ومكسبٌ مقيسٌ يرافقه:** مدرسةٌ تُفتح مرّةً بالاسم ومرّةً بالمعرّف كانت تُنتج
+ * **مدخلَي كاشِ هويّة**؛ بالتوحيد تصير مدخلاً واحداً ⇒ إصابةٌ أعلى وحملٌ أقلّ.
+ * 🔒 **ولا نداءَ GAS على المسار الحارّ:** السجلُّ نفسُه المخزَّنُ للـslugs (٣٠٠ث)،
+ * وإن غابت الأزواجُ يُرجَع المفتاحُ كما وصل (fail-open).
+ */
+async function _tenantCanonical(key, origin, env) {
+  var k = String(key || '').toLowerCase();
+  if (!k || _SCHOOL_UUID_RE.test(k)) return k;
+  var doc = await _slugsDocFromCache(origin);
+  if (doc && doc.pairs && doc.pairs[k]) return doc.pairs[k];
+  /* لا تحديثَ إضافيّاً إن كان السجلُّ حاضراً — التحديثُ لهذه الغاية وحدَها يُدخل نداءً
+     على مسارِ صفحةٍ يراها إنسان، وهو ما نتجنّبه قطعاً. */
+  if (doc) return k;
+  var fresh = await _slugsRefresh(origin, env);
+  if (fresh) {
+    var d2 = await _slugsDocFromCache(origin);
+    if (d2 && d2.pairs && d2.pairs[k]) return d2.pairs[k];
+  }
+  return k;
+}
+
 async function _slugIsKnown(slug, origin, env) {
   if (_KNOWN_SCHOOL_SLUGS[slug]) return true;
   var cached = await _slugsFromCache(origin);
@@ -2857,6 +2908,10 @@ export default {
           ومُصادِقٌ هناك يُثبّت بطاقة معاينةٍ خاطئة على واتساب بلا رجعة.
        🔴 و`GET` وحده: مُصادِقٌ على استجابة `HEAD`/غيرها لا معنى له. */
     var _tenantKey = _tenantKeyFrom(_rawPath, url.search);
+    /* 🎯 توحيدُ الهويّة: الاسمُ المختصرُ يُحَلّ إلى UUID **مرّةً واحدةً هنا**، فما بعده
+       (‏`_brandCacheKey` · `_brandRefresh` · الحمولةُ المحقونة) بمعرّفٍ واحدٍ لا اثنين.
+       انظر `_tenantCanonical` — وبلا أزواجٍ في السجلّ يبقى المفتاحُ كما وصل. */
+    if (_tenantKey) _tenantKey = await _tenantCanonical(_tenantKey, url.origin, env);
     var _brand = null, _brandTs = 0;
     if (isHtml && !isSwOrManifest && ghResp.status === 200 && _tenantKey && !_newsId) {
       var _bc = await _brandFromCache(url.origin, _tenantKey);
