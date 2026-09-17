@@ -37,7 +37,15 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    var _pSlug = (/^\/(?:teacher|student)\/[a-z0-9-]+\/([a-z0-9-]+)\/?$/i.exec(window.location.pathname || '') || [])[1] || '';
+    var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
+    var _pSlug = _pm[3] || '';
+    if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
+      var _s1 = String(_pm[2]).toLowerCase();
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(_s1) || ["abdaawatmuaz","ibn-khaldoun","aljil-al-hadith"].indexOf(_s1) !== -1) {
+        _pSlug = _s1;
+        try { history.replaceState(history.state, '', '/' + String(_pm[1]).toLowerCase() + '/index.html?school=' + encodeURIComponent(_s1) + (window.location.hash || '')); } catch (eRS) {}
+      }
+    }
     window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '12725ed7-c139-422c-a2d1-ec0ddd358104';
   })();
 </script>
@@ -1213,6 +1221,7 @@
     .grade-input:focus { border-color:var(--primary); background:var(--surface); box-shadow:0 0 0 3px var(--primary-glow); }
     .grade-input.has-grade { border-color:var(--success); background:#f0fdf4; color:#166534; font-weight:600; }
     .grade-input.saving { border-color:var(--warning); background:#fffbeb; }
+    .grade-input.unconfirmed { border:2px dashed #f59e0b; background:#fffbeb; }
 
     /* ════════════ تحسينات احترافية عامّة (PRO POLISH) ════════════ */
     /* أزرار: ارتفاع لطيف عند المرور + ضغط + ظلال متّسقة */
@@ -4774,7 +4783,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================
-// نبضة خفيفة كل 3 دقائق فقط أثناء رؤية التبويب فعلياً (Page Visibility API)، تُحدِّث
+// نبضة خفيفة كل 4 دقائق فقط أثناء رؤية التبويب فعلياً (Page Visibility API)، تُحدِّث
 // عمود "مدة الاستخدام" التراكمي بالخادم (teacherHeartbeatProtected). لا نداء عند
 // الإغلاق (sendBeacon غير عملي هنا لأن google.script.run ليس رابطاً مباشراً قابلاً
 // للاستخدام مع sendBeacon) — فقدان آخر دقائق نادرة عند الإغلاق المفاجئ مقبول.
@@ -4791,7 +4800,7 @@ function _startHeartbeat() {
      الإصرار على إيقاع 3 دقائق وقتها يزيد الضغط على الجذر نفسه. النجاح يعيد الإيقاع
      الأساسي فوراً. سلسلة setTimeout ذاتية الجدولة بدل setInterval كي يتحكم كل ردّ
      بموعد النبضة التالية. */
-  var _HB_BASE_MS = 3 * 60 * 1000;
+  var _HB_BASE_MS = 4 * 60 * 1000;   // 3⇒4 (2026-09-17): −25٪ نبضات؛ ويبقى < ttl عدّادات الإشعارات 300ث
   var _HB_MAX_MS  = 12 * 60 * 1000;
   var _hbDelayMs  = _HB_BASE_MS;
   var _hbTimer    = null;
@@ -8933,14 +8942,26 @@ function _notifItem(icon, title, sub, onclick) {
 function _loadNotificationsList() {
   var body = document.getElementById('notif-body'); if (!body) return;
   var parts = { circ: '', news: '', notes: '' };
+  var failed = { circ: false, news: false, notes: false };
   var pending = 3;
+  /* 🔴 فشلُ النقل (502 عند إشباع الطابور) كان يُرسَم «لا توجد إشعارات جديدة 🎉» ويُعلِّم
+     الأخبارَ مقروءة — فيُقرأ «المديرُ لا يرى الأخبار» (2026-09-17). ⇒ صفُّ خطأٍ بإعادة
+     محاولة لكلّ فئةٍ فشلت، ولا تعليمَ «مقروء» لفئةٍ لم تُحمَّل. */
+  function _failRow(label) {
+    return '<div onclick="_loadNotificationsList()" style="display:flex;gap:10px;padding:10px;border-radius:10px;cursor:pointer;align-items:center;background:#fff7ed">' +
+      '<div style="font-size:17px">⚠️</div><div style="flex:1;font-size:13px;color:#9a3412">تعذّر تحميل ' + label +
+      ' — الخادم مشغول. <u>إعادة المحاولة</u></div></div>';
+  }
   function render() {
     pending--;
     if (pending > 0) return;
+    if (failed.circ) parts.circ = _failRow('التعاميم');
+    if (failed.news) parts.news = _failRow('الأخبار');
+    if (failed.notes) parts.notes = _failRow('ملاحظات أولياء الأمور');
     var html = parts.circ + parts.news + parts.notes;
     body.innerHTML = html || '<div style="text-align:center;color:var(--text-light);padding:24px">لا توجد إشعارات جديدة 🎉</div>';
-    markNewsRead();
-    markCircularsRead();
+    if (!failed.news) markNewsRead();
+    if (!failed.circ) markCircularsRead();
   }
   // 0) التعاميم الإدارية النشطة
   callServer('listCircularsProtected', { manage: false }, function (r) {
@@ -8956,7 +8977,7 @@ function _loadNotificationsList() {
       }
     }
     render();
-  }, function () { render(); });
+  }, function () { failed.circ = true; render(); });
   // 1) أحدث الأخبار
   callServer('getAllNewsProtected', { page: 1, pageSize: 5 }, function (r) {
     var list = (r && r.success && r.news) ? r.news : [];
@@ -8971,7 +8992,7 @@ function _loadNotificationsList() {
       }
     }
     render();
-  }, function () { render(); });
+  }, function () { failed.news = true; render(); });
   // 2) ملاحظات أولياء الأمور غير المقروءة — نص متصاعد حسب أعلى مستوى إلحاح موجود
   callServer('getUnreadNotesCountProtected', {}, function (r) {
     var cnt  = (r && r.success) ? (parseInt(r.count, 10) || 0) : 0;
@@ -8987,7 +9008,7 @@ function _loadNotificationsList() {
         _notifItem(icon, title, sub, "closeNotificationsPanel();showSection('notes')");
     }
     render();
-  }, function () { render(); });
+  }, function () { failed.notes = true; render(); });
 }
 
 /**
@@ -10994,7 +11015,7 @@ var HELP_TOPICS_CATALOG = [
     {type:'tip', text:"🖨️ زر الطباعة يفتح التقرير في نافذة مستقلة جاهزة للطباعة."}
   ]},
   { id:'profile', label:'الملف الشخصي', icon:'👤', category:'الملف الشخصي', body:[
-    {type:'p', text:"بياناتك الشخصية: المادة/الفصل/الشعبة وصلاحية النظام، وقائمة الصفحات المتاحة لدورك حالياً."},
+    {type:'p', text:"بياناتك الشخصية: المادة/الفصل/الشعبة ودورك، وقائمة الصفحات المتاحة لدورك حالياً."},
     {type:'p', text:"يمكنك إضافة بريد إلكتروني (يتيح الدخول به أيضاً إلى جانب اسمك)، ومشاركة كود الإحالة الخاص بك مع أصحاب مدارس جديدة (رابط تسجيل جاهز + عدد الإحالات المؤكَّدة)، وتغيير كلمة المرور (٤ أحرف على الأقل)."},
     {type:'p', text:"في نفس الصفحة تجد أيضاً سجل غيابك وأداء مهامك لهذا العام."}
   ]}
@@ -17550,19 +17571,41 @@ function _gradeMarkPending(e) {
   for (var f in e.values) {
     if (!e.values.hasOwnProperty(f)) continue;
     var el = _gradeInputEl(e.code, f);
-    if (el) { el.classList.remove('saving'); el.classList.add('pending-save'); }
+    if (el) { el.classList.remove('saving', 'unconfirmed'); el.classList.add('pending-save'); }
   }
 }
 
 /* إعادة عناصر دفعة فشل نقلُها إلى الطابور (بحدّ GRADE_RETRY_MAX لكل عنصر).
    إن ظهر لعنصرٍ نظيرٌ أحدث بنفس المفتاح (كتب المعلّم فوقه أثناء الطيران) تُدمَج قيمه
    القديمة تحت الأحدث — قيمة المعلّم الأخيرة تفوز دوماً. */
-function _requeueGradeBatch(batch, errMsg) {
+/* 🔴 **فشلُ الإشباع ليس فشلَ حفظ (2026-09-17).** 502/504/503/429 من الوسيط تعني أنه أجهض
+   الانتظارَ عند سقف ميزانيته — و**GAS يواصل التنفيذ ويكتب الخلايا**. فكان المعلّمُ يرى
+   الحقلَ أحمرَ «فشل» لدرجةٍ محفوظة، والإعادةُ بعد 4ث تحجز مقعداً آخر في طابورٍ مشبع.
+   🟢 الكتابةُ **ضبطُ قيمة خليّة لا إلحاق** ⇒ الإعادةُ آمنةٌ ونجاحُها هو التأكيد نفسُه (أرخصُ
+   من قراءةٍ راجعة تحجز مقعداً مثلها). ⇒ عند الإشباع: تراجعٌ أطول (15ث × رقم المحاولة)،
+   وعند نفاد المحاولات **«غير مؤكَّد»** (كهرمانيّ) لا «فشل» (أحمر). والرفضُ المنطقيّ لا يمرّ
+   من هنا أصلاً (يصل عبر مسار النجاح). */
+var GRADE_SAT_DELAY_MS = 15000;
+function _gradeMarkUnconfirmed(e) {
+  for (var f in e.values) {
+    if (!e.values.hasOwnProperty(f)) continue;
+    var el = _gradeInputEl(e.code, f);
+    if (el) {
+      el.classList.remove('saving', 'pending-save', 'error');
+      el.classList.add('unconfirmed');
+      el.title = 'لم يُؤكَّد الحفظ بسبب ضغط الخادم — قد تكون محفوظة. عدّل الحقل لإعادة المحاولة.';
+    }
+  }
+}
+function _requeueGradeBatch(batch, errMsg, saturated) {
+  var maxRetry = 0, unconfirmed = 0;
   for (var i = batch.length - 1; i >= 0; i--) {
     var e = batch[i];
     e._retry = (e._retry || 0) + 1;
+    if (e._retry > maxRetry) maxRetry = e._retry;
     if (e._retry > GRADE_RETRY_MAX) {
-      _applyGradeBatchResult(e, { success: false, error: errMsg });
+      if (saturated) { _gradeMarkUnconfirmed(e); unconfirmed++; }
+      else _applyGradeBatchResult(e, { success: false, error: errMsg });
       continue;
     }
     var merged = false;
@@ -17582,7 +17625,10 @@ function _requeueGradeBatch(batch, errMsg) {
   /* الضخّ التالي يأتي حصراً عبر هذا المؤقّت (لا ضخّ فوري بعد فشل نقل) — وإلا أُعيد
      الإرسال في نفس اللحظة وضاعت مهلة التراجع. يُجدوَل حتى مع صفر إعادة: قد تبقى
      عناصر سياق آخر في الطابور تنتظر دورها. */
-  setTimeout(_pumpGradeQueue, GRADE_RETRY_DELAY_MS);
+  if (unconfirmed) {
+    try { toast('⚠️ الخادم مشغول: لم يُؤكَّد حفظ ' + unconfirmed + ' طالب — قد تكون الدرجات محفوظة. عدّل الحقل الكهرماني لإعادة المحاولة.', 'warning', 7000); } catch (eT) {}
+  }
+  setTimeout(_pumpGradeQueue, saturated ? GRADE_SAT_DELAY_MS * Math.max(1, maxRetry) : GRADE_RETRY_DELAY_MS);
 }
 
 /* بوّابة التسلسل — نداء واحد طائر، يصرّف كل عناصر السياق الواحد المتراكمة دفعةً. */
@@ -17616,7 +17662,7 @@ function _pumpGradeQueue() {
     for (var f in be.values) {
       if (!be.values.hasOwnProperty(f)) continue;
       var el = _gradeInputEl(be.code, f);
-      if (el) { el.classList.remove('pending-save'); el.classList.add('saving'); }
+      if (el) { el.classList.remove('pending-save', 'unconfirmed'); el.classList.add('saving'); }
     }
   }
 
@@ -17647,7 +17693,7 @@ function _pumpGradeQueue() {
       App.gradeBusy = false;
       if (err && err.__network) {
         // الضخّ التالي عبر مؤقّت التراجع داخل _requeueGradeBatch — لا ضخّ فوري هنا
-        _requeueGradeBatch(batch, (err && err.message) ? err.message : 'تعذّر الاتصال');
+        _requeueGradeBatch(batch, (err && err.message) ? err.message : 'تعذّر الاتصال', !!(err && err.__saturated));
       } else {
         _applyBatchOutcome({ success: false, error: (err && err.message) ? err.message : 'تعذّر الاتصال' });
         _pumpGradeQueue();
@@ -17671,7 +17717,7 @@ function _applyGradeBatchResult(e, r) {
     if (!e.values.hasOwnProperty(f)) continue;
     var el = _gradeInputEl(e.code, f);
     if (!el) continue;                      /* قد يكون المعلّم بدّل العرض */
-    el.classList.remove('saving', 'pending-save');
+    el.classList.remove('saving', 'pending-save', 'unconfirmed');
 
     var fr = results ? results[f] : null;
     if (fr && fr.success) {
@@ -23242,9 +23288,8 @@ function renderProfile() {
   var classesStr = (u.classes || [u.grade]).filter(function(v){return v;}).join('، ') || '—';
   var sectionsStr = (u.sections || [u.section]).filter(function(v){return v;}).join('، ') || '—';
   var roleLabel = _roleLabelFull(u);
-  var roleStr = _roleIcon(u) + ' ' + roleLabel;
   var adminBadge = '<span class="badge ' + (u.isAdmin ? 'badge-warning' : 'badge-info') + '" style="margin-top:6px">' + roleLabel + '</span>';
-  var html = '<div class="section-card" style="max-width:560px;margin:0 auto"><div class="section-header"><div class="section-header-icon" style="background:var(--primary-glow)">👤</div><div class="section-header-title">الملف الشخصي</div><button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'profile\')" style="padding:4px 8px">❓</button></div><div class="section-body"><div style="text-align:center;margin-bottom:28px"><div style="width:80px;height:80px;background:linear-gradient(135deg,var(--primary),var(--purple));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;color:#fff;margin:0 auto 14px;">' + initials + '</div><h2 style="font-size:1.3rem;font-weight:800">' + (u.teacherName || '') + '</h2><div style="color:var(--text-muted);margin-top:4px">' + roleLabel + '</div>' + adminBadge + '</div><hr class="divider"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px"><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">المادة / المواد</div><div style="font-weight:600">' + subjectsStr + '</div></div><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">الفصل / الفصول</div><div style="font-weight:600">' + classesStr + '</div></div><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">الشعبة / الشعب</div><div style="font-weight:600">' + sectionsStr + '</div></div><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">صلاحية النظام</div><div style="font-weight:600">' + roleStr + '</div></div></div>' + _profileAvailablePages() + '<div id="profile-absence"></div><div id="profile-tasks"></div><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">📧 البريد الإلكتروني</h4><div class="form-group mb-3"><label class="form-label">البريد الإلكتروني (اختياري — يتيح الدخول به أيضاً إلى جانب اسمك)</label><input type="email" class="form-control" id="profileEmail" value="' + escapeHtml(u.email || '') + '" placeholder="example@email.com"></div><button class="btn btn-primary mt-2" onclick="saveProfileEmail()">📧 حفظ البريد الإلكتروني</button><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">🎁 كود الإحالة الخاص بك</h4><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm);margin-bottom:14px"><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">شارك هذا الكود مع أصحاب المدارس الجدد — عند تسجيلهم به تُنسَب الإحالة إليك</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><code id="referralCodeDisplay" style="font-size:1.1rem;font-weight:800;background:var(--surface);padding:8px 14px;border-radius:8px;letter-spacing:2px">⏳</code><button class="btn btn-sm btn-primary" onclick="copyReferralCode()">📋 نسخ</button></div><div style="margin-top:10px;font-size:.85rem;color:var(--text-muted)">الإحالات المؤكَّدة: <strong id="referralConfirmedCount">0</strong></div><div style="margin-top:8px;font-size:.85rem;color:var(--text-muted)">زيارات الرابط (آخر 30 يوماً): <strong id="referralClicks30d">0</strong></div><hr style="border:none;border-top:1px dashed var(--border,#e2e8f0);margin:12px 0"><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">رابط التسجيل الجاهز للمشاركة — من يسجّل مدرسته عبره يُنسَب تلقائياً لكودك:</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><code id="referralLinkDisplay" style="font-size:.85rem;background:var(--surface);padding:8px 12px;border-radius:8px;word-break:break-all;flex:1;min-width:200px">⏳</code><button class="btn btn-sm btn-primary" onclick="copyReferralLink()">📋 نسخ الرابط</button></div><div style="font-size:.78rem;color:var(--text-muted);line-height:1.7">💰 برنامج مكافآت الإحالة: عمولة 10% لك وخصم 10% للمدرسة المُحالة على الاشتراك السنوي. هذا ليس احتساباً آلياً — يُراجَع ويُعتمَد يدوياً من إدارة المنصّة لكل إحالة على حدة.</div></div><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">🔐 تغيير كلمة المرور</h4><div class="form-group mb-3"><label class="form-label">كلمة المرور الحالية</label><input type="password" class="form-control" id="profileOldPwd"></div><div class="form-row"><div class="form-group"><label class="form-label">كلمة المرور الجديدة</label><input type="password" class="form-control" id="profileNewPwd"></div><div class="form-group"><label class="form-label">تأكيد كلمة المرور</label><input type="password" class="form-control" id="profileConfirmPwd"></div></div><button class="btn btn-primary mt-2" onclick="saveProfilePassword()">🔐 تغيير كلمة المرور</button><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">🔒 الدخول بالبصمة</h4><div id="biomActivateWrap"></div><div id="biomDevicesList"></div><hr class="divider"><button class="btn btn-danger btn-w100" onclick="confirmLogout()">🚪 تسجيل الخروج</button></div></div>';
+  var html = '<div class="section-card" style="max-width:560px;margin:0 auto"><div class="section-header"><div class="section-header-icon" style="background:var(--primary-glow)">👤</div><div class="section-header-title">الملف الشخصي</div><button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'profile\')" style="padding:4px 8px">❓</button></div><div class="section-body"><div style="text-align:center;margin-bottom:28px"><div style="width:80px;height:80px;background:linear-gradient(135deg,var(--primary),var(--purple));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;color:#fff;margin:0 auto 14px;">' + initials + '</div><h2 style="font-size:1.3rem;font-weight:800">' + (u.teacherName || '') + '</h2><div style="color:var(--text-muted);margin-top:4px">' + roleLabel + '</div>' + adminBadge + '</div><hr class="divider"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px"><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">المادة / المواد</div><div style="font-weight:600">' + subjectsStr + '</div></div><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">الفصل / الفصول</div><div style="font-weight:600">' + classesStr + '</div></div><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">الشعبة / الشعب</div><div style="font-weight:600">' + sectionsStr + '</div></div></div>' + _profileAvailablePages() + '<div id="profile-absence"></div><div id="profile-tasks"></div><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">📧 البريد الإلكتروني</h4><div class="form-group mb-3"><label class="form-label">البريد الإلكتروني (اختياري — يتيح الدخول به أيضاً إلى جانب اسمك)</label><input type="email" class="form-control" id="profileEmail" value="' + escapeHtml(u.email || '') + '" placeholder="example@email.com"></div><button class="btn btn-primary mt-2" onclick="saveProfileEmail()">📧 حفظ البريد الإلكتروني</button><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">🎁 كود الإحالة الخاص بك</h4><div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm);margin-bottom:14px"><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">شارك هذا الكود مع أصحاب المدارس الجدد — عند تسجيلهم به تُنسَب الإحالة إليك</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><code id="referralCodeDisplay" style="font-size:1.1rem;font-weight:800;background:var(--surface);padding:8px 14px;border-radius:8px;letter-spacing:2px">⏳</code><button class="btn btn-sm btn-primary" onclick="copyReferralCode()">📋 نسخ</button></div><div style="margin-top:10px;font-size:.85rem;color:var(--text-muted)">الإحالات المؤكَّدة: <strong id="referralConfirmedCount">0</strong></div><div style="margin-top:8px;font-size:.85rem;color:var(--text-muted)">زيارات الرابط (آخر 30 يوماً): <strong id="referralClicks30d">0</strong></div><hr style="border:none;border-top:1px dashed var(--border,#e2e8f0);margin:12px 0"><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">رابط التسجيل الجاهز للمشاركة — من يسجّل مدرسته عبره يُنسَب تلقائياً لكودك:</div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><code id="referralLinkDisplay" style="font-size:.85rem;background:var(--surface);padding:8px 12px;border-radius:8px;word-break:break-all;flex:1;min-width:200px">⏳</code><button class="btn btn-sm btn-primary" onclick="copyReferralLink()">📋 نسخ الرابط</button></div><div style="font-size:.78rem;color:var(--text-muted);line-height:1.7">💰 برنامج مكافآت الإحالة: عمولة 10% لك وخصم 10% للمدرسة المُحالة على الاشتراك السنوي. هذا ليس احتساباً آلياً — يُراجَع ويُعتمَد يدوياً من إدارة المنصّة لكل إحالة على حدة.</div></div><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">🔐 تغيير كلمة المرور</h4><div class="form-group mb-3"><label class="form-label">كلمة المرور الحالية</label><input type="password" class="form-control" id="profileOldPwd"></div><div class="form-row"><div class="form-group"><label class="form-label">كلمة المرور الجديدة</label><input type="password" class="form-control" id="profileNewPwd"></div><div class="form-group"><label class="form-label">تأكيد كلمة المرور</label><input type="password" class="form-control" id="profileConfirmPwd"></div></div><button class="btn btn-primary mt-2" onclick="saveProfilePassword()">🔐 تغيير كلمة المرور</button><hr class="divider"><h4 style="margin-bottom:14px;font-size:.95rem">🔒 الدخول بالبصمة</h4><div id="biomActivateWrap"></div><div id="biomDevicesList"></div><hr class="divider"><button class="btn btn-danger btn-w100" onclick="confirmLogout()">🚪 تسجيل الخروج</button></div></div>';
   document.getElementById('dynamicContent').innerHTML = html;
   profile_loadAbsence();
   profile_loadTasks();

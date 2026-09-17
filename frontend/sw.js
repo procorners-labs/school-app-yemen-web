@@ -24,12 +24,37 @@
    وإلّا، فيُخدَم `/home/index.html` المخزَّن سابقاً دون اتصال بعد إسقاطه من القائمة —
    أي أن الإسقاط وحده أثرٌ صفريّ على كل جهازٍ زار الموقع مرّة. (‏`activate` يحذف كل
    كاشٍ لا يطابق `CACHE` الحالي.) */
-var CACHE = 'creativity-shell-v8';
+/* 🔄 v8 → v9 (2026-09-17): إبطالُ نسخةٍ بائتةٍ من صفحة الخبر مخزَّنةٍ قبل 2026-09-11 كانت
+   تُخدَم فترمي «google is not defined» (قِيس على هاتف المالك عبر USB)، ومعه إسقاطُ
+   `/offline.html` من `PRECACHE` — **يردّ 404 حيّاً ولا مصدرَ له**. */
+var CACHE = 'creativity-shell-v9';
 
-// مهلة قصوى لانتظار الشبكة قبل الرجوع للكاش (يمنع «الشاشة البيضاء» على
-// الشبكات التي تتجمّد دون أن تفشل — الاتصال يبقى معلّقاً بلا رد).
-var NAV_TIMEOUT_MS = 3500;   // التنقّل (الصفحات)
-var ASSET_TIMEOUT_MS = 6000; // الأصول الثابتة
+/* ⏱️ مهلتان لا مهلة — والفرقُ هو العطل (2026-09-17).
+   🔴 **ما كان:** بعد `NAV_TIMEOUT_MS` تُرفَض الشبكةُ نهائياً ويُخدَم أيُّ احتياط، حتى جذرُ
+   الموقع. والمقيسُ على هاتف المالك: `responseStart = 3766ms` ⇒ الشبكةُ **كانت ستنجح** بعد
+   ٢٦٦ms، فخُدمت بوّابةُ الجذر بدل الخبر.
+   🟢 **الآن:** بعد `NAV_TIMEOUT_MS` يُخدَم **الكاشُ المطابقُ للطلب نفسِه** إن وُجد، وإلّا
+   **يستمرّ انتظارُ الشبكة** حتى `NAV_HARD_TIMEOUT_MS`. ولا صفحةَ بديلةَ إلّا عند فشلٍ فعليّ. */
+var NAV_TIMEOUT_MS = 3500;        // بعدها: الكاشُ المطابقُ للطلب وحده (لا بديل)
+var NAV_HARD_TIMEOUT_MS = 25000;  // بلا مطابق: ننتظر الشبكة حتى هذا الحدّ (> ميزانية الوسيط 23.7ث)
+var ASSET_TIMEOUT_MS = 6000;      // الأصول الثابتة
+
+/* صفحةُ «غير متصل» صريحةٌ داخل العامل — لا ملفٌّ يُخزَّن (كان `/offline.html` 404 فلم
+   يُخزَّن قطّ، فسقط الاحتياطُ إلى الجذر). و503 كي لا يُقرأ ردّاً ناجحاً. */
+var OFFLINE_HTML =
+  '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<title>غير متصل</title></head>' +
+  '<body style="font-family:system-ui,sans-serif;text-align:center;padding:48px 16px">' +
+  '<h1>تعذّر الاتصال</h1><p>تحقّق من الإنترنت ثمّ أعد المحاولة.</p>' +
+  '<p><button onclick="location.reload()">إعادة المحاولة</button></p></body></html>';
+
+function offlineResponse() {
+  return new Response(OFFLINE_HTML, {
+    status: 503, statusText: 'offline',
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+  });
+}
 
 // fetch مع مهلة: يرفض الوعد إذا تجاوز الزمن المحدّد.
 function fetchWithTimeout(req, ms) {
@@ -48,7 +73,6 @@ function fetchWithTimeout(req, ms) {
 var PRECACHE = [
   '/',
   '/index.html',
-  '/offline.html',
   '/manifest.webmanifest',
   '/assets/gas-bridge.js',
   '/assets/offline-db.js',
@@ -93,6 +117,54 @@ function isApiRequest(url) {
   return /\/gas\//.test(url.pathname);
 }
 
+// رابطُ خبرٍ مشارَك (`?news=<id>`) — صفحةٌ بعينها لا تُستبدَل بأيّ قشرة.
+function hasNewsParam(url) {
+  return /(^|[?&])news=/.test(url.search || '');
+}
+
+/* التنقّل: الشبكة أولاً. بعد `NAV_TIMEOUT_MS` يُخدَم **المطابقُ للطلب** إن وُجد وإلّا يستمرّ
+   الانتظار؛ والبديلُ (قشرةُ القسم أو صفحةُ «غير متصل») عند **فشلٍ فعليّ** وحده. */
+function navigateResponse(req, url) {
+  var network = fetchWithTimeout(req, NAV_HARD_TIMEOUT_MS).then(function (res) {
+    /* 🔴 `res.ok` شرطٌ لا تجميل: `fetch` **لا يرفض** على 502/504، فصفحةُ خطأِ الوسيط كانت
+       تُخزَّن قشرةً وتُخدَم دون اتصال (سلوكٌ قائمٌ قبل هذه الدفعة، ونافذتُه اتّسعت من
+       3.5ث إلى 25ث بالمهلة الصلبة) — رصدَته المراجعةُ المستقلّة قبل الدمج. */
+    if (res && res.ok) {
+      var copy = res.clone();
+      caches.open(CACHE).then(function (c) { c.put(req, copy); });
+    }
+    return res;
+  });
+  return new Promise(function (resolve) {
+    var settled = false;
+    function finish(r) { if (!settled) { settled = true; resolve(r); } }
+    var t = setTimeout(function () {
+      caches.match(req).then(function (hit) { if (hit) finish(hit); })['catch'](function () {});
+    }, NAV_TIMEOUT_MS);
+    network.then(function (res) {
+      clearTimeout(t); finish(res);
+    })['catch'](function () {
+      clearTimeout(t);
+      navigateFallback(req, url).then(finish, function () { finish(offlineResponse()); });
+    });
+  });
+}
+
+/* 🔴 **لا جذرَ الموقع بديلاً أبداً** — كان آخرَ الاحتياطات فخُدمت بوّابةُ الجذر مكانَ الخبر
+   (عنوانُ الصفحة كان الجذر على هاتف المالك). وسلسلةُ `.then` صريحة لأن `caches.match`
+   تُرجع وعداً صادقاً دائماً فلا يعمل `||` بين الوعود. */
+function navigateFallback(req, url) {
+  return caches.match(req).then(function (hit) {
+    if (hit) return hit;
+    if (hasNewsParam(url)) return offlineResponse();   // الخبرُ لا يُستبدَل بقشرةٍ أخرى
+    var seg = url.pathname.split('/')[1] || '';
+    if (!seg) return offlineResponse();
+    return caches.match('/' + seg + '/index.html').then(function (h2) {
+      return h2 || offlineResponse();
+    });
+  });
+}
+
 self.addEventListener('fetch', function (event) {
   var req = event.request;
   var url = new URL(req.url);
@@ -114,32 +186,7 @@ self.addEventListener('fetch', function (event) {
     (req.headers.get('accept') || '').indexOf('text/html') !== -1;
 
   if (isNavigation) {
-    // الشبكة أولاً بمهلة → عند البطء/الفشل ارجع لقشرة الكاش فوراً (لا شاشة بيضاء).
-    event.respondWith(
-      fetchWithTimeout(req, NAV_TIMEOUT_MS).then(function (res) {
-        var copy = res.clone();
-        caches.open(CACHE).then(function (c) { c.put(req, copy); });
-        return res;
-      })['catch'](function () {
-        // سلسلة احتياطات متتابعة فعلياً (caches.match ترجع وعداً "صادقاً" دوماً، فـ||
-        // بين وعود لا يجرّب الاحتياط التالي عند فشل الأول — يجب سلسلة .then صريحة)،
-        // مع ضمان نهائي: Response صريحة بدل undefined إن فشلت كل المحاولات.
-        return caches.match(req).then(function (hit) {
-          if (hit) return hit;
-          return caches.match('/' + ((url.pathname.split('/')[1]) || '') + '/index.html').then(function (h2) {
-            if (h2) return h2;
-            return caches.match('/offline.html').then(function (h3) {
-              return h3 || caches.match('/index.html');
-            });
-          });
-        }).then(function (finalHit) {
-          return finalHit || new Response(
-            '<h1>غير متصل بالإنترنت</h1>',
-            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-          );
-        });
-      })
-    );
+    event.respondWith(navigateResponse(req, url));
     return;
   }
 

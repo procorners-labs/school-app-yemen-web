@@ -37,7 +37,15 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    var _pSlug = (/^\/(?:teacher|student)\/[a-z0-9-]+\/([a-z0-9-]+)\/?$/i.exec(window.location.pathname || '') || [])[1] || '';
+    var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
+    var _pSlug = _pm[3] || '';
+    if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
+      var _s1 = String(_pm[2]).toLowerCase();
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(_s1) || ["abdaawatmuaz","ibn-khaldoun","aljil-al-hadith"].indexOf(_s1) !== -1) {
+        _pSlug = _s1;
+        try { history.replaceState(history.state, '', '/' + String(_pm[1]).toLowerCase() + '/index.html?school=' + encodeURIComponent(_s1) + (window.location.hash || '')); } catch (eRS) {}
+      }
+    }
     window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '';
   })();
 </script>
@@ -2255,7 +2263,9 @@ a { color: var(--pr); text-decoration: none; }
         <button type="button" class="pw-toggle" id="stuPwToggle" onclick="stuTogglePw()" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁️</button>
       </div>
     </div>
-    <button class="btn-primary" id="loginBtn" onclick="doLogin()">تسجيل الدخول 🚪</button>
+    <!-- نقرةٌ قبل أن يُحلَّل سكربتُ الدخول (صفحةٌ ضخمة على شبكةٍ بطيئة) كانت ترمي
+         «doLogin is not defined» (‏٧ في سجلّ الأخطاء، 2026-09-17) — تُطلب إعادتُها بدل الرمي. -->
+    <button class="btn-primary" id="loginBtn" onclick="if(typeof doLogin==='function'){doLogin();}else{this.textContent='⏳ لحظة… الصفحة ما زالت تُحمَّل';}">تسجيل الدخول 🚪</button>
     <div id="biomLoginBtnWrap"></div>
 
     <div style="text-align:center; margin-top:8px; font-size:11px; color:var(--muted);" id="stuLoginContact" data-brand="phone"></div>
@@ -3278,6 +3288,11 @@ function _prSetRating(n) {
 
 function _prSubmit() {
   var msgEl = $('prSubmitMsg');
+  /* جلسةٌ انتهت بين فتح النافذة والإرسال ⇒ `APP.user = null` (‏«reading 'schoolId' of null» ×٢). */
+  if (typeof APP === 'undefined' || !APP || !APP.user) {
+    if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">انتهت الجلسة — سجّل الدخول ثمّ أعد المحاولة</span>';
+    return;
+  }
   if (!_prRating) {
     if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">يرجى اختيار عدد النجوم أولاً</span>';
     return;
@@ -5359,6 +5374,8 @@ function renderGrades(r) {
 }
 // استبدل دالة renderMonth الموجودة بهذه النسخة المُصلحة
 function renderMonth(idx) {
+  /* نقرةُ شريحةِ شهرٍ باقيةٍ بعد الخروج ⇒ `gradesData = null` (‏«reading 'months' of null»). */
+  if (!APP.gradesData || !APP.gradesData.months) return;
   APP.selectedMonthIdx = idx;
   var months = APP.gradesData.months;
   var m = months[idx];
@@ -8496,7 +8513,7 @@ function saveMyBirthdate(value) {
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================
-// نبضة خفيفة كل 3 دقائق فقط أثناء رؤية التبويب فعلياً (Page Visibility API)، تُحدِّث
+// نبضة خفيفة كل 4 دقائق فقط أثناء رؤية التبويب فعلياً (Page Visibility API)، تُحدِّث
 // عمود "مدة الاستخدام" التراكمي بالخادم (studentHeartbeat). نفس مبدأ heartbeat
 // تطبيق teacher — نسخة موازية مستقلة. لا نداء عند الإغلاق (فشله مقبول، بلا تعقيد إضافي).
 var _hbTimerStarted = false;
@@ -8512,7 +8529,7 @@ function _startHeartbeat() {
      أصلاً**، فبقاؤه كان يجعل التراجعَ مستحيلاً لا مؤجَّلاً.
      📌 والمقياسُ: منصّةُ الطالب **6,435 نداءً/٢٤س (٧٠٪ من الحصّة)** و`studentHeartbeat`
      أكبرُ مساهمٍ فيها بـ**760**، وكلاهما يُنفَّذ في **نشرة المعلّم نفسها**. */
-  var _HB_BASE_MS = 3 * 60 * 1000;
+  var _HB_BASE_MS = 4 * 60 * 1000;   // 3⇒4 (2026-09-17) — نفسُ إيقاع نبضة المعلّم
   var _HB_MAX_MS  = 12 * 60 * 1000;
   var _hbDelayMs  = _HB_BASE_MS;
   var _hbTimer    = null;
@@ -8936,6 +8953,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (APP.user.id && APP.user.schoolId && APP.user.switchToken) {
       google.script.run
         .withSuccessHandler(function (r) {
+          /* خروجٌ قبل وصول الردّ يجعل `APP.user = null` (‏«setting 'siblings' of null» ×٤). */
+          if (!APP.user) return;
           if (r && r.ok) {
             APP.user.siblings = r.siblings || [];
             APP.user.switchToken = r.switchToken || APP.user.switchToken;
