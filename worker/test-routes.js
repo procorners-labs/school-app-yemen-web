@@ -2302,7 +2302,31 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
         put('https://x', 'teacher', pVer2, JSON.stringify({ ok: false, error: 'x' })) === false &&
         hits.put === 0,
         '🔒 `latestVersionCode: 0` («غيرُ مضبوط») أو خطأ ⇒ صفرُ تخزين');
+  /* ⑯ 🟢 **`listPartnerSchoolsPublic` — بلا وسائط وبلا مستأجر (2026-09-17).**
+     🔒 والضوابطُ المعاكسة: أيُّ وسيطٍ يُرفض (فضاءُ المفاتيح يبقى مفتاحاً واحداً)،
+     والدليلُ الفارغ لا يُخزَّن (يُقرأ عطلاً لا حالة). */
+  var pPart = probe(JSON.stringify({ fn: 'listPartnerSchoolsPublic', args: [] }));
+  check(!!pPart && !!pPart.argsKey && !pPart.reject,
+        '🟢 `listPartnerSchoolsPublic` بلا وسائط وبلا هويّة ⇒ مؤهَّل');
+  var pPartNull = probe(JSON.stringify({ fn: 'listPartnerSchoolsPublic' }));
+  check(!!pPartNull && !!pPartNull.argsKey,
+        '🟢 وبلا حقل `args` إطلاقاً ⇒ مؤهَّل (الشكلُ الذي يرسله الجسر)');
+  var pPartArg = probe(JSON.stringify({ fn: 'listPartnerSchoolsPublic', args: ['x'] }));
+  check(!!pPartArg && pPartArg.reject === 'args',
+        '🔒 ضابط معاكس: أيُّ وسيطٍ ⇒ رفضٌ مسجَّل (مفتاحٌ واحدٌ لا فضاءُ مفاتيح)');
+  hits.put = 0;
+  check(put('https://x', 'home', pPart, JSON.stringify({ result: { success: true,
+          schools: [{ schoolId: 'a', name: 'مدرسة' }], total: 1 } })) === true && hits.put === 1,
+        'دليلٌ بمدرسةٍ واحدةٍ على الأقلّ ⇒ يُخزَّن');
+  hits.put = 0;
+  check(put('https://x', 'home', pPart, JSON.stringify({ success: true, schools: [], total: 0 })) === false &&
+        put('https://x', 'home', pPart, JSON.stringify({ success: false, error: 'x' })) === false &&
+        hits.put === 0,
+        '🔒 دليلٌ فارغٌ أو فاشل ⇒ صفرُ تخزين');
   if (gateOk) {
+    check(ttlOf('listPartnerSchoolsPublic') === 120 &&
+          freshOf('listPartnerSchoolsPublic', 121) === 'stale',
+          '🔴 طزاجةٌ ١٢٠ث: مدرسةٌ جديدةٌ تظهر في الدليل خلال دقيقتين (لا قناةَ إبطالٍ للحافّة)');
     check(ttlOf('checkAppVersion') === 3600 &&
           freshOf('checkAppVersion', 3600) === 'fresh' &&
           freshOf('checkAppVersion', 3601) === 'stale',

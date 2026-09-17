@@ -1202,6 +1202,26 @@ var API_CACHE_FNS = {
     ttl: 3600,
     /* ‏`latestVersionCode = 0` تعني «غيرُ مضبوط» — لا يُثبَّت ساعةً فيُخفي ضبطاً لاحقاً. */
     ok: function (b) { return typeof b.latestVersionCode === 'number' && b.latestVersionCode > 0; }
+  },
+  /* 🟢 **`listPartnerSchoolsPublic()` — 2026-09-17.** دليلُ المدارس العامّ: بلا وسائط وبلا
+     مستأجر (`tenantless`) — قائمةٌ واحدةٌ لكلّ الزوّار، وهي بنفسها ما يقرؤه
+     `home/_PublicPage.js` من كاشٍ خادميٍّ عامّ (`home_partners_public_v2`).
+     المقيس (‏نافذةُ ٣ ساعات): ١٤ نداءً اليوم و٥٠ أمس · `ok` p95 = 4,199ms · و٤ إخفاقاتٍ
+     بالميزانية أمس.
+     ⚖️ **والمقايضةُ تُقال لأنها تخصّ سلوكاً مقصوداً:** تسجيلُ مدرسةٍ جديدة يُبطِل كاشَ
+     `home` **فوراً** عبر `flushPartnersCacheProtected`، **ولا قناةَ إبطالٍ لكاش الحافّة**
+     ⇒ المدرسةُ الجديدة قد تتأخّر في الدليل **حتى دقيقتين**. ولذلك `ttl` قصيرٌ صريحٌ
+     (١٢٠ لا ٦٠٠) بنفس منطق `getHomePageBundle`: نصفُ إبطالٍ يُنتج تناقضاً مرئياً (بند 71).
+     🔒 والقائمةُ الفارغة لا تُخزَّن — «دليلٌ فارغ» يُقرأ عطلاً لا حالةً. */
+  listPartnerSchoolsPublic: {
+    args: function (a) { return a.length === 0; },
+    tenantless: true,
+    ttl: 120,
+    ok: function (b) {
+      return b.success === true &&
+             Object.prototype.toString.call(b.schools) === '[object Array]' &&
+             b.schools.length > 0;
+    }
   }
 };
 
