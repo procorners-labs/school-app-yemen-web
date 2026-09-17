@@ -4355,9 +4355,13 @@ function _stuFcmMark(tok, sid, confirmed) {
 window.registerFcmToken = function (deviceToken) {
   try {
     if (!deviceToken) return;
-    var OWNER_SCHOOL_ID = '12725ed7-c139-422c-a2d1-ec0ddd358104';
+    /* 🔴 **لا مدرسةَ افتراضية (قرارُ مالك 2026-09-17).** كان الجهازُ المجهولُ المدرسةِ
+       يُسجَّل تحت مدرسةٍ بعينها ⇒ **إشعاراتُ مدرسةٍ تصل جهازاً ليس منها**، والورقةُ
+       تمتلئ بأجهزةٍ منسوبةٍ خطأً. ⇒ بلا هويّةٍ **لا تسجيل** — الجهازُ يُسجَّل عند أوّل
+       دخولٍ حقيقيّ (‏`APP.user.schoolId`)، وهو المسارُ الطبيعيّ أصلاً. */
     var sid = (APP && APP.user && APP.user.schoolId) || window.SCHOOL_ID ||
-      (new URLSearchParams(window.location.search)).get('school') || OWNER_SCHOOL_ID;
+      (new URLSearchParams(window.location.search)).get('school') || '';
+    if (!sid) return;
     if (!_stuFcmShouldSend(deviceToken, sid)) return;
     _stuFcmMark(deviceToken, sid, false);           // وسمُ المحاولة **قبل** الإطلاق
     google.script.run

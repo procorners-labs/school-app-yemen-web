@@ -3028,12 +3028,24 @@ function _homeIsSchoolUuid(v){
  * وتقصّ أي query أولاً ⇒ **تكرار النداء لا يُضاعف** المعامل.
  * ومعرّف غير-UUID (سلاگ · فراغ · مشوّه) ⇒ تُعيد الأساس كما هو: لا تُسوّئ الرابط أبداً.
  */
+/* 🔴 **الرابطُ يحمل الهويّةَ دائماً — slug أو UUID (2026-09-17).**
+   **العطلُ المقيس (جلسةُ `schoolappyemen-d2` على الحزمة المنشورة):** الشرطُ كان
+   `_homeIsSchoolUuid` وحدَه ⇒ صفحةٌ فُتحت **بالـslug** (`/abdaawatmuaz`) تُولّد روابطَ
+   بوّابةٍ **بلا `?school=` إطلاقاً**، والنقرةُ تُسلّم التطبيقَ `/teacher/index.html` عارياً.
+   ⇒ **الروابطُ العاريةُ تُصنَع عندنا، لا يكتبها المستخدم.** وما دام الافتراضُ الصامت
+   (مدرسةُ المالك) قائماً كانت تُخفيه؛ وبإسقاطه صار يظهر بوّابةَ اختيارٍ لا معنى لها
+   لمستخدمِ تطبيقٍ **يخصّ مدرسةً واحدة**.
+   🟢 **والوسيطُ يقبل الـslug المنشور والـUUID في `?school=` سواءً** (مقيسٌ في جلسة الوركر)
+   ⇒ تمريرُ الـslug صحيحٌ ولا يحتاج تحويلاً. **والشكلُ يبقى مقبولاً بشكليه بلا 30x.** */
 function _homePortalHref(base, sid){
   var b = String(base === null || base === undefined ? '' : base);
   var cut = b.indexOf('?');
   if(cut !== -1) b = b.slice(0, cut);
-  if(!_homeIsSchoolUuid(sid)) return b;
-  return b + '?school=' + encodeURIComponent(String(sid).trim());
+  var key = String(sid === null || sid === undefined ? '' : sid).trim();
+  /* شكلٌ صالحٌ فقط: UUID أو slug منشورٌ الشكل (`[a-z0-9-]`) — وإلّا يبقى الرابطُ كما كان. */
+  /* الـslug يبدأ بحرفٍ وطولُه ≥3 — يرفض شظايا UUID (`12725ed7`) وأيَّ رقمٍ عابر. */
+  if(!key || !(_homeIsSchoolUuid(key) || /^[a-z][a-z0-9-]{2,}$/i.test(key))) return b;
+  return b + '?school=' + encodeURIComponent(key);
 }
 
 /**

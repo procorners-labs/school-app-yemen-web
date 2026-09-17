@@ -46,7 +46,7 @@
         try { history.replaceState(history.state, '', '/' + String(_pm[1]).toLowerCase() + '/index.html?school=' + encodeURIComponent(_s1) + (window.location.hash || '')); } catch (eRS) {}
       }
     }
-    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '12725ed7-c139-422c-a2d1-ec0ddd358104';
+    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '';
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -3815,10 +3815,34 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         v = q.get('school') || q.get('schoolId') || '';
       } catch (e2) {}
     }
+    /* 🔴 **آخرُ مدرسةٍ معروفةٍ — شبكةُ أمانٍ لا افتراض (2026-09-17).**
+       **العطلُ المقيس على الحزمة المنشورة:** صفحةٌ تُفتَح بالـslug كانت تُولّد روابطَ بوّابةٍ
+       بلا `?school=`، والنقرةُ تُسلّم التطبيقَ رابطاً عارياً. وقد أُصلح المصدرُ في
+       `home/Index.html::_homePortalHref` (يحمل الهويّةَ دائماً) — **وهذا احتياطٌ للحزم
+       المجمَّدة التي لا تُحدَّث أبداً** (‏`vc31`…`vc36`).
+       🔴 **والفرقُ عن «مدرسة المالك» جوهريٌّ لا لفظيّ:** لا معرّفَ مثبَّتٌ في الكود، ولا
+       مدرسةَ تُميَّز؛ المخزَّنُ هو **مدرسةُ هذا الجهاز التي دخلها صاحبُه فعلاً**، ويُكتب
+       عند نجاح الدخول وحدَه. جهازٌ لم يدخل قطّ ⇒ لا مخزَّن ⇒ بوّابةُ الاختيار كما هي.
+       ⚠️ **والترتيبُ ملزِم: الرابطُ يفوز دائماً** — وإلّا التصق جهازُ مديرٍ متعدّدِ المدارس
+       على أوّل مدرسةٍ دخلها ولم يفتح الثانية أبداً. */
+    if (!v) {
+      try { v = localStorage.getItem('tc_last_school') || ''; } catch (e3) { v = ''; }
+    }
     return (v === null || v === undefined) ? '' : String(v).trim();
   }
 
-  window.__TC_NO_TENANT__ = !_tcTenantIdFromAnySource();
+  /* يُستدعى عند كلّ هويّةٍ محلولةٍ فعلاً — الكتابةُ بعد المعرفة لا قبلها. */
+  window.__tcRememberSchool = function (sid) {
+    try {
+      var s = (sid === null || sid === undefined) ? '' : String(sid).trim();
+      if (s) localStorage.setItem('tc_last_school', s);
+    } catch (eR) {}
+  };
+
+  /* الهويّةُ تُحَلّ مرّةً ثمّ تُحفَظ — فالزيارةُ القادمة من رابطٍ عارٍ تجد مدرستَها. */
+  var _tcBootTenant = _tcTenantIdFromAnySource();
+  window.__TC_NO_TENANT__ = !_tcBootTenant;
+  if (_tcBootTenant) { try { window.__tcRememberSchool(_tcBootTenant); } catch (eRem) {} }
 
   if (window.__TC_NO_TENANT__) {
     (function () {
@@ -6003,14 +6027,19 @@ function _fltKey(page) {
  * 🔒 **والمقبولُ أوسعُ من المعروض عمداً:** `TeacherAuth.js::_auth_canonRole` يظلّ يقبل
  * «مدير النظام» وغيرَها **إدخالاً من الشيت** — التوحيدُ في العرض لا في القبول،
  * وتضييقُ القبول كان سيُسقط صفوفاً مكتوبةً بيد المالك. */
+/* 🔴 **التسمياتُ من مفردات الشيت لا من اختراعنا (قرارُ مالك 2026-09-17).**
+   نصُّه: «**لا يوجد شيءٌ اسمُه «وكيل المدير»** ولا صلاحيةٌ هكذا». والمقيسُ في ورقة
+   «المدرسين» الحيّة: `معلم` · `المدير` · **`الوكيل`** · `محاسب` · `مشرف` · `مشرف أنشطة` ·
+   `فنية` — وهي نفسُها مخرَجاتُ `_auth_canonRole` (‏`TeacherAuth.js`).
+   ⇒ **المعروضُ هو المكتوبُ في الشيت**، فلا يرى المستخدمُ اسماً لا يجده في بياناته. */
 var TC_ROLE_LABELS = {
   admin:      'المدير',
-  deputy:     'وكيل المدير',
+  deputy:     'الوكيل',
   accountant: 'محاسب',
   supervisor: 'مشرف',
-  activities: 'مشرف الأنشطة',
-  it:         'مسؤول الحاسوب',
-  media:      'مسؤول الوسائط',
+  activities: 'مشرف أنشطة',
+  it:         'الحاسوب',
+  media:      'فنية',
   teacher:    'معلم',
   student:    'طالب'
 };
