@@ -3213,7 +3213,10 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
      ولكلِّ صفٍّ **حزمةٌ متوقَّعةٌ وحزمةٌ ممنوعة** — لأن فحصَ الوجود وحدَه يمرّ على
      ملفٍّ يعلن الجميعَ في كلّ مكان، وهو بالضبط ما جاء التضييقُ ليمنعه. */
   var SCOPE = [
-    { host: 'app.yemenschoolz.com', want: 'com.yemenschoolz.app', fps: 1,
+    /* 🟢 صارت **بصمتين** 2026-09-17: مفتاحُ الرفع + مفتاحُ توقيع Play. وبواحدةٍ (الرفعِ
+       وحدَه) يفشل `autoVerify` لكلّ تثبيتٍ من المتجر **صامتاً** — قِيس بـ`apksigner` على
+       حزمةِ `vc3` المسحوبةِ من جهاز المالك ومُثبِّتُها `com.android.vending`. */
+    { host: 'app.yemenschoolz.com', want: 'com.yemenschoolz.app', fps: 2,
       deny: 'com.proconrers.schoolappyemen', label: 'مضيفُ «يمن سكولز»' },
     { host: 'yemenschoolz.com', want: 'com.proconrers.schoolappyemen', fps: 2,
       deny: 'com.yemenschoolz.app', label: 'مضيفُ المنشور (‏vc34/35)' },

@@ -2291,6 +2291,17 @@ export default {
       // ⚠️ **ولا تُكمِلها جلسةٌ لاحقةٌ ببصمةٍ من الـkeystore** — ذاك مفتاحُ الرفع
       //    نفسُه، ومفتاحُ التوقيع **يديره Google ولا يُشتقّ محلّياً**.
       var alSchoolzUpload = 'BD:65:0C:2E:9E:21:78:46:A3:52:57:3B:97:FE:52:2B:AD:09:97:6C:01:40:EE:85:23:88:1B:C7:7E:D9:7B:FD';
+      /* 🟢 **مفتاحُ توقيع Play — أُضيف 2026-09-17، والدعوى أعلاه بطَلت بالقياس.**
+         كان مكتوباً «غائبٌ عمداً لا سهواً: التطبيقُ لم يُنشر بعد ولا يوجد المفتاحُ قبل
+         أوّل رفع» — **والمقيسُ اليوم أنه رُفع فعلاً إلى الاختبار الداخليّ**: الحزمةُ
+         المثبَّتةُ على هاتف المالك `versionCode 3` ومُثبِّتُها `com.android.vending` ⇒
+         **Play App Signing قائمٌ**، والبصمةُ أدناه مقروءةٌ بـ`apksigner` **من الحزمة
+         المسحوبة من الجهاز نفسِه** لا منقولةً من لوحة (‏قياسُ `yemenschoolz-e5`).
+         🔴 **والأثرُ كان صامتاً تماماً:** بمفتاح الرفع وحدَه **يفشل `autoVerify` لكلّ
+         مستخدمٍ من Play** وتبقى الروابطُ تفتح في المتصفّح، **بلا خطأٍ ولا رسالة**.
+         🔒 **والبصمتان تبقيان معاً:** مفتاحُ الرفع يغطّي التثبيتَ اليدويَّ والبناءَ
+         المحلّيّ، ومفتاحُ Play يغطّي كلَّ تثبيتٍ من المتجر. */
+      var alSchoolzPlay = 'C9:D6:FD:7B:42:32:69:C6:53:3F:7A:42:F7:91:A8:DC:19:BC:3D:9F:01:2C:DB:0C:93:ED:28:F9:EC:79:44:2F';
 
       // 🔴 **ومعرّفُ «يمن سكولز» واحدٌ لا اثنان — قرارُ مالكٍ صريحٌ 2026-09-15:**
       //    **`com.yemenschoolz.app` وحدَه، والقديمُ `com.proconrers.schoolzyemen` لا يُعلَن.**
@@ -2327,7 +2338,7 @@ export default {
       //    **فشلُ تحقّقٍ لتطبيقٍ لم يُنشر أرخصُ من فشلِه لتطبيقٍ على أجهزةِ مستخدمين.**
       var alIsSchoolzHost = (url.hostname === 'app.yemenschoolz.com');
       var alBody = JSON.stringify(alIsSchoolzHost
-        ? [alStatement('com.yemenschoolz.app', [alSchoolzUpload])]
+        ? [alStatement('com.yemenschoolz.app', [alSchoolzUpload, alSchoolzPlay])]
         // 🔒 عقدُ التطبيق **المنشور** — لا يُمَسّ، وبصمتاه إلزاميّتان معاً (انظر أعلاه).
         : [alStatement('com.proconrers.schoolappyemen', alFingerprints)]);
       return new Response(alBody, {
