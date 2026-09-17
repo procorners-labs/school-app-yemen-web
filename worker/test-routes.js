@@ -3236,6 +3236,55 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
     '🔴 طفرة: بإلغاء التفريع يخدم مضيفُ «يمن سكولز» حزمةَ المنشور [المقيس: ' + mutatedPkg + ']');
 })();
 
+/* ── 🟢 `getNewsOg` لزواحف المعاينة وحدَها (سلوكي + بنيوي · 2026-09-17) ─────────────
+   الإنسانُ كان ينتظر نداءَ GAS قبل أوّل بايت (TTFB 2.7–8.4 ث مقيساً). ⇒ قطبان:
+   الزاحفُ **يحصل** على الحقن، والمتصفّحُ **لا ينتظر**. وبنيويّاً: البوّابةُ على شرط
+   الكتلة نفسِها قبل `fetch` لا بعده — بوّابةٌ بعد النداء تُبقي الانتظارَ وتُخفي الوسوم فقط. */
+console.log('');
+console.log('حقنُ OG لزواحف المعاينة وحدَها:');
+(function () {
+  var rIdx = src.indexOf('var _PREVIEW_CRAWLER_RE');
+  var rEnd = src.indexOf('\n}', src.indexOf('function _isPreviewCrawler(')) + 2;
+  check(rIdx >= 0 && rEnd > rIdx, 'ضابط: استُخرجت `_isPreviewCrawler` من المصدر');
+  if (rIdx < 0 || rEnd <= rIdx) return;
+  var cctx = vm.createContext({});
+  vm.runInContext(src.slice(rIdx, rEnd), cctx);
+  var isCrawler = vm.runInContext('_isPreviewCrawler', cctx);
+  var BOTS = [
+    'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+    'WhatsApp/2.23.20.0 A',
+    'Twitterbot/1.0',
+    'TelegramBot (like TwitterBot)',
+    'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)',
+    'LinkedInBot/1.0 (compatible; Mozilla/5.0; Apache-HttpClient +http://www.linkedin.com)',
+    'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)',
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+  ];
+  BOTS.forEach(function (ua) {
+    check(isCrawler(ua) === true, 'زاحف ⇒ يُحقَن: ' + ua.slice(0, 32));
+  });
+  check(isCrawler('') === true && isCrawler(null) === true,
+        '🔒 UA فارغ ⇒ زاحف (خطأُ هذا الاتجاه نداءٌ زائد لا بطاقةٌ مكسورة)');
+  var HUMANS = [
+    'Mozilla/5.0 (Linux; Android 14; SM-A146P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 13; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/127.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0'
+  ];
+  HUMANS.forEach(function (ua) {
+    check(isCrawler(ua) === false, '🔴 متصفّح/WebView ⇒ **لا انتظارَ GAS**: ' + ua.slice(13, 45));
+  });
+
+  var gIdx = src.indexOf("var _newsId = url.searchParams.get('news');");
+  var fIdx = src.indexOf("fn: 'getNewsOg'", gIdx);
+  var seg = gIdx >= 0 && fIdx > gIdx ? src.slice(gIdx, fIdx) : '';
+  check(seg.length > 0, 'ضابط: استُخرجت كتلةُ `?news=` حتى نداء `getNewsOg`');
+  check(/if \(_newsId && isHtml && _isPreviewCrawler\(request\.headers\.get\('User-Agent'\)\)\)/.test(seg),
+        '🔴 البوّابةُ في شرط الكتلة **قبل** `fetch` — لا بعده');
+  check(seg.indexOf('_bhAcquire') > seg.indexOf('_isPreviewCrawler('),
+        '🔒 والمتصفّحُ لا يحجز مقعداً من المنظّم أصلاً');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
