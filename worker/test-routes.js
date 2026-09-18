@@ -3445,6 +3445,12 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   function withKey(k, v) { var o = JSON.parse(JSON.stringify(good)); o[k] = v; return o; }
   check(san(withKey('msg', 'x')) === null, '🔴 حقلٌ مجهول ⇒ رفضُ الطلب كلِّه لا تقليمُه');
   check(san(withKey('token', 'abc')) === null, '🔴 `token` (حقلٌ حسّاس) ⇒ رفض');
+  // 🔴 أسماءُ خصائصَ موروثةٍ من `Object.prototype` — كانت تتخطّى `!_CE_KEYS[k]` (مراجعةُ #314).
+  //    و`JSON.parse` لأنه ما يقع حيّاً: يُنشئ `__proto__` خاصّيةً ذاتيّةً لا نموذجاً أوّلياً.
+  ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'].forEach(function (k) {
+    var o = JSON.parse('{"app":"teacher","kind":"js","' + k + '":1}');
+    check(san(o) === null, '🔴 مفتاحٌ موروثُ الاسم `' + k + '` ⇒ رفض');
+  });
   check(san(withKey('app', 'pricing')) === null, 'تطبيقٌ خارج القائمة ⇒ رفض');
   check(san(withKey('kind', 'other')) === null, 'نوعٌ خارج القائمة ⇒ رفض');
   check(san(withKey('page', '/teacher/index.html?t=SECRET')) === null, '🔴 `page` باستعلام ⇒ رفض (التوكنُ يسافر في `?`)');

@@ -396,7 +396,10 @@ var _ceTracked = 0;
 function _clientErrSanitize(o) {
   if (!o || typeof o !== 'object' || Object.prototype.toString.call(o) !== '[object Object]') return null;
   for (var k in o) {
-    if (Object.prototype.hasOwnProperty.call(o, k) && !_CE_KEYS[k]) return null;
+    /* 🔴 `hasOwnProperty` على القائمة لا `!_CE_KEYS[k]`: الوصولُ المباشر يُرجع قيمةً موروثةً
+       صادقةً لـ`constructor`/`toString`/… فيتخطّاها الرفض (رصدته مراجعةُ #314). */
+    if (Object.prototype.hasOwnProperty.call(o, k) &&
+        !Object.prototype.hasOwnProperty.call(_CE_KEYS, k)) return null;
   }
   var app = o.app, kind = o.kind;
   if (typeof app !== 'string' || !Object.prototype.hasOwnProperty.call(_CE_APPS, app)) return null;
@@ -2533,7 +2536,9 @@ export default {
        التعقيمُ والحدُّ في `_clientErrSanitize`/`_clientErrRate` أعلى الملفّ (نقيّتان
        مختبَرتان). 🔒 هنا الغلافُ وحده: **POST حصراً** · **نفسُ الأصل** (رأسُ `Origin` إن
        حضر يجب أن يطابق المضيف — المُرسِلُ `gas-bridge` بمسارٍ نسبيّ) · **حدُّ جسمٍ 2KB**
-       قبل التحليل · و**صفرُ نداءٍ على GAS**. والردودُ بلا جسم: 204 قُبل · 400 رُفض ·
+       على `Content-Length` المُعلَن ثمّ على النصّ المقروء قبل التحليل — ⚠️ والرأسُ الغائب
+       أو الكاذب يعني أن الجسمَ يُقرأ كاملاً قبل الرفض (نفسُ حدّ `/csp-report`؛ والسقفُ
+       الفعليّ حدُّ طلب Workers) · و**صفرُ نداءٍ على GAS**. والردودُ بلا جسم: 204 قُبل · 400 رُفض ·
        413 كبير · 429 حدّ · 403 أصلٌ آخر. */
     if (path === '/client-err') {
       var ceNoStore = { 'Cache-Control': 'no-store' };
