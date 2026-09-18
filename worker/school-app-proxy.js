@@ -372,6 +372,70 @@ function _bhLog(o) {
   } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
 }
 
+/* ═══ وجهةُ أخطاء العميل `/client-err` — دالّتان نقيّتان (‏2026-09-18) ══════════════
+   قرارُ المالك (الخطّة المشتركة مع `SchoolApp-gas` · د2): أخطاءُ الواجهة **لا تُرسَل إلى
+   GAS** — `reportAppError` نداءُ GAS يقع **عند إشباع GAS تحديداً** ⇒ علاجٌ يغذّي عرضَه
+   (كلُّ إخفاقٍ يضيف نداءً إلى الطابور المشبَع). ⇒ الوجهةُ هنا: `console.log` وحده، **صفرُ
+   نداءٍ على GAS**، ويُقرأ من Workers Observability بـ`ev:'clienterr'`.
+   🔒 **والحقولُ قائمةٌ بيضاءُ لا سوداء:** أيُّ مفتاحٍ خارجها ⇒ رفضُ الطلب كلِّه (لا
+      تقليمُه) — فلا يُضخُّ نصٌّ لا نملكه ولا بيانٌ شخصيٌّ يمرّ متخفّياً بحقلٍ جديد.
+      **ولا يُسجَّل عنوانُ IP** — يُستعمل للحدّ وحده ثمّ يُترك.
+   ⚠️ **وحدُّ معدّل الـisolate ليس حدّاً عالمياً** (نفسُ حدّ المنظّم): يكبح عميلاً واحداً
+      يُغرق مثيلاً، ولا يمنع إغراقاً موزَّعاً. والكلفةُ في أسوأ حالاتها سطورُ سجلٍّ لا حصّة GAS. */
+var _CE_KEYS  = { app: 1, fn: 1, kind: 1, status: 1, ms: 1, schoolId: 1, page: 1 };
+var _CE_APPS  = { home: 1, teacher: 1, student: 1, cms: 1, 'master-admin': 1 };
+var _CE_KINDS = { timeout: 1, network: 1, http5xx: 1, js: 1 };
+var CE_MAX_BYTES = 2048;
+var CE_RATE_WINDOW_MS = 60000;
+var CE_RATE_MAX = 30;           // لكلّ IP في الدقيقة داخل المثيل
+var CE_RATE_TRACK_MAX = 5000;   // سقفُ الذاكرة: يُفرَّغ السجلّ كلُّه عند بلوغه
+var _ceHits = {};
+var _ceTracked = 0;
+
+/** مُدخَلٌ خام (كائن JSON) ⇒ سجلٌّ معقَّم، أو `null` = رفض. لا استثناءَ ولا تقليمَ جزئيّ. */
+function _clientErrSanitize(o) {
+  if (!o || typeof o !== 'object' || Object.prototype.toString.call(o) !== '[object Object]') return null;
+  for (var k in o) {
+    /* 🔴 `hasOwnProperty` على القائمة لا `!_CE_KEYS[k]`: الوصولُ المباشر يُرجع قيمةً موروثةً
+       صادقةً لـ`constructor`/`toString`/… فيتخطّاها الرفض (رصدته مراجعةُ #314). */
+    if (Object.prototype.hasOwnProperty.call(o, k) &&
+        !Object.prototype.hasOwnProperty.call(_CE_KEYS, k)) return null;
+  }
+  var app = o.app, kind = o.kind;
+  if (typeof app !== 'string' || !Object.prototype.hasOwnProperty.call(_CE_APPS, app)) return null;
+  if (typeof kind !== 'string' || !Object.prototype.hasOwnProperty.call(_CE_KINDS, kind)) return null;
+  var fn = (o.fn === undefined || o.fn === '') ? '' : o.fn;
+  if (typeof fn !== 'string' || (fn && !/^[A-Za-z0-9_]{1,64}$/.test(fn))) return null;
+  var status = (o.status === undefined) ? 0 : o.status;
+  if (typeof status !== 'number' || status !== Math.floor(status) || status < 0 || status > 599) return null;
+  var ms = (o.ms === undefined) ? 0 : o.ms;
+  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0 || ms > 600000) return null;
+  var sid = (o.schoolId === undefined) ? '' : o.schoolId;
+  if (typeof sid !== 'string' || (sid && !_SCHOOL_UUID_RE.test(sid))) return null;
+  var page = (o.page === undefined) ? '' : o.page;
+  /* 🔒 مسارٌ بلا استعلامٍ ولا جزء — `?`/`#` يحملان توكناتٍ ومعرّفاتٍ في هذه المنصّة. */
+  if (typeof page !== 'string' || (page && !/^\/[A-Za-z0-9\/._-]{0,160}$/.test(page))) return null;
+  return { ev: 'clienterr', app: app, fn: fn, kind: kind, status: status,
+           ms: Math.round(ms), sid: sid.toLowerCase(), page: page };
+}
+
+/** `true` = مسموح. نافذةٌ ثابتةٌ لكلّ IP؛ و`now` يُمرَّر ليُختبَر بلا ساعة. */
+function _clientErrRate(ip, now) {
+  var key = String(ip || '-');
+  var h = _ceHits[key];
+  if (!h || now - h.t0 >= CE_RATE_WINDOW_MS) {
+    if (!h) {
+      if (_ceTracked >= CE_RATE_TRACK_MAX) { _ceHits = {}; _ceTracked = 0; }
+      _ceTracked++;
+    }
+    _ceHits[key] = { t0: now, n: 1 };
+    return true;
+  }
+  h.n++;
+  return h.n <= CE_RATE_MAX;
+}
+/* ═══ نهايةُ `/client-err` النقيّة ═══ */
+
 /* ═══ سياسةُ وسيط الفيديو `/media/drive/<fileId>` — دالّتان نقيّتان ═══════════════
    🔴 العلّةُ المقيسة (2026-09-06): `Cache-Control: public, max-age=86400, immutable`
    كان يُلحَق بالردّ **أيّاً كانت حالتُه** ⇒ فشلُ الجلب (فحصُ فيروسات Drive ما زال جارياً
@@ -504,7 +568,10 @@ var _RESERVED_TOP_PATHS = {
   //    إسقاطَ الاسم يجعله **مرشَّحَ slug مدرسة** فيصير قابلاً للاختطاف بتسجيل مدرسةٍ
   //    بهذا الاسم ⇒ تُوجَّه تقاريرُ الانتهاك إلى صفحةِ مستأجرٍ بدل أن تُسجَّل.
   //    وهي نفسُ العلّة التي أبقت `'pricing'` محجوزاً بعد حذف معالجه.
-  'csp-report': 1
+  'csp-report': 1,
+  // 'client-err' — وجهةُ أخطاء العميل (2026-09-18). **لازمٌ لا دفاعيّ** بنفس علّة 'csp-report':
+  //    إسقاطُه يجعله مرشَّحَ slug مدرسةٍ فتُوجَّه تقاريرُ الأخطاء إلى صفحةِ مستأجر.
+  'client-err': 1
 };
 function _schoolSlugFromPath(path) {
   var m = /^\/([a-z0-9-]+)\/?$/i.exec(path);
@@ -2466,6 +2533,41 @@ export default {
           ln: Number(body['line-number'] || body.lineNumber || 0) || 0
         }));
         return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+      });
+    }
+
+    /* ── 1ط) وجهةُ أخطاء العميل: /client-err (‏2026-09-18 · قرار المالك) ──────────
+       التعقيمُ والحدُّ في `_clientErrSanitize`/`_clientErrRate` أعلى الملفّ (نقيّتان
+       مختبَرتان). 🔒 هنا الغلافُ وحده: **POST حصراً** · **نفسُ الأصل** (رأسُ `Origin` إن
+       حضر يجب أن يطابق المضيف — المُرسِلُ `gas-bridge` بمسارٍ نسبيّ) · **حدُّ جسمٍ 2KB**
+       على `Content-Length` المُعلَن ثمّ على النصّ المقروء قبل التحليل — ⚠️ والرأسُ الغائب
+       أو الكاذب يعني أن الجسمَ يُقرأ كاملاً قبل الرفض (نفسُ حدّ `/csp-report`؛ والسقفُ
+       الفعليّ حدُّ طلب Workers) · و**صفرُ نداءٍ على GAS**. والردودُ بلا جسم: 204 قُبل · 400 رُفض ·
+       413 كبير · 429 حدّ · 403 أصلٌ آخر. */
+    if (path === '/client-err') {
+      var ceNoStore = { 'Cache-Control': 'no-store' };
+      if (request.method !== 'POST') {
+        return new Response(null, { status: 405, headers: { 'Allow': 'POST', 'Cache-Control': 'no-store' } });
+      }
+      var ceOrigin = request.headers.get('Origin');
+      if (ceOrigin && ceOrigin !== url.origin) {
+        return new Response(null, { status: 403, headers: ceNoStore });
+      }
+      var ceLen = Number(request.headers.get('Content-Length') || 0);
+      if (ceLen > CE_MAX_BYTES) return new Response(null, { status: 413, headers: ceNoStore });
+      if (!_clientErrRate(request.headers.get('CF-Connecting-IP'), Date.now())) {
+        return new Response(null, { status: 429, headers: ceNoStore });
+      }
+      return request.text().then(function (raw) {
+        /* `Content-Length` قد يغيب (ترميزٌ مقطَّع) ⇒ الحدُّ يُعاد على النصّ نفسِه. */
+        if ((raw || '').length > CE_MAX_BYTES) return new Response(null, { status: 413, headers: ceNoStore });
+        var obj = null;
+        try { obj = JSON.parse(raw || ''); } catch (e) { obj = null; }
+        var rec = _clientErrSanitize(obj);
+        if (!rec) return new Response(null, { status: 400, headers: ceNoStore });
+        rec.host = url.hostname;
+        console.log(JSON.stringify(rec));
+        return new Response(null, { status: 204, headers: ceNoStore });
       });
     }
 

@@ -3421,6 +3421,63 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
         '🔒 والمتصفّحُ لا يحجز مقعداً من المنظّم أصلاً');
 })();
 
+/* ═══ `/client-err` — تعقيمٌ بقائمةٍ بيضاء وحدٌّ لكلّ IP (‏2026-09-18) ═══════════════
+   سلوكيٌّ لا نصّيّ: الكتلةُ النقيّة تُستخرَج بين مرساتَيها وتُشغَّل. ولكلّ قبولٍ رفضٌ مقابل
+   — مِعقِّمٌ يقبل كلَّ شيء يمرّ فحوصَ القبول وحدَها أخضر. */
+(function () {
+  console.log('');
+  console.log('وجهةُ أخطاء العميل /client-err:');
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  var a = src.indexOf('var _CE_KEYS');
+  var b = src.indexOf('/* ═══ نهايةُ `/client-err` النقيّة ═══ */');
+  var u = src.indexOf('var _SCHOOL_UUID_RE = ');
+  check(a >= 0 && b > a && u >= 0, 'ضابط: استُخرجت الكتلةُ النقيّة و`_SCHOOL_UUID_RE`');
+  if (!(a >= 0 && b > a && u >= 0)) return;
+  var ce = vm.createContext({});
+  vm.runInContext(src.slice(u, src.indexOf('\n', u)) + '\n' + src.slice(a, b), ce);
+  function san(o) { ce.__o = o; return vm.runInContext('_clientErrSanitize(__o)', ce); }
+  var UUID = '59b7d9f5-64ed-4894-8945-3df6d211b74f';
+  var good = { app: 'teacher', fn: 'getTeacherBootBundle', kind: 'timeout', status: 0,
+               ms: 24012.6, schoolId: UUID, page: '/teacher/index.html' };
+  var r = san(good);
+  check(!!r && r.ev === 'clienterr' && r.fn === 'getTeacherBootBundle' && r.ms === 24013 && r.sid === UUID,
+        'سجلٌّ صالحٌ كامل ⇒ يُقبَل ويُعقَّم (`ms` مقرَّب · `ev:clienterr`)');
+  check(!!san({ app: 'home', kind: 'js' }), 'الحدُّ الأدنى (app + kind) ⇒ يُقبَل');
+  function withKey(k, v) { var o = JSON.parse(JSON.stringify(good)); o[k] = v; return o; }
+  check(san(withKey('msg', 'x')) === null, '🔴 حقلٌ مجهول ⇒ رفضُ الطلب كلِّه لا تقليمُه');
+  check(san(withKey('token', 'abc')) === null, '🔴 `token` (حقلٌ حسّاس) ⇒ رفض');
+  // 🔴 أسماءُ خصائصَ موروثةٍ من `Object.prototype` — كانت تتخطّى `!_CE_KEYS[k]` (مراجعةُ #314).
+  //    و`JSON.parse` لأنه ما يقع حيّاً: يُنشئ `__proto__` خاصّيةً ذاتيّةً لا نموذجاً أوّلياً.
+  ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'].forEach(function (k) {
+    var o = JSON.parse('{"app":"teacher","kind":"js","' + k + '":1}');
+    check(san(o) === null, '🔴 مفتاحٌ موروثُ الاسم `' + k + '` ⇒ رفض');
+  });
+  check(san(withKey('app', 'pricing')) === null, 'تطبيقٌ خارج القائمة ⇒ رفض');
+  check(san(withKey('kind', 'other')) === null, 'نوعٌ خارج القائمة ⇒ رفض');
+  check(san(withKey('page', '/teacher/index.html?t=SECRET')) === null, '🔴 `page` باستعلام ⇒ رفض (التوكنُ يسافر في `?`)');
+  check(san(withKey('page', '/teacher/#x')) === null, '`page` بجزء `#` ⇒ رفض');
+  check(san(withKey('schoolId', 'abdaawatmuaz')) === null, '`schoolId` ليس UUID ⇒ رفض');
+  check(san(withKey('fn', 'x; drop')) === null, '`fn` بمحارفَ خارج الصيغة ⇒ رفض');
+  check(san(withKey('status', 700)) === null && san(withKey('status', 5.5)) === null, '`status` خارج 0..599 أو كسريّ ⇒ رفض');
+  check(san(withKey('ms', -1)) === null && san(withKey('ms', '5')) === null, '`ms` سالبٌ أو نصّيّ ⇒ رفض');
+  check(san(null) === null && san([good]) === null && san('x') === null, 'ليس كائناً ⇒ رفض');
+
+  function rate(ip, t) { ce.__ip = ip; ce.__t = t; return vm.runInContext('_clientErrRate(__ip, __t)', ce); }
+  var max = vm.runInContext('CE_RATE_MAX', ce), okN = 0;
+  for (var i = 0; i < max; i++) if (rate('1.1.1.1', 1000)) okN++;
+  check(okN === max, 'الحدّ: أوّلُ ' + max + ' طلباً في النافذة ⇒ مسموحة');
+  check(rate('1.1.1.1', 1000) === false, '🔴 والطلبُ التالي في النافذة نفسِها ⇒ 429');
+  check(rate('2.2.2.2', 1000) === true, 'وعنوانٌ آخر لا يتأثّر');
+  check(rate('1.1.1.1', 1000 + 60000) === true, 'ونافذةٌ جديدة ⇒ يُسمَح من جديد');
+
+  check(/path === '\/client-err'/.test(src), 'المعالجُ موصول');
+  check(/'client-err':\s*1/.test(src), "🔴 `'client-err'` محجوزٌ في `_RESERVED_TOP_PATHS` (وإلّا صار slug مدرسة)");
+  var h = src.indexOf("if (path === '/client-err')");
+  var hs = h >= 0 ? src.slice(h, src.indexOf('// ── 2) خدمة الموقع الثابت', h)) : '';
+  check(hs.length > 0 && hs.indexOf('fetch(') < 0 && !/GAS[.\[]/.test(hs) && hs.indexOf('_bhAcquire') < 0,
+        '🔴 صفرُ نداءٍ على GAS في المعالج (لا `fetch(` ولا `GAS.`/`GAS[` ولا مقعدَ منظّم)');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
