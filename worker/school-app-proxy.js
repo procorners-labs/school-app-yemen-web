@@ -607,8 +607,8 @@ function _brandSurfaceFor(path) {
 /* 🗑️ **حُذف `OWNER_SCHOOL_SLUG` (‏2026-08-26).** كان يُعرَّف هنا **ولا يُقرأ في الملفّ كلّه**
    (مطابقةٌ واحدة، والاختبارُ يُعيد تعريفه في قالب `vm` خاصّته). وبقاؤه كان يُوهم قارئَ
    الملفّ بوجود معاملةٍ خاصّة لمدرسة المالك في الوسيط — وهي غير موجودة هنا أصلاً.
-   البقيّةُ الحيّة الوحيدة `isOwner === true` في `_brandRefresh` أدناه، ولا تُمَسّ من طرفٍ
-   واحد: نظيرُها `|| OWNER_SCHOOL_ID` في `_build/build-frontend.js` بمستودع الـgas. */
+   وكانت البقيّةُ الحيّةُ الأخيرة `isOwner === true` في `_brandRefresh` — **سقطت 2026-09-18**
+   بعد سقوط نظيرها `|| OWNER_SCHOOL_ID` من `_build/build-frontend.js` بمستودع الـgas. */
 var _KNOWN_SCHOOL_SLUGS = {
   'abdaawatmuaz': 1,
   'ibn-khaldoun': 1,
@@ -994,7 +994,7 @@ var BRAND_TTL_S = 21600;
    🔁 و`v4` بعد قياسٍ حيٍّ ثانٍ: **واتساب رُدَّ إلى الخام** (‏`v3` طبّعه فأنتج القفزةَ
    نفسَها معكوسةً). ولكلّ تغييرِ **قيمةٍ مخزَّنة** رفعٌ — لا لتغيير الشكل وحده. */
 function _brandCacheKey(origin, slug) {
-  return new Request(origin + '/__brand-cache/v4/' + encodeURIComponent(slug), { method: 'GET' });
+  return new Request(origin + '/__brand-cache/v5/' + encodeURIComponent(slug), { method: 'GET' });
 }
 
 async function _brandFromCache(origin, slug) {
@@ -1066,11 +1066,15 @@ async function _brandRefresh(origin, slug, env) {
          عاريةً حتى ترجع الحمولة — و**للأبد إن فشلت** — فيهبط زائرُ مدرسةٍ على شاشة دخول
          مدرسة المالك (‏`build-frontend.js` يحقن `|| OWNER_SCHOOL_ID` في `teacher`).
 
-         🔴 **والمالك يُخزَّن بـ`''` عمداً** — بنفس قاعدة `_homeCacheBrand` و
-         `_homeSafeApply('portals', …)` في `home/Index.html` حرفياً: الفارغ = مدرسة
-         المالك (بند 99)، وشكلان للشيء الواحد يشقّان فضاء الجلسة والكاش (بند 97).
-         وقاعدةٌ هنا تخالف نظيرتها هناك تجعل الرابط **يقفز** لحظة وصول الحمولة. */
-      schoolId: (b.isOwner === true) ? '' : String(b.schoolId || '')
+         🗑️ **سقط استثناءُ المالك 2026-09-18 — ولا يُعاد.** كان المالكُ يُخزَّن بـ`''`
+         مطابقةً لقاعدةٍ في `home/Index.html`، **والقاعدةُ هناك سقطت** بقرار المالك «لا
+         مدرسةَ مالك» (‏gas #1604/#1607 · web #306/#310). فبقي هذا السطرُ وحدَه يُفرغ
+         المعرّفَ ⇒ **روابطُ بوّابات مدرسة المالك عاريةٌ من الحمولة المحقونة** (قِيس حيّاً:
+         `"schoolId":""` على `/teacher/index.html?school=abdaawatmuaz`)، بينما GAS يُرجع
+         معرّفَها الحقيقيّ (‏`home/_Tenant.js` ⇒ `schoolId` من الصفّ للمالك وغيره سواءً).
+         ⇒ **شكلٌ واحدٌ لكلّ مدرسة: UUID.** والمفتاحُ رُفع إلى `v5` كي لا تُخدَم مدخلاتُ
+         `''` القديمة حتى انقضاء `BRAND_TTL_S`. */
+      schoolId: String(b.schoolId || '')
     };
     await caches.default.put(
       _brandCacheKey(origin, slug),
