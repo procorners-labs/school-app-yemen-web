@@ -56,9 +56,48 @@
   }
   window.gasErrorInfo = gasErrorInfo;
 
+  /* 📡 تبليغُ إخفاقات النقل التي **لا تصل الحافّة أصلاً** (2026-09-18، قرار مالك).
+     الوسيطُ يسجّل كلَّ نداءٍ يصله (`ev=gas`)، فالـ5xx مسجَّلٌ هناك سلفاً ولا يُكرَّر.
+     الغائبُ عن كلّ قناة: انقطاعُ الشبكة ومهلةُ العميل (`status 0`) — تُرسَل إلى
+     `POST /client-err` في الوسيط (‏web#314) **بصفر نداءٍ لـGAS**: التبليغُ عبر GAS كان
+     سيضيف حِملاً على المورد المشبع لحظةَ إشباعه، فيُغذّي العَرَضَ الذي يبلّغ عنه.
+     العقد: مفاتيحُ مغلقة · `page` مسارٌ بلا استعلام (التوكنات تسافر فيه) · `schoolId`
+     UUID أو فارغ. وسقفٌ ٥ لكلّ صفحة. وأيُّ فشلٍ هنا يُبتلَع — المبلِّغُ لا يُسقط ما يبلّغ عنه. */
+  var _ceSent = 0;
+  var _CE_APPS = { home: 1, teacher: 1, student: 1, cms: 1, 'master-admin': 1 };
+  function _reportTransport(kind, fnName, status, ms) {
+    try {
+      if (_ceSent >= 5) return;
+      /* التطبيقُ من **وجهة النداء الفاشل** (`GAS_ENDPOINT` = `/gas/<app>`) لا من مسار الصفحة:
+         `/portal` و`/<slug>` سطحان حيّان مقطعُهما الأوّل ليس اسمَ تطبيق فكانا يُسقَطان صامتَين
+         (رصدته جلسةُ الوركر على #1618). والمسارُ تراجعٌ فقط. */
+      var em = /\/gas\/([a-z-]+)/i.exec(String(window.GAS_ENDPOINT || ''));
+      var seg = em ? em[1].toLowerCase() : (String(location.pathname || '').split('/')[1] || '').toLowerCase();
+      if (seg === 'portal') seg = 'student';
+      if (!_CE_APPS[seg]) seg = 'home';
+      var sid = String(window.SCHOOL_ID || '');
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)) sid = '';
+      var page = String(location.pathname || '/');
+      if (!/^\/[A-Za-z0-9\/._-]{0,160}$/.test(page)) page = '/' + seg + '/';
+      var body = { app: seg, kind: kind, status: status, ms: Math.min(Math.max(Math.round(ms) || 0, 0), 600000),  /* تبويبٌ معلَّق قد يتجاوز السقف ⇒ 400 */ schoolId: sid, page: page };
+      if (/^[A-Za-z0-9_]{1,64}$/.test(String(fnName || ''))) body.fn = String(fnName);
+      var json = JSON.stringify(body);
+      _ceSent++;
+      if (navigator.sendBeacon && window.Blob) {
+        navigator.sendBeacon('/client-err', new Blob([json], { type: 'application/json' }));
+      } else {
+        var x = new XMLHttpRequest();
+        x.open('POST', '/client-err', true);
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.send(json);
+      }
+    } catch (eCe) {}
+  }
+
   // النقل الخام: نفس سلوك google.script.run الأصلي عبر XHR.
   // أخطاء الشبكة (status 0/مهلة/onerror/رد غير صالح/خطأ بوابة) تُعلَّم __network=true.
   function rawCall(fnName, args, onSuccess, onFailure, userObject) {
+    var _t0 = Date.now();
     var endpoint = window.GAS_ENDPOINT;
     if (!endpoint) {
       if (onFailure) onFailure(new Error('GAS_ENDPOINT غير مُعرّف'), userObject);
@@ -85,6 +124,10 @@
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
 
+      if (xhr.status === 0) {
+        var _el = Date.now() - _t0;
+        _reportTransport(_el >= (xhr.timeout || 60000) - 1000 ? 'timeout' : 'network', fnName, 0, _el);
+      }
       if (xhr.status === 0 || xhr.status >= 400) {
         // الخادم غير قابل للوصول (شبكة/بوابة): خطأ شبكة.
         // ⚠️ 503/429 استثناءان: إشباعٌ **مُعلَن من الوسيط** لا انقطاعُ وصول. إعادة المحاولة
