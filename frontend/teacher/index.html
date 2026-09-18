@@ -11516,19 +11516,24 @@ function ec_renderCommittees() {
          '</div>';
   } else {
     h += '<div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:14px;">' +
-         '<thead><tr style="background:#1149a3;color:#fff;"><th style="padding:9px 8px;text-align:right;">اسم اللجنة</th><th style="padding:9px 8px;text-align:center;">السعة</th><th style="padding:9px 8px;text-align:right;">ملاحظات</th><th style="padding:9px 8px;text-align:center;">إجراءات</th></tr></thead><tbody>';
+         '<thead><tr style="background:#1149a3;color:#fff;"><th style="padding:9px 8px;text-align:right;">اسم اللجنة</th><th style="padding:9px 8px;text-align:center;">السعة</th><th style="padding:9px 8px;text-align:right;">التشكيل (الصفوف والشعب)</th><th style="padding:9px 8px;text-align:right;">ملاحظات</th><th style="padding:9px 8px;text-align:center;">إجراءات</th></tr></thead><tbody>';
+    var capSum = 0;
     for (var i = 0; i < list.length; i++) {
       var c = list[i];
+      capSum += Number(c.capacity) || 0;
       h += '<tr style="border-bottom:1px solid #e8eef7;">' +
            '<td style="padding:9px 8px;">' + escapeHtml(c.committeeName) + '</td>' +
            '<td style="padding:9px 8px;text-align:center;">' + c.capacity + '</td>' +
+           '<td style="padding:9px 8px;font-size:12px;">' + _ecCompositionLabel(c.composition) + '</td>' +
            '<td style="padding:9px 8px;">' + escapeHtml(c.notes || '') + '</td>' +
            '<td style="padding:9px 8px;text-align:center;white-space:nowrap;">' +
              '<button onclick="ec_showCommitteeModal(\'' + c.committeeId + '\')" style="background:#e2e8f0;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;margin-left:4px;">✏️</button>' +
              '<button onclick="ec_deleteCommittee(\'' + c.committeeId + '\')" style="background:#fdecea;color:#c62828;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;">🗑️</button>' +
            '</td></tr>';
     }
-    h += '</tbody></table></div>';
+    h += '</tbody></table></div>' +
+         '<div style="margin-top:8px;font-size:13px;color:#475569;">🏛️ ' + list.length + ' لجنة · إجمالي السعة ' + capSum + ' مقعداً — ' +
+         'وأرقامُ الجلوس من/إلى لكلّ صفّ في «🔍 معاينة التوزيع» بتبويب التوزيع.</div>';
   }
   el.innerHTML = h;
 }
@@ -11542,7 +11547,128 @@ function ec_showCommitteeModal(id) {
   document.getElementById('ec-cm-capacity').value = c ? c.capacity : '';
   document.getElementById('ec-cm-notes').value = c ? (c.notes || '') : '';
   document.getElementById('ec-cm-status').innerHTML = '';
+  _ecCmRows = [];
+  var comp = (c && c.composition) || [];
+  for (var r = 0; r < comp.length; r++) _ecCmRows.push({ grade: comp[r].grade, section: comp[r].section || '', gender: comp[r].gender || '' });
   document.getElementById('ec-committee-modal').style.display = 'flex';
+  _ecCmEnsureCounts(ec_cmRenderRows);
+}
+
+/* ── 🧩 تشكيلُ اللجنة (2026-09-18) ─────────────────────────────────────────────
+   القوائمُ من `getExamClassCountsProtected` — **صفوفُ المدرسة وشعبُها الفعلية وحدها**
+   (الصفوف الكبيرة؛ الصغارُ لجانُهم آليّة بالشعبة). تُجلَب مرّةً للجلسة وتُعاد عند الفشل. */
+var _ecCmRows = [], _ecClassCounts = null;
+function _ecCmEnsureCounts(done) {
+  if (_ecClassCounts) { done(); return; }
+  var box = document.getElementById('ec-cm-rows');
+  if (box) box.innerHTML = '<div style="font-size:12px;color:#94a3b8;">⏳ جارٍ تحميل صفوف المدرسة...</div>';
+  callServer('getExamClassCountsProtected', {}, function (res) {
+    if (!res || !res.success) { if (box) box.innerHTML = '<div style="color:#c62828;font-size:12px;">❌ ' + escapeHtml((res && res.error) || 'تعذّر تحميل الصفوف') + '</div>'; return; }
+    _ecClassCounts = res.classes || [];
+    done();
+  }, function (err) {
+    if (box) box.innerHTML = '<div style="color:#c62828;font-size:12px;">❌ ' + escapeHtml(err.message || 'تعذّر الاتصال') +
+      ' <button type="button" onclick="_ecCmEnsureCounts(ec_cmRenderRows)">🔄 إعادة</button></div>';
+  });
+}
+function _ecCmGrades() {
+  var seen = {}, out = [], list = _ecClassCounts || [];
+  for (var i = 0; i < list.length; i++) if (!seen[list[i].grade]) { seen[list[i].grade] = 1; out.push(list[i].grade); }
+  return out;
+}
+function _ecCmSections(grade) {
+  var out = [], list = _ecClassCounts || [];
+  for (var i = 0; i < list.length; i++) if (list[i].grade === grade) out.push(list[i].section);
+  return out;
+}
+// عددُ طلاب صفّ التشكيل: الشعبةُ الفارغة = كلُّ شعب الصف · الجنسُ الفارغ = الكلّ (ومَن لا جنسَ له).
+function _ecCmRowCount(row) {
+  var n = 0, list = _ecClassCounts || [];
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    if (c.grade !== row.grade) continue;
+    if (row.section && c.section !== row.section) continue;
+    n += row.gender === 'M' ? c.M : (row.gender === 'F' ? c.F : c.total);
+  }
+  return n;
+}
+function _ecCmOpt(v, label, sel) {
+  return '<option value="' + escapeHtml(v) + '"' + (v === sel ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+}
+function ec_cmRenderRows() {
+  var box = document.getElementById('ec-cm-rows'); if (!box) return;
+  var grades = _ecCmGrades();
+  if (!grades.length) { box.innerHTML = '<div style="font-size:12px;color:#94a3b8;">لا توجد صفوفٌ كبيرة (الخامس فما فوق) في ورقة الطلاب.</div>'; ec_cmRenderTotal(); return; }
+  if (!_ecCmRows.length) { box.innerHTML = '<div style="font-size:12px;color:#94a3b8;">لا صفوف — اللجنة تُملأ آلياً. اضغط «➕ إضافة صف» أو «💡 اقتراح».</div>'; ec_cmRenderTotal(); return; }
+  var h = '';
+  for (var i = 0; i < _ecCmRows.length; i++) {
+    var r = _ecCmRows[i], gOpts = '', sOpts = _ecCmOpt('', 'كل الشعب', r.section), secs = _ecCmSections(r.grade);
+    for (var g = 0; g < grades.length; g++) gOpts += _ecCmOpt(grades[g], grades[g], r.grade);
+    for (var s = 0; s < secs.length; s++) if (secs[s]) sOpts += _ecCmOpt(secs[s], secs[s], r.section);
+    h += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">' +
+      '<select onchange="ec_cmSet(' + i + ',\'grade\',this.value)" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:110px;">' + gOpts + '</select>' +
+      '<select onchange="ec_cmSet(' + i + ',\'section\',this.value)" style="padding:6px;border:1px solid #ddd;border-radius:6px;min-width:90px;">' + sOpts + '</select>' +
+      '<select onchange="ec_cmSet(' + i + ',\'gender\',this.value)" style="padding:6px;border:1px solid #ddd;border-radius:6px;">' +
+        _ecCmOpt('', 'الجنسان', r.gender) + _ecCmOpt('M', 'ذكور', r.gender) + _ecCmOpt('F', 'إناث', r.gender) + '</select>' +
+      '<span style="font-size:12px;min-width:70px;">👥 ' + _ecCmRowCount(r) + ' طالباً</span>' +
+      '<button type="button" onclick="ec_cmRemoveRow(' + i + ')" style="background:#fdecea;color:#c62828;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">🗑️</button>' +
+    '</div>';
+  }
+  box.innerHTML = h;
+  ec_cmRenderTotal();
+}
+function ec_cmRenderTotal() {
+  var el = document.getElementById('ec-cm-total'); if (!el) return;
+  if (!_ecCmRows.length) { el.innerHTML = ''; return; }
+  var total = 0;
+  for (var i = 0; i < _ecCmRows.length; i++) total += _ecCmRowCount(_ecCmRows[i]);
+  var cap = Math.floor(Number((document.getElementById('ec-cm-capacity') || {}).value)) || 0;
+  var over = cap && total > cap;
+  el.innerHTML = '<span style="font-weight:700;color:' + (over ? '#c62828' : '#2e7d32') + ';">الإجمالي: ' + total + ' طالباً' +
+    (cap ? ' من سعة ' + cap : '') + '</span>' +
+    (over ? ' <span style="color:#c62828;">⚠️ يتجاوز السعة بـ' + (total - cap) + ' — يُسنَد الفائضُ إلى اللجان التالية</span>' : '') +
+    (cap && !over && total < cap ? ' <span style="color:#64748b;">(متبقٍّ ' + (cap - total) + ' مقعداً)</span>' : '');
+}
+function ec_cmAddRow() {
+  var grades = _ecCmGrades(); if (!grades.length) return;
+  _ecCmRows.push({ grade: grades[0], section: '', gender: '' });
+  ec_cmRenderRows();
+}
+function ec_cmRemoveRow(i) { _ecCmRows.splice(i, 1); ec_cmRenderRows(); }
+function ec_cmSet(i, field, v) {
+  if (!_ecCmRows[i]) return;
+  _ecCmRows[i][field] = v;
+  if (field === 'grade') _ecCmRows[i].section = '';   // شعبةُ صفٍّ آخر لا تنتقل معه
+  ec_cmRenderRows();
+}
+// 💡 الاقتراحُ من الخوارزمية القائمة — يُملأ في النافذة ولا يُحفَظ إلّا بـ«حفظ».
+function ec_cmSuggest() {
+  var st = document.getElementById('ec-cm-status');
+  if (!_ecCommitteeEditId) { if (st) st.innerHTML = '<span style="color:#b45309;">احفظ اللجنة أولاً ثمّ اطلب الاقتراح (يُحسَب من ترتيب اللجان كلِّها).</span>'; return; }
+  if (st) st.innerHTML = '⏳ جارٍ حساب الاقتراح...';
+  callServer('suggestCommitteeCompositionsProtected', {}, function (res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml((res && res.error) || 'خطأ') + '</span>'; return; }
+    var mine = null;
+    for (var i = 0; i < (res.committees || []).length; i++) if (res.committees[i].committeeId === _ecCommitteeEditId) mine = res.committees[i];
+    if (!mine || !mine.suggestion.length) { if (st) st.innerHTML = '<span style="color:#b45309;">لا اقتراح لهذه اللجنة — الطلابُ يكفيهم ما قبلها من لجان.</span>'; return; }
+    _ecCmRows = [];
+    for (var j = 0; j < mine.suggestion.length; j++) {
+      var s = mine.suggestion[j];
+      _ecCmRows.push({ grade: s.grade, section: s.section || '', gender: s.gender || '' });
+    }
+    if (st) st.innerHTML = '<span style="color:#2e7d32;">💡 مُلئ الاقتراح — راجِعه ثمّ اضغط «حفظ».</span>';
+    ec_cmRenderRows();
+  }, function (err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml(err.message || '') + '</span>'; });
+}
+function _ecCompositionLabel(comp) {
+  if (!comp || !comp.length) return '<span style="color:#94a3b8;">تلقائي</span>';
+  var parts = [];
+  for (var i = 0; i < comp.length; i++) {
+    var c = comp[i];
+    parts.push(escapeHtml(c.grade + (c.section ? ' ' + c.section : ' (كل الشعب)')) +
+      (c.gender === 'M' ? ' · ذكور' : (c.gender === 'F' ? ' · إناث' : '')));
+  }
+  return parts.join('<br>');
 }
 
 function ec_closeCommitteeModal() { document.getElementById('ec-committee-modal').style.display = 'none'; }
@@ -11553,12 +11679,14 @@ function ec_saveCommittee() {
     committeeId: _ecCommitteeEditId,
     committeeName: (document.getElementById('ec-cm-name') || {}).value || '',
     capacity: (document.getElementById('ec-cm-capacity') || {}).value || '',
-    notes: (document.getElementById('ec-cm-notes') || {}).value || ''
+    notes: (document.getElementById('ec-cm-notes') || {}).value || '',
+    composition: _ecCmRows.slice()
   };
   if (st) st.innerHTML = '<span>⏳ جارٍ الحفظ...</span>';
   callServer('saveExamCommitteeProtected', p, function(res) {
     if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + (res ? res.error : 'خطأ') + '</span>'; return; }
     ec_closeCommitteeModal();
+    if (res.renamedStudents) toast('✅ حُدِّث اسم اللجنة عند ' + res.renamedStudents + ' طالباً', 'success');
     ec_loadCommittees();
   }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
 }
@@ -11848,8 +11976,10 @@ function ec_renderDistributePane() {
       '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">' +
         '<h4 style="margin:0 0 6px;">🧑‍🎓 توزيع الطلاب الكبار</h4>' +
         '<p style="font-size:12px;color:#64748b;margin:0 0 12px;">الخامس حتى ثالث ثانوي — على لجان تبويب "اللجان" حسب السعة (ذكور ثم إناث، بلا خلط)، يتطلّب تحديد جنس كل طالب من تبويب الطلاب.</p>' +
+        '<button onclick="ec_previewDistributeLarge()" style="background:#fff;color:#1149a3;border:1px solid #1149a3;border-radius:10px;padding:9px 16px;cursor:pointer;font-weight:700;margin-left:6px;">🔍 معاينة التوزيع</button>' +
         '<button onclick="ec_runDistributeLarge()" style="background:#1149a3;color:#fff;border:none;border-radius:10px;padding:9px 16px;cursor:pointer;font-weight:700;">🚀 توزيع الآن</button>' +
         '<div id="ec-dist-large-status" style="margin-top:10px;font-size:13px;"></div>' +
+        '<div id="ec-dist-large-summary" style="margin-top:10px;"></div>' +
       '</div>' +
     '</div>';
 }
@@ -11876,9 +12006,62 @@ function ec_runDistributeLarge() {
       var msg = '✅ تم توزيع ' + res.distributed + ' طالباً';
       if (res.noGenderCount) msg += ' | ⚠️ ' + res.noGenderCount + ' طالباً بلا جنس محدَّد (لم يُوزَّعوا)';
       if (res.unassignedNoCapacity) msg += ' | ⚠️ ' + res.unassignedNoCapacity + ' طالباً بلا سعة لجان كافية';
+      if (res.backupSheet) msg += ' | 💾 نسخة احتياطية: ' + escapeHtml(res.backupSheet);
       if (st) st.innerHTML = '<span style="color:#2e7d32;">' + msg + '</span>';
+      _ecRenderDistSummary(res);
     }, function(err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + err.message + '</span>'; });
   }, { okText: '🏛️ وزِّع على اللجان' });
+}
+
+/* 🔍 معاينةُ التوزيع (2026-09-18) — نفسُ حساب «توزيع الآن» حرفياً **بلا كتابة**: لكلّ لجنة
+   صفوفُها وشعبُها وعددُ كلٍّ ومدى جلوسه من/إلى والإجماليُّ مقابل السعة، ثمّ مشكلاتُ التشكيل. */
+function ec_previewDistributeLarge() {
+  var st = document.getElementById('ec-dist-large-status'); if (st) st.innerHTML = '⏳ جارٍ حساب المعاينة (بلا أيّ كتابة)...';
+  callServer('previewLargeDistributionProtected', {}, function (res) {
+    if (!res || !res.success) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml((res && res.error) || 'خطأ') + '</span>'; return; }
+    var msg = '🔍 معاينة: سيُوزَّع ' + res.distributed + ' طالباً';
+    if (res.noGenderCount) msg += ' | ⚠️ ' + res.noGenderCount + ' بلا جنس (لن يُوزَّعوا)';
+    if (res.unassignedNoCapacity) msg += ' | ⚠️ ' + res.unassignedNoCapacity + ' بلا سعة كافية';
+    if (res.youngSeatsSynced === false) msg += ' | 🔴 أرقام جلوس الصغار غير محدَّثة — شغّل «توزيع الصغار» أولاً';
+    if (st) st.innerHTML = '<span style="color:#1149a3;">' + msg + '</span>';
+    _ecRenderDistSummary(res);
+  }, function (err) { if (st) st.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml(err.message || '') + '</span>'; });
+}
+function _ecRenderDistSummary(res) {
+  var box = document.getElementById('ec-dist-large-summary'); if (!box) return;
+  var sum = res.summary || [], issues = res.issues || [], h = '';
+  if (issues.length) {
+    h += '<div style="background:#fff7e0;border:1px solid #f0c36d;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;"><b>⚠️ ملاحظات على التشكيل:</b><br>';
+    for (var k = 0; k < issues.length; k++) {
+      var is = issues[k];
+      h += '• ' + escapeHtml(is.committeeName) + ': ' + escapeHtml(is.grade + (is.section ? ' ' + is.section : '')) + ' — ' + escapeHtml(is.issue) + '<br>';
+    }
+    h += '</div>';
+  }
+  if (!sum.length) { box.innerHTML = h; return; }
+  h += '<div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+       '<thead><tr style="background:#eef3fb;"><th style="padding:7px;text-align:right;">اللجنة</th><th style="padding:7px;text-align:right;">الصف والشعبة</th>' +
+       '<th style="padding:7px;text-align:center;">العدد</th><th style="padding:7px;text-align:center;">أرقام الجلوس</th><th style="padding:7px;text-align:center;">الإجمالي / السعة</th></tr></thead><tbody>';
+  for (var i = 0; i < sum.length; i++) {
+    var c = sum[i], rows = c.classes || [], span = Math.max(rows.length, 1);
+    var over = c.total > c.capacity, tot = '<b style="color:' + (over ? '#c62828' : '#2e7d32') + ';">' + c.total + ' / ' + c.capacity + '</b>' +
+      (c.hasComposition ? '<br><span style="font-size:11px;color:#64748b;">🧩 بتشكيل</span>' : '');
+    if (!rows.length) {
+      h += '<tr style="border-bottom:1px solid #e8eef7;"><td style="padding:7px;">' + escapeHtml(c.committeeName) + '</td><td colspan="3" style="padding:7px;color:#94a3b8;">فارغة</td><td style="padding:7px;text-align:center;">' + tot + '</td></tr>';
+      continue;
+    }
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j];
+      h += '<tr style="border-bottom:1px solid #e8eef7;">' +
+        (j === 0 ? '<td rowspan="' + span + '" style="padding:7px;vertical-align:top;font-weight:700;">' + escapeHtml(c.committeeName) + '</td>' : '') +
+        '<td style="padding:7px;">' + escapeHtml(r.grade + (r.section ? ' - ' + r.section : '')) + '</td>' +
+        '<td style="padding:7px;text-align:center;">' + r.count + '</td>' +
+        '<td style="padding:7px;text-align:center;direction:ltr;">' + (r.seatFrom !== null ? (r.seatFrom + ' → ' + r.seatTo) : '—') + '</td>' +
+        (j === 0 ? '<td rowspan="' + span + '" style="padding:7px;text-align:center;vertical-align:top;">' + tot + '</td>' : '') +
+      '</tr>';
+    }
+  }
+  box.innerHTML = h + '</tbody></table></div>';
 }
 
 // ── طباعة أرقام الجلوس (المرحلة 5): اختيار فصل → بطاقات، 10 لكل A4 ──
@@ -13622,12 +13805,24 @@ function _ecRenderMonthPrint(month, grades) {
 // ── مودالات (لجنة/جنس الطالب) — بطاقة بيضاء ثابتة، لذا لون النص ثابت غامق دوماً ──
 function _ecCommitteeModalHtml() {
   return '<div id="ec-committee-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">' +
-    '<div style="background:#fff;color:#1e293b;border-radius:12px;padding:24px;width:360px;max-width:95%;">' +
+    '<div style="background:#fff;color:#1e293b;border-radius:12px;padding:24px;width:600px;max-width:95%;max-height:92vh;overflow:auto;">' +
     '<h4 id="ec-cm-title" style="margin:0 0 14px;">إضافة لجنة</h4>' +
     '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">اسم اللجنة</label>' +
     '<input id="ec-cm-name" type="text" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
     '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">السعة</label>' +
-    '<input id="ec-cm-capacity" type="number" min="1" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    '<input id="ec-cm-capacity" type="number" min="1" oninput="ec_cmRenderTotal()" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
+    /* 🧩 تشكيلُ اللجنة (2026-09-18): صفوفٌ وشعبٌ من بيانات المدرسة وحدها، والعدّادُ والإجماليُّ حيّان. */
+    '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:12px;background:#f8fafc;">' +
+      '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' +
+        '<b style="font-size:13px;">🧩 تشكيل اللجنة — الصفوف والشعب</b>' +
+        '<span style="flex:1"></span>' +
+        '<button type="button" onclick="ec_cmSuggest()" style="padding:5px 10px;background:#fff7e0;border:1px solid #f0c36d;border-radius:6px;cursor:pointer;font-size:12px;">💡 اقتراح</button>' +
+        '<button type="button" onclick="ec_cmAddRow()" style="padding:5px 10px;background:#e8f0fe;border:1px solid #b6ccf5;border-radius:6px;cursor:pointer;font-size:12px;">➕ إضافة صف</button>' +
+      '</div>' +
+      '<div id="ec-cm-rows"></div>' +
+      '<div id="ec-cm-total" style="font-size:12px;margin-top:6px;"></div>' +
+      '<div style="font-size:11px;color:#64748b;margin-top:4px;">بلا صفوف = اللجنة تُملأ آلياً كما كانت. وأرقامُ الجلوس (من/إلى) تظهر في «معاينة التوزيع».</div>' +
+    '</div>' +
     '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px;">ملاحظات</label>' +
     '<input id="ec-cm-notes" type="text" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;margin-bottom:12px;box-sizing:border-box;">' +
     '<div id="ec-cm-status" style="margin-bottom:8px;"></div>' +
