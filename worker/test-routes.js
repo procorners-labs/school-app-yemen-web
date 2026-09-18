@@ -2302,6 +2302,36 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
         put('https://x', 'teacher', pVer2, JSON.stringify({ ok: false, error: 'x' })) === false &&
         hits.put === 0,
         '🔒 `latestVersionCode: 0` («غيرُ مضبوط») أو خطأ ⇒ صفرُ تخزين');
+  /* ⑯-أ 🟢 **`getAppUrls` — خريطةُ مداخلِ تطبيقٍ منشور (2026-09-18).**
+     المقيس: 5,843 و10,584ms ذهاباً وإياباً مقابل `_ms: 5` في GAS ⇒ كلُّه انتظارُ طابور.
+     🔒 والضوابطُ المعاكسة: أيُّ وسيطٍ يُرفض · وخريطةٌ ناقصةٌ أو بغير `https` لا تُخزَّن. */
+  var pUrls = probe(JSON.stringify({ fn: 'getAppUrls' }));
+  check(!!pUrls && !!pUrls.argsKey && !pUrls.reject,
+        '🟢 `getAppUrls` بلا وسائط وبلا هويّة ⇒ مؤهَّل');
+  check(!!probe(JSON.stringify({ fn: 'getAppUrls', args: ['abdaawatmuaz'] })) &&
+        probe(JSON.stringify({ fn: 'getAppUrls', args: ['abdaawatmuaz'] })).reject === 'args',
+        '🔒 ضابط معاكس: وسيطٌ (‏`school`) ⇒ رفضٌ مسجَّل ويمرّ حيّاً بلا كاش');
+  var goodUrls = JSON.stringify({ result: { success: true, data: {
+    home: 'https://yemenschoolz.com/home/index.html',
+    teacher: 'https://yemenschoolz.com/teacher/index.html',
+    student: 'https://yemenschoolz.com/student/index.html',
+    cms: 'https://yemenschoolz.com/cms/index.html' } } });
+  hits.put = 0;
+  check(put('https://x', 'teacher', pUrls, goodUrls) === true && hits.put === 1,
+        'خريطةٌ كاملةٌ بـ`https` ⇒ تُخزَّن');
+  hits.put = 0;
+  check(put('https://x', 'teacher', pUrls, JSON.stringify({ result: { success: true, data: {
+          home: 'https://y/h', teacher: 'https://y/t' } } })) === false &&
+        put('https://x', 'teacher', pUrls, JSON.stringify({ result: { success: true, data: {
+          home: 'http://y/h', teacher: 'http://y/t', student: 'http://y/s' } } })) === false &&
+        put('https://x', 'teacher', pUrls, JSON.stringify({ success: false })) === false &&
+        hits.put === 0,
+        '🔒 خريطةٌ ناقصةٌ (بلا `student`) · أو `http` · أو فاشلة ⇒ صفرُ تخزين');
+  if (gateOk) {
+    check(ttlOf('getAppUrls') === 3600 && freshOf('getAppUrls', 3601) === 'stale',
+          '🔴 طزاجةٌ ساعةٌ: تغييرُ خريطةِ المسارات يظهر خلالها');
+  }
+
   /* ⑯ 🟢 **`listPartnerSchoolsPublic` — بلا وسائط وبلا مستأجر (2026-09-17).**
      🔒 والضوابطُ المعاكسة: أيُّ وسيطٍ يُرفض (فضاءُ المفاتيح يبقى مفتاحاً واحداً)،
      والدليلُ الفارغ لا يُخزَّن (يُقرأ عطلاً لا حالة). */
