@@ -229,6 +229,7 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 | `/media/drive/<fileId>` | بثّ فيديو Google Drive كـ `video/mp4` مع دعم Range requests (بثّ مباشر بلا تخزين، يتجاوز فحص الفيروسات لملفات Drive الكبيرة) |
 | `/drive-upload` | وسيط رفع resumable إلى جلسة Drive (PUT مباشر)، مع تحقّق SSRF مقيَّد بنطاق `*.googleapis.com` فقط |
 | `/app` · `/download` | **302** إلى صفحة التطبيق على Play (‏`no-store`، ويمرّر `?ref=` كـ`referrer`) — رابط قصير ثابت يُرسَل في واتساب والإشعارات ويُطبَع، فنقطة تغييره واحدة هنا. الاسمان محجوزان في `_RESERVED_TOP_PATHS` **دفاعياً** (المعالج يسبق حساب الـslug أصلاً)، والرؤوس الأمنية تُكرَّر يدوياً لأن المسار يعود مبكراً |
+| `/client-err` | **POST حصراً** — أخطاءُ الواجهة (‏timeout · network · http5xx · js) إلى `console.log` بـ`ev:'clienterr'` **بصفرِ نداءٍ على GAS** (قرار المالك 2026-09-18: `reportAppError` نداءُ GAS عند إشباع GAS ⇒ علاجٌ يغذّي عرضَه). 🔒 قائمةٌ بيضاء (`app · fn · kind · status · ms · schoolId · page`) وأيُّ حقلٍ آخر ⇒ 400 · `page` بلا `?`/`#` · حدُّ 2KB · 30/دقيقة لكلّ IP داخل المثيل · ونفسُ الأصل. ولا يُسجَّل IP. محجوزٌ في `_RESERVED_TOP_PATHS` |
 | `/.well-known/assetlinks.json` | Digital Asset Links — يخدم ميزتين معاً: **App Links** (‏`autoVerify`) و**WebAuthn داخل الـWebView** (‏«الدخول بالبصمة»). 🔴 يُخدَم من الوسيط لا من Pages: مسارٌ يبدأ بنقطة وJekyll يتجاهل ما يبدأ بنقطة/شرطة سفلية بلا `.nojekyll` — كان يمكن أن يختفي بصمت |
 | `/*` | يخدم الصفحات من GitHub Pages (`procorners-labs.github.io/school-app-yemen-web`) — يحقن أيضاً وسوم OG لكل خبر عبر `?news=<id>` |
 
