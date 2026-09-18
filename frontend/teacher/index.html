@@ -2956,6 +2956,21 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div id="lm-status" style="margin-bottom:12px;"></div>
       <div class="lists-grid" id="lm-grid">⏳ جارٍ التحميل...</div>
+
+      <!-- 🧹 تصحيح أسماء الطلاب — أداةُ صيانةٍ للمدير وحدَه.
+           موضعُها هنا لأن «إدارة القوائم» مقصورةٌ على المدير أصلاً (‏si-lists-mgmt)،
+           فلا تحتاج حارسَ عرضٍ ثانياً — والحارسُ الحقيقيُّ خادميٌّ على أيّ حال. -->
+      <div id="snr-card" style="margin-top:22px;padding:14px;border:1px solid #cfd8dc;border-radius:10px;background:#fafafa;">
+        <div style="font-weight:800;margin-bottom:6px;">🧹 تصحيح أسماء الطلاب</div>
+        <div style="font-size:13px;color:#546e7a;line-height:1.7;margin-bottom:10px;">
+          يُصحّح الأسماءَ المكتوبةَ بكلمتين ملتصقتين أو بتشكيل، <b>في كلّ أوراق المدرسة معاً</b>.
+          <br>🔴 الاسمُ الملتصقُ يمنع الطالبَ من الدخول باسمه الصحيح — هذا عطلٌ لا شكل.
+          <br>وتُؤخَذ نسخةٌ من ورقة «الطلاب» قبل أيّ كتابة، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.
+        </div>
+        <button type="button" onclick="snrPreview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
+        <button type="button" id="snrApplyBtn" onclick="snrApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التصحيح</button>
+        <div id="snr-out" style="margin-top:10px;font-size:13px;"></div>
+      </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -25375,6 +25390,73 @@ function cert_renderPreview(){
   var html='';
   for(var i=0;i<students.length;i++){ html+=cert_certHtml(students[i]); }
   area.innerHTML=html;
+}
+
+/* ═══ 🧹 تصحيح أسماء الطلاب — معاينةٌ ثمّ تنفيذ ═══════════════════════════════
+   🔴 **زرُّ التنفيذ لا يُفتَح إلّا بعد معاينةٍ ناجحة** — لا لأن الخادمَ يحتاجها
+   (يشترط `confirm` صراحةً)، بل لأن عمليةً تمسّ آلافَ الخلايا **لا تبدأ بنقرةٍ
+   واحدةٍ من واجهةٍ فُتحت بالخطأ**. والحارسُ الحقيقيُّ خادميٌّ؛ وهذا يمنع الخطأَ
+   البشريَّ لا المتلاعب. */
+var _snrPreviewed = false;
+
+function _snrRenderReport(rep, applied){
+  var out = document.getElementById('snr-out'); if(!out) return;
+  if(!rep){ out.innerHTML=''; return; }
+  var rows = '';
+  for(var i=0;i<(rep.sheets||[]).length;i++){
+    var s = rep.sheets[i];
+    if(!s.changed) continue;
+    rows += '<tr><td style="padding:3px 8px;">'+escapeHtml(s.sheet)+'</td>'+
+            '<td style="padding:3px 8px;text-align:center;font-weight:700;">'+s.changed+'</td>'+
+            '<td style="padding:3px 8px;text-align:center;color:#78909c;">'+s.scanned+'</td></tr>';
+  }
+  var head = applied
+    ? '<div style="background:#e8f5e9;color:#2e7d32;padding:10px;border-radius:8px;margin-bottom:8px;">✅ نُفِّذ التصحيح — '+rep.totalCells+' خليّة · نسخةٌ احتياطية: '+escapeHtml(rep.backupSheet||'')+'</div>'
+    : (rep.totalCells
+        ? '<div style="background:#fff8e1;color:#8d6e63;padding:10px;border-radius:8px;margin-bottom:8px;">🔍 معاينة — سيُصحَّح '+rep.totalCells+' خليّة. راجِع الجدول ثمّ نفِّذ.</div>'
+        : '<div style="background:#e8f5e9;color:#2e7d32;padding:10px;border-radius:8px;margin-bottom:8px;">✅ لا يوجد ما يُصحَّح — الأسماء سليمة.</div>');
+  var blanks = (rep.blankRows && rep.blankRows.length)
+    ? '<div style="margin-top:8px;color:#8d6e63;">⚠️ صفوفٌ فارغةٌ في «الطلاب»: '+rep.blankRows.join(' · ')+' — <b>لا تُحذَف تلقائياً</b> (الحذفُ يُزحزح الصفوف).</div>' : '';
+  out.innerHTML = head + (rows
+    ? '<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:#eceff1;"><th style="padding:4px 8px;text-align:right;">الورقة</th><th style="padding:4px 8px;">سيتغيّر</th><th style="padding:4px 8px;">مفحوص</th></tr>'+rows+'</table>' : '') + blanks;
+}
+
+function snrPreview(){
+  var out = document.getElementById('snr-out');
+  if(out) out.innerHTML='⏳ جارٍ الفحص...';
+  callServer('auditStudentNamesProtected', {}, function(res){
+    if(!res || !res.success){
+      if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر الفحص')+'</div>';
+      return;
+    }
+    _snrPreviewed = true;
+    var b = document.getElementById('snrApplyBtn');
+    if(b && res.report && res.report.totalCells){ b.disabled=false; b.style.opacity='1'; }
+    _snrRenderReport(res.report, false);
+  });
+}
+
+function snrApply(){
+  if(!_snrPreviewed){ toast('شغّل المعاينة أولاً.', 'error'); return; }
+  /* 🔴 نافذةُ المنصّة لا نافذةُ المتصفّح (‏NATIVE_DIALOGS_BANNED): الخامُ يحجب الصفحةَ
+     ولا يُنسَّق RTL، **وتزامُنُه يُغري بـ`if(!confirm())return;`** الذي يترك الحالةَ
+     المعلّقة قائمةً — وهو عطلٌ وقع فعلاً في مسار تبديل الحصص. */
+  confirmAction(
+    'تصحيح أسماء الطلاب',
+    'سيُصحَّح الاسمُ في كلّ أوراق المدرسة معاً، وتُؤخَذ نسخةٌ احتياطية من ورقة «الطلاب» أولاً،\nويُسجَّل كلُّ تغييرٍ بقيمته القديمة في ورقة «سجل_تصحيح_الاسماء».',
+    '🧹',
+    function(){
+      var out = document.getElementById('snr-out');
+      if(out) out.innerHTML='⏳ جارٍ التصحيح — لا تُغلق الصفحة...';
+      callServer('repairStudentNamesProtected', { confirm: 'تصحيح' }, function(res){
+        if(!res || !res.success){
+          if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التصحيح')+'</div>';
+          return;
+        }
+        _snrRenderReport(res.report, true);
+      });
+    }
+  );
 }
 
 /* تسمية صندوق النتيجة. تُستبدَل لا تُضاف: `.cs-l` محكومة بـ`white-space:nowrap`
