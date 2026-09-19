@@ -1623,6 +1623,29 @@ _BrandHead.prototype.element = function (el) {
   el.append('<script>window.__SCHOOL_BRAND__=' + json + ';window.__HOME_BRAND__=window.__SCHOOL_BRAND__;</' + 'script>', { html: true });
 };
 
+/* 🟢 **روابطُ البوّابات تحمل المدرسةَ في الـHTML الخام (2026-09-19).**
+   العلّة المقيسة: `a[data-portal]` في `home/Index.html` مكتوبٌ عارياً (‏`href="/teacher/index.html"`)
+   ويكمّله العميلُ من الهويّة المحقونة **أو** من حمولة GAS. والحقنُ مشروطٌ بكاش الحافّة **لكلّ
+   مركز بيانات** (قِيس: MUC ⇒ `schoolId` محقون · CDG ⇒ لا شيء)، وتحديثُه الخلفيّ بمهلة 8ث تحت
+   الإشباع ⇒ زرُّ البوّابة يبقى عارياً، **وللأبد إن أُجهض النداء** ⇒ يهبط زائرُ المدرسة على
+   «اختر مدرستك».
+   🎯 والرافعة: المفتاحُ معروفٌ **من المسار وحده بلا GAS** (‏`_tenantKey` بعد `_tenantCanonical`)
+   ⇒ الرابطُ صحيحٌ قبل أيّ JS وأيّ كاش. والعميلُ يعيد كتابته بالـUUID القانونيّ حين تصل الحمولة
+   (‏`_homePortalHref` يمسح الاستعلام ثمّ يضيف `?school=` — لا يقرأ ما كتبناه).
+   🔒 قائمةٌ بيضاء لقيمتين بـ`hasOwnProperty` (لا `obj[k]` — `constructor` يتخطّى الفحص)،
+   والمفتاحُ مرّ ببوّابة الشكل (slug منشور أو UUID) ويُهرَّب بـ`encodeURIComponent`. */
+var _PORTAL_BASE = { teacher: '/teacher/index.html', student: '/student/index.html' };
+function _portalHref(kind, key) {
+  var k = String(kind || '');
+  if (!Object.prototype.hasOwnProperty.call(_PORTAL_BASE, k) || !key) return '';
+  return _PORTAL_BASE[k] + '?school=' + encodeURIComponent(String(key));
+}
+function _PortalHref(key) { this.key = key; }
+_PortalHref.prototype.element = function (el) {
+  var h = _portalHref(el.getAttribute('data-portal'), this.key);
+  if (h) el.setAttribute('href', h);
+};
+
 /* لاحقة عنوان التبويب — **نسخةٌ ثالثة بالضرورة**: هذا مستودع منفصل عن `SchoolApp-gas`
    وGAS لا يشارك كوداً معه. يحرس تطابقها الحرفي مع `__homeDocTitle` هناك حارسٌ في
    `test-routes.js`؛ انحرافُها يجعل العنوان **يقفز** لحظة وصول الحمولة بدل أن يستقرّ. */
@@ -3072,7 +3095,9 @@ export default {
        median 1ms/p95 3ms على `/teacher/`، ومعيار التراجع p95 > 30ms أو أيّ `1102`.
        والحقنُ لا يقع إلّا حين تكون الهوية في كاش الحافة أصلاً (`_brand` غير فارغ). */
     var _brandOn = !!(_tenantKey && !_newsId && _brand);
-    if (isHtml && ghResp.status === 200 && (_canonHref || _brandOn)) {
+    /* روابطُ البوّابات: على سطح `home` وحده، **ولا تنتظر `_brand`** — المفتاحُ من المسار. */
+    var _portalOn = !!(_tenantKey && !_newsId && _brandSurfaceFor(_rawPath) === 'home');
+    if (isHtml && ghResp.status === 200 && (_canonHref || _brandOn || _portalOn)) {
       var _rw = new HTMLRewriter();
       if (_canonHref) {
         _rw = _rw.on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
@@ -3092,6 +3117,7 @@ export default {
          بمعامل صريح، والثاني هو رابط تطبيق الأندرويد المنشور — راجع `_tenantKeyFrom`. */
       // 🔁 `_tenantKey` و`_brand` محسوبان أعلاه (قبل المُصادِق) — لا تُعاد قراءة الكاش هنا.
       if (_tenantKey && !_newsId && _brand) _rw = _brandRewrite(_rw, _brand, _brandSurfaceFor(_rawPath));
+      if (_portalOn) _rw = _rw.on('a[data-portal]', new _PortalHref(_tenantKey));
 
       return _rw.transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
     }

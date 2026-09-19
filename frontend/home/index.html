@@ -3054,7 +3054,24 @@ function _homePortalHref(base, sid){
  * 🔴 تكتب `href` وحده. لمس `target`/`rel` يكسر تطبيق الأندرويد: كتلة WebView أدناه
  * تُزيلهما عن الروابط الداخلية، وإعادة ضبطهما هنا تفتح تبويب متصفّح بدل نشاط.
  */
+/* 🔴 **معرّفٌ فارغٌ لا يمحو هويّةً قائمة (2026-09-19 · بلاغ مالك على `/abdaawatmuaz`).**
+   هذه الدالّة تُنادى ثلاثَ مرّاتٍ على الأقلّ: الضبطُ الفوريّ من المسار ⇒ طلاءُ الهويّة من
+   `__HOME_BRAND__`/الكاش ⇒ الحمولة. والطلاءُ كان يمرّر `b.schoolId || ''` — وكاشٌ محفوظٌ
+   قبل 09-18 لمدرسة المالك يحمل `''`، وحقنُ الحافّة يغيب عن مركز بياناتٍ بارد ⇒ **يقصّ
+   `?school=<slug>` الذي وُضع للتوّ** فيبقى الرابطُ عارياً حتى تصل الحمولة (وللأبد إن 502).
+   ⇒ معرّفٌ غيرُ صالح يسقط إلى هويّة الصفحة نفسِها (UUID في `?school=` ← slug المسار)،
+   وإن غابت كلُّها **لا يُلمَس الرابط**. */
+function _homePageSchoolKey(){
+  var q = '';
+  try{ q = (new URLSearchParams(window.location.search)).get('school') || ''; }catch(e){}
+  if(_homeIsSchoolUuid(q)) return q;
+  try{ return (typeof window.__hasPathSlug === 'function') ? (window.__hasPathSlug() || '') : ''; }catch(e2){ return ''; }
+}
 function _homeApplyPortalLinks(sid){
+  var key = String(sid === null || sid === undefined ? '' : sid).trim();
+  if(!(_homeIsSchoolUuid(key) || /^[a-z][a-z0-9-]{2,}$/i.test(key))) key = _homePageSchoolKey();
+  if(!key) return;
+  sid = key;
   var els = document.querySelectorAll('[data-portal]'), i;
   for(i = 0; i < els.length; i++){
     els[i].setAttribute('href', _homePortalHref(els[i].getAttribute('href') || '', sid));
