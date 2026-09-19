@@ -2380,6 +2380,23 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
         '🟢 `getPublicPlansPublic` بلا وسائط ولا `schoolId` ⇒ مؤهَّل');
   var pPlansArg = probe(JSON.stringify({ fn: 'getPublicPlansPublic', args: ['x'] }));
   check(!!pPlansArg && pPlansArg.reject === 'args', '🔒 وبوسيطٍ ⇒ رفضٌ مسجَّل');
+  var pPricing = probe(JSON.stringify({ fn: 'getPublicPricingPublic', args: [] }));
+  check(!!pPricing && !!pPricing.argsKey && !pPricing.reject,
+        '🟢 `getPublicPricingPublic` بلا وسائط ولا `schoolId` ⇒ مؤهَّل');
+  var pPricingArg = probe(JSON.stringify({ fn: 'getPublicPricingPublic', args: ['x'] }));
+  check(!!pPricingArg && pPricingArg.reject === 'args', '🔒 وبوسيطٍ ⇒ رفضٌ مسجَّل');
+  /* شرطُ التخزين سلوكياً — بالشكل الذي أرسلته جلسة الخلفية حرفياً (gas#1632). */
+  var FNS = vm.runInContext('API_CACHE_FNS', actx);
+  ['getPublicPlansPublic', 'getPublicPricingPublic'].forEach(function (fn) {
+    var okf = FNS[fn] && FNS[fn].ok;
+    check(!!okf && okf({ ok: true, plans: [{ id: 'p1' }], trial: null, discounts: {}, services: null, terms: null, notes: null }) === true,
+          '🟢 `' + fn + '`: ردٌّ ناجحٌ بباقة واحدة ⇒ يُخزَّن (والحقولُ `null` المشروعة لا تمنعه)');
+    check(!!okf && okf({ ok: true, plans: [] }) === false && okf({ ok: false, plans: [{ id: 'p1' }] }) === false &&
+          okf({ ok: true }) === false,
+          '🔒 `' + fn + '`: بلا باقات · `ok:false` · بلا حقل ⇒ **لا يُخزَّن** (لا قسمَ أسعارٍ فارغاً عشرَ دقائق)');
+    check(!!FNS[fn] && FNS[fn].ttl === 600 && FNS[fn].tenantless === true,
+          '`' + fn + '`: ‏600ث و`tenantless`');
+  });
   check(probe(JSON.stringify({ fn: 'checkAppVersion', args: [PKG], token: 'x' })) === null,
         '🔒 مفتاحٌ إضافيّ في الجسم ⇒ لا كاش (الاستثناءُ لا يُرخي فحصَ الجسم)');
   hits.put = 0;
