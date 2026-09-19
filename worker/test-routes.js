@@ -1138,8 +1138,10 @@ console.log((apkFrozen ? '  ✅ ' : '  ❌ ') +
 // ⚠️ والمسار **مجمَّدٌ في ثنائيّ تطبيقَي الأندرويد** (‏`AppConfig.kt::matchesDeployment`
 //    يطابق `/(home|student|teacher|cms|schedule)/`) ⇒ لا Deep Link ولا مزامنة، والإصلاح
 //    الوحيد إصدارٌ جديد على Play. ومخزَّنٌ مسبقاً في `assets/sw.js` ⇒ كسرُه لا رجعة فيه.
-// 🔒 و`GAS.schedule` يبقى في جدول النشرات: النشرةُ حيّةٌ خاملة مسارَ تراجع، ولا
-//    `clasp undeploy` بحال (نفس قاعدة `student` — بند 124).
+// 🔒 و`GAS.schedule` يبقى في جدول النشرات، ولا `clasp undeploy` بحال (نفس قاعدة `student` — بند 124).
+//    🔴 **لكنّه لم يعد «مسارَ تراجعٍ خاملاً» — قِيس 2026-09-19:** مشروعُ الجدول غيرُ موجودٍ في Drive،
+//    والنشرةُ تعيد صفحةَ خطأ HTML من Google. ⇒ `/gas/schedule` يردّ 410 من الوسيط (`_RETIRED_GAS_APPS`).
+//    والمعرّفُ يبقى سجلاً لا مساراً.
 console.log('');
 console.log('عقد مسار `/schedule` (يبقى بعد حذف المشروع من المصدر):');
 [[/'schedule': 1/,
@@ -3774,6 +3776,28 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
   check(/'X-Api-Cache': 'hit'/.test(swrSeg) && /'X-Api-Cache': 'stale',/.test(swrSeg) &&
         /'X-Api-Cache': 'stale-abort'/.test(src) && /'X-Api-Cache': _acProbe \? 'miss' : 'none'/.test(src),
         '🔬 `X-Api-Cache` على المخارج الأربعة (hit · stale · stale-abort · miss/none) — الإصابةُ مقيسةٌ من الخارج');
+  /* 🗑️ `/gas/schedule` ⇒ 410 صريح (2026-09-19): المشروعُ غيرُ موجود، والنشرةُ كانت تعيد صفحةَ خطأ HTML
+     من Google بحالة 200 وبعنوان JSON. */
+  var ret = grab('var _RETIRED_GAS_APPS', '\n};\n') + '\n};\n';
+  var retCtx = vm.createContext({});
+  var RET = null;
+  try { vm.runInContext(ret, retCtx); RET = vm.runInContext('_RETIRED_GAS_APPS', retCtx); } catch (eRt) {}
+  check(!!RET && Object.prototype.hasOwnProperty.call(RET, 'schedule') && typeof RET.schedule === 'string' && RET.schedule.length > 0,
+        '🗑️ `schedule` متقاعد (410) ومعه نصُّ البديل للمستخدم');
+  check(!!RET && !Object.prototype.hasOwnProperty.call(RET, 'teacher') && !Object.prototype.hasOwnProperty.call(RET, 'student') &&
+        !Object.prototype.hasOwnProperty.call(RET, 'home') && !Object.prototype.hasOwnProperty.call(RET, 'cms') &&
+        !Object.prototype.hasOwnProperty.call(RET, 'master-admin') && !Object.prototype.hasOwnProperty.call(RET, 'pricing') &&
+        !Object.prototype.hasOwnProperty.call(RET, 'home-all-school'),
+        '🔴 ضابط معاكس: لا تطبيقَ حيٌّ في قائمة المتقاعدين (مشروعا pricing وhome-all-school قائمان)');
+  var gIdx = src.indexOf("Object.prototype.hasOwnProperty.call(_RETIRED_GAS_APPS, app)");
+  var probeIdx = src.indexOf('_acProbe = _apiCacheProbe(init.body)');
+  var optIdx = src.indexOf("if (request.method === 'OPTIONS') {", src.indexOf("var match = path.match(/^\\/gas\\/"));
+  var gLineOk = /\n\s*if \(Object\.prototype\.hasOwnProperty\.call\(_RETIRED_GAS_APPS, app\)\) \{\s*\n\s*return jsonResponse\(\{ ok: false, retired: true,[^\n]*\n[^\n]*\}, 410\);/.test(src);
+  check(gLineOk, '🔴 الشرطُ نافذٌ حرفياً (لا `false &&` ولا غيرُه) ويعيد 410');
+  check(gIdx > 0 && gIdx < probeIdx && optIdx > 0 && optIdx < gIdx,
+        '🔴 فحصُ التقاعد بعد OPTIONS وقبل الكاش والمنظّم وأيّ نداءٍ على Google');
+  check(/^\s*schedule:\s*'https:\/\/script\.google\.com\/macros\/s\/[^']+\/exec'/m.test(src),
+        '🔒 معرّفُ نشرة `schedule` باقٍ في جدول GAS — التقاعدُ في الوسيط لا حذفُ المعرّف');
   check(/el\.prepend\(this\.html/.test(src),
         '🔴 `prepend` لا `append` — يسبق سكربتَ الصفحة الذي يحفظ `window.SCHOOL_ID`');
 })();
