@@ -1496,6 +1496,22 @@ var API_CACHE_FNS = {
              Object.prototype.toString.call(b.plans) === '[object Array]' &&
              b.plans.length > 0;
     }
+  },
+  /* 🟢 **`getPublicPricingPublic()` — 2026-09-19 (`home` · gas#1632).** قسمُ `#pricing` الكامل:
+     الباقات + الخصومات + الخدمات + الشروط، بلا وسائط ولا مستأجر — وبعد #1632 هي نداءُ `/`
+     الوحيد للأسعار (و`getPublicPlansPublic` يبقى لـ`register.html`).
+     ⚖️ ttl 600 — تعديلُ سعرٍ يتأخّر حتى ١٠ دقائق. 🔒 **لا تُخزَّن بلا باقات** (قسمٌ فارغٌ
+     عشرَ دقائق يُقرأ «لا أسعار»). و`trial`/`services`/`terms`/`notes` قد تكون `null`
+     مشروعاً فلا تدخل الشرط. */
+  getPublicPricingPublic: {
+    args: function (a) { return a.length === 0; },
+    tenantless: true,
+    ttl: 600,
+    ok: function (b) {
+      return b.ok === true &&
+             Object.prototype.toString.call(b.plans) === '[object Array]' &&
+             b.plans.length > 0;
+    }
   }
 };
 
