@@ -570,6 +570,36 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       </div>
       <div id="plans-status"></div>
       <div id="plans-container" style="display:grid;gap:14px;"></div>
+
+      <!-- 🧮 إعدادات قسم الأسعار العامّ `yemenschoolz.com/#pricing` (2026-09-19) —
+           المفتاح `Settings_Master.pricing_extras_json`. الباقاتُ ومبالغُها ونسبتاها من المحرّر أعلاه. -->
+      <div class="section-title" style="margin-top:28px;">🧮 إعدادات صفحة الأسعار العامّة</div>
+      <div class="panel" style="margin-bottom:14px;font-size:13px;color:#475569;line-height:1.9;">
+        هذه تظهر في قسم <strong>الأسعار</strong> على <code>yemenschoolz.com/#pricing</code>: خصوماتُ
+        الالتزام في الحاسبة ومولّد العقد، والخدماتُ الإضافية، وملخّصُ التعاقد، والملاحظات.
+        <br>⚠️ <strong>القائمةُ الفارغة تُبقي النصَّ الافتراضيَّ المكتوب في الصفحة.</strong>
+        والتغييرُ يظهر للزوّار خلال <strong>~20 دقيقة</strong> (طبقتا كاش) لا فوراً.
+        <div id="pext-origin" style="margin-top:6px;"></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <button class="btn btn-primary" onclick="pext_load()">🔄 تحميل الإعدادات</button>
+        <button class="btn btn-success" onclick="pext_save()">💾 حفظ إعدادات الأسعار</button>
+      </div>
+      <div id="pext-status"></div>
+      <div class="panel" style="display:grid;gap:12px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;">
+          <label style="font-size:12px;color:#555;">خصم التزام سنتين ٪<input id="pext-d2" type="number" min="0" max="90" step="any" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>
+          <label style="font-size:12px;color:#555;">خصم 3 سنوات ٪<input id="pext-d3" type="number" min="0" max="90" step="any" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>
+          <label style="font-size:12px;color:#555;">خصم 4 سنوات ٪<input id="pext-d4" type="number" min="0" max="90" step="any" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>
+          <label style="font-size:12px;color:#555;">خصم 5 سنوات ٪<input id="pext-d5" type="number" min="0" max="90" step="any" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>
+        </div>
+        <label style="font-size:12px;color:#555;">الخدمات الإضافية — سطرٌ لكلّ خدمة: <code>العنوان | الوصف | السعر</code>
+          <textarea id="pext-services" rows="5" placeholder="📱 تطبيق جوال + نشر | تطبيق أندرويد بهوية مدرستك | 1,000 $ + اشتراك سنوي" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea></label>
+        <label style="font-size:12px;color:#555;">ملخّص التعاقد — سطرٌ لكلّ بند: <code>العنوان | النص</code>
+          <textarea id="pext-terms" rows="5" placeholder="⏱️ مدة التجهيز | 7 إلى 14 يوماً من استلام البيانات" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea></label>
+        <label style="font-size:12px;color:#555;">ملاحظات هامّة — سطرٌ لكلّ ملاحظة
+          <textarea id="pext-notes" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea></label>
+      </div>
     </div>
 
     <!-- ═══ كشف الأخطاء ═══
@@ -1659,6 +1689,18 @@ function plans_render() {
           _plEsc(p.amountYer == null ? '' : p.amountYer) +
           '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
       '</div>' +
+      /* 🧮 **نسبتا الحاسبة في `/#pricing` (2026-09-19) — حقلان إضافيّان اختياريّان.** الفراغُ ⇒
+         افتراضيُّ الوسم المجمَّد (45٪ / 45٪ · والكبيرة 45/40 · والكبيرة جداً 40/35). */
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">' +
+        '<label style="font-size:12px;color:#555;">النظام المحاسبي ٪ من سعر الشريحة (اختياري)' +
+          '<input class="pl-accpct" type="number" min="0" max="100" step="any" placeholder="45" value="' +
+          _plEsc(p.accountingPct == null ? '' : p.accountingPct) +
+          '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+        '<label style="font-size:12px;color:#555;">الفرع الإضافي ٪ من سعر الشريحة (اختياري)' +
+          '<input class="pl-brpct" type="number" min="0" max="100" step="any" placeholder="45" value="' +
+          _plEsc(p.branchPct == null ? '' : p.branchPct) +
+          '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></label>' +
+      '</div>' +
       '<label style="font-size:12px;color:#555;display:block;margin-top:10px;">المميّزات (سطرٌ لكلّ ميزة)' +
         '<textarea class="pl-features" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
         _plEsc((p.features || []).join('\n')) + '</textarea></label>' +
@@ -1692,6 +1734,8 @@ function plans_collect() {
          معروضٌ للمشترك لا «بلا سعر»**. والتحقّقُ الرقميُّ خادميٌّ. */
       amountUsd : String(v('.pl-amtusd') || '').replace(/^\s+|\s+$/g, ''),
       amountYer : String(v('.pl-amtyer') || '').replace(/^\s+|\s+$/g, ''),
+      accountingPct: String(v('.pl-accpct') || '').replace(/^\s+|\s+$/g, ''),
+      branchPct : String(v('.pl-brpct') || '').replace(/^\s+|\s+$/g, ''),
       features  : clean
     });
   }
@@ -1753,6 +1797,89 @@ function plans_save() {
       if (st) st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc(err && err.message ? err.message : err) + '</div>';
     })
     .savePlansProtected({ token: App.token, plans: payload });
+}
+
+/* ── 🧮 إعدادات قسم الأسعار العامّ (`pricing_extras_json`) ─────────────────────────
+   التحويلُ بين «سطرٍ مفصولٍ بـ|» وكائن يجري هنا، والتحقّقُ الحاسمُ خادميٌّ. */
+function _pextLinesToList(txt, fields) {
+  var lines = String(txt || '').split('\n'), out = [];
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i].replace(/^\s+|\s+$/g, '');
+    if (!ln) continue;
+    var parts = ln.split('|'), o = {};
+    for (var f = 0; f < fields.length; f++) {
+      /* الحقلُ الأخير يأخذ الباقي كلَّه — فـ`|` داخل الوصف لا تُسقط نصّاً. */
+      var v = (f === fields.length - 1) ? parts.slice(f).join('|') : (parts[f] || '');
+      o[fields[f]] = String(v).replace(/^\s+|\s+$/g, '');
+    }
+    out.push(o);
+  }
+  return out;
+}
+function _pextListToLines(arr, fields) {
+  var out = [];
+  for (var i = 0; i < (arr || []).length; i++) {
+    var row = [];
+    for (var f = 0; f < fields.length; f++) row.push(arr[i][fields[f]] || '');
+    out.push(row.join(' | '));
+  }
+  return out.join('\n');
+}
+function pext_load() {
+  var st = document.getElementById('pext-status');
+  if (st) st.innerHTML = '<div class="status-msg">⏳ جارٍ التحميل…</div>';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) {
+        if (st) st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc((res && res.error) || 'تعذّر التحميل') + '</div>';
+        return;
+      }
+      for (var y = 2; y <= 5; y++) {
+        var el = document.getElementById('pext-d' + y);
+        if (el) el.value = (res.discounts && res.discounts[String(y)] != null) ? res.discounts[String(y)] : '';
+      }
+      document.getElementById('pext-services').value = _pextListToLines(res.services, ['title', 'desc', 'price']);
+      document.getElementById('pext-terms').value = _pextListToLines(res.terms, ['title', 'text']);
+      document.getElementById('pext-notes').value = (res.notes || []).join('\n');
+      var o = document.getElementById('pext-origin');
+      if (o) o.innerHTML = res.saved
+        ? '<span style="color:#2e7d32;">✅ إعداداتٌ محفوظة — هي ما تعرضه الصفحة.</span>'
+        : '<span style="color:#ef6c00;">⚠️ لا إعداداتَ محفوظة — الصفحةُ تعرض نصَّها الافتراضيّ، والخصوماتُ المعروضةُ هنا هي الافتراضيّة.</span>';
+      if (st) st.innerHTML = '';
+    })
+    .withFailureHandler(function (err) {
+      if (st) st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc(err && err.message ? err.message : err) + '</div>';
+    })
+    .getPricingExtrasProtected({ token: App.token });
+}
+function pext_save() {
+  var st = document.getElementById('pext-status'), disc = {};
+  for (var y = 2; y <= 5; y++) {
+    var el = document.getElementById('pext-d' + y);
+    disc[String(y)] = el ? String(el.value || '').replace(/^\s+|\s+$/g, '') : '';
+  }
+  var notes = String(document.getElementById('pext-notes').value || '').split('\n'), cleanNotes = [];
+  for (var i = 0; i < notes.length; i++) { var t = notes[i].replace(/^\s+|\s+$/g, ''); if (t) cleanNotes.push(t); }
+  var extras = {
+    discounts: disc,
+    services : _pextLinesToList(document.getElementById('pext-services').value, ['title', 'desc', 'price']),
+    terms    : _pextLinesToList(document.getElementById('pext-terms').value, ['title', 'text']),
+    notes    : cleanNotes
+  };
+  if (st) st.innerHTML = '<div class="status-msg">⏳ جارٍ الحفظ…</div>';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (res && res.success) {
+        if (st) st.innerHTML = '<div class="status-msg status-success">✅ حُفظت — تظهر في /#pricing خلال ~20 دقيقة</div>';
+        pext_load();
+      } else if (st) {
+        st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc((res && res.error) || 'تعذّر الحفظ') + '</div>';
+      }
+    })
+    .withFailureHandler(function (err) {
+      if (st) st.innerHTML = '<div class="status-msg status-error">❌ ' + _plEsc(err && err.message ? err.message : err) + '</div>';
+    })
+    .savePricingExtrasProtected({ token: App.token, extras: extras });
 }
 
 /* ── كشف أخطاء المستخدمين ─────────────────────────────────────────────────────
