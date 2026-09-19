@@ -3519,7 +3519,7 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   var b = src.indexOf('/* ═══ نهايةُ حدّ المشاهدات العامّة ═══ */');
   check(a >= 0 && b > a, 'ضابط: استُخرجت الكتلةُ النقيّة (وإلّا لا يُقاس شيء — خروجٌ أحمر)');
   if (!(a >= 0 && b > a)) return;
-  var pv = vm.createContext({ String: String, Object: Object });
+  var pv = vm.createContext({ String: String, Object: Object, JSON: JSON });
   vm.runInContext(src.slice(a, b), pv);
   function isPv(fn) { pv.__f = fn; return vm.runInContext('_isPublicViewFn(__f)', pv); }
   check(isPv('recordPublicNewsViewBatch') && isPv('recordPublicNewsView'), 'الدالّتان العامّتان ⇒ داخل الحدّ');
@@ -3535,13 +3535,25 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(rate('9.9.9.9', 5000) === false, '🔴 والتالية في النافذة نفسِها ⇒ مكبوحة');
   check(rate('8.8.8.8', 5000) === true, 'وعنوانٌ آخر لا يتأثّر');
   check(rate('9.9.9.9', 5000 + 60000) === true, 'ونافذةٌ جديدة ⇒ يُسمَح من جديد');
+  /* 🔴 اسمُ الدالّة من الجسم كاملاً لا من نافذة الـ200 حرف (ثغرةُ مراجعة #319). */
+  function fnOf(body) { pv.__b = body; return vm.runInContext('_publicViewFnOf(__b)', pv); }
+  var pad = new Array(400).join('x');
+  check(fnOf('{"fn":"recordPublicNewsViewBatch","args":[["1"],"v","s"]}') === 'recordPublicNewsViewBatch',
+        'الشكلُ الرسميّ (`fn` أوّلاً) ⇒ يُلتقَط');
+  check(fnOf('{"pad":"' + pad + '","fn":"recordPublicNewsViewBatch","args":[]}') === 'recordPublicNewsViewBatch',
+        '🔴 حقلٌ طويلٌ قبل `fn` (تجاوزُ نافذة الـ200 حرف) ⇒ **يُلتقَط رغم ذلك**');
+  check(fnOf('{"fn":"getHomePageBundle","fn":"recordPublicNewsView"}') === 'recordPublicNewsView',
+        '🔴 مفتاحٌ مكرَّر ⇒ آخرُ قيمة، كما يقرؤه GAS تماماً');
+  check(fnOf('{"fn":"getHomePageBundle"}') === '' && fnOf('not json') === '' && fnOf('') === '' && fnOf('[1]') === '',
+        'ضابط معاكس: دالّةٌ أخرى أو جسمٌ غيرُ JSON ⇒ لا كبح');
   /* الوصل: قبل الكاش والمقعد، بردٍّ ناجحٍ لا يُعاد، ومقصورٌ على home وPOST. */
-  var w = src.indexOf('_isPublicViewFn(_bhFn)');
+  var w = src.indexOf('_publicViewFnOf(init.body)');
   var cIdx = src.indexOf('_acProbe = _apiCacheProbe(init.body)');
   var bIdx = src.indexOf('_bhHeld = await _bhAcquire(app');
   check(w > 0 && w < cIdx && w < bIdx, '🔴 الكبحُ يقع قبل كاش الحافّة وقبل حجز المقعد (صفرُ حصّة GAS فوق الحدّ)');
-  var seg = w > 0 ? src.slice(src.lastIndexOf('if (', w), src.indexOf('// ── كاشُ الحافّة', w)) : '';
+  var seg = w > 0 ? src.slice(src.lastIndexOf('var _pvFn', w), src.indexOf('// ── كاشُ الحافّة', w)) : '';
   check(/request\.method === 'POST' && app === 'home'/.test(seg), 'مقصورٌ على POST لتطبيق `home`');
+  check(seg.indexOf('_bhFn') < 0, '🔴 لا يعتمد على `_bhFn` (نافذةُ سجلٍّ لا بوّابةٌ أمنيّة)');
   check(/ok: true, result: \{ success: true, throttled: true/.test(seg),
         '🔴 الردُّ `ok:true` — فلا يعيد `gas-bridge.js` المحاولة فيضاعف الحِمل');
   check(seg.indexOf('CF-Connecting-IP') > 0 && !/ip\s*:/.test(seg), 'يُقرأ IP للحدّ وحده ولا يُسجَّل');

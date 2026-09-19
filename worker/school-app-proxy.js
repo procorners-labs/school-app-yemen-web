@@ -462,6 +462,20 @@ function _isPublicViewFn(fn) {
   return typeof fn === 'string' && Object.prototype.hasOwnProperty.call(_PV_FNS, fn);
 }
 
+/* 🔴 **اسمُ الدالّة يُقرأ من الجسم كاملاً بـ`JSON.parse` — لا من نافذة `_bhFn`.**
+   `_bhFn` تُستخرج من أوّل 200 حرفٍ بتعبيرٍ نمطيّ لغرض **السجلّ**؛ وتحميلُها قراراً أمنياً
+   على مسارٍ عامٍّ يتحكّم المهاجمُ بجسمه كاملاً ثغرةٌ: حقلٌ طويلٌ قبل `"fn"` يُخرجه من
+   النافذة فيتخطّى الطلبُ الحدَّ كلّياً (رصدتها مراجعةُ #319). `JSON.parse` يقرأ المفتاحَ
+   **كما يقرؤه GAS** (`doPost` يحلّل الجسمَ نفسَه، والمفتاحُ المكرَّر يأخذ آخرَ قيمة في
+   الطرفين) ⇒ لا فجوةَ بين ما نكبحه وما يُنفَّذ. وجسمٌ غيرُ JSON ⇒ `''` (لا تسجيلَ فيه أصلاً). */
+function _publicViewFnOf(body) {
+  try {
+    var o = JSON.parse(String(body || ''));
+    var fn = (o && typeof o === 'object') ? o.fn : '';
+    return _isPublicViewFn(fn) ? fn : '';
+  } catch (e) { return ''; }
+}
+
 /** `true` = مسموح. نافذةٌ ثابتةٌ لكلّ IP؛ و`now` يُمرَّر ليُختبَر بلا ساعة. */
 function _publicViewRate(ip, now) {
   var key = String(ip || '-');
@@ -1856,9 +1870,9 @@ export default {
       } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
 
       // ── حدُّ تسجيل المشاهدات العامّة لكلّ IP — قبل الكاش والمقعد (انظر `_publicViewRate`) ──
-      if (request.method === 'POST' && app === 'home' && _isPublicViewFn(_bhFn) &&
-          !_publicViewRate(request.headers.get('CF-Connecting-IP'), Date.now())) {
-        _bhLog({ ev: 'pubview', act: 'throttle', app: app, fn: _bhFn });
+      var _pvFn = (request.method === 'POST' && app === 'home') ? _publicViewFnOf(init.body) : '';
+      if (_pvFn && !_publicViewRate(request.headers.get('CF-Connecting-IP'), Date.now())) {
+        _bhLog({ ev: 'pubview', act: 'throttle', app: app, fn: _pvFn });
         return withCors(new Response(
           JSON.stringify({ ok: true, result: { success: true, throttled: true, recorded: 0 } }),
           { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8',
