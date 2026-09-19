@@ -3510,6 +3510,43 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
         '🔴 صفرُ نداءٍ على GAS في المعالج (لا `fetch(` ولا `GAS.`/`GAS[` ولا مقعدَ منظّم)');
 })();
 
+// ── حدُّ تسجيل المشاهدات العامّة لكلّ IP (قرار المالك 2026-09-19) ─────────────────
+(function () {
+  console.log('');
+  console.log('حدُّ تسجيل المشاهدات العامّة:');
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  var a = src.indexOf('var PV_RATE_WINDOW_MS');
+  var b = src.indexOf('/* ═══ نهايةُ حدّ المشاهدات العامّة ═══ */');
+  check(a >= 0 && b > a, 'ضابط: استُخرجت الكتلةُ النقيّة (وإلّا لا يُقاس شيء — خروجٌ أحمر)');
+  if (!(a >= 0 && b > a)) return;
+  var pv = vm.createContext({ String: String, Object: Object });
+  vm.runInContext(src.slice(a, b), pv);
+  function isPv(fn) { pv.__f = fn; return vm.runInContext('_isPublicViewFn(__f)', pv); }
+  check(isPv('recordPublicNewsViewBatch') && isPv('recordPublicNewsView'), 'الدالّتان العامّتان ⇒ داخل الحدّ');
+  check(!isPv('recordStudentNewsViewsBatch') && !isPv('recordNewsViewsBatchProtected') && !isPv('getHomePageBundle'),
+        '🔴 ضابط معاكس: تسجيلُ الطالب/المعلّم (بتوكن) وأيُّ دالّةٍ أخرى ⇒ خارج الحدّ');
+  check(!isPv('constructor') && !isPv('toString') && !isPv(''),
+        '🔴 `constructor`/`toString`/الفارغ لا تتخطّى القائمة (‏hasOwnProperty)');
+  function rate(ip, t) { pv.__ip = ip; pv.__t = t; return vm.runInContext('_publicViewRate(__ip, __t)', pv); }
+  var max = vm.runInContext('PV_RATE_MAX', pv), okN = 0;
+  check(max >= 60, 'الحدُّ سخيٌّ (≥ 60/دقيقة) — مستخدمو اليمن يتشاركون عناوينَ IP');
+  for (var i = 0; i < max; i++) if (rate('9.9.9.9', 5000)) okN++;
+  check(okN === max, 'أوّلُ ' + max + ' دفعةً في النافذة ⇒ مسموحة');
+  check(rate('9.9.9.9', 5000) === false, '🔴 والتالية في النافذة نفسِها ⇒ مكبوحة');
+  check(rate('8.8.8.8', 5000) === true, 'وعنوانٌ آخر لا يتأثّر');
+  check(rate('9.9.9.9', 5000 + 60000) === true, 'ونافذةٌ جديدة ⇒ يُسمَح من جديد');
+  /* الوصل: قبل الكاش والمقعد، بردٍّ ناجحٍ لا يُعاد، ومقصورٌ على home وPOST. */
+  var w = src.indexOf('_isPublicViewFn(_bhFn)');
+  var cIdx = src.indexOf('_acProbe = _apiCacheProbe(init.body)');
+  var bIdx = src.indexOf('_bhHeld = await _bhAcquire(app');
+  check(w > 0 && w < cIdx && w < bIdx, '🔴 الكبحُ يقع قبل كاش الحافّة وقبل حجز المقعد (صفرُ حصّة GAS فوق الحدّ)');
+  var seg = w > 0 ? src.slice(src.lastIndexOf('if (', w), src.indexOf('// ── كاشُ الحافّة', w)) : '';
+  check(/request\.method === 'POST' && app === 'home'/.test(seg), 'مقصورٌ على POST لتطبيق `home`');
+  check(/ok: true, result: \{ success: true, throttled: true/.test(seg),
+        '🔴 الردُّ `ok:true` — فلا يعيد `gas-bridge.js` المحاولة فيضاعف الحِمل');
+  check(seg.indexOf('CF-Connecting-IP') > 0 && !/ip\s*:/.test(seg), 'يُقرأ IP للحدّ وحده ولا يُسجَّل');
+})();
+
 console.log('');
 console.log(failed === 0
   ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
