@@ -110,6 +110,7 @@ var CASES = [
   ['/abdaawatmuaz',       '/home/index.html',    'ضابط: slug مدرسة حقيقي'],
   ['/aljil-al-hadith',    '/home/index.html',    'ضابط: slug مدرسة حقيقي'],
   ['/pricing',            '/pricing',            'ضابط: محجوز'],
+  ['/register',           '/register',           'ضابط: محجوز — لا يُقرَأ slug (يُحوَّل 301 أدناه)'],
   ['/assets/sw.js',       '/assets/sw.js',       'ضابط: أصل ثابت'],
   ['/sitemap.xml',        '/sitemap.xml',        'ضابط: محجوز'],
   // ‏`app`/`download` محجوزان ⇒ لا يُقرآن slug مدرسة. (سلوكهما الفعلي 302 يُقاس
@@ -2318,6 +2319,37 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
   var pVerTwo = probe(JSON.stringify({ fn: 'checkAppVersion', args: [PKG, 'tok'] }));
   check(!!pVerBad && pVerBad.reject === 'args' && !!pVerTwo && pVerTwo.reject === 'args',
         '🔒 وسيطٌ ليس اسمَ حزمة، أو وسيطٌ ثانٍ ⇒ رفضٌ مسجَّل');
+
+  /* ⑯ 🟢 **`argTenant` — `args[0]` هويّةُ `getHomePageBundle` (2026-09-19).** صفحةُ الـslug
+     ترسل `{args:['<slug>'], schoolId:null}` فكانت تُرفض `sid` وتذهب كلُّ زيارةٍ إلى GAS.
+     🔴 والضوابطُ المعاكسة: الاستثناءُ لا يتسرّب إلى دالّةٍ أخرى، ولا يقبل غيرَ slug/UUID،
+     ومدرستان ⇒ مفتاحان. */
+  var pSlug = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['abdaawatmuaz'], schoolId: null }));
+  check(!!pSlug && !!pSlug.argsKey && !pSlug.reject,
+        '🟢 `getHomePageBundle` بـslug في `args[0]` وبلا `schoolId` ⇒ مؤهَّل');
+  var pUuid = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['0f8fad5b-d9cb-469f-a165-70867728950e'] }));
+  check(!!pUuid && !!pUuid.argsKey, '🟢 وبـUUID في `args[0]` ⇒ مؤهَّل');
+  var pSlug2 = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['ibn-khaldoun'], schoolId: null }));
+  check(!!pSlug2 && pSlug2.argsKey !== pSlug.argsKey,
+        '🔒 مدرستان بـslug ⇒ مفتاحان — لا تخدم مدرسةٌ حمولةَ أخرى');
+  var pUpper = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['AbdaaWatMuaz'] }));
+  var pSpace = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['a b'] }));
+  var pSlash = probe(JSON.stringify({ fn: 'getHomePageBundle', args: ['x/../y'] }));
+  check(!!pUpper && pUpper.reject === 'sid' && !!pSpace && pSpace.reject === 'sid' &&
+        !!pSlash && pSlash.reject === 'sid',
+        '🔒 بوّابةُ الشكل لا تُرخى: أحرفٌ كبيرة · مسافة · شرطة مائلة ⇒ `reject:sid`');
+  check(!!pNoSid && pNoSid.reject === 'sid',
+        '🔒 ضابط معاكس: `args[0]` الفارغ ما زال يُرفض');
+  var pBrandSlug = probe(JSON.stringify({ fn: 'getTeacherSchoolBrand', args: ['abdaawatmuaz'] }));
+  check(!!pBrandSlug && pBrandSlug.reject === 'sid',
+        '🔒 ضابط معاكس: `argTenant` **لا يتسرّب** — `getTeacherSchoolBrand` بـ`args[0]` وحده ما زال يُرفض');
+
+  /* ⑰ 🟢 **`getPublicPlansPublic` — `tenantless` بلا وسائط (2026-09-19).** */
+  var pPlans = probe(JSON.stringify({ fn: 'getPublicPlansPublic', args: [] }));
+  check(!!pPlans && !!pPlans.argsKey && !pPlans.reject,
+        '🟢 `getPublicPlansPublic` بلا وسائط ولا `schoolId` ⇒ مؤهَّل');
+  var pPlansArg = probe(JSON.stringify({ fn: 'getPublicPlansPublic', args: ['x'] }));
+  check(!!pPlansArg && pPlansArg.reject === 'args', '🔒 وبوسيطٍ ⇒ رفضٌ مسجَّل');
   check(probe(JSON.stringify({ fn: 'checkAppVersion', args: [PKG], token: 'x' })) === null,
         '🔒 مفتاحٌ إضافيّ في الجسم ⇒ لا كاش (الاستثناءُ لا يُرخي فحصَ الجسم)');
   hits.put = 0;
@@ -3564,6 +3596,50 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(/ok: true, result: \{ success: true, throttled: true/.test(seg),
         '🔴 الردُّ `ok:true` — فلا يعيد `gas-bridge.js` المحاولة فيضاعف الحِمل');
   check(seg.indexOf('CF-Connecting-IP') > 0 && !/ip\s*:/.test(seg), 'يُقرأ IP للحدّ وحده ولا يُسجَّل');
+})();
+
+/* ── 🟢 تحويلا `/pricing` و`/register` + حقنُ `window.SCHOOL_ID` (2026-09-19) ──────── */
+console.log('');
+console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
+(function () {
+  function grab(startMarker, endMarker) {
+    var i = src.indexOf(startMarker);
+    var j = i >= 0 ? src.indexOf(endMarker, i) : -1;
+    return (i >= 0 && j > i) ? src.slice(i, j) : '';
+  }
+  var rd = grab('var _SAME_HOST_REDIRECTS', '\n}\n') + '\n}\n';
+  var sid = grab('function _schoolIdScript', '\n}\n') + '\n}\n';
+  check(rd.length > 20 && sid.length > 20, 'ضابط: استُخرجت الدالّتان (وإلّا لا يُقاس شيء)');
+  var ctx = vm.createContext({ Object: Object, String: String, JSON: JSON,
+    _SCHOOL_UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i });
+  var f, s;
+  try { vm.runInContext(rd + sid, ctx); f = vm.runInContext('_sameHostRedirectFor', ctx); s = vm.runInContext('_schoolIdScript', ctx); }
+  catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
+  check(f('/pricing') === '/#pricing' && f('/pricing/') === '/#pricing', '`/pricing` ⇒ `/#pricing` (وبشرطةٍ مائلة)');
+  check(f('/register') === '/master-admin/register.html', '`/register` ⇒ صفحةُ التسجيل');
+  check(f('/') === '' && f('/abdaawatmuaz') === '' && f('/pricing/x') === '' && f('/constructor') === '' &&
+        f('/toString') === '' && f('') === '',
+        '🔒 ضابط معاكس: الجذر · slug · مسارٌ أعمق · `constructor` ⇒ لا تحويل');
+  var ks = Object.keys(vm.runInContext('_SAME_HOST_REDIRECTS', ctx));
+  var allRel = ks.every(function (k) { var v = vm.runInContext('_SAME_HOST_REDIRECTS', ctx)[k]; return v.charAt(0) === '/' && v.charAt(1) !== '/'; });
+  check(allRel, '🔴 كلُّ `Location` نسبيٌّ على المضيف نفسِه — لا `//` ولا مضيفٌ آخر (عقدُ المضيفات المجمَّدة)');
+  var reservedOk = ks.every(function (k) { return new RegExp("'" + k.slice(1) + "': 1").test(src); });
+  check(reservedOk, '🔴 كلُّ مسارٍ مُحوَّلٍ محجوزٌ في `_RESERVED_TOP_PATHS` (وإلّا صار slug مدرسة)');
+  var hIdx = src.indexOf('_sameHostRedirectFor(path)');
+  var slugIdx = src.indexOf('_schoolSlugFromPath(', src.indexOf('async fetch('));
+  check(hIdx > 0 && (slugIdx < 0 || hIdx < slugIdx), '🔴 المعالجُ يسبق حسابَ الـslug (وإلّا ذهب `/register` إلى GAS)');
+
+  var U = '0F8FAD5B-D9CB-469F-A165-70867728950E';
+  var out = s(U);
+  check(out.indexOf('window.SCHOOL_ID=window.SCHOOL_ID||"' + U.toLowerCase() + '"') > 0,
+        '🟢 UUID ⇒ سكربتٌ يحفظ القيمةَ القائمة ويضع القانونيّةَ عند غيابها');
+  check(s('abdaawatmuaz') === '' && s('') === '' && s('x";alert(1);//') === '',
+        '🔒 ضابط معاكس: slugٌ غيرُ محلول · فارغ · حمولةٌ حرّة ⇒ لا حقن');
+  check(/_rw\.on\('head', new _SchoolIdHead\(_tenantKey\)\)/.test(src) &&
+        /if \(_portalOn && _schoolIdScript\(_tenantKey\)\)/.test(src),
+        'الحقنُ موصولٌ على سطح `home` وحده (مشروطٌ بـ`_portalOn`)');
+  check(/el\.prepend\(this\.html/.test(src),
+        '🔴 `prepend` لا `append` — يسبق سكربتَ الصفحة الذي يحفظ `window.SCHOOL_ID`');
 })();
 
 console.log('');
