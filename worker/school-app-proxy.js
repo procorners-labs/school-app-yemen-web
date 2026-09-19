@@ -1683,6 +1683,52 @@ async function _apiCachePut(origin, app, probe, text) {
   } catch (e) { return false; }
 }
 
+/* 🟢 **تحديثُ مدخلٍ بائتٍ في الخلفية (stale-while-revalidate · 2026-09-19).**
+   يُستدعى من `ctx.waitUntil` بعد خدمة البائت فوراً. ثلاثةُ قيود:
+   ① **مرّةٌ واحدة لكلّ مفتاح داخل الـisolate** (`_apiRevalidating`) — عشرةُ زوّارٍ في
+      الثانية نفسِها لا يُطلقون عشرةَ نداءات.
+   ② **مقعدٌ من المنظّم بلا انتظار** (`_bhAcquire(app, 0)`) — لا مقعدَ ⇒ لا تحديث، والزائرُ
+      التالي يحاول (نفسُ نمط `_brandRefresh`). فلا يصير التحديثُ الخلفيُّ حِملاً فوق السقف.
+   ③ **التخزينُ عبر `_apiCachePut` نفسِه** ⇒ شرطُ `ok(b)` الخاصّ بكلّ دالّة سارٍ حرفياً،
+      فلا يُثبَّت فشلٌ فوق البائت الصالح.
+   ويُرجِع سببَ النتيجة (للسجلّ): `store` · `skip` · `dup` · `noseat` · `http` · `err`. */
+var _apiRevalidating = {};
+async function _apiCacheRevalidate(origin, app, probe, body, env) {
+  /* 🔴 **`origin` داخل المفتاح** — نفسُ أبعاد `_apiCacheKey` الأربعة. بلاه يقفل زائرُ مضيفٍ
+     تحديثَ مدخلِ مضيفٍ آخر (الدوالُّ `tenantless` وسائطُها متطابقةٌ عبر المضيفات) فيبقى بائتاً
+     بصمت. (رصدته مراجعة PR #326.) */
+  var key = origin + '/' + app + '/' + probe.fn + '/' + probe.argsKey;
+  if (Object.prototype.hasOwnProperty.call(_apiRevalidating, key)) return 'dup';
+  _apiRevalidating[key] = 1;
+  var mode = (env && env.BULKHEAD_MODE) || 'on';
+  var held = null, timer = null;
+  try {
+    held = (mode !== 'off') ? await _bhAcquire(app, 0) : null;
+    if (mode === 'on' && !held) return 'noseat';
+    /* وضعُ الظلّ يقيس ولا يحجب: مقعدٌ مفروضٌ كالمسار الرئيسيّ كي يبقى `n` تزامناً حقيقياً. */
+    if (mode === 'shadow' && !held) held = _bhTake(app);
+    var ab = new AbortController();
+    timer = setTimeout(function () { ab.abort(); }, 20000);
+    /* نفسُ مُميِّز `student` في المسار الرئيسيّ: `GAS.student` نشرةُ `teacher`. */
+    var tgt = GAS[app] + (app === 'student' ? '?app=student' : '');
+    var res = await fetch(tgt, {
+      method: 'POST',
+      signal: ab.signal,
+      headers: { 'Content-Type': 'text/plain' },
+      body: body
+    });
+    if (res.status < 200 || res.status >= 400) return 'http';
+    var text = await res.text();
+    return (await _apiCachePut(origin, app, probe, text)) ? 'store' : 'skip';
+  } catch (e) {
+    return 'err';
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (held) _bhRelease(held);
+    delete _apiRevalidating[key];
+  }
+}
+
 /* 🔴 بوّابة مخطّط صارمة قبل أي إسناد إلى `src`/`og:image`: القيمة تصل من شيت **يحرّره بشر**.
  *
  * ⚠️ **تصحيح اتجاه بند 35 هنا — كشفه اختبارُ طفرة.** البند يقول «احذف أحرف التحكّم ولا
@@ -2004,7 +2050,7 @@ export default {
          (‏`app=student` يُلحقه الوسيط **بعد** هذه النقطة فلا يتأثّر.) */
       var _acProbe = null;
       /* مدخلٌ فقد طزاجتَه وما زال داخل نافذة البيات — يُخدَم **عند `abort_budget` وحده**
-         (أدناه عند نقطة الخروج). لا يُخدَم هنا، ولا عند أيّ سببِ فشلٍ آخر. */
+         (أدناه عند نقطة الخروج) — ومنذ 2026-09-19 يُخدَم أوّلاً بـSWR عند المطابقة (انظر فرعَ `stale` أدناه). */
       var _acStale = null;
       if (request.method !== 'GET' && url.search === '') {
         _acProbe = _apiCacheProbe(init.body);
@@ -2018,7 +2064,7 @@ export default {
           var _acHit = await _apiCacheGet(url.origin, app, _acProbe);
           if (_acHit) {
             /* 🔴 البوّابةُ صريحةٌ هنا لأن `match` لم تعُد تفرضها (انظر `_apiCacheFreshness`).
-               والبائتُ **لا يُخدَم في هذا الموضع بحال** — يُحتفَظ به للتراجع أدناه فقط. */
+               والبائتُ يُخدَم هنا **فوراً مع تحديثٍ خلفيّ** (SWR · 2026-09-19 — أدناه)، أو للتراجع عند الإجهاض حين لا `ctx`. */
             var _acFresh = _apiCacheFreshness(_acProbe.fn, _acHit.age);
             if (_acFresh === 'fresh') {
               _bhLog({ ev: 'apicache', act: 'hit', app: app, fn: _acProbe.fn,
@@ -2027,6 +2073,27 @@ export default {
               return withCors(new Response(_acHit.text, {
                 status: 200,
                 headers: { 'Content-Type': 'application/json; charset=utf-8' }
+              }));
+            }
+            /* 🟢 **stale-while-revalidate — قرارُ المالك 2026-09-19.** كان البائتُ يُخدَم عند
+               `abort_budget` وحده ⇒ أوّلُ زائرٍ بعد انقضاء الطزاجة ينتظر GAS، وقِيس اليومَ
+               **22–24ث** تحت الإشباع؛ والمدرسةُ قليلةُ الزيارة **كلُّ زائرٍ فيها «أوّلُ زائر»**.
+               ⇒ يُخدَم البائتُ **فوراً** ويُحدَّث المدخلُ في الخلفية **مرّةً واحدة** (مُوحَّداً
+               داخل الـisolate، وبمقعدٍ من المنظّم بلا انتظار). ⚖️ **المقايضةُ المُقرَّة:** قد
+               يرى زائرٌ محتوىً عمرُه حتى `ttl + API_STALE_MAX_S`، والتالي يرى المحدَّث.
+               🔒 والحِملُ على GAS **لا يزيد**: التحديثُ نداءٌ واحدٌ كان الزائرُ سيُطلقه أصلاً. */
+            if (_acFresh === 'stale' && ctx && ctx.waitUntil) {
+              var _swrProbe = _acProbe, _swrApp = app, _swrOrigin = url.origin, _swrBody = init.body;
+              _bhLog({ ev: 'apicache', act: 'swr', app: app, fn: _acProbe.fn,
+                       k: _apiKeyFp(_acProbe.argsKey), age: _acHit.age });
+              ctx.waitUntil(_apiCacheRevalidate(_swrOrigin, _swrApp, _swrProbe, _swrBody, env).then(function (why) {
+                _bhLog({ ev: 'apicache', act: 'reval', app: _swrApp, fn: _swrProbe.fn,
+                         k: _apiKeyFp(_swrProbe.argsKey), why: why });
+              }));
+              return withCors(new Response(_acHit.text, {
+                status: 200,
+                headers: { 'Content-Type': 'application/json; charset=utf-8',
+                           'X-Api-Stale': String(_acHit.age) }
               }));
             }
             /* 🔒 يُلتقَط **من نفس القراءة** — صفرُ مراجعةٍ إضافيّةٍ للكاش على المسار الحارّ. */
