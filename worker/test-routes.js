@@ -1557,6 +1557,35 @@ console.log('\n🏷️  حقن هوية المدرسة على `/<slug>`:');
           'سطحُ `' + c[0] + '` = `' + c[1] + '`');
   });
 
+  /* ── روابطُ البوّابات في الـHTML الخام (2026-09-19) ─────────────────────────────
+     🔴 الحارسُ على الاتّجاهين: أن يُكتب الرابطُ للقيمتين المعروفتين، **وألّا** يُكتب لغيرهما
+        ولا بلا مفتاح — رابطٌ مكتوبٌ خطأً أسوأ من رابطٍ عارٍ يكمّله العميل. */
+  var phCtx2 = vm.createContext({ String: String, Object: Object, encodeURIComponent: encodeURIComponent });
+  var pbIdx = src.indexOf('var _PORTAL_BASE');
+  check(pbIdx !== -1, '`_PORTAL_BASE` موجود (وإلّا لا يُقاس شيء — خروجٌ أحمر لا تخطٍّ)');
+  vm.runInContext(src.slice(pbIdx, src.indexOf('\n', pbIdx)) + '\n' + fnSrc('_portalHref'), phCtx2);
+  function ph2(k, key) { phCtx2.__k = k; phCtx2.__key = key; return vm.runInContext('_portalHref(__k, __key)', phCtx2); }
+  check(ph2('teacher', 'abdaawatmuaz') === '/teacher/index.html?school=abdaawatmuaz',
+        'بوّابة المعلّم تحمل المدرسة: `/teacher/index.html?school=<key>`');
+  check(ph2('student', '12725ed7-c139-422c-a2d1-ec0ddd358104') ===
+        '/student/index.html?school=12725ed7-c139-422c-a2d1-ec0ddd358104',
+        'بوّابة الطالب تحمل الـUUID كما هو');
+  check(ph2('teacher', '') === '', '🔴 ضابط معاكس: بلا مفتاح ⇒ لا كتابة (يبقى الرابط كما في المصدر)');
+  check(ph2('admin', 'abdaawatmuaz') === '', '🔴 ضابط معاكس: قيمةُ `data-portal` خارج القائمة ⇒ لا كتابة');
+  check(ph2('constructor', 'abdaawatmuaz') === '' && ph2('toString', 'x') === '',
+        '🔴 `constructor`/`toString` لا يتخطّيان القائمة البيضاء (‏hasOwnProperty لا `obj[k]`)');
+  check(ph2('teacher', 'a&b"c') === '/teacher/index.html?school=a%26b%22c',
+        '🔒 المفتاحُ يُهرَّب بـ`encodeURIComponent` (دفاعٌ ثانٍ خلف بوّابة الشكل)');
+  /* الوصل: مشروطٌ بسطح `home` و`!_newsId`، **ومستقلٌّ عن `_brand`** — وهو سببُ وجوده. */
+  var poIdx = src.indexOf('var _portalOn');
+  var poLine = poIdx === -1 ? '' : src.slice(poIdx, src.indexOf('\n', poIdx));
+  check(/_tenantKey && !_newsId && _brandSurfaceFor\(_rawPath\) === 'home'/.test(poLine) && poLine.indexOf('_brand)') === -1,
+        '🔴 `_portalOn` مشروطٌ بـ`_tenantKey && !_newsId` وسطح `home` — **ولا ينتظر كاش الهويّة**');
+  check(/\(_canonHref \|\| _brandOn \|\| _portalOn\)/.test(src),
+        '… ويفتح سلسلةَ `HTMLRewriter` وحدَه ولو غابت الهويّة (وإلّا صار تعريفاً بلا وصل)');
+  check(/if \(_portalOn\) _rw = _rw\.on\('a\[data-portal\]', new _PortalHref\(_tenantKey\)\)/.test(src),
+        '… ويُطبَّق على `a[data-portal]` بمفتاح المستأجر');
+
   /* بوّابة المخطّط — القيمة تصل من شيت يحرّره بشر (بند 35: الحذف لا الاستبدال). */
   var uCtx = vm.createContext({ String: String });
   vm.runInContext(fnSrc('_safeHttpUrl'), uCtx);
