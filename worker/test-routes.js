@@ -3704,6 +3704,7 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
     GAS: { home: 'https://g/home', teacher: 'https://g/teacher', student: 'https://g/teacher' },
     _bhAcquire: function (app, w) { rvCalls.acquire.push(w); return Promise.resolve(rvCtx.__seat ? { app: app } : null); },
     _bhRelease: function (s) { if (s) rvCalls.release++; },
+    _bhTake: function (app) { rvCalls.take++; return { app: app, forced: true }; },
     _apiCachePut: function (o, a, p, t) { rvCalls.put.push(t); return Promise.resolve(t.charAt(0) === '{'); },
     fetch: function (u, init) { rvCalls.fetch.push(u + ' ' + init.body); return rvCtx.__gate.then(function () { return { status: rvCtx.__st, text: function () { return Promise.resolve(rvCtx.__txt); } }; }); },
     __seat: true, __st: 200, __txt: '{"ok":true}', __gate: Promise.resolve()
@@ -3715,7 +3716,7 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
   if (rvOk) {
     var R = vm.runInContext('_apiCacheRevalidate', rvCtx);
     var P = { fn: 'getHomePageBundle', argsKey: 'K1' };
-    var reset = function () { rvCalls = { acquire: [], release: 0, put: [], fetch: [] }; };
+    var reset = function () { rvCalls = { acquire: [], release: 0, put: [], fetch: [], take: 0 }; };
     var results = [];
     reset(); rvCtx.__seat = true; rvCtx.__st = 200; rvCtx.__txt = '{"ok":true}';
     var gateOpen; rvCtx.__gate = new Promise(function (r) { gateOpen = r; });
@@ -3746,6 +3747,21 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
     }).then(function () {
       check(rvCalls.fetch[0] && rvCalls.fetch[0].indexOf('https://g/teacher?app=student ') === 0,
             '🔴 `student` يحمل `?app=student` كالمسار الرئيسيّ (وإلّا خُزّنت هويّةُ المعلّم للطالب)');
+      /* مراجعة #326 ①: أصلان بنفس `app/fn/argsKey` ⇒ تحديثان لا `dup`. */
+      reset(); rvCtx.__seat = true;
+      var g2; rvCtx.__gate = new Promise(function (r) { g2 = r; });
+      var o1 = R('https://yemenschoolz.com', 'home', P, 'B', {}), o2 = R('https://app.yemenschoolz.com', 'home', P, 'B', {});
+      g2();
+      return Promise.all([o1, o2]);
+    }).then(function (ws) {
+      check(ws[0] === 'store' && ws[1] === 'store' && rvCalls.fetch.length === 2,
+            '🔴 مضيفان بالمفتاح نفسِه ⇒ تحديثان (`origin` في مفتاح التوحيد كمفتاح الكاش)');
+      /* مراجعة #326 ②: وضعُ الظلّ بلا مقعد ⇒ مقعدٌ مفروضٌ يُحسَب ثمّ يُحرَّر. */
+      reset(); rvCtx.__seat = false; rvCtx.__gate = Promise.resolve();
+      return R('https://o', 'home', P, 'B', { BULKHEAD_MODE: 'shadow' });
+    }).then(function (w) {
+      check(w === 'store' && rvCalls.take === 1 && rvCalls.release === 1,
+            '🔴 وضعُ الظلّ: التحديثُ يُحسَب في المنظّم (`_bhTake`) ويُحرَّر — لا يختفي من المعايرة');
     }).catch(function (e) { check(false, 'SWR: ' + e.message); }));
     global.__swrPending = Promise.all(results);
   }

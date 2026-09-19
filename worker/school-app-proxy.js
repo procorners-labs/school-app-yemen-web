@@ -1694,7 +1694,10 @@ async function _apiCachePut(origin, app, probe, text) {
    ويُرجِع سببَ النتيجة (للسجلّ): `store` · `skip` · `dup` · `noseat` · `http` · `err`. */
 var _apiRevalidating = {};
 async function _apiCacheRevalidate(origin, app, probe, body, env) {
-  var key = app + '/' + probe.fn + '/' + probe.argsKey;
+  /* 🔴 **`origin` داخل المفتاح** — نفسُ أبعاد `_apiCacheKey` الأربعة. بلاه يقفل زائرُ مضيفٍ
+     تحديثَ مدخلِ مضيفٍ آخر (الدوالُّ `tenantless` وسائطُها متطابقةٌ عبر المضيفات) فيبقى بائتاً
+     بصمت. (رصدته مراجعة PR #326.) */
+  var key = origin + '/' + app + '/' + probe.fn + '/' + probe.argsKey;
   if (Object.prototype.hasOwnProperty.call(_apiRevalidating, key)) return 'dup';
   _apiRevalidating[key] = 1;
   var mode = (env && env.BULKHEAD_MODE) || 'on';
@@ -1702,6 +1705,8 @@ async function _apiCacheRevalidate(origin, app, probe, body, env) {
   try {
     held = (mode !== 'off') ? await _bhAcquire(app, 0) : null;
     if (mode === 'on' && !held) return 'noseat';
+    /* وضعُ الظلّ يقيس ولا يحجب: مقعدٌ مفروضٌ كالمسار الرئيسيّ كي يبقى `n` تزامناً حقيقياً. */
+    if (mode === 'shadow' && !held) held = _bhTake(app);
     var ab = new AbortController();
     timer = setTimeout(function () { ab.abort(); }, 20000);
     /* نفسُ مُميِّز `student` في المسار الرئيسيّ: `GAS.student` نشرةُ `teacher`. */
