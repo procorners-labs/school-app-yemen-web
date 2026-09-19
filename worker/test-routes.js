@@ -3696,12 +3696,82 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
         due(1000000 + W) === true,
         '🔴 التحديثُ عند الإخفاق: الأوّلُ يمرّ · ما داخل النافذة يُحجب · وبعدها يمرّ واحدٌ من جديد');
   check(W >= 10000, '🔴 النافذةُ ≥ ١٠ ثوانٍ — نافذةٌ صغيرةٌ تجعل المسحَ العشوائيَّ حِملاً على GAS');
+  /* ── 🟢 stale-while-revalidate (قرار المالك 2026-09-19) — سلوكيّ عبر `vm` بمحاكاة ── */
+  var rv = grab('var _apiRevalidating', '\n}\n') + '\n}\n';
+  var rvCalls;
+  var rvCtx = vm.createContext({
+    Object: Object, AbortController: AbortController, setTimeout: setTimeout, clearTimeout: clearTimeout,
+    GAS: { home: 'https://g/home', teacher: 'https://g/teacher', student: 'https://g/teacher' },
+    _bhAcquire: function (app, w) { rvCalls.acquire.push(w); return Promise.resolve(rvCtx.__seat ? { app: app } : null); },
+    _bhRelease: function (s) { if (s) rvCalls.release++; },
+    _apiCachePut: function (o, a, p, t) { rvCalls.put.push(t); return Promise.resolve(t.charAt(0) === '{'); },
+    fetch: function (u, init) { rvCalls.fetch.push(u + ' ' + init.body); return rvCtx.__gate.then(function () { return { status: rvCtx.__st, text: function () { return Promise.resolve(rvCtx.__txt); } }; }); },
+    __seat: true, __st: 200, __txt: '{"ok":true}', __gate: Promise.resolve()
+  });
+  var rvOk = true;
+  try { vm.runInContext(rv, rvCtx); } catch (eR) { rvOk = false; }
+  check(rvOk && typeof vm.runInContext('_apiCacheRevalidate', rvCtx) === 'function',
+        'ضابط: استُخرجت `_apiCacheRevalidate` (وإلّا لا يُقاس شيء)');
+  if (rvOk) {
+    var R = vm.runInContext('_apiCacheRevalidate', rvCtx);
+    var P = { fn: 'getHomePageBundle', argsKey: 'K1' };
+    var reset = function () { rvCalls = { acquire: [], release: 0, put: [], fetch: [] }; };
+    var results = [];
+    reset(); rvCtx.__seat = true; rvCtx.__st = 200; rvCtx.__txt = '{"ok":true}';
+    var gateOpen; rvCtx.__gate = new Promise(function (r) { gateOpen = r; });
+    var a1 = R('https://o', 'home', P, 'BODY', {}), a2 = R('https://o', 'home', P, 'BODY', {});
+    gateOpen();
+    results.push(Promise.all([a1, a2]).then(function (ws) {
+      check(ws[0] === 'store' && ws[1] === 'dup' && rvCalls.fetch.length === 1,
+            '🔴 تحديثان متزامنان للمفتاح نفسِه ⇒ نداءٌ واحد والثاني `dup` (لا نداءَ لكلّ زائر)');
+    }).then(function () {
+      check(rvCalls.put.length === 1 && rvCalls.release === 1,
+            '🟢 التحديثُ الأوّل ⇒ نداءٌ واحد · تخزين · وتحريرُ المقعد');
+      check(rvCalls.acquire[0] === 0, '🔴 المقعدُ بلا انتظار (`_bhAcquire(app, 0)`) — لا طابورَ في الخلفية');
+      reset(); rvCtx.__seat = false; rvCtx.__gate = Promise.resolve();
+      return R('https://o', 'home', P, 'BODY', {});
+    }).then(function (w) {
+      check(w === 'noseat' && rvCalls.fetch.length === 0, '🔴 لا مقعد ⇒ لا نداء (لا حِملَ فوق السقف)');
+      reset(); rvCtx.__seat = true; rvCtx.__st = 502;
+      return R('https://o', 'home', P, 'BODY', {});
+    }).then(function (w) {
+      check(w === 'http' && rvCalls.put.length === 0 && rvCalls.release === 1,
+            '🔒 ردٌّ فاشل ⇒ لا تخزين فوق البائت الصالح، والمقعدُ يُحرَّر');
+      reset(); rvCtx.__st = 200;
+      return R('https://o', 'home', P, 'BODY', {});
+    }).then(function (w) {
+      check(w === 'store', '🔒 المفتاحُ يُحرَّر بعد الانتهاء — التحديثُ التالي ممكن (لا قفلَ أبديّ)');
+      reset();
+      return R('https://o', 'student', { fn: 'getStudentSchoolBrand', argsKey: 'K2' }, 'B', {});
+    }).then(function () {
+      check(rvCalls.fetch[0] && rvCalls.fetch[0].indexOf('https://g/teacher?app=student ') === 0,
+            '🔴 `student` يحمل `?app=student` كالمسار الرئيسيّ (وإلّا خُزّنت هويّةُ المعلّم للطالب)');
+    }).catch(function (e) { check(false, 'SWR: ' + e.message); }));
+    global.__swrPending = Promise.all(results);
+  }
+  var swrSeg = src.slice(src.indexOf("if (_acFresh === 'fresh')"), src.indexOf('// ── حَجز مقعد قبل إطلاق أي محاولة نحو GAS'));
+  check(/if \(_acFresh === 'stale' && ctx && ctx\.waitUntil\)/.test(swrSeg) &&
+        swrSeg.indexOf('ctx.waitUntil(_apiCacheRevalidate(') > 0 && swrSeg.indexOf("'X-Api-Stale'") > 0,
+        '🔴 البائتُ يُخدَم فوراً **قبل** حجز المقعد والنداء، والتحديثُ في `waitUntil`');
+  check(/if \(_acFresh === 'fresh'\)[\s\S]*if \(_acFresh === 'stale'/.test(swrSeg),
+        '🔒 المنتهي (`expired`) لا يُخدَم — الفرعان `fresh` و`stale` وحدَهما');
   check(/el\.prepend\(this\.html/.test(src),
         '🔴 `prepend` لا `append` — يسبق سكربتَ الصفحة الذي يحفظ `window.SCHOOL_ID`');
 })();
 
-console.log('');
-console.log(failed === 0
-  ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
-  : 'RESULT: ❌ ' + failed + ' فشل');
-process.exit(failed === 0 ? 0 : 1);
+/* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
+   لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
+/* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —
+   أخضرُ كاذب (وقع فعلاً عند كتابة فحوص SWR). ⇒ الخروجُ بلا `RESULT` فشلٌ صريح. */
+var __resultPrinted = false;
+process.on('exit', function (code) {
+  if (!__resultPrinted) { console.log('RESULT: ❌ انتهت العمليةُ بلا حكم (وعدٌ معلَّق)'); process.exitCode = 1; }
+});
+Promise.resolve(global.__swrPending).then(function () {
+  __resultPrinted = true;
+  console.log('');
+  console.log(failed === 0
+    ? 'RESULT: ✅ ' + CASES.length + ' مساراً — التوجيه صحيح وصفر تعطيل لمسار قائم'
+    : 'RESULT: ❌ ' + failed + ' فشل');
+  process.exit(failed === 0 ? 0 : 1);
+});
