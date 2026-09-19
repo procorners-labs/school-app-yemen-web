@@ -3020,6 +3020,25 @@ function _stuIsTransientErr(err) {
  * @param {Function} [onErr]  ردّ الفشل
  * @param {string}   [staleKey] مفتاحُ `ss*` للتراجع؛ غيابُه ⇒ لا تراجع
  */
+/* 🔒 **انتهاءُ الجلسة ⇒ شاشةُ الدخول برسالةٍ واضحة، مرّةً واحدة (2026-09-19).** الخادمُ صار يرفض ما
+   يخصّ طالباً بلا رمزِ جلسةٍ صالح (`teacher/_stuTokenGate.js`) برسالةٍ تحمل `[STU_AUTH]`. بلا هذا
+   كانت كلُّ بطاقةٍ تعرض الخطأَ وحدَها والطالبُ لا يعرف أن الحلَّ إعادةُ الدخول. */
+var _stuAuthKicked = false;
+function _stuIsAuthExpired(err) {
+  var m = (err && (err.message || err)) ? String(err.message || err) : '';
+  return m.indexOf('[STU_AUTH]') !== -1;
+}
+function _stuForceRelogin() {
+  if (_stuAuthKicked) return;
+  _stuAuthKicked = true;
+  try { if (typeof confirmLogout === 'function') confirmLogout(); } catch (eL) {}
+  try {
+    var le = document.getElementById('loginErr');
+    if (le) { le.textContent = 'انتهت الجلسة — سجّل الدخول من جديد'; le.style.display = 'block'; }
+  } catch (eM) {}
+  setTimeout(function () { _stuAuthKicked = false; }, 3000);
+}
+
 function callServerGated(fnName, args, onOk, onErr, staleKey) {
   _stuRunGated(fnName, function (freeSlot) {
     var freed = false;
@@ -3029,6 +3048,7 @@ function callServerGated(fnName, args, onOk, onErr, staleKey) {
         .withSuccessHandler(function (r) { release(); try { onOk(r); } catch (e) {} })
         .withFailureHandler(function (err) {
           release();
+          if (_stuIsAuthExpired(err)) { _stuForceRelogin(); return; }
           if (staleKey && _stuIsRead(fnName) && _stuIsTransientErr(err)) {
             var st = (typeof ssGetStale === 'function') ? ssGetStale(staleKey) : null;
             if (st && typeof st === 'object') {
@@ -3085,6 +3105,7 @@ function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback)
         })
         .withFailureHandler(function(err) {
           release();
+          if (_stuIsAuthExpired(err)) { _stuForceRelogin(); return; }
 
           /* ── التراجعُ للبائت عند الإشباع (بند 196) ───────────────────────────────
              🔴 **بثلاثة شروطٍ مجتمعة لا واحد:** قراءةٌ (الكتاباتُ لا تُخدَم من بائتٍ
@@ -5088,7 +5109,7 @@ function loadQuickStats(force) {
   if (force) ClientCache.remove('reports_' + APP.user.id);
   callServerSmart(
     'getStudentReports',
-    { studentId: APP.user.id, schoolId: APP.user.schoolId },
+    { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
     'reports_' + APP.user.id,
     STU_REPORTS_TTL_SEC,
     function (r) {
@@ -5133,7 +5154,7 @@ function loadGrades(force) {
      🔴 محروسٌ بسقف التزامن (بند 196): `getGrades` **625 نداءً/٢٤س** وسطحُ الطالب ٧٠٪ من
      حمل المشروع التنفيذيّ المشترك. والكاشُ يبقى `ss*` كما هو — الغلافُ يعطي السقفَ
      والتراجعَ للبائت فقط ولا يُنشئ مخزناً ثانياً (بند 187). */
-  callServerGated('getGrades', [APP.user.id, APP.user.schoolId, !!force],
+  callServerGated('getGrades', [APP.user.id, APP.user.schoolId, !!force, APP.user.switchToken],
     function(r) {
       APP.loaded.grades = true;
       if (!r || !r.ok) {
@@ -7841,6 +7862,7 @@ function submitMyNote() {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'إرسال الملاحظة ✉️';
+      if (typeof _stuIsAuthExpired === 'function' && _stuIsAuthExpired(e)) { _stuForceRelogin(); return; }
       toast('فشل الإرسال: ' + (e.message || e), 'e');
     })
     .submitNote({
@@ -7851,7 +7873,8 @@ function submitMyNote() {
     teacher: teacher,
     message: msg,
     isCustom: true,   // الرسالة دائماً بصياغة ولي الأمر (أُلغيت الأنواع الجاهزة)
-    schoolId: APP.user.schoolId
+    schoolId: APP.user.schoolId,
+    switchToken: APP.user.switchToken
 });
 }
 
@@ -8083,7 +8106,7 @@ function loadNotes(force) {
 
   callServerSmart(
     'getStudentNotes',
-    { studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId },
+    { studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
     'notes_' + APP.user.id,
     120,
     function (r) {
@@ -8128,7 +8151,7 @@ function loadReports(force) {
 
   callServerSmart(
   'getStudentReports',
-  { studentId: APP.user.id, schoolId: APP.user.schoolId },
+  { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
   'reports_' + APP.user.id,
   STU_REPORTS_TTL_SEC,          // نفسُ المصدر الذي تقرؤه الرئيسية ونافذةُ التحديث (بند 194)
   function (r) {
@@ -8289,7 +8312,7 @@ function loadAttendance(force) {
 
   callServerSmart(
   'getAttendanceForStudent',
-  { studentId: APP.user.id, schoolId: APP.user.schoolId },
+  { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
   'attendance_' + APP.user.id,
   120,
   function (r) {
@@ -8647,7 +8670,7 @@ function _stuBootLoad() {
   callServerGated('getStudentBootBundle', [{
       klass: APP.user.class, section: APP.user.section,
       studentId: APP.user.id, studentName: APP.user.name,
-      lastLoginDate: lastLogin, schoolId: APP.user.schoolId
+      lastLoginDate: lastLogin, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken
     }],
     function (r) {
       _badgeInFlight = false;
@@ -8857,7 +8880,7 @@ function loadNotificationBadges() {
 
   /* محروسٌ بسقف التزامن (بند 196) — استطلاعٌ دوريّ يتراكب مع الإقلاع وتبديل التبويب. */
   callServerGated('getStudentNotificationBadge',
-    [APP.user.id, APP.user.name, APP.user.class, APP.user.section, lastLogin, APP.user.schoolId],
+    [APP.user.id, APP.user.name, APP.user.class, APP.user.section, lastLogin, APP.user.schoolId, APP.user.switchToken],
     function (r) {
       _badgeInFlight = false;
       if (!r || !r.ok || !r.badge) return;
