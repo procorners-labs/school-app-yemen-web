@@ -2964,12 +2964,19 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
 
   check(fns.getHomeScheduleBundle && fns.getHomeScheduleBundle.ttl === 1800,
         '🔴 `getHomeScheduleBundle.ttl === 1800` — الافتراضي 600 كان يُخفق حتماً (المفتاحُ كلّ ~٢٩ دقيقة)');
-  /* 🔒 الضابطُ المعاكس الجوهريّ: **رفعُ الـttl لم يعمّ الجميع.** رفعٌ شاملٌ بلا قصد
-     يكسر قاعدةً مقيسة: `getTeacherSchoolBrand` بلا `ttl` **عمداً** — «شاشةُ دخولٍ بلا
-     هويّة أسوأ من العطل»، وتثبيتُها يجعل ملءَ الخانة لاحقاً لا يظهر. */
-  check(fns.getTeacherSchoolBrand && fns.getTeacherSchoolBrand.ttl === undefined &&
-        fns.getStudentSchoolBrand && fns.getStudentSchoolBrand.ttl === undefined,
-        '🔒 ضابط معاكس: البراندان **بلا `ttl`** كما كانا — الرفعُ لم يعمّ بلا قصد');
+  /* 🟢 **البراندان ساعةٌ بقرار المالك 2026-09-19** (التخزينُ كان يغلب الإصابة ⇒ دورةُ حياةٍ
+     قصيرة). كان هنا ضابطٌ يشترط «بلا `ttl`» كي لا يعمّ رفعُ الجدول بلا قصد — والرفعُ
+     هنا **مقصودٌ ومُقرّ**، فصار الضابطُ القيمةَ المقرَّة نفسَها بالضبط. */
+  check(fns.getTeacherSchoolBrand && fns.getTeacherSchoolBrand.ttl === 3600 &&
+        fns.getStudentSchoolBrand && fns.getStudentSchoolBrand.ttl === 3600,
+        '🔒 البراندان `ttl === 3600` بالضبط (قرارُ المالك) — لا أطولَ ولا الافتراضيّ');
+  /* 🔴 **والقاعدةُ التي كان الضابطُ القديم يحرسها باقيةٌ ومحروسةٌ في موضعها الصحيح:**
+     «شاشةُ دخولٍ بلا هويّة أسوأ من العطل» ⇒ **الاسمُ الفارغ لا يُخزَّن أبداً** — يحرسها
+     `ok()` لا الـ`ttl`، ومع ساعةٍ صار خرقُها أغلى (فراغٌ مثبَّتٌ ساعةً لا عشرَ دقائق). */
+  check(fns.getTeacherSchoolBrand.ok({ ok: true, name: '' }) === false &&
+        fns.getStudentSchoolBrand.ok({ ok: true, name: '' }) === false &&
+        fns.getTeacherSchoolBrand.ok({ ok: true, name: 'م' }) === true,
+        '🔴 الاسمُ الفارغ لا يُخزَّن (ولا ساعة) — والاسمُ الحقيقيّ يُخزَّن (ضابطٌ معاكس)');
   check(fns.getHomePageBundle && fns.getHomePageBundle.ttl === 120,
         '🔒 ضابط معاكس: `getHomePageBundle` باقٍ على 120 (‏أقصرُ عنصرٍ مُكاشٌ خادمياً ٣٠ث)');
 })();
