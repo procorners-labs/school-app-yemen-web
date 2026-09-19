@@ -2072,7 +2072,10 @@ export default {
                        age: _acHit.age, n: _bhN, q: _bhQ.length });
               return withCors(new Response(_acHit.text, {
                 status: 200,
-                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                /* 🔬 `X-Api-Cache` (2026-09-19): حالةُ كاش الحافّة رأساً لا حقلاً في الجسم — كي تُقاس
+                   الإصابةُ من الخارج حين تعجز أداةُ السجلّات (وقد عجزت: ردٌّ ~1000ms بلا رأسٍ
+                   لم يكن ممكناً فصلُه بين «إخفاقٍ ذهب إلى GAS» و«إصابةٍ بطيئة»). */
+                headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Api-Cache': 'hit' }
               }));
             }
             /* 🟢 **stale-while-revalidate — قرارُ المالك 2026-09-19.** كان البائتُ يُخدَم عند
@@ -2093,6 +2096,7 @@ export default {
               return withCors(new Response(_acHit.text, {
                 status: 200,
                 headers: { 'Content-Type': 'application/json; charset=utf-8',
+                           'X-Api-Cache': 'stale',
                            'X-Api-Stale': String(_acHit.age) }
               }));
             }
@@ -2307,6 +2311,7 @@ export default {
             'Content-Type': 'application/json; charset=utf-8',
             /* رأسٌ تشخيصيٌّ لا يمسّ الجسم: الجسرُ يستهلك النصَّ خاماً، فأيُّ حقلٍ نضيفه
                داخل الحمولة قد يكسر مستهلكاً. والرأسُ يُقرأ بـ`curl -D -` وفي السجلّ. */
+            'X-Api-Cache': 'stale-abort',
             'X-Api-Stale': String(_acStale.age)
           }
         }));
@@ -2338,7 +2343,9 @@ export default {
       }
       return withCors(new Response(lastText, {
         status: lastStatus,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+        /* `miss` = مؤهَّلٌ ولم يُصَب (ذهب إلى GAS) · `none` = خارج القائمة البيضاء أو رُفض شكلُه. */
+        headers: { 'Content-Type': 'application/json; charset=utf-8',
+                   'X-Api-Cache': _acProbe ? 'miss' : 'none' }
       }));
       } finally {
         // سطر واحد لكل نداء مكتمل — هو **مصدر القياس** الذي تُبنى عليه المرحلة ب:

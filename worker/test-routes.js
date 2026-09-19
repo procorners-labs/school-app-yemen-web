@@ -3771,6 +3771,9 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
         '🔴 البائتُ يُخدَم فوراً **قبل** حجز المقعد والنداء، والتحديثُ في `waitUntil`');
   check(/if \(_acFresh === 'fresh'\)[\s\S]*if \(_acFresh === 'stale'/.test(swrSeg),
         '🔒 المنتهي (`expired`) لا يُخدَم — الفرعان `fresh` و`stale` وحدَهما');
+  check(/'X-Api-Cache': 'hit'/.test(swrSeg) && /'X-Api-Cache': 'stale',/.test(swrSeg) &&
+        /'X-Api-Cache': 'stale-abort'/.test(src) && /'X-Api-Cache': _acProbe \? 'miss' : 'none'/.test(src),
+        '🔬 `X-Api-Cache` على المخارج الأربعة (hit · stale · stale-abort · miss/none) — الإصابةُ مقيسةٌ من الخارج');
   check(/el\.prepend\(this\.html/.test(src),
         '🔴 `prepend` لا `append` — يسبق سكربتَ الصفحة الذي يحفظ `window.SCHOOL_ID`');
 })();
