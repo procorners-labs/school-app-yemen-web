@@ -676,16 +676,22 @@ function _schoolSlugFromPath(path) {
  * ───────────────────────────────────────────────────────────────────────────── */
 var _SCHOOL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function _tenantKeyFrom(path, search) {
+function _tenantKeyFrom(path, search, dynSlugs) {
   var p = String(path || '');
   var slug = _schoolSlugFromPath(p);
   if (slug) return slug;
-  /* بوّابة الشكل الواحدة لكلّ المصادر: slug منشور أو UUID حصراً — وإلّا `''`. */
+  /* بوّابة الشكل الواحدة لكلّ المصادر: slug منشور أو UUID حصراً — وإلّا `''`.
+     🟢 **و«منشور» يشمل السجلَّ الديناميكيَّ منذ 2026-09-19** (`dynSlugs` — مصفوفةُ
+     `_slugsFromCache`، يمرّرها المستدعي فتبقى الدالّةُ نقيّة). العلّة المقيسة (جلسة
+     `SchoolApp-gas`): البذرةُ الساكنة ثلاثُ مدارس ⇒ `/teacher/<slug>` لمدرسةٍ جديدة يُقرأ
+     بلا مستأجر فيهبط مديرُها على دخول مدرسةٍ أخرى. 🔒 **والقائمةُ من سجلّ GAS لا من المسار**
+     ⇒ أسماءُ الأقسام (`login` · `grades` …) تبقى `''` ما لم تُسجَّل مدرسةٌ باسمها. */
   function norm(v) {
     v = String(v || '').trim();
     if (!v) return '';
     var lc = v.toLowerCase();
     if (_KNOWN_SCHOOL_SLUGS[lc]) return lc;
+    if (dynSlugs && dynSlugs.indexOf(lc) !== -1 && /^[a-z0-9-]+$/.test(lc)) return lc;
     if (_SCHOOL_UUID_RE.test(v)) return lc;
     return '';
   }
@@ -902,10 +908,24 @@ async function _tenantCanonical(key, origin, env) {
   return k;
 }
 
+/* 🟢 **تحديثٌ عند الإخفاق — محكومٌ بزمن (2026-09-19).** كان slugٌ غائبٌ عن قائمةٍ ما زالت
+   صالحةً ⇒ 404 **بلا تحديث** حتى ينقضي الـTTL (حتى ٣٠٠ث لكلّ مركز بيانات) ⇒ مدرسةٌ قُبلت
+   للتوّ تظهر في الدليل وصفحتُها 404. 🔴 **والتحديثُ غيرُ المحكوم يجعل كلَّ مسارٍ عشوائيٍّ
+   بمقطعٍ واحد نداءَ GAS** — وهو بالضبط ما حُمي منه السجلّ. ⇒ تحديثٌ واحدٌ على الأكثر كلَّ
+   `SLUGS_MISS_REFRESH_MS` داخل الـisolate: أسوأُ كلفةِ مسحٍ عشوائيٍّ نداءٌ لكلّ نافذة. */
+var SLUGS_MISS_REFRESH_MS = 30000;
+var _slugsMissRefreshAt = 0;
+function _slugsMissRefreshDue(now) {
+  if (now - _slugsMissRefreshAt < SLUGS_MISS_REFRESH_MS) return false;
+  _slugsMissRefreshAt = now;
+  return true;
+}
+
 async function _slugIsKnown(slug, origin, env) {
   if (_KNOWN_SCHOOL_SLUGS[slug]) return true;
   var cached = await _slugsFromCache(origin);
-  if (cached) return cached.indexOf(slug) !== -1;
+  if (cached && cached.indexOf(slug) !== -1) return true;
+  if (cached && !_slugsMissRefreshDue(Date.now())) return false;
   var fresh = await _slugsRefresh(origin, env);
   return !!fresh && fresh.indexOf(slug) !== -1;
 }
@@ -3238,6 +3258,12 @@ export default {
           ومُصادِقٌ هناك يُثبّت بطاقة معاينةٍ خاطئة على واتساب بلا رجعة.
        🔴 و`GET` وحده: مُصادِقٌ على استجابة `HEAD`/غيرها لا معنى له. */
     var _tenantKey = _tenantKeyFrom(_rawPath, url.search);
+    /* 🟢 مدرسةٌ خارج البذرة الساكنة على بوّابتَي الدخول (`/teacher/<slug>` · `?school=<slug>`):
+       قراءةُ كاشٍ واحدة **بلا GAS**، وعلى مسارات البوّابات/الصفحة وحدَها. */
+    if (!_tenantKey && isHtml && /^\/(teacher|student|home|portal)(\/|$)/i.test(_rawPath)) {
+      var _dynSlugs = await _slugsFromCache(url.origin);
+      if (_dynSlugs) _tenantKey = _tenantKeyFrom(_rawPath, url.search, _dynSlugs);
+    }
     /* 🎯 توحيدُ الهويّة: الاسمُ المختصرُ يُحَلّ إلى UUID **مرّةً واحدةً هنا**، فما بعده
        (‏`_brandCacheKey` · `_brandRefresh` · الحمولةُ المحقونة) بمعرّفٍ واحدٍ لا اثنين.
        انظر `_tenantCanonical` — وبلا أزواجٍ في السجلّ يبقى المفتاحُ كما وصل. */
@@ -3269,7 +3295,13 @@ export default {
     var _brandOn = !!(_tenantKey && !_newsId && _brand);
     /* روابطُ البوّابات: على سطح `home` وحده، **ولا تنتظر `_brand`** — المفتاحُ من المسار. */
     var _portalOn = !!(_tenantKey && !_newsId && _brandSurfaceFor(_rawPath) === 'home');
-    if (isHtml && ghResp.status === 200 && (_canonHref || _brandOn || _portalOn)) {
+    /* 🟢 `window.SCHOOL_ID` على السطوح الثلاثة (2026-09-19): على `home` يوحّد مدخلَ الكاش،
+       وعلى البوّابتين يُنقذ مدرسةً خارج البذرة — سكربتُ الصفحة يعرف البذرةَ المبنيّة وحدَها،
+       فيسقط إلى `window.SCHOOL_ID` الذي نحقنه (UUID محلولٌ حصراً). */
+    var _sidSurface = _brandSurfaceFor(_rawPath);
+    var _sidOn = !!(_tenantKey && !_newsId && _schoolIdScript(_tenantKey) &&
+                    (_sidSurface === 'home' || _sidSurface === 'teacher' || _sidSurface === 'student'));
+    if (isHtml && ghResp.status === 200 && (_canonHref || _brandOn || _portalOn || _sidOn)) {
       var _rw = new HTMLRewriter();
       if (_canonHref) {
         _rw = _rw.on('link[rel="canonical"]', new _AttrSet('href', _canonHref))
@@ -3290,7 +3322,7 @@ export default {
       // 🔁 `_tenantKey` و`_brand` محسوبان أعلاه (قبل المُصادِق) — لا تُعاد قراءة الكاش هنا.
       if (_tenantKey && !_newsId && _brand) _rw = _brandRewrite(_rw, _brand, _brandSurfaceFor(_rawPath));
       if (_portalOn) _rw = _rw.on('a[data-portal]', new _PortalHref(_tenantKey));
-      if (_portalOn && _schoolIdScript(_tenantKey)) _rw = _rw.on('head', new _SchoolIdHead(_tenantKey));
+      if (_sidOn) _rw = _rw.on('head', new _SchoolIdHead(_tenantKey));
 
       return _rw.transform(new Response(ghResp.body, { status: ghResp.status, headers: headers }));
     }
