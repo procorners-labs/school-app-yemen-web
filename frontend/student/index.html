@@ -4537,8 +4537,88 @@ function renderSiblingsCard() {
   };
 }
 
+/* 🟢 **التبديلُ المحلّيّ — صفرُ طلب** (2026-09-19). كان التبديلُ طلبين بطيئين متتاليين على حوضٍ
+   مشبَع (`switchStudentAccount` يفشل ٢٧٪ ثمّ حزمةُ الإقلاع)، فيعلق أو يفشل قرابةَ نصف المرّات.
+   الخادمُ صار يُرسل مع كلّ أخٍ رمزَ تبديلٍ جاهزاً أصدره **بعد** التحقّق من الأخوّة
+   (`teacher/StudentLogic.js::_stuSiblingsForClient`) ⇒ نبني الحسابَ منه مباشرةً.
+   ⚖️ حمولةٌ قديمةٌ بلا `switchToken` في عنصر الأخ ⇒ الطريقُ القديم حرفياً (نداءُ الخادم).
+   🔒 والمحجوبُ مالياً يصل `blocked:true` **بلا رمز** ⇒ رسالةُ الحجب محلّياً. */
+function _stuLocalSwitchResult(sib) {
+  var others = [];
+  var list = (APP.user && APP.user.siblings) || [];
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && list[i].studentId !== sib.studentId) others.push(list[i]);
+  }
+  // الحسابُ الحاليّ يصير أخاً في قائمة الجديد — برمزه الصالح، فالعودةُ إليه محلّيةٌ أيضاً.
+  others.unshift({
+    studentId: APP.user.id, name: APP.user.name, class: APP.user.class || '',
+    section: APP.user.section || '', email: APP.user.email || '',
+    birthdate: APP.user.birthdate || '', switchToken: APP.user.switchToken || ''
+  });
+  var nm = sib.name || '';
+  return {
+    ok: true, role: 'student', studentId: sib.studentId, name: nm,
+    firstName: nm.split(/\s+/)[0], class: sib.class || '', section: sib.section || '',
+    schoolId: APP.user.schoolId, email: sib.email || '', birthdate: sib.birthdate || '',
+    siblings: others, switchToken: sib.switchToken
+  };
+}
+
+/* يطبّق حساباً مُبدَّلاً إليه — مشتركٌ بين التبديل المحلّيّ وردّ الخادم (حمولةٌ قديمة). */
+function _stuApplySwitch(r) {
+  // تفريغ الحالة المؤقتة بالكامل (نفس نمط confirmLogout — إعادة بناء APP كاملاً) كي لا
+  // تتسرب أي بيانات خاصة بالأخ السابق (درجات/ملاحظات/جدول اليوم المخزَّن مؤقتاً...) دون
+  // الحاجة لتعداد كل حقل يدوياً في كل مرة يُضاف فيها حقل كاش جديد مستقبلاً.
+  // ✅ إعادة بناء APP بالذاكرة وحدها لا تكفي — sessionStorage (ssGet/ssSet: درجات/مالية/
+  // واجبات/مخالفات/جدول/حضور) كان يبقى فعلياً من الأخ السابق حتى انقضاء الكاش أو الخروج.
+  var keepTab = APP.currentTab || 'home';
+  if (APP.badgeInterval) { clearInterval(APP.badgeInterval); APP.badgeInterval = null; }
+  try { ssClearAll(); } catch (eSS2) {}
+  // حالة «عرض المزيد» خارج APP — تُفرَّغ هنا صراحةً وإلا ورث الأخ الجديد عدّ الكشف السابق
+  _lmShown = {}; _lmData = {};
+  APP = {
+    user: {
+      id: r.studentId,
+      name: r.name,
+      firstName: r.firstName,
+      class: r.class || '',
+      section: r.section || '',
+      role: r.role,
+      schoolId: r.schoolId,
+      email: r.email || '',
+      birthdate: r.birthdate || '',
+      siblings: r.siblings || [],
+      switchToken: r.switchToken || ''
+    },
+    currentTab: keepTab, loaded: {}, cache: {},
+    newsState: { items: [], page: 1, pageSize: 8, hasMore: false, loading: false },
+    gradesData: null, selectedMonthIdx: 0, teachersList: [], reportsData: null,
+    badgeInterval: null
+  };
+
+  /* 🔴 رصيدُ إعادة محاولة الإقلاع يُصفَّر هنا — تبديلُ الحساب **ليس تحميلَ صفحة**،
+     و`_stuBootRetries` متغيّرُ نطاقٍ عامّ لا يُعاد تصفيرُه بإعادة بناء `APP`. بلا هذا
+     السطر يُحرَم الأخُ المُبدَّلُ إليه من أيّ إعادةِ محاولة **صامتاً** إن كان الرصيدُ
+     استُهلك مع الأخ السابق. (رصدَته مراجعةُ `gas-reviewer` — بند 214-③.) */
+  try { _stuBootResetRetries(); } catch (eBR) {}
+  initApp();
+  if (keepTab !== 'home') goTabByName(keepTab);
+  lsSaveSession();
+}
+
 function switchSibling(targetCode, chip) {
   if (!targetCode || (APP.user && APP.user.id === targetCode)) return;
+
+  var sibs = (APP.user && APP.user.siblings) || [], sib = null;
+  for (var si = 0; si < sibs.length; si++) if (sibs[si] && sibs[si].studentId === targetCode) { sib = sibs[si]; break; }
+  if (sib && sib.blocked === true) {
+    $('app').classList.remove('show');
+    $('blockedTxt').textContent = 'حسابك معلّق مؤقتاً بسبب تأخّر السداد — يُرجى مراجعة إدارة المدرسة.';
+    $('blockedMsg').classList.add('show');
+    return;
+  }
+  if (sib && sib.switchToken) { _stuApplySwitch(_stuLocalSwitchResult(sib)); return; }
+
   if (chip) chip.classList.add('loading');
 
   google.script.run
@@ -4562,44 +4642,7 @@ function switchSibling(targetCode, chip) {
         return;
       }
 
-      // تفريغ الحالة المؤقتة بالكامل (نفس نمط confirmLogout — إعادة بناء APP كاملاً) كي لا
-      // تتسرب أي بيانات خاصة بالأخ السابق (درجات/ملاحظات/جدول اليوم المخزَّن مؤقتاً...) دون
-      // الحاجة لتعداد كل حقل يدوياً في كل مرة يُضاف فيها حقل كاش جديد مستقبلاً.
-      // ✅ إعادة بناء APP بالذاكرة وحدها لا تكفي — sessionStorage (ssGet/ssSet: درجات/مالية/
-      // واجبات/مخالفات/جدول/حضور) كان يبقى فعلياً من الأخ السابق حتى انقضاء الكاش أو الخروج.
-      var keepTab = APP.currentTab || 'home';
-      if (APP.badgeInterval) { clearInterval(APP.badgeInterval); APP.badgeInterval = null; }
-      try { ssClearAll(); } catch (eSS2) {}
-      // حالة «عرض المزيد» خارج APP — تُفرَّغ هنا صراحةً وإلا ورث الأخ الجديد عدّ الكشف السابق
-      _lmShown = {}; _lmData = {};
-      APP = {
-        user: {
-          id: r.studentId,
-          name: r.name,
-          firstName: r.firstName,
-          class: r.class || '',
-          section: r.section || '',
-          role: r.role,
-          schoolId: r.schoolId,
-          email: r.email || '',
-          birthdate: r.birthdate || '',
-          siblings: r.siblings || [],
-          switchToken: r.switchToken || ''
-        },
-        currentTab: keepTab, loaded: {}, cache: {},
-        newsState: { items: [], page: 1, pageSize: 8, hasMore: false, loading: false },
-        gradesData: null, selectedMonthIdx: 0, teachersList: [], reportsData: null,
-        badgeInterval: null
-      };
-
-      /* 🔴 رصيدُ إعادة محاولة الإقلاع يُصفَّر هنا — تبديلُ الحساب **ليس تحميلَ صفحة**،
-         و`_stuBootRetries` متغيّرُ نطاقٍ عامّ لا يُعاد تصفيرُه بإعادة بناء `APP`. بلا هذا
-         السطر يُحرَم الأخُ المُبدَّلُ إليه من أيّ إعادةِ محاولة **صامتاً** إن كان الرصيدُ
-         استُهلك مع الأخ السابق. (رصدَته مراجعةُ `gas-reviewer` — بند 214-③.) */
-      try { _stuBootResetRetries(); } catch (eBR) {}
-      initApp();
-      if (keepTab !== 'home') goTabByName(keepTab);
-      lsSaveSession();
+      _stuApplySwitch(r);
     })
     .withFailureHandler(function (e) {
       if (chip) chip.classList.remove('loading');
@@ -8194,7 +8237,7 @@ function renderReportsBody(data) {
           'بناءً على ' + (s.subjectsCount || 0) + ' مادة' +
           '</div>' +
           '<div style="font-size:11px; color:var(--muted); text-align:center; margin-top:4px;">' +
-          'نسبة إنجاز التقييم حتى الآن — يكتمل السقف تدريجياً مع تقدّم الفصل' +
+          'يُحسب من الأشهر المكتملة الرصد فقط' +
           '</div></div>';
 
   // إحصائيات
@@ -8219,6 +8262,18 @@ function renderReportsBody(data) {
            '</div>';
     }
   }
+  /* موادُّ بلا شهرٍ مكتمل بعد — تظهر «قيد الرصد» بلا رقمٍ مُختلَق. الحقلُ جديد (2026-09-19)؛
+     حمولةٌ قديمةٌ بلا الحقل ⇒ لا شيء يُعرض. */
+  if (lists.pendingSubjects && lists.pendingSubjects.length > 0) {
+    if (!(charts.gradesBySubject && charts.gradesBySubject.length)) h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--pr-d);">📊 درجاتك حسب المادة</div>';
+    for (var ps = 0; ps < lists.pendingSubjects.length; ps++) {
+      h += '<div class="subj-bar">' +
+           '<span class="lbl">' + esc(lists.pendingSubjects[ps].subject) + '</span>' +
+           '<div class="track"></div>' +
+           '<span class="v" style="color:var(--muted); font-size:12px;">قيد الرصد</span>' +
+           '</div>';
+    }
+  }
 
   // مقارنة مع متوسط الفصل
   if (charts.comparisonChart && charts.comparisonChart.length > 0) {
@@ -8235,7 +8290,7 @@ function renderReportsBody(data) {
              /* الأساسُ يُعلَن: «متوسّط الفصل 92» على قيمةٍ واحدة ليس متوسّطَ فصل.
                 وحمولةٌ مخزَّنة قبل هذا التغيير لا تحمل الحقل ⇒ يُحذَف السطر بلا كسر. */
              (cm.classBase ? ' <span style="opacity:.72">(الأساس: ' + esc(cm.classBase) +
-                             ' طالباً)</span>' : '') +
+                             ' طالب)</span>' : '') +
            '</div>' +
            '<span class="v" style="color:' + diffColor + ';">' + diffSign + diff.toFixed(1) + '</span>' +
            '</div>';
@@ -8255,12 +8310,31 @@ function renderReportsBody(data) {
            '</div>';
     }
   }
+  /* رصدٌ جزئيّ لم يكتمل — يُعرض موسوماً «قيد الرصد» لا درجةً مستلمة (حقلٌ جديد 2026-09-19). */
+  if (lists.pendingGrades && lists.pendingGrades.length > 0) {
+    h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--muted);">⏳ قيد الرصد (لم يكتمل بعد)</div>';
+    for (var pg = 0; pg < lists.pendingGrades.length; pg++) {
+      var pgi = lists.pendingGrades[pg];
+      h += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg); border-radius:8px; margin-bottom:6px; opacity:.8;">' +
+           '<div><div style="font-weight:600;">' + esc(pgi.subject) + '</div>' +
+           '<div style="font-size:11px; color:var(--muted);">' + esc(pgi.month || '') + ' · رُصد جزءٌ من الدرجة</div></div>' +
+           '<span style="font-size:12px; color:var(--muted);">قيد الرصد</span>' +
+           '</div>';
+    }
+  }
+
+  /* العددُ الكلّيّ من الملخّص لا طولُ القائمة المعروضة (آخر 5) — كان «(5)» تحت بطاقة «31». */
+  function _cntLabel(total, shown) {
+    if (!shown) return '';
+    var t = (typeof total === 'number' && total >= shown) ? total : shown;
+    return ' <span style="font-size:12px; font-weight:400;">(' + t + (t > shown ? ' · آخر ' + shown : '') + ')</span>';
+  }
 
   // ── المميزات / الإيجابيات ─────────────────────────────
   var hasMerits = lists.topMerits && lists.topMerits.length > 0;
   h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--ok);">' +
        '⭐ المميزات / الإيجابيات' +
-       (hasMerits ? ' <span style="font-size:12px; font-weight:400;">(' + lists.topMerits.length + ')</span>' : '') +
+       (hasMerits ? _cntLabel(s.meritsCount, lists.topMerits.length) : '') +
        '</div>';
   if (hasMerits) {
     for (var tm = 0; tm < lists.topMerits.length; tm++) {
@@ -8278,7 +8352,7 @@ function renderReportsBody(data) {
   var hasViolations = lists.topViolations && lists.topViolations.length > 0;
   h += '<div style="font-weight:700; margin:18px 0 10px; color:var(--err);">' +
        '⚠️ ملاحظات تحتاج إلى متابعة' +
-       (hasViolations ? ' <span style="font-size:12px; font-weight:400;">(' + lists.topViolations.length + ')</span>' : '') +
+       (hasViolations ? _cntLabel(s.violationsCount, lists.topViolations.length) : '') +
        '</div>';
   if (hasViolations) {
     for (var tv = 0; tv < lists.topViolations.length; tv++) {
