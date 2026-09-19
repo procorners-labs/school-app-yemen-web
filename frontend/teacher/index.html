@@ -19858,10 +19858,11 @@ function _tcPlayVideo(el) {
 }
 
 // شعار المدرسة (overlay) على صور الأخبار — يُجلب مرّة ويُكاش
-function _tcToLh3(u) {
-  var s = String(u || ''), d = s.match(/[?&]id=([a-zA-Z0-9_-]+)/) || s.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  return d ? ('https://lh3.googleusercontent.com/d/' + d[1] + '=w200') : s;
-}
+/* يفوّض إلى `_tsLh3` في `_js-news-studio-spec.html` — **مُطبِّعٌ واحدٌ في المشروع**.
+   كانت نسختان بنفس الـregex وعرضَين مختلفين، وذاك بالضبط ما يتباعد صامتاً: إصلاحُ
+   نمطِ رابطٍ في إحداهما يترك الأخرى تُلوّث اللوحة. و`=w200` يبقى هنا لأنه مقاسُ
+   شارةِ الشعار فعلاً — الفارقُ عرضٌ مقصود لا صيغةٌ ثانية. */
+function _tcToLh3(u) { return _tsLh3(u, 200); }
 /* ضمان الشعار: طابور انتظار موحّد — أي مستدعٍ (معاينة/مشاركة/شرائح) ينتظر
    الجلبة الجارية نفسها بدل الاعتماد على توقيت نداء واحد قد يفشل؛ الفشل عابر
    (يُفرَّغ الطابور بقيمة فارغة) ويُسمح بمحاولة جديدة عند الاستدعاء التالي. */
@@ -20048,11 +20049,21 @@ function _tcNewsDesign(n) {
   for (var ri = 0; ri < _TC_DSGN_REGISTRY.length; ri++) {
     if (_TC_DSGN_REGISTRY[ri].k === out.t) { reg = _TC_DSGN_REGISTRY[ri]; break; }
   }
+  /* 🔴 **العتامةُ تُقرأ من اللقطة أوّلاً — والسجلُّ تراجعٌ لا مصدر.**
+     كان الاستردادُ من السجلّ غيرَ مشروط، فيحرّك المستخدمُ منزلقَ شدّة التعتيم
+     ويرى الأثرَ حيّاً، ثمّ يعود القالبُ بعد الحفظ إلى عتامةِ السجلّ **بلا رسالة**.
+     والمدى نفسُه المفروضُ خادمياً في `_newsDesignSanitize` — لا مدىً ثانٍ يتباعد. */
+  var ovSnap = (typeof o.ov === 'number' && isFinite(o.ov))
+    ? Math.max(0.35, Math.min(0.95, o.ov)) : null;
+
   if (reg) {
     if (reg.ph) out.ph = reg.ph;
     if (typeof reg.ov === 'number') out.ov = reg.ov;
     if (reg.sd) out.sd = reg.sd;
   }
+  /* بعد السجلّ عمداً: لقطةُ المستخدم تغلب افتراضَ القالب، ولقطةُ v1 بلا `ov`
+     تبقى على قيمة السجلّ تماماً كما كانت (صفرُ تغيير للأخبار المنشورة). */
+  if (ovSnap !== null) out.ov = ovSnap;
   return out;
 }
 
@@ -20888,7 +20899,15 @@ function _dpEnsureUI() {
     '.dp-lbl{font-size:.74rem;font-weight:700;margin-top:5px;}' +
     '.dp-sug{display:inline-block;background:#16a34a;color:#fff;border-radius:10px;padding:1px 7px;font-size:.6rem;margin-inline-start:4px;}' +
     '.dp-none-box{min-height:118px;border:2px dashed var(--border,#cbd5e1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.95rem;color:var(--text-light,#64748b);line-height:1.5;}' +
-    '.dp-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border,#e2e8f0);}';
+    '.dp-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border,#e2e8f0);}' +
+    /* شريط الألوان */
+    '.dp-cols{display:flex;gap:10px;padding:8px 16px 0;flex-wrap:wrap;align-items:center;}' +
+    '.dp-col{display:flex;align-items:center;gap:5px;font-size:.74rem;font-weight:700;}' +
+    '.dp-col input[type=color]{width:30px;height:26px;padding:0;border:1px solid var(--border,#e2e8f0);border-radius:6px;background:none;cursor:pointer;}' +
+    '.dp-ovbox{display:flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;}' +
+    '.dp-ovbox input[type=range]{width:110px;}' +
+    '.dp-cbtn{border:1px solid var(--border,#e2e8f0);background:none;border-radius:16px;padding:3px 10px;font-size:.72rem;cursor:pointer;color:inherit;}' +
+    '.dp-warn{margin:6px 16px 0;padding:6px 10px;border-radius:8px;font-size:.74rem;line-height:1.6;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}';
   document.head.appendChild(st);
 
   var wrap = document.createElement('div');
@@ -20904,6 +20923,18 @@ function _dpEnsureUI() {
       '<div class="dp-hint">كثافة الزخرفة</div><div class="dp-sizes" id="dpDecor"></div>' +
       '<div class="dp-hint">المرحلة</div><div class="dp-sizes" id="dpStage"></div>' +
       '<div class="dp-hint">الهوية اللونية</div><div class="dp-sizes" id="dpGender"></div>' +
+      '<div class="dp-hint">ألوان التصميم المختار</div>' +
+      '<div class="dp-cols">' +
+        '<label class="dp-col">إبراز <input type="color" id="dpColAc" oninput="_dpColChange()"></label>' +
+        '<label class="dp-col">تدرّج غامق <input type="color" id="dpColG0" oninput="_dpColChange()"></label>' +
+        '<label class="dp-col">تدرّج فاتح <input type="color" id="dpColG1" oninput="_dpColChange()"></label>' +
+        '<span class="dp-ovbox">تعتيم ' +
+          '<input type="range" id="dpColOv" min="35" max="95" step="1" oninput="_dpColChange()">' +
+          '<span id="dpColOvVal">—</span></span>' +
+        '<button type="button" class="dp-cbtn" onclick="_dpColBrand()">ألوان مدرستي</button>' +
+        '<button type="button" class="dp-cbtn" onclick="_dpColReset()">إعادة الضبط</button>' +
+      '</div>' +
+      '<div class="dp-warn hidden" id="dpColWarn"></div>' +
       '<div class="dp-grid" id="dpGrid"></div>' +
       '<div class="dp-foot">' +
         '<button type="button" class="btn btn-secondary" onclick="_dpCancel()">رجوع</button>' +
@@ -20934,6 +20965,20 @@ function _dpOpen(opts) {
     sel       : pre ? (pre.none ? '__none' : pre.t) : _tcNewsCardType(opts.text),
     manual    : !!pre     // لقطة سابقة = اختيار يدوي مثبَّت لا يتزحزح بالكتابة
   };
+  /* ألوانُ البداية: من اللقطة المحفوظة إن وُجدت، وإلّا من أصلِ التصميم.
+     🔴 واللقطةُ تحمل `c`/`g` **دائماً** منذ v1، فالتحريرُ يعمل رجعياً على كلّ
+     خبرٍ منشور — الناقصُ كان الواجهةَ وحدَها لا التخزين. و`ov` من v2 فقط،
+     وغيابُها يعني «أصلُ التصميم» لا صفراً. */
+  _dpState.col = (function () {
+    if (_dpState.sel === '__none') return null;
+    var def = _dpColDefaults(_dpState.sel);
+    if (!pre || pre.none) return def;
+    return {
+      c  : /^#[0-9a-fA-F]{3,6}$/.test(String(pre.c || '')) ? pre.c : def.c,
+      g  : (pre.g && pre.g.length === 2) ? [pre.g[0], pre.g[1]] : def.g,
+      ov : (typeof pre.ov === 'number') ? pre.ov : def.ov
+    };
+  })();
   /* لقطة قديمة تشير لقالب صورة بينما الخبر لم يعد يحمل صورة (حُذف المرفق مثلاً) ⇒ البطاقة
      المختارة لن تُعرَض في الشبكة إطلاقاً فيبدو المعرض بلا تحديد. تراجُع صريح للافتراضي. */
   if (!_dpState.img && _dpState.sel !== '__none') {
@@ -20949,6 +20994,10 @@ function _dpOpen(opts) {
   _dpRenderDecor();
   _dpRenderStage();
   _dpRenderGender();
+  _dpSyncColInputs();
+  /* 🔴 الحاجزُ يُقاس **عند الفتح** لا عند التغيير وحدَه: لقطةٌ محفوظةٌ بألوانٍ
+     ضعيفةِ التباين (حُفظت قبل إدخال الحاجز) كانت ستفتح بزرِّ حفظٍ فعّال. */
+  _dpColGuard();
   _dpRenderGrid();
   // ضمان الشعار في المعاينات: إن وصل بعد فتح المعرض تُعاد الشبكة موسومة به
   var _dpHadLogo = !!window._schoolLogo;
@@ -20992,6 +21041,12 @@ function _dpSelect(k) {
   if (!_dpState) return;
   _dpState.sel = k;
   _dpState.manual = true;
+  /* 🔴 الألوانُ تعود إلى أصلِ التصميمِ الجديد عند التبديل — ونقلُها بين تصميمين
+     يُنتج تكويناً لم يصمّمه أحد (لونُ إبرازِ «ثنائي اللون» على «مجلة» مثلاً)
+     ويبدو اختياراً مقصوداً. ومن أرادها فليُعِد ضبطَها صراحةً بعد التبديل. */
+  if (k !== '__none') _dpState.col = _dpColDefaults(k);
+  _dpSyncColInputs();
+  _dpColGuard();
   _dpRenderGrid();
 }
 
@@ -21028,6 +21083,127 @@ function _dpSelectDecor(k)  { if (!_dpState) return; _dpState.decor  = k; _dpRen
 function _dpSelectStage(k)  { if (!_dpState) return; _dpState.stage  = k; _dpRenderStage();  _dpRenderGrid(); }
 function _dpSelectGender(k) { if (!_dpState) return; _dpState.gender = k; _dpRenderGender(); _dpRenderGrid(); }
 
+/* ══════ ألوانُ التصميم المختار — أربعةُ متغيّرات لا أكثر ═══════════════════════
+   🔴 **ولا تُوسَّع القائمةُ بلا توسيع الرسّامَين معاً**: `ac` و`g0`/`g1` و`ov` هي
+   بالضبط ما تستهلكه التخطيطاتُ الأربعةَ عشر من `S`، وما عداها ثوابتُ قراءةٍ
+   مُسمّاةٌ في `_TS_TOKENS` عمداً (‏`ink`/`paper` ركيزتا تباينٍ فوق أسطحٍ ملوّنة).
+
+   🎯 **والتحريرُ يخصّ التصميمَ المختارَ وحدَه، والشبكةُ تبقى كتالوجاً بألوانه
+   الأصلية** — وإلّا صارت أربعةَ عشرَ بطاقةً بلونٍ واحد فلا يُميَّز تخطيطٌ من آخر. */
+function _dpColDefaults(key) {
+  var m = _tcDsgnByKey(key);
+  return { c: m.c, g: [(m.g && m.g[0]) || '#0f2545', (m.g && m.g[1]) || '#1149a3'],
+           ov: (typeof m.ov === 'number') ? m.ov : 0.9 };
+}
+
+/* الميتا المستعملةُ في الرسم: مُخصَّصةٌ للمختار، وأصليّةٌ لما عداه. */
+function _dpMetaFor(m) {
+  if (!_dpState || !_dpState.col || m.k !== _dpState.sel) return m;
+  var col = _dpState.col, out = {};
+  for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) out[k] = m[k];
+  out.c = col.c; out.g = [col.g[0], col.g[1]];
+  if (typeof m.ov === 'number' || typeof col.ov === 'number') out.ov = col.ov;
+  return out;
+}
+
+function _dpSyncColInputs() {
+  if (!_dpState) return;
+  var col = _dpState.col;
+  var hide = (_dpState.sel === '__none');
+  var bar = document.querySelector('.dp-cols');
+  if (bar) bar.style.display = hide ? 'none' : '';
+  if (hide || !col) return;
+  var a = document.getElementById('dpColAc'), g0 = document.getElementById('dpColG0'),
+      g1 = document.getElementById('dpColG1'), ov = document.getElementById('dpColOv'),
+      ovv = document.getElementById('dpColOvVal');
+  if (a)  a.value  = _dpHex6(col.c);
+  if (g0) g0.value = _dpHex6(col.g[0]);
+  if (g1) g1.value = _dpHex6(col.g[1]);
+  if (ov) ov.value = String(Math.round(col.ov * 100));
+  if (ovv) ovv.textContent = String(Math.round(col.ov * 100)) + '٪';
+}
+
+/* `<input type=color>` يقبل `#rrggbb` حصراً — و`#fff` يُقرأ فارغاً فيقفز المنتقي
+   إلى الأسود **بلا رسالة**، فتتغيّر ألوانُ المستخدم بمجرّد فتح الشريط. */
+function _dpHex6(h) {
+  var s = String(h || '').trim();
+  if (!/^#[0-9a-fA-F]{3,6}$/.test(s)) return '#000000';
+  var b = s.slice(1);
+  if (b.length === 3) b = b.charAt(0) + b.charAt(0) + b.charAt(1) + b.charAt(1) + b.charAt(2) + b.charAt(2);
+  return '#' + b.slice(0, 6).toLowerCase();
+}
+
+/* نصوعٌ نسبيٌّ بصيغة WCAG — لا تقريبَ خطّيّ: الفرقُ بينهما يقلب الحكمَ عند الحدّ. */
+function _dpLum(hex) {
+  var h = _dpHex6(hex).slice(1), o = [];
+  for (var i = 0; i < 3; i++) {
+    var v = parseInt(h.substr(i * 2, 2), 16) / 255;
+    o.push(v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  }
+  return 0.2126 * o[0] + 0.7152 * o[1] + 0.0722 * o[2];
+}
+function _dpContrastWhite(hex) { return 1.05 / (_dpLum(hex) + 0.05); }
+
+/* 🔴 **حاجزٌ لا تحذير.** النصُّ أبيضُ في كلّ التخطيطات فوق التدرّج، وخلفيةٌ فاتحةٌ
+   تجعله غيرَ مقروءٍ — والمستخدمُ يراه سليماً على شاشته الساطعة ثمّ لا يُقرأ في
+   المنشور. ⇒ الحفظُ يُعطَّل حتى يُصحَّح أو يُضغط «إعادة الضبط» (جذر بند 24 و8،
+   ونفسُ مبدأ `_smpComposite` الذي يُبقي الشريطَ الأسودَ **تحت** لون القالب). */
+function _dpColGuard() {
+  var warn = document.getElementById('dpColWarn');
+  var btn  = document.getElementById('dpConfirmBtn');
+  if (!warn || !btn || !_dpState) return true;
+  if (_dpState.sel === '__none' || !_dpState.col) {
+    warn.className = 'dp-warn hidden'; btn.disabled = false; return true;
+  }
+  var bad = [], col = _dpState.col;
+  if (_dpContrastWhite(col.g[0]) < 4.5) bad.push('التدرّج الغامق');
+  if (_dpContrastWhite(col.g[1]) < 4.5) bad.push('التدرّج الفاتح');
+  if (bad.length) {
+    warn.className = 'dp-warn';
+    warn.textContent = '⚠️ ' + bad.join(' و') + ': التباين مع النصّ الأبيض أقلّ من الحدّ ' +
+      'المقروء (4.5:1) — العنوان سيصعب قراءته في المنشور. غيّر اللون أو اضغط «إعادة الضبط».';
+    btn.disabled = true;
+    return false;
+  }
+  warn.className = 'dp-warn hidden'; btn.disabled = false;
+  return true;
+}
+
+function _dpColChange() {
+  if (!_dpState || !_dpState.col) return;
+  var a = document.getElementById('dpColAc'), g0 = document.getElementById('dpColG0'),
+      g1 = document.getElementById('dpColG1'), ov = document.getElementById('dpColOv'),
+      ovv = document.getElementById('dpColOvVal');
+  if (a)  _dpState.col.c    = a.value;
+  if (g0) _dpState.col.g[0] = g0.value;
+  if (g1) _dpState.col.g[1] = g1.value;
+  if (ov) _dpState.col.ov   = Math.max(0.35, Math.min(0.95, (+ov.value || 90) / 100));
+  if (ovv) ovv.textContent = String(Math.round(_dpState.col.ov * 100)) + '٪';
+  _dpColGuard();
+  _dpRenderGrid();
+}
+
+/* «ألوان مدرستي» — من هوية المستأجر الحيّة إن وُجدت. 🔴 ولا يُخترع لونٌ عند
+   غيابها: زرٌّ يبدو عاملاً ويُنتج لوناً عشوائياً أسوأُ من زرٍّ يقول إنه لا يجد. */
+function _dpColBrand() {
+  if (!_dpState || !_dpState.col) return;
+  var b = window._schoolBrand || {};
+  var picked = [b.color, b.primary, b.accent].filter(function (x) {
+    return x && /^#[0-9a-fA-F]{3,6}$/.test(String(x));
+  });
+  if (!picked.length) { toast('لا توجد ألوان هوية محفوظة لهذه المدرسة', 'warning'); return; }
+  _dpState.col.c = picked[0];
+  if (picked[1]) _dpState.col.g[0] = picked[1];
+  if (picked[2]) _dpState.col.g[1] = picked[2];
+  _dpSyncColInputs(); _dpColGuard(); _dpRenderGrid();
+}
+
+function _dpColReset() {
+  if (!_dpState || _dpState.sel === '__none') return;
+  _dpState.col = _dpColDefaults(_dpState.sel);
+  _dpSyncColInputs(); _dpColGuard(); _dpRenderGrid();
+}
+
 /* شبكة المعاينات: كل تصاميم السجل (بلا استثناء — إضافة عنصر للسجل تظهر هنا
    تلقائياً) + خيار «بلا تصميم». المُرشَّح تلقائياً يحمل شارة «مقترح». */
 function _dpRenderGrid() {
@@ -21044,7 +21220,7 @@ function _dpRenderGrid() {
     if (m.ph && !_dpState.img) continue;
     h += '<div class="dp-card' + (m.k === _dpState.sel ? ' sel' : '') +
          '" onclick="_dpSelect(\'' + m.k + '\')">' +
-      _tcCoverHtml(text, '', m, _dpState.size, true, stage, decor, gender, 'tc-cv-dp-' + m.k, _dpState.img) +
+      _tcCoverHtml(text, '', _dpMetaFor(m), _dpState.size, true, stage, decor, gender, 'tc-cv-dp-' + m.k, _dpState.img) +
       '<div class="dp-lbl">' + esc(m.l) +
         (m.k === sug ? ' <span class="dp-sug">مقترح تلقائياً</span>' : '') + '</div>' +
     '</div>';
@@ -21062,16 +21238,23 @@ function _dpRenderGrid() {
    (الأخبار المنشورة فعلاً بالشكل القديم) لا تُعاد كتابتها ولا تمرّ بهذه الدالة
    أبداً، فتبقى بشكلها الأصلي تماماً (نفس مبدأ الثبات من PR#137). */
 function _dpBuildDesignStr() {
-  if (_dpState.sel === '__none') return JSON.stringify({ v: 1, none: true });
+  if (_dpState.sel === '__none') return JSON.stringify({ v: 2, none: true });
   var m = _tcDsgnByKey(_dpState.sel);
+  var col = _dpState.col || _dpColDefaults(_dpState.sel);
   // st يُخزَّن كاختيار المعلم الخام (قد يكون 'auto') — القرّاء يفكّون auto حيّاً.
-  // الحقول الثلاثة تُضاف تراكمياً إلى v2 (لا رفع إصدار)؛ اللقطات القديمة لا تمرّ هنا.
-  return JSON.stringify({ v: 2, t: m.k, s: _dpState.size, l: m.l, c: m.c, g: m.g, i: m.i,
+  /* 🔴 الألوانُ من حالة المحرّر لا من السجلّ — وأخذُها من السجلّ كان يجعل الشريطَ
+     كلَّه بلا أثر: المعاينةُ تتغيّر واللقطةُ تُحفَظ بالأصل، فيعود القالبُ بعد
+     الحفظ إلى ألوانه **بلا أيّ رسالة**. */
+  return JSON.stringify({ v: 2, t: m.k, s: _dpState.size, l: m.l,
+    c: col.c, g: [col.g[0], col.g[1]], ov: col.ov, i: m.i,
     st: _dpState.stage, dc: _dpState.decor, gn: _dpState.gender });
 }
 
 function _dpConfirm() {
   if (!_dpState) return;
+  /* حزامٌ ثانٍ فوق تعطيل الزرّ: `disabled` سمةٌ في DOM يُزيلها أيُّ مسارٍ يُعيد
+     بناءَ الشريط (أو مستخدمٌ عبر Console). والحاجزُ في الدالّة هو الفاعل. */
+  if (!_dpColGuard()) { toast('صحّح تباين الألوان قبل الحفظ', 'warning'); return; }
   var cbf = _dpState.onConfirm;
   var d = '';
   try { d = _dpBuildDesignStr(); } catch (e) { d = ''; }
@@ -21217,6 +21400,718 @@ function _tcFirstNewsImage(rawAttach) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   مواصفةُ تخطيطات استوديو الأغلفة — الجزءُ النقيّ
+   ───────────────────────────────────────────────────────────────────────────
+   🔴 **هذا الملفّ لا يلمس DOM إطلاقاً، وهذا قيدٌ لا صدفة.**
+      عليه وحدَه يقوم `_build/check-studio-parity.js`: يُقيّمه في `vm` بلا متصفّح
+      فيقيس ١٦٨ شجرةَ تخطيطٍ في Node. أوّلُ `document` هنا يُسقط الفاحصَ كلَّه،
+      ويحرسه تأكيدٌ صريح في البوّابة.
+
+   القرارُ المعماريّ الذي يبرّر وجودَ الملفّ:
+
+     _TS_SPECS[sd] ──► _tsSolve(spec,S,W,H,measure) ──► شجرةُ DL (بكسل مطلق)
+                             (هنا · نقيّة)              ├─► _tsEmitHtml  → HTML
+                                                        └─► _tsPaintList → canvas
+
+   **المُصيِّران لا يفسّران المواصفة — يرسمان شجرةً محلولةً.** ولو فسّر كلٌّ منهما
+   المواصفةَ بنفسه لصار عندنا مصدرا حقيقةٍ بثوب مصدرٍ واحد، وهو بعينه ما يُنتج
+   «عدّلتُ المعاينة ولم يتغيّر المنشور».
+
+   🟢 والاصطلاحُ ليس جديداً على المستودع: `_tcComputeCoverSlides`
+      (‏`_js-news-feed.html:1428`) دالّةُ قياسٍ/تقسيمٍ **نقيّة** يتقاسمها مسارُ HTML
+      ومسارُ canvas منذ إدخال الأغلفة النصّية. نحن نُعمّمها من «النصّ» إلى
+      «التخطيط كلّه» — لا نُنشئ اصطلاحاً ثانياً يتباعد عنها.
+
+   ⚠️ **وثمنٌ يُعلَن ولا يُخفى:** مسارُ HTML يفقد `display:flex` — الصناديقُ تُبعث
+      `position:absolute` بالبكسل من نفس الشجرة. الفليكسُ اليوم محرّكٌ ثانٍ لا
+      نظيرَ له في canvas، وإبقاؤه يعني أن كلَّ فرقٍ في حلّه انحرافٌ صامت.
+      والمعمارُ يصمد لأن التخطيطات الأربعة عشر **لا تستعمل فليكس عاماً**: صفٌّ أو
+      عمودٌ مفردُ السطر · `gap` · `space-between` · `margin-top:auto` · ونِسَبٌ
+      ثابتة. لا `wrap` ولا `grid` حقيقيّ ⇒ الحالُّ ~٤٠٠ سطرٍ لا محرّكَ تخطيط.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* أساسُ تحويل cqmin: min(W,H) في المقاسات الثلاثة — يحرس ثباتَه تأكيدٌ في
+   `_build/test-regression-guards.js` (استوديو الأغلفة ③). */
+var _TS_BASE = 1080;
+
+/* n cqmin ⇒ بكسل (عدداً). 🔴 التدويرُ لخانتين **عقدٌ لا تنسيق**: الصيغةُ القديمة
+   `Math.round(n*1080)/100` تُنتج دقّةَ `.08px`، وبصمةُ خطّ الأساس تعتمدها. */
+function _tsPx(n) { return Math.round(n * _TS_BASE) / 100; }
+
+/* الخطّ: Cairo مُستضاف ذاتياً في `_css-main.html` — ملفٌّ متغيّرٌ واحد يغطّي
+   200..1000 ⇒ **صفرُ وزنٍ تصنيعيّ**، فالقياسُ والرسمُ يتّفقان بنيوياً. */
+var _TS_FONT = "'Cairo','Segoe UI',Tahoma,sans-serif";
+
+/* ── رموزُ الألوان ─────────────────────────────────────────────────────────────
+   الأربعةُ القابلةُ لتحرير المستخدم تأتي من `S`: ac · g0 · g1 · ov.
+   وما عداها **ثابتٌ لكن مُسمّىً** — وثلاثةُ أسبابٍ مقيسة لا رأي:
+     ① أيُّ اشتقاقٍ يغيّر بكسلاً اليوم، فيُسقط معيارَ «صفر تغيير بصريّ» الذي تقوم
+        عليه الـ١٤ دفعةَ ترحيلٍ القادمة.
+     ② `ink` و`paper` **ركيزتا قراءة** فوق أسطحٍ ملوّنة؛ اشتقاقُهما من مُدخَلِ
+        المستخدم يجعل قابليةَ القراءة دالّةً في مُدخَلٍ غير محروس ⇒ نصٌّ يختفي.
+     ③ `teal` **الطرفُ الثالث** في تكوينٍ ثنائيّ (D5 عند ١٤٥٪ · D10 شريطاً)، لا
+        لونٌ محايدٌ يُشتقّ من طرفَي التدرّج.
+   🎯 والتسميةُ تجعل قرارَ الاشتقاق لاحقاً **تبديلَ جدولٍ واحد بـPR واحد**، لا
+      جراحةً عبر أربعةَ عشرَ تخطيطاً. */
+var _TS_TOKENS = {
+  scrimRGB: '6,15,30',
+  c: {
+    ink      : '#06111f',
+    inkDeep  : '#060f1e',
+    navy     : '#0b1930',
+    paper    : '#f8faff',
+    teal     : '#1dbfa6',
+    muted    : '#5d7a9e',
+    deepNavy : '#0f2545',
+    white    : '#fff'
+  }
+};
+
+/* ── الموتيفات ────────────────────────────────────────────────────────────────
+   مصدرٌ واحد يقرأه المُصيِّران: HTML يبني منه `<symbol>` لكلّ `gid`، وcanvas يبني
+   منه `Path2D`. الإطارُ `viewBox 0 0 100 100` في الاثنين ⇒ معاملُ القياس `d/100`.
+   و`rng` دائرةٌ **مُحاطة** لا ممتلئة، فتحمل `sw` صراحةً كما في `_TC_SHAPE_OPS`. */
+var _TS_SYMBOLS = {
+  dia: { d: 'M50 6 94 50 50 94 6 50Z', sw: 0 },
+  str: { d: 'M50 3 62 37 98 38 69 60 80 96 50 74 20 96 31 60 2 38 38 37Z', sw: 0 },
+  spk: { d: 'M50 2C53 32 68 47 98 50 68 53 53 68 50 98 47 68 32 53 2 50 32 47 47 32 50 2Z', sw: 0 },
+  rng: { d: 'M8 50a42 42 0 1 0 84 0a42 42 0 1 0-84 0', sw: 10 }
+};
+
+/* ── القدراتُ المُعلَنة ────────────────────────────────────────────────────────
+   🔴 **أهمُّ حارسٍ في المعمار كلِّه.** وضعُ الفشل الطبيعيّ لهذه البنية ليس خطأً
+   يرمي، بل **مُصيِّرٌ يتجاهل خاصّيةً صامتاً**: الحقلُ منفَّذٌ في HTML وغائبٌ عن
+   canvas، فتختلف المعاينةُ عن المنشور بلا أيّ رسالة — وهو بالضبط الفئةُ التي
+   جاءت هذه الخطّةُ لإبطالها. `_tsValidate` يرفض عند التأليف، والفاحصُ في
+   `_build/` يُطابق هذا الإعلانَ **بمصدر المُصيِّرَين** لا بكلمةٍ مكتوبة هنا. */
+var _TS_CAP = {
+  nodes: ['layer', 'row', 'col', 'rect', 'grad', 'img', 'text', 'logo', 'qr', 'sym'],
+  props: {
+    /* 🔴 `align` و`self` مفتاحان لا واحد — وخلطُهما التباسٌ دلاليّ أمسكه أوّلُ
+       تشغيلٍ للحالّ: `align` هو `align-items` (يحكم **أبناءَ** الحاوية)،
+       و`self` هو `align-self` (يحكم **الحاويةَ نفسَها** داخل أبيها). وقراءةُ
+       `align` على أنه الثاني تجعل صفّاً كُتب له `align:'end'` ليُحاذي أبناءَه
+       أسفلَ يتقلّص هو إلى مقاسِ محتواه — انحرافٌ يبدو تخطيطاً سليماً. */
+    common : ['t', 'at', 'ch', 'grow', 'basis', 'minw', 'minh', 'maxw', 'push', 'when', 'self',
+              'fill', 'rad', 'stroke', 'ring', 'shadow', 'rot', 'clip', 'blend', 'backdrop', 'op'],
+    layer  : [],
+    row    : ['pad', 'gap', 'align', 'justify'],
+    col    : ['pad', 'gap', 'align', 'justify'],
+    rect   : ['w', 'h'],
+    grad   : ['g', 'to', 'deg', 'st', 'r'],
+    img    : ['slot', 'fit', 'fx'],
+    text   : ['bind', 'pre', 'fs', 'w', 'lh', 'c', 'ls', 'dir', 'align', 'wrap'],
+    logo   : ['d'],
+    qr     : ['d', 'pad'],
+    sym    : ['sym', 'd', 'c']
+  }
+};
+
+/* ── مُحلِّلُ الأطوال ──────────────────────────────────────────────────────────
+   ثلاثُ صيغٍ لا رابعة، وما عداها **يرمي** (fail-closed — طولٌ غيرُ مفهومٍ يُقرأ
+   `NaN` فيصير صندوقاً غيرَ مرئيّ، وذاك فشلٌ صامتٌ لا نقبله):
+     عددٌ        ⇒ cqmin
+     '46%'       ⇒ نسبةٌ من طول المحور في صندوق الأب
+     '100%-6'    ⇒ نسبةٌ ناقص cqmin — يحلّ `calc()` بلا محرّك تعبيرات */
+function _tsLen(v, base) {
+  if (typeof v === 'number') return _tsPx(v);
+  var m = /^\s*(-?[\d.]+)%\s*(?:([+-])\s*([\d.]+))?\s*$/.exec(String(v));
+  if (!m) throw new Error('_tsLen: طول غير مفهوم: ' + v);
+  var px = (base * parseFloat(m[1])) / 100;
+  if (m[2]) px += (m[2] === '-' ? -1 : 1) * _tsPx(parseFloat(m[3]));
+  return Math.round(px * 100) / 100;
+}
+
+/* تدويرٌ موحَّد لكلّ طولٍ يدخل الشجرة — يحرسه تأكيدٌ «كلُّ طولٍ مضاعفُ 0.01». */
+function _tsR2(n) { return Math.round(n * 100) / 100; }
+
+/* ── حلُّ الألوان ─────────────────────────────────────────────────────────────
+   المواصفةُ لا تحمل لوناً حرفياً (يحرسه تأكيدٌ ④ في الفاحص): إمّا رمزٌ من `S`،
+   أو `scrim(...)`، أو اسمٌ من `_TS_TOKENS.c`، أو `rgba(...)` صريحٌ للأبيض الشفّاف
+   وحدَه — وهو اللونُ الوحيدُ الذي لا معنى لتسميته (شفافيةُ الأبيض ليست هويّة). */
+function _tsColor(v, S) {
+  if (v === 'ac') return S.ac;
+  if (v === 'g0') return S.g0;
+  if (v === 'g1') return S.g1;
+  var m = /^scrim\(([^)]+)\)$/.exec(v);
+  if (m) {
+    var a = (m[1] === 'ov') ? S.ov : parseFloat(m[1]);
+    return 'rgba(' + _TS_TOKENS.scrimRGB + ',' + a + ')';
+  }
+  /* 🔴 `alpha(<لون>,<شفافية>)` — ليست راحةً تحريرية بل **حفظُ وصلٍ بلون المستخدم**.
+     المصدرُ يكتب `rgba(17,73,163,.9)` في D10 حرفياً، و`#1149a3` هو **`g1` نفسُه**
+     ⇒ نسخُه رقماً يقطع الصلة: يغيّر المستخدمُ تدرّجَه فيبقى الشريطُ على اللون
+     القديم **بلا أن يفهم لماذا**. وتأكيدُ «صفرُ لونٍ حرفيّ» كان سيمرّ عليه
+     لأن `rgba(...)` مستثناةٌ للأبيض الشفّاف. */
+  var ma = /^alpha\(\s*([^,]+)\s*,\s*([\d.]+)\s*\)$/.exec(v);
+  if (ma) return _tsRgba(_tsColor(ma[1].trim(), S), parseFloat(ma[2]));
+  if (_TS_TOKENS.c[v]) return _TS_TOKENS.c[v];
+  return v;
+}
+
+/* hex ⇒ rgba. يقبل `#abc` و`#aabbcc`؛ وما عداهما يُعاد كما هو (لونٌ مُسمّىً أو
+   `rgba` جاهزة) — لا رميٌ هنا، فالتدقيقُ موضعُه `_tsValidate` والفاحص. */
+function _tsRgba(hex, a) {
+  var s = String(hex);
+  if (s.charAt(0) !== '#') return s;
+  var h = s.slice(1);
+  if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+  if (h.length !== 6) return s;
+  return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' +
+         parseInt(h.slice(4, 6), 16) + ',' + a + ')';
+}
+
+/* ── تطبيعُ روابط Drive إلى lh3 ───────────────────────────────────────────────
+   🔴 **قيدٌ مقيسٌ من جلسة الوركر (2026-09-20) لا تحسينُ جودة:**
+   `lh3.googleusercontent.com` يردّ `Access-Control-Allow-Origin: *` مباشرةً،
+   بينما `drive.google.com/thumbnail` يردّ **302** — **والتحويلُ يُسقط ترويسةَ
+   CORS**. وأصلٌ واحدٌ ملوَّثٌ يُلوّث **اللوحةَ كلَّها** فيسقط `toDataURL` ⇒
+   تصديرُ الغلاف كلِّه يفشل، لا ذلك الأصلُ وحدَه.
+   ⚠️ **ولا يُقرأ هذا ضماناً مطلقاً**: قِيس على أصلٍ عامٍّ واحد من هذا الجهاز.
+   ملفٌّ بمستوى مشاركةٍ مختلف قد يردّ غيرَ ذلك ⇒ **فحصُ `SecurityError` المبكر
+   في مسار التصدير يبقى دائماً لا مؤقّتاً.** */
+function _tsLh3(u, w) {
+  var s = String(u || '');
+  if (!s) return '';
+  var d = s.match(/[?&]id=([a-zA-Z0-9_-]+)/) || s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return d ? ('https://lh3.googleusercontent.com/d/' + d[1] + '=w' + (w || 1600)) : s;
+}
+
+/* ── تدقيقُ المواصفة ─────────────────────────────────────────────────────────
+   يُشغَّل في الفاحص لا في وقت التشغيل (كلفةٌ بلا مقابلٍ على كلّ فتح معرض). */
+function _tsValidate(spec, label) {
+  var errs = [];
+  function walk(n, path) {
+    if (!n || typeof n !== 'object') { errs.push(path + ': عقدةٌ ليست كائناً'); return; }
+    if (_TS_CAP.nodes.indexOf(n.t) < 0) { errs.push(path + ': نوعٌ مجهول ' + n.t); return; }
+    var allowed = _TS_CAP.props.common.concat(_TS_CAP.props[n.t] || []);
+    for (var k in n) {
+      if (!Object.prototype.hasOwnProperty.call(n, k)) continue;
+      if (allowed.indexOf(k) < 0) errs.push(path + ': مفتاحٌ غيرُ معلَن «' + k + '» على ' + n.t);
+    }
+    /* 🔴 `ls` على نصٍّ عربيّ ممنوعٌ بنيوياً: `ctx.letterSpacing` غيرُ مضمونٍ في
+       WebView، والاحتياطُ الوحيد رسمٌ حرفاً-حرفاً — **وذاك يدمّر وصلَ الحروف
+       العربية تدميراً كاملاً**. و`ls` لا يظهر اليوم إلّا على `nameEn` وهو
+       `YEMENSCHOOLZ.COM/<SLUG>` لاتينيٌّ صرف، فالقيدُ بلا كلفة. */
+    if (n.ls && n.dir !== 'ltr') errs.push(path + ': ls بلا dir=ltr');
+    if (n.ch) for (var i = 0; i < n.ch.length; i++) walk(n.ch[i], path + '/' + i + ':' + n.ch[i].t);
+  }
+  walk(spec.root, (label || 'spec') + ':' + spec.root.t);
+  return errs;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   الحالّ — يُنتج شجرةَ صناديقَ مطلقةٍ بالبكسل
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* هل للعقدة قيمةٌ مربوطةٌ حيّة؟ 🔴 يُطبَّق **قبل** توزيع الفجوات — اليوم
+   `_tsNameEn` تُعيد `''` فلا يُنشأ عنصرٌ **ولا تُضاف فجوةٌ ثانية**؛ والترتيبُ
+   المعكوس يُنتج فجوةً يتيمةً عند كلّ مدرسةٍ بلا هاتف أو بلا slug. */
+function _tsAlive(n, S) {
+  if (!n.when) return true;
+  var v = S[n.when];
+  return !!(v && String(v).length);
+}
+
+/* نصُّ العقدة بعد الربط. `pre` سابقةٌ حرفية (‏'☎ ' للهاتف — وهي في المصدر جزءٌ
+   من `_tsPhone` لا من القيمة). */
+function _tsText(n, S) {
+  var v = (n.bind ? S[n.bind] : '') || '';
+  return (n.pre || '') + String(v);
+}
+
+/* لفٌّ جَشِعٌ بالمسافات — نفسُ خوارزمية `_tcComputeCoverSlides` (`:1439`).
+   ⚠️ وهو **ليس لفَّ المتصفّح**: لا قواعدَ كسرٍ يونيكودية ولا `overflow-wrap`
+   على كلمةٍ أطولَ من السطر. الثمنُ معلَنٌ في الخطّة ومقبولٌ عن قصد: معاينةٌ
+   تطابق المنشورَ بكسرٍ يخالف اليومَ قليلاً، خيرٌ من معاينةٍ تخالف المنشور. */
+function _tsWrap(text, maxW, fs, weight, measure) {
+  var words = String(text).split(/\s+/), lines = [], cur = '';
+  for (var i = 0; i < words.length; i++) {
+    if (!words[i]) continue;
+    var probe = cur ? (cur + ' ' + words[i]) : words[i];
+    if (cur && measure(probe, fs, weight) > maxW) { lines.push(cur); cur = words[i]; }
+    else { cur = probe; }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [''];
+}
+
+/* حشوةٌ موحَّدة: عددٌ · [رأسيّ، أفقيّ] · [أعلى، أفقيّ، أسفل] — نفسُ اختزال CSS. */
+function _tsPad(p) {
+  if (p == null) return [0, 0, 0, 0];
+  if (typeof p === 'number') { var a = _tsPx(p); return [a, a, a, a]; }
+  if (p.length === 2) { var v = _tsPx(p[0]), h = _tsPx(p[1]); return [v, h, v, h]; }
+  if (p.length === 4) return [_tsPx(p[0]), _tsPx(p[1]), _tsPx(p[2]), _tsPx(p[3])];
+  var t = _tsPx(p[0]), hh = _tsPx(p[1]), b = _tsPx(p[2]);
+  return [t, hh, b, hh];
+}
+
+/* صندوقٌ من `at` داخل صندوق الأب. 🔴 RTL: `r` مسافةٌ من الحافّة **اليمنى**. */
+function _tsResolveAt(at, pb) {
+  if (at.inset != null) {
+    var s = _tsLen(at.inset, Math.min(pb.w, pb.h));
+    return { x: _tsR2(pb.x + s), y: _tsR2(pb.y + s),
+             w: _tsR2(pb.w - 2 * s), h: _tsR2(pb.h - 2 * s) };
+  }
+  var l = (at.l != null) ? _tsLen(at.l, pb.w) : null;
+  var r = (at.r != null) ? _tsLen(at.r, pb.w) : null;
+  var t = (at.t != null) ? _tsLen(at.t, pb.h) : null;
+  var b = (at.b != null) ? _tsLen(at.b, pb.h) : null;
+  var w = (at.w != null) ? _tsLen(at.w, pb.w) : null;
+  var h = (at.h != null) ? _tsLen(at.h, pb.h) : null;
+
+  if (w == null) w = (l != null && r != null) ? (pb.w - l - r) : pb.w;
+  if (h == null) h = (t != null && b != null) ? (pb.h - t - b) : pb.h;
+  var x = (r != null) ? (pb.x + pb.w - r - w) : (l != null ? pb.x + l : pb.x);
+  var y = (t != null) ? (pb.y + t) : (b != null ? pb.y + pb.h - b - h : pb.y);
+  return { x: _tsR2(x), y: _tsR2(y), w: _tsR2(w), h: _tsR2(h) };
+}
+
+/* المقاسُ الذاتيّ على محورٍ واحد — يُستدعى قبل توزيع الفائض.
+   `avail` قيدُ المحور المتقاطع (يلزم لفَّ النصّ). */
+function _tsIntrinsic(n, S, measure, axis, avail, crossAvail) {
+  if (n.t === 'text') {
+    var txt = _tsText(n, S), fs = _tsPx(n.fs), w = n.w || 800;
+    var lh = (n.lh || 1.25) * fs;
+    if (axis === 'x') {
+      var nat = measure(txt, fs, w) + (n.ls ? n.ls * fs * txt.length : 0);
+      return n.wrap ? Math.min(nat, crossAvail) : nat;
+    }
+    var lines = n.wrap ? _tsWrap(txt, crossAvail, fs, w, measure) : [txt];
+    return _tsR2(lines.length * lh);
+  }
+  if (n.t === 'logo' || n.t === 'qr') return _tsPx(n.d);
+  if (n.t === 'rect') {
+    var v = (axis === 'x') ? n.w : n.h;
+    return (v != null) ? _tsLen(v, avail) : 0;
+  }
+  if (n.t === 'sym') return _tsPx(n.d);
+  if (n.t === 'row' || n.t === 'col') return _tsIntrinsicBox(n, S, measure, axis, avail, crossAvail);
+  return 0;
+}
+
+function _tsIntrinsicBox(n, S, measure, axis, avail, crossAvail) {
+  var pad = _tsPad(n.pad), gap = n.gap ? _tsPx(n.gap) : 0;
+  var kids = [], i;
+  for (i = 0; i < (n.ch || []).length; i++) if (_tsAlive(n.ch[i], S)) kids.push(n.ch[i]);
+  /* ⚠️ الحشوةُ تُنسَب إلى **المحور المسؤول عنه** لا إلى محور الحاوية الرئيس —
+     خلطُهما يُرجع حشوةً أفقيةً في قياسٍ رأسيّ فينحرف كلُّ صندوقٍ ذاتيّ المقاس. */
+  var padAxis  = (axis === 'x') ? (pad[1] + pad[3]) : (pad[0] + pad[2]);
+  var padOther = (axis === 'x') ? (pad[0] + pad[2]) : (pad[1] + pad[3]);
+  var innerOther = Math.max(0, crossAvail - padOther);
+  var main = (n.t === 'row') ? 'x' : 'y';
+  var sum = 0, mx = 0;
+  for (i = 0; i < kids.length; i++) {
+    var s = _tsIntrinsic(kids[i], S, measure, axis, avail, innerOther);
+    if (axis === main) sum += s; else mx = Math.max(mx, s);
+  }
+  if (axis === main) return _tsR2(sum + gap * Math.max(0, kids.length - 1) + padAxis);
+  return _tsR2(mx + padAxis);
+}
+
+/* ── الحالّ الرئيس ────────────────────────────────────────────────────────── */
+function _tsLayout(n, box, S, measure) {
+  var out = { t: n.t, x: box.x, y: box.y, w: box.w, h: box.h };
+  var keys = ['fill', 'rad', 'stroke', 'ring', 'shadow', 'rot', 'clip', 'blend', 'backdrop',
+              'slot', 'fit', 'fx', 'sym', 'c', 'op', 'g', 'to', 'deg', 'st', 'r', 'pad', 'd'];
+  for (var k = 0; k < keys.length; k++) if (n[keys[k]] != null) out[keys[k]] = n[keys[k]];
+
+  /* الألوانُ تُحَلّ هنا مرّةً واحدة — فلا يعرف المُصيِّرُ شيئاً عن `S`. */
+  if (out.fill != null && typeof out.fill === 'string') out.fill = _tsColor(out.fill, S);
+  if (out.c != null) out.c = _tsColor(out.c, S);
+  if (out.stroke) out.stroke = { w: _tsPx(out.stroke.w), c: _tsColor(out.stroke.c, S) };
+  if (out.ring)   out.ring   = { w: _tsPx(out.ring.w),   c: _tsColor(out.ring.c, S) };
+  if (out.shadow) out.shadow = { dx: _tsPx(out.shadow.dx || 0), dy: _tsPx(out.shadow.dy || 0),
+                                 blur: _tsPx(out.shadow.blur || 0), c: _tsColor(out.shadow.c, S) };
+  if (out.rad != null) out.rad = _tsRadii(out.rad, box.w, box.h);
+  if (out.st)   out.st  = _tsStops(out.st, S);
+  if (out.fill && out.fill.st) out.fill = { g: out.fill.g, deg: out.fill.deg, to: out.fill.to,
+                                            st: _tsStops(out.fill.st, S) };
+  if (out.clip && out.clip.poly) out.clip = { poly: _tsPoly(out.clip.poly, box) };
+  if (out.backdrop) out.backdrop = { blur: _tsPx(out.backdrop.blur) };
+
+  /* 🔴 المحتوى يُحَلّ هنا أيضاً، لا في المُصيِّر. العقدُ أن المُصيِّرَ **لا يعرف
+     `S` إطلاقاً** — ولو احتاجه لأصلٍ واحدٍ لانفتح البابُ ليفسّر المواصفةَ بنفسه،
+     وعادت المصدرَين اللذين جاءت البنيةُ كلُّها لإبطالهما.
+     🔴 و`_tsLh3` قيدٌ مقيسٌ من جلسة الوركر (2026-09-20) لا تحسينٌ: صيغةُ
+     `drive.google.com/thumbnail` تردّ **302**، **والتحويلُ يُسقط ترويسةَ CORS**
+     ⇒ الأصلُ يُلوّث اللوحةَ كلَّها فيسقط التصديرُ — لا ذلك الأصلُ وحدَه. */
+  /* 🔴 فيضٌ **مُعلَنٌ** لا عرضيّ: إزاحةٌ سالبةٌ في `at` تصريحٌ من المؤلّف بأن
+     العقدةَ تتجاوز أباها قصداً (المعيّنُ فوق حافّة الشريط في D3 ‏`top:-4cq`).
+     ⚠️ ويُوسَم بدل تليين التأكيد: تأكيدُ «كلُّ صندوقٍ داخل أبيه» يمسك فيضاً
+     حقيقياً أمسكه فعلاً في D2، وإعفاءُ كلّ خارجٍ عن التدفّق كان سيُطفئه. */
+  if (n.at) {
+    var edges = ['t', 'r', 'b', 'l'], ei;
+    for (ei = 0; ei < edges.length; ei++) {
+      if (typeof n.at[edges[ei]] === 'number' && n.at[edges[ei]] < 0) { out.bleed = 1; break; }
+    }
+  }
+
+  if (n.t === 'img')  { out.src = _tsLh3(S.img, 1600); }
+  if (n.t === 'logo') { out.src = _tsLh3(S.logo, 400); out.initial = S.initial || 'م'; out.d = _tsPx(n.d); }
+  if (n.t === 'qr')   { out.src = S.qr || ''; out.d = _tsPx(n.d); out.qpad = _tsPx(n.pad || 0); }
+  if (n.t === 'sym')  { out.d = _tsPx(n.d); }
+
+  if (n.t === 'text') {
+    var fs = _tsPx(n.fs), lh = (n.lh || 1.25) * fs;
+    var txt = _tsText(n, S);
+    out.fs = fs; out.wgt = n.w || 800; out.lh = _tsR2(lh);
+    out.dir = n.dir || 'rtl';
+    /* 🔴 المحاذاةُ يمينٌ حتى مع `dir:'ltr'` — `direction` يغيّر ترتيبَ ثنائيّ
+       الاتجاه لا المحاذاة، و`text-align:right` موروثٌ من `.tc-cv-slide` ولا
+       يُبطله `direction`. جعلُها `left` مع `ltr` تنقل السطرَ اللاتينيّ إلى
+       الحافّة المقابلة في أحدَ عشرَ تخطيطاً — وكلُّها تبدو سليمةً للوهلة الأولى. */
+    out.align = n.align || 'right';
+    out.ls = n.ls ? _tsR2(n.ls * fs) : 0;
+    out.lines = n.wrap ? _tsWrap(txt, box.w, fs, out.wgt, measure) : [txt];
+    out.h = _tsR2(out.lines.length * lh);
+  }
+
+  if (n.ch && n.ch.length) {
+    out.ch = (n.t === 'layer') ? _tsLayerKids(n, out, S, measure)
+                               : _tsFlexKids(n, out, S, measure);
+  }
+  return out;
+}
+
+/* `layer`: كلُّ ابنٍ مطلقٌ بـ`at` داخل صندوق الأب. الابنُ بلا `at` يملأ الأب.
+   🔴 **والمقاسُ الذاتيّ ليس تفصيلاً**: كتلةُ النصّ السفلى في ستّة تخطيطات مثبَّتةٌ
+   بـ`bottom/right/left` **بلا ارتفاع** — ارتفاعُها في CSS محتواها، وتثبيتُها من
+   الأسفل يعني أنها تنمو **صعوداً** كلّما طال العنوان. ومدُّها لكامل الشريحة
+   يُبقي الشكلَ سليماً بالمصادفة وحدَها (الخلفيةُ شفّافة)، ويُكسِر أوّلَ تخطيطٍ
+   يضع خلفيةً أو حدّاً على تلك الكتلة. */
+function _tsLayerKids(n, box, S, measure) {
+  var out = [];
+  for (var i = 0; i < n.ch.length; i++) {
+    var c = n.ch[i];
+    if (!_tsAlive(c, S)) continue;
+    var b = c.at ? _tsResolveAt(c.at, box) : { x: box.x, y: box.y, w: box.w, h: box.h };
+    b = _tsSelfSize(c, b, S, measure);
+    out.push(_tsLayout(c, b, S, measure));
+  }
+  return out;
+}
+
+/* الحجمُ الذاتيّ داخل `layer`، والموضعُ يُعاد تثبيتُه من الحافّة التي حدّدها `at`.
+   ثلاثُ فئات: مربّعاتٌ ثابتة (`logo`/`qr`/`sym`) · `rect` بأبعادٍ صريحة ·
+   وحاوياتٌ/نصوصٌ يُشتقّ مقاسُها من المحتوى حين لا تُثبَّت الحافّتان. */
+function _tsSelfSize(c, b, S, measure) {
+  var w = b.w, h = b.h, at = c.at || {};
+  var pinX = (at.inset != null) || (at.l != null && at.r != null) || (at.w != null);
+  var pinY = (at.inset != null) || (at.t != null && at.b != null) || (at.h != null);
+
+  if (c.t === 'logo' || c.t === 'qr' || c.t === 'sym') { w = _tsPx(c.d); h = _tsPx(c.d); }
+  else if (c.t === 'rect') {
+    if (c.w != null) w = _tsLen(c.w, b.w);
+    if (c.h != null) h = _tsLen(c.h, b.h);
+  } else if (c.t === 'row' || c.t === 'col' || c.t === 'text') {
+    if (!pinX) w = Math.min(b.w, _tsIntrinsic(c, S, measure, 'x', b.w, b.h));
+    if (!pinY) h = Math.min(b.h, _tsIntrinsic(c, S, measure, 'y', b.h, w));
+  } else { return b; }
+
+  var x = b.x, y = b.y;
+  if (at.r != null && at.l == null && at.w == null) x = _tsR2(b.x + b.w - w);
+  if (at.b != null && at.t == null && at.h == null) y = _tsR2(b.y + b.h - h);
+  return { x: x, y: y, w: _tsR2(w), h: _tsR2(h) };
+}
+
+/* `row`/`col`: مِحوَرٌ رئيسٌ ومِحوَرٌ متقاطع، بتوزيعٍ واحدٍ لكليهما.
+   🔴 RTL: الصفُّ يبدأ من الحافّة **اليمنى** ويمضي يساراً — موروثٌ من
+   `direction:rtl` على الشريحة، وإغفالُه يقلب كلَّ صفٍّ في الأربعة عشر. */
+function _tsFlexKids(n, box, S, measure) {
+  var isRow = (n.t === 'row');
+  var pad = _tsPad(n.pad), gap = n.gap ? _tsPx(n.gap) : 0;
+  var inX = _tsR2(box.x + pad[3]), inY = _tsR2(box.y + pad[0]);
+  var inW = _tsR2(box.w - pad[1] - pad[3]), inH = _tsR2(box.h - pad[0] - pad[2]);
+  var mainAvail  = isRow ? inW : inH;
+  var crossAvail = isRow ? inH : inW;
+
+  /* 🔴 ابنٌ يحمل `at` **خارجُ التدفّق** — تماماً كـ`position:absolute` في CSS:
+     يُوضَع بالنسبة لصندوق الحاوية ولا يأخذ حيّزاً ولا فجوةً. والمعيّنُ المُزاح
+     فوق حافّة الشريط في D3 (‏`top:-4cq`) من هذه الفئة؛ إدخالُه في التدفّق كان
+     يدفع العنوانَ أسفلَ ويفتح فجوةً لا وجودَ لها في المصدر. */
+  var kids = [], abs = [], i;
+  for (i = 0; i < n.ch.length; i++) {
+    if (!_tsAlive(n.ch[i], S)) continue;
+    if (n.ch[i].at) abs.push(n.ch[i]); else kids.push(n.ch[i]);
+  }
+  if (!kids.length && !abs.length) return [];
+
+  /* ① المقاسُ الذاتيّ لغير النامي. النامي يأخذ صفراً الآن ويُملأ من الفائض.
+     و`basis` يثبّت المقاسَ الرئيسَ نسبةً من الحاوية (‏`flex:0 0 34%`) فلا يُقاس
+     من المحتوى — وهو ما يجعل شريطَ الهوية في D3 ثابتَ الارتفاع مهما طال العنوان. */
+  var sizes = [], growSum = 0;
+  for (i = 0; i < kids.length; i++) {
+    var g = kids[i].grow || 0;
+    growSum += g;
+    if (kids[i].basis != null) sizes.push(_tsLen(kids[i].basis, mainAvail));
+    else sizes.push(g ? 0 : _tsIntrinsic(kids[i], S, measure, isRow ? 'x' : 'y', mainAvail, crossAvail));
+  }
+  var used = 0;
+  for (i = 0; i < sizes.length; i++) used += sizes[i];
+  var free = mainAvail - used - gap * (kids.length - 1);
+
+  /* ② الفائضُ للنامين؛ وإن لم يوجد نامٍ فإلى الفجوات عند `justify:'between'`. */
+  var extraGap = 0, lead = 0;
+  if (growSum > 0 && free > 0) {
+    for (i = 0; i < kids.length; i++) {
+      var gi = kids[i].grow || 0;
+      if (gi) sizes[i] = _tsR2(free * (gi / growSum));
+    }
+  } else if (free > 0) {
+    if (n.justify === 'between' && kids.length > 1) extraGap = free / (kids.length - 1);
+    else if (n.justify === 'end') lead = free;
+    else if (n.justify === 'center') lead = free / 2;
+  }
+
+  /* ③ `push` = `margin-top:auto` — يدفع العقدةَ وما بعدها إلى النهاية. */
+  var pushAt = -1;
+  for (i = 0; i < kids.length; i++) if (kids[i].push) { pushAt = i; break; }
+
+  /* ④ الوضعُ على المحورين — **بترتيب المصدر لا بترتيب التدفّق**.
+     🔴 ترتيبُ الإخراج هو ترتيبُ الرسم: `z-index` ليس في المواصفة، فالأخيرُ يعلو.
+     وفصلُ الخارجين عن التدفّق في قائمةٍ منفصلةٍ ثمّ وصلُهما يقلب من يعلو مَن —
+     المعيّنُ في D3 يجب أن يُرسَم **قبل** العنوان كما في المصدر. */
+  var out = [], cur = lead, ki = 0;
+  for (var oi = 0; oi < n.ch.length; oi++) {
+    var c = n.ch[oi];
+    if (!_tsAlive(c, S)) continue;
+    if (c.at) {
+      out.push(_tsLayout(c, _tsSelfSize(c, _tsResolveAt(c.at, box), S, measure), S, measure));
+      continue;
+    }
+    i = ki++;
+    var ms = sizes[i];
+    if (i === pushAt && free > 0 && growSum === 0) cur += free;
+
+    /* 🔴 الافتراضُ `stretch` لا `start` — وهو افتراضُ CSS نفسِه (`align-items`).
+       وليس تفصيلاً تجميلياً: في RTL، نصٌّ لا يمتدّ لعرض العمود يُحاذى إلى يسار
+       صندوقِه الضيّق بدل يمين العمود ⇒ **كلُّ نصٍّ في الأربعة عشر ينزاح**.
+       ولا يمتدّ ما له مقاسٌ ذاتيّ صريح: `logo`/`qr`/`sym` ولا `rect` بُعدُه
+       المتقاطعُ مُصرَّحٌ — تماماً كعنصرٍ بارتفاعٍ صريحٍ في فليكس. */
+    var align = c.self || n.align || 'stretch';
+    var fixedCross = (c.t === 'logo' || c.t === 'qr' || c.t === 'sym') ||
+                     (c.t === 'rect' && (isRow ? c.h != null : c.w != null));
+    var cs;
+    if (align === 'stretch' && !fixedCross) cs = crossAvail;
+    /* 🔴 عرضُ اللفّ لا يُخلط بالمحور المتقاطع — وقد خُلطا فعلاً هنا:
+       في **صفٍّ** يُقاس ارتفاعُ الابن، واللفُّ يقع على **عرضه هو** (`ms`).
+       وفي **عمودٍ** يُقاس عرضُ الابن، واللفُّ يقع على **العرض المتاح** (`crossAvail`).
+       وتمريرُ الارتفاع عرضاً للفّ جعل عنواناً في D2 يُقاس بسطرٍ واحد ويُرسَم
+       بسطرين ⇒ **يفيض خارج صندوق أبيه** — وأمسكه تأكيدُ «كلُّ صندوقٍ داخل أبيه». */
+    else cs = _tsIntrinsic(c, S, measure, isRow ? 'y' : 'x', crossAvail, isRow ? ms : crossAvail);
+    if (cs > crossAvail) cs = crossAvail;
+    var co = 0;
+    if (align === 'center') co = (crossAvail - cs) / 2;
+    else if (align === 'end') co = crossAvail - cs;
+
+    var b;
+    if (isRow) {
+      /* RTL: الإزاحةُ `cur` من اليمين. */
+      b = { x: _tsR2(inX + inW - cur - ms), y: _tsR2(inY + co), w: _tsR2(ms), h: _tsR2(cs) };
+    } else {
+      b = { x: _tsR2(inX + co), y: _tsR2(inY + cur), w: _tsR2(cs), h: _tsR2(ms) };
+    }
+    if (c.maxw != null) {
+      var mw = _tsLen(c.maxw, isRow ? inW : inW);
+      if (b.w > mw) { if (isRow) b.x = _tsR2(b.x + b.w - mw); b.w = mw; }
+    }
+    var node = _tsLayout(c, b, S, measure);
+    /* 🔴 وسمٌ يفرّق عطلَ الحالّ عن حالةِ بيانات: مقاسٌ رئيسٌ مثبَّتٌ بـ`basis`
+       (‏`flex:0 0 34%`) قد يفيض محتواه **في التصميم الأصلي نفسِه**، بينما فيضُ
+       صندوقٍ مقاسُه **ذاتيّ** دليلُ خطأِ قياس — وهو ما أمسكه التأكيدُ في D2.
+       ودمجُهما يجعل التأكيدَ إمّا يُحمِّر على سليمٍ أو يسكت عن معطوب. */
+    if (c.basis != null) node.fixedMain = 1;
+    out.push(node);
+    cur += ms + gap + extraGap;
+  }
+  return out;
+}
+
+/* أنصافُ الأقطار — 🔴 **مع خوارزمية قصّ CSS**. `border-radius:50cqmin` = 540px
+   على صندوقٍ عرضُه 972px؛ CSS يقصّ بالمعامل `f = min(len/(rᵢ+rⱼ))`، وcanvas بلا
+   قصٍّ يرسم قوساً مقلوباً. إغفالُه انحرافٌ فادحٌ في D5. */
+function _tsRadii(rad, w, h) {
+  var r = (typeof rad === 'number') ? [rad, rad, rad, rad] : rad.slice();
+  for (var i = 0; i < 4; i++) r[i] = _tsPx(r[i]);
+  var f = 1;
+  var pairs = [[r[0] + r[1], w], [r[2] + r[3], w], [r[0] + r[3], h], [r[1] + r[2], h]];
+  for (i = 0; i < pairs.length; i++) {
+    if (pairs[i][0] > 0) f = Math.min(f, pairs[i][1] / pairs[i][0]);
+  }
+  if (f < 1) for (i = 0; i < 4; i++) r[i] = _tsR2(r[i] * f);
+  return r;
+}
+
+function _tsStops(st, S) {
+  var out = [];
+  for (var i = 0; i < st.length; i++) out.push([st[i][0], _tsColor(st[i][1], S)]);
+  return out;
+}
+
+/* نقاطُ المضلّع **نسبيّةٌ لصندوق العقدة** لا مطلقة — ومنها يأخذ كلُّ مُصيِّرٍ
+   ما يناسبه: HTML يكتبها في `clip-path` كما هي (فهي نسبيّةٌ بطبيعتها)، وcanvas
+   يضيف `n.x`/`n.y`. وتخزينُها مطلقةً كان سيُلزم HTML بطرحِ الأصل في كلّ عقدة. */
+function _tsPoly(poly, box) {
+  var out = [];
+  for (var i = 0; i < poly.length; i++) {
+    out.push([_tsR2(_tsLen(poly[i][0], box.w)), _tsR2(_tsLen(poly[i][1], box.h))]);
+  }
+  return out;
+}
+
+/* ── نقطةُ الدخول ────────────────────────────────────────────────────────────
+   `measure(text, fsPx, weight)` ⇒ عرضُ النصّ بالبكسل. في المتصفّح: canvas
+   قياسٍ حقيقيّ بخطّ Cairo. في Node: جدولُ عرضٍ حتميّ (فالبصمةُ تُقارَن لا تُرى). */
+function _tsSolve(spec, S, W, H, measure) {
+  var root = spec.root;
+  var box = root.at ? _tsResolveAt(root.at, { x: 0, y: 0, w: W, h: H })
+                    : { x: 0, y: 0, w: W, h: H };
+  return { w: W, h: H, isolate: !!spec.isolate, node: _tsLayout(root, box, S, measure) };
+}
+
+/* كاشُ الشجرة — المعرضُ يعرض ١٤ مصغّراً ويُعيد الردنر كلَّ 350ms أثناء الكتابة،
+   والحلُّ يستدعي `measureText` لكلّ نصّ. ليس ترفاً: بلا كاشٍ تُعاد ١٤ شجرةً كاملة
+   على كلّ ضغطةِ مفتاح. المفتاحُ يضمّ كلَّ ما يغيّر الهندسة **وحدَه**. */
+var _TS_SOLVE_CACHE = {}, _TS_SOLVE_KEYS = [], _TS_SOLVE_MAX = 60;
+function _tsSolveCached(spec, S, W, H, measure, sd) {
+  var key = sd + '|' + W + 'x' + H + '|' + (S.title || '').length + '|' + (S.title || '') + '|' +
+            (S.name || '') + '|' + (S.nameEn || '') + '|' + (S.phone || '') + '|' +
+            (S.logo ? 1 : 0) + (S.qr ? 1 : 0) + '|' + S.ac + S.g0 + S.g1 + S.ov;
+  if (_TS_SOLVE_CACHE[key]) return _TS_SOLVE_CACHE[key];
+  var v = _tsSolve(spec, S, W, H, measure);
+  _TS_SOLVE_CACHE[key] = v;
+  _TS_SOLVE_KEYS.push(key);
+  if (_TS_SOLVE_KEYS.length > _TS_SOLVE_MAX) delete _TS_SOLVE_CACHE[_TS_SOLVE_KEYS.shift()];
+  return v;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   المواصفات — الفهرسُ يطابق `sd` في `_TC_DSGN_REGISTRY` حرفياً
+   ═══════════════════════════════════════════════════════════════════════════ */
+var _TS_SPECS = [];
+
+/* ① غلاف كامل — الصورة تحمل الخبر. (المرجع: `_js-news-studio.html::_tsD1`) */
+_TS_SPECS[1] = { k: 'studio_full', root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover' },
+
+  { t: 'grad', g: 'linear', to: 'top', st: [
+      [0, 'scrim(ov)'], [34, 'scrim(.62)'], [58, 'scrim(.04)'], [100, 'scrim(.5)'] ] },
+
+  { t: 'row', at: { t: 5, r: 5, l: 5 }, align: 'center', gap: 2.4, ch: [
+      { t: 'logo', d: 11, ring: { w: 0.7, c: 'rgba(255,255,255,.9)' } },
+      { t: 'col', gap: 0.5, grow: 1, minw: 0, ch: [
+          { t: 'text', bind: 'name', fs: 3.4, w: 800, lh: 1.25, c: 'white' },
+          { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+            fs: 1.5, w: 600, lh: 1.25, c: 'rgba(255,255,255,.78)' } ] } ] },
+
+  /* مثبَّتةٌ بالأسفل بلا ارتفاع ⇒ ارتفاعُها محتواها، فتنمو صعوداً كلّما طال
+     العنوان — كما في المصدر حرفياً (`position:absolute;bottom:0;right:0;left:0`). */
+  { t: 'col', at: { b: 0, r: 0, l: 0 }, pad: [6, 5, 5], gap: 2.8, ch: [
+      { t: 'rect', w: 14, h: 0.9, rad: 1, fill: 'ac' },
+      { t: 'text', bind: 'title', wrap: 1, fs: 7, w: 900, lh: 1.28, c: 'white' },
+      { t: 'row', align: 'end', justify: 'between', gap: 3, ch: [
+          { t: 'row', pad: [1.5, 3], rad: 99, fill: 'rgba(255,255,255,.14)',
+            stroke: { w: 0.25, c: 'rgba(255,255,255,.3)' }, align: 'center', ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.8, w: 800, lh: 1.25, c: 'white' } ] },
+          { t: 'qr', d: 11, pad: 1, rad: 1.6 } ] } ] }
+] } };
+
+/* ② إطار فاخر — إطارٌ عنبريٌّ وموتيفاتُ زوايا. (المرجع: `_tsD2Legacy`)
+   🔴 و`align:'center'` هنا **يمنع الامتدادَ عمداً**: صناديقُ النصّ تأخذ عرضَها
+      الذاتيّ فتتمركز ككتلة، وهو ما يفعله `align-items:center` في المصدر. */
+_TS_SPECS[2] = { k: 'studio_frame', root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover' },
+
+  { t: 'grad', g: 'linear', to: 'top',
+    st: [[0, 'scrim(ov)'], [45, 'scrim(.3)'], [100, 'scrim(.5)']] },
+
+  /* الإطارُ حدٌّ لا تعبئة، و`op` عليه كما في المصدر (‏`opacity:.85`). */
+  { t: 'rect', at: { inset: 3.4 }, stroke: { w: 0.3, c: 'ac' }, op: 0.85 },
+
+  { t: 'sym', sym: 'dia', d: 3.4, c: 'ac', at: { t: 2.5, r: 2.5 } },
+  { t: 'sym', sym: 'dia', d: 3.4, c: 'ac', at: { t: 2.5, l: 2.5 } },
+  { t: 'sym', sym: 'dia', d: 3.4, c: 'ac', at: { b: 2.5, r: 2.5 } },
+  { t: 'sym', sym: 'dia', d: 3.4, c: 'ac', at: { b: 2.5, l: 2.5 } },
+
+  { t: 'col', at: { t: 8, r: 8, l: 8 }, align: 'center', gap: 1.6, ch: [
+      { t: 'logo', d: 12, ring: { w: 0.6, c: 'ac' } },
+      { t: 'text', bind: 'name', fs: 3, w: 800, lh: 1.25, c: 'white', align: 'center' },
+      { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+        fs: 1.4, w: 600, lh: 1.25, c: 'ac', align: 'center' } ] },
+
+  { t: 'col', at: { b: 8, r: 8, l: 8 }, align: 'center', gap: 2.6, ch: [
+      { t: 'text', bind: 'title', wrap: 1, fs: 6.4, w: 900, lh: 1.28, c: 'white', align: 'center' },
+      { t: 'rect', w: 20, h: 0.28, fill: 'ac' },
+      { t: 'row', align: 'center', gap: 2.4, ch: [
+          { t: 'qr', d: 9, pad: 0.8, rad: 1.2 },
+          { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+            fs: 2.9, w: 800, lh: 1.25, c: 'white' } ] } ] }
+] } };
+
+/* ③ شريط الهوية — صورةٌ فوق شريطٍ كوبالت. (المرجع: `_tsD3Legacy`)
+   🔴 `basis:'34%'` لا `grow`: الشريطُ **ثابتُ الارتفاع** مهما طال العنوان
+      (‏`flex:0 0 34%` في المصدر)، والصورةُ فوقَه تأخذ ما بقي.
+   🔴 والمعيّنُ المُزاح فوق حافّة الشريط (‏`top:-4cq`) **خارجُ التدفّق** — إدخالُه
+      فيه كان يدفع العنوانَ أسفلَ ويفتح فجوةً لا وجودَ لها في المصدر. */
+_TS_SPECS[3] = { k: 'studio_band', root: { t: 'col', ch: [
+
+  { t: 'layer', grow: 1, minh: 0, ch: [
+      { t: 'img', slot: 'image', fit: 'cover' },
+      { t: 'grad', g: 'linear', to: 'bottom', st: [[0, 'scrim(.5)'], [42, 'scrim(0)']] },
+      { t: 'row', at: { t: 4.5, r: 4.5 }, align: 'center', gap: 2,
+        pad: [1.2, 2.6, 1.2, 1.2], rad: 99, fill: 'rgba(255,255,255,.95)', ch: [
+          { t: 'logo', d: 7.4 },
+          { t: 'text', bind: 'name', fs: 2.5, w: 800, lh: 1.25, c: 'deepNavy' } ] } ] },
+
+  { t: 'col', basis: '34%', pad: [6, 5, 4.5], gap: 2.2,
+    fill: { g: 'linear', deg: 135, st: [[0, 'g0'], [100, 'g1']] }, ch: [
+      { t: 'rect', at: { t: -4, l: 6 }, w: 8, h: 8, rot: 45, fill: 'ac' },
+      { t: 'text', bind: 'title', wrap: 1, fs: 6, w: 900, lh: 1.28, c: 'white', maxw: '76%' },
+      { t: 'row', push: 1, align: 'end', justify: 'between', gap: 3, ch: [
+          { t: 'col', gap: 0.7, grow: 1, minw: 0, ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.9, w: 800, lh: 1.25, c: 'white' },
+              { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+                fs: 1.4, w: 600, lh: 1.25, c: 'rgba(255,255,255,.7)' } ] },
+          { t: 'qr', d: 10, pad: 0.9, rad: 1.2 } ] } ] }
+] } };
+
+/* ⑩ شرائح سفلية — شريطا الهوية الرفيعان فوق كتلةِ العنوان. (المرجع: `_tsD10Legacy`)
+   🔴 شارةُ الشعار `alpha(g1,.9)` لا `rgba(17,73,163,.9)` الحرفيّة: الرقمُ في
+      المصدر **هو `#1149a3` نفسُه** أي `g1` — ونسخُه يقطع الصلةَ بلون المستخدم،
+      فيغيّر تدرّجَه ويبقى الشريطُ على اللون القديم بلا أن يفهم لماذا. */
+_TS_SPECS[10] = { k: 'studio_strips', root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover' },
+
+  { t: 'grad', g: 'linear', to: 'top',
+    st: [[0, 'scrim(.92)'], [30, 'scrim(.35)'], [52, 'scrim(0)']] },
+
+  { t: 'row', at: { t: 5, r: 5, l: 5 }, align: 'center', justify: 'between', gap: 2, ch: [
+      { t: 'row', pad: [1.2, 2.6, 1.2, 1.2], rad: 99, fill: 'alpha(g1,.9)',
+        align: 'center', gap: 1.6, minw: 0, ch: [
+          { t: 'logo', d: 7 },
+          { t: 'text', bind: 'name', fs: 2.4, w: 800, lh: 1.25, c: 'white' } ] },
+      { t: 'qr', d: 9, pad: 0.8, rad: 1.2 } ] },
+
+  { t: 'col', at: { b: 0, r: 0, l: 0 }, ch: [
+      { t: 'rect', h: 0.7, fill: 'teal' },
+      { t: 'rect', h: 0.7, fill: 'ac' },
+      { t: 'col', pad: [4.4, 5], gap: 2,
+        fill: { g: 'linear', deg: 135, st: [[0, 'g0'], [100, 'g1']] }, ch: [
+          { t: 'text', bind: 'title', wrap: 1, fs: 6.4, w: 900, lh: 1.28, c: 'white' },
+          { t: 'row', align: 'center', justify: 'between', gap: 2.4, ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.8, w: 800, lh: 1.25, c: 'white' },
+              { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+                fs: 1.4, w: 600, lh: 1.25, c: 'rgba(255,255,255,.72)' } ] } ] } ] }
+] } };
+
+/* ═══════════════════════════════════════════════════════════════════════════
    استوديو أغلفة الأخبار — أربعة عشر تخطيطاً تندمج مع صورة الخبر
    ───────────────────────────────────────────────────────────────────────────
    المصدر: مشروع Claude Design «قوالب منشورات المدرسة»
@@ -21257,14 +22152,49 @@ function _tcFirstNewsImage(rawAttach) {
       مسارَ تحجيمٍ ثانٍ يتباعد عن الأول.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* أساس تحويل cqmin: min(W,H) في المقاسات الثلاثة. يُمرَّر صراحةً لا يُفترض. */
-var _TS_BASE = 1080;
+/* 🔴 **قُسِم الاستوديو إلى ثلاثة ملفّات 2026-09-20 — والقسمةُ هي ما يجعل إثباتَ
+   «المعاينة = المنشور» ممكناً أصلاً:**
 
-/* n cqmin ⇒ بكسل. القسمة على 100 لأن cqmin = 1٪ من البُعد الأصغر. */
-function _tsQ(n) { return (Math.round(n * _TS_BASE) / 100) + 'px'; }
+     `_js-news-studio-spec.html`  المواصفةُ والحالّ — **نقيٌّ بلا DOM**، يُقيَّم في
+                                   Node فتُقاس الهندسةُ بلا متصفّح.
+     `_js-news-studio.html`  (هنا) مُصيِّرُ HTML للمعاينة.
+     `_js-news-studio-paint.html`  مُصيِّرُ canvas للصورة المنشورة.
 
-/* الخطّ: Cairo مُستضاف ذاتياً في _css-main.html — لا Google Fonts. */
-var _TS_FONT = "'Cairo','Segoe UI',Tahoma,sans-serif";
+   و`_TS_BASE` و`_tsQ` و`_TS_FONT` انتقلت إلى ملفّ المواصفة: **مُدوِّرٌ واحد**
+   يتقاسمه المساران، وتعريفُها هنا ثانيةً كان سيُنتج انحرافَ تقريبٍ بين المعاينة
+   والمنشور لا يراه فحصٌ ساكن. */
+
+/* ── مِقياسُ النصّ ────────────────────────────────────────────────────────────
+   canvas خارجَ الشاشة بخطّ Cairo الحقيقيّ — يُمرَّر إلى الحالّ فيلفّ الأسطر
+   **مرّةً واحدة** يتقاسمها المُصيِّران. 🔴 واللفُّ في الحالّ لا في المُصيِّر:
+   لفُّ كلٍّ على حدة يعني عنواناً ينكسر عند كلمةٍ في المعاينة وعند أخرى في
+   المنشور — وهو الفرقُ الذي لا يراه أحدٌ حتى يُنشَر. */
+var _TS_MCTX = null;
+function _tsMeasureCtx() {
+  if (!_TS_MCTX) {
+    var c = document.createElement('canvas');
+    c.width = 8; c.height = 8;
+    _TS_MCTX = c.getContext('2d');
+  }
+  return _TS_MCTX;
+}
+function _tsMeasure(text, fsPx, weight) {
+  var c = _tsMeasureCtx();
+  c.font = (weight || 800) + ' ' + fsPx + 'px ' + _TS_FONT;
+  return c.measureText(String(text == null ? '' : text)).width;
+}
+
+/* كاشفُ الصمت: Cairo غائبٌ ⇒ عرضُه يساوي عرضَ خطٍّ لا وجودَ له. 🔴 يُقرأ في
+   مسار **التصدير** فيرفضه — غلافٌ بخطٍّ احتياطيّ يُنشَر باسم المدرسة أسوأُ من
+   غياب الغلاف؛ وفي مسار **المعاينة** يُرسَم بما توفّر ويُعاد الرسمُ عند الجاهزية. */
+function _tsFontLive() {
+  try {
+    var c = _tsMeasureCtx();
+    c.font = '900 76px ' + _TS_FONT;            var a = c.measureText('مدرسة').width;
+    c.font = '900 76px "NoSuchFont-zz9",serif'; var b = c.measureText('مدرسة').width;
+    return Math.abs(a - b) > 0.5;
+  } catch (e) { return true; }   /* تعذّرُ القياس ليس دليلَ غياب */
+}
 
 /* ── لبنات مشتركة ─────────────────────────────────────────────────────────── */
 
@@ -21324,16 +22254,13 @@ function _tsPhone(S, fsCq, color, extraCss) {
     (extraCss || '') + '">☎ ' + esc(S.phone) + '</div>';
 }
 
-/* موتيفات SVG — تُعرَّف مرّةً واحدة لكل غلاف بمعرّفٍ فريد (gid) كي لا تتصادم
-   عدّة أغلفة في نفس الصفحة (المعرض يعرض أربعةَ عشر معاً). */
-function _tsDefs(gid) {
-  return '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>' +
-    '<symbol id="' + gid + '-dia" viewBox="0 0 100 100"><path fill="currentColor" d="M50 6 94 50 50 94 6 50Z"></path></symbol>' +
-    '<symbol id="' + gid + '-str" viewBox="0 0 100 100"><path fill="currentColor" d="M50 3 62 37 98 38 69 60 80 96 50 74 20 96 31 60 2 38 38 37Z"></path></symbol>' +
-    '<symbol id="' + gid + '-spk" viewBox="0 0 100 100"><path fill="currentColor" d="M50 2C53 32 68 47 98 50 68 53 53 68 50 98 47 68 32 53 2 50 32 47 47 32 50 2Z"></path></symbol>' +
-    '<symbol id="' + gid + '-rng" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="10"></circle></symbol>' +
-    '</defs></svg>';
-}
+/* 🗑️ **`_tsDefs` حُذفت من هنا 2026-09-20 — ولم تُنسَخ، بل انتقل مصدرُها.**
+   المسارات صارت في `_TS_SYMBOLS` بملفّ المواصفة، ويبنيها `_tsDefs` الجديدة أدناه
+   من ذلك المصدر وحدَه. والمعرّفاتُ نفسُها (`<gid>-dia` …) فتبقى `_tsUse` والتخطيطاتُ
+   غيرُ المُرحَّلة عاملةً بلا تغيير.
+   🔴 **ولم تُترك نسختان تحملان نفسَ الاسم**: التعريفُ الثاني كان سيفوز على الأوّل
+   **بلا أيّ خطأٍ ولا تحذير** — وهو نفسُه الفشلُ الصامت الذي تُبطله هذه البنية؛
+   تركُه هنا كان سيجعل الملفَّ يخالف ما يُعلّمه. */
 
 function _tsUse(gid, sym, sizeCq, color, opacity, posCss) {
   return '<div style="position:absolute;' + posCss + ';color:' + color + ';opacity:' + opacity +
@@ -21347,11 +22274,181 @@ function _tsDiamond(sizeCq, color, posCss) {
     ';background:' + color + ';transform:rotate(45deg)"></div>';
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   مُصيِّرُ HTML — يرسم شجرةَ DL محلولةً، ولا يعرف `S` ولا `_tsLen` ولا المواصفة
+   ───────────────────────────────────────────────────────────────────────────
+   🔴 **صفرُ حسابٍ هندسيّ هنا، وهذا تأكيدٌ مُشغَّل لا نيّة:** الفاحصُ
+   `_build/check-studio-parity.js` يمسح مصدرَ هذا القسم ومصدرَ الرسّام فيُحمِّر
+   على أيّ `_tsPx`/`_tsLen`/`measureText`/`S.` — فلو حُسبت خانةٌ واحدة هنا
+   لانفصل المساران في تلك الخانة وحدَها، وذاك أخبثُ من انفصالٍ كامل.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function _tsSty(n, ox, oy) {
+  return 'position:absolute;left:' + (n.x - ox) + 'px;top:' + (n.y - oy) + 'px;' +
+         'width:' + n.w + 'px;height:' + n.h + 'px;box-sizing:border-box;';
+}
+
+function _tsRadCss(r) {
+  if (!r) return '';
+  return 'border-radius:' + r[0] + 'px ' + r[1] + 'px ' + r[2] + 'px ' + r[3] + 'px;';
+}
+
+function _tsGradCss(g) {
+  var st = [], i;
+  for (i = 0; i < g.st.length; i++) st.push(g.st[i][1] + ' ' + g.st[i][0] + '%');
+  if (g.g === 'radial') return 'radial-gradient(' + (g.r || '100% 100% at 50% 50%') + ',' + st.join(',') + ')';
+  var dir = g.to ? ('to ' + g.to) : ((g.deg == null ? 180 : g.deg) + 'deg');
+  return 'linear-gradient(' + dir + ',' + st.join(',') + ')';
+}
+
+/* الطلاءُ المشترك — يُطبَّق على أيّ عقدةٍ مهما كان نوعُها.
+   🔴 `stroke` يُبعث `border` مع `box-sizing:border-box` فيُرسَم **داخل** الصندوق،
+   وهو ما يقابله في canvas إزاحةُ المسار `w/2` للداخل. وتركُ أحدهما يُنتج
+   انحرافَ نصفِ سماكةٍ في خمسة تخطيطات — فرقٌ يمرّ في المراجعة بسهولة. */
+function _tsPaintCss(n) {
+  var s = '';
+  if (n.fill) s += 'background:' + (typeof n.fill === 'string' ? n.fill : _tsGradCss(n.fill)) + ';';
+  s += _tsRadCss(n.rad);
+  if (n.stroke) s += 'border:' + n.stroke.w + 'px solid ' + n.stroke.c + ';';
+  if (n.ring)   s += 'box-shadow:0 0 0 ' + n.ring.w + 'px ' + n.ring.c + ';';
+  if (n.shadow) s += 'box-shadow:' + n.shadow.dx + 'px ' + n.shadow.dy + 'px ' +
+                     n.shadow.blur + 'px ' + n.shadow.c + ';';
+  if (n.rot)    s += 'transform:rotate(' + n.rot + 'deg);';
+  if (n.op != null) s += 'opacity:' + n.op + ';';
+  if (n.clip && n.clip.poly) {
+    var pts = [];
+    for (var i = 0; i < n.clip.poly.length; i++) {
+      pts.push(n.clip.poly[i][0] + 'px ' + n.clip.poly[i][1] + 'px');
+    }
+    s += 'clip-path:polygon(' + pts.join(',') + ');overflow:hidden;';
+  }
+  if (n.blend)    s += 'mix-blend-mode:' + n.blend.mode + ';opacity:' + n.blend.alpha + ';';
+  if (n.backdrop) s += '-webkit-backdrop-filter:blur(' + n.backdrop.blur + 'px);' +
+                       'backdrop-filter:blur(' + n.backdrop.blur + 'px);';
+  return s;
+}
+
+/* `<symbol>` لكلّ غلافٍ بمعرّفٍ فريد — المعرضُ يعرض أربعةَ عشرَ غلافاً معاً،
+   وتكرارُ المعرّف يجعل أحدَها يسحب تعريفَ الآخر. المصدرُ `_TS_SYMBOLS` وحدَه. */
+function _tsDefs(gid) {
+  var out = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>';
+  for (var k in _TS_SYMBOLS) {
+    if (!Object.prototype.hasOwnProperty.call(_TS_SYMBOLS, k)) continue;
+    var sy = _TS_SYMBOLS[k];
+    out += '<symbol id="' + gid + '-' + k + '" viewBox="0 0 100 100"><path d="' + sy.d + '" ' +
+      (sy.sw ? ('fill="none" stroke="currentColor" stroke-width="' + sy.sw + '"') : 'fill="currentColor"') +
+      '></path></symbol>';
+  }
+  return out + '</defs></svg>';
+}
+
+function _tsEmitNode(n, ox, oy, gid) {
+  var sty = _tsSty(n, ox, oy) + _tsPaintCss(n), inner = '', i;
+
+  if (n.t === 'img') {
+    if (!n.src) return '';
+    var fx = '';
+    if (n.fx) {
+      var f = [];
+      if (n.fx.gray) f.push('grayscale(' + n.fx.gray + ')');
+      if (n.fx.contrast) f.push('contrast(' + n.fx.contrast + ')');
+      if (f.length) fx = 'filter:' + f.join(' ') + ';';
+    }
+    return '<img src="' + esc(n.src) + '" data-slot="image" alt="" referrerpolicy="no-referrer" ' +
+      'style="' + sty + 'object-fit:cover;display:block;' + fx +
+      '" onerror="this.style.display=\'none\'">';
+  }
+
+  if (n.t === 'grad') {
+    return '<div style="' + _tsSty(n, ox, oy) + 'background:' +
+      _tsGradCss({ g: n.g, to: n.to, deg: n.deg, st: n.st, r: n.r }) + ';' +
+      _tsPaintCss({ blend: n.blend, clip: n.clip, rad: n.rad }) + '"></div>';
+  }
+
+  if (n.t === 'logo') {
+    var base = sty + 'border-radius:50%;object-fit:cover;background:#fff;';
+    if (n.src) {
+      return '<img src="' + esc(n.src) + '" data-slot="logo" alt="" referrerpolicy="no-referrer" ' +
+        'style="' + base + '" onerror="this.style.visibility=\'hidden\'">';
+    }
+    /* التراجعُ حرفُ الاسم الأوّل — نفسُ تراجع `_tcCoverHtml`. و`line-height`
+       بدل الفليكس: المركزةُ الرأسية نفسُها بلا محرّكٍ ثانٍ. */
+    return '<div data-slot="logo" style="' + base + 'color:#0f2545;font-weight:900;text-align:center;' +
+      'line-height:' + n.h + 'px;font-size:' + (n.d * 0.5) + 'px;">' + esc(n.initial) + '</div>';
+  }
+
+  if (n.t === 'qr') {
+    var box = sty + 'background:#fff;padding:' + n.qpad + 'px;';
+    if (!n.src) return '<div data-slot="qr" style="' + box + 'opacity:.35;"></div>';
+    return '<img src="' + esc(n.src) + '" data-slot="qr" alt="" referrerpolicy="no-referrer" ' +
+      'style="' + box + 'image-rendering:pixelated;" ' +
+      'onerror="this.style.opacity=\'.35\';this.removeAttribute(\'src\')">';
+  }
+
+  if (n.t === 'sym') {
+    return '<div style="' + _tsSty(n, ox, oy) + 'color:' + n.c + ';opacity:' + (n.op == null ? 1 : n.op) + '">' +
+      '<svg width="100%" height="100%"><use href="#' + gid + '-' + n.sym + '"></use></svg></div>';
+  }
+
+  if (n.t === 'text') {
+    /* 🔴 سطرٌ لكلّ `div` بارتفاع `lh` و`white-space:pre` — الأسطرُ **ملفوفةٌ
+       سلفاً في الحالّ**، وتركُ المتصفّح يلفّها ثانيةً يُعيد المحرّكَ الثاني الذي
+       جاءت البنيةُ لإبطاله: عنوانٌ ينكسر هنا عند كلمةٍ وفي canvas عند أخرى. */
+    var tsty = 'font-size:' + n.fs + 'px;font-weight:' + n.wgt + ';color:' + n.c + ';' +
+      'direction:' + n.dir + ';text-align:' + n.align + ';white-space:pre;' +
+      'line-height:' + n.lh + 'px;height:' + n.lh + 'px;overflow:hidden;' +
+      (n.ls ? ('letter-spacing:' + n.ls + 'px;') : '');
+    for (i = 0; i < n.lines.length; i++) inner += '<div style="' + tsty + '">' + esc(n.lines[i]) + '</div>';
+    var slot = n.bind === 'name' ? 'schoolName' : (n.bind === 'nameEn' ? 'schoolNameEn' :
+               (n.bind === 'title' ? 'title' : (n.bind === 'phone' ? 'site' : '')));
+    return '<div' + (slot ? (' data-slot="' + slot + '"') : '') + ' style="' + sty + '">' + inner + '</div>';
+  }
+
+  /* 🔴 الأنواعُ الأربعةُ الباقية تُسمّى صراحةً ولا تُترك لفرعٍ ساقط.
+     والسببُ أن تأكيدَ «تغطيةِ القدرات» يقيس **ذكرَ النوع في مصدر المُصيِّر**:
+     فرعٌ ساقطٌ يُصيِّرها كلَّها بلا أن يسمّيها يجعل التأكيدَ يُحمِّر على تغطيةٍ
+     قائمة — أو أسوأ، يجعله يخضرّ يوماً على نوعٍ خامسٍ سقط سهواً إلى نفس الفرع.
+     أمسك هذا أوّلُ تشغيلٍ للفاحص، والإصلاحُ في الكود لا في تليين التأكيد. */
+  if (n.t !== 'layer' && n.t !== 'row' && n.t !== 'col' && n.t !== 'rect') return '';
+  for (i = 0; i < (n.ch || []).length; i++) inner += _tsEmitNode(n.ch[i], n.x, n.y, gid);
+  return '<div style="' + sty + '">' + inner + '</div>';
+}
+
+function _tsEmitHtml(dl, gid) {
+  var needDefs = false;
+  (function scan(n) {
+    if (n.t === 'sym') needDefs = true;
+    for (var i = 0; i < (n.ch || []).length; i++) scan(n.ch[i]);
+  })(dl.node);
+  return (needDefs ? _tsDefs(gid) : '') + _tsEmitNode(dl.node, 0, 0, gid);
+}
+
+/* جسرُ التخطيطات: تُحَلّ المواصفةُ مرّةً (بكاش) ثمّ تُبعَث. */
+function _tsSpecHtml(sd, S, W, H, gid) {
+  var spec = _TS_SPECS[sd];
+  if (!spec) return '';
+  return _tsEmitHtml(_tsSolveCached(spec, S, W, H, _tsMeasure, sd), gid);
+}
+
 /* ── التخطيطات الأربعة عشر ────────────────────────────────────────────────── */
 /* كلٌّ يُعيد محتوى الشريحة كاملاً بأبعاد التصميم الحقيقية (W×H بكسل).
    الترقيم يطابق المصدر (design 1..14) كي تبقى المراجعة بالمقارنة ممكنة. */
 
-function _tsD1(S, W, H, gid) {   /* غلاف كامل — الصورة تحمل الخبر */
+/* ① غلاف كامل — **مُرحَّلٌ إلى المواصفة (2026-09-20)**.
+   🔴 و`_tsD1Legacy` أدناه **دَينٌ بتاريخِ سدادٍ مُسمّى: دفعةُ «ز»** — يُحذف مع
+   مفتاحِه حين تُرحَّل التخطيطاتُ الأربعةَ عشر كلُّها.
+   ⚠️ والمستودعُ سبق أن عاقب «دالّةٌ مُعرَّفةٌ ولا تُستدعى تُقرأ قدرةً قائمة»
+   (حذفُ `_tsQrUrl`، أسفل هذا الملفّ). **والفرقُ أنها هنا مُستدعاةٌ فعلاً** بمفتاحٍ
+   تشخيصيٍّ يقارن المُصدَرَين جنباً إلى جنب — وذاك وحدَه ما يجعلها مقبولة. */
+var _TS_LEGACY = (function () {
+  try { return /[?&]tsLegacy=1/.test(String(location.search || '')); } catch (e) { return false; }
+})();
+
+function _tsD1(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD1Legacy(S, W, H, gid) : _tsSpecHtml(1, S, W, H, gid);
+}
+
+function _tsD1Legacy(S, W, H, gid) {   /* غلاف كامل — الصورة تحمل الخبر */
   return _tsImgLayer(S) +
     '<div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(6,15,30,' + S.ov + ') 0%,rgba(6,15,30,.62) 34%,rgba(6,15,30,.04) 58%,rgba(6,15,30,.5) 100%)"></div>' +
     '<div style="position:absolute;top:' + _tsQ(5) + ';right:' + _tsQ(5) + ';left:' + _tsQ(5) + ';display:flex;align-items:center;gap:' + _tsQ(2.4) + '">' +
@@ -21369,7 +22466,10 @@ function _tsD1(S, W, H, gid) {   /* غلاف كامل — الصورة تحمل 
       '</div></div>';
 }
 
-function _tsD2(S, W, H, gid) {   /* إطار فاخر — إطار عنبري وموتيفات زوايا */
+function _tsD2(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD2Legacy(S, W, H, gid) : _tsSpecHtml(2, S, W, H, gid);
+}
+function _tsD2Legacy(S, W, H, gid) {   /* إطار فاخر — إطار عنبري وموتيفات زوايا */
   var c = 'top:' + _tsQ(2.5) + ';';
   return _tsImgLayer(S) +
     '<div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(6,15,30,' + S.ov + ') 0%,rgba(6,15,30,.3) 45%,rgba(6,15,30,.5) 100%)"></div>' +
@@ -21391,7 +22491,10 @@ function _tsD2(S, W, H, gid) {   /* إطار فاخر — إطار عنبري و
       '</div></div>';
 }
 
-function _tsD3(S, W, H, gid) {   /* شريط الهوية — صورة فوق شريط كوبالت */
+function _tsD3(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD3Legacy(S, W, H, gid) : _tsSpecHtml(3, S, W, H, gid);
+}
+function _tsD3Legacy(S, W, H, gid) {   /* شريط الهوية — صورة فوق شريط كوبالت */
   return '<div style="position:absolute;inset:0;display:flex;flex-direction:column">' +
     '<div style="position:relative;flex:1 1 auto;min-height:0;overflow:hidden">' +
       _tsImgLayer(S) +
@@ -21515,7 +22618,10 @@ function _tsD9(S, W, H, gid) {   /* موتيفات ذهبية — تكوين م�
       '</div></div>';
 }
 
-function _tsD10(S, W, H, gid) {  /* شرائح سفلية — شرائط الهوية الثلاث */
+function _tsD10(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD10Legacy(S, W, H, gid) : _tsSpecHtml(10, S, W, H, gid);
+}
+function _tsD10Legacy(S, W, H, gid) {  /* شرائح سفلية — شرائط الهوية الثلاث */
   return _tsImgLayer(S) +
     '<div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(6,15,30,.92) 0%,rgba(6,15,30,.35) 30%,rgba(6,15,30,0) 52%)"></div>' +
     '<div style="position:absolute;top:' + _tsQ(5) + ';right:' + _tsQ(5) + ';left:' + _tsQ(5) + ';display:flex;align-items:center;justify-content:space-between;gap:' + _tsQ(2) + '">' +
@@ -21692,6 +22798,301 @@ function _tsArabize(s) {
    `_tsStudioHtml` و`_tcCoverHtml` وجاهزٌ للاستقبال؛ وابنِ الرابطَ عند نقطة
    الاستدعاء بـ`'/qr-img?url=' + encodeURIComponent(<رابط المشاركة>)` — وسيطُ
    الوركر قائمٌ وتستعمله شاشةُ QR الحالية، فلا مكتبةَ خارجية ولا أصلَ جديد. */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   مُصيِّرُ canvas — يرسم **نفسَ شجرة DL** التي يبعثها مُصيِّرُ HTML
+   ───────────────────────────────────────────────────────────────────────────
+   هذا هو نصفُ العقد الذي لم يكن موجوداً: التخطيطاتُ الأربعةَ عشر كانت HTML يُعرَض
+   ولا يُنتج صورةً إطلاقاً، وما يُنشر على Meta تركيبٌ بسيطٌ يتجاهل التخطيطَ كلَّه
+   (`_js-boot-app.html::_smpComposite`) ⇒ «عدّلتُ التصميم ولم يتغيّر المنشور»
+   **سلوكٌ بنيويٌّ لا عطل**. وهنا يُغلَق.
+
+   🔴 **صفرُ حسابٍ هندسيّ هنا** — كما في مُصيِّر HTML حرفياً، ويحرسه نفسُ التأكيد:
+      كلُّ إحداثيٍّ وكلُّ لفِّ سطرٍ جاء محلولاً من `_tsSolve`. حسابُ خانةٍ واحدةٍ
+      هنا يفصل المسارين في تلك الخانة وحدَها، وذاك أخبثُ من انفصالٍ كامل لأنه
+      يُنتج فرقاً لا يُرى إلّا بعد النشر.
+
+   🔴 **ولا يعرف هذا الملفُّ `S`.** الأصولُ تصل في الشجرة (`n.src`)، مُطبَّعةً إلى
+      `lh3` في الحالّ — وذاك قيدُ CORS المقيس لا تحسينُ جودة.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── جلبُ الأصول ─────────────────────────────────────────────────────────────
+   ثلاثةُ أصولٍ على لوحةٍ واحدة، وثلاثةُ قراراتٍ صريحة:
+     • **متوازٍ لا متسلسل** — السقفُ 4s لا 12s.
+     • **الفشل = `null` لا رمي** — مطابقٌ لـ`onerror` في HTML: الصورةُ تُخفى
+       ويظهر ما تحتها، والـQR يهبط إلى المربّع بـ`opacity:.35`.
+     • **مهلةٌ صريحة** — صورةٌ لا تُحمَّل ولا تفشل تُعلّق التصديرَ إلى الأبد،
+       وتعليقٌ بلا رسالةٍ أسوأُ من فشلٍ معلن. */
+var _TS_IMG_CACHE = {};
+function _tsLoadImg(url, cb) {
+  if (!url) { cb(null); return; }
+  if (_TS_IMG_CACHE[url] !== undefined) { cb(_TS_IMG_CACHE[url]); return; }
+  var img = new Image(), done = false;
+  img.crossOrigin = 'anonymous';
+  function fin(v) { if (done) return; done = true; _TS_IMG_CACHE[url] = v; cb(v); }
+  img.onload  = function () { fin(img); };
+  img.onerror = function () { fin(null); };
+  img.src = url;
+  setTimeout(function () { fin(null); }, 4000);
+}
+
+/* يجمع كلَّ `src` في الشجرة ويجلبها معاً، فيرسم الرسّامُ تزامنياً بعدها. */
+function _tsPrefetch(dl, cb) {
+  var urls = {}, list = [];
+  (function scan(n) {
+    if (n.src) urls[n.src] = 1;
+    for (var i = 0; i < (n.ch || []).length; i++) scan(n.ch[i]);
+  })(dl.node);
+  for (var u in urls) if (Object.prototype.hasOwnProperty.call(urls, u)) list.push(u);
+  if (!list.length) { cb({}); return; }
+  var out = {}, left = list.length;
+  for (var j = 0; j < list.length; j++) {
+    (function (uu) {
+      _tsLoadImg(uu, function (im) { out[uu] = im; if (--left === 0) cb(out); });
+    })(list[j]);
+  }
+}
+
+/* ── الخطّ ────────────────────────────────────────────────────────────────────
+   🔴 `document.fonts.ready` **لا يكفي**: يَعِد بانتهاء التحميلات *الجارية*،
+   ووزنٌ لم يُستعمل بعدُ في الصفحة لم يبدأ تحميلُه أصلاً ⇒ يُقاس ويُرسَم بالخطّ
+   الاحتياطيّ **صامتاً**، وهو أسوأُ فشلٍ هنا لأن النتيجة «تبدو سليمة».
+   🟢 **وقِيس أن Cairo ملفٌّ متغيّرٌ واحد يغطّي 200..1000** (`_css-main.html:75-79`)
+      ⇒ صفرُ وزنٍ تصنيعيّ، وتحميلُ وزنٍ واحدٍ يُحضر الملفَّ كلَّه. والحلقةُ على
+      الأوزان الثلاثة تبقى: تكلفتُها معدومة، وتحميها من تغيّرِ الاستضافة لاحقاً. */
+var _TS_WEIGHTS = [600, 800, 900];
+function _tsFontsReady(cb) {
+  var d = (typeof document !== 'undefined') ? document : null;
+  if (!d || !d.fonts || !d.fonts.load) { cb(); return; }
+  var left = _TS_WEIGHTS.length, fired = false;
+  function fin() { if (!fired && --left <= 0) { fired = true; cb(); } }
+  for (var i = 0; i < _TS_WEIGHTS.length; i++) {
+    try { d.fonts.load(_TS_WEIGHTS[i] + ' 76px Cairo', 'خبر').then(fin, fin); }
+    catch (e) { fin(); }
+  }
+  setTimeout(function () { if (!fired) { fired = true; cb(); } }, 2500);
+}
+
+/* ── بدائيّاتُ الرسم ────────────────────────────────────────────────────────── */
+
+/* مستطيلٌ بأربعة أنصاف أقطار. الأنصافُ **مقصوصةٌ سلفاً في الحالّ** بخوارزمية CSS
+   (`f = min(len/(rᵢ+rⱼ))`) ⇒ لا قصَّ هنا، وإلّا قُصّت مرّتين. */
+function _tsPath(ctx, x, y, w, h, r) {
+  var tl = r ? r[0] : 0, tr = r ? r[1] : 0, br = r ? r[2] : 0, bl = r ? r[3] : 0;
+  ctx.beginPath();
+  ctx.moveTo(x + tl, y);
+  ctx.lineTo(x + w - tr, y);      if (tr) ctx.arcTo(x + w, y, x + w, y + tr, tr);
+  ctx.lineTo(x + w, y + h - br);  if (br) ctx.arcTo(x + w, y + h, x + w - br, y + h, br);
+  ctx.lineTo(x + bl, y + h);      if (bl) ctx.arcTo(x, y + h, x, y + h - bl, bl);
+  ctx.lineTo(x, y + tl);          if (tl) ctx.arcTo(x, y, x + tl, y, tl);
+  ctx.closePath();
+}
+
+function _tsGrad(ctx, n, g) {
+  var gr, i;
+  if (g.g === 'radial') {
+    /* دائريٌّ مُبسَّط — الإهليلجيُّ (D9) يصل في دفعة «د» بتحويلٍ متماثل. */
+    gr = ctx.createRadialGradient(n.x + n.w / 2, n.y + n.h * 0.12, 0,
+                                  n.x + n.w / 2, n.y + n.h * 0.12, Math.max(n.w, n.h));
+  } else {
+    var deg = (g.to === 'top') ? 0 : (g.to === 'bottom') ? 180 :
+              (g.to === 'left') ? 270 : (g.to === 'right') ? 90 :
+              (g.deg == null ? 180 : g.deg);
+    /* زاويةُ CSS: 0° = إلى الأعلى، وتدور مع عقارب الساعة. */
+    var rad = (deg - 90) * Math.PI / 180;
+    var L = Math.abs(n.w * Math.cos(rad)) + Math.abs(n.h * Math.sin(rad));
+    var cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+    gr = ctx.createLinearGradient(cx - Math.cos(rad) * L / 2, cy - Math.sin(rad) * L / 2,
+                                  cx + Math.cos(rad) * L / 2, cy + Math.sin(rad) * L / 2);
+  }
+  for (i = 0; i < g.st.length; i++) {
+    var p = Math.max(0, Math.min(1, g.st[i][0] / 100));
+    gr.addColorStop(p, g.st[i][1]);
+  }
+  return gr;
+}
+
+/* `object-fit:cover` — نفسُ صيغة CSS حرفياً: أكبرُ معاملٍ يملأ البعدين، بمركزةٍ
+   متماثلة. تكافؤٌ تامّ لا تقريب. */
+function _tsDrawCover(ctx, img, x, y, w, h) {
+  var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+  if (!nw || !nh) return;
+  var s = Math.max(w / nw, h / nh);
+  var dw = nw * s, dh = nh * s;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+/* ── رسّامُ العقدة ───────────────────────────────────────────────────────────── */
+function _tsPaintNode(ctx, n, assets) {
+  ctx.save();
+
+  /* القصُّ يسري على العقدة وأبنائها — نقاطُ المضلّع نسبيّةٌ فتُزاح بأصل العقدة. */
+  if (n.clip && n.clip.poly) {
+    ctx.beginPath();
+    for (var ci = 0; ci < n.clip.poly.length; ci++) {
+      var px = n.x + n.clip.poly[ci][0], py = n.y + n.clip.poly[ci][1];
+      if (ci === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.clip();
+  }
+  if (n.rad && n.t !== 'rect' && n.t !== 'logo' && n.t !== 'qr') {
+    _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.clip();
+  }
+  if (n.op != null) ctx.globalAlpha = n.op;
+
+  if (n.t === 'rect') {
+    if (n.rot) { ctx.translate(n.x + n.w / 2, n.y + n.h / 2); ctx.rotate(n.rot * Math.PI / 180);
+                 ctx.translate(-(n.x + n.w / 2), -(n.y + n.h / 2)); }
+    if (n.fill) {
+      ctx.fillStyle = (typeof n.fill === 'string') ? n.fill : _tsGrad(ctx, n, n.fill);
+      _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+    }
+  } else if (n.t === 'grad') {
+    if (n.blend) { ctx.globalCompositeOperation = n.blend.mode; ctx.globalAlpha = n.blend.alpha; }
+    ctx.fillStyle = _tsGrad(ctx, n, { g: n.g, to: n.to, deg: n.deg, st: n.st, r: n.r });
+    _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+  } else if (n.t === 'img') {
+    var im = n.src ? assets[n.src] : null;
+    if (im) {
+      if (n.fx) {
+        var f = [];
+        if (n.fx.gray) f.push('grayscale(' + n.fx.gray + ')');
+        if (n.fx.contrast) f.push('contrast(' + n.fx.contrast + ')');
+        if (f.length) { try { ctx.filter = f.join(' '); } catch (e) {} }
+      }
+      _tsDrawCover(ctx, im, n.x, n.y, n.w, n.h);
+      try { ctx.filter = 'none'; } catch (e2) {}
+    }
+    /* لا صورة ⇒ لا رسم — مطابقٌ لـ`onerror` في HTML: يظهر ما تحتها. */
+  } else if (n.t === 'logo') {
+    var lg = n.src ? assets[n.src] : null;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(n.x + n.w / 2, n.y + n.h / 2, n.w / 2, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#fff'; ctx.fill();
+    if (lg) _tsDrawCover(ctx, lg, n.x, n.y, n.w, n.h);
+    else {
+      ctx.fillStyle = '#0f2545';
+      ctx.font = '900 ' + (n.d * 0.5) + 'px ' + _TS_FONT;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(n.initial || 'م', n.x + n.w / 2, n.y + n.h / 2);
+    }
+    ctx.restore();
+  } else if (n.t === 'qr') {
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = n.src ? 1 : 0.35;
+    _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+    ctx.globalAlpha = 1;
+    var q = n.src ? assets[n.src] : null;
+    if (q) {
+      var sm = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;            /* = image-rendering:pixelated */
+      ctx.drawImage(q, n.x + n.qpad, n.y + n.qpad, n.w - 2 * n.qpad, n.h - 2 * n.qpad);
+      ctx.imageSmoothingEnabled = sm;
+    }
+  } else if (n.t === 'sym') {
+    var sy = _TS_SYMBOLS[n.sym];
+    if (sy && typeof Path2D !== 'undefined') {
+      ctx.save();
+      ctx.translate(n.x, n.y); ctx.scale(n.w / 100, n.h / 100);
+      if (n.op != null) ctx.globalAlpha = n.op;
+      var p2 = new Path2D(sy.d);
+      if (sy.sw) { ctx.strokeStyle = n.c; ctx.lineWidth = sy.sw; ctx.stroke(p2); }
+      else { ctx.fillStyle = n.c; ctx.fill(p2); }
+      ctx.restore();
+    }
+  } else if (n.t === 'text') {
+    ctx.fillStyle = n.c;
+    ctx.font = n.wgt + ' ' + n.fs + 'px ' + _TS_FONT;
+    ctx.textBaseline = 'middle';                    /* = مركزةُ `line-height` في CSS */
+    ctx.textAlign = (n.align === 'center') ? 'center' : (n.align === 'left' ? 'left' : 'right');
+    var ax = (n.align === 'center') ? (n.x + n.w / 2) : (n.align === 'left' ? n.x : n.x + n.w);
+    if (n.ls) { try { ctx.letterSpacing = n.ls + 'px'; } catch (e3) {} }
+    for (var li = 0; li < n.lines.length; li++) {
+      ctx.fillText(n.lines[li], ax, n.y + n.lh * li + n.lh / 2);
+    }
+    if (n.ls) { try { ctx.letterSpacing = '0px'; } catch (e4) {} }
+  } else {
+    /* حاويةٌ قد تحمل طلاءً (خلفيةُ جذر D13 مثلاً). */
+    if (n.fill) {
+      ctx.fillStyle = (typeof n.fill === 'string') ? n.fill : _tsGrad(ctx, n, n.fill);
+      _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+    }
+  }
+
+  /* الحدُّ بعد التعبئة — 🔴 ومُزاحٌ `w/2` للداخل: CSS يرسمه **داخل** الصندوق مع
+     `box-sizing:border-box`، و`ctx.stroke` يرسمه **متمركزاً**. إغفالُ الإزاحة
+     انحرافُ نصفِ سماكةٍ في خمسة تخطيطات. */
+  if (n.stroke) {
+    var hw = n.stroke.w / 2;
+    ctx.strokeStyle = n.stroke.c; ctx.lineWidth = n.stroke.w;
+    _tsPath(ctx, n.x + hw, n.y + hw, n.w - n.stroke.w, n.h - n.stroke.w,
+            n.rad ? [Math.max(0, n.rad[0] - hw), Math.max(0, n.rad[1] - hw),
+                    Math.max(0, n.rad[2] - hw), Math.max(0, n.rad[3] - hw)] : null);
+    ctx.stroke();
+  }
+  /* `ring` = `box-shadow:0 0 0 X` — **حلقةٌ خارجَ الصندوق لا ظلّ**: canvas لا
+     يملك `spread`، وتمثيلُها ظلّاً خطأٌ بنيويّ لا تقريب. */
+  if (n.ring) {
+    ctx.strokeStyle = n.ring.c; ctx.lineWidth = n.ring.w;
+    if (n.t === 'logo') {
+      ctx.beginPath();
+      ctx.arc(n.x + n.w / 2, n.y + n.h / 2, n.w / 2 + n.ring.w / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      var rw = n.ring.w / 2;
+      _tsPath(ctx, n.x - rw, n.y - rw, n.w + n.ring.w, n.h + n.ring.w, n.rad);
+      ctx.stroke();
+    }
+  }
+
+  for (var i = 0; i < (n.ch || []).length; i++) _tsPaintNode(ctx, n.ch[i], assets);
+  ctx.restore();
+}
+
+function _tsPaintList(ctx, dl, assets) {
+  ctx.save();
+  ctx.clearRect(0, 0, dl.w, dl.h);
+  ctx.fillStyle = '#060f1e';                      /* أرضيّةُ الشريحة — كما في `_tsStudioHtml` */
+  ctx.fillRect(0, 0, dl.w, dl.h);
+  _tsPaintNode(ctx, dl.node, assets || {});
+  ctx.restore();
+}
+
+/* ── نقطتا الدخول ───────────────────────────────────────────────────────────── */
+
+function _tsPaintCanvas(ctx, sd, S, W, H, cb) {
+  var spec = _TS_SPECS[sd];
+  if (!spec) { cb('تخطيطٌ غيرُ معروف: ' + sd); return; }
+  _tsFontsReady(function () {
+    var dl;
+    try { dl = _tsSolveCached(spec, S, W, H, _tsMeasure, sd); }
+    catch (e) { cb('تعذّر حلُّ التخطيط: ' + e.message); return; }
+    _tsPrefetch(dl, function (assets) {
+      try { _tsPaintList(ctx, dl, assets); } catch (e2) { cb('تعذّر الرسم: ' + e2.message); return; }
+      cb(null);
+    });
+  });
+}
+
+/* يُنتج dataURL جاهزاً للرفع/النشر. cb(dataUrl, err).
+   🔴 **JPEG لا PNG**: 1080×1920 PNG لصورةٍ فوتوغرافية ≈ 3-5MB، وذاك يُخاطر
+      بفشلٍ **يظهر عند النشر لا عند المعاينة**.
+   🔴 **وفحصُ التلوّث مبكرٌ ويبقى دائماً** — قِيس أن lh3 يردّ `ACAO:*` على أصلٍ
+      عامٍّ واحد، ومستوى مشاركةٍ مختلفٌ قد يردّ غيرَ ذلك. */
+function _tsExportDataUrl(sd, S, W, H, cb) {
+  if (!_tsFontLive()) { cb('', 'الخطّ غير جاهز — تعذّر تصدير الغلاف'); return; }
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  _tsPaintCanvas(cv.getContext('2d'), sd, S, W, H, function (err) {
+    if (err) { cb('', err); return; }
+    try {
+      var u = cv.toDataURL('image/jpeg', 0.9);
+      cb(u, '');
+    } catch (e) {
+      cb('', 'تعذّر دمج الهوية مع هذه الصورة (قيد مشاركة الصورة)');
+    }
+  });
+}
 
 function _buildNewsCard_Teacher(n) {
   // [fix] يدعم عدة صور + فيديو + PDF معاً (كان يعرض أول رابط فقط)
