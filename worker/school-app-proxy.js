@@ -436,6 +436,63 @@ function _clientErrRate(ip, now) {
 }
 /* ═══ نهايةُ `/client-err` النقيّة ═══ */
 
+/* ═══ حدُّ تسجيل المشاهدات العامّة لكلّ IP (قرار المالك 2026-09-19) ═══════════════
+   🔴 **العلّة المقيسة:** `recordPublicNewsView`/`recordPublicNewsViewBatch` عامّتان **بلا
+   توكن**، و«رقمُ الزائر» يصنعه العميلُ نفسُه ⇒ سكربتٌ بأرقامٍ عشوائيّةٍ يسجّل حتى 50
+   مشاهدةً في النداء، **وكلُّ نداءٍ غيرِ مخبوءٍ يقرأ عمودين كاملين من «اخبار_مشاهدات»**
+   التي تنمو بلا حذف ⇒ التضخيمُ يرفع العددَ **ويُبطئ كلَّ تسجيلٍ لاحقٍ** على الحصّة
+   المشتركة نفسِها (قِيس: ~1% من مقعد الحصّة اليوم، وكلفتُه تكبر مع حجم الورقة).
+   🎯 **يُكبَح هنا قبل الكاش وقبل حجز المقعد** ⇒ صفرُ حصّة GAS لما فوق الحدّ.
+   🟢 **والردُّ نجاحٌ صامت** `{ok:true, result:{success:true, throttled:true}}` — `gas-bridge.js`
+   يعامل `ok:true` نجاحاً فلا يعيد المحاولة (الفشلُ كان سيضاعف الحِملَ الذي نكبحه).
+   ⚠️ **والحدُّ سخيٌّ عمداً (60/دقيقة):** مستخدمو اليمن يتشاركون عناوينَ IP (CGNAT لدى
+   المشغّلين)، والصفحةُ الواحدة تُطلق دفعةً واحدةً لا نداءً لكلّ خبر ⇒ ستّون دفعةً في
+   الدقيقة من عنوانٍ واحدٍ لا يبلغها استعمالٌ بشريّ. وثمنُ الخطأ مشاهدةٌ لا تُعَدّ، لا بياناتٌ تُفقَد.
+   ⚠️ **وحدُّ المثيل ليس حدّاً عالمياً** (نفسُ حدّ `/client-err`): يكبح مُغرِقاً واحداً لا
+   إغراقاً موزَّعاً. **ولا يُسجَّل عنوانُ IP.** */
+var PV_RATE_WINDOW_MS = 60000;
+var PV_RATE_MAX = 60;           // دفعاتُ تسجيلٍ لكلّ IP في الدقيقة داخل المثيل
+var PV_RATE_TRACK_MAX = 5000;
+var _PV_FNS = { recordPublicNewsView: 1, recordPublicNewsViewBatch: 1 };
+var _pvHits = {};
+var _pvTracked = 0;
+
+/** `true` = دالّةُ تسجيلِ مشاهدةٍ عامّة (قائمةٌ بيضاءُ بـhasOwnProperty). */
+function _isPublicViewFn(fn) {
+  return typeof fn === 'string' && Object.prototype.hasOwnProperty.call(_PV_FNS, fn);
+}
+
+/* 🔴 **اسمُ الدالّة يُقرأ من الجسم كاملاً بـ`JSON.parse` — لا من نافذة `_bhFn`.**
+   `_bhFn` تُستخرج من أوّل 200 حرفٍ بتعبيرٍ نمطيّ لغرض **السجلّ**؛ وتحميلُها قراراً أمنياً
+   على مسارٍ عامٍّ يتحكّم المهاجمُ بجسمه كاملاً ثغرةٌ: حقلٌ طويلٌ قبل `"fn"` يُخرجه من
+   النافذة فيتخطّى الطلبُ الحدَّ كلّياً (رصدتها مراجعةُ #319). `JSON.parse` يقرأ المفتاحَ
+   **كما يقرؤه GAS** (`doPost` يحلّل الجسمَ نفسَه، والمفتاحُ المكرَّر يأخذ آخرَ قيمة في
+   الطرفين) ⇒ لا فجوةَ بين ما نكبحه وما يُنفَّذ. وجسمٌ غيرُ JSON ⇒ `''` (لا تسجيلَ فيه أصلاً). */
+function _publicViewFnOf(body) {
+  try {
+    var o = JSON.parse(String(body || ''));
+    var fn = (o && typeof o === 'object') ? o.fn : '';
+    return _isPublicViewFn(fn) ? fn : '';
+  } catch (e) { return ''; }
+}
+
+/** `true` = مسموح. نافذةٌ ثابتةٌ لكلّ IP؛ و`now` يُمرَّر ليُختبَر بلا ساعة. */
+function _publicViewRate(ip, now) {
+  var key = String(ip || '-');
+  var h = _pvHits[key];
+  if (!h || now - h.t0 >= PV_RATE_WINDOW_MS) {
+    if (!h) {
+      if (_pvTracked >= PV_RATE_TRACK_MAX) { _pvHits = {}; _pvTracked = 0; }
+      _pvTracked++;
+    }
+    _pvHits[key] = { t0: now, n: 1 };
+    return true;
+  }
+  h.n++;
+  return h.n <= PV_RATE_MAX;
+}
+/* ═══ نهايةُ حدّ المشاهدات العامّة ═══ */
+
 /* ═══ سياسةُ وسيط الفيديو `/media/drive/<fileId>` — دالّتان نقيّتان ═══════════════
    🔴 العلّةُ المقيسة (2026-09-06): `Cache-Control: public, max-age=86400, immutable`
    كان يُلحَق بالردّ **أيّاً كانت حالتُه** ⇒ فشلُ الجلب (فحصُ فيروسات Drive ما زال جارياً
@@ -1811,6 +1868,16 @@ export default {
         var _bhM = _bhHead.match(/"fn"\s*:\s*"([A-Za-z][A-Za-z0-9_]{0,63})"/);
         if (_bhM) _bhFn = _bhM[1];
       } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
+
+      // ── حدُّ تسجيل المشاهدات العامّة لكلّ IP — قبل الكاش والمقعد (انظر `_publicViewRate`) ──
+      var _pvFn = (request.method === 'POST' && app === 'home') ? _publicViewFnOf(init.body) : '';
+      if (_pvFn && !_publicViewRate(request.headers.get('CF-Connecting-IP'), Date.now())) {
+        _bhLog({ ev: 'pubview', act: 'throttle', app: app, fn: _pvFn });
+        return withCors(new Response(
+          JSON.stringify({ ok: true, result: { success: true, throttled: true, recorded: 0 } }),
+          { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8',
+                                    'Cache-Control': 'no-store' } }));
+      }
 
       // ── كاشُ الحافّة: يُعترَض **قبل حجز المقعد** ─────────────────────────────
       // 🔴 الموضع مقصود: هنا وحدها يكون `init.body` مقروءاً و**لا مقعد مأخوذ بعد** ⇒
