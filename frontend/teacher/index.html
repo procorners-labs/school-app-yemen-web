@@ -26471,7 +26471,11 @@ window.togglePasswordVisibility = togglePasswordVisibility;
 
 var _RPT_CACHE = null; // cache بسيط داخل المتصفح
 var _RPT_CACHE_TS = 0;      // 🆕 طابع وقت التخزين — بدونه كان الكاش يبقى صالحاً بلا انتهاء طوال الجلسة
-var _RPT_CACHE_TTL_MS = 180000; // 🆕 3 دقائق — يطابق TTL الكاش الخادمي لنفس التقرير
+var _RPT_CACHE_TTL_MS = 900000; // 15 دقيقة — يطابق RPT_CACHE_TTL الخادمي (كان 3 دقائق: كلُّ فتحٍ بعدها حسابٌ بارد 15–20ث)
+/* 🔄 **«تحديث» يطلب حساباً جديداً من الخادم لا من الكاش (2026-09-19).** كان الزرّ يتجاوز كاشَ المتصفّح وحده
+   فيُعيد الخادمُ نسختَه المخزَّنة. و`force` وحدَه (تبديلُ الشعبة) **لا** يتجاوز كاشَ الخادم — المفتاحُ مبصومٌ بالشعبة. */
+var _RPT_FRESH = false;
+var RPT_CLIENT_TTL = 900;
 var _RPT_SECTION = '';  // الشعبة المختارة لعرض التقرير حسب الشعبة
 function rep_setSection(v) { _RPT_SECTION = v || ''; loadReports(true); }
 function rep_fillSectionPicker(d) {
@@ -26497,7 +26501,7 @@ function renderReports() {
         '</div>' +
         '<select id="rptSection" onchange="rep_setSection(this.value)" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-inline-end:6px;display:none"></select>' +
         '<button class="refresh-btn" title="مساعدة" onclick="_helpOpen(\'reports\')">❓</button>' +
-        '<button class="refresh-btn" onclick="loadReports(true)">🔄 تحديث</button>' +
+        '<button class="refresh-btn" onclick="loadReports(true, true)">🔄 تحديث</button>' +
         '<button class="refresh-btn" onclick="rep_shareReport()" style="margin-inline-start:6px">📤 مشاركة</button>' +
       '</div>' +
       '<div id="rptBody">' +
@@ -26522,7 +26526,9 @@ function _rpt_clientScope() {
   return 'teacher';
 }
 
-function loadReports(force) {
+function loadReports(force, fresh) {
+  _RPT_FRESH = !!fresh;
+  if (_RPT_FRESH) { _RPT_SEC_CACHE = {}; _RPT_SEC_FRESH = { attendance: 1, trend: 1, academic: 1 }; }
   var bodyEl = document.getElementById('rptBody');
   if (!bodyEl) return;
 
@@ -26565,7 +26571,7 @@ function loadReports(force) {
   // 🆕 نواة التقرير فقط — الأقسام الثقيلة (الحضور · الصدارة · الدرجات) تُجلَب عند أوّل
   // فتح لقسمها عبر rep_secToggle. لا تُطلَق تلقائياً: التبويب يُطلق أصلاً خمسة نداءات
   // متوازية، وإضافة المزيد تنقل الكمون بدل خفضه (حصّة الثلاثين — بند 55).
-  callServer('getReportsCoreProtected', { section: _RPT_SECTION || '' }, function(r) {
+  callServer('getReportsCoreProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, function(r) {
     if (!r || !r.success) {
       var mainEl = document.getElementById('rpt-main');
       if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ تعذّر تحميل التقارير: ' +
@@ -26597,11 +26603,18 @@ function loadReports(force) {
  */
 var _RPT_AFTER_CORE_DONE = false;
 function _rptAfterCore() {
+  var wasFresh = _RPT_FRESH;
+  _RPT_FRESH = false;   // يُصفَّر أوّلاً — ولو خرجت الدالّةُ مبكّراً (مراجعة #1636 ④)
   if (_RPT_AFTER_CORE_DONE) return;
   _RPT_AFTER_CORE_DONE = true;
   var role = (App.user && App.user.role) || 'teacher';
-  if (role !== 'admin' && role !== 'deputy' && role !== 'supervisor') return;
-  gec_open(false);   // يحترم كاش _GEC_TTL (3 دقائق) فلا يُعيد الجلب بلا داعٍ
+  if (role === 'admin' || role === 'deputy' || role === 'supervisor') {
+    _RPT_FRESH = wasFresh;  // لنداء المتابعة وحدَه
+    gec_open(wasFresh);     // «تحديث» يُعيد الجلب؛ وإلّا يحترم كاش _GEC_TTL
+  }
+  /* 🔒 «تحديث» لضغطةٍ واحدة: بعد إطلاق كلّ نداءات الفتح يعود العلَم — وإلّا بقي كلُّ تغيير فلترٍ
+     لاحقٍ يتجاوز الكاش ويحسب من جديد. */
+  _RPT_FRESH = false;
 }
 
 // ══════════════════════════════════════════════════════
@@ -26612,6 +26625,9 @@ function _rptAfterCore() {
 //  الناتج يُدمَج في `_RPT_CACHE` أيضاً كي يبقى زرّ المشاركة صحيحاً بعد فتح القسم.
 // ══════════════════════════════════════════════════════
 var _RPT_SEC_CACHE = {};   // sectionKey → payload (لكل شعبة مختارة على حدة)
+/* 🔄 «تحديث» يمتدّ إلى الأقسام المطويّة (مراجعة جلسة الوركر لـ#1636): أوّلُ فتحٍ لكلّ قسمٍ بعد الضغط
+   يرسل fresh مرّةً واحدة — وإلّا رأى المديرُ نسخةً عمرُها حتى 15 دقيقة والزرُّ يوحي بحداثتها. */
+var _RPT_SEC_FRESH = {};
 
 function _rpt_secBox(key, icon, title, hint) {
   return '<details class="rpt-sec" data-sec="' + key + '" ontoggle="rep_secToggle(this)">' +
@@ -26645,8 +26661,10 @@ function rep_secToggle(el) {
   };
   var fn = fnMap[key];
   if (!fn) return;
+  var secFresh = !!_RPT_SEC_FRESH[key];
+  if (secFresh) delete _RPT_SEC_FRESH[key];
 
-  callServer(fn, { section: sec }, function(r) {
+  callServer(fn, { section: sec, fresh: secFresh }, function(r) {
     if (!r || r.success !== true) {
       el.removeAttribute('data-loaded');   // يُعاد المحاولة عند فتح تالٍ
       if (body) body.innerHTML = '<div class="rpt-empty">⚠️ ' +
@@ -26801,7 +26819,8 @@ function rep_loadAllTeacherActivity(scope) {
      أخرى — ولأن `section` جزءٌ من الوسيط فهو جزءٌ من المفتاح وإلّا خُدم تقريرُ شعبةٍ
      لطلبٍ عن شعبةٍ أخرى. */
   var _actKey = 'rpt_allact_' + ((App.user && App.user.schoolId) || '') + '_' + (_RPT_SECTION || '');
-  callServer('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '' }, _actKey, 180, function (res) {
+  if (_RPT_FRESH && typeof ClientCache !== 'undefined') ClientCache.del(_actKey);
+  callServer('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, _actKey, RPT_CLIENT_TTL, function (res) {
     if (!res || !res.success) { box.innerHTML = ''; return; }
     window._repAllTeachers = res.teachers || [];
     window._repAllTeachersSummary = res.summary || null;
@@ -26926,7 +26945,9 @@ function rep_loadTaskPerformance(scope) {
   box.innerHTML = _rpt_card('📌', 'أداء المهام والإشراف', '<p style="color:#94a3b8;">⏳ جارٍ التحميل...</p>');
 
   if (isManager) {
-    callServer('getAllTaskSummariesProtected', {}, 'task_summaries_' + ((App.user && App.user.schoolId) || ''), 180, function (res) {
+    var _tsKey = 'task_summaries_' + ((App.user && App.user.schoolId) || '');
+    if (_RPT_FRESH && typeof ClientCache !== 'undefined') ClientCache.del(_tsKey);
+    callServer('getAllTaskSummariesProtected', { fresh: _RPT_FRESH }, _tsKey, RPT_CLIENT_TTL, function (res) {
       if (!res || !res.success) { box.innerHTML = ''; return; }
       window._repTaskList = res.teachers || [];
       window._repTaskGrand = res.grand || null;
@@ -27088,8 +27109,11 @@ function rep_applyAttStats() {
     startDate: ((document.getElementById('attStatsFrom')    || {}).value) || '',
     endDate:   ((document.getElementById('attStatsTo')      || {}).value) || ''
   };
+  var _asKey = 'attstats_' + ((App.user && App.user.schoolId) || '') + '_' + p.grade + '_' + p.section + '_' + p.startDate + '_' + p.endDate;
+  if (_RPT_FRESH && typeof ClientCache !== 'undefined') ClientCache.del(_asKey);
+  p.fresh = _RPT_FRESH;
   callServer('getAttendanceStatsProtected', p,
-    'attstats_' + ((App.user && App.user.schoolId) || '') + '_' + p.grade + '_' + p.section + '_' + p.startDate + '_' + p.endDate, 180,
+    _asKey, RPT_CLIENT_TTL,
     function (res) {
     if (!res || !res.success) { bodyEl.innerHTML = '<p style="color:var(--danger);">⚠️ ' + ((res && res.error) || 'تعذّر تحميل التقرير') + '</p>'; return; }
     window._repAttStats = res.stats || [];
@@ -27645,7 +27669,7 @@ function gec_open(force) {
   if (!force && _GEC_DATA && (Date.now() - _GEC_TS) < _GEC_TTL) { _gec_render(_GEC_DATA); return; }
   box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
     '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div>');
-  callServer('getGradesEntryComplianceProtected', { section: _RPT_SECTION || '' }, function (r) {
+  callServer('getGradesEntryComplianceProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, function (r) {
     if (!r || !r.success) {
       box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
         '<div class="rpt-empty">⚠️ ' + _tfEsc((r && r.error) || 'تعذّر تحميل متابعة الرصد') + '</div>' +
