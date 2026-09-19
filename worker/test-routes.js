@@ -2709,7 +2709,10 @@ console.log('ضابطُ الفئة — «مَن يقرأ هذا نصّاً؟»:'
                          'id="tbPhone"', 'id="fcPhone"', 'id="tbAddr"', 'id="ftAddr"',
                          'id="tbWa"', 'id="fcWa"', '__HOME_BRAND__',
                          'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
-                         'data-brand-host="phone"', 'data-brand-host="address"']],
+                         'data-brand-host="phone"', 'data-brand-host="address"',
+                         /* روابطُ البوّابات (2026-09-19 · `_PortalHref`): حذفُها من المصدر يُصمِت
+                            الكتابةَ الخادميّة فيعود الرابطُ عارياً — وكان هذا الحارسُ سيبقى أخضر. */
+                         'data-portal="teacher"', 'data-portal="student"']],
     ['teacher/index.html', ['school-brand-name', 'id="tchLoginLogo"', 'id="tchNavLogo"',
                             'id="tchLoginContact"', 'id="tchLoginAddress"',
                             'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
