@@ -2957,6 +2957,54 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <div id="lm-status" style="margin-bottom:12px;"></div>
       <div class="lists-grid" id="lm-grid">⏳ جارٍ التحميل...</div>
 
+      <!-- 📘 المقرَّرات — مواد كلّ صفٍّ وشعبة.
+           موضعُها هنا بقرار مالك 2026-09-21 («يجب أن يُضاف مع ورقة القوائم»): تُدار
+           من **نفس الشاشة** التي تُدار منها الفصولُ والموادُّ والشعبُ والسلوكيات.
+           🔴 والمخزنُ ورقةٌ مستقلّةٌ اسمُها «المقررات» لأن المقرَّر **ثلاثيّةٌ**
+           (صفّ⇄شعبة⇄مادّة) لا يحملها عمودٌ مسطّحٌ إلّا بترميزٍ داخل الخليّة — وذاك
+           مخزنٌ ثانٍ مقنَّع. الشاشةُ واحدةٌ والمخزنُ مناسبٌ لشكل البيانات. -->
+      <div id="cur-card" style="margin-top:22px;padding:14px;border:1px solid #c5cae9;border-radius:10px;background:#f7f8ff;">
+        <div style="font-weight:800;margin-bottom:6px;">📘 المقرَّرات — مواد كلّ صفٍّ وشعبة</div>
+        <div style="font-size:13px;color:#546e7a;line-height:1.7;margin-bottom:10px;">
+          هنا تُحدَّد <b>أيُّ مادّةٍ تُدرَّس في أيّ صفٍّ وشعبة</b>، فتتبعها المنصّةُ كلُّها:
+          الرصدُ والشهاداتُ وجدولُ الاختبارات وتوزيعُ الحصص ومنصّةُ الطالب.
+          <br>🟢 وما دامت هذه القائمةُ فارغةً يعمل النظامُ بالمقرَّر المدمَج كما هو اليوم — لا شيء ينكسر.
+          <br>📝 و«أوراق الاختبار» لمادّةٍ واحدة (مثل <b>عربي كتابي، عربي قرائي</b>) تُكتب مفصولةً بفاصلة:
+          تظهر ورقتين في جدول الاختبارات، وتبقى <b>مادّةً واحدة</b> في الدرجات والشهادة.
+        </div>
+        <div id="cur-status" style="margin-bottom:8px;"></div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+          <label style="font-size:13px;">عرض صفّ:</label>
+          <select id="cur-filter-grade" onchange="cur_render()" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"><option value="">كل الصفوف</option></select>
+          <button type="button" onclick="cur_load()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;">🔄 تحديث</button>
+        </div>
+
+        <div id="cur-body" style="font-size:13px;">⏳ جارٍ التحميل...</div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #c5cae9;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">➕ إضافة مقرَّر</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <select id="cur-add-grade" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"></select>
+            <select id="cur-add-section" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"></select>
+            <select id="cur-add-subject" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"></select>
+            <input id="cur-add-papers" type="text" placeholder="أوراق الاختبار (اختياري)" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;min-width:190px;">
+            <button type="button" onclick="cur_add()" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:13px;">إضافة</button>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #c5cae9;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🌱 تعبئة أوّليّة من المقرَّر المدمَج</div>
+          <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
+            تُضيف موادَّ كلّ صفٍّ كما يعرفها النظامُ اليوم، لتبدأ من شيءٍ جاهزٍ ثمّ تعدّله.
+            <br>🔴 <b>لا تدهس شيئاً</b>: ما هو مُسجَّلٌ يبقى كما هو، والمعاينةُ تُريك ما سيُضاف قبل أيّ كتابة.
+          </div>
+          <button type="button" onclick="cur_seedPreview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
+          <button type="button" id="cur-seed-apply" onclick="cur_seedApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التعبئة</button>
+          <div id="cur-seed-out" style="margin-top:8px;font-size:13px;"></div>
+        </div>
+      </div>
+
       <!-- 🧹 تصحيح أسماء الطلاب — أداةُ صيانةٍ للمدير وحدَه.
            موضعُها هنا لأن «إدارة القوائم» مقصورةٌ على المدير أصلاً (‏si-lists-mgmt)،
            فلا تحتاج حارسَ عرضٍ ثانياً — والحارسُ الحقيقيُّ خادميٌّ على أيّ حال. -->
@@ -3751,6 +3799,17 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <div style="background:#fff;border-radius:12px;padding:24px;width:360px;max-width:95%;">
     <h4 id="lm-modal-title" style="margin:0 0 14px;">إضافة عنصر</h4>
     <input id="lm-new-value" type="text" placeholder="أدخل القيمة..." style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:12px;">
+    <!-- تصنيفُ السلوك — يظهر لقائمة «أنواع السلوكيات» وحدَها (‏lm_showAddModal/lm_editItem).
+         والفراغُ خيارٌ صريحٌ لا سهو: يعني «يُشتقّ من النصّ» كما كان قبل هذه الميزة. -->
+    <div id="lm-polarity-wrap" style="display:none;margin-bottom:12px;">
+      <label style="display:block;font-size:12px;color:#555;margin-bottom:5px;">تصنيف السلوك</label>
+      <select id="lm-polarity" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+        <option value="">— يُحدَّد تلقائياً من النصّ —</option>
+        <option value="merit">تعزيز إيجابي</option>
+        <option value="violation">ملاحظة تحتاج إلى متابعة</option>
+      </select>
+      <p style="margin:6px 0 0;font-size:11px;color:#888;">يُستعمل في تقارير وليّ الأمر ومنصّة الطالب. وبلا تحديدٍ يُستنتَج من كلمات الاسم.</p>
+    </div>
     <div id="lm-modal-status" style="margin-bottom:8px;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="lm_closeModal()" style="padding:7px 16px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer;">إلغاء</button>
@@ -7405,7 +7464,7 @@ function loadSession() {
 }
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
-  try { sessionStorage.removeItem('teacherLists_v3'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v4'); } catch(e) {}
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
   try { ClientCache.clear(); } catch(e) {} // ✅ يمسح أيضاً كل كاش callServer المخزَّن بـsessionStorage
                                            // (كان يبقى من مدرسة/جلسة سابقة عند تبديل ?school=)
@@ -8172,7 +8231,7 @@ function bootApp() {
   // ── تحميل القوائم + تحميل Schema ──
   var cachedLists = null;
   try {
-    var raw = sessionStorage.getItem('teacherLists_v3');
+    var raw = sessionStorage.getItem('teacherLists_v4');
     if (raw) {
       var parsed = JSON.parse(raw);
       if (parsed._ts && (Date.now() - parsed._ts) < 30 * 60 * 1000) {
@@ -8342,7 +8401,7 @@ function _fetchListsFromServer(callback) {
     if (callback) callback(false);
     return;
   }
-  callServer('getListsDataProtected', { token: App.user.token }, 'lists_data', 1800, function(r) {
+  callServer('getListsDataProtected', { token: App.user.token }, 'lists_data_v2', 1800, function(r) {
     if (r && r.success) {
       App.lists = {
         grades         : r.grades     || [],
@@ -8355,10 +8414,12 @@ function _fetchListsFromServer(callback) {
         sectionsByGrade: r.sectionsByGrade || {},
         nonGradedSubjects: r.nonGradedSubjects || {},
         curriculumByGrade: r.curriculumByGrade || {},
+        // ★ أوراقُ الاختبار لكلّ صفّ (من سجلّ «المقررات») — فارغةٌ بحقٍّ لمدرسةٍ بلا سجلّ.
+        examPapersByGrade: r.examPapersByGrade || {},
         subjectExpansionMap: r.subjectExpansionMap || {},
         _ts            : Date.now()
       };
-      try { sessionStorage.setItem('teacherLists_v3', JSON.stringify(App.lists)); } catch(e) {}
+      try { sessionStorage.setItem('teacherLists_v4', JSON.stringify(App.lists)); } catch(e) {}
       if (callback) callback(true);
     } else {
       console.warn('getListsDataProtected returned success=false');
@@ -10761,6 +10822,9 @@ function showSection(name, opt) {
       if (listsDiv) listsDiv.style.display = 'block';
       dynamicEl.style.display = 'none';
       lm_load();
+      /* 🔴 نداءٌ مستقلٌّ بمعالجِ فشلٍ خاصّ — لا يُعلَّق على نجاح `lm_load`:
+         فشلُ أحدهما لا يجوز أن يُفرِغ الآخرَ صامتاً (فئة بند 229). */
+      if (typeof cur_load === 'function') cur_load();
       updateActiveSidebarItem(name);
       closeSidebar();
       return;
@@ -13369,9 +13433,26 @@ function ec_timetableRetryGrade(btn, key) {
 // مواد الصف الكاملة تأتي من App.lists.curriculumByGrade (محمَّلة أصلاً لكل الواجهة — نفس
 // المصدر الذي يستخدمه تبويب "رصد الدرجات" في ec_gradesOnGradeChange) — بلا استدعاء خادم إضافي
 // وبلا أي إعداد يدوي لقائمة المواد.
+// بركةُ بطاقاتِ الجدول لصفٍّ — المواد، **مستبدَلةً بأوراق اختبارها حين تملكها**.
+// مادّةٌ لها أوراقٌ في سجلّ «المقررات» (مثل «اللغة العربية» ⇒ «عربي كتابي» و«عربي قرائي»)
+// تُعطي بطاقةً لكلّ ورقة لا بطاقةً واحدة — فالجدول يُمتحَن بالأوراق، **والرصدُ والشهادةُ
+// يبقيان على المادّة الواحدة** (قرارُ مالك ٤: ورقتا امتحانٍ لا مادّتان).
+// 🔴 ومدرسةٌ بلا سجلّ: `examPapersByGrade` غائبٌ/فارغ ⇒ البركةُ هي المواد كما اليوم بالضبط.
+function ec_timetableSubjectPool(grade) {
+  var all    = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
+  var papers = (App.lists && App.lists.examPapersByGrade && App.lists.examPapersByGrade[grade]) || {};
+  var out = [];
+  for (var i = 0; i < all.length; i++) {
+    var p = papers[all[i]];
+    if (p && p.length) { for (var j = 0; j < p.length; j++) out.push(p[j]); }
+    else out.push(all[i]);
+  }
+  return out;
+}
+
 function ec_timetableComputeUnscheduled(key, grade) {
   var board = _ecScheduleBoards[key]; if (!board) return;
-  var all = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
+  var all = ec_timetableSubjectPool(grade);
   var scheduled = {};
   for (var i = 0; i < board.list.length; i++) scheduled[board.list[i].name] = true;
   board.unscheduled = [];
@@ -13383,7 +13464,10 @@ function ec_timetableComputeUnscheduled(key, grade) {
 // مطابقة الصفوف بنفس مجموعة المواد (بصرف النظر عن الترتيب) — من App.lists.curriculumByGrade
 // المحمَّل أصلاً، بلا استدعاء خادم إضافي وبلا قائمة صفوف مكتوبة يدوياً (ديناميكية بالكامل).
 function ec_timetableGradeSubjectsKey(grade) {
-  var subs = (App.lists && App.lists.curriculumByGrade && App.lists.curriculumByGrade[grade]) || [];
+  // 🔴 نفسُ البركة التي تُعرَض — لا `curriculumByGrade` الخام: صفّان يتّفقان في المواد
+  //    ويختلفان في أوراق الاختبار **ليسا مجموعةً واحدة**، وتجميعُهما كان سيُظهر بطاقاتِ
+  //    أحدهما للآخر.
+  var subs = ec_timetableSubjectPool(grade);
   return subs.length ? subs.slice().sort().join('|') : '';
 }
 
@@ -27493,10 +27577,12 @@ function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); i
 // ==================== LM (إدارة القوائم) ====================
 function lm_load(){ var grid=document.getElementById('lm-grid'); if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_render(res); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).getListsDataProtected({token:App.user.token}); }
 function lm_reload(){ lm_load(); }
-function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',title:'⚠️ أنواع السلوكيات',items:data.violations||[],color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
+function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',title:'⚠️ أنواع السلوكيات',items:data.violations||[],color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); var pol=(p.type==='violation'&&data.violationPolarity)?(data.violationPolarity[p.items[ii]]||''):''; var polTag=pol?('<span title="'+(pol==='merit'?'تعزيز إيجابي':'ملاحظة تحتاج إلى متابعة')+'" style="font-size:11px;margin-left:6px;">'+(pol==='merit'?'🟢':'🟠')+'</span>'):''; html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+polTag+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\',\''+pol+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
 function lm_findRowIndex(rawRows,type,value){ if(!rawRows) return -1; var colMap={grade:'grade',subject:'subject',section:'section',violation:'violation'}; var col=colMap[type]; for(var i=0;i<rawRows.length;i++) if(rawRows[i][col]===value) return rawRows[i].rowIndex; return -1; }
-function lm_showAddModal(type,title){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
-function lm_editItem(type,rowIdx,currentVal){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
+// يُظهر/يُخفي منتقيَ التصنيف ويضبط قيمتَه — لقائمة «أنواع السلوكيات» وحدَها.
+function lm_setPolarityUI(type,value){ var w=document.getElementById('lm-polarity-wrap'), s=document.getElementById('lm-polarity'); if(!w||!s) return; var on=(type==='violation'); w.style.display=on?'block':'none'; s.value=on?(value||''):''; }
+function lm_showAddModal(type,title){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; lm_setPolarityUI(type,''); document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
+function lm_editItem(type,rowIdx,currentVal,polarity){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; lm_setPolarityUI(type,polarity||''); document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
 function lm_deleteItem(type,rowIdx){
   if(rowIdx<0){ toast('تعذر تحديد الصف', 'error'); return; }
   confirmAction('حذف عنصر من القوائم',
@@ -27505,9 +27591,162 @@ function lm_deleteItem(type,rowIdx){
     google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx});
   }, { okText: '🗑️ حذف العنصر' });
 }
-function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val}); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected({token:App.user.token, listType:_lmCurrentType, value:val}); } }
+function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val})); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, value:val})); } }
+// يُلحق `polarity` لقائمة السلوكيات وحدَها. 🔴 ولا يُرسَل للقوائم الأخرى إطلاقاً —
+// إرسالُه معها يجعل الخادمَ يكتب في العمود M على صفوفِ فصولٍ ومواد.
+function lm_payload(p){ if(_lmCurrentType==='violation'){ var s=document.getElementById('lm-polarity'); p.polarity = s ? s.value : ''; } return p; }
 function lm_closeModal(){ document.getElementById('lm-modal').style.display='none'; }
 function lm_setStatus(msg,color){ var el=document.getElementById('lm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';">'+msg+'</div>'; }
+
+// ==================== CUR (المقرَّرات — داخل شاشة إدارة القوائم) ====================
+// 🔴 حالةٌ محلّيةٌ للقسم وحدَه — لا تُخلط بـ`App.lists`: تلك حمولةُ الواجهة كلِّها،
+//    وهذه صفوفُ الورقة **بما فيها المعطَّل** (المديرُ يجب أن يرى ما أطفأه ليُعيده).
+var _curRows = [], _curSeedReady = false;
+
+function cur_setStatus(msg,color){ var el=document.getElementById('cur-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:9px;border-radius:8px;color:'+color+';">'+msg+'</div>'; }
+
+function cur_load(){
+  var body=document.getElementById('cur-body'); if(!body) return;
+  body.innerHTML='⏳ جارٍ التحميل...';
+  /* 🔴 عبر `callServer` لا `google.script.run` الخام — الجسرُ يحمل سياسةَ إعادة
+     المحاولة التي تفصل «الخدمة مشبعة» (‏502/503) عن «الشبكة مقطوعة»، والنداءُ الخام
+     يتجاوزها فيُغذّي الإشباعَ نفسَه. **وبلا مفتاح كاش**: هذه شاشةُ تحريرٍ تُقرأ بعد
+     كلّ كتابة، وكاشُ العميل كان سيُعيد لها ما حذفتَه للتوّ. */
+  callServer('getCurriculumRegistryProtected', {token:App.user.token}, function(res){
+    if(!res||!res.success){ body.innerHTML=''; cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; }
+    _curRows = res.rows||[];
+    cur_fillSelects();
+    cur_render();
+    // 🟢 «لا توجد ورقة» حالةٌ مشروعةٌ لا عطل — تُقال بلونٍ محايدٍ لا أحمر.
+    cur_setStatus(res.exists===false
+      ? 'ℹ️ لا توجد قائمةُ مقرَّراتٍ بعد — النظامُ يعمل بالمقرَّر المدمَج. ابدأ بالمعاينة أدناه.'
+      : '', '#1149a3');
+  }, function(err){ body.innerHTML=''; cur_setStatus('❌ '+(err&&err.message||'تعذّر الاتصال'),'#c62828'); });
+}
+
+// خياراتُ الإضافة من نفس قوائم الشاشة — لا قائمةَ مكتوبةً يدوياً هنا أبداً.
+function cur_fillSelects(){
+  var L=(App.lists||{}), grades=L.grades||[], sections=L.sections||[], subjects=L.subjects||[];
+  var opt=function(v,t){ return '<option value="'+escapeHtml(v)+'">'+escapeHtml(t||v)+'</option>'; };
+  var g=document.getElementById('cur-add-grade'), s=document.getElementById('cur-add-section'),
+      b=document.getElementById('cur-add-subject'), f=document.getElementById('cur-filter-grade');
+  var gHtml=''; for(var i=0;i<grades.length;i++) gHtml+=opt(grades[i]);
+  if(g) g.innerHTML=gHtml;
+  if(f){ var keep=f.value; f.innerHTML='<option value="">كل الصفوف</option>'+gHtml; f.value=keep; }
+  if(s){ var sHtml=opt('*','كل الشعب'); for(var j=0;j<sections.length;j++) sHtml+=opt(sections[j]); s.innerHTML=sHtml; }
+  if(b){ var bHtml=''; for(var k=0;k<subjects.length;k++) bHtml+=opt(subjects[k]); b.innerHTML=bHtml; }
+}
+
+function cur_render(){
+  var body=document.getElementById('cur-body'); if(!body) return;
+  var fEl=document.getElementById('cur-filter-grade'), filter=fEl?fEl.value:'';
+  var rows=[]; for(var i=0;i<_curRows.length;i++){ if(!filter||_curRows[i].grade===filter) rows.push(_curRows[i]); }
+  if(!rows.length){ body.innerHTML='<p style="color:#90a4ae;padding:10px;">لا مقرَّراتٍ مُسجَّلة'+(filter?' لهذا الصفّ':'')+'.</p>'; return; }
+  var h='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+
+        '<tr style="background:#e8eaf6;"><th style="padding:6px;text-align:right;">الصف</th><th style="padding:6px;text-align:right;">الشعبة</th>'+
+        '<th style="padding:6px;text-align:right;">المادة</th><th style="padding:6px;text-align:right;">أوراق الاختبار</th>'+
+        '<th style="padding:6px;">مُفعَّل</th><th style="padding:6px;"></th></tr>';
+  for(var r=0;r<rows.length;r++){
+    var it=rows[r], dim=it.active?'':'opacity:.5;';
+    h+='<tr style="border-bottom:1px solid #e0e0e0;'+dim+'">'+
+       '<td style="padding:6px;">'+escapeHtml(it.grade)+'</td>'+
+       '<td style="padding:6px;">'+escapeHtml(it.section==='*'?'كل الشعب':it.section)+'</td>'+
+       '<td style="padding:6px;font-weight:700;">'+escapeHtml(it.subject)+'</td>'+
+       '<td style="padding:6px;"><input type="text" value="'+escapeHtml(it.papers||'')+'" onchange="cur_savePapers('+it.rowIndex+',this.value)" placeholder="—" style="width:100%;min-width:150px;padding:4px;border:1px solid #cfd8dc;border-radius:5px;font-size:12px;"></td>'+
+       '<td style="padding:6px;text-align:center;"><input type="checkbox" '+(it.active?'checked':'')+' onchange="cur_toggleActive('+it.rowIndex+',this.checked)"></td>'+
+       '<td style="padding:6px;text-align:center;"><button type="button" onclick="cur_delete('+it.rowIndex+')" style="background:#ffebee;border:none;border-radius:5px;padding:4px 8px;cursor:pointer;">🗑️</button></td></tr>';
+  }
+  body.innerHTML=h+'</table></div>';
+}
+
+// 🔴 كلُّ تعديلٍ يُرسل الصفَّ **كاملاً** لا الحقلَ وحدَه: الخادمُ يكتب صفّاً بموضعه،
+//    وإرسالُ حقلٍ واحدٍ كان سيُفرِغ البقيّة.
+function _curRowByIndex(rowIndex){ for(var i=0;i<_curRows.length;i++) if(_curRows[i].rowIndex===rowIndex) return _curRows[i]; return null; }
+
+function _curUpdate(row,okMsg){
+  callServer('updateCurriculumRowProtected', {token:App.user.token, rowIndex:row.rowIndex,
+      grade:row.grade, section:row.section, subject:row.subject, active:row.active,
+      order:row.order, papers:row.papers}, function(res){
+    if(!res||!res.success){ cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); cur_load(); return; }
+    cur_setStatus('✅ '+(okMsg||res.message),'#2e7d32'); cur_load();
+  /* 🔴 وإعادةُ التحميل على الفشل أيضاً — وإلّا بقي الجدولُ يعرض القيمةَ التي لم تُكتب
+     (المستخدمُ يرى تعديلَه «قائماً» وهو مرفوض). */
+  }, function(err){ cur_setStatus('❌ '+(err&&err.message||'تعذّر الحفظ'),'#c62828'); cur_load(); });
+}
+
+function cur_savePapers(rowIndex,val){
+  var row=_curRowByIndex(rowIndex); if(!row) return;
+  row.papers=val; _curUpdate(row,'تم حفظ أوراق الاختبار');
+}
+function cur_toggleActive(rowIndex,checked){
+  var row=_curRowByIndex(rowIndex); if(!row) return;
+  row.active=!!checked; _curUpdate(row, checked?'تم التفعيل':'تم التعطيل');
+}
+
+function cur_add(){
+  var g=document.getElementById('cur-add-grade'), s=document.getElementById('cur-add-section'),
+      b=document.getElementById('cur-add-subject'), p=document.getElementById('cur-add-papers');
+  if(!g||!b||!g.value||!b.value){ cur_setStatus('❌ اختر الصفَّ والمادّة','#c62828'); return; }
+  cur_setStatus('⏳ جارٍ الحفظ...','#1149a3');
+  callServer('addCurriculumRowProtected', {token:App.user.token, grade:g.value,
+      section:s?s.value:'*', subject:b.value, papers:p?p.value:''}, function(res){
+    if(!res||!res.success){ cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; }
+    if(p) p.value='';
+    cur_setStatus('✅ '+res.message,'#2e7d32'); cur_load();
+  }, function(err){ cur_setStatus('❌ '+(err&&err.message||'تعذّر الحفظ'),'#c62828'); });
+}
+
+function cur_delete(rowIndex){
+  var row=_curRowByIndex(rowIndex); if(!row) return;
+  /* 🔴 `confirmAction` بتوقيعها الخمسيّ — وهي الدالّةُ القائمة في هذا المشروع.
+     والرسالةُ **نصٌّ خامٌّ بـ`\n`** لا HTML: القالبُ يكتبها بـ`textContent` (بند 15)،
+     فوسمُ `<br>` كان سيظهر حرفياً للمستخدم. */
+  confirmAction('حذفُ مقرَّر',
+    'حذفُ «'+row.subject+'» من مقرَّر '+row.grade+'؟\nلا يُحذف أيُّ درجةٍ ولا بيان — يسقط سطرُ المقرَّر وحدَه.',
+    '🗑️', function(){
+    /* 🔴 يُرسَل ما يتوقّعه العميلُ في هذا الموضع — الخادمُ يرفض إن لم يطابق:
+       حذفُ مديرٍ آخرَ صفّاً قبلنا يُزحزح كلَّ ما بعده سطراً. */
+    callServer('deleteCurriculumRowProtected', {token:App.user.token, rowIndex:rowIndex,
+        grade:row.grade, subject:row.subject}, function(res){
+      if(!res||!res.success){ cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; }
+      cur_setStatus('✅ '+res.message,'#2e7d32'); cur_load();
+    }, function(err){ cur_setStatus('❌ '+(err&&err.message||'تعذّر الحذف'),'#c62828'); cur_load(); });
+  }, { okText: '🗑️ حذف' });
+}
+
+// 🔴 المعاينةُ تسبق التنفيذَ إلزاماً — وزرُّ التنفيذ يُقفَل بعد كلّ تشغيل،
+//    فلا يُضغَط مرّتين على معاينةٍ بائتة.
+function cur_seedPreview(){
+  var out=document.getElementById('cur-seed-out'); if(out) out.innerHTML='⏳ جارٍ الحساب...';
+  _curSeedReady=false; cur_seedBtn(false);
+  callServer('seedCurriculumRegistryProtected', {token:App.user.token}, function(res){
+      if(!res||!res.success){ if(out) out.innerHTML='<span style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</span>'; return; }
+      var list=res.planned||[], lines='';
+      for(var i=0;i<list.length && i<40;i++) lines+='<div>• '+escapeHtml(list[i].grade)+' — '+escapeHtml(list[i].subject)+'</div>';
+      if(list.length>40) lines+='<div>… و'+(list.length-40)+' غيرها</div>';
+      if(out) out.innerHTML='<div style="color:#1149a3;">'+escapeHtml(res.message)+'</div>'+
+        '<div style="max-height:190px;overflow:auto;margin-top:6px;padding:6px;background:#fff;border:1px solid #e0e0e0;border-radius:6px;">'+(lines||'لا جديد')+'</div>';
+      _curSeedReady = list.length>0; cur_seedBtn(_curSeedReady);
+  }, function(err){ if(out) out.innerHTML='<span style="color:#c62828;">❌ '+(err&&err.message||'تعذّر الحساب')+'</span>'; });
+}
+function cur_seedBtn(on){ var b=document.getElementById('cur-seed-apply'); if(!b) return; b.disabled=!on; b.style.opacity=on?'1':'.5'; }
+function cur_seedApply(){
+  if(!_curSeedReady) return;
+  var out=document.getElementById('cur-seed-out');
+  confirmAction('تعبئةُ المقرَّرات',
+    'تنفيذُ التعبئة الأوّليّة؟\nيُضاف ما عرضته المعاينةُ فقط، ولا يُمَسّ سطرٌ قائم.',
+    '🌱', function(){
+    if(out) out.innerHTML='⏳ جارٍ التنفيذ...';
+    _curSeedReady=false; cur_seedBtn(false);
+    callServer('seedCurriculumRegistryProtected', {token:App.user.token, apply:true}, function(res){
+      if(!res||!res.success){ if(out) out.innerHTML='<span style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</span>'; return; }
+      if(out) out.innerHTML='<span style="color:#2e7d32;">✅ '+escapeHtml(res.message)+'</span>';
+      cur_load();
+    /* 🔴 وفشلُ النقل **لا يُقرأ فشلَ كتابة**: قد تكون الكتابةُ تمّت خادمياً وسقط الردّ
+       (‏502 عند سقف الوسيط). فالرسالةُ تطلب التحقّق ولا تدعو لإعادة الضغط. */
+    }, function(err){ if(out) out.innerHTML='<span style="color:#c62828;">⚠️ انقطع الردّ ('+(err&&err.message||'شبكة')+') — اضغط «تحديث» وتحقّق قبل إعادة المحاولة.</span>'; cur_load(); });
+  }, { okText: '✅ تنفيذ' });
+}
 
 // ════════════════════════════════════════════════════════
 //  🧰 أدوات مشتركة: نافذة طباعة مخصّصة + تنزيل ملف نصّي
