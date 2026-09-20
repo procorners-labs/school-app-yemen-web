@@ -3231,8 +3231,52 @@ export default {
            🔴 **ولا يُوسَّع إلى `*.google.com`** — يبتلع نطاقاتٍ لا علاقةَ لها بالقياس.
            ⚠️ **والمضيفاتُ المرصودةُ تبقى مكتوبةً صراحةً ولو غطّاها البدل** (‏`www.google-analytics.com`):
            البدلُ في CSP **يطابق النطاقاتِ الفرعيّةَ لا النطاقَ المجرَّد**، والصريحُ يوثّق ما قِيس فعلاً. */
-        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.google.com https://stats.g.doubleclick.net https://static.cloudflareinsights.com https://cloudflareinsights.com",
+        /* 🟢 **`www.googletagmanager.com` أُضيف 2026-09-20 — نقصُ قائمةٍ مُثبَتٌ لا توسيعُ ثقة:**
+           جردُ سبعة أيامٍ من `ev:'csp'` أظهر انتهاكاتِ `connect-src` على
+           `www.googletagmanager.com/a?id=…` و`/td?id=…` — **والنطاقُ مُدرَجٌ في `script-src`
+           أعلاه أصلاً** (‏نحمّل منه `gtag`) ⇒ **موثوقٌ عندنا سلفاً، والغيابُ عن `connect-src`
+           سهوٌ بنيويّ**: جردُ 09-11 عدّد ما **يُحمَّل** ولم يعدّ ما **يُرسَل إليه**.
+           🔴 **وما لم يُضَف عمداً — ويُقال كي لا يُقرأ سهواً:** `www.google.de|ru/ads/ga-audiences`
+           (وأمثالُها من نطاقاتٍ قُطريّة) **إعادةُ استهدافٍ لا تحليلات**، وحجبُها **مكسبٌ**:
+           صفرُ أثرٍ على القياس ولا على وظيفة الموقع. ولا تُغطّى ببدلٍ بحال — النطاقاتُ
+           القُطريّةُ غيرُ محصورة، و`*.google.com` ممنوعٌ بنصٍّ أعلاه لأنه يبتلع ما لا علاقةَ له. */
+        "connect-src 'self' https://script.google.com https://script.googleusercontent.com https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.google.com https://www.googletagmanager.com https://stats.g.doubleclick.net https://static.cloudflareinsights.com https://cloudflareinsights.com",
         'report-uri /csp-report'
+      ].join('; '));
+
+      /* ── 🔒 سياسةٌ **نافذة** — المجموعةُ الآمنةُ وحدَها (2026-09-20 · قرارُ المالك) ──
+         🎯 **المبدأ الذي تقوم عليه هذه الكتلة: التوجيهاتُ المشروطةُ بقائمةِ مصادرَ لا
+            تُفرَض، والتي لا تحتاج قائمةً تُفرَض.** وهذا ليس تحفّظاً بل **مشتقٌّ من عطلٍ
+            وقع هنا حرفياً:** قائمةُ `connect-src` أخفقت **مرّتين في يومٍ واحد** (‏09-11)
+            — الأولى بعد أربعين دقيقة، والثانية لأن GA4 يوجّه إلى نقطةٍ **إقليميّةٍ مشتقّةٍ
+            من موقع الزائر** ⇒ **كلُّ زائرٍ من إقليمٍ جديدٍ يُنتج مخالفةً جديدة**.
+            ⇒ **الإخفاقُ الثالثُ يقع عند مستخدمٍ لا عندنا، ولو كانت نافذةً لَكسرت صامتة.**
+         🔴 **ولذلك لا `default-src` ولا `script-src` ولا `style-src` ولا `connect-src`
+            ولا `img-src` هنا** — وغيابُها **مقصودٌ ويُقرأ كذلك**: `Report-Only` أعلاه
+            يبقى مالكَها ومُعايِرَها.
+
+         **والأربعةُ المفروضةُ هنا مقيسةٌ صفرَ كلفةٍ على `frontend/` المخدوم (2026-09-20):**
+           · `object-src 'none'`   ⇐ `<object>` **صفر** · `<embed>` **صفر**
+           · `form-action 'self'`  ⇐ `<form>` **صفرٌ إطلاقاً** في كلّ HTML مخدوم
+           · `base-uri 'self'`     ⇐ خمسةُ `<base>` **كلُّها `target="_top"` بلا `href`**
+                                     (بقيّةُ نمط Apps Script)، و`base-uri` يحكم `href` وحدَه
+           · `frame-ancestors 'self'` ⇐ يعادل `X-Frame-Options: SAMEORIGIN` المنشورَ أعلاه
+                                     والعاملَ منذ مدّة ⇒ لا سلوكَ جديد، بل صيغةٌ حديثةٌ
+                                     تفهمها المتصفّحاتُ التي تتجاهل `XFO`.
+         ⚠️ **ويبقى `X-Frame-Options` معه ولا يُحذف** — متصفّحاتٌ قديمةٌ لا تقرأ
+            `frame-ancestors`، والرأسان **متوافقان لا متعارضان** (الأشدُّ يحكم).
+         🟢 **و`'unsafe-eval'` غيرُ مذكورٍ ولا يلزم:** `eval(` و`new Function` **صفر**
+            مقيساً على المخرَج المخدوم — مكسبٌ يُقفَل اليوم بلا ترحيل.
+         🔴 **وما لا يُفرَض اليوم يُقال صراحةً بدل الإيهام:** `script-src` و`style-src`
+            تحملان `'unsafe-inline'` **ديناً مُعلَناً** — تفرضه **٨٥٠ معالجاً سطريّاً
+            (`on…=`) و٢٬٣١٠ سمةَ `style=`** مقيسةً على `/teacher/index.html` الحيّة
+            (قِيست في جلسة `SchoolApp-gas`). ⇒ **ترحيلٌ إلى `nonce` في مصدر GAS، لا مفتاحٌ
+            هنا**؛ وفرضُهما بـ`'unsafe-inline'` **يُقرأ حمايةً وهو ليس كذلك**. */
+      headers.set('Content-Security-Policy', [
+        "base-uri 'self'",
+        "object-src 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'self'"
       ].join('; '));
     }
 
