@@ -25,7 +25,12 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
+      # 🔴 `fetch-depth: 0` لازمٌ لبوّابةِ ميزانيّةِ الوثائق: تقيس **الزيادةَ في الدفعة**
+      # بمقارنةِ الحجم بقاعدة الـPR، والاستنساخُ الضحل يجعل تلك القاعدةَ غيرَ قابلةٍ للحلّ
+      # ⇒ تُطبع «تعذّر قياسُ الزيادة» في كلّ تشغيلة، فيصير الحارسُ أخضرَ بلا أن يقيس شيئاً.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Check Worker JS syntax
         run: node --check worker/school-app-proxy.js
