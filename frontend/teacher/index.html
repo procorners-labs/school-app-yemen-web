@@ -9937,8 +9937,16 @@ function _newsRenderNewFiles() {
   if (zone) { var head = zone.querySelector('div'); if (head) head.textContent = '📎 ' + list.length + ' ملف مختار — انقر لإضافة المزيد'; }
 }
 
+/* 🔒 معرّفُ عمليّةٍ لكلّ **ضغطةِ نشر** — يبقى ثابتاً عبر إعادات الجسر فيُلغي
+   التكرارَ المولودَ من إعادة المحاولة، ويتغيّر مع كلّ استدعاءٍ جديد فلا يمنع
+   إعادةَ نشرٍ يقصدها المعلّم. (‏الخادم: `TeacherNews.js::_newsOpSeen`.) */
+function _newsNewOpId() {
+  return 'op-' + Date.now() + '-' + Math.floor(Math.random() * 1e9);
+}
+
 function sendSaveNews(data, id) {
   showLoading('جاري النشر...');
+  data.opId = _newsNewOpId();
   var fn = id ? 'updateNewsProtected' : 'addNewsMultiProtected';
   callServer(fn, data, function(r) {
     hideLoading();
@@ -9957,6 +9965,10 @@ function sendSaveNews(data, id) {
       if (App.currentSection === 'news') {
         applyNewsFilters();
       }
+    } else if (r && r.duplicate && r.hard) {
+      /* 🔴 رفضٌ قاطعٌ لا يقبل تأكيداً — عرضُ «أنشره مرّةً أخرى؟» عليه يُنتج حلقةً
+         تعيد نفسَ الرفض، فيُقرأ عطلاً في النشر لا سياسةً مقصودة. */
+      showError(r.error || 'هذا الخبر منشورٌ اليوم بالفعل — لا يمكن نشرُه مرّتين في اليوم نفسه.');
     } else if (r && r.duplicate) {
       confirmAction('⚠️ خبر مكرر', r.error || 'هذا الخبر منشور مسبقاً — هل تريد نشره مرة أخرى؟', '⚠️', function() {
         data.confirmDuplicate = true;
