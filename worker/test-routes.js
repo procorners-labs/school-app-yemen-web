@@ -372,7 +372,13 @@ console.log('الرؤوس الأمنية وحقن og:url:');
   var cGaA = /"connect-src[^"]*https:\/\/\*\.analytics\.google\.com/.test(src);
   /* 🔒 مضمونُ النافذة: تُستخرَج كتلتُها من المصدر ويُقاس **ما فيها وما ليس فيها**.
      🔴 والقائمةُ السوداءُ هي الحارسُ الحقيقيُّ هنا — كلُّ توجيهٍ يحمل قائمةَ مضيفات. */
-  var enfM = src.match(/headers\.set\('Content-Security-Policy'\s*,\s*\[([\s\S]*?)\]\.join/);
+  /* 🔴 **تُنزَع التعليقاتُ قبل الفحص — وهذا ليس تجميلاً بل إصلاحُ إيجابيّةٍ كاذبةٍ وقعت
+     فعلاً 2026-09-20:** التعليقُ المرافقُ داخل المصفوفة يذكر `connect-src` بالاسم (يشرح
+     **لماذا** لا تُفرَض)، فقرأه المِجَسُّ **توجيهاً متسرّباً** وأحمرَّ على كودٍ سليم.
+     🎯 **والفئةُ نفسُها التي يطاردها هذا الملفّ: مِجَسٌّ يُجيب عن «أالكلمةُ في النصّ؟»
+     بينما السؤالُ «أالتوجيهُ مُفعَّل؟».** ⚠️ **وخبثُها أنها كانت كامنةً لا ظاهرة:** بلا
+     تعليقٍ يذكر الاسمَ يبقى الحارسُ أخضرَ سنواتٍ، **ويُفعَّل العيبُ بنصٍّ لا بكود.** */
+  var enfM = _stripComments(src).match(/headers\.set\('Content-Security-Policy'\s*,\s*\[([\s\S]*?)\]\.join/);
   var enfBlock = enfM ? enfM[1] : '';
   var ENF_MUST = ["base-uri 'self'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'self'"];
   var ENF_FORBID = ['default-src', 'script-src', 'style-src', 'connect-src',
