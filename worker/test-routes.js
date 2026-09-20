@@ -3894,6 +3894,75 @@ console.log('عقدُ الوثيقة ↔ سلوكُ الكود (`/home/index.htm
               ' ⇒ أيُّ تغيّرٍ في أحدهما وحدَه يحمرّ');
 })();
 
+// ── 🔴 `frontend/` المخدوم ضدّ السياسة **النافذة** (2026-09-20) ─────────────────
+//
+// 🔴 **الفجوة التي يقفلها — وهي الوحيدةُ التي يفتحها فرضُ CSP:** الأربعةُ المفروضة
+//    (`object-src` · `form-action` · `base-uri` · `frame-ancestors`) قِيست **صفرَ استعمال**
+//    على مخرَج الواجهة **يومَ الفرض**. ⇒ أيُّ دفعةِ واجهةٍ لاحقةٍ من `SchoolApp-gas` تُدخل
+//    `<form>` أو `<object>` **تُحجَب عند المستخدم صامتةً** — لا خطأَ في CI ولا في الوركر،
+//    **والزرُّ لا يعمل فحسب**.
+//
+// 🎯 **ولماذا حارسٌ لا عادة:** الجلسةُ النظيرةُ تعهّدت بقياس دفعاتها قبل الدفع، وهو تعهّدٌ
+//    صادق — **لكنّ العادةَ تعتمد من يتذكّرها، والحارسَ يعمل بلا أحد**. (وهي حجّتُها هي في
+//    `.gitattributes`، تُطبَّق هنا على فئتها.)
+//
+// ⚠️ **وحدُّه يُقال بصدق: هذا فحصُ مخرَجٍ مولَّدٍ لا فحصُ مصدر.** `frontend/` يُدهَس بأوّل
+//    بناء، فالحارسُ يمسك الانتهاكَ **بعد** النقل وقبل الدمج — لا يمنع كتابتَه في `gas`.
+//    ⇒ **نقطةُ الإمساك متأخّرةٌ عن المثلى وأبكرُ من المستخدم**، وذلك كلُّ المطلوب هنا.
+// 🔴 **والمِجَسُّ أوسعُ من الوسم عمداً — وسببُه خطأٌ وقع لي اليوم:** قِستُ `<form` نصّياً
+//    قبل الفرض **ولم أقِس `document.createElement('form')`**، وهو يخضع لـ`form-action`
+//    تماماً. ⇒ **العنصرُ يُنشَأ بطريقتين، والمِجَسُّ الذي يرى واحدةً يُطمئن كاذباً.**
+console.log('');
+console.log('`frontend/` المخدوم ضدّ السياسة النافذة:');
+(function () {
+  var root = path.join(__dirname, '..', 'frontend');
+  var files = [];
+  (function walk(d) {
+    var ents;
+    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+    ents.forEach(function (e) {
+      var p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.html?$/i.test(e.name)) files.push(p);
+    });
+  })(root);
+
+  // 🔴 غيابُ المُدخَل خروجٌ أحمرُ لا تخطٍّ صامت (نفسُ قاعدة حارس الوثيقة أعلاه).
+  if (!files.length) {
+    failed++;
+    console.log('  ❌ 🔴 صفرُ ملفِّ HTML في `frontend/` — الحارسُ بلا مُدخَل (لا يُقرأ نجاحاً)');
+    return;
+  }
+
+  /* لكلّ توجيهٍ مفروضٍ **مِجَسّاه**: الوسمُ الحرفيّ **و**الإنشاءُ البرمجيّ.
+     و`<base>` حالةٌ خاصّة: `base-uri` يحكم **`href` وحدَه**، و`<base target="_top">`
+     (نمطُ Apps Script) **لا يمسّه** ⇒ يُطابَق `href` لا الوسمُ المجرَّد، وإلّا أحمرَّ
+     الحارسُ على خمسةِ وسومٍ مشروعةٍ كلَّ يوم. */
+  var PROBES = [
+    { d: "object-src 'none'",   re: /<object[\s>]|<embed[\s>]|createElement\(\s*['"](?:object|embed)['"]/i },
+    { d: "form-action 'self'",  re: /<form[\s>]|createElement\(\s*['"]form['"]/i },
+    { d: "base-uri 'self'",     re: /<base[^>]*\shref\s*=|createElement\(\s*['"]base['"]/i }
+  ];
+
+  var hits = [];
+  files.forEach(function (f) {
+    var t;
+    try { t = fs.readFileSync(f, 'utf8'); } catch (e) { return; }
+    PROBES.forEach(function (p) {
+      if (p.re.test(t)) hits.push(path.relative(root, f) + ' ⇒ ' + p.d);
+    });
+  });
+
+  var ok = hits.length === 0;
+  if (!ok) failed++;
+  console.log((ok ? '  ✅ ' : '  ❌ ') +
+    '🔒 صفرُ عنصرٍ يخالف الأربعةَ المفروضة عبر ' + files.length + ' ملفَّ HTML' +
+    (ok ? '' : ' — المخالِف: ' + hits.join(' · ')));
+  /* 🔴 **ولا يُقرأ هذا الصفرُ شهادةَ سلامةٍ للسياسة كلِّها:** يقيس الأربعةَ المفروضةَ وحدَها.
+     `script-src`/`style-src` تعيشان في `Report-Only` بـ`'unsafe-inline'` (دَينٌ مُعلَن)،
+     **ولا شيءَ هنا يقيسهما** — بندُ `csp-inline-debt-needs-nonce-migration`. */
+})();
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —
