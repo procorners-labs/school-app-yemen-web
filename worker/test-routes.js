@@ -340,8 +340,16 @@ console.log('الرؤوس الأمنية وحقن og:url:');
    *
    * والحالُ الآن **أربعةُ أقطابٍ مستقلّة، وسقوطُ أيٍّ منها يُحمِّر**:
    *   ① `Content-Security-Policy-Report-Only` **مضبوطة** — وإلّا فلا سياسةَ أصلاً.
-   *   ② و`Content-Security-Policy` النافذةُ **غيرُ مضبوطة** — الحدُّ الباقي: سياسةٌ نافذةٌ
-   *      تكسر صفحاتٍ سكربتاتُها مضمَّنةٌ بكثافة، **صامتةً على مستخدمٍ حقيقيّ**.
+   *   ② و`Content-Security-Policy` النافذةُ **مضبوطةٌ ومقصورةٌ على المجموعة الآمنة**.
+   *      🔴 **ضُيِّق القطبُ 2026-09-20 ولم يُسقَط — والفرقُ جوهريّ:** كان يشترط **غيابَ**
+   *      النافذة، وعلّتُه المكتوبةُ «سياسةٌ نافذةٌ تكسر صفحاتٍ سكربتاتُها مضمَّنةٌ بكثافة».
+   *      **وتلك العلّةُ تخصّ التوجيهاتِ المشروطةَ بقائمةِ مصادرَ وحدَها** — والقائمةُ عندنا
+   *      **أخفقت مرّتين في يومٍ واحد** (‏09-11) لأن GA4 يوجّه إلى نقطةٍ إقليميّةٍ مشتقّةٍ من
+   *      موقع الزائر ⇒ **الإخفاقُ الثالثُ يقع عند مستخدمٍ لا عندنا.**
+   *      ⇒ **فالمشروطُ بقائمةٍ يبقى في `Report-Only`، وما لا يحتاج قائمةً يُفرَض.**
+   *      🎯 **والمُختبَرُ الآن مضمونُ النافذة لا وجودُها:** حضورُ الأربعة الآمنة **وغيابُ**
+   *      كلِّ توجيهٍ يحمل قائمةَ مضيفات. **وإسقاطُ القطب كان سيفتح البابَ لـ`script-src`
+   *      نافذةً بلا أيّ حارس** — وهو بعينه ما وُضع ليمنعه.
    *   ③ و`report-uri` **موصولٌ بمعالجٍ قائم** — 🔴 **وهذا القطبُ هو جوهرُ الفحص:**
    *      `Report-Only` بلا وجهةٍ تُسجّل **زينةٌ لا حارس**، ولا يُكتشَف غيابُها بالنظر.
    *   ④ و`'csp-report'` **محجوزٌ في `_RESERVED_TOP_PATHS`** — إسقاطُه يجعل المسارَ
@@ -362,13 +370,31 @@ console.log('الرؤوس الأمنية وحقن og:url:');
   var cRes = /'csp-report':\s*1/.test(src);
   var cGaW = /"connect-src[^"]*https:\/\/\*\.google-analytics\.com/.test(src);
   var cGaA = /"connect-src[^"]*https:\/\/\*\.analytics\.google\.com/.test(src);
-  var okC = cDel && cRep && !cEnf && cUri && cHnd && cRes && cGaW && cGaA;
+  /* 🔒 مضمونُ النافذة: تُستخرَج كتلتُها من المصدر ويُقاس **ما فيها وما ليس فيها**.
+     🔴 والقائمةُ السوداءُ هي الحارسُ الحقيقيُّ هنا — كلُّ توجيهٍ يحمل قائمةَ مضيفات. */
+  var enfM = src.match(/headers\.set\('Content-Security-Policy'\s*,\s*\[([\s\S]*?)\]\.join/);
+  var enfBlock = enfM ? enfM[1] : '';
+  var ENF_MUST = ["base-uri 'self'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'self'"];
+  var ENF_FORBID = ['default-src', 'script-src', 'style-src', 'connect-src',
+                    'img-src', 'font-src', 'media-src', 'frame-src'];
+  var enfHas = ENF_MUST.every(function (d) { return enfBlock.indexOf(d) !== -1; });
+  var enfLeak = ENF_FORBID.filter(function (d) { return enfBlock.indexOf(d) !== -1; });
+  var enfSafe = !!enfM && enfHas && enfLeak.length === 0;
+
+  var okC = cDel && cRep && cEnf && enfSafe && cUri && cHnd && cRes && cGaW && cGaA;
   if (!okC) failed++;
   console.log((okC ? '  ✅ ' : '  ❌ ') +
-    '🔒 CSP في وضع الإبلاغ وحده · موصولةٌ بمعالجٍ قائم · والمسارُ محجوز · وعائلتا GA4 ببدل [del=' + cDel +
-    ' report-only=' + cRep + ' enforced=' + cEnf + ' uri=' + cUri +
+    '🔒 النافذةُ مقصورةٌ على المجموعة الآمنة · والإبلاغُ موصولٌ بمعالجٍ قائم · والمسارُ محجوز · وعائلتا GA4 ببدل [del=' + cDel +
+    ' report-only=' + cRep + ' enforced=' + cEnf + ' enf-safe=' + enfSafe + ' uri=' + cUri +
     ' handler=' + cHnd + ' reserved=' + cRes +
     ' ga-wild=' + cGaW + ' ga-analytics-wild=' + cGaA + ']');
+  /* 🔴 **ضابطٌ معاكسٌ صريحٌ ومنفصل — وهو الذي يمنع الانزلاقَ الحقيقيّ:** لو تسرّب توجيهٌ
+     مشروطٌ بقائمةٍ إلى النافذة (‏`script-src` مثلاً) لَظلّ `enforced=true` و`enf-safe`
+     وحدَه هو ما يسقط. ⇒ **يُطبَع المتسرّبُ بالاسم** كي يُقرأ السببُ لا الرمز. */
+  if (enfLeak.length) {
+    console.log('  ❌ 🔴 توجيهٌ مشروطٌ بقائمةِ مصادرَ تسرّب إلى النافذة: ' + enfLeak.join(' · ') +
+                ' — موضعُه `Report-Only` (القائمةُ أخفقت مرّتين في يومٍ واحد)');
+  }
 
   /* ③ 🗑️ **`GAS.pricing` مدخلٌ خاملٌ — صفرُ قارئ.** التعليقُ عند الجدول يَعِد بأن «أثرَ
    *    بقائه صفرٌ يحرسه فحص» — وهذا هو. والمدخلُ باقٍ لأن `protect-deploy-ids` حجب
