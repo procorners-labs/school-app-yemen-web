@@ -23741,7 +23741,20 @@ function _tsPaintCanvas(ctx, sd, S, W, H, cb) {
    🔴 **وفحصُ التلوّث مبكرٌ ويبقى دائماً** — قِيس أن lh3 يردّ `ACAO:*` على أصلٍ
       عامٍّ واحد، ومستوى مشاركةٍ مختلفٌ قد يردّ غيرَ ذلك. */
 function _tsExportDataUrl(sd, S, W, H, cb) {
-  if (!_tsFontLive()) { cb('', 'الخطّ غير جاهز — تعذّر تصدير الغلاف'); return; }
+  /* 🔴 **الانتظارُ قبل الفحص — وكان معكوساً فرفض كلَّ تصدير.**
+     `_tsFontLive` يقيس هل Cairo **محمَّلٌ الآن**، و`_tsFontsReady` هي التي تطلب
+     تحميلَه. وفحصُه قبلها يسأل عن شيءٍ لم يُطلَب بعد ⇒ إجابةٌ سلبيّةٌ **دائماً**
+     على صفحةٍ لم تُصيِّر ذلك الوزنَ بعد ⇒ «الخطّ غير جاهز» لكلّ صورة، فتُنشَر
+     الأصولُ ويختفي التصميمُ بلا أن يُخطئ شيءٌ ظاهرياً.
+     🎯 **والفحصُ نفسُه صحيح؛ الخطأُ في لحظته** — وهذا ما لا يراه تأكيدٌ نصّيّ:
+        السطرُ موجودٌ ويقيس ما يدّعيه، لكنه يقيسه **قبل الأوان**. */
+  _tsFontsReady(function () {
+    if (!_tsFontLive()) { cb('', 'الخطّ غير جاهز — تعذّر تصدير الغلاف'); return; }
+    _tsExportPaint(sd, S, W, H, cb);
+  });
+}
+
+function _tsExportPaint(sd, S, W, H, cb) {
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   _tsPaintCanvas(cv.getContext('2d'), sd, S, W, H, function (err) {
@@ -23976,7 +23989,14 @@ function _msRenderGrid() {
   var h = '';
   for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
     var m = _TC_DSGN_REGISTRY[i];
-    if (!m.ph) continue;                       /* قوالبُ الصور وحدَها هنا */
+    /* 🔴 **`m.sd` شرطٌ ثانٍ لا زخرفة — وغيابُه كان عطلاً صامتاً.**
+       ثلاثةُ قوالبَ تحمل `ph:1` **بلا `sd`** (‏`photo_soft`/`photo_deep`/`photo_warm`)
+       لأنها أغلفةُ إطارٍ تُصيَّر بمسارٍ آخرَ لا بمواصفةِ الاستوديو. وعرضُها هنا
+       كان يُنتج `_TS_SPECS[undefined]` ⇒ **فشلُ التصدير لكلّ صورةٍ اختيرت بها**،
+       فتُنشَر بأصلها ويظنّ المستخدمُ أن الدمجَ لا يعمل أصلاً.
+       ⚠️ **ولا تُحذف من السجلّ**: هي حيّةٌ في معرض الغلاف النصّيّ (`_dpRenderGrid`)
+          وفي لقطاتٍ منشورة — المستبعَدُ عرضُها **هنا** حيث يلزم التصدير. */
+    if (!m.ph || !m.sd) continue;
     h += '<div class="ms-card' + (m.k === it.t ? ' on' : '') +
          '" onclick="_msSelect(\'' + m.k + '\')">' +
       _tcCoverHtml(_msState.text, '', _msMetaFor(m, it), it.size, true,
@@ -24125,7 +24145,8 @@ function _msConfirm() {
     var cb = st.onConfirm;
     _msClose();
     if (failed && typeof toast === 'function') {
-      toast('تعذّر دمجُ ' + failed + ' صورة — نُشرت بأصلها', 'warning');
+      toast('تعذّر دمجُ ' + failed + ' صورة — نُشرت بأصلها' +
+            (st.firstErr ? (' · السبب: ' + st.firstErr) : ''), 'warning', 8000);
     }
     if (cb) cb(out, designs);
   }
@@ -24138,10 +24159,21 @@ function _msConfirm() {
     var it = st.items[i];
     _msProg('جارٍ دمجُ الصورة ' + (i + 1) + ' من ' + n + '…');
     var dims = _tcDsgnSize(it.size);
-    _tsExportDataUrl(_tcDsgnByKey(it.t).sd, _msBuildS(it), dims.w, dims.h,
+    /* 🔴 حزامٌ ثانٍ فوق ترشيح الشبكة: لقطةٌ محفوظةٌ قد تحمل قالباً بلا `sd`
+       (اختيرَ قبل هذا الإصلاح) ⇒ يُستبدَل بالافتراضيّ بدل فشلٍ صامت. */
+    var _meta = _tcDsgnByKey(it.t);
+    if (!_meta || !_meta.sd) { it.t = 'studio_full'; _meta = _tcDsgnByKey(it.t); }
+    _tsExportDataUrl(_meta.sd, _msBuildS(it), dims.w, dims.h,
       function (dataUrl, err) {
         if (!mine()) { st.busy = false; return; }   /* عادت بعد استبدال الجلسة */
-        if (!dataUrl) { failed++; done++; step(i + 1); return; }
+        /* 🔴 **السببُ يُسمّى ولا يُبتلَع.** «نُشرت بأصلها» وحدَها تُخفي أيَّ سببٍ
+           بنيويٍّ متكرّر (خطٌّ غيرُ جاهز · تلوّثُ لوحة · تخطيطٌ مجهول) فيبدو
+           العطلُ عشوائياً ويتعذّر تشخيصُه من بلاغ المستخدم. */
+        if (!dataUrl) {
+          failed++; done++;
+          if (err && !st.firstErr) st.firstErr = err;
+          step(i + 1); return;
+        }
         _msProg('جارٍ رفعُ الصورة ' + (i + 1) + ' من ' + n + '…');
         _msUpload(dataUrl, st.newsId, i, function (url) {
           if (!mine()) { st.busy = false; return; }
