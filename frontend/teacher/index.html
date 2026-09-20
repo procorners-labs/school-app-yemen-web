@@ -3240,6 +3240,36 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <!-- [3.2] محرّر الوسائط المنشورة: حذف/إعادة ترتيب يمين-شمال + إضافة جديدة -->
         <div id="newsExistingMedia" class="hidden" style="margin-top:10px"></div>
       </div>
+
+      <!-- 🎨 تصميمُ الغلاف — داخلَ النافذة لا بعد الضغط على «نشر».
+           🔴 كان المعرضُ يُفتح **عند الإرسال وحدَه**، فالمؤلِّفُ لا يرى تصميماً أثناء
+           الكتابة ولا عند إرفاق صورة ⇒ يُقرأ «الميزةُ غيرُ موجودة» وهي موجودةٌ تعمل.
+           🟢 والفتحُ يستدعي **نفسَ المعرضين** (`_dpOpen`/`_msOpen`) — صفرُ مسارِ عرضٍ ثانٍ. -->
+      <div class="form-group mb-3" id="newsDesignBox" style="margin-top:12px;border:1px solid var(--border,#ddd);border-radius:8px;padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-secondary" id="newsDesignBtn" onclick="openNewsDesignPicker()">🎨 اختر تصميم الغلاف</button>
+          <span id="newsDesignState" style="font-size:.8rem;color:var(--text-light)">لم يُختَر تصميم بعد</span>
+        </div>
+        <div id="newsDesignPreview" style="margin-top:10px"></div>
+      </div>
+
+      <!-- 📢 النشرُ للسوشل ميديا — مع زرّ نشر الخبر نفسِه، ولمديرٍ أو وكيلٍ فقط.
+           🔴 والإخفاءُ هنا **تجربةُ استخدامٍ لا حاجزُ صلاحية** (بند 13): الحاجزُ الفعليُّ
+           خادميٌّ في `_smmNewsIsOfficial`، وهو ما يمنع فعلاً. -->
+      <div class="form-group mb-3 hidden" id="newsSocialPublishBox" style="border:1px solid var(--border,#ddd);border-radius:8px;padding:10px 12px">
+        <div style="font-weight:700;font-size:.88rem;margin-bottom:8px">📢 النشر على السوشل ميديا</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;margin-bottom:8px">
+          <label><input type="checkbox" id="nspFb"> فيسبوك</label>
+          <label><input type="checkbox" id="nspIg"> إنستغرام</label>
+          <label><input type="checkbox" id="nspWa"> واتساب</label>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:.85rem">
+          <label><input type="radio" name="nspWhen" id="nspNow" value="now" checked> نشر الآن</label>
+          <label><input type="radio" name="nspWhen" id="nspLater" value="later"> جدولة</label>
+          <input type="datetime-local" class="form-control" id="nspAt" style="max-width:220px" disabled>
+        </div>
+        <div id="nspState" style="font-size:.78rem;color:var(--text-light);margin-top:8px"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('newsModal')">إلغاء</button>
@@ -9398,6 +9428,29 @@ function openNewsModal(id) {
   /* 🔴 يُصفَّر عند كلّ فتحِ نموذج: علَمُ «نشر بلا تصميم» قرارٌ لخبرٍ واحدٍ لا
      تفضيلٌ دائم — وبقاؤه مضبوطاً كان يمنع الاستوديوَ عن كلّ خبرٍ تالٍ بصمت. */
   _newsStudioSkip = false;
+  /* 🔴 الاختيارُ لخبرٍ واحدٍ لا تفضيلٌ دائم — وبقاؤه يُلصِق تصميمَ خبرٍ بخبرٍ تالٍ. */
+  _newsDesignReset();
+  /* 📢 السوشل: يُعرَض لمديرٍ أو وكيلٍ فقط، ويُصفَّر عند كلّ فتح. */
+  (function () {
+    var box = document.getElementById('newsSocialPublishBox');
+    if (!box) return;
+    if (_newsSocialAllowed()) box.classList.remove('hidden'); else box.classList.add('hidden');
+    ['nspFb', 'nspIg', 'nspWa'].forEach(function (k) {
+      var e = document.getElementById(k); if (e) e.checked = false;
+    });
+    var now = document.getElementById('nspNow'), later = document.getElementById('nspLater');
+    var at = document.getElementById('nspAt');
+    if (now) now.checked = true;
+    if (later) later.checked = false;
+    if (at) { at.value = ''; at.disabled = true; }
+    /* تفعيلُ حقل الوقت يتبع الاختيار — حقلٌ مُفعَّلٌ بلا «جدولة» يُوهم بموعدٍ لا يُقرأ. */
+    if (now && later && at) {
+      now.onclick = function () { at.disabled = true; };
+      later.onclick = function () { at.disabled = false; };
+    }
+    var stEl = document.getElementById('nspState');
+    if (stEl) stEl.textContent = '';
+  })();
   _newsRenderExistingMedia();
   _newsRenderNewFiles();
 
@@ -9510,6 +9563,170 @@ function _newsRemoveMedia(idx) {
 /* حقلا السوشل — تُقرأ مرّةً وتُلحَق بكلّ حمولةِ حفظ.
    🔴 ويُرسَلان **دائماً** ولو فارغَين: `undefined` في الخادم = «لا تُلمَس»،
    فإرسالُ الفارغ هو الطريقُ الوحيدُ لمسحِ ما كتبه المستخدمُ ثمّ حذفه. */
+/* ══════════════════════════════════════════════════════════════════════════
+   🎨 اختيارُ التصميم **داخل** نافذة الخبر — لا عند الضغط على «نشر».
+   🔴 العلّةُ المُصلَحة: المعرضُ كان يُفتح في `saveNews` وحدَها، فالمؤلِّفُ يكتب النصَّ
+   ويُرفق الصورةَ ولا يرى تصميماً قطّ ⇒ **ميزةٌ قائمةٌ تُقرأ غائبة**. (بلاغُ المالك 2026-09-20)
+   🟢 والفتحُ يستدعي **نفسَ المعرضين** بلا مُصيِّرٍ ثانٍ: `_dpOpen` للنصّي و`_msOpen`
+   للمصوَّر بوضع `chooseOnly` — **اختيارٌ بلا دمجٍ ولا رفع**، والدمجُ لحظةَ النشر.
+   ══════════════════════════════════════════════════════════════════════════ */
+function _newsCurrentImageUrls() {
+  var out = [], kept = window._newsKeepMedia || [];
+  for (var i = 0; i < kept.length; i++) {
+    if (!_newsMediaIsVideo(kept[i])) out.push(kept[i]);
+  }
+  return out;
+}
+
+/**
+ * هل لقطةُ التصاميم المُعدَّةُ سلفاً تغطّي **نفسَ** مجموعةِ الصور الحالية؟
+ *
+ * 🔴 **رصدته المراجعةُ المستقلّة، وأثرُه فقدُ مراجعة:** اللقطةُ تُبنى على الصور
+ * المعروضة **لحظةَ الاختيار**. فإن أُرفقت صورةٌ جديدةٌ بعدها، فتشغيلُ `autoConfirm`
+ * يدمج **بلا عرضِ الشبكة** ⇒ الصورةُ الجديدةُ تأخذ تصميماً افتراضيّاً **لم يره
+ * المستخدمُ قطّ** — بينما كانت كلُّ مجموعةٍ نهائيّةٍ قبل هذا التغيير تمرّ بمراجعةٍ.
+ * 🎯 **والقاعدةُ المعمَّمة: اختصارٌ مبنيٌّ على موافقةٍ سابقة يجب أن يتحقّق أن
+ * الموافقةَ تغطّي المعروضَ الآن** — وإلّا صار «وفّرتُ خطوةً» يعني «تخطّيتُ موافقة».
+ */
+function _newsDesignsCoverAll(urls) {
+  var raw = window._newsPendingImageDesigns || '';
+  if (!raw || !urls || !urls.length) return false;
+  var arr;
+  try { arr = JSON.parse(raw); } catch (e) { return false; }
+  if (!arr || !arr.length) return false;
+  var have = {}, i;
+  for (i = 0; i < arr.length; i++) { if (arr[i] && arr[i].src) have[arr[i].src] = true; }
+  for (i = 0; i < urls.length; i++) { if (!have[urls[i]]) return false; }
+  return true;
+}
+
+function _newsDesignReset() {
+  window._newsPendingDesign = '';
+  window._newsPendingImageDesigns = '';
+  _newsRenderDesignState();
+}
+
+function _newsRenderDesignState() {
+  var st = document.getElementById('newsDesignState');
+  var pv = document.getElementById('newsDesignPreview');
+  if (!st) return;
+  var imgs = window._newsPendingImageDesigns || '';
+  var one  = window._newsPendingDesign || '';
+  if (pv) pv.innerHTML = '';
+  if (imgs) {
+    var n = 0;
+    try { n = (JSON.parse(imgs) || []).length; } catch (e) { n = 0; }
+    st.textContent = '✅ اختيرت تصاميمُ ' + n + ' صورة — تُدمَج عند النشر';
+    return;
+  }
+  if (one) {
+    st.textContent = '✅ اختير تصميمُ الغلاف';
+    /* معاينةٌ حيّةٌ كاملة بنفس مُصيِّر البطاقة — قرارُ مالك 2026-09-20. */
+    try {
+      var d = _tcNewsDesign({ design: one });
+      if (pv && d && !d.none && typeof _tcCoverHtml === 'function') {
+        pv.innerHTML = _tcCoverHtml(
+          document.getElementById('newsText').value.trim(), '', d, d.s || 'feed',
+          false, (d.st && d.st !== 'auto') ? d.st : 'all', d.dc || '', d.gn || '',
+          'nd-preview', '');
+      }
+    } catch (e2) {}
+    return;
+  }
+  st.textContent = 'لم يُختَر تصميم بعد';
+}
+
+function openNewsDesignPicker() {
+  var news = (document.getElementById('newsText').value || '').trim();
+  if (!news) { toast('اكتب نصّ الخبر أوّلاً', 'warning'); return; }
+  var id    = document.getElementById('newsEditId').value || null;
+  var files = window._newsNewFiles || [];
+  var imgs  = _newsCurrentImageUrls();
+
+  /* 🔴 **ملفّاتٌ جديدةٌ لم تُرفَع بعد لا رابطَ لها** — والاستوديو يرسم من رابط.
+     يُقال صراحةً بدل فتحِ معرضٍ فارغٍ يبدو معطوباً. */
+  if (files.length && !imgs.length) {
+    toast('اضغط «نشر» لرفع الصور أوّلاً — ثمّ يظهر اختيارُ التصميم لكلّ صورة', 'warning', 6000);
+    return;
+  }
+
+  if (imgs.length) {
+    var ok = false;
+    try {
+      ok = _msOpen({
+        urls: imgs, allUrls: (window._newsKeepMedia || []).slice(),
+        text: news, newsId: id, chooseOnly: true,
+        imageDesigns: (window._newsPendingImageDesigns || window._newsEditImageDesigns || ''),
+        onConfirm: function (_ignored, designsStr) {
+          window._newsPendingImageDesigns = designsStr || '';
+          window._newsPendingDesign = '';
+          _newsRenderDesignState();
+        }
+      });
+    } catch (e) { ok = false; }
+    if (!ok) toast('تعذّر فتح معرض التصاميم', 'error');
+    return;
+  }
+
+  var ok2 = false;
+  try {
+    ok2 = _dpOpen({
+      mode: 'publish', text: news, date: document.getElementById('newsDate').value || todayDate(),
+      chooseOnly: true,   /* الضغطةُ تحفظ اختياراً — والنشرُ بزرّ الخبر */
+      grade: (document.getElementById('newsGrade') || {}).value || '',
+      design: window._newsPendingDesign || (id ? (window._newsEditDesign || '') : ''),
+      onConfirm: function (designStr) {
+        window._newsPendingDesign = designStr || '';
+        window._newsPendingImageDesigns = '';
+        _newsRenderDesignState();
+      }
+    });
+  } catch (e3) { ok2 = false; }
+  if (!ok2) toast('تعذّر فتح معرض التصاميم', 'error');
+}
+
+/* 📢 السوشل من نفس زرّ النشر — ولمديرٍ أو وكيلٍ فقط (قرارُ مالك 2026-09-20).
+   🔴 والإخفاءُ تجربةُ استخدامٍ لا حاجزُ صلاحية (بند 13): `_smmNewsIsOfficial`
+   خادميّاً هو ما يمنع فعلاً، وهذا يمنع عرضَ زرٍّ يرفضه الخادم. */
+function _newsSocialAllowed() {
+  return !!(typeof isFullAdmin === 'function' && isFullAdmin()) ||
+         !!(typeof isDeputy === 'function' && isDeputy());
+}
+
+function _newsSocialPlan() {
+  if (!_newsSocialAllowed()) return null;
+  var box = document.getElementById('newsSocialPublishBox');
+  if (!box || box.classList.contains('hidden')) return null;
+  var p = [];
+  if ((document.getElementById('nspFb') || {}).checked) p.push('facebook');
+  if ((document.getElementById('nspIg') || {}).checked) p.push('instagram');
+  if ((document.getElementById('nspWa') || {}).checked) p.push('whatsapp');
+  if (!p.length) return null;
+  var later = !!(document.getElementById('nspLater') || {}).checked;
+  var at = (document.getElementById('nspAt') || {}).value || '';
+  if (later && !at) { toast('حدّد وقتَ الجدولة', 'warning'); return null; }
+  return { platforms: p, later: later, at: at };
+}
+
+function _newsSocialAfterSave(newsId, plan) {
+  if (!plan || !newsId) return;
+  var f = _newsSocialFields();
+  var fn = plan.later ? 'smmScheduleNewsPostProtected' : 'smmPublishNewsNowProtected';
+  var args = {
+    token: (App.user && App.user.token) || '',
+    newsId: newsId, platforms: plan.platforms,
+    message: f.socialText, hashtags: f.hashtags,
+    mediaUrls: (window._newsLastMediaUrls || [])
+  };
+  if (plan.later) args.scheduledAt = plan.at;
+  callServer(fn, args, function (r) {
+    if (r && r.success) toast(plan.later ? 'جُدول المنشور' : 'نُشر على السوشل ميديا', 'success');
+    else toast((r && r.error) || 'تعذّر النشر على السوشل — الخبر منشورٌ في المنصّة', 'warning', 8000);
+  }, function () {
+    toast('تعذّر الاتصال بالسوشل — الخبر منشورٌ في المنصّة', 'warning', 8000);
+  });
+}
+
 function _newsApplySocial(p) {
   var f = _newsSocialFields();
   p.socialText = f.socialText;
@@ -9578,7 +9795,8 @@ function saveNews() {
       try {
         _msOpened = _msOpen({
           urls: _imgsK, allUrls: keptUrls, text: news, newsId: id,
-          imageDesigns: (window._newsEditImageDesigns || ''),
+          autoConfirm: _newsDesignsCoverAll(_imgsK),
+          imageDesigns: (window._newsPendingImageDesigns || window._newsEditImageDesigns || ''),
           onConfirm: function (mergedUrls, designsStr) {
             var p = { id: id, news: news, date: date,
                       attachments: mergedUrls.join('\n'), imageDesigns: designsStr };
@@ -9598,7 +9816,7 @@ function saveNews() {
     // أي تعذّر في فتح المعرض (خلل/بيئة) ⇒ تراجُع سلس لنشر نصي عادي فوراً —
     // المعرض لا يحجب النشر أبداً (يعمل دون اتصال لأنه ردنر محلي صرف).
     // تعديل خبر كانت له وسائط أصلاً (ولو حُذفت من المحرّر) لا يُعامل كنصّي.
-    if (!keptUrls.length && !(id && window._newsEditHadMedia)) {
+    if (!keptUrls.length && !(id && window._newsEditHadMedia) && !window._newsPendingDesign) {
       var _dpOpened = false;
       try {
         _dpOpened = _dpOpen({
@@ -9616,6 +9834,8 @@ function saveNews() {
       if (_dpOpened) return;
     }
     var payload1 = { id: id, news: news, date: date, attachments: keptUrls.join('\n') };
+    /* تصميمٌ اختير داخل النافذة ⇒ يُرسَل كما هو، ولا يُعاد فتحُ المعرض. */
+    if (window._newsPendingDesign) payload1.design = window._newsPendingDesign;
     for (var k1 in scopeData) payload1[k1] = scopeData[k1];
     _newsApplySocial(payload1);
     sendSaveNews(payload1, id);
@@ -9660,7 +9880,8 @@ function saveNews() {
       try {
         _ok2 = _msOpen({
           urls: _imgsN, allUrls: allUrls, text: news, newsId: id,
-          imageDesigns: (window._newsEditImageDesigns || ''),
+          autoConfirm: _newsDesignsCoverAll(_imgsN),
+          imageDesigns: (window._newsPendingImageDesigns || window._newsEditImageDesigns || ''),
           onConfirm: function (mergedUrls, designsStr) {
             var p = { id: id, news: news, date: date,
                       attachments: mergedUrls.join('\n'), imageDesigns: designsStr };
@@ -9947,6 +10168,10 @@ function _newsNewOpId() {
 function sendSaveNews(data, id) {
   showLoading('جاري النشر...');
   data.opId = _newsNewOpId();
+  /* 📢 خطّةُ السوشل تُلتقَط **قبل** النداء: النافذةُ تُغلَق عند النجاح فتضيع خاناتُها.
+     🔴 وتُقرأ مرّةً واحدة — قراءتُها في الاستدعاء الراجع تقرأ نافذةً مُغلَقة. */
+  var _socialPlan = (typeof _newsSocialPlan === 'function') ? _newsSocialPlan() : null;
+  window._newsLastMediaUrls = _newsParseMedia(data.attachments || '');
   var fn = id ? 'updateNewsProtected' : 'addNewsMultiProtected';
   callServer(fn, data, function(r) {
     hideLoading();
@@ -9962,6 +10187,11 @@ function sendSaveNews(data, id) {
       // ظاهر لناشره حتى انقضاء الكاش — يُبطَل دوماً لا فقط عند فتح تبويب الأخبار،
       // كي لا يلتقط الفتح اللاحق للتبويب صفحة قديمة من sessionStorage
       ClientCache.clear('news_p');
+      _newsDesignReset();
+      /* 🔴 **النشرُ للسوشل بعد نجاح حفظ الخبر لا قبله ولا معه** — وفشلُه لا يُبطل
+         الخبر: يُبلَّغ تحذيراً ويبقى المنشورُ في المنصّة. والعكسُ (نشرٌ خارجيٌّ لخبرٍ
+         لم يُحفظ) يترك منشوراً لا مرجعَ له. */
+      if (_socialPlan) _newsSocialAfterSave((r && r.id) || id, _socialPlan);
       if (App.currentSection === 'news') {
         applyNewsFilters();
       }
@@ -21136,8 +21366,12 @@ function _dpOpen(opts) {
   var ta = document.getElementById('dpText');
   ta.value = String(opts.text || '');
   ta.readOnly = (_dpState.mode === 'retro');   // رجعياً: النص للعرض لا للتحرير
+  /* 🔴 **لا يُحمَّل `mode` دلالةً ثانية** — `publish` يعني «سياقُ نشرٍ جديد» لا
+     «هذه الضغطةُ تَنشر». وحين تُستدعى من نافذة الخبر فالضغطةُ **تحفظ اختياراً**
+     والنشرُ بزرٍّ آخر ⇒ تسميةُ «تأكيد ونشر» تُوهم بأن الخبر نُشر (رصدته المراجعة). */
   document.getElementById('dpConfirmBtn').textContent =
-    (_dpState.mode === 'publish') ? '✅ تأكيد ونشر' : '💾 حفظ التصميم';
+    opts.chooseOnly ? '💾 حفظ الاختيار'
+    : ((_dpState.mode === 'publish') ? '✅ تأكيد ونشر' : '💾 حفظ التصميم');
   _dpRenderSizes();
   _dpRenderDecor();
   _dpRenderStage();
@@ -23888,7 +24122,7 @@ function _msEnsureUI() {
       '<div class="ms-foot">' +
         '<span class="ms-prog" id="msProg"></span>' +
         '<span>' +
-          '<button type="button" class="btn btn-secondary" onclick="_msSkip()">نشر بلا تصميم</button> ' +
+          '<button type="button" class="btn btn-secondary" id="msSkipBtn" onclick="_msSkip()">نشر بلا تصميم</button> ' +
           '<button type="button" class="btn btn-primary" id="msGo" onclick="_msConfirm()">✅ دمج ونشر</button>' +
         '</span>' +
       '</div>' +
@@ -23936,11 +24170,24 @@ function _msOpen(opts) {
     seq: ++_msSeq,
     urls: opts.urls.slice(), allUrls: (opts.allUrls || opts.urls).slice(),
     text: opts.text || '', newsId: opts.newsId || null,
-    items: items, cur: 0, onConfirm: opts.onConfirm, busy: false
+    items: items, cur: 0, onConfirm: opts.onConfirm, busy: false,
+    /* 🟢 **وضعان يفصلان «الاختيار» عن «التنفيذ» — وهما ما يسمح بالاختيار داخل
+       نافذة الخبر بدل لحظة الإرسال:**
+       · `chooseOnly` ⇒ يُعيد لقطةَ التصاميم **بلا دمجٍ ولا رفع** (الاختيارُ أثناء التأليف).
+       · `autoConfirm` ⇒ يفتح ويُنفّذ فوراً باختيارٍ مُعدٍّ سلفاً (الدمجُ لحظةَ النشر).
+       🔴 وبلا الفصل كان زرُّ «اختر تصميماً» **ينشر الخبر** — الاختيارُ فعلٌ والتنفيذُ فعلٌ آخر. */
+    chooseOnly: !!opts.chooseOnly
   };
   _msRenderThumbs(); _msSyncCols(); _msGuard(); _msRenderGrid(); _msRenderPrev();
   document.getElementById('msProg').textContent = '';
   document.getElementById('msPicker').style.display = 'flex';
+  var _go = document.getElementById('msGo');
+  if (_go) _go.textContent = opts.chooseOnly ? '✅ حفظ الاختيار' : '🚀 دمج ونشر';
+  /* 🔴 تسميةُ زرّ التخطّي تتبع الوضعَ أيضاً — «نشر بلا تصميم» في مسارٍ لا يَنشر
+     **تُوهم بأن الخبر نُشر**، وهي أكذبُ من زرٍّ خاطئِ اللون. */
+  var _sk = document.getElementById('msSkipBtn');
+  if (_sk) _sk.textContent = opts.chooseOnly ? 'بلا تصميم' : 'نشر بلا تصميم';
+  if (opts.autoConfirm) _msConfirm();
   return true;
 }
 
@@ -23964,6 +24211,18 @@ function _msCancel() {
    🟢 ويُضبَط `_newsStudioSkip` فلا يُعاد فتحُ الاستوديو في نفس الحفظ. */
 function _msSkip() {
   if (!_msState) return;
+  /* 🔴 **في وضع الاختيار لا يُضبَط `_newsStudioSkip` إطلاقاً — أمسكته المراجعة.**
+     العلَمُ عالميٌّ يدوم حتى إعادة فتح النافذة، وصار الزرُّ يُبلَغ **أثناء التأليف**
+     ⇒ ضغطةٌ هنا كانت تُسكِت الاستوديوَ عن **صورةٍ تُرفَق بعدها** لم يرها المستخدمُ قطّ،
+     فيمرّ النشرُ بلا أيّ عرضِ تصاميم.
+     🎯 **والعلّةُ فئويّة: علَمٌ معناه «تخطَّ التنفيذ» أُعيد استعمالُه في مسارٍ لا تنفيذَ
+     فيه** — فصار يُلغي خطوةً لم تُطلَب. وهنا هو **إلغاءُ اختيارٍ محلّيٌّ لا أكثر**. */
+  if (_msState.chooseOnly) {
+    var cb0 = _msState.onConfirm;
+    _msClose();
+    if (cb0) cb0(null, '');
+    return;
+  }
   var cb = _msState.onConfirm, all = _msState.allUrls.slice();
   _newsStudioSkip = true;
   _msClose();
@@ -24145,6 +24404,15 @@ function _msProg(msg) {
 function _msConfirm() {
   if (!_msState || _msState.busy) return;
   if (!_msGuard()) { if (typeof toast === 'function') toast('صحّح تباين الألوان أوّلاً', 'warning'); return; }
+
+  /* وضعُ الاختيار: لقطةٌ تُعاد فوراً — **صفرُ دمجٍ وصفرُ رفع**. والدمجُ يقع لحظةَ
+     النشر وحدَها، فتبديلُ أربعةَ عشرَ تصميماً × N صورةٍ لا يُنتج رفعاً مهدوراً. */
+  if (_msState.chooseOnly) {
+    var _d = _msDesignsStr(), _cb = _msState.onConfirm;
+    _msClose();
+    if (_cb) _cb(null, _d);
+    return;
+  }
 
   var st = _msState, n = st.items.length, done = 0, merged = {}, failed = 0;
   st.busy = true;
