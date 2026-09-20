@@ -3217,6 +3217,19 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       </div>
       <div class="form-group mb-3"><label class="form-label">نص الخبر <span style="color:var(--danger)">*</span></label><textarea class="form-control" id="newsText" placeholder="اكتب الخبر أو الإشعار..."></textarea></div>
       <div class="form-group mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="newsDate"></div>
+      <details class="mb-3" id="newsSocialBox">
+        <summary style="cursor:pointer;font-weight:700;font-size:.88rem">📲 نصّ السوشل ميديا والهاشتاقات (اختياري)</summary>
+        <div style="font-size:.76rem;color:var(--text-light);margin:6px 0 8px;line-height:1.6">
+          يُملأ تلقائياً من نصّ الخبر، ويبقى مستقلّاً بعد أوّل تعديل — فنصُّ المنشور
+          غالباً أقصرُ من الخبر وبنبرةٍ أخرى.
+        </div>
+        <div class="form-group mb-2"><label class="form-label">نصّ المنشور</label>
+          <textarea class="form-control" id="newsSocialText" rows="3"
+            placeholder="النصّ الذي يُنشر على فيسبوك/إنستغرام..."></textarea></div>
+        <div class="form-group"><label class="form-label">الهاشتاقات</label>
+          <input type="text" class="form-control" id="newsHashtags"
+            placeholder="#مدرستنا #العام_الدراسي"></div>
+      </details>
       <div class="form-group"><label class="form-label">مرفقات (صور متعددة أو فيديو أو ملف — اختياري)</label>
         <div class="file-drop-zone" id="newsDropZone" onclick="document.getElementById('newsFile').click()">
           <div>📎 انقر لاختيار صورة/صور أو فيديو أو اسحبها هنا</div>
@@ -3252,6 +3265,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <label style="display:block;font-size:.85rem;font-weight:600;margin-bottom:5px">المنصّات</label>
         <label style="margin-left:16px"><input type="checkbox" id="smpFbChk" checked> 📘 فيسبوك</label>
         <label><input type="checkbox" id="smpIgChk"> 📸 انستغرام</label>
+        <label><input type="checkbox" id="smpWaChk"> 💬 واتساب</label>
       </div>
       <div style="margin-bottom:10px">
         <label style="display:block;font-size:.85rem;font-weight:600;margin-bottom:5px">نص المنشور</label>
@@ -3350,15 +3364,29 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     if (!item) { if (typeof toast === 'function') toast('تعذّر العثور على الخبر', 'error'); return; }
 
     document.getElementById('smpNewsId').value = newsId;
-    document.getElementById('smpCaption').value = item.news || '';
+    /* 🔴 **نصُّ السوشل المحفوظُ يسبق نصَّ الخبر.** كان `smpCaption` يُملأ من
+       `item.news` دائماً **ولا يُخزَّن**، فكلُّ تحريرٍ للمنشور يضيع عند الإغلاق
+       ويُعاد كتابتُه من الصفر في كلّ مرّة. والآن: المحفوظُ إن وُجد، وإلّا نصُّ
+       الخبر مبدأً — ثمّ يستقلّ.
+       ➕ والهاشتاقاتُ تُلحَق بسطرٍ فاصل، وكان عمودُها في `cms::خطة_المحتوى`
+          **يُكتب فارغاً دائماً** من كلا المسارين. */
+    SMP.hashtags = item.hashtags || '';
+    var _cap = (item.socialText || item.news || '');
+    if (item.hashtags) _cap += (_cap ? '\n\n' : '') + item.hashtags;
+    document.getElementById('smpCaption').value = _cap;
     document.getElementById('smpFbChk').checked = true;
     document.getElementById('smpIgChk').checked = false;
     document.getElementById('smpScheduleDate').value = '';
     _smpSetStatus('');
     SMP.imageDataUrl = ''; SMP.ready = false;
 
-    var urls = _newsParseMedia(item.attachments), imgUrl = '';
-    for (var u = 0; u < urls.length; u++) { if (!_newsMediaIsVideo(urls[u])) { imgUrl = urls[u]; break; } }
+    /* 🔴 **كلُّ الصور لا أوّلُها**: كان يأخذ أوّلَ غيرِ فيديو ويتجاهل الباقي،
+       فخبرٌ بخمس صورٍ يُنشَر بواحدة. ودالّتا الكاروسيل موجودتان منذ زمنٍ
+       **وغيرُ موصولتين** بهذا المسار إطلاقاً. */
+    var urls = _newsParseMedia(item.attachments), imgUrls = [];
+    for (var u = 0; u < urls.length; u++) { if (!_newsMediaIsVideo(urls[u])) imgUrls.push(urls[u]); }
+    var imgUrl = imgUrls.length ? imgUrls[0] : '';
+    SMP.mediaUrls = imgUrls.slice(0, 10);
 
     var canvasEl = document.getElementById('smpCanvas'), noImgEl = document.getElementById('smpNoImage');
     if (!imgUrl) {
@@ -3392,6 +3420,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     var out = [];
     if (document.getElementById('smpFbChk').checked) out.push('facebook');
     if (document.getElementById('smpIgChk').checked && !document.getElementById('smpIgChk').disabled) out.push('instagram');
+    var wa = document.getElementById('smpWaChk');
+    if (wa && wa.checked) out.push('whatsapp');
     return out;
   }
 
@@ -3404,7 +3434,11 @@ input, select, textarea, .form-control, .form-select, .grade-input {
 
     var data = {
       teacherToken: _smpToken(), schoolId: (App.user && App.user.schoolId) || '',
-      caption: caption, platforms: platforms, imageDataUrl: SMP.imageDataUrl
+      caption: caption, platforms: platforms,
+      /* 🔴 **روابطُ لا dataURL**: الصورُ مدمجةٌ ومرفوعةٌ سلفاً في الاستوديو.
+         و`imageDataUrl` يبقى للتراجع حين لا تكون كذلك (خبرٌ قديمٌ قبل الميزة). */
+      mediaUrls: (SMP.mediaUrls || []), hashtags: (SMP.hashtags || ''),
+      imageDataUrl: (SMP.mediaUrls && SMP.mediaUrls.length) ? '' : SMP.imageDataUrl
     };
     for (var k in extra) data[k] = extra[k];
 
@@ -9358,6 +9392,12 @@ function openNewsModal(id) {
   window._newsNewFiles = [];
   window._newsEditDesign = '';   // لقطة تصميم الخبر قيد التعديل (تُملأ عند التعديل)
   window._newsEditHadMedia = false;
+  window._newsEditImageDesigns = '';   // تصاميمُ الصور المتعدّدة (تُملأ عند التعديل)
+  var _st0 = document.getElementById('newsSocialText'); if (_st0) _st0.value = '';
+  var _ht0 = document.getElementById('newsHashtags');   if (_ht0) _ht0.value = '';
+  /* 🔴 يُصفَّر عند كلّ فتحِ نموذج: علَمُ «نشر بلا تصميم» قرارٌ لخبرٍ واحدٍ لا
+     تفضيلٌ دائم — وبقاؤه مضبوطاً كان يمنع الاستوديوَ عن كلّ خبرٍ تالٍ بصمت. */
+  _newsStudioSkip = false;
   _newsRenderExistingMedia();
   _newsRenderNewFiles();
 
@@ -9386,6 +9426,11 @@ function openNewsModal(id) {
         // [3.2] تحميل وسائط الخبر الحالية في المحرّر (حذف/ترتيب/إضافة)
         window._newsKeepMedia = _newsParseMedia(n.attachments);
         window._newsEditDesign = n.design || '';   // اختيار مسبق بالمعرض عند إعادة النشر
+        window._newsEditImageDesigns = n.imageDesigns || '';
+        var _st1 = document.getElementById('newsSocialText');
+        if (_st1) _st1.value = n.socialText || '';
+        var _ht1 = document.getElementById('newsHashtags');
+        if (_ht1) _ht1.value = n.hashtags || '';
         window._newsEditHadMedia = window._newsKeepMedia.length > 0;
         _newsRenderExistingMedia();
         openModal('newsModal');
@@ -9462,6 +9507,21 @@ function _newsRemoveMedia(idx) {
 /**
  * حفظ الخبر (إضافة أو تحديث) مع دعم رفع المرفقات
  */
+/* حقلا السوشل — تُقرأ مرّةً وتُلحَق بكلّ حمولةِ حفظ.
+   🔴 ويُرسَلان **دائماً** ولو فارغَين: `undefined` في الخادم = «لا تُلمَس»،
+   فإرسالُ الفارغ هو الطريقُ الوحيدُ لمسحِ ما كتبه المستخدمُ ثمّ حذفه. */
+function _newsApplySocial(p) {
+  var f = _newsSocialFields();
+  p.socialText = f.socialText;
+  p.hashtags = f.hashtags;
+}
+
+function _newsSocialFields() {
+  var t = document.getElementById('newsSocialText');
+  var h = document.getElementById('newsHashtags');
+  return { socialText: t ? t.value.trim() : '', hashtags: h ? h.value.trim() : '' };
+}
+
 function saveNews() {
   var id   = document.getElementById('newsEditId').value || null;
   var news = document.getElementById('newsText').value.trim();
@@ -9501,6 +9561,37 @@ function saveNews() {
   var keptUrls = id ? ((window._newsKeepMedia || []).slice()) : [];
   var files = window._newsNewFiles || [];
 
+  /* 🔴 **بوّابةٌ ثانيةٌ للأخبار المصوَّرة (2026-09-20) — والأولى تبقى كما هي.**
+     كان المعرضُ يُفتح للخبر **النصّيّ بلا أيّ وسائط حصراً**، فالأخبارُ المصوَّرةُ
+     — وهي التي جاءت قوالبُ الصور لأجلها أصلاً — **لم تكن تمرّ به إطلاقاً**.
+     ⚠️ والصورُ المُبقاةُ فقط (بلا ملفّاتٍ جديدة) تمرّ من هنا؛ والملفّاتُ الجديدة
+        تمرّ بعد رفعها (أدناه) لأن الاستوديو يحتاج روابطَها لا محتواها.
+     🟢 **والتراجعُ السلس عقدٌ لا يُنقَض**: أيُّ تعذّرٍ ⇒ نشرٌ عاديٌّ فوراً.
+        **الاستوديو لا يحجب النشرَ أبداً.** */
+  if (!files.length && keptUrls.length && !_newsStudioSkip) {
+    var _imgsK = [];
+    for (var _ik = 0; _ik < keptUrls.length; _ik++) {
+      if (!_newsMediaIsVideo(keptUrls[_ik])) _imgsK.push(keptUrls[_ik]);
+    }
+    if (_imgsK.length) {
+      var _msOpened = false;
+      try {
+        _msOpened = _msOpen({
+          urls: _imgsK, allUrls: keptUrls, text: news, newsId: id,
+          imageDesigns: (window._newsEditImageDesigns || ''),
+          onConfirm: function (mergedUrls, designsStr) {
+            var p = { id: id, news: news, date: date,
+                      attachments: mergedUrls.join('\n'), imageDesigns: designsStr };
+            for (var kk in scopeData) p[kk] = scopeData[kk];
+            _newsApplySocial(p);
+            sendSaveNews(p, id);
+          }
+        });
+      } catch (eMs) { _msOpened = false; }
+      if (_msOpened) return;
+    }
+  }
+
   // لا ملفات جديدة → أرسل الروابط المُبقاة فقط (طلب صغير سريع)
   if (!files.length) {
     // خبر نصّي بلا أي وسائط ⇒ معرض اختيار التصميم قبل تنفيذ النشر.
@@ -9517,6 +9608,7 @@ function saveNews() {
             var fresh = document.getElementById('newsText').value.trim() || news;
             var payload = { id: id, news: fresh, date: date, attachments: '', design: designStr };
             for (var k in scopeData) payload[k] = scopeData[k];
+            _newsApplySocial(payload);
             sendSaveNews(payload, id);
           }
         });
@@ -9525,6 +9617,7 @@ function saveNews() {
     }
     var payload1 = { id: id, news: news, date: date, attachments: keptUrls.join('\n') };
     for (var k1 in scopeData) payload1[k1] = scopeData[k1];
+    _newsApplySocial(payload1);
     sendSaveNews(payload1, id);
     return;
   }
@@ -9551,8 +9644,38 @@ function saveNews() {
   var _newsUpNext = 0, _newsUpDone = 0, _newsUpFailed = false;
   function _newsUploadFinishAll() {
     if (saveBtn) saveBtn.disabled = false;
-    var payload2 = { id: id, news: news, date: date, attachments: keptUrls.concat(newUrls).join('\n') };
+    var allUrls = keptUrls.concat(newUrls);
+
+    /* 🔴 **الرفعُ أوّلاً ثمّ الاستوديو — لا العكس.** الاستوديو يحتاج **روابطَ**
+       الصور ليحمّلها على لوحةٍ بـ`crossOrigin`، لا محتواها المحلّيّ: صورةٌ
+       من `FileReader` تُلوّث اللوحةَ أو تختلف عن المخدوم لاحقاً.
+       🟢 وهذا أيضاً ما يجعل الأصلَ محفوظاً بلا خطوةٍ إضافية: المرفوعُ الآن هو
+          الأصل، والمدمَجُ يُرفَع بعده ويحلّ محلَّه في الصفّ. */
+    var _imgsN = [];
+    for (var _in = 0; _in < allUrls.length; _in++) {
+      if (!_newsMediaIsVideo(allUrls[_in])) _imgsN.push(allUrls[_in]);
+    }
+    if (_imgsN.length && !_newsStudioSkip) {
+      var _ok2 = false;
+      try {
+        _ok2 = _msOpen({
+          urls: _imgsN, allUrls: allUrls, text: news, newsId: id,
+          imageDesigns: (window._newsEditImageDesigns || ''),
+          onConfirm: function (mergedUrls, designsStr) {
+            var p = { id: id, news: news, date: date,
+                      attachments: mergedUrls.join('\n'), imageDesigns: designsStr };
+            for (var k3 in scopeData) p[k3] = scopeData[k3];
+            _newsApplySocial(p);
+            sendSaveNews(p, id);
+          }
+        });
+      } catch (eM2) { _ok2 = false; }
+      if (_ok2) return;
+    }
+
+    var payload2 = { id: id, news: news, date: date, attachments: allUrls.join('\n') };
     for (var k2 in scopeData) payload2[k2] = scopeData[k2];
+    _newsApplySocial(payload2);
     sendSaveNews(payload2, id);
   }
   function _newsUploadStartSlot() {
@@ -21492,7 +21615,7 @@ var _TS_CAP = {
        و`self` هو `align-self` (يحكم **الحاويةَ نفسَها** داخل أبيها). وقراءةُ
        `align` على أنه الثاني تجعل صفّاً كُتب له `align:'end'` ليُحاذي أبناءَه
        أسفلَ يتقلّص هو إلى مقاسِ محتواه — انحرافٌ يبدو تخطيطاً سليماً. */
-    common : ['t', 'at', 'ch', 'grow', 'basis', 'minw', 'minh', 'maxw', 'push', 'when', 'self',
+    common : ['t', 'at', 'ch', 'grow', 'basis', 'minw', 'minh', 'maxw', 'push', 'when', 'self', 'mt',
               'fill', 'rad', 'stroke', 'ring', 'shadow', 'rot', 'clip', 'blend', 'backdrop', 'op'],
     layer  : [],
     row    : ['pad', 'gap', 'align', 'justify'],
@@ -21500,7 +21623,11 @@ var _TS_CAP = {
     rect   : ['w', 'h'],
     grad   : ['g', 'to', 'deg', 'st', 'r'],
     img    : ['slot', 'fit', 'fx'],
-    text   : ['bind', 'pre', 'fs', 'w', 'lh', 'c', 'ls', 'dir', 'align', 'wrap'],
+    /* `lit` نصٌّ حرفيٌّ غيرُ مربوطٍ بالحالة — شارةُ «خبر المدرسة» في D8 وحدَها
+       اليوم. ⚠️ ولا يُستعمل لِما يخصّ المستأجر: اسمُ المدرسة والهاتفُ والعنوانُ
+       تصل عبر `bind` حتماً، وكتابةُ أيٍّ منها حرفياً تُعيد التثبيتَ الذي جاء
+       الاستيرادُ لإبطاله (المصدرُ كان يكتب «مدارس الإبداع» في الأربعةَ عشرَ). */
+    text   : ['bind', 'lit', 'pre', 'fs', 'w', 'lh', 'c', 'ls', 'dir', 'align', 'wrap', 'vert'],
     logo   : ['d'],
     qr     : ['d', 'pad'],
     sym    : ['sym', 'd', 'c']
@@ -21616,7 +21743,7 @@ function _tsAlive(n, S) {
 /* نصُّ العقدة بعد الربط. `pre` سابقةٌ حرفية (‏'☎ ' للهاتف — وهي في المصدر جزءٌ
    من `_tsPhone` لا من القيمة). */
 function _tsText(n, S) {
-  var v = (n.bind ? S[n.bind] : '') || '';
+  var v = n.bind ? (S[n.bind] || '') : (n.lit || '');
   return (n.pre || '') + String(v);
 }
 
@@ -21690,22 +21817,66 @@ function _tsIntrinsic(n, S, measure, axis, avail, crossAvail) {
   return 0;
 }
 
-function _tsIntrinsicBox(n, S, measure, axis, avail, crossAvail) {
+/* توزيعُ المحور الرئيس — يُستعمل في **القياس والوضع معاً**، ووجودُه هنا هو
+   الإصلاح: قياسُ ارتفاع صفٍّ كان يلفّ نصَّ الابن النامي على **العرض الكامل**
+   بينما يأخذ ذاك الابنُ عند الوضع ما يتبقّى بعد إخوته ⇒ يُقاس بسطرين ويُرسَم
+   بثلاثة **فيفيض خارج صندوقه**. أمسكه التأكيدُ ④-ب في D14. */
+function _tsMainSizes(kids, isRow, mainAvail, innerW, gap, S, measure) {
+  var sizes = [], growSum = 0, i;
+  for (i = 0; i < kids.length; i++) {
+    var g = kids[i].grow || 0;
+    growSum += g;
+    if (kids[i].basis != null) sizes.push(_tsLen(kids[i].basis, mainAvail));
+    else sizes.push(g ? 0 : _tsIntrinsic(kids[i], S, measure, isRow ? 'x' : 'y', mainAvail, innerW));
+  }
+  var used = 0;
+  for (i = 0; i < sizes.length; i++) used += sizes[i];
+  var free = mainAvail - used - gap * Math.max(0, kids.length - 1);
+  if (growSum > 0 && free > 0) {
+    for (i = 0; i < kids.length; i++) {
+      var gi = kids[i].grow || 0;
+      if (gi) sizes[i] = _tsR2(free * (gi / growSum));
+    }
+  }
+  return { sizes: sizes, free: free, growSum: growSum };
+}
+
+/* 🔴 **المعاملُ السادس عرضُ اللفّ دائماً — لا «المحور المتقاطع».** والتسميةُ
+   القديمة (`crossAvail`) هي ما أخفى الخلطَ: في عمودٍ يُسأل عن عرضه كان يصل
+   **الارتفاعُ** عرضاً للفّ. العرضُ عرضٌ في الحالتين. */
+function _tsIntrinsicBox(n, S, measure, axis, availAxis, wrapW) {
   var pad = _tsPad(n.pad), gap = n.gap ? _tsPx(n.gap) : 0;
   var kids = [], i;
-  for (i = 0; i < (n.ch || []).length; i++) if (_tsAlive(n.ch[i], S)) kids.push(n.ch[i]);
-  /* ⚠️ الحشوةُ تُنسَب إلى **المحور المسؤول عنه** لا إلى محور الحاوية الرئيس —
-     خلطُهما يُرجع حشوةً أفقيةً في قياسٍ رأسيّ فينحرف كلُّ صندوقٍ ذاتيّ المقاس. */
-  var padAxis  = (axis === 'x') ? (pad[1] + pad[3]) : (pad[0] + pad[2]);
-  var padOther = (axis === 'x') ? (pad[0] + pad[2]) : (pad[1] + pad[3]);
-  var innerOther = Math.max(0, crossAvail - padOther);
-  var main = (n.t === 'row') ? 'x' : 'y';
-  var sum = 0, mx = 0;
-  for (i = 0; i < kids.length; i++) {
-    var s = _tsIntrinsic(kids[i], S, measure, axis, avail, innerOther);
-    if (axis === main) sum += s; else mx = Math.max(mx, s);
+  for (i = 0; i < (n.ch || []).length; i++) {
+    /* الخارجون عن التدفّق لا يُقاسون — لا يأخذون حيّزاً ولا يمدّون الصندوق. */
+    if (_tsAlive(n.ch[i], S) && !n.ch[i].at) kids.push(n.ch[i]);
   }
-  if (axis === main) return _tsR2(sum + gap * Math.max(0, kids.length - 1) + padAxis);
+  var padH = pad[1] + pad[3], padV = pad[0] + pad[2];
+  var padAxis = (axis === 'x') ? padH : padV;
+  var innerW = Math.max(0, ((axis === 'x') ? availAxis : wrapW) - padH);
+  var isRow = (n.t === 'row'), main = isRow ? 'x' : 'y';
+
+  if (axis === main) {
+    var sum = 0;
+    for (i = 0; i < kids.length; i++) {
+      sum += _tsIntrinsic(kids[i], S, measure, axis, availAxis, innerW);
+    }
+    return _tsR2(sum + gap * Math.max(0, kids.length - 1) + padAxis);
+  }
+
+  /* المحورُ المتقاطع: تُحَلّ المقاساتُ الرئيسةُ أوّلاً، ثمّ يُقاس كلُّ ابنٍ
+     **بعرضه هو** لا بعرض الحاوية. */
+  var mx = 0;
+  if (isRow) {
+    var m = _tsMainSizes(kids, true, innerW, innerW, gap, S, measure);
+    for (i = 0; i < kids.length; i++) {
+      mx = Math.max(mx, _tsIntrinsic(kids[i], S, measure, 'y', wrapW, m.sizes[i]));
+    }
+  } else {
+    for (i = 0; i < kids.length; i++) {
+      mx = Math.max(mx, _tsIntrinsic(kids[i], S, measure, 'x', innerW, innerW));
+    }
+  }
   return _tsR2(mx + padAxis);
 }
 
@@ -21765,6 +21936,9 @@ function _tsLayout(n, box, S, measure) {
     out.ls = n.ls ? _tsR2(n.ls * fs) : 0;
     out.lines = n.wrap ? _tsWrap(txt, box.w, fs, out.wgt, measure) : [txt];
     out.h = _tsR2(out.lines.length * lh);
+    /* 🔴 نصٌّ عموديّ (`writing-mode:vertical-rl` في D12): المحوران ينقلبان —
+       الطولُ يصير ارتفاعاً والسطرُ عرضاً. ويُحسب هنا لا في المُصيِّر. */
+    if (n.vert) { out.vert = 1; out.h = _tsR2(box.h); }
   }
 
   if (n.ch && n.ch.length) {
@@ -21805,7 +21979,8 @@ function _tsSelfSize(c, b, S, measure) {
     if (c.w != null) w = _tsLen(c.w, b.w);
     if (c.h != null) h = _tsLen(c.h, b.h);
   } else if (c.t === 'row' || c.t === 'col' || c.t === 'text') {
-    if (!pinX) w = Math.min(b.w, _tsIntrinsic(c, S, measure, 'x', b.w, b.h));
+    /* العرضُ يُقاس بعرضٍ متاح، والارتفاعُ بالعرض **المحلول** — لا بالارتفاع. */
+    if (!pinX) w = Math.min(b.w, _tsIntrinsic(c, S, measure, 'x', b.w, b.w));
     if (!pinY) h = Math.min(b.h, _tsIntrinsic(c, S, measure, 'y', b.h, w));
   } else { return b; }
 
@@ -21837,27 +22012,16 @@ function _tsFlexKids(n, box, S, measure) {
   }
   if (!kids.length && !abs.length) return [];
 
-  /* ① المقاسُ الذاتيّ لغير النامي. النامي يأخذ صفراً الآن ويُملأ من الفائض.
-     و`basis` يثبّت المقاسَ الرئيسَ نسبةً من الحاوية (‏`flex:0 0 34%`) فلا يُقاس
-     من المحتوى — وهو ما يجعل شريطَ الهوية في D3 ثابتَ الارتفاع مهما طال العنوان. */
-  var sizes = [], growSum = 0;
-  for (i = 0; i < kids.length; i++) {
-    var g = kids[i].grow || 0;
-    growSum += g;
-    if (kids[i].basis != null) sizes.push(_tsLen(kids[i].basis, mainAvail));
-    else sizes.push(g ? 0 : _tsIntrinsic(kids[i], S, measure, isRow ? 'x' : 'y', mainAvail, crossAvail));
-  }
-  var used = 0;
-  for (i = 0; i < sizes.length; i++) used += sizes[i];
-  var free = mainAvail - used - gap * (kids.length - 1);
+  /* ① التوزيعُ الرئيسُ عبر `_tsMainSizes` — **نفسُ الدالّة التي يستعملها القياس**.
+     وتكرارُ المنطق هنا كان يعني أن قياسَ الارتفاع يوزّع بطريقةٍ والوضعَ بأخرى،
+     فينحرفان في الحالة التي تفرّق بينهما وحدَها (ابنٌ نامٍ بنصٍّ يُلَفّ). */
+  var mm = _tsMainSizes(kids, isRow, mainAvail, isRow ? mainAvail : crossAvail, gap, S, measure);
+  var sizes = mm.sizes, growSum = mm.growSum, free = mm.free;
 
-  /* ② الفائضُ للنامين؛ وإن لم يوجد نامٍ فإلى الفجوات عند `justify:'between'`. */
+  /* ② وإن لم يوجد نامٍ فالفائضُ إلى الفجوات عند `justify:'between'`. */
   var extraGap = 0, lead = 0;
   if (growSum > 0 && free > 0) {
-    for (i = 0; i < kids.length; i++) {
-      var gi = kids[i].grow || 0;
-      if (gi) sizes[i] = _tsR2(free * (gi / growSum));
-    }
+    /* وُزِّع سلفاً في `_tsMainSizes`. */
   } else if (free > 0) {
     if (n.justify === 'between' && kids.length > 1) extraGap = free / (kids.length - 1);
     else if (n.justify === 'end') lead = free;
@@ -21882,6 +22046,9 @@ function _tsFlexKids(n, box, S, measure) {
     }
     i = ki++;
     var ms = sizes[i];
+    /* `mt` هامشٌ على المحور الرئيس (`margin-top:1cq` في D9). هندسةٌ محضةٌ
+       تُحَلّ هنا، فلا يحتاجها أيُّ مُصيِّرٍ ولا تدخل جدولَ القدرات. */
+    if (c.mt) cur += _tsPx(c.mt);
     if (i === pushAt && free > 0 && growSum === 0) cur += free;
 
     /* 🔴 الافتراضُ `stretch` لا `start` — وهو افتراضُ CSS نفسِه (`align-items`).
@@ -21943,9 +22110,56 @@ function _tsRadii(rad, w, h) {
   return r;
 }
 
+/* مزجٌ خطّيٌّ بين لونين — يلزم لتطبيع المحطّات الخارجة عن [0,100]. */
+function _tsMix(a, b, t) {
+  function rgb(x) {
+    var s = String(x);
+    var m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(s);
+    if (m) return [+m[1], +m[2], +m[3]];
+    var h = _tsHex6(s).slice(1);
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  var A = rgb(a), B = rgb(b), o = [];
+  for (var i = 0; i < 3; i++) o.push(Math.round(A[i] + (B[i] - A[i]) * t));
+  return 'rgb(' + o[0] + ',' + o[1] + ',' + o[2] + ')';
+}
+function _tsHex6(h) {
+  var s = String(h || '').trim();
+  if (!/^#[0-9a-fA-F]{3,6}$/.test(s)) return '#000000';
+  var b = s.slice(1);
+  if (b.length === 3) b = b.charAt(0) + b.charAt(0) + b.charAt(1) + b.charAt(1) + b.charAt(2) + b.charAt(2);
+  return '#' + b.slice(0, 6).toLowerCase();
+}
+
+/* 🔴 **محطّةٌ خارج [0,100] تُطبَّع بالاستقراء لا بالقصّ.**
+   D5 يضع `#1dbfa6` عند **145٪**: في CSS يعني أن اللونَ يُبلَغ خارجَ الخطّ المرئيّ،
+   فالطرفُ الظاهرُ لونٌ **وسطٌ** بين محطّةِ 58٪ وذاك. و`addColorStop` في canvas
+   يرفض ما خرج عن [0,1] — فقصُّ الموضع إلى 100٪ كان يضع اللونَ الكامل على الحافّة
+   ⇒ **تدرّجٌ أفتحُ بوضوحٍ من المعاينة، ولا فحصَ ساكنٌ يراه**. */
 function _tsStops(st, S) {
-  var out = [];
-  for (var i = 0; i < st.length; i++) out.push([st[i][0], _tsColor(st[i][1], S)]);
+  var raw = [], i;
+  for (i = 0; i < st.length; i++) raw.push([+st[i][0], _tsColor(st[i][1], S)]);
+  var need = false;
+  for (i = 0; i < raw.length; i++) if (raw[i][0] < 0 || raw[i][0] > 100) { need = true; break; }
+  if (!need) return raw;
+
+  function at(p) {
+    if (p <= raw[0][0]) return raw[0][1];
+    if (p >= raw[raw.length - 1][0]) return raw[raw.length - 1][1];
+    for (var j = 1; j < raw.length; j++) {
+      if (p <= raw[j][0]) {
+        var a = raw[j - 1], b = raw[j];
+        var span = b[0] - a[0];
+        return span === 0 ? b[1] : _tsMix(a[1], b[1], (p - a[0]) / span);
+      }
+    }
+    return raw[raw.length - 1][1];
+  }
+  var out = [[0, at(0)]];
+  for (i = 0; i < raw.length; i++) {
+    if (raw[i][0] > 0 && raw[i][0] < 100) out.push([raw[i][0], raw[i][1]]);
+  }
+  out.push([100, at(100)]);
   return out;
 }
 
@@ -22078,6 +22292,303 @@ _TS_SPECS[3] = { k: 'studio_band', root: { t: 'col', ch: [
               { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
                 fs: 1.4, w: 600, lh: 1.25, c: 'rgba(255,255,255,.7)' } ] },
           { t: 'qr', d: 10, pad: 0.9, rad: 1.2 } ] } ] }
+] } };
+
+/* ④ قطع قطريّ — إسفينٌ كوبالت. (المرجع: `_tsD4Legacy`)
+   🔴 **شريحتان متتاليتان بمضلّعين، لا حاويةٌ مقصوصة**: خطُّ اللهجة العنبريُّ
+      مضلّعٌ مستقلٌّ يعلو الإسفين، وقصُّ حاويةٍ واحدةٍ كان يُسقط أحدَهما. */
+_TS_SPECS[4] = { k: 'studio_diag', root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover' },
+
+  { t: 'grad', g: 'linear', deg: 115, st: [[42, 'scrim(0)'], [100, 'scrim(.4)']] },
+
+  { t: 'rect', clip: { poly: [['0%', '46%'], ['100%', '72%'], ['100%', '100%'], ['0%', '100%']] },
+    fill: { g: 'linear', deg: 135, st: [[0, 'g0'], [100, 'g1']] } },
+
+  { t: 'rect', clip: { poly: [['0%', '44.3%'], ['100%', '70.3%'], ['100%', '71.5%'], ['0%', '45.5%']] },
+    fill: 'ac' },
+
+  { t: 'row', at: { t: 5, r: 5 }, align: 'center', gap: 2, ch: [
+      { t: 'logo', d: 11, ring: { w: 0.7, c: 'rgba(255,255,255,.85)' } },
+      { t: 'col', gap: 0.5, ch: [
+          { t: 'text', bind: 'name', fs: 3.1, w: 800, lh: 1.25, c: 'white' },
+          { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+            fs: 1.4, w: 600, lh: 1.25, c: 'rgba(255,255,255,.8)' } ] } ] },
+
+  { t: 'col', at: { b: 5, r: 5, l: 5 }, gap: 2.8, ch: [
+      { t: 'text', bind: 'title', wrap: 1, fs: 6.8, w: 900, lh: 1.28, c: 'white', maxw: '80%' },
+      { t: 'row', align: 'center', justify: 'between', gap: 3, ch: [
+          { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+            fs: 2.9, w: 800, lh: 1.25, c: 'white' },
+          { t: 'qr', d: 10, pad: 0.9, rad: 1.2 } ] } ] }
+] } };
+
+/* ⑤ قوس التميز — تدرّجٌ كوبالت/تركواز ونافذةٌ مقوّسة. (المرجع: `_tsD5Legacy`)
+   🔴 **محطّةُ `teal` عند ١٤٥٪** تُطبَّع بالاستقراء لا بالقصّ — `addColorStop`
+      يرفض ما خرج عن [0,1]، والقصُّ كان يضع اللونَ الكامل على الحافّة فيُنتج
+      تدرّجاً أفتحَ بوضوحٍ من المعاينة بلا فحصٍ يراه.
+   🔴 **ونصفُ قطرٍ ضخمٌ غيرُ متماثل** (`50 50 2 2` = 540px على صندوقٍ أضيق) —
+      يقصّه الحالُّ بخوارزمية CSS، وبلاه يرسم canvas قوساً مقلوباً. */
+_TS_SPECS[5] = { k: 'studio_arch', root: {
+  t: 'col', pad: 5, gap: 3.2, align: 'center',
+  fill: { g: 'linear', deg: 150, st: [[0, 'g1'], [58, 'g0'], [145, 'teal']] }, ch: [
+
+  { t: 'row', align: 'center', gap: 2.2, ch: [
+      { t: 'logo', d: 9, ring: { w: 0.6, c: 'rgba(255,255,255,.85)' } },
+      { t: 'col', gap: 0.4, ch: [
+          { t: 'text', bind: 'name', fs: 2.9, w: 800, lh: 1.25, c: 'white' },
+          { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+            fs: 1.35, w: 600, lh: 1.25, c: 'rgba(255,255,255,.75)' } ] } ] },
+
+  { t: 'layer', grow: 1, minh: 0, self: 'stretch', rad: [50, 50, 2, 2],
+    shadow: { dx: 0, dy: 2, blur: 6, c: 'scrim(.42)' },
+    ch: [ { t: 'img', slot: 'image', fit: 'cover' } ] },
+
+  { t: 'text', bind: 'title', wrap: 1, fs: 6.2, w: 900, lh: 1.28, c: 'white', align: 'center' },
+
+  { t: 'row', self: 'stretch', align: 'center', justify: 'between', gap: 3,
+    pad: [1.8, 2.4], rad: 1.6, fill: 'rgba(255,255,255,.12)',
+    stroke: { w: 0.25, c: 'rgba(255,255,255,.26)' }, ch: [
+      { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+        fs: 2.8, w: 800, lh: 1.25, c: 'white' },
+      { t: 'qr', d: 9, pad: 0.8, rad: 1 } ] }
+] } };
+
+/* ⑥ عمود جانبي — صورةٌ وعمودُ هوية. (المرجع: `_tsD6Legacy`)
+   🔴 **RTL يقلب الترتيب البصريّ**: أوّلُ ابنٍ في الصفّ يقع **يميناً** — فالصورةُ
+      يمينٌ وعمودُ الهوية يسار، كما في المصدر تماماً.
+   🔴 **و`border-left` حدٌّ من جانبٍ واحد لا `stroke`**: `stroke` يرسم الأربعة.
+      ويُمثَّل مستطيلاً بعرض `1cqmin` على الحافّة **اليسرى الفيزيائية** للشريحة —
+      وهو موضعُه في المصدر بالضبط، لا الحدُّ الفاصلُ بين العمودين كما قد يُظنّ. */
+_TS_SPECS[6] = { k: 'studio_side', root: { t: 'row', ch: [
+
+  { t: 'layer', basis: '62%', minw: 0, ch: [ { t: 'img', slot: 'image', fit: 'cover' } ] },
+
+  { t: 'col', basis: '38%', pad: [5, 4], gap: 2.6,
+    fill: { g: 'linear', deg: 160, st: [[0, 'g0'], [100, 'g1']] }, ch: [
+      { t: 'rect', at: { l: 0, t: 0 }, w: 1, h: '100%', fill: 'ac' },
+      { t: 'logo', d: 12, ring: { w: 0.6, c: 'rgba(255,255,255,.85)' } },
+      { t: 'col', gap: 0.6, ch: [
+          { t: 'text', bind: 'name', fs: 2.8, w: 800, lh: 1.25, c: 'white' },
+          { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+            fs: 1.3, w: 600, lh: 1.25, c: 'rgba(255,255,255,.7)' } ] },
+      { t: 'rect', w: 9, h: 0.8, rad: 1, fill: 'ac' },
+      { t: 'text', bind: 'title', wrap: 1, fs: 5.2, w: 900, lh: 1.28, c: 'white' },
+      { t: 'col', push: 1, gap: 1.8, align: 'start', ch: [
+          { t: 'qr', d: 10, pad: 0.9, rad: 1.2 },
+          { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+            fs: 2.7, w: 800, lh: 1.25, c: 'white' } ] } ] }
+] } };
+
+/* ⑦ بطاقة زجاجية — طبقةُ ضبابٍ فوق الصورة. (المرجع: `_tsD7Legacy`)
+   ⚠️ **و`backdrop` أثرٌ يُعلَن حدُّه:** في HTML `backdrop-filter` مدعومٌ في
+      WebView الحديث، وبدونه تبقى الخلفيةُ شبهُ الشفّافة وحدَها فيظلّ النصُّ
+      مقروءاً — **تدهورٌ آمنٌ لا انهيار، وهو اعترافُ المصدر نفسِه**. وفي canvas
+      يُنفَّذ نسخاً/تمويهاً/إعادة، والبطاقةُ مُزاحةٌ 5cqmin عن كلّ حافّة فالتوسيعُ
+      متاحٌ دائماً بلا نزيفِ حوافّ. */
+_TS_SPECS[7] = { k: 'studio_glass', root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover' },
+
+  { t: 'grad', g: 'linear', deg: 200, st: [[0, 'scrim(.15)'], [100, 'scrim(.6)']] },
+
+  { t: 'row', at: { t: 5, r: 5 }, align: 'center', gap: 1.8,
+    pad: [1.2, 2.4, 1.2, 1.2], rad: 99, fill: 'rgba(255,255,255,.16)',
+    stroke: { w: 0.25, c: 'rgba(255,255,255,.34)' }, ch: [
+      { t: 'logo', d: 7 },
+      { t: 'text', bind: 'name', fs: 2.4, w: 800, lh: 1.25, c: 'white' } ] },
+
+  { t: 'col', at: { b: 5, r: 5, l: 5 }, pad: 4.4, gap: 2.6, rad: 3,
+    fill: 'rgba(9,20,40,.5)', stroke: { w: 0.25, c: 'rgba(255,255,255,.22)' },
+    backdrop: { blur: 14 }, ch: [
+      { t: 'row', align: 'center', gap: 1.6, ch: [
+          { t: 'rect', w: 3, h: 3, rot: 45, fill: 'ac' },
+          { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.2,
+            fs: 1.5, w: 600, lh: 1.25, c: 'rgba(255,255,255,.85)' } ] },
+      { t: 'text', bind: 'title', wrap: 1, fs: 6.2, w: 900, lh: 1.28, c: 'white' },
+      { t: 'col', gap: 2.4, ch: [
+          { t: 'rect', h: 0.2, fill: 'rgba(255,255,255,.2)' },
+          { t: 'row', align: 'center', justify: 'between', gap: 3, ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.8, w: 800, lh: 1.25, c: 'white' },
+              { t: 'qr', d: 9, pad: 0.8, rad: 1 } ] } ] } ] }
+] } };
+
+/* ⑧ مجلة — صورةٌ فوق صفحةٍ بيضاء. (المرجع: `_tsD8Legacy`)
+   🔴 **`border-top` يُمثَّل مستطيلاً في عمودٍ لا `stroke`** — ومعه فجوةٌ تعادل
+      `padding-top` الأصلية، فالنتيجةُ نفسُها بلا حدٍّ رباعيٍّ لا وجودَ له. */
+_TS_SPECS[8] = { k: 'studio_mag', root: { t: 'col', fill: 'paper', ch: [
+
+  { t: 'layer', grow: 1, minh: 0, ch: [
+      { t: 'img', slot: 'image', fit: 'cover' },
+      { t: 'logo', d: 9, at: { t: 4.5, l: 4.5 },
+        shadow: { dx: 0, dy: 0.4, blur: 2, c: 'scrim(.35)' } } ] },
+
+  { t: 'col', fill: 'white', pad: [5, 5, 4.4], gap: 2.2, ch: [
+      /* الشارةُ مُزاحةٌ فوق الحافّة (‏`top:-3.4cq`) ⇒ **فيضٌ مُعلَنٌ** يوسَم `bleed`. */
+      { t: 'row', at: { t: -3.4, r: 5 }, pad: [1.2, 3], rad: 0.8, fill: 'ac', ch: [
+          { t: 'text', lit: 'خبر المدرسة', fs: 2.4, w: 900, lh: 1.25, c: 'inkDeep' } ] },
+      { t: 'text', bind: 'title', wrap: 1, fs: 6, w: 900, lh: 1.28, c: 'ink' },
+      { t: 'col', gap: 2.2, ch: [
+          { t: 'rect', h: 0.22, fill: 'alpha(g1,.16)' },
+          { t: 'row', align: 'center', justify: 'between', gap: 3, ch: [
+              { t: 'col', gap: 0.5, minw: 0, grow: 1, ch: [
+                  { t: 'text', bind: 'name', fs: 2.6, w: 800, lh: 1.25, c: 'g1' },
+                  { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                    fs: 2.4, w: 800, lh: 1.25, c: 'muted' } ] },
+              { t: 'qr', d: 9.5, pad: 0.7, rad: 1,
+                stroke: { w: 0.2, c: 'alpha(g1,.16)' } } ] } ] } ] }
+] } };
+
+/* ⑭ شبكة تحريرية — تُفَكّ من `grid` إلى عمودٍ فيه صفٌّ وشريط. (المرجع: `_tsD14Legacy`)
+   🔴 **ولا `grid` في المواصفة عمداً**: الشبكةُ هنا صفٌّ واحدٌ وصفٌّ ثانٍ ممتدّ،
+      وهو ما يفعله `grid-template` حرفياً في هذه الحالة. وإدخالُ محرّكِ شبكةٍ
+      لأجل تخطيطٍ واحدٍ يفتح بابَ زحفِ الحالّ الذي يحرسه `_tsValidate`. */
+_TS_SPECS[14] = { k: 'studio_grid', root: { t: 'col', fill: 'white', ch: [
+
+  { t: 'row', grow: 1, minh: 0, ch: [
+      { t: 'layer', grow: 1, minw: 0, ch: [ { t: 'img', slot: 'image', fit: 'cover' } ] },
+      { t: 'col', basis: '32%', pad: [4, 3], gap: 2.4, align: 'center', fill: 'g1', ch: [
+          { t: 'logo', d: 11 },
+          { t: 'text', bind: 'name', fs: 2.4, w: 800, lh: 1.3, c: 'white', align: 'center' },
+          { t: 'rect', w: 5, h: 0.3, fill: 'ac' },
+          { t: 'qr', d: 11, pad: 0.9, rad: 1, push: 1 } ] } ] },
+
+  { t: 'col', ch: [
+      { t: 'rect', h: 1, fill: 'ac' },
+      { t: 'row', pad: [4.4, 5], align: 'center', justify: 'between', gap: 3, ch: [
+          { t: 'text', bind: 'title', wrap: 1, grow: 1, fs: 6, w: 900, lh: 1.28, c: 'ink' },
+          { t: 'col', gap: 0.5, ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.8, w: 800, lh: 1.25, c: 'g1', align: 'left' },
+              { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+                fs: 1.3, w: 600, lh: 1.25, c: 'muted', align: 'left' } ] } ] } ] }
+] } };
+
+/* ⑨ موتيفات ذهبية — تكوينٌ مركزيٌّ بتدرّجٍ شعاعيّ. (المرجع: `_tsD9Legacy`)
+   🔴 **الشعاعيُّ إهليلجيٌّ لا دائريّ** (`120% 80% at 50% 12%`) — ويُرسَم في canvas
+      بتحويلِ مقياسٍ يجعل الإهليلجَ دائرةً ثمّ يُعاد. ورسمُه دائرةً يُزيح
+      التعتيمَ عن مركزه فيُغيّر بؤرةَ التكوين كلِّه.
+   🔴 **والشعارُ يحمل حلقةً وظلّاً معاً** (`box-shadow` مزدوج): الأولى امتدادٌ بلا
+      تمويهٍ ⇒ `ring`، والثاني ظلٌّ حقيقيٌّ ⇒ `shadow`. ودمجُهما يُسقط أحدَهما. */
+_TS_SPECS[9] = { k: 'studio_motif', root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover' },
+
+  { t: 'grad', g: 'radial', r: { rx: '120%', ry: '80%', cx: '50%', cy: '12%' },
+    st: [[0, 'scrim(.25)'], [78, 'scrim(ov)']] },
+
+  { t: 'sym', sym: 'spk', d: 9, c: 'ac',   op: 0.5,  at: { t: 6, r: 6 } },
+  { t: 'sym', sym: 'str', d: 5, c: 'ac',   op: 0.32, at: { t: 14, l: 8 } },
+  { t: 'sym', sym: 'rng', d: 7, c: 'teal', op: 0.4,  at: { b: 22, r: 9 } },
+  { t: 'sym', sym: 'dia', d: 6, c: 'ac',   op: 0.35, at: { b: 8, l: 6 } },
+
+  { t: 'col', pad: 8, gap: 3, align: 'center', justify: 'center', ch: [
+      { t: 'logo', d: 13, ring: { w: 0.7, c: 'ac' },
+        shadow: { dx: 0, dy: 1.4, blur: 4, c: 'scrim(.5)' } },
+      { t: 'text', bind: 'name', fs: 2.8, w: 800, lh: 1.25,
+        c: 'rgba(255,255,255,.9)', align: 'center' },
+      { t: 'row', align: 'center', gap: 1.6, ch: [
+          { t: 'rect', w: 8, h: 0.22, fill: 'ac' },
+          { t: 'rect', w: 2.2, h: 2.2, rot: 45, fill: 'ac' },
+          { t: 'rect', w: 8, h: 0.22, fill: 'ac' } ] },
+      { t: 'text', bind: 'title', wrap: 1, fs: 7.2, w: 900, lh: 1.28,
+        c: 'white', align: 'center' },
+      { t: 'row', align: 'center', gap: 2.2, mt: 1, ch: [
+          { t: 'qr', d: 9, pad: 0.8, rad: 1 },
+          { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+            fs: 2.8, w: 800, lh: 1.25, c: 'white' } ] } ] }
+] } };
+
+/* ⑪ ثنائي اللون — رماديٌّ مضروبٌ بتدرّجٍ كوبالت. (المرجع: `_tsD11Legacy`)
+   🔴 **تكافؤُ الضربِ مُثبَتٌ جبرياً لا مُقدَّراً** — على خلفيةٍ معتمة (‏`ab=1`)
+      ومصدرٍ بعتامة `as=.92`:
+        CSS  : ‏.92·multiply(Cb,Cs) + .08·Cb
+        canvas: ‏as(1−ab)Cs + as·ab·B + (1−as)ab·Cb = .92·B + .08·Cb
+      ⇒ متطابقتان. ويبقى فرقُ تقريبِ اللون بين المحرّكين (≤1/255 لكلّ قناة).
+   🔴 **و`isolate` ليس تزيينياً**: بلا `isolation:isolate` على شريحة HTML يمتدّ
+      نطاقُ المزج إلى ما خلفَها فيختلف عن نطاق الـcanvas المحصور بالشريحة. */
+_TS_SPECS[11] = { k: 'studio_duo', isolate: 1, root: { t: 'layer', ch: [
+
+  { t: 'img', slot: 'image', fit: 'cover', fx: { gray: 1, contrast: 1.1 } },
+
+  { t: 'grad', g: 'linear', deg: 160, st: [[0, 'g1'], [100, 'g0']],
+    blend: { mode: 'multiply', alpha: 0.92 } },
+
+  { t: 'grad', g: 'linear', to: 'top', st: [[0, 'scrim(.7)'], [55, 'scrim(0)']] },
+
+  { t: 'row', at: { t: 5, r: 5, l: 5 }, align: 'center', justify: 'between', gap: 2, ch: [
+      { t: 'row', align: 'center', gap: 2, minw: 0, grow: 1, ch: [
+          { t: 'logo', d: 10 },
+          { t: 'text', bind: 'name', fs: 3, w: 800, lh: 1.25, c: 'white' } ] },
+      { t: 'rect', w: 4, h: 4, rot: 45, fill: 'ac' } ] },
+
+  { t: 'col', at: { b: 5, r: 5, l: 5 }, gap: 2.4, ch: [
+      { t: 'text', bind: 'title', wrap: 1, fs: 8, w: 900, lh: 1.2, c: 'ac' },
+      { t: 'row', align: 'center', justify: 'between', gap: 3, ch: [
+          { t: 'col', gap: 0.5, minw: 0, grow: 1, ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.9, w: 800, lh: 1.25, c: 'white' },
+              { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+                fs: 1.4, w: 600, lh: 1.25, c: 'rgba(255,255,255,.7)' } ] },
+          { t: 'qr', d: 9.5, pad: 0.8, rad: 1 } ] } ] }
+] } };
+
+/* ⑫ شريط عمودي — السطرُ اللاتينيُّ مكتوبٌ عمودياً. (المرجع: `_tsD12Legacy`)
+   🔴 **`vert` محورا النصّ ينقلبان**، ويُحسب ذلك في الحالّ لا في المُصيِّر.
+   🟢 **و`ls:.3` مسموحٌ هنا بحقّ** لأن المحتوى `YEMENSCHOOLZ.COM/<SLUG>` لاتينيٌّ
+      صرف — و`_tsValidate` يرفض `ls` على أيّ نصٍّ بلا `dir:'ltr'` لأن تباعدَ
+      الحروف في canvas يُرسَم حرفاً-حرفاً فيدمّر وصلَ العربية. */
+_TS_SPECS[12] = { k: 'studio_spine', root: { t: 'row', ch: [
+
+  { t: 'col', basis: 7, fill: 'ac', align: 'center', justify: 'center', ch: [
+      { t: 'text', bind: 'nameEn', when: 'nameEn', vert: 1, dir: 'ltr', ls: 0.3,
+        fs: 2, w: 800, lh: 1.25, c: 'inkDeep', align: 'center' } ] },
+
+  { t: 'layer', grow: 1, minw: 0, ch: [
+      { t: 'img', slot: 'image', fit: 'cover' },
+      { t: 'grad', g: 'linear', to: 'top', st: [[0, 'scrim(ov)'], [50, 'scrim(.1)']] },
+      { t: 'row', at: { t: 5, r: 5 }, align: 'center', gap: 1.8, ch: [
+          { t: 'logo', d: 10, ring: { w: 0.6, c: 'rgba(255,255,255,.9)' } },
+          { t: 'text', bind: 'name', fs: 2.8, w: 800, lh: 1.25, c: 'white' } ] },
+      { t: 'col', at: { b: 5, r: 5, l: 5 }, gap: 2.4, ch: [
+          { t: 'text', bind: 'title', wrap: 1, fs: 6.8, w: 900, lh: 1.28, c: 'white' },
+          { t: 'row', align: 'center', justify: 'between', gap: 3, ch: [
+              { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+                fs: 2.9, w: 800, lh: 1.25, c: 'ac' },
+              { t: 'qr', d: 9.5, pad: 0.8, rad: 1 } ] } ] } ] }
+] } };
+
+/* ⑬ زوايا مقطوعة — لوحٌ هندسيٌّ على نيفي. (المرجع: `_tsD13Legacy`)
+   🔴 **`'100%-6'` يحلّ `calc(100% - 6cqmin)` بلا محرّك تعبيرات** — والمضلّعُ
+      يخلط نسبةً مئويةً بـcqmin بنفس ترتيب `calc()` الأصلي.
+   🔴 **و`grow:1 + minh:0`** هي الحلقةُ الوحيدة بين القياس والتخطيط في الأربعةَ
+      عشر: ارتفاعُ الصورة يعتمد على ارتفاع النصّ الملفوف فوقها وتحتها. */
+_TS_SPECS[13] = { k: 'studio_cut', root: {
+  t: 'col', pad: 5, gap: 3,
+  fill: { g: 'linear', deg: 135, st: [[0, 'navy'], [100, 'g0']] }, ch: [
+
+  { t: 'row', align: 'center', justify: 'between', gap: 2, ch: [
+      { t: 'row', align: 'center', gap: 2, minw: 0, grow: 1, ch: [
+          { t: 'logo', d: 9.5 },
+          { t: 'col', gap: 0.4, minw: 0, grow: 1, ch: [
+              { t: 'text', bind: 'name', fs: 2.8, w: 800, lh: 1.25, c: 'white' },
+              { t: 'text', bind: 'nameEn', when: 'nameEn', dir: 'ltr', ls: 0.14,
+                fs: 1.35, w: 600, lh: 1.25, c: 'ac' } ] } ] },
+      { t: 'qr', d: 9, pad: 0.8, rad: 1 } ] },
+
+  { t: 'layer', grow: 1, minh: 0,
+    clip: { poly: [[6, '0%'], ['100%', '0%'], ['100%', '100%-6'],
+                   ['100%-6', '100%'], ['0%', '100%'], ['0%', 6]] }, ch: [
+      { t: 'img', slot: 'image', fit: 'cover' },
+      { t: 'grad', g: 'linear', to: 'top', st: [[0, 'scrim(.55)'], [45, 'scrim(0)']] } ] },
+
+  { t: 'row', align: 'end', justify: 'between', gap: 3, ch: [
+      { t: 'text', bind: 'title', wrap: 1, grow: 1, fs: 6.2, w: 900, lh: 1.28, c: 'white' },
+      { t: 'row', pad: [1.4, 2.8], rad: 0.8, fill: 'ac', ch: [
+          { t: 'text', bind: 'phone', when: 'phone', pre: '☎ ',
+            fs: 2.7, w: 800, lh: 1.25, c: 'inkDeep' } ] } ] }
 ] } };
 
 /* ⑩ شرائح سفلية — شريطا الهوية الرفيعان فوق كتلةِ العنوان. (المرجع: `_tsD10Legacy`)
@@ -22296,7 +22807,13 @@ function _tsRadCss(r) {
 function _tsGradCss(g) {
   var st = [], i;
   for (i = 0; i < g.st.length; i++) st.push(g.st[i][1] + ' ' + g.st[i][0] + '%');
-  if (g.g === 'radial') return 'radial-gradient(' + (g.r || '100% 100% at 50% 50%') + ',' + st.join(',') + ')';
+  if (g.g === 'radial') {
+    /* الشعاعيُّ إهليلجيٌّ بمعاملاتٍ معلنة — لا سلسلةَ CSS خاماً، فالرسّامُ يحتاج
+       الأرقامَ نفسَها ولا يستطيع تحليلَ سلسلة. */
+    var r = g.r || {};
+    return 'radial-gradient(' + (r.rx || '100%') + ' ' + (r.ry || '100%') +
+           ' at ' + (r.cx || '50%') + ' ' + (r.cy || '50%') + ',' + st.join(',') + ')';
+  }
   var dir = g.to ? ('to ' + g.to) : ((g.deg == null ? 180 : g.deg) + 'deg');
   return 'linear-gradient(' + dir + ',' + st.join(',') + ')';
 }
@@ -22398,6 +22915,16 @@ function _tsEmitNode(n, ox, oy, gid) {
       'direction:' + n.dir + ';text-align:' + n.align + ';white-space:pre;' +
       'line-height:' + n.lh + 'px;height:' + n.lh + 'px;overflow:hidden;' +
       (n.ls ? ('letter-spacing:' + n.ls + 'px;') : '');
+    /* نصٌّ عموديّ (D12): نفسُ تركيبة المصدر — `vertical-rl` مع دورةٍ نصفية،
+       والنتيجةُ قراءةٌ من الأسفل إلى الأعلى. وسطرٌ واحدٌ حتماً (‏`nowrap`). */
+    if (n.vert) {
+      return '<div data-slot="schoolNameEn" style="' + sty +
+        'display:flex;align-items:center;justify-content:center;overflow:hidden;">' +
+        '<div style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;' +
+        'font-size:' + n.fs + 'px;font-weight:' + n.wgt + ';color:' + n.c + ';' +
+        'direction:' + n.dir + ';' + (n.ls ? ('letter-spacing:' + n.ls + 'px;') : '') + '">' +
+        esc(n.lines.join(' ')) + '</div></div>';
+    }
     for (i = 0; i < n.lines.length; i++) inner += '<div style="' + tsty + '">' + esc(n.lines[i]) + '</div>';
     var slot = n.bind === 'name' ? 'schoolName' : (n.bind === 'nameEn' ? 'schoolNameEn' :
                (n.bind === 'title' ? 'title' : (n.bind === 'phone' ? 'site' : '')));
@@ -22512,7 +23039,10 @@ function _tsD3Legacy(S, W, H, gid) {   /* شريط الهوية — صورة ف�
       '</div></div></div>';
 }
 
-function _tsD4(S, W, H, gid) {   /* قطع قطري — إسفين كوبالت */
+function _tsD4(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD4Legacy(S, W, H, gid) : _tsSpecHtml(4, S, W, H, gid);
+}
+function _tsD4Legacy(S, W, H, gid) {   /* قطع قطري — إسفين كوبالت */
   return _tsImgLayer(S) +
     '<div style="position:absolute;inset:0;background:linear-gradient(115deg,rgba(6,15,30,0) 42%,rgba(6,15,30,.4) 100%)"></div>' +
     '<div style="position:absolute;inset:0;background:linear-gradient(135deg,' + S.g0 + ',' + S.g1 + ');clip-path:polygon(0 46%,100% 72%,100% 100%,0 100%)"></div>' +
@@ -22529,7 +23059,10 @@ function _tsD4(S, W, H, gid) {   /* قطع قطري — إسفين كوبالت 
       '</div></div>';
 }
 
-function _tsD5(S, W, H, gid) {   /* قوس التميز — تدرّج كوبالت/تركواز */
+function _tsD5(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD5Legacy(S, W, H, gid) : _tsSpecHtml(5, S, W, H, gid);
+}
+function _tsD5Legacy(S, W, H, gid) {   /* قوس التميز — تدرّج كوبالت/تركواز */
   return '<div style="position:absolute;inset:0;background:linear-gradient(150deg,' + S.g1 + ' 0%,' + S.g0 + ' 58%,#1dbfa6 145%);padding:' + _tsQ(5) + ';display:flex;flex-direction:column;gap:' + _tsQ(3.2) + ';align-items:center;box-sizing:border-box">' +
     '<div style="display:flex;align-items:center;gap:' + _tsQ(2.2) + '">' +
       _tsLogo(S, 9, 'box-shadow:0 0 0 ' + _tsQ(0.6) + ' rgba(255,255,255,.85);flex:none;') +
@@ -22544,7 +23077,10 @@ function _tsD5(S, W, H, gid) {   /* قوس التميز — تدرّج كوبا�
     '</div></div>';
 }
 
-function _tsD6(S, W, H, gid) {   /* عمود جانبي — صورة + عمود هوية */
+function _tsD6(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD6Legacy(S, W, H, gid) : _tsSpecHtml(6, S, W, H, gid);
+}
+function _tsD6Legacy(S, W, H, gid) {   /* عمود جانبي — صورة + عمود هوية */
   return '<div style="position:absolute;inset:0;display:flex">' +
     '<div style="position:relative;flex:1 1 62%;min-width:0;overflow:hidden">' + _tsImgLayer(S) + '</div>' +
     '<div style="flex:0 0 38%;background:linear-gradient(160deg,' + S.g0 + ',' + S.g1 + ');padding:' + _tsQ(5) + ' ' + _tsQ(4) + ';display:flex;flex-direction:column;gap:' + _tsQ(2.6) + ';border-left:' + _tsQ(1) + ' solid ' + S.ac + ';box-sizing:border-box">' +
@@ -22559,7 +23095,10 @@ function _tsD6(S, W, H, gid) {   /* عمود جانبي — صورة + عمود 
       '</div></div></div>';
 }
 
-function _tsD7(S, W, H, gid) {   /* بطاقة زجاجية — طبقة ضباب فوق الصورة */
+function _tsD7(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD7Legacy(S, W, H, gid) : _tsSpecHtml(7, S, W, H, gid);
+}
+function _tsD7Legacy(S, W, H, gid) {   /* بطاقة زجاجية — طبقة ضباب فوق الصورة */
   return _tsImgLayer(S) +
     '<div style="position:absolute;inset:0;background:linear-gradient(200deg,rgba(6,15,30,.15),rgba(6,15,30,.6))"></div>' +
     '<div style="position:absolute;top:' + _tsQ(5) + ';right:' + _tsQ(5) + ';display:inline-flex;align-items:center;gap:' + _tsQ(1.8) + ';padding:' + _tsQ(1.2) + ' ' + _tsQ(2.4) + ' ' + _tsQ(1.2) + ' ' + _tsQ(1.2) + ';border-radius:' + _tsQ(99) + ';background:rgba(255,255,255,.16);border:' + _tsQ(0.25) + ' solid rgba(255,255,255,.34)">' +
@@ -22578,7 +23117,10 @@ function _tsD7(S, W, H, gid) {   /* بطاقة زجاجية — طبقة ضبا�
       '</div></div>';
 }
 
-function _tsD8(S, W, H, gid) {   /* مجلة — صورة فوق صفحة بيضاء */
+function _tsD8(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD8Legacy(S, W, H, gid) : _tsSpecHtml(8, S, W, H, gid);
+}
+function _tsD8Legacy(S, W, H, gid) {   /* مجلة — صورة فوق صفحة بيضاء */
   return '<div style="position:absolute;inset:0;background:#f8faff;display:flex;flex-direction:column">' +
     '<div style="position:relative;flex:1 1 auto;min-height:0;overflow:hidden">' +
       _tsImgLayer(S) +
@@ -22596,7 +23138,10 @@ function _tsD8(S, W, H, gid) {   /* مجلة — صورة فوق صفحة بيض
       '</div></div></div>';
 }
 
-function _tsD9(S, W, H, gid) {   /* موتيفات ذهبية — تكوين مركزي */
+function _tsD9(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD9Legacy(S, W, H, gid) : _tsSpecHtml(9, S, W, H, gid);
+}
+function _tsD9Legacy(S, W, H, gid) {   /* موتيفات ذهبية — تكوين مركزي */
   return _tsImgLayer(S) +
     '<div style="position:absolute;inset:0;background:radial-gradient(120% 80% at 50% 12%,rgba(6,15,30,.25),rgba(6,15,30,' + S.ov + ') 78%)"></div>' +
     _tsDefs(gid) +
@@ -22639,7 +23184,10 @@ function _tsD10Legacy(S, W, H, gid) {  /* شرائح سفلية — شرائط �
         '</div></div></div>';
 }
 
-function _tsD11(S, W, H, gid) {  /* ثنائي اللون — صورة كوبالت وعنوان عنبري */
+function _tsD11(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD11Legacy(S, W, H, gid) : _tsSpecHtml(11, S, W, H, gid);
+}
+function _tsD11Legacy(S, W, H, gid) {  /* ثنائي اللون — صورة كوبالت وعنوان عنبري */
   return _tsImgLayer(S, 'filter:grayscale(1) contrast(1.1);') +
     '<div style="position:absolute;inset:0;background:linear-gradient(160deg,' + S.g1 + ',' + S.g0 + ');mix-blend-mode:multiply;opacity:.92"></div>' +
     '<div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(6,15,30,.7),rgba(6,15,30,0) 55%)"></div>' +
@@ -22658,7 +23206,10 @@ function _tsD11(S, W, H, gid) {  /* ثنائي اللون — صورة كوبا�
       '</div></div>';
 }
 
-function _tsD12(S, W, H, gid) {  /* شريط عمودي — شريط عنبري بالسطر اللاتيني */
+function _tsD12(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD12Legacy(S, W, H, gid) : _tsSpecHtml(12, S, W, H, gid);
+}
+function _tsD12Legacy(S, W, H, gid) {  /* شريط عمودي — شريط عنبري بالسطر اللاتيني */
   return '<div style="position:absolute;inset:0;display:flex">' +
     '<div style="flex:0 0 ' + _tsQ(7) + ';background:' + S.ac + ';display:flex;align-items:center;justify-content:center;overflow:hidden">' +
       '<div data-slot="schoolNameEn" style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:' + _tsQ(2) + ';font-weight:800;letter-spacing:.3em;color:#060f1e;direction:ltr;white-space:nowrap">' + esc(S.nameEn) + '</div>' +
@@ -22677,7 +23228,10 @@ function _tsD12(S, W, H, gid) {  /* شريط عمودي — شريط عنبري 
         '</div></div></div></div>';
 }
 
-function _tsD13(S, W, H, gid) {  /* زوايا مقطوعة — لوح هندسي على نيفي */
+function _tsD13(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD13Legacy(S, W, H, gid) : _tsSpecHtml(13, S, W, H, gid);
+}
+function _tsD13Legacy(S, W, H, gid) {  /* زوايا مقطوعة — لوح هندسي على نيفي */
   var cut = _tsQ(6);
   return '<div style="position:absolute;inset:0;background:linear-gradient(135deg,#0b1930,' + S.g0 + ');padding:' + _tsQ(5) + ';display:flex;flex-direction:column;gap:' + _tsQ(3) + ';box-sizing:border-box">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:' + _tsQ(2) + '">' +
@@ -22699,7 +23253,10 @@ function _tsD13(S, W, H, gid) {  /* زوايا مقطوعة — لوح هندس�
     '</div></div>';
 }
 
-function _tsD14(S, W, H, gid) {  /* شبكة تحريرية — صورة + عمود كوبالت + شريط عنوان */
+function _tsD14(S, W, H, gid) {
+  return _TS_LEGACY ? _tsD14Legacy(S, W, H, gid) : _tsSpecHtml(14, S, W, H, gid);
+}
+function _tsD14Legacy(S, W, H, gid) {  /* شبكة تحريرية — صورة + عمود كوبالت + شريط عنوان */
   return '<div style="position:absolute;inset:0;background:#fff;display:grid;grid-template-columns:1fr 32%;grid-template-rows:1fr auto">' +
     '<div style="grid-column:1;grid-row:1;position:relative;overflow:hidden">' + _tsImgLayer(S) + '</div>' +
     '<div style="grid-column:2;grid-row:1;background:' + S.g1 + ';padding:' + _tsQ(4) + ' ' + _tsQ(3) + ';display:flex;flex-direction:column;gap:' + _tsQ(2.4) + ';align-items:center;text-align:center;box-sizing:border-box">' +
@@ -22888,12 +23445,43 @@ function _tsPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/* نسبةُ CSS ⇒ بكسل، للشعاعيِّ وحدَه (الباقي محلولٌ سلفاً في الحالّ). */
+function _tsPct(v, base, dflt) {
+  var m = /^\s*(-?[\d.]+)%\s*$/.exec(String(v == null ? dflt : v));
+  return m ? (base * parseFloat(m[1])) / 100 : base;
+}
+
+/* 🔴 **الشعاعيُّ إهليلجيٌّ لا دائريّ** (‏D9: `120% 80% at 50% 12%`).
+   canvas لا يملك إهليلجاً مباشرةً ⇒ يُقاس المحورُ الرأسيُّ بنسبة `ry/rx` فتصير
+   الدائرةُ إهليلجاً عند العرض. ورسمُها دائرةً يُزيح التعتيمَ عن مركزه فيغيّر
+   بؤرةَ التكوين كلِّه — فرقٌ يُرى بالعين ولا يراه فحصٌ ساكن.
+   ⚠️ والمستدعي مسؤولٌ عن `save`/`restore` حول التحويل — يُعاد هنا صراحةً. */
+function _tsGradFill(ctx, n, g) {
+  if (g.g !== 'radial') { ctx.fillStyle = _tsGrad(ctx, n, g); return false; }
+  var r = g.r || {};
+  var rx = _tsPct(r.rx, n.w, '100%'), ry = _tsPct(r.ry, n.h, '100%');
+  var cx = n.x + _tsPct(r.cx, n.w, '50%'), cy = n.y + _tsPct(r.cy, n.h, '50%');
+  var k = (rx === 0) ? 1 : (ry / rx);
+  ctx.save();
+  ctx.translate(cx, cy);          /* الأصلُ يصير مركزَ التدرّج */
+  ctx.scale(1, k);                /* فتصير الدائرةُ إهليلجاً بنسبة ry/rx */
+  var gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  for (var i = 0; i < g.st.length; i++) {
+    gr.addColorStop(Math.max(0, Math.min(1, g.st[i][0] / 100)), g.st[i][1]);
+  }
+  ctx.fillStyle = gr;
+  /* المستطيلُ يُرسَم في الفضاء المُقاس: تُعكَس إحداثياتُه. */
+  ctx.fillRect(n.x - cx, (n.y - cy) / k, n.w, n.h / k);
+  ctx.restore();
+  return true;   /* رُسم هنا — لا يحتاج المستدعي تعبئةً ثانية */
+}
+
 function _tsGrad(ctx, n, g) {
   var gr, i;
   if (g.g === 'radial') {
-    /* دائريٌّ مُبسَّط — الإهليلجيُّ (D9) يصل في دفعة «د» بتحويلٍ متماثل. */
-    gr = ctx.createRadialGradient(n.x + n.w / 2, n.y + n.h * 0.12, 0,
-                                  n.x + n.w / 2, n.y + n.h * 0.12, Math.max(n.w, n.h));
+    /* تراجعٌ دائريٌّ — لا يُستعمل في المسار الحيّ (`_tsGradFill` يسبقه). */
+    gr = ctx.createRadialGradient(n.x + n.w / 2, n.y + n.h / 2, 0,
+                                  n.x + n.w / 2, n.y + n.h / 2, Math.max(n.w, n.h) / 2);
   } else {
     var deg = (g.to === 'top') ? 0 : (g.to === 'bottom') ? 180 :
               (g.to === 'left') ? 270 : (g.to === 'right') ? 90 :
@@ -22940,17 +23528,68 @@ function _tsPaintNode(ctx, n, assets) {
   }
   if (n.op != null) ctx.globalAlpha = n.op;
 
+  /* 🔴 **`backdrop-filter` لا نظيرَ له في canvas ⇒ نسخٌ/تمويهٌ/إعادة.**
+     يُنسَخ ما تحت البطاقة **موسَّعاً بـ`2×blur`** كي لا تنزف الحوافُّ (التمويهُ
+     يسحب من خارج المستطيل)، ثمّ يُعاد مموّهاً مقصوصاً بحدود البطاقة، ثمّ تُرسَم
+     تعبئتُها الشفّافة فوقه.
+     🟢 **والتوسيعُ متاحٌ دائماً هنا**: البطاقةُ مُزاحةٌ 5cqmin=54px عن كلّ حافّة
+        و`blur=14` ⇒ 28px < 54px.
+     ⚠️ **وتدهورٌ آمنٌ معلَن**: تعذُّرُ `ctx.filter` أو اللوحةِ المساعدة يُسقط
+        التمويهَ وحدَه فتبقى الخلفيةُ شبهُ الشفّافة ويظلّ النصُّ مقروءاً — وهو
+        نفسُ تدهور HTML حين يغيب دعمُ `backdrop-filter` (اعترافُ المصدر نفسِه). */
+  if (n.backdrop && n.backdrop.blur > 0) {
+    try {
+      var bb = n.backdrop.blur, pad = Math.ceil(bb * 2);
+      var sx = Math.max(0, Math.floor(n.x - pad)), sy = Math.max(0, Math.floor(n.y - pad));
+      var sw = Math.min(ctx.canvas.width - sx, Math.ceil(n.w + pad * 2));
+      var sh = Math.min(ctx.canvas.height - sy, Math.ceil(n.h + pad * 2));
+      if (sw > 0 && sh > 0) {
+        var off = document.createElement('canvas');
+        off.width = sw; off.height = sh;
+        off.getContext('2d').drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+        ctx.save();
+        _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.clip();
+        ctx.filter = 'blur(' + bb + 'px)';
+        ctx.drawImage(off, sx, sy);
+        ctx.filter = 'none';
+        ctx.restore();
+      }
+    } catch (eBd) { /* التمويهُ وحدَه يسقط — لا البطاقة */ }
+  }
+
+  /* 🔴 الظلُّ يُضبَط **قبل** رسمِ العقدة ويُطفأ بعده مباشرةً — وإلّا ورثه الأبناءُ
+     والحدُّ فصار لكلّ عنصرٍ ظلُّ أبيه. و`shadowBlur` في canvas و`blur` في CSS
+     كلاهما 2σ ⇒ متكافئان عددياً بلا معامل تصحيح.
+     ⚠️ وليست هذه `ring`: تلك `box-shadow:0 0 0 X` أي **امتدادٌ** بلا تمويه،
+     وcanvas لا يملك `spread` فتُرسَم حلقةً بـ`stroke` لا ظلّاً. */
+  function shadowOn() {
+    if (!n.shadow) return;
+    ctx.shadowOffsetX = n.shadow.dx; ctx.shadowOffsetY = n.shadow.dy;
+    ctx.shadowBlur = n.shadow.blur;  ctx.shadowColor = n.shadow.c;
+  }
+  function shadowOff() {
+    if (!n.shadow) return;
+    ctx.shadowColor = 'rgba(0,0,0,0)';
+    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  }
+
   if (n.t === 'rect') {
     if (n.rot) { ctx.translate(n.x + n.w / 2, n.y + n.h / 2); ctx.rotate(n.rot * Math.PI / 180);
                  ctx.translate(-(n.x + n.w / 2), -(n.y + n.h / 2)); }
     if (n.fill) {
+      shadowOn();
       ctx.fillStyle = (typeof n.fill === 'string') ? n.fill : _tsGrad(ctx, n, n.fill);
       _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+      shadowOff();
     }
   } else if (n.t === 'grad') {
     if (n.blend) { ctx.globalCompositeOperation = n.blend.mode; ctx.globalAlpha = n.blend.alpha; }
-    ctx.fillStyle = _tsGrad(ctx, n, { g: n.g, to: n.to, deg: n.deg, st: n.st, r: n.r });
-    _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+    var gspec = { g: n.g, to: n.to, deg: n.deg, st: n.st, r: n.r };
+    /* الشعاعيُّ يرسم نفسَه داخل تحويلٍ مقياسيّ ويُعيد `true`؛ والخطّيُّ يُعيد
+       `false` فيُملأ هنا بالمسار المعتاد (ليأخذ `rad` إن وُجد). */
+    if (!_tsGradFill(ctx, n, gspec)) {
+      _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+    }
   } else if (n.t === 'img') {
     var im = n.src ? assets[n.src] : null;
     if (im) {
@@ -22968,7 +23607,9 @@ function _tsPaintNode(ctx, n, assets) {
     var lg = n.src ? assets[n.src] : null;
     ctx.save();
     ctx.beginPath(); ctx.arc(n.x + n.w / 2, n.y + n.h / 2, n.w / 2, 0, Math.PI * 2); ctx.clip();
+    shadowOn();
     ctx.fillStyle = '#fff'; ctx.fill();
+    shadowOff();
     if (lg) _tsDrawCover(ctx, lg, n.x, n.y, n.w, n.h);
     else {
       ctx.fillStyle = '#0f2545';
@@ -23001,6 +23642,24 @@ function _tsPaintNode(ctx, n, assets) {
       ctx.restore();
     }
   } else if (n.t === 'text') {
+    /* نصٌّ عموديّ (D12): دورةُ ربعٍ سالبة حول مركز الصندوق ثمّ رسمٌ أفقيٌّ عاديّ.
+       الاتجاهُ النهائيّ أسفل↑أعلى — مطابقٌ لتركيبة `vertical-rl`+`rotate(180deg)`. */
+    if (n.vert) {
+      var vcx = n.x + n.w / 2, vcy = n.y + n.h / 2;
+      ctx.save();
+      ctx.translate(vcx, vcy);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = n.c;
+      ctx.font = n.wgt + ' ' + n.fs + 'px ' + _TS_FONT;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      if (n.ls) { try { ctx.letterSpacing = n.ls + 'px'; } catch (ev) {} }
+      ctx.fillText(n.lines.join(' '), 0, 0);
+      if (n.ls) { try { ctx.letterSpacing = '0px'; } catch (ev2) {} }
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = n.c;
     ctx.font = n.wgt + ' ' + n.fs + 'px ' + _TS_FONT;
     ctx.textBaseline = 'middle';                    /* = مركزةُ `line-height` في CSS */
@@ -23014,8 +23673,10 @@ function _tsPaintNode(ctx, n, assets) {
   } else {
     /* حاويةٌ قد تحمل طلاءً (خلفيةُ جذر D13 مثلاً). */
     if (n.fill) {
+      shadowOn();
       ctx.fillStyle = (typeof n.fill === 'string') ? n.fill : _tsGrad(ctx, n, n.fill);
       _tsPath(ctx, n.x, n.y, n.w, n.h, n.rad); ctx.fill();
+      shadowOff();
     }
   }
 
@@ -23092,6 +23753,421 @@ function _tsExportDataUrl(sd, S, W, H, cb) {
       cb('', 'تعذّر دمج الهوية مع هذه الصورة (قيد مشاركة الصورة)');
     }
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   استوديو الصور المتعدّدة — تصميمٌ لكلّ صورة، ودمجٌ يُرفَع فيحلّ محلّ الأصل
+   ───────────────────────────────────────────────────────────────────────────
+   🎯 **ما يغلقه هذا الملفّ:** كان الاستوديو والنشرُ **أحاديّي الصورة** رغم أن
+      التخزينَ والعرضَ يدعمان التعدّد منذ البداية (‏`_tcFirstNewsImage` يأخذ
+      **أوّل** صورةٍ فقط). وكانت التخطيطاتُ لا تُنتج صورةً أصلاً.
+
+   🔴 **والرسترةُ عند الحفظ هي القرارُ المعماريُّ الذي يُغني عن كلّ ما عداه:**
+      الصورةُ المدمَجةُ تحلّ محلّ الأصل في «الملحقات» و«صورة N» ⇒ **صفرُ تغييرٍ
+      على أربعة مستهلكين** (لوحةُ المعلم · بوّابةُ الطالب · الصفحةُ العامّة ·
+      صفحةُ المقال · وتطبيقا الأندرويد المجمَّدان): كلُّهم يقرأون روابطَ صورٍ
+      كما اليوم، ولا يحتاج أحدُهم أن يعرف بالتصميم شيئاً.
+
+   🔴 **والأصلُ يبقى في `أصلية/`** (قرار مالك): إعادةُ الفتح تدمج **منه** لا من
+      المدمَج، وإلّا تراكم التصميمُ فوق نفسه مرّةً بعد مرّة.
+
+   🔴 **والرفعُ مؤجَّلٌ إلى ضغطة «نشر»:** التبديلُ الحرّ بين أربعةَ عشرَ تصميماً
+      × N صور يُنتج عشراتِ الرفعات المهدورة على شبكةٍ إخفاقُها مرتفع.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var _msBuilt = false;
+var _msState = null;   /* { urls[], allUrls[], text, newsId, items[], cur, onConfirm } */
+
+/* علَمُ تخطٍّ — يُضبَط حين يختار المستخدم «نشر بلا تصميم»، فيمرّ الحفظُ التالي
+   بلا فتحِ الاستوديو ثانيةً. يُصفَّر عند كلّ فتحِ نموذجِ خبر. */
+var _newsStudioSkip = false;
+
+/* ── الحالة لكلّ صورة ──────────────────────────────────────────────────────── */
+function _msItem(url, pre) {
+  var t = (pre && pre.t) || 'studio_full';
+  var d = (typeof _dpColDefaults === 'function') ? _dpColDefaults(t)
+                                                 : { c: '#f4a829', g: ['#0f2545', '#1149a3'], ov: 0.9 };
+  return {
+    src : url,                                  /* الأصل — منه يُدمَج دائماً */
+    t   : t,
+    c   : (pre && pre.c) || d.c,
+    g   : (pre && pre.g && pre.g.length === 2) ? [pre.g[0], pre.g[1]] : d.g,
+    ov  : (pre && typeof pre.ov === 'number') ? pre.ov : d.ov,
+    size: 'feed',
+    none: !!(pre && pre.none)
+  };
+}
+
+/* ── بناءُ الواجهة (كسولٌ مرّةً واحدة) ─────────────────────────────────────── */
+function _msEnsureUI() {
+  if (_msBuilt) return;
+  var st = document.createElement('style');
+  st.textContent =
+    '.ms-back{position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:4100;display:none;align-items:center;justify-content:center;padding:12px;}' +
+    '.ms-dlg{background:var(--card,#fff);color:var(--text-dark,#0f172a);border-radius:14px;max-width:820px;width:100%;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35);}' +
+    '.ms-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-weight:800;border-bottom:1px solid var(--border,#e2e8f0);}' +
+    '.ms-x{border:0;background:none;font-size:1rem;cursor:pointer;color:inherit;}' +
+    '.ms-hint{padding:8px 16px 0;font-size:.78rem;color:var(--text-light,#64748b);line-height:1.6;}' +
+    '.ms-thumbs{display:flex;gap:8px;padding:10px 16px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;}' +
+    '.ms-th{flex:none;width:64px;height:64px;border-radius:9px;overflow:hidden;border:2px solid transparent;cursor:pointer;position:relative;background:#0b1220;}' +
+    '.ms-th.on{border-color:var(--primary,#185fa5);}' +
+    '.ms-th img{width:100%;height:100%;object-fit:cover;display:block;}' +
+    '.ms-th b{position:absolute;top:2px;right:4px;font-size:.62rem;color:#fff;text-shadow:0 1px 3px #000;}' +
+    '.ms-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;}' +
+    '.ms-prev{margin:10px auto 0;max-width:340px;}' +
+    '.ms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:10px;}' +
+    '.ms-card{border:2px solid transparent;border-radius:10px;padding:3px;cursor:pointer;text-align:center;}' +
+    '.ms-card.on{border-color:var(--primary,#185fa5);background:rgba(24,95,165,.06);}' +
+    '.ms-lbl{font-size:.7rem;font-weight:700;margin-top:4px;}' +
+    '.ms-foot{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--border,#e2e8f0);flex-wrap:wrap;}' +
+    '.ms-prog{font-size:.76rem;color:var(--text-light,#64748b);}';
+  document.head.appendChild(st);
+
+  var w = document.createElement('div');
+  w.id = 'msPicker';
+  w.className = 'ms-back';
+  w.innerHTML =
+    '<div class="ms-dlg" role="dialog" aria-label="تصميم أغلفة صور الخبر">' +
+      '<div class="ms-head"><span>🖼️ تصميمُ صور الخبر</span>' +
+        '<button type="button" class="ms-x" onclick="_msCancel()">✕</button></div>' +
+      '<div class="ms-hint">اختر تصميماً ولوناً <b>لكلّ صورة</b>. الصورةُ المدمجةُ هي ما يُنشر، ' +
+        'والأصليّةُ تبقى محفوظةً فيمكنك تغييرُ التصميم لاحقاً.</div>' +
+      '<div class="ms-thumbs" id="msThumbs"></div>' +
+      '<div class="ms-body">' +
+        '<div class="ms-prev" id="msPrev"></div>' +
+        '<div class="dp-cols" id="msCols">' +
+          '<label class="dp-col">إبراز <input type="color" id="msAc" oninput="_msColChange()"></label>' +
+          '<label class="dp-col">غامق <input type="color" id="msG0" oninput="_msColChange()"></label>' +
+          '<label class="dp-col">فاتح <input type="color" id="msG1" oninput="_msColChange()"></label>' +
+          '<span class="dp-ovbox">تعتيم <input type="range" id="msOv" min="35" max="95" step="1" ' +
+            'oninput="_msColChange()"><span id="msOvV">—</span></span>' +
+          '<button type="button" class="dp-cbtn" onclick="_msApplyAll()">تطبيق على الكلّ</button>' +
+          '<button type="button" class="dp-cbtn" onclick="_msReset()">إعادة الضبط</button>' +
+        '</div>' +
+        '<div class="dp-warn hidden" id="msWarn"></div>' +
+        '<div class="ms-grid" id="msGrid"></div>' +
+      '</div>' +
+      '<div class="ms-foot">' +
+        '<span class="ms-prog" id="msProg"></span>' +
+        '<span>' +
+          '<button type="button" class="btn btn-secondary" onclick="_msSkip()">نشر بلا تصميم</button> ' +
+          '<button type="button" class="btn btn-primary" id="msGo" onclick="_msConfirm()">✅ دمج ونشر</button>' +
+        '</span>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(w);
+  _msBuilt = true;
+}
+
+/* ── الفتح ────────────────────────────────────────────────────────────────── */
+/* 🔴 **مُعرِّفُ جلسةٍ متزايد — وهو ما يمنع إعادةَ الدخول.**
+   الدمجُ والرفعُ غيرُ متزامنَين ويستغرقان ثوانيَ لكلّ صورة، و`_msState` عالميّة.
+   فبلا مُعرِّفٍ يقع هذا التسلسلُ الحقيقيّ (رصدته مراجعةٌ مستقلّة):
+     ① يبدأ دمجُ خبرٍ A · ② يضغط المستخدمُ ✕ فتُصفَّر `_msState` **والحلقةُ تمضي**
+     · ③ يفتح خبراً B · ④ تنتهي حلقةُ A فتستدعي `_msClose()` **فتُغلق نافذةَ B**
+     ثمّ `cb` الخاصّ بـ**A** ⇒ **حفظٌ صامتٌ لخبرٍ ظنّه المستخدمُ ملغى**، وفقدُ
+     تحريرِ B معاً.
+   ⇒ كلُّ مسارٍ راجعٍ يتحقّق أن جلستَه **ما زالت هي الحيّة** قبل لمسِ أيّ شيء. */
+var _msSeq = 0;
+
+function _msOpen(opts) {
+  if (!opts || !opts.urls || !opts.urls.length) return false;
+  if (typeof _tsExportDataUrl !== 'function') return false;   /* بلا رسّامٍ لا استوديو */
+  /* 🔴 جلسةٌ مشغولةٌ لا تُستبدَل: الفتحُ فوقها يترك حلقةً يتيمةً تكتب لاحقاً.
+     والرفضُ **مُعلَنٌ لا صامت** — وإلّا بدا الزرُّ معطوباً. */
+  if (_msState && _msState.busy) {
+    if (typeof toast === 'function') toast('جارٍ دمجُ صور الخبر السابق — انتظر قليلاً', 'warning');
+    return false;
+  }
+  _msEnsureUI();
+
+  /* لقطةُ تصاميمٍ محفوظةٌ تُربَط **بالأصل** لا بالموضع: حذفُ صورةٍ أو إعادةُ
+     ترتيبها يُبقي تصميمَ كلِّ صورةٍ معها. والموضعُ كان سيخلط بينها صامتاً. */
+  var pre = {};
+  try {
+    var arr = opts.imageDesigns ? JSON.parse(opts.imageDesigns) : null;
+    if (arr && arr.length) {
+      for (var i = 0; i < arr.length; i++) if (arr[i] && arr[i].src) pre[arr[i].src] = arr[i];
+    }
+  } catch (e0) {}
+
+  var items = [];
+  for (var u = 0; u < opts.urls.length; u++) items.push(_msItem(opts.urls[u], pre[opts.urls[u]]));
+
+  _msState = {
+    seq: ++_msSeq,
+    urls: opts.urls.slice(), allUrls: (opts.allUrls || opts.urls).slice(),
+    text: opts.text || '', newsId: opts.newsId || null,
+    items: items, cur: 0, onConfirm: opts.onConfirm, busy: false
+  };
+  _msRenderThumbs(); _msSyncCols(); _msGuard(); _msRenderGrid(); _msRenderPrev();
+  document.getElementById('msProg').textContent = '';
+  document.getElementById('msPicker').style.display = 'flex';
+  return true;
+}
+
+function _msClose() {
+  var el = document.getElementById('msPicker');
+  if (el) el.style.display = 'none';
+  _msState = null;
+}
+/* 🔴 **الإلغاءُ ممنوعٌ أثناء الدمج** — لا لأن الإغلاقَ يضرّ بنفسه، بل لأن الحلقةَ
+   لا تتوقّف بإغلاق النافذة: كانت تمضي ثمّ تُغلق نافذةَ خبرٍ آخرَ وتحفظ الأوّل.
+   ⇒ يُمنَع الإغلاقُ ويُعلَن سببُه؛ والمنعُ لحظيٌّ ينتهي بانتهاء الدمج. */
+function _msCancel() {
+  if (_msState && _msState.busy) {
+    if (typeof toast === 'function') toast('جارٍ الدمجُ والرفع — لا يمكن الإلغاء الآن', 'warning');
+    return;
+  }
+  _msClose();
+}
+
+/* «نشر بلا تصميم» — يمضي بالصور الأصلية كما هي.
+   🟢 ويُضبَط `_newsStudioSkip` فلا يُعاد فتحُ الاستوديو في نفس الحفظ. */
+function _msSkip() {
+  if (!_msState) return;
+  var cb = _msState.onConfirm, all = _msState.allUrls.slice();
+  _newsStudioSkip = true;
+  _msClose();
+  if (cb) cb(all, '');
+}
+
+/* ── العرض ────────────────────────────────────────────────────────────────── */
+function _msCurItem() { return _msState ? _msState.items[_msState.cur] : null; }
+
+function _msRenderThumbs() {
+  var h = '', st = _msState;
+  for (var i = 0; i < st.items.length; i++) {
+    h += '<div class="ms-th' + (i === st.cur ? ' on' : '') + '" onclick="_msPick(' + i + ')">' +
+      '<img src="' + esc(st.items[i].src) + '" alt="" referrerpolicy="no-referrer" ' +
+      'onerror="this.style.display=\'none\'"><b>' + (i + 1) + '</b></div>';
+  }
+  document.getElementById('msThumbs').innerHTML = h;
+}
+
+function _msPick(i) {
+  if (!_msState || i < 0 || i >= _msState.items.length) return;
+  _msState.cur = i;
+  _msRenderThumbs(); _msSyncCols(); _msGuard(); _msRenderGrid(); _msRenderPrev();
+}
+
+/* ميتا الرسم للصورة الفعّالة — نفسُ نمط `_dpMetaFor` في معرض الغلاف النصّيّ. */
+function _msMetaFor(m, it) {
+  if (!it || m.k !== it.t) return m;
+  var out = {};
+  for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) out[k] = m[k];
+  out.c = it.c; out.g = [it.g[0], it.g[1]];
+  out.ov = it.ov;
+  return out;
+}
+
+function _msRenderPrev() {
+  var it = _msCurItem(), host = document.getElementById('msPrev');
+  if (!it || !host) return;
+  var m = _msMetaFor(_tcDsgnByKey(it.t), it);
+  host.innerHTML = _tcCoverHtml(_msState.text, '', m, it.size, false,
+                                'all', 'balanced', 'neutral', 'tc-cv-ms-prev', it.src);
+  try { _tcWireCoverScale(); } catch (e) {}
+}
+
+function _msRenderGrid() {
+  var it = _msCurItem(), host = document.getElementById('msGrid');
+  if (!it || !host) return;
+  var h = '';
+  for (var i = 0; i < _TC_DSGN_REGISTRY.length; i++) {
+    var m = _TC_DSGN_REGISTRY[i];
+    if (!m.ph) continue;                       /* قوالبُ الصور وحدَها هنا */
+    h += '<div class="ms-card' + (m.k === it.t ? ' on' : '') +
+         '" onclick="_msSelect(\'' + m.k + '\')">' +
+      _tcCoverHtml(_msState.text, '', _msMetaFor(m, it), it.size, true,
+                   'all', 'balanced', 'neutral', 'tc-cv-ms-' + m.k, it.src) +
+      '<div class="ms-lbl">' + esc(m.l) + '</div></div>';
+  }
+  host.innerHTML = h;
+  try { _tcWireCoverScale(); } catch (e) {}
+}
+
+function _msSelect(k) {
+  var it = _msCurItem();
+  if (!it) return;
+  it.t = k;
+  /* الألوانُ تعود إلى أصلِ التصميم الجديد — نفسُ قاعدة معرض الغلاف النصّيّ. */
+  var d = _dpColDefaults(k);
+  it.c = d.c; it.g = [d.g[0], d.g[1]]; it.ov = d.ov;
+  _msSyncCols(); _msGuard(); _msRenderGrid(); _msRenderPrev();
+}
+
+/* ── الألوان ──────────────────────────────────────────────────────────────── */
+function _msSyncCols() {
+  var it = _msCurItem();
+  if (!it) return;
+  document.getElementById('msAc').value = _dpHex6(it.c);
+  document.getElementById('msG0').value = _dpHex6(it.g[0]);
+  document.getElementById('msG1').value = _dpHex6(it.g[1]);
+  document.getElementById('msOv').value = String(Math.round(it.ov * 100));
+  document.getElementById('msOvV').textContent = String(Math.round(it.ov * 100)) + '٪';
+}
+
+function _msColChange() {
+  var it = _msCurItem();
+  if (!it) return;
+  it.c    = document.getElementById('msAc').value;
+  it.g[0] = document.getElementById('msG0').value;
+  it.g[1] = document.getElementById('msG1').value;
+  it.ov   = Math.max(0.35, Math.min(0.95, (+document.getElementById('msOv').value || 90) / 100));
+  document.getElementById('msOvV').textContent = String(Math.round(it.ov * 100)) + '٪';
+  _msGuard(); _msRenderGrid(); _msRenderPrev();
+}
+
+function _msApplyAll() {
+  var it = _msCurItem();
+  if (!it || !_msState) return;
+  for (var i = 0; i < _msState.items.length; i++) {
+    var o = _msState.items[i];
+    o.t = it.t; o.c = it.c; o.g = [it.g[0], it.g[1]]; o.ov = it.ov; o.size = it.size;
+  }
+  _msGuard(); _msRenderGrid(); _msRenderPrev();
+  if (typeof toast === 'function') toast('طُبِّق التصميم على ' + _msState.items.length + ' صورة', 'success');
+}
+
+function _msReset() {
+  var it = _msCurItem();
+  if (!it) return;
+  var d = _dpColDefaults(it.t);
+  it.c = d.c; it.g = [d.g[0], d.g[1]]; it.ov = d.ov;
+  _msSyncCols(); _msGuard(); _msRenderGrid(); _msRenderPrev();
+}
+
+/* 🔴 نفسُ حاجزِ التباين — ويُقاس على **كلّ** الصور لا الفعّالةِ وحدَها: صورةٌ
+   ثالثةٌ بلونٍ فاتحٍ كانت ستُنشَر بنصٍّ غيرِ مقروءٍ لأن المستخدم لم يعد إليها. */
+function _msGuard() {
+  var warn = document.getElementById('msWarn'), btn = document.getElementById('msGo');
+  if (!warn || !btn || !_msState) return true;
+  var bad = [];
+  for (var i = 0; i < _msState.items.length; i++) {
+    var o = _msState.items[i];
+    if (_dpContrastWhite(o.g[0]) < 4.5 || _dpContrastWhite(o.g[1]) < 4.5) bad.push(i + 1);
+  }
+  if (bad.length) {
+    warn.className = 'dp-warn';
+    warn.textContent = '⚠️ الصورةُ رقم ' + bad.join('، ') + ': التباين مع النصّ الأبيض أقلّ من ' +
+      'الحدّ المقروء (4.5:1) — العنوان سيصعب قراءته. غيّر اللون أو اضغط «إعادة الضبط».';
+    btn.disabled = true;
+    return false;
+  }
+  warn.className = 'dp-warn hidden';
+  btn.disabled = false;
+  return true;
+}
+
+/* ── الدمجُ والرفع ────────────────────────────────────────────────────────── */
+
+/* لقطةُ التصاميم المخزَّنة — بلا `i` (يُستردّ من السجلّ بـ`t`). */
+function _msDesignsStr() {
+  var out = [];
+  for (var i = 0; i < _msState.items.length; i++) {
+    var o = _msState.items[i];
+    out.push({ t: o.t, c: o.c, g: [o.g[0], o.g[1]], ov: o.ov, src: o.src });
+  }
+  return JSON.stringify(out);
+}
+
+/* بناءُ `S` لصورةٍ واحدة — نفسُ حقول `_tsStudioHtml` حرفياً كي لا يتباعد
+   المصدران. 🔴 ولا يُعاد حسابُ شيءٍ هنا: الهويّةُ من نفس المواضع. */
+function _msBuildS(it) {
+  var brand = window._schoolBrand || {};
+  var name = '';
+  try {
+    var bn = document.querySelector('.school-brand-name');
+    name = bn ? String(bn.textContent || '').trim() : '';
+  } catch (e) {}
+  if (!name) name = brand.name || 'مدرستنا';
+  var slug = (brand.slug || '').toString().trim();
+  return {
+    img: it.src, logo: window._schoolLogo || brand.logo || '',
+    name: name, nameEn: 'YEMENSCHOOLZ.COM' + (slug ? ' / ' + slug.toUpperCase() : ''),
+    initial: name.charAt(0) || 'م', title: _msState.text || '',
+    phone: (typeof _tsArabize === 'function') ? _tsArabize(brand.phone || '') : (brand.phone || ''),
+    qr: '', ac: it.c, g0: it.g[0], g1: it.g[1], ov: it.ov
+  };
+}
+
+function _msProg(msg) {
+  var el = document.getElementById('msProg');
+  if (el) el.textContent = msg || '';
+}
+
+function _msConfirm() {
+  if (!_msState || _msState.busy) return;
+  if (!_msGuard()) { if (typeof toast === 'function') toast('صحّح تباين الألوان أوّلاً', 'warning'); return; }
+
+  var st = _msState, n = st.items.length, done = 0, merged = {}, failed = 0;
+  st.busy = true;
+  document.getElementById('msGo').disabled = true;
+
+  /* 🔴 **الحزامُ الحاكم**: جلسةٌ لم تعد الحيّةَ لا تلمس شيئاً — لا النافذةَ ولا
+     الحالةَ العالمية ولا الاستدعاءَ الراجع. وبدونه تكتب حلقةٌ يتيمةٌ فوق عملٍ
+     جارٍ بعد دقائق. */
+  function mine() { return _msState && _msState.seq === st.seq; }
+
+  function finish() {
+    st.busy = false;
+    if (!mine()) return;                     /* استُبدلت الجلسة — لا أثرَ لنا */
+    var btn = document.getElementById('msGo');
+    if (btn) btn.disabled = false;
+    /* 🔴 **الفشلُ يُبقي الأصل لا يُسقط الصورة.** صورةٌ تعذّر دمجُها تُنشَر كما هي:
+       خبرٌ بصورةٍ بلا تصميم خيرٌ من خبرٍ بصورةٍ ناقصة، **والحذفُ لا يُعكَس**. */
+    var out = [];
+    for (var i = 0; i < st.allUrls.length; i++) {
+      out.push(merged[st.allUrls[i]] || st.allUrls[i]);
+    }
+    var designs = _msDesignsStr();
+    var cb = st.onConfirm;
+    _msClose();
+    if (failed && typeof toast === 'function') {
+      toast('تعذّر دمجُ ' + failed + ' صورة — نُشرت بأصلها', 'warning');
+    }
+    if (cb) cb(out, designs);
+  }
+
+  function step(i) {
+    /* ⚠️ والتحقّقُ في رأس كلّ خطوةٍ أيضاً لا في `finish` وحدَها: جلسةٌ استُبدلت
+       وسطَ الحلقة تُوقف العملَ فوراً بدل إتمامِ رفعاتٍ لا مستهلكَ لها. */
+    if (!mine()) { st.busy = false; return; }
+    if (i >= n) { finish(); return; }
+    var it = st.items[i];
+    _msProg('جارٍ دمجُ الصورة ' + (i + 1) + ' من ' + n + '…');
+    var dims = _tcDsgnSize(it.size);
+    _tsExportDataUrl(_tcDsgnByKey(it.t).sd, _msBuildS(it), dims.w, dims.h,
+      function (dataUrl, err) {
+        if (!mine()) { st.busy = false; return; }   /* عادت بعد استبدال الجلسة */
+        if (!dataUrl) { failed++; done++; step(i + 1); return; }
+        _msProg('جارٍ رفعُ الصورة ' + (i + 1) + ' من ' + n + '…');
+        _msUpload(dataUrl, st.newsId, i, function (url) {
+          if (!mine()) { st.busy = false; return; }
+          if (url) merged[it.src] = url; else failed++;
+          done++;
+          step(i + 1);
+        });
+      });
+  }
+  step(0);
+}
+
+/* رفعُ dataURL إلى Drive عبر المسار الخادميِّ القائم.
+   🔴 **ولا يُرسَل dataURL إلى مسار النشر إطلاقاً** — قِيس من جلسة الوركر أن
+   `/gas/*` يبتلع الجسمَ نصّاً في الذاكرة والـisolate مشترَكٌ حتى ثمانيةِ نداءات
+   ⇒ عشرُ صورٍ كانت **تُسقط نداءاتِ مستخدمين آخرين**. الرفعُ هنا صورةً صورةً،
+   والمُمرَّرُ بعده **روابطُ** لا بايتات. */
+function _msUpload(dataUrl, newsId, idx, cb) {
+  var m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl || '');
+  if (!m) { cb(''); return; }
+  var name = 'news-' + (newsId || 'new') + '-' + (idx + 1) + '-' + Date.now() + '.jpg';
+  callServer('uploadNewsMediaProtected',
+    { token: (App.user && App.user.token) || '',
+      file: { base64: m[2], fileName: name, mimeType: m[1] } },
+    function (res) { cb((res && res.success && res.url) ? res.url : ''); },
+    function () { cb(''); });
 }
 
 function _buildNewsCard_Teacher(n) {
