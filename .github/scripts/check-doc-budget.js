@@ -75,6 +75,40 @@ function verdict(bytes, maxBytes) { return bytes > maxBytes ? 'over' : 'ok'; }
 function deltaVerdict(delta, maxDelta) { return delta > maxDelta ? 'jump' : 'ok'; }
 
 /**
+ * 🔴 حجمٌ مطبَّعُ نهاياتِ الأسطر — `CRLF ⇒ LF` قبل العدّ.
+ * ─────────────────────────────────────────────────────
+ * بلا هذا يقارن السكربتُ **طرفين مختلفَي التطبيع**: القرصُ ما يكتبه ويندوز/الأدوات،
+ * وكائنُ git ما خُزِّن. والفرقُ = عددُ الأسطر، **لا تغيُّرَ محتوىً واحداً**.
+ *
+ * والمقيسُ في هذا المستودع 2026-09-21 — والحالةُ معكوسةُ الحدس:
+ *   `.gitattributes` يفرض `*.md text eol=lf` ⇒ **السحبُ يكتب LF**
+ *   وكائنُ `HEAD:CLAUDE.md` يحمل **CRLF** (كُتب قبل التطبيع ولم يُعَد تطبيعُه)
+ *   ⇒ قرصٌ بعد سحبٍ نظيف 56,574 مقابل كائنٍ 57,119 ⇒ **فرقٌ `−545`**
+ *
+ * 🔴 والخطرُ ليس إنذاراً كاذباً بل **عكسَه: إخفاءُ نموٍّ حقيقيٍّ حتى 545 بايتاً**،
+ *    لأن الفرقَ السالبَ يمرّ دائماً (والتقليمُ يجب أن يمرّ). ⇒ **حارسٌ يخضرّ على
+ *    زيادةٍ وقعت فعلاً** — وهي فئةُ العطل المهيمنة هنا: لا خطأ، ورقمٌ معقول.
+ *
+ * ⚠️ والاتّجاهُ ينقلب بانقلاب الإعداد (‏`core.autocrlf=true` بلا `.gitattributes`
+ *    يعطي `+عددَ الأسطر` فيحمرّ كاذباً على صفرِ تغيير) ⇒ **التطبيعُ يحسم الوجهين معاً**.
+ *
+ * 🔴 ولا يُستبدَل بـ`git hash-object` — جُرّب وسقط: بلا `-w` يحسب البصمةَ ولا يكتب
+ *    الكائن ⇒ `cat-file -s` ينجح على غير المعدَّل (كائنُه موجودٌ سلفاً) **ويفشل على
+ *    كلّ معدَّل** ⇒ طريقةٌ تعمل على ما لا يحتاجها وتسقط على ما يحتاجها.
+ *    (رصدَته جلسةُ `osama-db` بالضابط المعاكس، وأُثبت هنا من جديد.)
+ */
+function normalizedSize(buf) {
+  if (!buf || !buf.length) return 0;
+  var n = 0;
+  for (var i = 0; i < buf.length; i++) {
+    // يُسقَط `CR` وحدَه حين يسبق `LF` — لا كلُّ `CR` (فقد يكون بايتاً في محتوىً)
+    if (buf[i] === 0x0d && buf[i + 1] === 0x0a) continue;
+    n++;
+  }
+  return n;
+}
+
+/**
  * حجمُ الملفّ في مرجعٍ git، أو `null` إن تعذّر (فرعٌ جديد · استنساخٌ ضحل · ملفٌّ
  * لم يكن موجوداً). 🔴 و`null` تعني **«تعذّر القياس»** لا «صفر» — والخلطُ بينهما
  * يجعل ملفّاً جديداً يبدو قفزةً بحجمه كاملاً.
@@ -84,7 +118,7 @@ function sizeAtRef(ref, file) {
     var out = cp.execFileSync('git', ['show', ref + ':' + file], {
       cwd: ROOT, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore']
     });
-    return out.length;
+    return normalizedSize(out);
   } catch (e) { return null; }
 }
 
@@ -133,8 +167,47 @@ function selfTest() {
   console.log('✅ الضابطُ المعاكس: ٦ حالاتٍ — السقفُ والمعدّلُ يحمرّان ويخضرّان في موضعهما');
 }
 
+/**
+ * 🔴 ضابطُ التطبيع — يُقاس في كلّ تشغيلة، ولا يُكتب جملةً تتقادم.
+ * لكلّ ملفٍّ **نظيفٍ في `git status`**: الحجمُ المطبَّعُ على القرص يجب أن يساوي
+ * المطبَّعَ في `HEAD` **بالضبط**. واختلافُهما يعني أن التطبيع لا يعمل ⇒ كلُّ رقمٍ
+ * بعده بلا معنى، فيُخرَج بـ`2` **قبل** أيّ حكم.
+ * ⚠️ و«صفرُ ملفٍّ نظيف» تُعلَن **«الضابطُ لم يُقَس»** لا نجاحاً — فحصٌ لم يجرِ ليس فحصاً أخضر.
+ */
+function normalizationControl(files) {
+  var checked = 0, bad = [];
+  files.forEach(function (f) {
+    var p = path.join(ROOT, f);
+    if (!fs.existsSync(p)) return;
+    var dirty;
+    try {
+      dirty = cp.execFileSync('git', ['status', '--porcelain', '--', f],
+        { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    } catch (e) { return; }
+    if (dirty) return;                       // المعدَّلُ لا يصلح ضابطاً
+    var head = sizeAtRef('HEAD', f);
+    if (head === null) return;
+    var disk = normalizedSize(fs.readFileSync(p));
+    checked++;
+    if (disk !== head) bad.push(f + ': قرصٌ ' + disk + ' ≠ HEAD ' + head);
+  });
+
+  if (bad.length) {
+    console.error('🔴 ضابطُ التطبيع سقط — القياسُ غيرُ ممكن:');
+    bad.forEach(function (s) { console.error('   ' + s); });
+    console.error('   ملفٌّ نظيفٌ في `git status` يجب أن يطابق كائنَه بعد التطبيع.');
+    process.exit(2);
+  }
+  if (checked === 0) {
+    console.log('⚠️ ضابطُ التطبيع: **لم يُقَس** — لا ملفَّ نظيفاً يصلح مرجعاً (ليس نجاحاً)');
+  } else {
+    console.log('✅ ضابطُ التطبيع: ' + checked + ' ملفّاً نظيفاً يطابق كائنَه بعد `CRLF⇒LF`');
+  }
+}
+
 function main() {
   selfTest();
+  normalizationControl(BUDGET.map(function (b) { return b.file; }));
 
   var ref = baseRef();
   var failed = 0;
@@ -152,7 +225,8 @@ function main() {
       return;
     }
 
-    var bytes = fs.statSync(p).size;
+    // 🔴 يُقرأ المحتوى ويُطبَّع — لا `statSync().size`، فذاك حجمُ القرص بتطبيع ويندوز
+    var bytes = normalizedSize(fs.readFileSync(p));
     var before = sizeAtRef(ref, b.file);
     var line = '  ' + b.file + '  ' + bytes + ' بايت';
 
