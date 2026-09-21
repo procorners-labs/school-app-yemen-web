@@ -22,12 +22,24 @@
     "«تعذّر الجلب» ≠ «اسمٌ مفقود» — ويجب أن يميّزهما برمزين، وإلّا صار حارساً",
     "يُنذر كاذباً عند أوّل انقطاعٍ فيُتجاهَل.",
     "",
+    "🔴 تغيّرٌ في v2 (‏2026-09-21) — يُقرأ قبل الاعتماد على الرقم:",
+    "`TOTAL_BUDGET_MS` صار **سقفين بحسب الطريقة**: `doPost` عند 26,000 و`doGet` عند 24,000.",
+    "والعلّةُ أن GAS كان يُتمّ العملَ حتى 25.7–27.8ث بينما الوركرُ يُجهض عند 23.7ث ⇒ `502`",
+    "على عملٍ نجح (‏`abort_budget` = ٦٩١ من ٧١٦ إخفاقاً في ٤٤ ساعة).",
+    "🔴 ورُفع `doPost` وحدَه: صفحةُ `doGet` ‏625 ك.ب على السلك (~5ث نقلاً على 1Mbps) ⇒ رفعُها",
+    "يشتري احتجازَ تنفيذٍ لا تسليماً، لأن `_LOGIN_TIMEOUT` يشمل التنفيذَ والنقلَ معاً.",
+    "⇒ `workerWorstCaseLoginMs` يُحسب من سقف **POST** لأن دوالَّ الدخول تُستدعى عبر",
+    "`google.script.run` ⇒ POST دائماً: 26,000 − 300 = **25,700**، والهامشُ من 28,000",
+    "يصير **2,300** ≥ `requiredClientMarginMs`.",
+    "🔴 ولم يُختَر 26,500 رغم أنه كان مطروحاً: يعطي هامشاً **1,800 < 2,000** ⇒ يخرق هذا",
+    "العقدَ نفسَه. **والمقياسُ لا يُرفَع لتمرير رقم.**",
+    "",
     "⚠️ وحدٌّ ثانٍ يخصّ `workerWorstCaseLoginMs`: هو ناتجُ **محاكاةِ** حلقة المحاولات",
     "بثوابتها المقروءة من المصدر، لا زمنٌ مقيسٌ حيّاً. يُطرح من مهلة العميل",
     "(`_LOGIN_TIMEOUT`) ويجب أن يبقى الفارقُ ≥ `requiredClientMarginMs`."
   ],
-  "contractVersion": 1,
-  "updatedOn": "2026-09-13",
+  "contractVersion": 2,
+  "updatedOn": "2026-09-21",
   "source": "worker/school-app-proxy.js :: BH_LOGIN_FNS · BH_LOGIN_WAIT_MS · TOTAL_BUDGET_MS · GAS_ATTEMPT_MARGIN_MS · GAS_MIN_ATTEMPT_MS · delays",
   "guardedBy": "worker/test-routes.js",
   "loginFunctions": [
@@ -36,6 +48,6 @@
     "loginStudent",
     "loginStudentByDeviceProtected"
   ],
-  "workerWorstCaseLoginMs": 23700,
+  "workerWorstCaseLoginMs": 25700,
   "requiredClientMarginMs": 2000
 }
