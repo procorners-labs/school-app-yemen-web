@@ -1491,6 +1491,42 @@ var API_CACHE_FNS = {
              b.schools.length > 0;
     }
   },
+  /* 🟢 **`listPublicSlugsPublic()` — 2026-09-21.** دليلُ الـslugs المنشورة
+     (‏`home/_PublicPage.js:632`): **بلا وسائطَ إطلاقاً** ⇒ `tenantless` بحقّ — الورقةُ
+     واحدةٌ لكلّ الزوّار. ⚖️ ttl 120 = نظيرُ `listPartnerSchoolsPublic`: مدرسةٌ جديدةٌ قد
+     تتأخّر في الدليل دقيقتين، ولا قناةَ إبطالٍ للحافّة.
+     🔴 **والمسارُ المتدهورُ لا يُخزَّن — وهو الفخُّ هنا تحديداً:** الدالّةُ تُرجع عند العطل
+     `{ ok:true, slugs:[], states:[], schools:[], degraded:true }` — **`ok:true` مع فراغ!**
+     ⇒ شرطُ `success === true` وحدَه كان سيُثبّت **دليلاً فارغاً** ساعتين. ولذلك يُفحَص
+     `degraded` صراحةً **ويُشترَط طولٌ غيرُ صفريّ**. (نفسُ قاعدة «لا كاشَ سلبيّاً».)
+     ⚠️ والحمولةُ v3 تحمل `schools` إلى جانب `slugs`/`states` القديمتين — والشرطُ على
+     `slugs` لأنها الحقلُ الذي يقرؤه الوسيطُ المنشورُ اليوم. */
+  listPublicSlugsPublic: {
+    args: function (a) { return a.length === 0; },
+    tenantless: true,
+    ttl: 120,
+    ok: function (b) {
+      return b.ok === true && b.degraded !== true &&
+             Object.prototype.toString.call(b.slugs) === '[object Array]' &&
+             b.slugs.length > 0;
+    }
+  },
+  /* 🟢 **`getSchoolName(schoolId)` — 2026-09-21.** اسمُ المدرسة من السجلّ المركزيّ
+     (‏`teacher/_Tenant.js:556`): **وسيطُه الأوّلُ هو المستأجرُ نفسُه** ⇒ `argTenant` كما في
+     `getHomePageBundle` — فيصير المعرّفُ جزءاً من مفتاح الكاش ولا تتشارك مدرستان مدخلاً.
+     ⚖️ ttl 3600 = نظيرُ `getTeacherSchoolBrand`/`getStudentSchoolBrand`: تغييرُ اسم
+     المدرسة يتأخّر حتى ساعة — وهي مقايضةٌ مُقرَّةٌ سلفاً لنفس البيانات بعينها.
+     🔴 **والاسمُ الفارغُ لا يُخزَّن أبداً** — الدالّةُ تُرجع `{ ok:false, name:'' }` في أربعة
+     مساراتِ فشلٍ (‏`SCHOOLS_SHEET_MISSING` · `SCHOOL_NOT_FOUND` · `ERROR` · تعذّرُ الوصول
+     إلى Master). وتخزينُ أيٍّ منها يعني **مدرسةً بلا اسمٍ ساعةً كاملة**. */
+  getSchoolName: {
+    args: function (a) { return a.length <= 1; },
+    argTenant: true,
+    ttl: 3600,
+    ok: function (b) {
+      return b.ok === true && typeof b.name === 'string' && b.name.trim() !== '';
+    }
+  },
   /* 🟢 **`getPublicPlansPublic()` — 2026-09-19.** باقاتُ قسم `#pricing` في الصفحة الرئيسية
      (‏`home/Code.js`): بلا وسائط ولا مستأجر — الورقةُ `Settings_Master` واحدةٌ لكلّ الزوّار،
      والمُرجَعُ حقولُ عرضٍ مُعلَنةٌ أصلاً. قِيس 2.3–11.5ث من GAS (جلسة `SchoolApp-gas`).
