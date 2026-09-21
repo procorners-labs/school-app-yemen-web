@@ -2971,6 +2971,9 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <br>🟢 وما دامت هذه القائمةُ فارغةً يعمل النظامُ بالمقرَّر المدمَج كما هو اليوم — لا شيء ينكسر.
           <br>📝 و«أوراق الاختبار» لمادّةٍ واحدة (مثل <b>عربي كتابي، عربي قرائي</b>) تُكتب مفصولةً بفاصلة:
           تظهر ورقتين في جدول الاختبارات، وتبقى <b>مادّةً واحدة</b> في الدرجات والشهادة.
+          <br>🔤 و«<b>المرادفات</b>» توحّد المسمّيات: جدولُ الحصص يكتب «عربي» وسجلُّ الدرجات
+          «اللغة العربية» — فتكتب <b>عربي، لغة عربية</b> في مرادفاتها فيربطهما النظامُ تلقائياً
+          <b>بلا تعديل أيّ ورقةٍ أخرى</b>.
         </div>
         <div id="cur-status" style="margin-bottom:8px;"></div>
 
@@ -2978,6 +2981,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <label style="font-size:13px;">عرض صفّ:</label>
           <select id="cur-filter-grade" onchange="cur_render()" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"><option value="">كل الصفوف</option></select>
           <button type="button" onclick="cur_load()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;">🔄 تحديث</button>
+          <button type="button" onclick="cur_namingReport()" title="يفحص كلّ سطحٍ يكتب اسمَ مادّة ويسمّي ما لا يُحَلّ — قراءةٌ فقط" style="background:#5c6bc0;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;">🔍 فحص توحيد المسمّيات</button>
         </div>
 
         <div id="cur-body" style="font-size:13px;">⏳ جارٍ التحميل...</div>
@@ -2989,6 +2993,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
             <select id="cur-add-section" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"></select>
             <select id="cur-add-subject" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;"></select>
             <input id="cur-add-papers" type="text" placeholder="أوراق الاختبار (اختياري)" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;min-width:190px;">
+            <input id="cur-add-aliases" type="text" placeholder="مرادفات (اختياري): عربي، لغة عربية" style="padding:6px;border:1px solid #cfd8dc;border-radius:6px;font-size:13px;min-width:210px;">
             <button type="button" onclick="cur_add()" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:6px 16px;cursor:pointer;font-size:13px;">إضافة</button>
           </div>
         </div>
@@ -7464,7 +7469,7 @@ function loadSession() {
 }
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
-  try { sessionStorage.removeItem('teacherLists_v4'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v5'); } catch(e) {}
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
   try { ClientCache.clear(); } catch(e) {} // ✅ يمسح أيضاً كل كاش callServer المخزَّن بـsessionStorage
                                            // (كان يبقى من مدرسة/جلسة سابقة عند تبديل ?school=)
@@ -8231,7 +8236,7 @@ function bootApp() {
   // ── تحميل القوائم + تحميل Schema ──
   var cachedLists = null;
   try {
-    var raw = sessionStorage.getItem('teacherLists_v4');
+    var raw = sessionStorage.getItem('teacherLists_v5');
     if (raw) {
       var parsed = JSON.parse(raw);
       if (parsed._ts && (Date.now() - parsed._ts) < 30 * 60 * 1000) {
@@ -8401,7 +8406,7 @@ function _fetchListsFromServer(callback) {
     if (callback) callback(false);
     return;
   }
-  callServer('getListsDataProtected', { token: App.user.token }, 'lists_data_v2', 1800, function(r) {
+  callServer('getListsDataProtected', { token: App.user.token }, 'lists_data_v3', 1800, function(r) {
     if (r && r.success) {
       App.lists = {
         grades         : r.grades     || [],
@@ -8416,10 +8421,12 @@ function _fetchListsFromServer(callback) {
         curriculumByGrade: r.curriculumByGrade || {},
         // ★ أوراقُ الاختبار لكلّ صفّ (من سجلّ «المقررات») — فارغةٌ بحقٍّ لمدرسةٍ بلا سجلّ.
         examPapersByGrade: r.examPapersByGrade || {},
+        // ★ التصنيفُ المحسوم لكلّ نوعِ سلوك — تقرأ منه قائمتا «تعزيزٌ إيجابيّ» و«ملاحظة».
+        violationPolarityResolved: r.violationPolarityResolved || {},
         subjectExpansionMap: r.subjectExpansionMap || {},
         _ts            : Date.now()
       };
-      try { sessionStorage.setItem('teacherLists_v4', JSON.stringify(App.lists)); } catch(e) {}
+      try { sessionStorage.setItem('teacherLists_v5', JSON.stringify(App.lists)); } catch(e) {}
       if (callback) callback(true);
     } else {
       console.warn('getListsDataProtected returned success=false');
@@ -13453,8 +13460,15 @@ function ec_timetableSubjectPool(grade) {
 function ec_timetableComputeUnscheduled(key, grade) {
   var board = _ecScheduleBoards[key]; if (!board) return;
   var all = ec_timetableSubjectPool(grade);
+  /* 🔴 المطابقةُ بـ`canon` حين يوجد — وبالاسم حين لا يوجد (سجلٌّ غائبٌ = سلوكُ اليوم).
+     وبلا ذلك تُقارَن «عربي» المكتوبةُ في الورقة بـ«اللغة العربية» في البركة فلا تلتقيان،
+     فتبقى المادّةُ المُجدوَلةُ معروضةً كأنها لم تُجدوَل (‏٢/٩ مطابقة مقيسة). */
   var scheduled = {};
-  for (var i = 0; i < board.list.length; i++) scheduled[board.list[i].name] = true;
+  for (var i = 0; i < board.list.length; i++) {
+    var it = board.list[i];
+    scheduled[it.canon || it.name] = true;
+    if (it.canon && it.canon !== it.name) scheduled[it.name] = true;
+  }
   board.unscheduled = [];
   for (var j = 0; j < all.length; j++) {
     if (!scheduled[all[j]]) board.unscheduled.push(all[j]);
@@ -27577,11 +27591,29 @@ function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); i
 // ==================== LM (إدارة القوائم) ====================
 function lm_load(){ var grid=document.getElementById('lm-grid'); if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_render(res); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).getListsDataProtected({token:App.user.token}); }
 function lm_reload(){ lm_load(); }
-function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',title:'⚠️ أنواع السلوكيات',items:data.violations||[],color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); var pol=(p.type==='violation'&&data.violationPolarity)?(data.violationPolarity[p.items[ii]]||''):''; var polTag=pol?('<span title="'+(pol==='merit'?'تعزيز إيجابي':'ملاحظة تحتاج إلى متابعة')+'" style="font-size:11px;margin-left:6px;">'+(pol==='merit'?'🟢':'🟠')+'</span>'):''; html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+polTag+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\',\''+pol+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
+/* 🔴 «أنواع السلوكيات» تُعرَض **قائمتين منفصلتين** بقرار مالك 2026-09-21 — ولا يُشطَر
+   العمودُ `F` في الورقة: شطرُه يكسر كلَّ قارئٍ للسلوكيات (منصّةُ الطالب · تقاريرُ وليّ
+   الأمر · شاشةُ الرصد). ⇒ **الفصلُ في العرض والمخزنُ واحد**، والقسمةُ من
+   `violationPolarityResolved` الذي يحسمه **الخادمُ بنفس الدالّة** التي يحسم بها ما
+   يراه وليُّ الأمر ⇒ صفرُ انحرافٍ بين ما يصنّفه المديرُ وما يُعرَض فعلاً.
+   ⚠️ **والإضافةُ من قائمةٍ تُثبّت تصنيفَها تلقائياً** (‏`addPolarity`) — وإلّا أضاف
+   المديرُ «تعزيزاً» فسقط سلبيّاً بالاشتقاق، **وهو الافتراضيُّ البنيويّ**. */
+function lm_splitBehaviors(data){
+  var all=data.violations||[], res=(data.violationPolarityResolved)||{}, merit=[], viol=[];
+  for(var i=0;i<all.length;i++){ (res[all[i]]==='merit'?merit:viol).push(all[i]); }
+  return { merit: merit, violation: viol };
+}
+function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var _b=lm_splitBehaviors(data); var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',addPolarity:'merit',title:'🟢 تعزيز إيجابي',items:_b.merit,color:'#e8f5e9'},{type:'violation',addPolarity:'violation',title:'🟠 ملاحظات تحتاج إلى متابعة',items:_b.violation,color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); var pol=(p.type==='violation'&&data.violationPolarity)?(data.violationPolarity[p.items[ii]]||''):''; /* الوسمُ صار يقول **مصدرَ التصنيف** لا التصنيفَ نفسَه — فالقائمةُ تقوله أصلاً.
+   🔴 والتمييزُ مهمّ: المُستنتَجُ من النصّ **قد ينتقل بين القائمتين** لو غُيّرت
+   الكلمات، والمثبَّتُ لا ينتقل. فالمديرُ يرى أيَّها يحتاج تثبيتاً. */
+var polTag=(p.type!=='violation')?'':(pol?'<span title="تصنيفٌ مثبَّتٌ بيدك" style="font-size:11px;margin-left:6px;">📌</span>':'<span title="مُستنتَجٌ من نصّ الاسم — اضغط ✏️ لتثبيته" style="font-size:11px;margin-left:6px;opacity:.55;">◌</span>'); html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+polTag+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\',\''+pol+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\',\''+(p.addPolarity||'')+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
 function lm_findRowIndex(rawRows,type,value){ if(!rawRows) return -1; var colMap={grade:'grade',subject:'subject',section:'section',violation:'violation'}; var col=colMap[type]; for(var i=0;i<rawRows.length;i++) if(rawRows[i][col]===value) return rawRows[i].rowIndex; return -1; }
 // يُظهر/يُخفي منتقيَ التصنيف ويضبط قيمتَه — لقائمة «أنواع السلوكيات» وحدَها.
 function lm_setPolarityUI(type,value){ var w=document.getElementById('lm-polarity-wrap'), s=document.getElementById('lm-polarity'); if(!w||!s) return; var on=(type==='violation'); w.style.display=on?'block':'none'; s.value=on?(value||''):''; }
-function lm_showAddModal(type,title){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; lm_setPolarityUI(type,''); document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
+/* 🔴 `preset` إلزاميٌّ للسلوك: الإضافةُ من قائمةٍ تُثبّت تصنيفَها **مسبقاً** — وإلّا
+   أضاف المديرُ نوعاً في «تعزيز إيجابي» فسقط في «ملاحظة» لأن الاشتقاقَ لم يطابق
+   كلماتِه، **والافتراضيُّ سلبيٌّ بنيويّاً**. */
+function lm_showAddModal(type,title,preset){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; lm_setPolarityUI(type,preset||'');document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
 function lm_editItem(type,rowIdx,currentVal,polarity){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; lm_setPolarityUI(type,polarity||''); document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
 function lm_deleteItem(type,rowIdx){
   if(rowIdx<0){ toast('تعذر تحديد الصف', 'error'); return; }
@@ -27644,7 +27676,7 @@ function cur_render(){
   if(!rows.length){ body.innerHTML='<p style="color:#90a4ae;padding:10px;">لا مقرَّراتٍ مُسجَّلة'+(filter?' لهذا الصفّ':'')+'.</p>'; return; }
   var h='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+
         '<tr style="background:#e8eaf6;"><th style="padding:6px;text-align:right;">الصف</th><th style="padding:6px;text-align:right;">الشعبة</th>'+
-        '<th style="padding:6px;text-align:right;">المادة</th><th style="padding:6px;text-align:right;">أوراق الاختبار</th>'+
+        '<th style="padding:6px;text-align:right;">المادة</th><th style="padding:6px;text-align:right;">أوراق الاختبار</th><th style="padding:6px;text-align:right;">مرادفات</th>'+
         '<th style="padding:6px;">مُفعَّل</th><th style="padding:6px;"></th></tr>';
   for(var r=0;r<rows.length;r++){
     var it=rows[r], dim=it.active?'':'opacity:.5;';
@@ -27652,7 +27684,7 @@ function cur_render(){
        '<td style="padding:6px;">'+escapeHtml(it.grade)+'</td>'+
        '<td style="padding:6px;">'+escapeHtml(it.section==='*'?'كل الشعب':it.section)+'</td>'+
        '<td style="padding:6px;font-weight:700;">'+escapeHtml(it.subject)+'</td>'+
-       '<td style="padding:6px;"><input type="text" value="'+escapeHtml(it.papers||'')+'" onchange="cur_savePapers('+it.rowIndex+',this.value)" placeholder="—" style="width:100%;min-width:150px;padding:4px;border:1px solid #cfd8dc;border-radius:5px;font-size:12px;"></td>'+
+       '<td style="padding:6px;"><input type="text" value="'+escapeHtml(it.papers||'')+'" onchange="cur_savePapers('+it.rowIndex+',this.value)" placeholder="—" style="width:100%;min-width:150px;padding:4px;border:1px solid #cfd8dc;border-radius:5px;font-size:12px;"></td>'+'<td style="padding:6px;"><input type="text" value="'+escapeHtml(it.aliases||'')+'" onchange="cur_saveAliases('+it.rowIndex+',this.value)" placeholder="—" style="width:100%;min-width:150px;padding:4px;border:1px solid #cfd8dc;border-radius:5px;font-size:12px;"></td>'+
        '<td style="padding:6px;text-align:center;"><input type="checkbox" '+(it.active?'checked':'')+' onchange="cur_toggleActive('+it.rowIndex+',this.checked)"></td>'+
        '<td style="padding:6px;text-align:center;"><button type="button" onclick="cur_delete('+it.rowIndex+')" style="background:#ffebee;border:none;border-radius:5px;padding:4px 8px;cursor:pointer;">🗑️</button></td></tr>';
   }
@@ -27666,7 +27698,7 @@ function _curRowByIndex(rowIndex){ for(var i=0;i<_curRows.length;i++) if(_curRow
 function _curUpdate(row,okMsg){
   callServer('updateCurriculumRowProtected', {token:App.user.token, rowIndex:row.rowIndex,
       grade:row.grade, section:row.section, subject:row.subject, active:row.active,
-      order:row.order, papers:row.papers}, function(res){
+      order:row.order, papers:row.papers, aliases:row.aliases}, function(res){
     if(!res||!res.success){ cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); cur_load(); return; }
     cur_setStatus('✅ '+(okMsg||res.message),'#2e7d32'); cur_load();
   /* 🔴 وإعادةُ التحميل على الفشل أيضاً — وإلّا بقي الجدولُ يعرض القيمةَ التي لم تُكتب
@@ -27677,6 +27709,34 @@ function _curUpdate(row,okMsg){
 function cur_savePapers(rowIndex,val){
   var row=_curRowByIndex(rowIndex); if(!row) return;
   row.papers=val; _curUpdate(row,'تم حفظ أوراق الاختبار');
+}
+/* 🔍 تقريرُ التوحيد — يُعرَض في مكان الجدول مؤقّتاً، و«تحديث» يُعيده.
+   🔴 ويُظهر **ما لا يُحَلّ بالاسم** لا عدداً مجرّداً: العددُ يُقلق ولا يُرشد. */
+function cur_namingReport(){
+  var body=document.getElementById('cur-body'); if(!body) return;
+  body.innerHTML='⏳ جارٍ الفحص...';
+  callServer('getSubjectNamingReportProtected', {token:App.user.token}, function(res){
+    if(!res||!res.success){ body.innerHTML=''; cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; }
+    var h='<div style="padding:8px;background:#fff;border:1px solid #c5cae9;border-radius:8px;">';
+    h+='<div style="font-weight:800;margin-bottom:8px;">'+escapeHtml(res.message)+'</div>';
+    if(!res.hasRegistry) h+='<div style="color:#ef6c00;margin-bottom:8px;">⚠️ لا سجلَّ مقرَّراتٍ بعد — فلا معجمَ يُحَلّ به شيء. ابدأ بـ«معاينة» ثمّ «تنفيذ التعبئة».</div>';
+    for(var i=0;i<res.surfaces.length;i++){
+      var s=res.surfaces[i];
+      if(s.missing){ h+='<div style="margin:6px 0;color:#90a4ae;">• '+escapeHtml(s.label)+' — الورقةُ غير موجودة</div>'; continue; }
+      var okAll=(s.unknown===0);
+      h+='<div style="margin:8px 0;padding:6px;border-right:4px solid '+(okAll?'#2e7d32':'#ef6c00')+';background:'+(okAll?'#e8f5e9':'#fff8e1')+';border-radius:6px;">';
+      h+='<b>'+(okAll?'🟢':'🟠')+' '+escapeHtml(s.label)+'</b> — '+(s.total-s.unknown)+'/'+s.total+' تُحَلّ';
+      if(!okAll) h+='<div style="margin-top:4px;font-size:12px;">غيرُ محلولة: <b>'+escapeHtml(s.names.join('، '))+'</b><br><span style="color:#6d4c41;">أضِف كلاًّ منها مرادفاً للمادّة التي تقابلها في جدول المقرَّرات.</span></div>';
+      h+='</div>';
+    }
+    h+='<div style="margin-top:8px;font-size:12px;color:#78909c;">⚠️ يغطّي السطوحَ المقيسة؛ «صفرُ انحراف» تعني «في هذه» لا «في المنصّة كلِّها».</div></div>';
+    body.innerHTML=h;
+  }, function(err){ body.innerHTML=''; cur_setStatus('❌ '+(err&&err.message||'تعذّر الفحص'),'#c62828'); });
+}
+
+function cur_saveAliases(rowIndex,val){
+  var row=_curRowByIndex(rowIndex); if(!row) return;
+  row.aliases=val; _curUpdate(row,'تم حفظ المرادفات');
 }
 function cur_toggleActive(rowIndex,checked){
   var row=_curRowByIndex(rowIndex); if(!row) return;
@@ -27689,9 +27749,10 @@ function cur_add(){
   if(!g||!b||!g.value||!b.value){ cur_setStatus('❌ اختر الصفَّ والمادّة','#c62828'); return; }
   cur_setStatus('⏳ جارٍ الحفظ...','#1149a3');
   callServer('addCurriculumRowProtected', {token:App.user.token, grade:g.value,
-      section:s?s.value:'*', subject:b.value, papers:p?p.value:''}, function(res){
+      section:s?s.value:'*', subject:b.value, papers:p?p.value:'',
+      aliases:(document.getElementById('cur-add-aliases')||{}).value||''}, function(res){
     if(!res||!res.success){ cur_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; }
-    if(p) p.value='';
+    if(p) p.value=''; var _al=document.getElementById('cur-add-aliases'); if(_al) _al.value='';
     cur_setStatus('✅ '+res.message,'#2e7d32'); cur_load();
   }, function(err){ cur_setStatus('❌ '+(err&&err.message||'تعذّر الحفظ'),'#c62828'); });
 }
