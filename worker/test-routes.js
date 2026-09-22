@@ -4023,6 +4023,59 @@ console.log('`frontend/` المخدوم ضدّ السياسة النافذة:');
   }
 })();
 
+/* ── الظلُّ يستخرج `srv` فعلاً — حارسٌ **سلوكيٌّ** لا نصّيّ ────────────────────────
+   🔴 **الخطرُ الذي يحرسه — ووقع فعلاً:** شُحنت النسخةُ الأولى من `_shadowWatch` تقرأ
+   **رمزَ الحالة ولا تقرأ الجسم** ⇒ صفرُ `srv` ⇒ الظلُّ يقول «اكتمل بعد ٣٨ث» ولا يقول
+   **«كم منها شغلٌ حقيقيّ»** — وهو الحقلُ الوحيدُ الذي يفصل «شغلٌ ثقيل» عن «انتظارٌ
+   طويل»، وعلاجُهما متعاكس. **والبوّابةُ كانت خضراءَ تماماً** لأن لا شيءَ يقيس المحتوى.
+   🔒 **ولذلك تُشغَّل الدالّةُ الحقيقيّةُ بردٍّ مزيّف** — لا `grep` على `r.text()`:
+   مقارنةُ النصّ تقيس **أن السطرَ مكتوب**، والتشغيلُ يقيس **أن الرقمَ يخرج**. */
+global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
+  var wIdx = src.indexOf('function _shadowWatch(');
+  var wEnd = src.indexOf('\n}', wIdx) + 2;
+  if (wIdx < 0 || wEnd <= 1) {
+    console.log('  ❌ ضابط: تعذّر استخراج `_shadowWatch` — الفحص أجوف');
+    failed++;
+    return;
+  }
+  function run(bodyText, rejectBody) {
+    var logged = null;
+    var wctx = vm.createContext({
+      SHADOW_CAP_MS: 55000, setTimeout: setTimeout, clearTimeout: clearTimeout,
+      Date: Date, String: String, Math: Math,
+      _bhLog: function (o) { logged = o; }
+    });
+    vm.runInContext(src.slice(wIdx, wEnd) + '; this.w = _shadowWatch;', wctx);
+    var resp = {
+      status: 200,
+      text: function () {
+        return rejectBody ? Promise.reject(new Error('stream')) : Promise.resolve(bodyText);
+      }
+    };
+    return wctx.w(Promise.resolve(resp), { abort: function () {} },
+                  Date.now(), 'teacher', 'fnX', 26000)
+           .then(function () { return logged; });
+  }
+  return Promise.all([
+    run('{"ok":true,"result":{},"_ms":1234}', false),
+    run('{"ok":true,"result":{}}', false),
+    run(null, true)
+  ]).then(function (r) {
+    [[r[0] && r[0].srv === 1234, '🟢 جسمٌ فيه `_ms` ⇒ `srv = 1234`  [' + (r[0] && r[0].srv) + ']'],
+     [r[0] && r[0].len === 34, '🟢 `len` = طولُ الحمولة بالمحارف  [' + (r[0] && r[0].len) + ']'],
+     [r[1] && r[1].srv === -1,
+      '🔴 ضابط: جسمٌ **بلا** `_ms` ⇒ `srv = -1` لا صفراً (صفرٌ يُحسَب زمناً)  [' + (r[1] && r[1].srv) + ']'],
+     [r[2] && r[2].why === 'bodyerr' && r[2].srv === -1,
+      '🔴 ضابط: تعذّرُ قراءةِ الجسم ⇒ `bodyerr` و`srv = -1` **ولا يرمي**  [' + (r[2] && r[2].why) + ']'],
+     [r[0] && r[0].ev === 'gasshadow' && typeof r[0].shadowMs === 'number',
+      '🟢 السطرُ يبقى `gasshadow` ويحمل `shadowMs`']
+    ].forEach(function (c) {
+      if (!c[0]) failed++;
+      console.log((c[0] ? '  ✅ ' : '  ❌ ') + c[1]);
+    });
+  });
+});
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —

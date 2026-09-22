@@ -249,7 +249,14 @@ var GAS_MAX_ATTEMPTS = 2;
 /* 🔴 **رمزٌ فريدٌ لا قيمةٌ سحريّة:** السباقُ أدناه يفرّق بين «وصل الردّ» و«انتهت المهلة»
    بالهويّة (`===`) — ونصٌّ أو `null` كان يلتبس بردٍّ مشروع. */
 var _SHADOW_TIMEOUT = { shadowTimeout: true };
-var SHADOW_SAMPLE  = 0.2;     // نسبةُ المسح — خُمسُ المُجهَض يكفي للتوزيع ولا يُثقل العامل
+/* 🔴 **١٫٠ بقرار المالك (‏2026-09-22 مساءً) — والعلّةُ عدديّةٌ لا تفضيل:** ٦٢ إجهاضاً
+   يوميّاً على `loginStudent` × ٠٫٢ = **~١٢ عيّنة** ⇒ حكمٌ على دالّةٍ بعينها يحتاج
+   **٢–٥ أيّام**. وبـ١٫٠ يُحسَم خلال ساعات.
+   ⚠️ **وثمنُه يُقال:** كلُّ نداءٍ مُجهَضٍ يترك اتّصالاً صادراً مفتوحاً حتى `SHADOW_CAP_MS`.
+   🟢 **وصفرُ حِملٍ إضافيٍّ على حصّة Google** — العملُ جارٍ هناك أصلاً سواءٌ قطعناه أم لا
+   (‏`_gasShouldRetry` أدناه)، فالثمنُ موردُ العامل وحدَه.
+   🔒 **والتراجعُ متغيّرُ بيئةٍ لا نشرةُ كود:** `SHADOW_ABORT` ⇒ أيُّ قيمةٍ غير `on`. */
+var SHADOW_SAMPLE  = 1.0;     // نسبةُ المسح
 var SHADOW_CAP_MS  = 55000;   // سقفُ الظلّ من بدء المحاولة: تحت `xhr.timeout = 60000`
                               // العميليّ، وبعيدٌ عن جدار الحافّة (~100ث).
 /* 🔴 **fail-closed: مطفأٌ ما لم يُعلَن `on` صراحةً.** `BULKHEAD_MODE` افتراضُه `on` لأنه
@@ -265,14 +272,36 @@ function _shadowWatch(p, controller, startedAt, app, fn, budgetMs) {
   var capped = false;
   var capIn = Math.max(1000, SHADOW_CAP_MS - budgetMs);
   var capTimer = setTimeout(function () { capped = true; try { controller.abort(); } catch (e) {} }, capIn);
-  function done(st, ok, why) {
+  function done(st, ok, why, srv, len) {
     clearTimeout(capTimer);
     _bhLog({ ev: 'gasshadow', app: app, fn: fn,
              shadowMs: Date.now() - startedAt, budget: budgetMs,
-             st: st, ok: ok, why: why });
+             st: st, ok: ok, why: why, srv: srv, len: len });
   }
-  return p.then(function (r) { done(r.status, r.status >= 200 && r.status < 400, 'done'); })
-          .catch(function () { done(0, false, capped ? 'cap' : 'err'); });
+  return p.then(function (r) {
+    /* 🔴 **الجسمُ يُقرأ هنا، ولولا قراءتُه لكان الظلُّ نصفَ قياس.** `srv` (‏`_ms`) يعيش
+       في ذيل الجسم، **والنداءُ الذي نقتله لا جسمَ له** ⇒ `srv = -1` في كلّ صفوف
+       `abort_budget`. ⇒ **الذيلُ البطيءُ غائبٌ عن كلّ متوسّطاتنا** (‏تغطيةُ `srv` على
+       `loginStudent` = **٦٠٫٩٪** مقيسةً)، وهو بعينه ما نريد الحكمَ عليه.
+       🎯 **وبه وحدَه يُفصَل «شغلٌ ثقيل» عن «انتظارٌ طويل» — وعلاجُهما متعاكس:**
+       الأوّلُ يُرشَّق، والثاني **لا تُصلحه إعادةُ كتابةٍ إطلاقاً.**
+       🔒 **ونفسُ منطق المسار الرئيس حرفياً** (`_bhSrv` أدناه) — لا يُعاد اختراعُه:
+       الحقلُ آخرُ خاصيّةٍ في الكائن دائماً، فيكفي مسحُ ذيل النصّ بلا `JSON.parse`.
+       🔒 **وصفرُ بايتٍ من الجسم يدخل السجلّ** — الطولُ والرقمُ فقط، كقاعدة `ev:'gas'`. */
+    return r.text().then(function (t) {
+      var srv = -1;
+      try {
+        var m = /"_ms":(\d+)/.exec(String(t).slice(-80));
+        if (m) srv = +m[1];
+      } catch (e) { /* لا نُفشِل سطرَ سجلٍّ بسبب جسمٍ شاذّ */ }
+      done(r.status, r.status >= 200 && r.status < 400, 'done',
+           srv, (typeof t === 'string') ? t.length : -1);
+    }, function () {
+      /* الردُّ وصل ثمّ تعذّرت قراءةُ جسمه (‏قطعٌ أثناء البثّ · أو إجهاضُ السقف أثناء
+         القراءة) — **حالةٌ مستقلّةٌ عن `err`**: نعرف أنه وصل ولا نعرف محتواه. */
+      done(r.status, false, capped ? 'cap' : 'bodyerr', -1, -1);
+    });
+  }).catch(function () { done(0, false, capped ? 'cap' : 'err', -1, -1); });
 }
 
 /** خطّةُ المحاولة التالية من الميزانية المتبقّية.
