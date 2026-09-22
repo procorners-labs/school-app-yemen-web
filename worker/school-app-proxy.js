@@ -231,6 +231,50 @@ var GAS_ATTEMPT_MARGIN_MS = 300;
 // محاولتان كحدٍّ أقصى — كما كانت. الجديدُ **متى** تُستعمل الثانية، لا عددُها.
 var GAS_MAX_ATTEMPTS = 2;
 
+/* ── قياسُ الظلّ: «كم كان سيستغرق لو لم نقطعه؟» (‏2026-09-22) ────────────────────
+   🎯 **السؤالُ الذي لا يجيب عنه أيُّ سجلٍّ قائم.** `abort_budget` = **٣٢٫٤٪** من كلّ
+   النداءات (‏613/1,890 في ٢٤س) وكلُّها عند **25,700** بالضبط — **لأننا نقتلها هناك**،
+   فلا نعرف أيُّها كان سينجح لو أُمهل. وبلا هذا الرقم يبقى رفعُ السقف تخميناً.
+
+   🔒 **ومشروعيّتُه مكتوبةٌ في هذا الملفّ سلفاً** (‏تعليقُ `_gasShouldRetry` أعلاه وكتلةُ
+   الخروج على المهلة أدناه): **«تنفيذُ GAS ما زال جارياً على الخادم»** ⇒ الإجهاضُ
+   **لا يوقف العملَ عند Google أصلاً** ⇒ تركُ الاتّصال مفتوحاً **صفرُ حِملٍ إضافيٍّ على
+   الحصّة**، وكلُّ ثمنه اتّصالٌ صادرٌ يبقى مفتوحاً في العامل.
+   🔴 **ولذلك لا يُنسَخ النداءُ ولا يُعاد** — نداءٌ ثانٍ كان سيُضاعف الاستهلاك فعلاً.
+
+   🔴 **وصفرُ تغيّرٍ فيما يراه المستخدم:** الردُّ يبقى 502 في موعده تماماً (‏`timedOut`
+   يُرفع كما هو، و`_bhWhy` يبقى `abort_budget`، والمقعدُ يُحرَّر في موعده). الظلُّ يعيش
+   في `ctx.waitUntil` وحدَه — **خارج مسار الاستجابة وخارج حساب المنظّم**، وإلّا قِسنا
+   أثرَ قياسِنا. وضابطُ عدمِ الانزياح: `median(ms | why='abort_budget')` يبقى **25,700**. */
+/* 🔴 **رمزٌ فريدٌ لا قيمةٌ سحريّة:** السباقُ أدناه يفرّق بين «وصل الردّ» و«انتهت المهلة»
+   بالهويّة (`===`) — ونصٌّ أو `null` كان يلتبس بردٍّ مشروع. */
+var _SHADOW_TIMEOUT = { shadowTimeout: true };
+var SHADOW_SAMPLE  = 0.2;     // نسبةُ المسح — خُمسُ المُجهَض يكفي للتوزيع ولا يُثقل العامل
+var SHADOW_CAP_MS  = 55000;   // سقفُ الظلّ من بدء المحاولة: تحت `xhr.timeout = 60000`
+                              // العميليّ، وبعيدٌ عن جدار الحافّة (~100ث).
+/* 🔴 **fail-closed: مطفأٌ ما لم يُعلَن `on` صراحةً.** `BULKHEAD_MODE` افتراضُه `on` لأنه
+   حمايةٌ يُخشى غيابُها؛ وهذا **قياسٌ** يُخشى بقاؤه ⇒ الافتراضان متعاكسان بحقّ. */
+function _shadowOn(env) {
+  try { return !!(env && String(env.SHADOW_ABORT || '').toLowerCase() === 'on'); }
+  catch (e) { return false; }
+}
+
+/** يراقب وعدَ `fetch` الذي تركناه حيّاً ويسجّل متى اكتمل فعلاً. يُستدعى من
+ *  `ctx.waitUntil` حصراً. 🔴 ولا يرمي أبداً — سطرُ سجلٍّ لا يُفشل طلباً. */
+function _shadowWatch(p, controller, startedAt, app, fn, budgetMs) {
+  var capped = false;
+  var capIn = Math.max(1000, SHADOW_CAP_MS - budgetMs);
+  var capTimer = setTimeout(function () { capped = true; try { controller.abort(); } catch (e) {} }, capIn);
+  function done(st, ok, why) {
+    clearTimeout(capTimer);
+    _bhLog({ ev: 'gasshadow', app: app, fn: fn,
+             shadowMs: Date.now() - startedAt, budget: budgetMs,
+             st: st, ok: ok, why: why });
+  }
+  return p.then(function (r) { done(r.status, r.status >= 200 && r.status < 400, 'done'); })
+          .catch(function () { done(0, false, capped ? 'cap' : 'err'); });
+}
+
 /** خطّةُ المحاولة التالية من الميزانية المتبقّية.
  *  @returns {{go:boolean, timeoutMs:number}} — `go:false` يعني: لا تبدأ، اخرج بآخر نتيجة. */
 function _gasAttemptPlan(elapsedMs, budgetMs) {
@@ -2326,10 +2370,38 @@ export default {
         /* 🔴 **علَمٌ صريح لا `err.name === 'AbortError'`:** الإجهاضُ قد يأتي من غير مؤقّتنا
            (قطعُ العميل مثلاً)، فالاستدلالُ بنوع الخطأ يخلط سببين علاجُهما متعاكس. */
         var timedOut = false;
-        var abortTimer = setTimeout(function () { timedOut = true; controller.abort(); }, _plan.timeoutMs);
+        /* 🔬 **عيّنةُ الظلّ تُقرَّر قبل المؤقّت لا داخله** — قرارٌ داخل المؤقّت يجعل
+           المسارَين يفترقان في لحظةٍ لا نتحكّم بها، فيصير السلوكُ غيرَ قابلٍ للتفسير. */
+        var _shadowThis = _shadowOn(env) && !!(ctx && ctx.waitUntil) && (Math.random() < SHADOW_SAMPLE);
+        var abortTimer = setTimeout(function () {
+          timedOut = true;
+          /* 🔴 المسارُ العاديُّ يُجهض كما كان حرفياً. وعيّنةُ الظلّ **لا تُجهَض هنا** —
+             تُترك حيّةً ويُسلَّم وعدُها إلى `waitUntil` أدناه. */
+          if (!_shadowThis) controller.abort();
+        }, _plan.timeoutMs);
         init.signal = controller.signal;
         try {
-          var gasResp = await fetch(fullTarget, init);
+          var _attemptAt = Date.now();
+          var _fetchP = fetch(fullTarget, init);
+          var gasResp;
+          if (_shadowThis) {
+            /* 🔴 **سباقٌ لا انتظار:** المستخدمُ يُخدَم في موعده بالضبط، والوعدُ يبقى حيّاً
+               للظلّ. ولولا السباق لَحجب الانتظارُ الردَّ حتى يكتمل — أي لقِسنا بتغيير ما نقيس. */
+            var _raced = await Promise.race([_fetchP, new Promise(function (r) {
+              setTimeout(function () { r(_SHADOW_TIMEOUT); }, _plan.timeoutMs);
+            })]);
+            if (_raced === _SHADOW_TIMEOUT) {
+              ctx.waitUntil(_shadowWatch(_fetchP, controller, _attemptAt, app, _bhFn, _plan.timeoutMs));
+              /* 🔴 **يُرمى عمداً ليمرّ بكتلة `catch` أدناه نفسِها** — و`timedOut` مرفوعٌ
+                 سلفاً من المؤقّت ⇒ `_bhWhy = 'abort_budget'` · ورسالةُ «مزدحمة» · ورمزُ 502
+                 · وقرارُ عدم الإعادة (`_gasShouldRetry`) **كلُّها بلا أيّ فرق.**
+                 ⇒ **مسارٌ واحدٌ للمستخدم، وفرعٌ واحدٌ للقياس.** */
+              throw new Error('shadow_budget');
+            }
+            gasResp = _raced;
+          } else {
+            gasResp = await _fetchP;
+          }
           lastText = await gasResp.text();
           lastStatus = gasResp.status;
           var looksHtml = lastText.charAt(0) === '<';
