@@ -616,6 +616,20 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
           من <code>npm run gas:logs</code> — والقناتان لا تُغني إحداهما عن الأخرى.
         </div>
       </div>
+      <!-- 🚦 صحّة النقل — ما لا تراه هذه الورقة: إجهاضاتُ الوسيط (502) من سجلّ الوركر (عقد /dev-stats v1) -->
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="form-row" style="margin-bottom:10px;align-items:center;">
+          <strong style="font-size:15px;">🚦 صحّة النقل (502 عند المستخدم)</strong>
+          <select id="ts-window" style="padding:6px 12px;border:1px solid #ddd;border-radius:8px;">
+            <option value="6h">آخر ٦ ساعات</option>
+            <option value="24h" selected>آخر ٢٤ ساعة</option>
+            <option value="7d">آخر ٧ أيام</option>
+          </select>
+          <button class="btn btn-secondary" onclick="transport_load()">🔄 قياس</button>
+          <span id="ts-meta" style="font-size:12px;color:#94a3b8;"></span>
+        </div>
+        <div id="ts-body" style="font-size:13px;color:#475569;">اضغط «قياس». المصدرُ سجلُّ الوركر لا هذه الورقة — والقراءةُ لا تستهلك حصّةَ Apps Script للمستخدمين.</div>
+      </div>
       <div class="form-row" style="margin-bottom:14px;">
         <button class="btn btn-primary" onclick="errors_load()">🔄 تحميل البلاغات</button>
         <select id="err-filter-app" onchange="errors_render()" style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;">
@@ -625,6 +639,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
           <option value="cms">cms</option>
           <option value="home">home</option>
           <option value="master-admin">master-admin</option>
+          <option value="watchdog">watchdog (الحارس الدوري)</option>
         </select>
         <select id="err-filter-status" onchange="errors_render()" style="padding:8px 14px;border:1px solid #ddd;border-radius:8px;">
           <option value="">كل الحالات</option>
@@ -1907,6 +1922,96 @@ function _errEsc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ── 🚦 صحّة النقل — عقد /dev-stats v1 (يملكه الوركر · جلسة SchoolApp) ──────────────
+   🔴 **ثلاثُ قواعدَ من العقد يُفرض عرضُها هنا لا يُجتهَد فيها:**
+   ① **`null` ليس صفراً** — قسمٌ فشل استعلامُه يُعرض «تعذّر القياس»؛ الصفرُ الكاذب يقرأ «لا أخطاء».
+   ② **`enough:false` رماديٌّ بعبارة «غيرُ كافٍ للمقارنة»** — نسبةٌ عاريةٌ على n صغيرة تُقرأ
+      «هذا النشرُ أصلح/أفسد» كلَّ مرّة. وفاصلُ Wilson بجانب كلّ نسبة.
+   ③ **لا حسابَ هنا** — الوركرُ يحسب النِّسَبَ والفواصلَ والتوقيتَ اليمنيّ؛ اللوحةُ تعرض. */
+function _tsPct(x) { return (typeof x === 'number') ? (Math.round(x * 1000) / 10) + '٪' : '—'; }
+function _tsCell(c) {
+  if (!c) return '<span style="color:#c62828;">تعذّر القياس</span>';
+  var txt = _errEsc(c.abort) + ' / ' + _errEsc(c.n) + ' = <strong>' + _tsPct(c.abortRate) + '</strong>' +
+            ' <span style="color:#94a3b8;font-size:11px;">[' + _tsPct(c.wilsonLo) + '–' + _tsPct(c.wilsonHi) + ']</span>';
+  if (!c.enough) return '<span style="color:#9e9e9e;" title="n أقلّ من الحدّ">' + txt + ' · غيرُ كافٍ للمقارنة</span>';
+  var col = c.abortRate >= 0.2 ? '#c62828' : (c.abortRate >= 0.05 ? '#ef6c00' : '#2e7d32');
+  return '<span style="color:' + col + ';">' + txt + '</span>';
+}
+/* 🔴 تغطيةُ البُعد (عقد v1 المعدَّل): الصفوفُ القديمةُ بلا الحقل **تسقط من التجميع بصمت**
+   ⇒ قسمٌ بتغطيةٍ < ١ يُعلَن جزئياً، وإلّا قُرئت الساعاتُ الأولى بعد النشر نافذةً كاملة. */
+function _tsCov(c) {
+  if (!c) return '';
+  if (c.coverage === null || c.coverage === undefined) return ' <span style="color:#c62828;">— التغطية: تعذّر القياس</span>';
+  if (c.coverage >= 1) return '';
+  return ' <span style="color:#ef6c00;">— التغطية ' + _tsPct(c.coverage) + ' فقط (' + _errEsc(c.unbucketedN) + ' حدثاً خارجَ هذا التقسيم)</span>';
+}
+function _tsTable(title, rows, labelFn) {
+  if (rows === null || rows === undefined) {
+    return '<div style="margin:8px 0;"><strong>' + title + ':</strong> <span style="color:#c62828;">تعذّر القياس</span></div>';
+  }
+  if (!rows.length) return '<div style="margin:8px 0;"><strong>' + title + ':</strong> لا أحداث في النافذة</div>';
+  var h = '<div style="margin:10px 0 4px;"><strong>' + title + '</strong></div>' +
+          '<table class="master-table" style="font-size:12px;"><tbody>';
+  for (var i = 0; i < rows.length; i++) {
+    h += '<tr><td>' + labelFn(rows[i]) + '</td><td>' + _tsCell(rows[i]) + '</td></tr>';
+  }
+  return h + '</tbody></table>';
+}
+function _tsRenderHtml(d) {
+  if (!d) return '<span style="color:#c62828;">تعذّر القياس</span>';
+  var h = '<div style="margin-bottom:8px;"><strong>الإجمالي (إجهاضٌ/كلّ النداءات):</strong> ' + _tsCell(d.totals) + '</div>';
+  if (d.partial) {
+    h += '<div style="color:#ef6c00;margin-bottom:6px;">⚠️ قياسٌ جزئيّ — تعذّر: ' +
+         _errEsc((d.missing || []).join('، ')) + '</div>';
+  }
+  h += '<div style="margin-bottom:6px;">♻️ كتاباتٌ استُرِدّت بلا تنفيذٍ ثانٍ (<code>_dedup</code>): <strong>' +
+       (d.dedup && typeof d.dedup.n === 'number' ? _errEsc(d.dedup.n) : '<span style="color:#c62828;">تعذّر القياس</span>') + '</strong></div>';
+  h += _tsTable('حسب نسخة الوركر (مقاطعُ النشر)', d.byVersion, function (r) {
+    return '#' + _errEsc(r.number) + ' <code>' + _errEsc(r.id) + '</code>' +
+           ' <span style="color:#94a3b8;">' + _errEsc(r.createdAt || '') + '</span>';
+  });
+  h += _tsTable('حسب نشرة GAS (_v)' + _tsCov(d.gasVCoverage), d.byGasV, function (r) { return '<code>' + _errEsc(r.gasV) + '</code>'; });
+  h += _tsTable('حسب التطبيق', d.byApp, function (r) { return _errEsc(r.app); });
+  h += _tsTable('حسب الدالّة (الأعلى إجهاضاً)', d.byFn, function (r) {
+    return _errEsc(r.app) + ' · <code>' + _errEsc(r.fn) + '</code>';
+  });
+  h += _tsTable('حسب الساعة (توقيت اليمن)' + _tsCov(d.hourCoverage), d.byHour, function (r) {
+    return _errEsc(r.dateYE) + ' ' + _errEsc(r.hourYE);
+  });
+  if (d.clienterr === null || d.clienterr === undefined) {
+    h += '<div style="margin:8px 0;"><strong>انقطاعاتُ الشبكة عند المستخدم:</strong> <span style="color:#c62828;">تعذّر القياس</span></div>';
+  } else if (d.clienterr.length) {
+    h += '<div style="margin:10px 0 4px;"><strong>انقطاعاتُ الشبكة عند المستخدم (لا تصل الوسيط)</strong></div>';
+    for (var i = 0; i < d.clienterr.length; i++) {
+      var c = d.clienterr[i];
+      h += '<div style="font-size:12px;">' + _errEsc(c.app) + ' · <code>' + _errEsc(c.fn || '—') + '</code> · ' +
+           _errEsc(c.kind) + ' × ' + _errEsc(c.n) + '</div>';
+    }
+  }
+  return h;
+}
+function transport_load() {
+  var body = document.getElementById('ts-body'), meta = document.getElementById('ts-meta');
+  var win = (document.getElementById('ts-window') || {}).value || '24h';
+  if (body) body.innerHTML = 'جارٍ القياس…';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.success) {
+        if (body) body.innerHTML = '<span style="color:#c62828;">' + _errEsc((res && res.error) || 'تعذّر القياس') + '</span>';
+        if (meta) meta.textContent = '';
+        return;
+      }
+      var d = res.data || {};
+      if (meta) meta.textContent = 'عمرُ القياس ' + (d.cacheAgeS || 0) + 'ث · ' +
+        ((d.window && d.window.from) || '') + ' → ' + ((d.window && d.window.to) || '');
+      if (body) body.innerHTML = _tsRenderHtml(d);
+    })
+    .withFailureHandler(function () {
+      if (body) body.innerHTML = '<span style="color:#c62828;">تعذّر الاتصال بالخادم</span>';
+    })
+    .getTransportStatsProtected({ token: App.token, window: win });
 }
 
 function errors_load() {
