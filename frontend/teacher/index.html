@@ -3040,6 +3040,21 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
         <button type="button" onclick="dur_run()" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🧭 شغّل التقرير</button>
         <div id="dur-out" style="margin-top:10px;font-size:13px;"></div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🧩 توحيدُ ما يمكن توحيدُه</div>
+          <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
+            يُصلح <b>صنفين فقط</b>: قيمةَ دورٍ تُحَلّ إلى صيغةٍ أخرى · واسمَ معلّمٍ يقابله
+            معلّمٌ حيٌّ بعينه (علامةُ طرفٍ زائدة أو كلمتان ملتصقتان) —
+            <b>ويُعدّله في كلّ الأوراق معاً</b> لأن الاسمَ مفتاحُ ربط.
+            <br>🔴 <b>لا يمسّ</b> القيمَ المؤسّسيّةَ («المدير» · «الإدارة المالية») ولا مَن
+            لا يطابق أحداً — أولئك سجلّاتٌ تاريخيّةٌ صحيحة، وإعادةُ تسميتها تزويرٌ لا تصحيح.
+            <br>وتُؤخَذ نسخةٌ من <b>كلّ ورقةٍ ستُكتَب</b> قبل أوّل خليّة، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.
+          </div>
+          <button type="button" onclick="durr_preview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
+          <button type="button" id="durr-apply" onclick="durr_apply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التوحيد</button>
+          <div id="durr-out" style="margin-top:10px;font-size:13px;"></div>
+        </div>
       </div>
     </div>
 
@@ -4672,6 +4687,30 @@ function _csRunGated(fnName, run) {
   else _csWaitQueue.push(start);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   صنفٌ ثالث: **خلفيّ** — يمرّ بالسقف، **ويُسقَط عند الازدحام لا يُصطَفّ** (2026-09-22)
+   ──────────────────────────────────────────────────────────────────────────────
+   🔴 نسخةٌ موازيةٌ حرفياً لـ`_stu-js-core.html::_stuRunBackground` — **والسطحان لا
+   يتشاركان ملفّاً** (`Student Portal.html` لا يُدرِج هذا الجسرَ إطلاقاً)، فالتوحيدُ
+   يقع بتطابق العقد لا بمشاركة الكود، كما في `CS_MAX_INFLIGHT`/`STU_MAX_INFLIGHT`.
+   🎯 **والعلّةُ أن التصنيف ثنائيّ:** «قراءةٌ تُخنَق» و«كتابةٌ تمرّ فوراً» — والنبضةُ
+   ليست منهما: ليست فعلَ مستخدمٍ فتستحقّ الفوريّة، ولا ينتظرها أحدٌ فتستحقّ مقعداً في
+   الطابور. ⇒ **تُسقَط**، والدورةُ ٤ دقائق فتأتي التالية.
+   🔴 **ولا يُستعمَل لنداءٍ ينتظره مستخدم** — إسقاطُ نداءِ دخولٍ عطلٌ لا تحسين.
+   ══════════════════════════════════════════════════════════════════════════════ */
+function _csRunBackground(fnName, run, onSkip) {
+  if (_csInflight >= CS_MAX_INFLIGHT || _csWaitQueue.length) {
+    if (typeof onSkip === 'function') { try { onSkip(); } catch (eSk) {} }
+    return false;
+  }
+  var released = false;
+  _csInflight++;
+  function once() { if (released) return; released = true; _csRelease(); }
+  setTimeout(once, CS_SLOT_MAX_MS);
+  try { run(once); } catch (eB) { once(); }
+  return true;
+}
+
 function _csBundleSeederFor(cacheKey) {
   if (!cacheKey) return '';
   var sid = (typeof App !== 'undefined' && App.user && App.user.schoolId) || '';
@@ -4999,6 +5038,18 @@ function _startHeartbeat() {
     var _hbSid = (App.user && App.user.schoolId) || '';
     var _hbNotifCold = true;
     try { _hbNotifCold = !ClientCache.get('notif_bundle_' + _hbSid); } catch (eNC) {}
+    /* 🔴 **صنفٌ خلفيٌّ منذ 2026-09-22 — وكانت تمرّ فوريّةً بلا سقف.**
+       `_csIsRead('teacherHeartbeatProtected')` تُرجِع `false` (لا تبدأ بـ`get`/`check`/
+       `list`) ⇒ يصنّفها `_csRunGated` **كتابةً** فتمرّ **فورَ إطلاقها**، فتزاحم إقلاعَ
+       المستخدمين على المقاعد. والتصنيفُ بالبادئة صحيحٌ للكتابات وخاطئٌ لها: **ليست فعلَ
+       مستخدمٍ ولا ينتظرها أحد.**
+       ⚠️ **ولا يُبالَغ في وعدها:** النبضتان معاً **١٠٫٢٪** من نداءات ٢٤ ساعة (مقيس)
+       ⇒ المكسبُ **إزالةُ مزاحمةٍ لحظيّة** لا تحريرُ حصّةٍ ضخمة.
+       🔴 **والإسقاطُ لا يُطبَّق عليه التراجعُ التكيّفيّ:** الازدحامُ حالةُ لحظةٍ لا عطلُ
+       خادم، ومعاقبةُ النبضة بمضاعفة الإيقاع على ازدحامِ غيرِها تُضعف قياسَ «مَن متّصل». */
+    var _hbFire = function (release) {
+      var _hbDone = false;
+      function _hbRel() { if (_hbDone) return; _hbDone = true; try { release(); } catch (eHR) {} }
     // رمي متزامن (لن يقع نظرياً) يجب ألا يقتل سلسلة الجدولة — فخّ بند 78-أ.
     try {
       callServer('teacherHeartbeatProtected', _hbNotifCold ? { wantNotif: 1 } : {}, function (r) {
@@ -5022,13 +5073,22 @@ function _startHeartbeat() {
              مضمون — نفس فخّ `notif_bundle` الموثَّق (ولذلك مهلته 300 لا 120). */
           if (_bootDeferredExtras) { _bootDeferredExtras = false; _loadMyPointsHeader(); }
         } catch (e) {}
+        _hbRel();
         _scheduleNextBeat();
       }, function () {
         _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
+        _hbRel();
         _scheduleNextBeat();
       });
     } catch (eBeat) {
+      _hbRel();
       _scheduleNextBeat();
+    }
+    };
+    if (typeof _csRunBackground === 'function') {
+      _csRunBackground('teacherHeartbeatProtected', _hbFire, function () { _scheduleNextBeat(); });
+    } else {
+      _hbFire(function () {});
     }
   }
   /* ★ خنق نبضة العودة للتبويب: كانت كل عودة تُطلق `beat()` فوراً بلا أي حدّ، و`beat()`
@@ -28933,18 +28993,58 @@ function snrApply(){
    🔴 بلا زرِّ تنفيذٍ ولا `confirmAction` — لأنه لا يكتب شيئاً أصلاً.
    وهذه ليست سهواً: زرُّ تنفيذٍ بجانب تقريرٍ لا ينفّذ يُعلّم المستخدمَ أن الأداتين
    من صنفٍ واحد، فيضغط على نظيره في أداةٍ تكتب وهو يظنّه معاينة. */
+/* 🔴 **مهلةٌ صريحةٌ في الواجهة — إصلاحُ عَرَضٍ مقيسٍ لا تحوّط.**
+   قِيس 2026-09-22 أن `getDataUnificationReportProtected` تُجهَض **٦٢٪** (‏٨ من ١٣)
+   عند سقف الوسيط ٢٥٫٧ث، **بينما عملُها الخادميُّ ٣٢٥ م.ث** ⇒ الزمنُ انتظارُ قبولٍ
+   لا حساب، **ولا شيءَ في التقرير يُحسَّن**.
+   🔴 **والأثرُ على المستخدم أن الشاشةَ تبقى «جارٍ المسح» ثمّ لا شيء** — يرى **عَلَقاً
+   لا خطأً**، فيظنّ الأداةَ معطوبةً وهي تعمل.
+   ⇒ المهلةُ تقلب الصمتَ إلى **رسالةٍ تقول ماذا حدث وماذا يفعل**. وهي **فوق سقف
+   الوسيط** (٢٥٫٧ث) كي لا تسبقه فتُبلغ فشلاً عن نداءٍ ما زال حيّاً. */
+var DUR_UI_TIMEOUT_MS = 30000;
+
+function _durBusyMsg(what){
+  return '⏳ ' + what + ' — قد يستغرق ثوانيَ...';
+}
+function _durTimeoutMsg(){
+  return '<div style="padding:8px;background:#fff8e1;border-right:4px solid #ef6c00;border-radius:6px;">' +
+         '<b>🟠 لم يصل ردٌّ خلال ٣٠ ثانية — المنصّةُ مزدحمةٌ الآن.</b>' +
+         '<div style="margin-top:6px;font-size:12px;color:#6d4c41;">' +
+         'هذا ليس عطلاً في الأداة: عملُها الخادميُّ أقلُّ من نصف ثانية، لكنّ النداءَ ' +
+         'لم يجد دوراً. أعِد المحاولةَ الآن، أو شغّلها في وقتٍ أهدأ فتنجح غالباً.' +
+         '</div></div>';
+}
+/** يلفّ نداءً طويلاً بمهلةٍ تمنع الصمت — ويضمن أن يُعرَض شيءٌ في كلّ الأحوال. */
+function _durWithTimeout(outEl, run){
+  var settled = false;
+  var timer = setTimeout(function(){
+    if (settled) return;
+    settled = true;
+    if (outEl) outEl.innerHTML = _durTimeoutMsg();
+  }, DUR_UI_TIMEOUT_MS);
+  function done(html){
+    if (settled) return;                 /* وصل بعد المهلة: لا يدهس رسالةَ الازدحام */
+    settled = true;
+    try { clearTimeout(timer); } catch (eT) {}
+    if (outEl) outEl.innerHTML = html;
+  }
+  run(done);
+}
+
 function dur_run(){
   var out = document.getElementById('dur-out');
   if(!out) return;
-  out.innerHTML = '⏳ جارٍ المسح عبر كلّ الأوراق — قد يستغرق ثوانيَ...';
-  callServer('getDataUnificationReportProtected', { token: App.user.token }, function(res){
-    if(!res || !res.success){
-      out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التقرير')+'</div>';
-      return;
-    }
-    out.innerHTML = _durRender(res);
-  }, function(err){
-    out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر التقرير')+'</div>';
+  out.innerHTML = _durBusyMsg('جارٍ المسح عبر كلّ الأوراق');
+  _durWithTimeout(out, function(done){
+    callServer('getDataUnificationReportProtected', { token: App.user.token }, function(res){
+      if(!res || !res.success){
+        done('<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التقرير')+'</div>');
+        return;
+      }
+      done(_durRender(res));
+    }, function(err){
+      done('<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر التقرير')+'</div>');
+    });
   });
 }
 
@@ -28957,26 +29057,29 @@ function _durBox(ok, title, inner){
 function _durRender(res){
   var s = res.summary || {};
   var h = '<div style="padding:8px;background:#fff;border:1px solid #b2dfdb;border-radius:8px;">';
+  var bc = s.orphanByClass || {};
   h += '<div style="font-weight:800;margin-bottom:8px;">النتيجة: '+
-       s.nonCanonicalRoles+' صيغةَ دورٍ غيرَ كنسيّة · '+
-       s.orphanTeacherNames+' اسمَ معلّمٍ بلا صفٍّ في «المدرسين» · '+
+       s.roleDeviations+' صيغةَ دورٍ تُحَلّ إلى غيرِ المكتوب · '+
+       s.repairableNames+' اسمَ معلّمٍ <b>قابلٌ للتصحيح</b> (من '+s.orphanTeacherNames+' بلا مقابل) · '+
        s.unknownSubjects+' مادّةً لا يعرفها السجلّ · '+
        s.liveSheets+' ورقةً حيّة.</div>';
+  h += '<div style="font-size:12px;color:#546e7a;margin-bottom:8px;">'+
+       'و<b>'+(s.plainTeacherRoles||0)+'</b> قيمةَ دورٍ بلا رمز — وهو <b>الوضعُ الصحيحُ للمعلّم العاديّ</b> لا انحراف.</div>';
 
   /* ① الأدوار */
   var R = res.roles || {};
   if(R.missing){ h += _durBox(false, 'الأدوار', ' — ورقة «المدرسين» غير موجودة'); }
   else if(R.header === 'غير موجود'){ h += _durBox(false, 'الأدوار', ' — لا عمودَ دورٍ في الترويسة'); }
   else {
-    var okR = (R.nonCanonical.length === 0);
-    var inner = ' — '+R.total+' قيمةً مقروءة من عمود «'+escapeHtml(R.header||'')+'»';
+    var okR = (R.deviations.length === 0);
+    var inner = ' — '+R.total+' قيمةً مقروءة من عمود «'+escapeHtml(R.header||'')+'» ('+
+                R.canonical+' كنسيّةٌ أصلاً · '+R.plainTeacher+' بلا رمزٍ وهو الصحيح)';
     if(!okR){
       inner += '<div style="margin-top:6px;font-size:12px;">';
-      for(var i=0;i<R.nonCanonical.length;i++){
-        var e = R.nonCanonical[i];
-        inner += '<div>• «<b>'+escapeHtml(e.value)+'</b>» ×'+e.count+' ⇐ '+
-                 (e.canon ? 'تُحَلّ إلى «'+escapeHtml(e.canon)+'»'
-                          : '<span style="color:#c62828;">لا تُحَلّ إلى أيّ دور</span>')+'</div>';
+      for(var i=0;i<R.deviations.length;i++){
+        var e = R.deviations[i];
+        inner += '<div>• «<b>'+escapeHtml(e.value)+'</b>» ×'+e.count+
+                 ' ⇐ تُحَلّ إلى «'+escapeHtml(e.canon)+'»</div>';
       }
       inner += '<div style="color:#6d4c41;margin-top:4px;">قيمةُ الدور ليست مفتاحَ ربطٍ — توحيدُها يُصلح ولا يكسر.</div></div>';
     }
@@ -28997,7 +29100,27 @@ function _durRender(res){
               (mr.unmatched ? ' · <b style="color:#c62828;">'+mr.unmatched+' بلا مقابل</b>'+
                  (mr.samples.length ? ' ('+escapeHtml(mr.samples.join('، '))+')' : '') : '')+'</div>';
   }
-  innerT += '<div style="color:#6d4c41;margin-top:4px;">🔴 الاسمُ مفتاحُ ربط — أيُّ توحيدٍ يلزمه تعديلُ هذه المرايا كلِّها في تشغيلةٍ واحدة.</div></div>';
+  innerT += '</div>';
+  /* 🔴 تصنيفُ اليتيم — أربعةُ أصنافٍ بعلاجٍ مختلف، واثنان منها لا يُصلَّحان أبداً. */
+  var bcl = T.byClass || {};
+  innerT += '<div style="margin-top:8px;padding:6px;background:#fff;border:1px dashed #cfd8dc;border-radius:6px;font-size:12px;">';
+  innerT += '<b>تصنيفُ غيرِ المطابق:</b> '+
+            '🟢 علامةُ طرفٍ زائدة <b>'+(bcl.punct||0)+'</b> · '+
+            '🟢 كلمتان ملتصقتان <b>'+(bcl.spacing||0)+'</b> · '+
+            '🔴 قيمةٌ مؤسّسيّةٌ لا معلّم <b>'+(bcl.entity||0)+'</b> · '+
+            '🔴 لا يطابق أحداً <b>'+(bcl.absent||0)+'</b>';
+  innerT += '<div style="color:#6d4c41;margin-top:4px;">🔴 الأخيران <b>لا يُصلَّحان</b>: المؤسّسيُّ ليس شخصاً، ومَن لا يطابق أحداً معلّمٌ غادر — وإعادةُ تسميته تزويرٌ لا تصحيح.</div>';
+  if((T.repairable||[]).length){
+    innerT += '<div style="margin-top:6px;"><b>القابلُ للتصحيح ('+T.repairable.length+'):</b>';
+    for(var rp=0; rp<T.repairable.length && rp<15; rp++){
+      var R2 = T.repairable[rp];
+      innerT += '<div>• «'+escapeHtml(R2.from)+'» ⇐ «<b>'+escapeHtml(R2.to)+'</b>» — '+
+                R2.rows+' صفّاً في: '+escapeHtml(R2.sheets.join('، '))+'</div>';
+    }
+    innerT += '</div>';
+  }
+  innerT += '</div>';
+  innerT += '<div style="color:#6d4c41;margin-top:6px;font-size:12px;">🔴 الاسمُ مفتاحُ ربط — أيُّ توحيدٍ يلزمه تعديلُ هذه المرايا كلِّها في تشغيلةٍ واحدة.</div>';
   h += _durBox(okT, 'أسماء المعلّمين ومرايـاها', innerT);
 
   /* ③ المواد */
@@ -29009,8 +29132,10 @@ function _durRender(res){
   for(var k=0;k<(S.surfaces||[]).length;k++){
     var sf = S.surfaces[k];
     if(sf.missing){ innerS += '<div style="color:#90a4ae;">• '+escapeHtml(sf.sheet)+' — غير موجودة</div>'; continue; }
-    innerS += '<div>• '+escapeHtml(sf.sheet)+' — '+(sf.total-sf.unknown)+'/'+sf.total+' تُحَلّ'+
-              (sf.unknown ? ': <b>'+escapeHtml(sf.names.join('، '))+'</b>' : '')+'</div>';
+    innerS += '<div>• '+escapeHtml(sf.sheet)+' — '+(sf.total-sf.unknown-(sf.roleValues||0))+'/'+
+              (sf.total-(sf.roleValues||0))+' تُحَلّ'+
+              ((sf.roleValues||0) ? ' <span style="color:#78909c;">(+'+sf.roleValues+' قيمةَ دورٍ مشروعةً في نفس العمود — مستثناةٌ بحقّ)</span>' : '')+
+              (sf.unknown ? '<br>&nbsp;&nbsp;&nbsp;غيرُ معروفة: <b>'+escapeHtml(sf.names.join('، '))+'</b>' : '')+'</div>';
   }
   innerS += '</div>';
   h += _durBox(okS, 'المواد في التكليفات والقوائم', innerS);
@@ -29022,6 +29147,112 @@ function _durRender(res){
   if((H.backups||[]).length) innerH += '<div style="margin-top:4px;font-size:12px;color:#546e7a;">نسخٌ احتياطيّةٌ داخل الملفّ: '+escapeHtml(H.backups.join('، '))+'</div>';
   h += _durBox(true, 'جرد الأوراق', innerH);
 
+  h += '<div style="margin-top:8px;font-size:12px;color:#78909c;">';
+  for(var L=0;L<(res.limits||[]).length;L++){ h += '⚠️ '+escapeHtml(res.limits[L])+'<br>'; }
+  h += '</div></div>';
+  return h;
+}
+
+/* ════════════ 🧩 توحيدُ البيانات — معاينةٌ ثمّ تنفيذ ════════════
+   🔴 **زرُّ التنفيذ مقفولٌ حتى تنجح معاينة، ويُقفَل بعد كلّ تشغيل** — فلا يُضغَط
+   مرّتين على معاينةٍ بائتة. نفسُ عقد `cur_seedApply` و`snrApply` حرفياً. */
+function durr_preview(){
+  var out = document.getElementById('durr-out');
+  var btn = document.getElementById('durr-apply');
+  if(!out) return;
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; }
+  out.innerHTML = _durBusyMsg('جارٍ حسابُ ما سيتغيّر — بلا أيّ كتابة');
+  _durWithTimeout(out, function(done){
+    callServer('auditDataUnificationProtected', { token: App.user.token }, function(res){
+      if(!res || !res.success){
+        done('<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّرت المعاينة')+'</div>');
+        return;
+      }
+      done(_durrRender(res, false));
+      /* 🔴 فتحُ زرِّ التنفيذ **بعد** عرضِ المعاينة لا قبله — وزرٌّ يُفتَح على معاينةٍ
+         لم تُعرَض يُغري بالضغط على غير المرئيّ. */
+      var total = (res.roleEdits||0) + (res.nameEdits||0);
+      if(btn && total > 0){ btn.disabled = false; btn.style.opacity = '1'; }
+    }, function(err){
+      done('<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّرت المعاينة')+'</div>');
+    });
+  });
+}
+
+function durr_apply(){
+  var out = document.getElementById('durr-out');
+  var btn = document.getElementById('durr-apply');
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; }
+  confirmAction('توحيدُ البيانات',
+    'سيُعدَّل ما عرضته المعاينةُ في كلّ الأوراق معاً.\nوتُؤخَذ نسخةٌ من كلّ ورقةٍ ستُكتَب قبل أوّل خليّة، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.',
+    '🧩', function(){
+      if(out) out.innerHTML = '⏳ جارٍ التوحيد — لا تُغلق الصفحة...';
+      callServer('repairDataUnificationProtected', { token: App.user.token, confirm: 'توحيد' }, function(res){
+        if(!res || !res.success){
+          /* 🔴 الفشلُ الجزئيُّ يُعرَض بتفصيله لا برسالةٍ عامّة — المستخدمُ يحتاج أن
+             يعرف **ما كُتب وما لم يُكتب** كي يقرّر: يُكمل أم يرجع. */
+          var msg = '<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التوحيد')+'</div>';
+          if(res && res.partial){
+            msg += '<div style="margin-top:6px;font-size:12px;">كُتب <b>'+res.written+'</b> من <b>'+res.planned+'</b>'+
+                   (res.failedAt ? ' · توقّف عند ورقة «'+escapeHtml(res.failedAt.sheet)+'»' : '')+
+                   '<br>النسخُ الاحتياطيّة: '+escapeHtml((res.backups||[]).join('، '))+'</div>';
+          }
+          if(out) out.innerHTML = msg;
+          return;
+        }
+        if(out) out.innerHTML = _durrRender(res, true);
+      }, function(err){
+        if(out) out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر التوحيد')+'</div>';
+      });
+    }, { okText: '🧩 توحيد' });
+}
+
+function _durrRender(res, applied){
+  var h = '<div style="padding:8px;background:#fff;border:1px solid #b2dfdb;border-radius:8px;">';
+  if(applied){
+    h += '<div style="font-weight:800;color:#2e7d32;margin-bottom:6px;">✅ '+escapeHtml(res.message||'')+'</div>';
+    h += '<div style="font-size:12px;">قيمُ أدوار: <b>'+(res.roleEdits||0)+'</b> · أسماءُ معلّمين: <b>'+(res.nameEdits||0)+'</b></div>';
+    if((res.backups||[]).length){
+      h += '<div style="font-size:12px;color:#546e7a;margin-top:4px;">النسخُ الاحتياطيّة: '+escapeHtml(res.backups.join('، '))+'</div>';
+    }
+    h += '<div style="font-size:12px;color:#6d4c41;margin-top:4px;">وكلُّ تغييرٍ مسجَّلٌ بقيمته القديمة في ورقة «سجل_توحيد_البيانات» — الرجوعُ ممكنٌ خليّةً خليّة.</div>';
+    h += '</div>';
+    return h;
+  }
+
+  var total = (res.roleEdits||0) + (res.nameEdits||0);
+  h += '<div style="font-weight:800;margin-bottom:6px;">معاينة: '+total+' موضعاً سيُعدَّل ('+
+       (res.roleEdits||0)+' قيمةَ دور · '+(res.nameEdits||0)+' اسمَ معلّم)</div>';
+  if(!total){
+    h += '<div style="color:#2e7d32;">🟢 لا شيءَ يُوحَّد — كلُّ ما يُصلَح مُصلَحٌ أصلاً.</div>';
+  }
+  if((res.errors||[]).length){
+    h += '<div style="color:#c62828;margin-bottom:6px;">'+escapeHtml(res.errors.join(' · '))+'</div>';
+  }
+  if((res.sheets||[]).length){
+    h += '<div style="font-size:12px;margin-bottom:6px;"><b>الأوراقُ المتأثّرة:</b><br>';
+    for(var s=0;s<res.sheets.length;s++){
+      var sh = res.sheets[s];
+      h += '&nbsp;&nbsp;• '+escapeHtml(sh.sheet)+' — '+(sh.roles||0)+' دور · '+(sh.names||0)+' اسم<br>';
+    }
+    h += '</div>';
+  }
+  var sm = res.samples || {};
+  if((sm.roles||[]).length){
+    h += '<div style="font-size:12px;margin-bottom:4px;"><b>عيّنةُ الأدوار:</b><br>';
+    for(var r=0;r<sm.roles.length;r++){
+      h += '&nbsp;&nbsp;• «'+escapeHtml(sm.roles[r].from)+'» ⇐ «<b>'+escapeHtml(sm.roles[r].to)+'</b>»<br>';
+    }
+    h += '</div>';
+  }
+  if((sm.names||[]).length){
+    h += '<div style="font-size:12px;margin-bottom:4px;"><b>عيّنةُ الأسماء:</b><br>';
+    for(var n=0;n<sm.names.length;n++){
+      var e = sm.names[n];
+      h += '&nbsp;&nbsp;• '+escapeHtml(e.sheet)+' ص'+e.row+': «'+escapeHtml(e.from)+'» ⇐ «<b>'+escapeHtml(e.to)+'</b>»<br>';
+    }
+    h += '</div>';
+  }
   h += '<div style="margin-top:8px;font-size:12px;color:#78909c;">';
   for(var L=0;L<(res.limits||[]).length;L++){ h += '⚠️ '+escapeHtml(res.limits[L])+'<br>'; }
   h += '</div></div>';
