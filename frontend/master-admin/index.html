@@ -1935,9 +1935,33 @@ function _tsCell(c) {
   if (!c) return '<span style="color:#c62828;">تعذّر القياس</span>';
   var txt = _errEsc(c.abort) + ' / ' + _errEsc(c.n) + ' = <strong>' + _tsPct(c.abortRate) + '</strong>' +
             ' <span style="color:#94a3b8;font-size:11px;">[' + _tsPct(c.wilsonLo) + '–' + _tsPct(c.wilsonHi) + ']</span>';
+  txt += _tsSplit(c);
   if (!c.enough) return '<span style="color:#9e9e9e;" title="n أقلّ من الحدّ">' + txt + ' · غيرُ كافٍ للمقارنة</span>';
   var col = c.abortRate >= 0.2 ? '#c62828' : (c.abortRate >= 0.05 ? '#ef6c00' : '#2e7d32');
   return '<span style="color:' + col + ';">' + txt + '</span>';
+}
+/* تفكيكُ ما ليس نجاحاً ولا إجهاضاً (عقد v1 المعدَّل: ok+abort+upstream+transport+other = n).
+   الحقلُ الغائبُ لا يُعرَض صفراً — يُحذف من السطر، فالصفرُ ادّعاءُ قياس. */
+function _tsSplit(c) {
+  var parts = [], keys = [['upstream', 'خادم'], ['transport', 'نقل'], ['other', 'أخرى']];
+  for (var i = 0; i < keys.length; i++) {
+    var v = c[keys[i][0]];
+    if (typeof v === 'number' && v > 0) parts.push(keys[i][1] + ' ' + _errEsc(v));
+  }
+  return parts.length ? ' <span style="color:#64748b;font-size:11px;">(' + parts.join(' · ') + ')</span>' : '';
+}
+/* 🔴 رفضُ المنظّم (503 · `ev:'bulkhead' act:'reject'`) — نداءٌ لم يُرسَل إلى GAS أصلاً.
+   كان خارج اللوحة كلّياً؛ و`null` ⇒ «تعذّر القياس» لا صفر. */
+function _tsRejected(r) {
+  var missing = (r === null || r === undefined);
+  var val = missing ? '<span style="color:#c62828;">تعذّر القياس</span>'
+    : '<strong>' + _errEsc(r.n) + '</strong>' + (typeof r.share === 'number' ? ' (' + _tsPct(r.share) + ' من النداءات)' : '');
+  var h = '<div style="margin:8px 0 4px;"><strong>🚧 رفضُ المنظّم (503 — لم يصل GAS):</strong> ' + val + '</div>';
+  var rows = missing ? [] : (r.byFn || []);
+  for (var i = 0; i < rows.length; i++) {
+    h += '<div style="font-size:12px;">' + _errEsc(rows[i].app) + ' · <code>' + _errEsc(rows[i].fn) + '</code> × ' + _errEsc(rows[i].n) + '</div>';
+  }
+  return h;
 }
 /* 🔴 تغطيةُ البُعد (عقد v1 المعدَّل): الصفوفُ القديمةُ بلا الحقل **تسقط من التجميع بصمت**
    ⇒ قسمٌ بتغطيةٍ < ١ يُعلَن جزئياً، وإلّا قُرئت الساعاتُ الأولى بعد النشر نافذةً كاملة. */
@@ -1968,6 +1992,7 @@ function _tsRenderHtml(d) {
   }
   h += '<div style="margin-bottom:6px;">♻️ كتاباتٌ استُرِدّت بلا تنفيذٍ ثانٍ (<code>_dedup</code>): <strong>' +
        (d.dedup && typeof d.dedup.n === 'number' ? _errEsc(d.dedup.n) : '<span style="color:#c62828;">تعذّر القياس</span>') + '</strong></div>';
+  h += _tsRejected(d.rejected503);
   h += _tsTable('حسب نسخة الوركر (مقاطعُ النشر)', d.byVersion, function (r) {
     return '#' + _errEsc(r.number) + ' <code>' + _errEsc(r.id) + '</code>' +
            ' <span style="color:#94a3b8;">' + _errEsc(r.createdAt || '') + '</span>';
