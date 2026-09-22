@@ -583,10 +583,13 @@ function _wilson(k, n) {
 function _devStatsCell(c) {
   var ok = c.ok || 0, ab = c.abort_budget || 0;
   var up = (c.upstream_status || 0) + (c.upstream_html || 0);
+  /* `transport` = فشلُ `fetch` نفسِه لا انقضاءُ مهلتنا — يُسمّى صراحةً (مراجعة #368)،
+     و`other` ما لا اسمَ له ⇒ **مجموعُ الحقول الخمسة = n دائماً**، فلا فئةَ تختبئ في المقام. */
+  var tr = c.transport || 0;
   var n = 0;
   for (var k in c) if (Object.prototype.hasOwnProperty.call(c, k)) n += c[k];
   var w = _wilson(ab, n);
-  return { n: n, ok: ok, abort: ab, upstream: up,
+  return { n: n, ok: ok, abort: ab, upstream: up, transport: tr, other: n - ok - ab - up - tr,
            abortRate: n > 0 ? Math.round(ab / n * 10000) / 10000 : null,
            wilsonLo: w ? w.lo : null, wilsonHi: w ? w.hi : null,
            enough: n >= DEV_STATS_MIN_N };
@@ -652,6 +655,29 @@ function _devStatsCoverage(fold, rawN) {
            unbucketedN: Math.max(0, rawN - s) };
 }
 
+/* رفضُ المنظّم (503): العددُ وحصّتُه من كلّ ما طُلب (المنفَّذ `gasN` + المرفوض). بلا طرحٍ ولا
+   تجميعٍ بـ`why` — الرفضُ لا يبلغ GAS أصلاً. `share` = null حين لا مقام. */
+function _devStatsRejected(rows, gasN, top) {
+  var n = 0, byApp = {}, byFn = {};
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], a = typeof r.g.app === 'string' ? r.g.app : '', f = typeof r.g.fn === 'string' ? r.g.fn : '';
+    n += r.n;
+    byApp[a] = (byApp[a] || 0) + r.n;
+    byFn[a + '\u0001' + f] = (byFn[a + '\u0001' + f] || 0) + r.n;
+  }
+  var all = n + (gasN || 0);
+  function list(o, mk) {
+    var out = [];
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) out.push(Object.assign(mk(k), { n: o[k] }));
+    return out.sort(function (x, y) { return y.n - x.n; });
+  }
+  return {
+    n: n, share: all > 0 ? Math.round(n / all * 10000) / 10000 : null,
+    byApp: list(byApp, function (k) { return { app: k }; }),
+    byFn: list(byFn, function (k) { var p = k.split('\u0001'); return { app: p[0], fn: p[1] }; }).slice(0, top)
+  };
+}
+
 /* ساعةٌ UTC بصيغة السجلّ (`2026-09-22T12`) ⇒ حقولُ العرض بتوقيت اليمن (UTC+3 ثابتٌ بلا توقيتٍ صيفيّ). */
 function _devStatsHourYE(hr) {
   var t = Date.parse(hr + ':00:00Z');
@@ -699,7 +725,10 @@ async function _devStatsBuild(env, win, now) {
     q('clienterr', [['app', S], ['fn', S], ['kind', S]]),     // 5
     fetch(base + '/workers/scripts/' + DEV_STATS_SCRIPT + '/versions', { headers: auth })
       .then(function (r) { return r.json(); }),               // 6 أرقامُ النسخ وتواريخُها
-    q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE)   // 7 المُسترَدّة — تُطرح من 0·1·3
+    q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE),  // 7 المُسترَدّة — تُطرح من 0·1·3
+    /* 8 🔴 رفضُ المنظّم (503) — يُسجَّل `ev:'bulkhead'` **قبل** كتلة `ev:'gas'` فلا يبلغها أبداً
+       ⇒ بدونه تبدو اللوحةُ سليمةً في ذروة الإشباع بالضبط (مراجعة #368). */
+    q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }])
   ];
   var res = await Promise.allSettled(jobs);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
@@ -730,7 +759,7 @@ async function _devStatsBuild(env, win, now) {
     totals: _devStatsCell(fT.acc.all || {}),
     byApp: cells(fA, function (k) { return { app: k }; }).sort(byAbort),
     byFn: null, byHour: null, hourCoverage: null, byVersion: null, byGasV: null, gasVCoverage: null,
-    clienterr: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
+    clienterr: null, rejected503: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
   };
 
   if (val(1)) {
@@ -765,6 +794,10 @@ async function _devStatsBuild(env, win, now) {
     body.gasVCoverage = _devStatsCoverage(fG, rawN);
     body.byGasV = cells(fG, function (k) { return { gasV: k }; }).sort(byAbort);
   } else missing.push('byGasV');
+
+  if (val(8)) {
+    body.rejected503 = _devStatsRejected(val(8), body.totals.n, DEV_STATS_TOP_FN);
+  } else missing.push('rejected503');
 
   if (val(5)) {
     body.clienterr = val(5).map(function (r) {

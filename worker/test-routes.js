@@ -3696,6 +3696,16 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(c.n === 100 && c.abort === 35 && c.upstream === 5 && c.abortRate === 0.35 && c.enough === true,
         'الخليّة: n يجمع كلَّ `why` · upstream يجمع النوعين · enough عند n≥100');
   check(call('_devStatsCell(__v)', { ok: 50, abort_budget: 49 }).enough === false, '🔴 n=99 ⇒ enough=false (رماديّ)');
+  var ct = call('_devStatsCell(__v)', { ok: 10, abort_budget: 5, transport: 3, upstream_html: 1, weird: 2 });
+  check(ct.transport === 3 && ct.other === 2 && ct.ok + ct.abort + ct.upstream + ct.transport + ct.other === ct.n,
+        '🔴 `transport` مُسمّى · و`other` يلتقط ما لا اسمَ له ⇒ مجموعُ الحقول = n (لا فئةَ مختبئة)');
+  var rj = call('_devStatsRejected(__v, 80, 40)', [
+    { g: { app: 'student', fn: 'getGrades' }, n: 15 }, { g: { app: 'teacher', fn: 'x' }, n: 5 }]);
+  check(rj.n === 20 && rj.share === 0.2 && rj.byApp[0].app === 'student' && rj.byApp[0].n === 15 && rj.byFn.length === 2,
+        '🔴 رفضُ المنظّم (503): العددُ وحصّتُه من كلّ ما طُلب (20 من 100) · مرتّبٌ بالتطبيق');
+  check(call('_devStatsRejected(__v, 0, 40)', []).share === null, 'صفرُ طلبٍ ⇒ share=null لا صفر');
+  check(/q\('bulkhead', \[\['app', S\], \['fn', S\]\], \[\{ key: 'act', operation: 'eq', type: 'string', value: 'reject' \}\]\)/.test(src),
+        '🔴 الاستعلامُ يشمل `ev:\'bulkhead\'` بـ`act=reject` (وإلّا بدت اللوحةُ سليمةً في ذروة الإشباع)');
 
   // ⑤ قاعدةُ الفشل: الشكلُ الغريبُ يرمي — لا مصفوفةٌ فارغةٌ تُقرأ «صفرُ أحداث».
   function throws(v) { try { call('_devStatsRows(__v)', v); return false; } catch (e) { return true; } }
