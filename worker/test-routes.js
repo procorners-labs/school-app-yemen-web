@@ -4273,7 +4273,9 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
     check(/_legSplit \? _gasFetchSplit\(fullTarget, init, _legRec\) : fetch\(fullTarget, init\)/.test(src),
           'المسارُ الرئيس موصول: مطفأ ⇒ `fetch(fullTarget, init)` حرفياً');
     var wr = fs.readFileSync(path.join(__dirname, '..', 'wrangler.jsonc'), 'utf8');
-    check(/"GAS_LEG_SPLIT":\s*"off"/.test(wr), '🔴 يُشحن مطفأً: `GAS_LEG_SPLIT: "off"` في wrangler.jsonc');
+    /* 🔴 القيمةُ مُعلَنةٌ صراحةً `on` أو `off` — لا غائبة ولا ملتبسة. كان الشرطُ «`off` حصراً» حتى
+       شغّله المالك (بطاقة 2026-09-22) لنافذة ٢٤ ساعة؛ والتشغيلُ الآن قرارٌ مالكٍ لا شحنٌ عارض. */
+    check(/"GAS_LEG_SPLIT":\s*"(on|off)"/.test(wr), '🔴 `GAS_LEG_SPLIT` مُعلَنٌ صراحةً `on` أو `off` في wrangler.jsonc');
   });
 });
 
