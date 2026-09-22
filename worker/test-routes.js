@@ -3971,6 +3971,58 @@ console.log('`frontend/` المخدوم ضدّ السياسة النافذة:');
      **ولا شيءَ هنا يقيسهما** — بندُ `csp-inline-debt-needs-nonce-migration`. */
 })();
 
+/* ── قياسُ الظلّ: fail-closed · وسقفٌ تحت مهلة العميل · والإجهاضُ محروس ───────────
+   🔴 **الخطرُ الذي يحرسه:** الظلُّ يترك اتّصالاً صادراً مفتوحاً بعد أن يُخدَم المستخدم.
+   فإن انقلب افتراضُه إلى «مُشغَّلٌ ما لم يُطفَأ» صار يعمل في بيئةٍ لم تُعلنه؛ وإن تجاوز
+   سقفُه مهلةَ `xhr` العميليّة (60,000) صار يحتجز ما لا مستهلكَ له.
+   🔴 **وكلُّ تأكيدٍ هنا بضابطٍ معاكس** — الحالةُ المقبولة والمرفوضة معاً. */
+(function () {
+  var sIdx = src.indexOf('function _shadowOn(env)');
+  var sEnd = src.indexOf('\n}', sIdx) + 2;
+  if (sIdx < 0 || sEnd <= 1) {
+    console.log('  ❌ ضابط: تعذّر استخراج `_shadowOn` — الفحص أجوف');
+    failed++;
+    return;
+  }
+  var sctx = vm.createContext({});
+  vm.runInContext(src.slice(sIdx, sEnd) + '; this.f = _shadowOn;', sctx);
+  [[undefined, false, '🔴 fail-closed: بيئةٌ معدومة ⇒ مطفأ'],
+   [{}, false, '🔴 fail-closed: المفتاحُ غائب ⇒ مطفأ'],
+   [{ SHADOW_ABORT: 'off' }, false, '🔴 `off` ⇒ مطفأ'],
+   [{ SHADOW_ABORT: 'yes' }, false, '🔴 ضابط: أيُّ قيمةٍ أخرى ⇒ مطفأ (لا تشغيلَ بالمصادفة)'],
+   [{ SHADOW_ABORT: 'on' }, true, '🟢 `on` ⇒ مُشغَّل'],
+   [{ SHADOW_ABORT: 'ON' }, true, '🟢 ضابط: غيرُ حسّاسٍ للحالة']
+  ].forEach(function (c) {
+    var got = sctx.f(c[0]);
+    var good = (got === c[1]);
+    if (!good) failed++;
+    console.log((good ? '  ✅ ' : '  ❌ ') + c[2] + '  [' + got + ']');
+  });
+
+  /* 🔴 **ثابتٌ عدديّ: سقفُ الظلّ فوق أكبرِ ميزانيّةٍ وتحت مهلة العميل.**
+     فوقَ الميزانيّة وإلّا لم يقِس شيئاً بعدها؛ وتحت `xhr.timeout = 60000` وإلّا احتجز
+     اتّصالاً تخلّى عنه العميلُ أصلاً. ⇒ **حدّان من الطرفين، لا رقمٌ مختار.** */
+  var capM  = src.match(/var SHADOW_CAP_MS\s*=\s*(\d+)/);
+  var sampM = src.match(/var SHADOW_SAMPLE\s*=\s*([\d.]+)/);
+  var budM  = src.match(/\(isPost \? (\d+) : (\d+)\) - _bhWaited/);
+  if (!capM || !sampM || !budM) {
+    console.log('  ❌ ضابط: تعذّر قراءةُ ثوابت الظلّ/الميزانيّة — الفحص أجوف');
+    failed++;
+  } else {
+    var cap = +capM[1], samp = +sampM[1], maxBudget = Math.max(+budM[1], +budM[2]);
+    var CLIENT_XHR_MS = 60000; // `frontend/assets/gas-bridge.js:122` — المصدرُ هناك
+    [[cap > maxBudget, 'سقفُ الظلّ (' + cap + ') فوق أكبر ميزانيّة (' + maxBudget + ')'],
+     [cap < CLIENT_XHR_MS, 'سقفُ الظلّ تحت مهلة العميل (' + CLIENT_XHR_MS + ')'],
+     [samp > 0 && samp <= 1, 'نسبةُ المسح (' + samp + ') داخل [0,1]'],
+     [/if \(!_shadowThis\) controller\.abort\(\);/.test(src),
+      '🔴 الإجهاضُ في المؤقّت **محروسٌ** بـ`!_shadowThis` — بلا الحارس يُجهَض الظلُّ فلا يقيس شيئاً']
+    ].forEach(function (c) {
+      if (!c[0]) failed++;
+      console.log((c[0] ? '  ✅ ' : '  ❌ ') + c[1]);
+    });
+  }
+})();
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —
