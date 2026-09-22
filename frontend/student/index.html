@@ -2931,6 +2931,32 @@ function _stuRunGated(fnName, run) {
 /** يُصفّر خانات البوّابة — للمعمل ولأي مسارٍ يُعيد بناء الجلسة عمداً. */
 function _stuResetGate() { _stuInflight = 0; _stuWaitQueue = []; }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   صنفٌ ثالث: **خلفيّ** — يمرّ بالسقف، **ويُسقَط عند الازدحام لا يُصطَفّ** (2026-09-22)
+   ──────────────────────────────────────────────────────────────────────────────
+   🔴 **لماذا صنفٌ ثالثٌ ولا يكفي الاثنان:** التصنيفُ القائم ثنائيٌّ — «قراءةٌ تُخنَق»
+   و«كتابةٌ تمرّ فوراً». والنبضةُ **ليست منهما**: ليست فعلَ مستخدمٍ فتستحقّ الفوريّة،
+   وليست قراءةً ينتظرها أحدٌ فتستحقّ مقعداً في الطابور.
+   🎯 **والفارقُ العمليُّ في الازدحام بالذات:** لو صُنِّفت قراءةً لاصطفّت **أمام** دخولِ
+   طالبٍ ينتظره إنسان؛ ولو صُنِّفت كتابةً لمرّت فوراً فزاحمته. ⇒ **تُسقَط** —
+   والدورةُ ٤ دقائق فتأتي التاليةُ بلا فقدٍ يُذكَر.
+   ⚠️ **والإسقاطُ ليس فشلاً صامتاً:** `run` لا يُستدعى أصلاً، و`onSkip` تُخبر المستدعيَ
+   ليُعيد الجدولة — فمن أراد أن يعرف عرف، ولا يُبتلَع الخبر.
+   🔴 **ولا يُستعمَل هذا لأيّ نداءٍ ينتظره مستخدم** — إسقاطُ نداءِ دخولٍ عطلٌ لا تحسين.
+   ══════════════════════════════════════════════════════════════════════════════ */
+function _stuRunBackground(fnName, run, onSkip) {
+  if (_stuInflight >= STU_MAX_INFLIGHT || _stuWaitQueue.length) {
+    if (typeof onSkip === 'function') { try { onSkip(); } catch (eSk) {} }
+    return false;
+  }
+  var released = false;
+  _stuInflight++;
+  function once() { if (released) return; released = true; _stuRelease(); }
+  setTimeout(once, STU_SLOT_MAX_MS);
+  try { run(once); } catch (eB) { once(); }
+  return true;
+}
+
 /* 🔴 **سقفُ بياتٍ صريح للتراجع** (بند 196): بائتٌ بلا سقفٍ يعرض بياناتِ الأمس بثقة.
    ويُقاس **من لحظة الانتهاء** لا من لحظة الكتابة — لأن `e` وحدها مخزَّنة. */
 var STU_STALE_MAX_AGE_MS = 30 * 60 * 1000;
@@ -4484,21 +4510,41 @@ function initApp() {
     try { _prLast = parseInt(localStorage.getItem(_prKey) || '0', 10) || 0; } catch (ePrLs) {}
     if (!(Date.now() - _prLast < 6 * 60 * 60 * 1000)) {
       try { localStorage.setItem(_prKey, String(Date.now())); } catch (ePrLs2) {}
-      google.script.run
-        .withSuccessHandler(function (r) {
-          if (r && r.ok && r.pending) {
-            /* طلب وُجد فعلاً ⇒ أزِل الخنق كي يُعاد الفحص في الإقلاع التالي مباشرة
-               (المدير قد يُرسل طلباً آخر، ولا نريد كتمه ست ساعات). */
-            try { localStorage.removeItem(_prKey); } catch (ePrLs3) {}
-            var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
-            openPlatformReviewModal(true);
-          }
-        })
-        .withFailureHandler(function () {
-          /* فشل النداء لا يستهلك نافذة الخنق — وإلا ضاع الطلب ست ساعات بسبب عطل عابر */
-          try { localStorage.removeItem(_prKey); } catch (ePrLs4) {}
-        })
-        .checkPendingPlatformReviewRequest({ schoolId: APP.user.schoolId, studentId: APP.user.id });
+      /* 🔴 **مُبوَّبٌ ومؤجَّلٌ منذ 2026-09-22 — وكان يُطلَق داخل `initApp` بلا مهلةٍ ولا سقف.**
+         الخنقُ بـ`localStorage` يقلّل **تواترَه** ولا يمسّ **لحظتَه**: حين يمرّ الخنقُ
+         يقع النداءُ **داخل رشقة الإقلاع نفسِها** مزاحماً `getStudentBootBundle`
+         و`getHomeScheduleBundle` على المقاعد.
+         🎯 وهو من صنفٍ مُسمًّى مقيساً: **«ما ينجح دائماً لا يُقاس»** — `ok` بنسبة ١٠٠٪
+         فلا يظهر في أيّ مقياسِ إخفاق، **وطلبُ التقييم حدثٌ نادرٌ يُنشئه المديرُ يدوياً**
+         ⇒ تأخّرُ ثانيتين لا يُفقد شيئاً، والمقعدُ المُحرَّر يذهب لدخولِ طالب.
+         ⚠️ والتأجيلُ **بعد** الرشقة لا بدلها — والبوّابةُ تمنع تزامنَه معها. */
+      var _prRun = function (release) {
+        var _prDone = false;
+        function _prRel() { if (_prDone) return; _prDone = true; try { release(); } catch (eRR) {} }
+        try {
+          google.script.run
+            .withSuccessHandler(function (r) {
+              if (r && r.ok && r.pending) {
+                /* طلب وُجد فعلاً ⇒ أزِل الخنق كي يُعاد الفحص في الإقلاع التالي مباشرة
+                   (المدير قد يُرسل طلباً آخر، ولا نريد كتمه ست ساعات). */
+                try { localStorage.removeItem(_prKey); } catch (ePrLs3) {}
+                var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
+                openPlatformReviewModal(true);
+              }
+              _prRel();
+            })
+            .withFailureHandler(function () {
+              /* فشل النداء لا يستهلك نافذة الخنق — وإلا ضاع الطلب ست ساعات بسبب عطل عابر */
+              try { localStorage.removeItem(_prKey); } catch (ePrLs4) {}
+              _prRel();
+            })
+            .checkPendingPlatformReviewRequest({ schoolId: APP.user.schoolId, studentId: APP.user.id });
+        } catch (ePrCall) { try { localStorage.removeItem(_prKey); } catch (ePrLs5) {} _prRel(); }
+      };
+      setTimeout(function () {
+        if (typeof _stuRunGated === 'function') _stuRunGated('checkPendingPlatformReviewRequest', _prRun);
+        else _prRun(function () {});
+      }, 2500);
     }
   } catch (ePrReq) {}
 
@@ -7609,37 +7655,45 @@ function loadSchedule(force) {
   var w = $('schedWrap');
   w.innerHTML = loaderHTML('جارٍ تحميل الجدول...');
 
-  // إعدادات التواقيت وبيانات الجدول بالتوازي (كان الجلب متسلسلاً: إعدادات ثم بيانات)،
-  // والعرض بعد اكتمالهما لأن renderSchedule يعتمد على التواقيت
-  var cfgDone = false, dataDone = false, dataRes = null, dataErr = null;
-  function finish() {
-    if (!cfgDone || !dataDone) return;
-    if (dataErr !== null) {
-      w.innerHTML = errHTML('فشل تحميل الجدول: ' + dataErr);
-      return;
-    }
+  /* 🔴 **نداءٌ واحدٌ مركَّبٌ بدل تنفيذَين متوازيَين (2026-09-22).**
+     كانت `getScheduleSettings` و`getSchedule` تُطلَقان معاً فتحجزان **مقعدين من الثلاثين
+     في اللحظة نفسِها** لفتحِ تبويبٍ واحد. والمقيسُ من ثلاثة أسطحَ أن زمنَ النداء
+     **انتظارُ قبولٍ قبل بدء `doPost`** لا حساب ⇒ **الرافعةُ عددُ النداءات المتزامنة.**
+
+     🟢 **ولا كودَ جديد: `getHomeScheduleBundle` موجودةٌ وتخدم الغرضَ حرفياً**، وطُبِّقت
+     على `loadHomeToday` منذ 2026-07-27 لنفس السبب — **وهذا التبويبُ وحدَه تخلّف عنها.**
+
+     🎯 **ومكسبٌ ثانٍ يفوق الأوّل: مفتاحُ الكاش نفسُه** (`sched_bundle_<صفّ>_<شعبة>` · 600ث)
+     ⇒ مَن فتح «الرئيسية» ثمّ «الجدول» يُصيب الكاشَ ⇒ **صفرُ نداءٍ شبكيٍّ للتبويب كلِّه**،
+     بينما النداءان المنفصلان كانا يذهبان للشبكة في كلّ مرّة.
+
+     ⚠️ **وسلوكُ `force` محفوظٌ بحرفه:** يتجاوز كاشَ `sessionStorage` القديم **و**يُجبر
+     `callServerSmart` على تجاوز كاشه — وإلّا صار زرُّ «تحديث» يعرض البائتَ بثقة. */
+  function _schedApply(res) {
     APP.loaded.schedule = true;
-    renderSchedule(dataRes);
+    renderSchedule(res);
   }
+  /* 🗑️ **وقراءةُ `ssGet('schedule')` حُذفت — كانت ميّتةً بنيويّاً لا زائدة.**
+     مسحُ `ssSet` في سطح الطالب كلِّه أعطى **مفتاحاً واحداً مكتوباً: `grades`** ⇒
+     `ssGet('schedule')` **تُرجِع `null` دائماً** فالفرعُ لم يُنفَّذ قطّ.
+     🔴 وخطرُها أنها **تُقرأ قدرةً قائمة**: مَن يصلح بطءَ هذا التبويب يظنّ أن ثمّةَ
+     كاشَ جلسةٍ يعمل فيبني عليه (فئةُ «كودٌ سليمٌ بلا مستهلك» — بند 157). */
   callServerSmart(
-    'getScheduleSettings',
-    { schoolId: APP.user.schoolId },
-    'sched_settings',
-    600,
-    function (cfg) { _applySchedSettings(cfg); cfgDone = true; finish(); },
-    function ()    { cfgDone = true; finish(); }   // عند الفشل: نُكمل بالافتراضات
-  );
-  if (!force) {
-    var c = ssGet('schedule');
-    if (c) { dataRes = c; dataDone = true; finish(); return; }
-  }
-  callServerSmart(
-    'getSchedule',
+    'getHomeScheduleBundle',
     { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-    'schedule_' + APP.user.class + '_' + APP.user.section,
+    force ? null : ('sched_bundle_' + APP.user.class + '_' + APP.user.section),
     600,
-    function (r) { dataRes = r; dataDone = true; finish(); },
-    function (e) { dataErr = (e && e.message) || e; dataDone = true; finish(); }
+    function (bundle) {
+      /* الإعداداتُ أوّلاً — `renderSchedule` يعتمد التواقيت، وهذا هو سببُ انتظارِ
+         النداءين معاً في التصميم القديم. والحزمةُ تُنهيه بنيويّاً: وصلا معاً أو لم يصلا. */
+      if (bundle && bundle.settings) _applySchedSettings(bundle.settings);
+      /* 🔴 غيابُ الجدولِ داخل حزمةٍ وصلت **ليس فشلَ نقل** — يُمرَّر لـ`renderSchedule`
+         التي تعرض رسالتَها الخاصّة، ولا يُستبدَل برسالةِ «فشل تحميل» المضلّلة. */
+      _schedApply(bundle && bundle.schedule ? bundle.schedule : null);
+    },
+    function (e) {
+      w.innerHTML = errHTML('فشل تحميل الجدول: ' + ((e && e.message) || e));
+    }
   );
 }
 function renderSchedule(r) {
@@ -8645,16 +8699,34 @@ function _startHeartbeat() {
        `visibilitychange` فقط، فنبضةُ المؤقّت **لا تُزيح نافذة الخنق** ⇒ نبضةٌ ثمّ عودةُ
        تبويبٍ بعدها بثانية = نداءان بدل واحد. */
     _lastBeatAt = Date.now();
-    // رمي متزامن (لن يقع نظرياً) يجب ألا يقتل سلسلة الجدولة — فخّ بند 78-أ.
-    try {
-      google.script.run
-        .withSuccessHandler(function () { _hbDelayMs = _HB_BASE_MS; _scheduleNextBeat(); })
-        .withFailureHandler(function () {
-          _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
-          _scheduleNextBeat();
-        })
-        .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
-    } catch (eBeat) { _scheduleNextBeat(); }
+    /* 🔴 **صنفٌ خلفيٌّ منذ 2026-09-22: تُسقَط عند الازدحام ولا تُصطَفّ.**
+       كانت تُطلَق بـ`google.script.run` خاماً ⇒ **تتجاوز `_stuRunGated` كلّياً** فتزاحم
+       دخولَ الطالب على المقاعد الثلاثين في اللحظة نفسِها. والمقيسُ من ثلاثة أسطحَ أن
+       الزمنَ **انتظارُ قبولٍ** لا حساب ⇒ **الرافعةُ عددُ النداءات المتزامنة**.
+       ⚠️ **ولا يُبالَغ في وعدها:** النبضتان معاً **١٠٫٢٪** من نداءات ٢٤ ساعة (مقيس)
+       — **لا ٧٠٪** كما كان مكتوباً في تعليقٍ بائتٍ أعلاه عمرُه ٢٧ يوماً. ⇒ المكسبُ
+       **إزالةُ مزاحمةٍ لحظيّة** لا تحريرُ حصّةٍ ضخمة.
+       🟢 **والإسقاطُ يُعيد الجدولةَ ولا يبتلع شيئاً** — والدورةُ ٤ دقائق فتأتي التالية.
+       🔴 **ولا يُخفَّض الإيقاعُ عند الإسقاط:** الازدحامُ حالةُ لحظةٍ لا عطلُ خادم،
+       وتطبيقُ التراجع التكيّفيّ عليه يُعاقب النبضةَ على ازدحامِ غيرِها. */
+    var _beatRun = function (release) {
+      var _bDone = false;
+      function _bRel() { if (_bDone) return; _bDone = true; try { release(); } catch (eR) {} }
+      try {
+        google.script.run
+          .withSuccessHandler(function () { _hbDelayMs = _HB_BASE_MS; _bRel(); _scheduleNextBeat(); })
+          .withFailureHandler(function () {
+            _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
+            _bRel(); _scheduleNextBeat();
+          })
+          .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
+      } catch (eBeat) { _bRel(); _scheduleNextBeat(); }
+    };
+    if (typeof _stuRunBackground === 'function') {
+      _stuRunBackground('studentHeartbeat', _beatRun, function () { _scheduleNextBeat(); });
+    } else {
+      _beatRun(function () {});
+    }
   }
   /* ★ نبضة العودة مخنوقة بحدّ أدنى دقيقة — نقلاً عن نظيرها المُطبَّق في teacher
      (`_BEAT_MIN_GAP_MS`). بلا خنق، تبديل التبويبات المتكرّر يُطلق نبضة لكل عودة
@@ -9371,17 +9443,34 @@ function initLazyImages() {
   }
   // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
   try { var _stLastColor = (window.localStorage) ? localStorage.getItem('stTheme_' + (window.SCHOOL_ID || '')) : null; if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
+  /* 🔴 **مُبوَّبٌ منذ 2026-09-22 — وكان يتجاوز بوّابةَ التزامن كلَّها.**
+     العلّةُ بنيويّةٌ لا تصنيفيّة: `_stuIsRead('getStudentSchoolBrand')` تُرجِع `true`،
+     **لكنّ البوّابةَ لا تُطبَّق إلّا على ما يمرّ بـ`callServerGated`/`callServerSmart`**
+     — والنداءُ الخامُّ يمرّ بلا سقفٍ مهما كان تصنيفُه.
+     🎯 **وهذا أعلى نداءٍ تكراراً على مسار الإقلاع: يقع عند كلّ فتحِ صفحةٍ حتى قبل الدخول**
+     ⇒ يزاحم `loginStudent` على المقاعد الثلاثين في اللحظة نفسِها.
+     والمقيسُ 2026-09-22 من ثلاثة أسطحَ أن الزمنَ **انتظارُ قبولٍ** لا حساب (الشغلُ ينتهي
+     في ٣–٩ث والوسيطُ ينتظر ٢٥٫٧) ⇒ **الرافعةُ عددُ النداءات المتزامنة.**
+     ⚠️ والتراجعُ محفوظ: غيابُ البوّابة (ترتيبُ تحميلٍ غيرُ متوقَّع) يُنفِّذ النداءَ كما
+     كان بالضبط — **لا يُسقطه**، فالهويّةُ أهمُّ من التزامن. */
   function run() {
-    try {
-      google.script.run
-        .withSuccessHandler(function (res) {
-          // 🔴 بوّابةُ قبولٍ واحدة: اسمٌ حقيقيّ أو لا شيء — لا طلاءَ ولا تخزينَ لحمولةٍ فارغة.
-          if (res && res.ok && res.name) { applyBrand(res, true); _stApplyReturnHref(res.slug); return; }
-          try { window.__stBrandLastError = (res && res.code) || 'EMPTY'; } catch (eBE) {}
-        })
-        .withFailureHandler(function () { try { window.__stBrandLastError = 'NETWORK'; } catch (eBF) {} })
-        .getStudentSchoolBrand(_stBrandSid);
-    } catch (e) {}
+    function _fire(release) {
+      var _done = false;
+      function _rel() { if (_done) return; _done = true; try { release(); } catch (eR) {} }
+      try {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            // 🔴 بوّابةُ قبولٍ واحدة: اسمٌ حقيقيّ أو لا شيء — لا طلاءَ ولا تخزينَ لحمولةٍ فارغة.
+            if (res && res.ok && res.name) { applyBrand(res, true); _stApplyReturnHref(res.slug); _rel(); return; }
+            try { window.__stBrandLastError = (res && res.code) || 'EMPTY'; } catch (eBE) {}
+            _rel();
+          })
+          .withFailureHandler(function () { try { window.__stBrandLastError = 'NETWORK'; } catch (eBF) {} _rel(); })
+          .getStudentSchoolBrand(_stBrandSid);
+      } catch (e) { _rel(); }
+    }
+    if (typeof _stuRunGated === 'function') _stuRunGated('getStudentSchoolBrand', _fire);
+    else _fire(function () {});
   }
   // م1: كاش دافئ (الهوية عُرضت فعلاً أعلاه من _stCachedBrand) ⇒ تخطَّ النداء الخادمي كلياً.
   // الهويةُ المحقونة من الوسيط (`__SCHOOL_BRAND__`) تُرسَم فوق الكاش **بلا تخزين** — عقد 2026-09-03.
