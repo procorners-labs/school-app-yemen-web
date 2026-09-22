@@ -145,9 +145,15 @@
   }
 
   // ── طابور الكتابة ────────────────────────────────────────────
-  function enqueue(app, fn, args, schoolId) {
+  /* 🔑 `opId` يُحفظ مع العمليّة ويُعاد به نفسِه في كلّ إرسال — فالخادمُ يُرجِع نتيجةَ تنفيذٍ
+     سابقٍ تمّ (ضاع جوابُه) بلا تنفيذٍ ثانٍ (`teacher/ApiEndpoint.js`). يمرّره الجسرُ حين
+     وُلدت الكتابةُ متّصلةً فأُرسلت مرّةً قبل الطابور؛ وإلّا يُولَّد هنا. */
+  var OP_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+  function enqueue(app, fn, args, schoolId, opId) {
     var op = {
       key: newOpId(),
+      opId: (typeof opId === 'string' && OP_ID_RE.test(opId)) ? opId
+            : ('op' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12)),
       app: app,
       fn: fn,
       args: args,
@@ -200,13 +206,15 @@
   function runOp(op) {
     return new Promise(function (resolve) {
       if (!window.__gasRawCall) { resolve({ kind: 'network' }); return; }
+      /* عمليّةٌ قديمةٌ في الطابور قبل هذه الطبقة بلا `opId` ⇒ تُرسَل بلاه كما كانت (لا اختلاق). */
+      var oid = (typeof op.opId === 'string' && OP_ID_RE.test(op.opId)) ? op.opId : undefined;
       window.__gasRawCall(op.fn, op.args, function () {
         resolve({ kind: 'ok' });
       }, function (err) {
         // نميّز خطأ الشبكة عن خطأ الخادم المنطقي عبر علامة يضبطها الجسر.
         var net = err && err.__network === true;
         resolve({ kind: net ? 'network' : 'server', error: (err && err.message) || 'خطأ' });
-      });
+      }, undefined, oid);
     });
   }
 

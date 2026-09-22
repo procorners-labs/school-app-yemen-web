@@ -96,7 +96,7 @@
 
   // النقل الخام: نفس سلوك google.script.run الأصلي عبر XHR.
   // أخطاء الشبكة (status 0/مهلة/onerror/رد غير صالح/خطأ بوابة) تُعلَّم __network=true.
-  function rawCall(fnName, args, onSuccess, onFailure, userObject) {
+  function rawCall(fnName, args, onSuccess, onFailure, userObject, opId) {
     var _t0 = Date.now();
     var endpoint = window.GAS_ENDPOINT;
     if (!endpoint) {
@@ -104,11 +104,13 @@
       return;
     }
 
-    var payload = JSON.stringify({
-      fn: fnName,
-      args: args,
-      schoolId: window.SCHOOL_ID || null
-    });
+    /* 🔑 `opId` **مفتاحٌ أخيرٌ ويُضاف للكتابات وحدها** (يمرّره `callServer`/الطابور):
+       أيُّ مفتاحٍ رابعٍ يُسقط النداءَ من كاش الحافّة في الوركر (`_apiCacheProbe`)،
+       و`fn` أوّلاً لأن إسنادَ سجلّ الوركر يقرأ أوّلَ ٢٠٠ محرف. والعقدُ الخادميّ في
+       `teacher/ApiEndpoint.js` (منعُ التنفيذ المزدوج). */
+    var body = { fn: fnName, args: args, schoolId: window.SCHOOL_ID || null };
+    if (opId) body.opId = opId;
+    var payload = JSON.stringify(body);
 
     // استخدام XMLHttpRequest بدلاً من fetch لضمان التوافق وتجنب تداخل الإضافات
     var xhr = new XMLHttpRequest();
@@ -172,6 +174,12 @@
 
       if (data && data.ok) {
         if (onSuccess) onSuccess(data.result, userObject);
+      } else if (data && data.pending) {
+        /* 🔑 التنفيذُ الأوّل لنفس `opId` ما زال جارياً عند Google — **ليس خطأً منطقياً**:
+           يُعلَّم شبكةً كي يبقى في الطابور ويُعاد لاحقاً فيلقى النتيجةَ المخزَّنة. */
+        var pe = netError('قيد التنفيذ — سيُستكمَل تلقائياً');
+        pe.__pending = true;
+        if (onFailure) onFailure(pe, userObject);
       } else {
         // الخادم رد بنجاح اتصال لكن بخطأ منطقي — ليس خطأ شبكة.
         if (onFailure) onFailure(new Error((data && data.error) || 'خطأ في الخادم'), userObject);
@@ -215,6 +223,13 @@
       }, userObject);
     }
     attempt(0);
+  }
+
+  var WRITE_RECOVER_DELAY_MS = 3000;
+  /* معرّفُ عمليّةٍ يطابق `API_OP_ID_RE` في الخادم (`[A-Za-z0-9_-]{8,64}`). */
+  function newOpId() {
+    return 'op' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10) +
+           Math.random().toString(36).slice(2, 6);
   }
 
   function optimisticWrite() {
@@ -261,22 +276,40 @@
     }
 
     if (kind === 'write') {
+      /* 🔑 مفتاحُ عمليّةٍ واحدٌ يرافق الكتابةَ في كلّ إرسالاتها — الأوّل والاسترجاع والطابور.
+         🔴 **العطلُ الذي يقفله (2026-09-23):** الكتابةُ التي تتلقّى 502 كانت تُطابَر ثمّ تُعاد،
+         والتنفيذُ الأوّل **يكتمل عند Google** (مُثبَت) ⇒ تنفيذٌ مزدوج، ورسالةُ «حُفظ محلياً»
+         تكذب في الاتّجاه الآخر. الخادمُ يُرجِع المخزَّن للمعرّف نفسه بلا تنفيذٍ ثانٍ. */
+      var opId = newOpId();
+      var toQueue = function (uo) {   // تعبيرٌ لا تصريح: تصريحُ دالّةٍ داخل كتلةٍ ممنوعٌ في ES5 الصارم
+        OS.enqueue(app, fnName, args, schoolId, opId).then(function () {
+          if (onSuccess) onSuccess(optimisticWrite(), uo);
+        });
+      };
       if (OS.isOnline()) {
         rawCall(fnName, args, function (result, uo) {
           OS.refreshUI();
           if (onSuccess) onSuccess(result, uo);
         }, function (err, uo) {
-          if (err && err.__network) {
-            // فشل الإرسال: ضعها في الطابور وأكمل تفاؤلياً.
-            OS.enqueue(app, fnName, args, schoolId).then(function () {
-              if (onSuccess) onSuccess(optimisticWrite(), uo);
-            });
+          if (err && err.__saturated) {
+            /* 502/504: الأرجحُ أن العملَ تمّ وضاع جوابُه ⇒ **استرجاعٌ واحد** بنفس المعرّف بعد
+               ٣ث: يُرجِع النتيجةَ الحقيقيّة (`_dedup`) بدل «حُفظ محلياً» الكاذب. وما لم يُسترَدّ
+               يذهب إلى الطابور — وصار آمناً. ولا إعادةَ ثانية: الإشباعُ لا يُضرَب مرّتين. */
+            setTimeout(function () {
+              rawCall(fnName, args, function (result2, uo2) {
+                OS.refreshUI();
+                if (onSuccess) onSuccess(result2, uo2);
+              }, function (err2, uo2) {
+                if (err2 && err2.__network) toQueue(uo2);
+                else if (onFailure) onFailure(err2, uo2);
+              }, uo, opId);
+            }, WRITE_RECOVER_DELAY_MS);
+          } else if (err && err.__network) {
+            toQueue(uo);   // انقطاعٌ أو «قيد التنفيذ»: الطابورُ يُعيد بالمعرّف نفسه
           } else if (onFailure) { onFailure(err, uo); } // خطأ خادم منطقي: أظهره
-        }, userObject);
+        }, userObject, opId);
       } else {
-        OS.enqueue(app, fnName, args, schoolId).then(function () {
-          if (onSuccess) onSuccess(optimisticWrite(), userObject);
-        });
+        toQueue(userObject);
       }
       return;
     }
