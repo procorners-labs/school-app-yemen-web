@@ -53,8 +53,34 @@
     if (!fn || typeof fn !== 'string') return 'online-only';
     if (ONLINE_ONLY[fn]) return 'online-only';
     if (WRITE_QUEUEABLE[fn]) return 'write';
+    /* 🔴 **`upload|media|attach` تُستثنى قبل أيّ قاعدةٍ عامّة — وهي فجوةٌ كامنةٌ لا حالةٌ واقعة.**
+       نظيرُ هذا التصنيف في الجسر (`_csIsRead`/`_stuIsRead`) يستثنيها صراحةً لأن مهلةَ
+       الرفع **١٨٠ث** فوق مهلة خانة التزامن ⇒ دالّةٌ مثل `getMediaAttachments` كانت
+       تُصنَّف قراءةً **فتُخزَّن حمولةُ رفعٍ ثقيلةٌ في IndexedDB بلا داعٍ**.
+       🎯 والتصنيفان يجب أن يفترقا **أبداً** — نسختان تتباعدان بصمت. */
+    if (/upload|media|attach/i.test(fn)) return 'online-only';
+
     // قاعدة عامّة: الدوال التي تبدأ بـ get أو check/login (قراءة) تُخزَّن.
     if (/^get/i.test(fn) || /^check/i.test(fn) || /^login/i.test(fn)) return 'read';
+
+    /* 🔴 **`list*` قراءةٌ أيضاً — وسقوطُها كان فجوةً مقيسة، لا احتياطاً مقصوداً.**
+
+       🎯 **العلّةُ مقيسةٌ 2026-09-22:** من **٨٥ نداءً قرائيّاً** عبر `callServer` في سطح
+       المعلّم، **٨٢ مغطّاةٌ بالقاعدة أعلاه و٣ تسقط** — وكلُّها تبدأ بـ`list`:
+       `listCircularsProtected` (‏٤ مواضع) · `listPlatformReviewRequestsProtected` ·
+       `listMyBiometricDevicesProtected`.
+
+       **والأثرُ ليس تنظيمياً:** `online-only` تعني **لا تُخزَّن ولا تُخدَم بائتةً** ⇒
+       أيُّ 502 على «التعاميم» **يصل المستخدمَ خطأً**، بينما نظيرتُها `getAllNewsProtected`
+       تُخدَم من آخر نسخةٍ ناجحة. ⇒ **نفسُ الشاشة، سلوكان مختلفان، والفارقُ حرفُ اسمٍ.**
+
+       🔴 **والبادئةُ `list` قرائيّةٌ بعقدِ هذا المستودع لا باجتهاد:** `_csIsRead` في الجسر
+       تُصنّفها قراءةً منذ إنشائها (‏`/^get|^check|^list/`). ⇒ **التصنيفان كانا مفترقَين،
+       وهذا يوحّدهما** — والافتراقُ هو العلّةُ لا الاسم.
+
+       ⚠️ **ولا يُوسَّع إلى بادئةٍ رابعة بلا قياس:** `save`/`add`/`submit` كتابةٌ، وإدخالُها
+       هنا يجعل الفشلَ يُخدَم من كاشٍ **فيُقرأ نجاحاً** — وهو أخطرُ من 502 بكثير. */
+    if (/^list/i.test(fn)) return 'read';
     // مجموعة قراءة صريحة لا تبدأ بـ get.
     if (fn === 'getTeachersForClass' || fn === 'getV3Config' || fn === 'adminGetAllTeachersGrouped') return 'read';
     // أي شيء آخر: لا نخاطر بالطابور — اتركه online-only (سلوك أصلي).
