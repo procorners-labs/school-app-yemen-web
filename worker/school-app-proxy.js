@@ -319,6 +319,58 @@ function _gasShouldRetry(timedOut, attempt, maxAttempts) {
   return attempt < (maxAttempts - 1);
 }
 
+/* ═══ `GAS_LEG_SPLIT` — فصلُ ساقَي النداء قياساً محضاً (‏2026-09-23 · خطّةٌ مشتركة) ═══════
+   🎯 **السؤال:** `redirect:'follow'` يجمع ساقَي Apps Script في `gasMs` واحد — POST إلى
+   `/exec` يردّ 302 بمفتاح نتيجة، ثمّ GET على `script.googleusercontent.com` يسترجعها. ⇒
+   **لا نعرف في أيّ ساقٍ يقع الإجهاضُ عند السقف**: POST = انتظارُ قبولٍ/تنفيذ، وGET = استرجاع.
+   ⇒ هنا نتبع التحويلَ **بأيدينا** ونسجّل زمنَ كلّ ساقٍ وموضعَ الإجهاض.
+
+   🔒 **الشروطُ الثلاثة المتّفقُ عليها — وكلٌّ منها محروسٌ في `test-routes.js`:**
+   ① **ساقُ GET تُنفَّذ مرّةً واحدة ولا تُعاد أبداً** — مفتاحُ النتيجة أحاديُّ الاستعمال
+      (مقيس: القراءةُ الثانية تعود بصفحة `doGet`). ولا حلقةَ إعادةٍ هنا على الإطلاق.
+   ② **النتيجةُ النهائيّةُ مطابقةٌ لـ`follow` حرفياً:** 301/302/303 ⇒ GET بلا جسم؛ 307/308 ⇒
+      الطريقةُ والجسمُ نفسُهما؛ غيرُ التحويل ⇒ الردُّ كما هو. وتحويلٌ ثانٍ في ساق GET
+      (المفتاحُ المستهلَك ⇒ `/exec` ⇒ `doGet`) **يُتبَع كما كان** ويُسجَّل فقط (`g3`).
+   ③ **الميزانيةُ واحدة:** الساقان تحت إشارة الإجهاض نفسِها (`init.signal`) ومهلةِ المحاولة
+      نفسِها — لا تُضاعَف ولا تُمدَّد.
+   ⚠️ **وحدُّه يُقال:** يحمي من تغيّر السلوك، لا من تغيّر **التوقيت** بمقدار ميكروثوانٍ
+   بين الساقين. و`fetch` المتبوعُ داخلياً يعدّ التحويلَ طلباً فرعياً أصلاً ⇒ صفرُ زيادة.
+   **ومفتاحُه `env.GAS_LEG_SPLIT === 'on'` حصراً** — غيابُه أو أيُّ قيمةٍ أخرى ⇒ `follow` القديم. */
+function _gasLegSplitOn(env) { return !!env && env.GAS_LEG_SPLIT === 'on'; }
+
+async function _gasFetchSplit(url, init, rec) {
+  var t0 = Date.now();
+  rec.leg = 'post';
+  var r1 = await fetch(url, Object.assign({}, init, { redirect: 'manual' }));
+  rec.pms = Date.now() - t0;
+  var loc = r1.headers.get('Location');
+  if (!(r1.status >= 300 && r1.status < 400) || !loc) { rec.leg = 'done'; return r1; }
+  var abs;
+  try { abs = new URL(loc, url).toString(); } catch (e) { rec.leg = 'done'; return r1; }
+  rec.gh = /^https:\/\/script\.googleusercontent\.com\//.test(abs) ? 1 : 0;
+  /* جسمُ ردّ التحويل لا يُقرأ — يُلغى كي لا يبقى الاتصالُ محجوزاً (يفعله `follow` ضمناً). */
+  try { if (r1.body && r1.body.cancel) r1.body.cancel(); } catch (eC) { /* لا نُفشِل نداءً بسبب تنظيف */ }
+  var keep = (r1.status === 307 || r1.status === 308);
+  var i2 = { method: keep ? init.method : 'GET', redirect: 'manual', signal: init.signal };
+  if (keep) { i2.headers = init.headers; if (init.body !== undefined) i2.body = init.body; }
+  var t1 = Date.now();
+  rec.leg = 'get';
+  var r2 = await fetch(abs, i2);
+  var loc2 = r2.headers.get('Location');
+  if (r2.status >= 300 && r2.status < 400 && loc2) {
+    /* تحويلٌ ثانٍ في ساق الاسترجاع — هو بعينه أثرُ المفتاح المستهلَك. يُتبَع بـ`follow`
+       كما كان يُتبَع ضمناً ⇒ النتيجةُ نفسُها، والفرقُ أننا صرنا نراه. */
+    rec.g3 = r2.status;
+    try { if (r2.body && r2.body.cancel) r2.body.cancel(); } catch (eC2) { /* كالسابق */ }
+    var abs2;
+    try { abs2 = new URL(loc2, abs).toString(); } catch (e) { rec.gms = Date.now() - t1; rec.leg = 'done'; return r2; }
+    r2 = await fetch(abs2, { method: 'GET', redirect: 'follow', signal: init.signal });
+  }
+  rec.gms = Date.now() - t1;
+  rec.leg = 'done';
+  return r2;
+}
+
 // 🔴 الأسماء **مقيسةٌ من مصدر GAS** (`grep 'function .*[Ll]ogin'` في `SchoolApp-gas`)
 // لا مُخمَّنة: أوّل قائمةٍ كتبتُها حملت `handleStudentLogin` و`teacherLoginProtected`
 // **ولا وجود لهما** — مدخلٌ باسمٍ خاطئ ميّتٌ صامتاً: لا يحمرّ شيء، والدخول يبقى على
@@ -2596,6 +2648,8 @@ export default {
        *    مستودعاتٍ مختلفة، وكانت تُقرأ رمزاً واحداً.
        * 🟢 ويُكتب في السجلّ وحدَه — **الجسمُ لا يتغيّر بحرف**، فلا يمسّ عميلاً ولا APK. */
       var _bhWhy = 'ok';
+      var _legSplit = _gasLegSplitOn(env);
+      var _legRec = null;
       // فاصل واحد بين المحاولتين — يمتصّ اعتراض/برود GAS المتقطّع قبل إرجاع HTML للجسر.
       // (‏«~6%» حُذف هنا أيضاً 2026-09-08 — انظر التعليق عند بداية حلقة المحاولات.)
       // ⚠️ 2026-07-28: كان العدد 4 محاولات (250/600/1200ms). حادثة 502 متكرّرة (تسجيل دخول
@@ -2704,7 +2758,10 @@ export default {
         init.signal = controller.signal;
         try {
           var _attemptAt = Date.now();
-          var _fetchP = fetch(fullTarget, init);
+          /* 🔬 `GAS_LEG_SPLIT`: الساقان بأيدينا قياساً — والنتيجةُ مطابقةٌ لـ`follow` (انظر
+             `_gasFetchSplit`). والسجلُّ يحمل آخرَ محاولةٍ وحدَها، كبقيّة حقول `ev:'gas'`. */
+          _legRec = { leg: '', pms: -1, gms: -1, g3: 0, gh: -1 };
+          var _fetchP = _legSplit ? _gasFetchSplit(fullTarget, init, _legRec) : fetch(fullTarget, init);
           var gasResp;
           if (_shadowThis) {
             /* 🔴 **سباقٌ لا انتظار:** المستخدمُ يُخدَم في موعده بالضبط، والوعدُ يبقى حيّاً
@@ -2865,7 +2922,12 @@ export default {
                  gasMs: Date.now() - _bhT0 - _bhWaited, n: _bhN, q: _bhQ.length,
                  st: lastStatus, ok: good, srv: _bhSrv, why: _bhWhy,
                  len: (typeof lastText === 'string') ? lastText.length : -1,
-                 gv: _bhTail.gv, dd: _bhTail.dd, hr: new Date().toISOString().slice(0, 13) });
+                 gv: _bhTail.gv, dd: _bhTail.dd, hr: new Date().toISOString().slice(0, 13),
+                 /* 🔬 الساقان — حاضرةٌ فقط حين `GAS_LEG_SPLIT=on`، وإلّا تغيب كلّياً (لا أصفارٌ
+                    تُقرأ «ساقٌ بلا زمن»). `lg` موضعُ الإجهاض: `post` أو `get` أو `done`. */
+                 lg: _legRec ? _legRec.leg : undefined, pms: _legRec ? _legRec.pms : undefined,
+                 gms: _legRec ? _legRec.gms : undefined, g3: _legRec ? _legRec.g3 : undefined,
+                 gh: _legRec ? _legRec.gh : undefined });
         // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
         // (الرفض 503 يخرج قبل الـtry ولا يحجز مقعداً أصلاً). بلا هذا، أي مسار خروج
         // منسيّ يُسرّب مقعداً إلى الأبد ويُجمّد السقف تدريجياً.
