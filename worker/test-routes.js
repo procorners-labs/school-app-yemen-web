@@ -4192,6 +4192,91 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
   });
 });
 
+/* ═══ `GAS_LEG_SPLIT` — فصلُ الساقين بنتيجةٍ مطابقةٍ لـ`follow` (‏2026-09-23) ═══════════════
+   سلوكيٌّ بـ`fetch` مُزيَّف يسجّل كلَّ نداء: **الشروطُ الثلاثة تُقاس لا تُدّعى** — GET مرّةً واحدة
+   ولو فشلت · النتيجةُ النهائيّةُ كما يعطيها `follow` · والإشارةُ نفسُها على الساقين. */
+global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
+  console.log('');
+  console.log('فصلُ ساقَي GAS (GAS_LEG_SPLIT):');
+  var checks = [];
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  var a = src.indexOf('function _gasLegSplitOn(env)');
+  var b = src.indexOf('\n}\n', src.indexOf('async function _gasFetchSplit(')) + 3;
+  check(a > 0 && b > a, 'ضابط: استُخرجت الدالّتان (وإلّا لا يُقاس شيء — خروجٌ أحمر)');
+  if (!(a > 0 && b > a)) return;
+  function R(status, loc, body) {
+    return { status: status, _b: body || '', headers: { get: function (k) { return k === 'Location' ? (loc || null) : null; } } };
+  }
+  function run(script) {
+    var calls = [];
+    var ctx = vm.createContext({ URL: URL, Object: Object, Date: Date, Promise: Promise, JSON: JSON,
+      fetch: function (u, i) {
+        calls.push({ u: u, m: i.method, r: i.redirect, body: i.body, sig: i.signal });
+        var step = script[calls.length - 1];
+        if (!step) return Promise.reject(new Error('unexpected fetch #' + calls.length));
+        return step === 'ABORT' ? Promise.reject(new Error('aborted')) : Promise.resolve(step);
+      } });
+    vm.runInContext(src.slice(a, b), ctx);
+    var rec = { leg: '', pms: -1, gms: -1, g3: 0, gh: -1 };
+    var SIG = { tag: 'budget-signal' };
+    ctx.__init = { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{"fn":"x"}', redirect: 'follow', signal: SIG };
+    ctx.__rec = rec;
+    return vm.runInContext('_gasFetchSplit("https://script.google.com/macros/s/ID/exec", __init, __rec)', ctx)
+      .then(function (res) { return { res: res, calls: calls, rec: rec, SIG: SIG, err: null }; },
+            function (e) { return { res: null, calls: calls, rec: rec, SIG: SIG, err: e }; });
+  }
+  var GUC = 'https://script.googleusercontent.com/macros/echo?user_content_key=K1';
+  return Promise.all([
+    // ① المسارُ الطبيعيّ: 302 ⇒ GET واحد ⇒ JSON.
+    run([R(302, GUC), R(200, null, '{"ok":true}')]).then(function (o) {
+      check(o.res && o.res._b === '{"ok":true}' && o.calls.length === 2, '302 ⇒ GET واحد ⇒ جسمُ JSON نفسُه');
+      check(o.calls[0].m === 'POST' && o.calls[0].r === 'manual' && o.calls[1].m === 'GET' && o.calls[1].body === undefined,
+            'POST يدويّ ثمّ GET **بلا جسم** — كما يفعل `follow` بعد 302');
+      check(o.calls[0].sig === o.SIG && o.calls[1].sig === o.SIG, '🔴 الساقان تحت إشارة الإجهاض نفسِها (ميزانيةٌ واحدة)');
+      check(o.rec.leg === 'done' && o.rec.pms >= 0 && o.rec.gms >= 0 && o.rec.g3 === 0 && o.rec.gh === 1,
+            'السجلّ: leg=done · زمنا الساقين · gh=1 (المضيفُ المتوقَّع)');
+    }),
+    // ② المفتاحُ المستهلَك: GET يردّ 302 ⇒ يُتبَع بـfollow ⇒ صفحةُ HTML كما كان — ويُسجَّل.
+    run([R(302, GUC), R(302, 'https://script.google.com/macros/s/ID/exec'), R(200, null, '<html>doGet')]).then(function (o) {
+      check(o.res && o.res._b === '<html>doGet' && o.calls.length === 3 && o.calls[2].r === 'follow',
+            'تحويلٌ ثانٍ في ساق GET ⇒ يُتبَع كما كان (النتيجةُ نفسُها: صفحة doGet)');
+      check(o.rec.g3 === 302, '🔬 والفرقُ أننا نراه: g3=302 (أثرُ المفتاح المستهلَك)');
+    }),
+    // ③ 🔴 الإجهاضُ في ساق GET ⇒ لا إعادة — نداءان فقط، والموضعُ get.
+    run([R(302, GUC), 'ABORT']).then(function (o) {
+      check(!!o.err && o.calls.length === 2 && o.rec.leg === 'get',
+            '🔴 إجهاضٌ في ساق GET ⇒ يُرمى الخطأ ولا تُعاد الساق (المفتاحُ أحاديّ) · lg=get');
+    }),
+    // ④ الإجهاضُ في ساق POST ⇒ نداءٌ واحد، والموضعُ post.
+    run(['ABORT']).then(function (o) {
+      check(!!o.err && o.calls.length === 1 && o.rec.leg === 'post', 'إجهاضٌ في ساق POST ⇒ lg=post · نداءٌ واحد');
+    }),
+    // ⑤ ردٌّ بلا تحويل ⇒ كما هو (follow يعيده كما هو).
+    run([R(200, null, '{"direct":1}')]).then(function (o) {
+      check(o.res && o.res._b === '{"direct":1}' && o.calls.length === 1 && o.rec.leg === 'done', 'ردٌّ بلا تحويل ⇒ يُعاد كما هو');
+    }),
+    // ⑥ 307 ⇒ الطريقةُ والجسمُ نفسُهما (دلالةُ follow).
+    run([R(307, 'https://script.google.com/other'), R(200, null, 'x')]).then(function (o) {
+      check(o.calls.length === 2 && o.calls[1].m === 'POST' && o.calls[1].body === '{"fn":"x"}' && o.rec.gh === 0,
+            '307 ⇒ POST بالجسم نفسِه (كـfollow) · وgh=0 لمضيفٍ غيرِ المتوقَّع');
+    }),
+    // ⑦ Location نسبيّ يُحلّ على الأصل.
+    run([R(302, '/macros/echo?k=2'), R(200, null, 'y')]).then(function (o) {
+      check(o.calls[1] && o.calls[1].u === 'https://script.google.com/macros/echo?k=2', 'Location نسبيّ ⇒ يُحلّ على أصل الطلب');
+    })
+  ]).then(function () {
+    var on = vm.createContext({}); vm.runInContext(src.slice(a, b), on);
+    function sw(v) { on.__e = v; return vm.runInContext('_gasLegSplitOn(__e)', on); }
+    check(sw({ GAS_LEG_SPLIT: 'on' }) === true && sw({ GAS_LEG_SPLIT: 'ON' }) === false &&
+          sw({ GAS_LEG_SPLIT: 'off' }) === false && sw({}) === false && sw(null) === false,
+          '🔴 المفتاح fail-closed: `on` الحرفيّة وحدها (لا ON ولا غياب)');
+    check(/_legSplit \? _gasFetchSplit\(fullTarget, init, _legRec\) : fetch\(fullTarget, init\)/.test(src),
+          'المسارُ الرئيس موصول: مطفأ ⇒ `fetch(fullTarget, init)` حرفياً');
+    var wr = fs.readFileSync(path.join(__dirname, '..', 'wrangler.jsonc'), 'utf8');
+    check(/"GAS_LEG_SPLIT":\s*"off"/.test(wr), '🔴 يُشحن مطفأً: `GAS_LEG_SPLIT: "off"` في wrangler.jsonc');
+  });
+});
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —
