@@ -3024,6 +3024,23 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <button type="button" id="snrApplyBtn" onclick="snrApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التصحيح</button>
         <div id="snr-out" style="margin-top:10px;font-size:13px;"></div>
       </div>
+
+      <!-- 🧭 تقرير توحيد البيانات — قراءةٌ محضة عبر كلّ أوراق المدرسة.
+           موضعُه هنا مع أخويه بنفس قرار المالك 2026-09-21: أدواتُ القوائم والبيانات
+           تُدار من شاشةٍ واحدة. 🔴 وليس له زرُّ تنفيذ — لأنه لا يكتب شيئاً أصلاً. -->
+      <div id="dur-card" style="margin-top:22px;padding:14px;border:1px solid #cfd8dc;border-radius:10px;background:#fafafa;">
+        <div style="font-weight:800;margin-bottom:6px;">🧭 تقرير توحيد البيانات</div>
+        <div style="font-size:13px;color:#546e7a;line-height:1.7;margin-bottom:10px;">
+          يمسح <b>أوراق المدرسة كلَّها</b> ويسمّي ما ليس موحَّداً: قيمَ الأدوار غيرَ
+          الكنسيّة · وأسماءَ المعلّمين التي لا يقابلها صفٌّ في «المدرسين» · والموادَّ
+          التي لا يعرفها سجلُّ «المقررات».
+          <br>🔴 <b>قراءةٌ فقط — صفرُ كتابة.</b> يسمّي الانحرافَ ويترك القرارَ لك.
+          <br>⚠️ واسمُ المعلّم <b>مفتاحُ ربطٍ</b> بين الأوراق، فالتقريرُ يُظهر مرايـاه
+          كي لا يُصلَّح في ورقةٍ فتُيتَّم سجلّاتُه في غيرها.
+        </div>
+        <button type="button" onclick="dur_run()" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🧭 شغّل التقرير</button>
+        <div id="dur-out" style="margin-top:10px;font-size:13px;"></div>
+      </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -10828,10 +10845,15 @@ function showSection(name, opt) {
     if (name === 'lists-mgmt') {
       if (listsDiv) listsDiv.style.display = 'block';
       dynamicEl.style.display = 'none';
-      lm_load();
-      /* 🔴 نداءٌ مستقلٌّ بمعالجِ فشلٍ خاصّ — لا يُعلَّق على نجاح `lm_load`:
-         فشلُ أحدهما لا يجوز أن يُفرِغ الآخرَ صامتاً (فئة بند 229). */
-      if (typeof cur_load === 'function') cur_load();
+      /* 🔴 **تسلسلٌ لا توازٍ — والتعليلُ القديم محفوظٌ لا منقوض.**
+         كان النداءان يُطلقان معاً، وكلاهما يقرأ **نفسَ ملفّ الشيت** ⇒ مقعدان من
+         الثلاثين في اللحظة نفسِها، على شاشةٍ واحدة. والمقيسُ 2026-09-21 أن دوالَّ
+         هذه الشاشة **تنجح في ٦–٩ث أو تُجهَض عند ٢٥٬٧٠٠ ولا شيءَ بينهما** ⇒
+         **طابورٌ لا حساب**، فالرافعةُ عددُ النداءات لا سرعتُها.
+         🟢 **وشرطُ بند 229 باقٍ بحرفه:** `lm_load` تستدعي `next` على **النجاح
+         والفشل معاً** ⇒ فشلُ الأولى **لا يُفرِغ** الثانية. تسلسلٌ لا اقتران. */
+      if (typeof cur_load === 'function') lm_load(cur_load);
+      else lm_load();
       updateActiveSidebarItem(name);
       closeSidebar();
       return;
@@ -27589,7 +27611,34 @@ function tm_closeModal(){ document.getElementById('tm-modal').style.display='non
 function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';font-size:14px;">'+msg+'</div>'; }
 
 // ==================== LM (إدارة القوائم) ====================
-function lm_load(){ var grid=document.getElementById('lm-grid'); if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_render(res); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).getListsDataProtected({token:App.user.token}); }
+/* 🔴 **`next` يُستدعى على النجاح والفشل معاً — والشرطُ هو كلُّ المعنى.**
+   كانت شاشةُ «إدارة القوائم» تُطلق `lm_load()` و`cur_load()` **متوازيَين** عند الفتح،
+   وكلاهما يقرأ **نفسَ ملفّ الشيت** ⇒ مقعدان من الثلاثين في اللحظة نفسِها.
+   🎯 **والمقيسُ أن المورد المشبَع عددُ التنفيذات لا مدّتُها:** قِيس على «الإبداع»
+   2026-09-21 أن `seedCurriculumRegistryProtected` **تنجح في ٦٫٤ث (أقصاها ٩٫٣)
+   أو تُجهَض عند ٢٥٬٧٠٠ — ولا شيءَ بينهما.** ⇒ **توزيعٌ ثنائيُّ القمّة = طابورٌ لا
+   حساب**، فالدالّةُ لا تنتظر لأنها بطيئة بل لأنها **لم تُقبَل بعد**.
+   ⇒ **تسلسلُ النداءين يُنصّف الطلبَ على المقاعد من هذه الشاشة.**
+   ⚠️ **ولا يُلغى التعليلُ الذي بُني عليه التوازي** (بند 229: فشلُ أحدهما لا يجوز أن
+   يُفرِغ الآخرَ صامتاً) — **يُحفَظ بنقل `next` إلى المعالجين معاً**، فالثاني ينطلق
+   حتى لو فشل الأوّل. **تسلسلٌ لا اقتران.** */
+function lm_load(next){
+  var grid=document.getElementById('lm-grid');
+  if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>';
+  /* رميٌ متزامنٌ (لا يقع نظرياً) يجب ألّا يبتلع `next` فتبقى المقرَّراتُ فارغةً
+     بلا سبب — نفسُ فخّ بند 78-أ في سلسلة النبضة. */
+  var _fired=false;
+  function _go(){ if(_fired) return; _fired=true; if(typeof next==='function'){ try{ next(); }catch(eN){} } }
+  try{
+    google.script.run
+      .withSuccessHandler(function(res){
+        if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); _go(); return; }
+        lm_render(res); _go();
+      })
+      .withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); _go(); })
+      .getListsDataProtected({token:App.user.token});
+  }catch(eL){ lm_setStatus('❌ '+(eL&&eL.message||'تعذّر التحميل'),'#c62828'); _go(); }
+}
 function lm_reload(){ lm_load(); }
 /* 🔴 «أنواع السلوكيات» تُعرَض **قائمتين منفصلتين** بقرار مالك 2026-09-21 — ولا يُشطَر
    العمودُ `F` في الورقة: شطرُه يكسر كلَّ قارئٍ للسلوكيات (منصّةُ الطالب · تقاريرُ وليّ
@@ -28878,6 +28927,105 @@ function snrApply(){
       });
     }
   );
+}
+
+/* ════════════ 🧭 تقرير توحيد البيانات — قراءةٌ محضة ════════════
+   🔴 بلا زرِّ تنفيذٍ ولا `confirmAction` — لأنه لا يكتب شيئاً أصلاً.
+   وهذه ليست سهواً: زرُّ تنفيذٍ بجانب تقريرٍ لا ينفّذ يُعلّم المستخدمَ أن الأداتين
+   من صنفٍ واحد، فيضغط على نظيره في أداةٍ تكتب وهو يظنّه معاينة. */
+function dur_run(){
+  var out = document.getElementById('dur-out');
+  if(!out) return;
+  out.innerHTML = '⏳ جارٍ المسح عبر كلّ الأوراق — قد يستغرق ثوانيَ...';
+  callServer('getDataUnificationReportProtected', { token: App.user.token }, function(res){
+    if(!res || !res.success){
+      out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التقرير')+'</div>';
+      return;
+    }
+    out.innerHTML = _durRender(res);
+  }, function(err){
+    out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر التقرير')+'</div>';
+  });
+}
+
+function _durBox(ok, title, inner){
+  return '<div style="margin:8px 0;padding:8px;border-right:4px solid '+(ok?'#2e7d32':'#ef6c00')+
+         ';background:'+(ok?'#e8f5e9':'#fff8e1')+';border-radius:6px;">'+
+         '<b>'+(ok?'🟢':'🟠')+' '+title+'</b>'+(inner||'')+'</div>';
+}
+
+function _durRender(res){
+  var s = res.summary || {};
+  var h = '<div style="padding:8px;background:#fff;border:1px solid #b2dfdb;border-radius:8px;">';
+  h += '<div style="font-weight:800;margin-bottom:8px;">النتيجة: '+
+       s.nonCanonicalRoles+' صيغةَ دورٍ غيرَ كنسيّة · '+
+       s.orphanTeacherNames+' اسمَ معلّمٍ بلا صفٍّ في «المدرسين» · '+
+       s.unknownSubjects+' مادّةً لا يعرفها السجلّ · '+
+       s.liveSheets+' ورقةً حيّة.</div>';
+
+  /* ① الأدوار */
+  var R = res.roles || {};
+  if(R.missing){ h += _durBox(false, 'الأدوار', ' — ورقة «المدرسين» غير موجودة'); }
+  else if(R.header === 'غير موجود'){ h += _durBox(false, 'الأدوار', ' — لا عمودَ دورٍ في الترويسة'); }
+  else {
+    var okR = (R.nonCanonical.length === 0);
+    var inner = ' — '+R.total+' قيمةً مقروءة من عمود «'+escapeHtml(R.header||'')+'»';
+    if(!okR){
+      inner += '<div style="margin-top:6px;font-size:12px;">';
+      for(var i=0;i<R.nonCanonical.length;i++){
+        var e = R.nonCanonical[i];
+        inner += '<div>• «<b>'+escapeHtml(e.value)+'</b>» ×'+e.count+' ⇐ '+
+                 (e.canon ? 'تُحَلّ إلى «'+escapeHtml(e.canon)+'»'
+                          : '<span style="color:#c62828;">لا تُحَلّ إلى أيّ دور</span>')+'</div>';
+      }
+      inner += '<div style="color:#6d4c41;margin-top:4px;">قيمةُ الدور ليست مفتاحَ ربطٍ — توحيدُها يُصلح ولا يكسر.</div></div>';
+    }
+    h += _durBox(okR, 'الأدوار', inner);
+  }
+
+  /* ② أسماءُ المعلّمين ومرايـاها */
+  var T = res.teacherNames || {};
+  var okT = ((T.orphans||[]).length === 0);
+  var innerT = ' — '+((T.source&&T.source.names)||0)+' اسماً في «المدرسين»';
+  innerT += '<div style="margin-top:6px;font-size:12px;">';
+  for(var m=0;m<(T.mirrors||[]).length;m++){
+    var mr = T.mirrors[m];
+    if(mr.missing){ innerT += '<div style="color:#90a4ae;">• '+escapeHtml(mr.sheet)+' — غير موجودة</div>'; continue; }
+    if(!mr.header){ innerT += '<div style="color:#90a4ae;">• '+escapeHtml(mr.sheet)+' — بلا عمودِ اسمِ معلّم (ليست انحرافاً)</div>'; continue; }
+    innerT += '<div>• '+escapeHtml(mr.sheet)+' («'+escapeHtml(mr.header)+'») — '+
+              mr.matched+'/'+mr.rows+' مطابق'+
+              (mr.unmatched ? ' · <b style="color:#c62828;">'+mr.unmatched+' بلا مقابل</b>'+
+                 (mr.samples.length ? ' ('+escapeHtml(mr.samples.join('، '))+')' : '') : '')+'</div>';
+  }
+  innerT += '<div style="color:#6d4c41;margin-top:4px;">🔴 الاسمُ مفتاحُ ربط — أيُّ توحيدٍ يلزمه تعديلُ هذه المرايا كلِّها في تشغيلةٍ واحدة.</div></div>';
+  h += _durBox(okT, 'أسماء المعلّمين ومرايـاها', innerT);
+
+  /* ③ المواد */
+  var S = res.subjects || {};
+  var okS = (S.unknownTotal === 0);
+  var innerS = '';
+  if(!S.registryPresent) innerS += '<div style="color:#ef6c00;">⚠️ لا سجلَّ مقرَّراتٍ بعد — فلا معجمَ يُحَلّ به شيء.</div>';
+  innerS += '<div style="margin-top:6px;font-size:12px;">';
+  for(var k=0;k<(S.surfaces||[]).length;k++){
+    var sf = S.surfaces[k];
+    if(sf.missing){ innerS += '<div style="color:#90a4ae;">• '+escapeHtml(sf.sheet)+' — غير موجودة</div>'; continue; }
+    innerS += '<div>• '+escapeHtml(sf.sheet)+' — '+(sf.total-sf.unknown)+'/'+sf.total+' تُحَلّ'+
+              (sf.unknown ? ': <b>'+escapeHtml(sf.names.join('، '))+'</b>' : '')+'</div>';
+  }
+  innerS += '</div>';
+  h += _durBox(okS, 'المواد في التكليفات والقوائم', innerS);
+
+  /* ④ جردُ الأوراق */
+  var H = res.sheets || {};
+  var innerH = ' — '+H.total+' ورقة';
+  if((H.nonConforming||[]).length) innerH += '<div style="margin-top:6px;font-size:12px;">أسماءٌ بمسافاتٍ بدل «_»: <b>'+escapeHtml(H.nonConforming.join('، '))+'</b><br><span style="color:#6d4c41;">🔴 لا يُعاد تسميةُ ورقةٍ حيّة — رصدٌ لا أمر.</span></div>';
+  if((H.backups||[]).length) innerH += '<div style="margin-top:4px;font-size:12px;color:#546e7a;">نسخٌ احتياطيّةٌ داخل الملفّ: '+escapeHtml(H.backups.join('، '))+'</div>';
+  h += _durBox(true, 'جرد الأوراق', innerH);
+
+  h += '<div style="margin-top:8px;font-size:12px;color:#78909c;">';
+  for(var L=0;L<(res.limits||[]).length;L++){ h += '⚠️ '+escapeHtml(res.limits[L])+'<br>'; }
+  h += '</div></div>';
+  return h;
 }
 
 /* تسمية صندوق النتيجة. تُستبدَل لا تُضاف: `.cs-l` محكومة بـ`white-space:nowrap`
