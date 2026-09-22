@@ -1591,9 +1591,23 @@ function schools_setActive(schoolId, isActive) {
     .setSchoolActiveProtected({ token: App.token, schoolId: schoolId, isActive: isActive });
 }
 
+/* 🔴 **التجديدُ يكتب في السجلّ الحاكم — ويلزمه تأكيدُ فعلٍ لا إدخالَ رقم.**
+   كان `prompt('عدد الأيام')` وحدَه، **وهو سؤالُ «كم؟» لا «هل؟»** ⇒ ضغطةٌ خاطئةٌ على
+   بطاقةِ مدرسةٍ تُجدّد اشتراكَ **غيرِ المقصود** بـEnter واحدة، ولا شيءَ يُراجَع.
+   🎯 **والفرقُ ليس شكلياً:** نظيرُه `schools_setActive` **يسأل «تعطيل هذه المدرسة؟»**
+   ⇒ فعلٌ أقلُّ أثراً كان محروساً، والأكثرُ أثراً مكشوفاً — **تفاوتٌ يُقرأ سهواً لا قراراً**.
+   🟢 **والتأكيدُ يسمّي المدرسةَ وعددَ الأيام معاً** — تأكيدٌ لا يذكر هدفَه يصير طقساً
+   يُضغَط بلا قراءة، وهو أسوأُ من غيابه لأنه يُورث ثقةً كاذبة. */
 function schools_renew(schoolId) {
   var days = parseInt(prompt('عدد أيام التجديد؟ (365 = سنة)', '365') || '365');
   if (!days || days < 1) return;
+  var _nm = '';
+  try {
+    for (var _i = 0; _i < (_allSchools || []).length; _i++) {
+      if (_allSchools[_i] && _allSchools[_i].schoolId === schoolId) { _nm = _allSchools[_i].name || ''; break; }
+    }
+  } catch (_e) { _nm = ''; }
+  if (!confirm('تجديدُ اشتراك «' + (_nm || schoolId) + '» لمدّة ' + days + ' يوماً؟')) return;
   google.script.run
     .withSuccessHandler(function(res) { if (res && res.success) { alert('✅ ' + res.message); schools_load(); } else alert('❌ ' + (res ? res.error : 'خطأ')); })
     .withFailureHandler(function(err) { alert('❌ ' + err.message); })
