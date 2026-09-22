@@ -3638,6 +3638,122 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
         '🔴 صفرُ نداءٍ على GAS في المعالج (لا `fetch(` ولا `GAS.`/`GAS[` ولا مقعدَ منظّم)');
 })();
 
+/* ═══ `/dev-stats` وذيلُ ردّ GAS (`_v`/`_dedup`) — عقد v1 (‏2026-09-23) ════════════════
+   سلوكيٌّ بقطبين: لكلّ قبولٍ رفضٌ مقابل، ولقاعدة الفشل («لا صفرَ من استعلامٍ فاشل») ضابطٌ
+   يُثبت أن الشكلَ الغريبَ يرمي استثناءً لا مصفوفةً فارغة. */
+(function () {
+  console.log('');
+  console.log('عدّاداتُ صحّة النقل /dev-stats:');
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  var a = src.indexOf('/* ═══ ذيلُ ردّ GAS: `_v` و`_dedup`');
+  var b = src.indexOf('/* ═══ نهايةُ `/dev-stats` النقيّة ═══ */');
+  check(a >= 0 && b > a, 'ضابط: استُخرجت الكتلةُ النقيّة (وإلّا لا يُقاس شيء — خروجٌ أحمر)');
+  if (!(a >= 0 && b > a)) return;
+  var ds = vm.createContext({ Math: Math, Date: Date, String: String, Object: Object, JSON: JSON, isNaN: isNaN });
+  vm.runInContext(src.slice(a, b), ds);
+  function call(expr, v) { ds.__v = v; return vm.runInContext(expr, ds); }
+
+  // ① ذيلُ الردّ: `_v` بالشكل الحرفيّ وحده، و`_dedup` بـ`true` الحرفيّة وحدها.
+  var t1 = call('_gasTailMeta(__v)', '{"ok":true,"data":[1,2],"_v":"b6d3acd","_ms":42}');
+  check(t1.gv === 'b6d3acd' && t1.dd === false, '`_v` صالح ⇒ يُلتقَط · وغيابُ `_dedup` ⇒ false');
+  var t2 = call('_gasTailMeta(__v)', '{"ok":true,"_dedup":true,"_v":"0a1b2c3","_ms":3}');
+  check(t2.dd === true && t2.gv === '0a1b2c3', '`_dedup:true` ⇒ true');
+  check(call('_gasTailMeta(__v)', '{"_v":"B6D3ACD","_ms":1}').gv === '' &&
+        call('_gasTailMeta(__v)', '{"_v":"b6d3acd9","_ms":1}').gv === '' &&
+        call('_gasTailMeta(__v)', '{"_v":"x<scr>1","_ms":1}').gv === '',
+        '🔴 `_v` بأحرفٍ كبيرة أو ٨ محارف أو نصٍّ حرّ ⇒ `\'\'` (لا نصَّ حرٌّ في السجلّ)');
+  check(call('_gasTailMeta(__v)', '{"_dedup":"true","_ms":1}').dd === false &&
+        call('_gasTailMeta(__v)', '{"_dedup":1,"_ms":1}').dd === false &&
+        call('_gasTailMeta(__v)', '{"_dedup":truex}').dd === false,
+        '🔴 `_dedup` نصّيٌّ أو رقميٌّ أو ملتصق ⇒ false');
+  check(call('_gasTailMeta(__v)', null).gv === '' && call('_gasTailMeta(__v)', '').dd === false,
+        'نصٌّ غائب ⇒ القيمُ الافتراضيّة بلا استثناء');
+
+  // ② النافذة: ثلاثُ قيمٍ وافتراضيٌّ، وكلُّ ما عداها ⇒ null.
+  check(call('_devStatsWindow(__v)', null).key === '24h' && call('_devStatsWindow(__v)', '7d').key === '7d',
+        'النافذةُ الافتراضيّة 24h · و7d مقبولة');
+  check(call('_devStatsWindow(__v)', '30d') === null && call('_devStatsWindow(__v)', 'constructor') === null,
+        '🔴 نافذةٌ خارج القائمة أو اسمٌ موروث ⇒ null (400)');
+
+  // ③ المصادقة: fail-closed على السرّ الغائب/القصير.
+  var SEC = 'abcdefghijklmnopqrstuvwxyz012345';
+  ds.__s = SEC;
+  check(call('_devStatsKeyOk(__v, __s)', SEC) === true, 'المفتاحُ الصحيح ⇒ قبول');
+  check(call('_devStatsKeyOk(__v, __s)', SEC.slice(0, -1) + '6') === false &&
+        call('_devStatsKeyOk(__v, __s)', SEC + 'x') === false &&
+        call('_devStatsKeyOk(__v, __s)', null) === false && call('_devStatsKeyOk(__v, __s)', '') === false,
+        '🔴 محرفٌ خاطئ · طولٌ زائد · غياب · فارغ ⇒ رفض');
+  ds.__s = '';
+  check(call('_devStatsKeyOk(__v, __s)', '') === false, '🔴 سرٌّ فارغ ومفتاحٌ فارغ ⇒ رفض (لا تطابقَ فراغين)');
+  ds.__s = 'short';
+  check(call('_devStatsKeyOk(__v, __s)', 'short') === false, '🔴 سرٌّ أقصرُ من 16 ⇒ رفضٌ حتى بمطابقة');
+
+  // ④ Wilson: قيمٌ معروفة (k=33,n=100 ⇒ ≈0.2454..0.4278) وn=0 ⇒ null.
+  var w = call('_wilson(33, __v)', 100);
+  check(Math.abs(w.lo - 0.2454) < 0.001 && Math.abs(w.hi - 0.4278) < 0.001, 'Wilson(33/100) ≈ [0.2454, 0.4278]');
+  check(call('_wilson(0, __v)', 0) === null, 'n=0 ⇒ null لا نسبة');
+  var c = call('_devStatsCell(__v)', { ok: 60, abort_budget: 35, upstream_status: 3, upstream_html: 2 });
+  check(c.n === 100 && c.abort === 35 && c.upstream === 5 && c.abortRate === 0.35 && c.enough === true,
+        'الخليّة: n يجمع كلَّ `why` · upstream يجمع النوعين · enough عند n≥100');
+  check(call('_devStatsCell(__v)', { ok: 50, abort_budget: 49 }).enough === false, '🔴 n=99 ⇒ enough=false (رماديّ)');
+  var ct = call('_devStatsCell(__v)', { ok: 10, abort_budget: 5, transport: 3, upstream_html: 1, weird: 2 });
+  check(ct.transport === 3 && ct.other === 2 && ct.ok + ct.abort + ct.upstream + ct.transport + ct.other === ct.n,
+        '🔴 `transport` مُسمّى · و`other` يلتقط ما لا اسمَ له ⇒ مجموعُ الحقول = n (لا فئةَ مختبئة)');
+  var rj = call('_devStatsRejected(__v, 80, 40)', [
+    { g: { app: 'student', fn: 'getGrades' }, n: 15 }, { g: { app: 'teacher', fn: 'x' }, n: 5 }]);
+  check(rj.n === 20 && rj.share === 0.2 && rj.byApp[0].app === 'student' && rj.byApp[0].n === 15 && rj.byFn.length === 2,
+        '🔴 رفضُ المنظّم (503): العددُ وحصّتُه من كلّ ما طُلب (20 من 100) · مرتّبٌ بالتطبيق');
+  check(call('_devStatsRejected(__v, 0, 40)', []).share === null, 'صفرُ طلبٍ ⇒ share=null لا صفر');
+  check(/q\('bulkhead', \[\['app', S\], \['fn', S\]\], \[\{ key: 'act', operation: 'eq', type: 'string', value: 'reject' \}\]\)/.test(src),
+        '🔴 الاستعلامُ يشمل `ev:\'bulkhead\'` بـ`act=reject` (وإلّا بدت اللوحةُ سليمةً في ذروة الإشباع)');
+
+  // ⑤ قاعدةُ الفشل: الشكلُ الغريبُ يرمي — لا مصفوفةٌ فارغةٌ تُقرأ «صفرُ أحداث».
+  function throws(v) { try { call('_devStatsRows(__v)', v); return false; } catch (e) { return true; } }
+  check(throws({ success: false }) && throws({ result: {} }) && throws(null) && throws({ result: { calculations: [] } }),
+        '🔴 ردُّ خطإٍ أو شكلٌ غريب ⇒ استثناء (⇒ `null` في القسم لا صفر)');
+  var rows = call('_devStatsRows(__v)', { success: true, result: { calculations: [{ aggregates: [
+    { value: 7, count: 7, interval: 0, sampleInterval: 1, groups: [{ key: 'why', value: 'ok' }, { key: 'dd', value: false }] },
+    { value: 2, count: 2, interval: 0, sampleInterval: 1, groups: [{ key: 'why', value: 'ok' }, { key: 'dd', value: true }] },
+    { value: 3, count: 3, interval: 0, sampleInterval: 1, groups: [{ key: 'why', value: 'abort_budget' }] }
+  ] }] } });
+  check(rows.length === 3 && rows[0].n === 7 && rows[0].g.why === 'ok', 'الشكلُ المقيس ⇒ صفوفٌ بمجموعاتها');
+  var f = call('_devStatsFold(__v, function(){return "all";})', rows);
+  check(f.dedup === 2 && f.acc.all.ok === 7 && f.acc.all.abort_budget === 3,
+        '🔴 `dd:true` يُعدّ في dedup ولا يدخل المقام · وصفٌّ بلا `dd` (قبل الحقل) ⇒ يُحسب');
+
+  // ⑤-ب الطرحُ لا التجميعُ بـ`dd` — الـAPI يُسقط صفوفَ الحقل الغائب بصمت (مقيس 2026-09-23).
+  ds.__d = [{ g: { why: 'ok' }, n: 2 }, { g: { why: 'abort_budget' }, n: 50 }];
+  var fm = call('_devStatsFoldMinus(__v, __d, function(){return "all";})', [
+    { g: { why: 'ok' }, n: 10 }, { g: { why: 'abort_budget' }, n: 3 }]);
+  check(fm.acc.all.ok === 8 && fm.subtracted === 2 + 3 && fm.acc.all.abort_budget === 0,
+        '🔴 المُسترَدّةُ تُطرح من المقام · والطرحُ لا يتجاوز الموجود (لا عدَّ سالباً)');
+  var fm0 = call('_devStatsFoldMinus(__v, null, function(){return "all";})', [{ g: { why: 'ok' }, n: 10 }]);
+  check(fm0.acc.all.ok === 10 && fm0.subtracted === 0, 'استعلامُ الاسترداد الفاشل (null) ⇒ لا طرح، ولا استثناء');
+  var cov = call('_devStatsCoverage(__v, 200)', { acc: { h1: { ok: 90, abort_budget: 10 } }, dedup: 0 });
+  check(cov.coverage === 0.5 && cov.unbucketedN === 100,
+        '🔴 بُعدٌ جديدٌ يغطّي نصفَ النافذة ⇒ coverage=0.5 وunbucketed=100 (لا يُقرأ كاملاً)');
+  check(call('_devStatsCoverage(__v, 0)', { acc: {}, dedup: 0 }).coverage === null, 'مقامٌ صفريّ ⇒ coverage=null');
+  check(/DD_TRUE = \[\{ key: 'dd', operation: 'eq', type: 'boolean', value: true \}\]/.test(src) &&
+        /q\('gas', \[\['app', S\], W\]\),/.test(src),
+        '🔴 استعلامُ المجموع بلا `dd` (وإلّا سقطت الصفوفُ القديمة) · والاسترداد مُفلتَرٌ بـ`dd = true`');
+
+  // ⑥ الساعة بتوقيت اليمن.
+  var h = call('_devStatsHourYE(__v)', '2026-09-22T21');
+  check(h.hourZ === '2026-09-22T21:00:00Z' && h.hourYE === '00:00' && h.dateYE === '2026-09-23',
+        'ساعةُ 21Z ⇒ 00:00 يمنيّ من اليوم التالي');
+  check(call('_devStatsHourYE(__v)', 'garbage') === null, 'ساعةٌ غيرُ صالحة ⇒ null');
+
+  // ⑦ الغلاف: محجوز · بلا GAS · السرُّ قبل الكاش · الجزئيُّ لا يُخزَّن.
+  check(/'dev-stats':\s*1/.test(src), "🔴 `'dev-stats'` محجوزٌ في `_RESERVED_TOP_PATHS`");
+  var hi = src.indexOf("if (path === '/dev-stats')");
+  var hs = hi >= 0 ? src.slice(hi, src.indexOf("if (path === '/client-err')", hi)) : '';
+  check(hs.length > 0 && !/GAS[.\[]/.test(hs) && hs.indexOf('_bhAcquire') < 0, '🔴 صفرُ نداءٍ على GAS ولا مقعدَ منظّم');
+  var iKey = hs.indexOf('_devStatsKeyOk('), iCache = hs.indexOf('caches.default.match(');
+  check(iKey > 0 && iCache > iKey, '🔴 المصادقةُ تسبق قراءةَ الكاش (الكاشُ ليس طريقاً حولها)');
+  check(/if \(!dsBody\.partial\)/.test(hs), 'الجزئيُّ لا يُخزَّن');
+  check(/gv: _bhTail\.gv, dd: _bhTail\.dd, hr: /.test(src), 'سجلُّ `ev:\'gas\'` يحمل `gv`/`dd`/`hr`');
+})();
+
 // ── حدُّ تسجيل المشاهدات العامّة لكلّ IP (قرار المالك 2026-09-19) ─────────────────
 (function () {
   console.log('');

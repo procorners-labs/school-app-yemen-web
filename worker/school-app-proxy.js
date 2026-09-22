@@ -518,6 +518,297 @@ function _clientErrRate(ip, now) {
 }
 /* ═══ نهايةُ `/client-err` النقيّة ═══ */
 
+/* ═══ ذيلُ ردّ GAS: `_v` و`_dedup` — للسجلّ وحده (‏2026-09-23) ═══════════════════
+   عقدٌ مع جلسة `SchoolApp-gas`: `doPost` يُلحق بجانب `_ms` حقلين:
+   · `_v`     = أوّلُ ٧ محارف hex من كوميت المصدر الذي نُشرت منه نشرةُ GAS — **ويغيب كلّياً**
+                حين لا يُعرَف (لا نصَّ فارغاً).
+   · `_dedup` = `true` على ردٍّ أُعيد من سجلّ منع التكرار **بلا تنفيذٍ ثانٍ**.
+   🔒 **حارسٌ بقطبين:** `_v` يُقبل بالشكل `^[0-9a-f]{7}$` حرفياً وإلّا `''` ⇒ **لا نصَّ حرٌّ
+   يدخل السجلّ**؛ و`_dedup` هو `true` الحرفيّةُ وحدَها، وكلُّ ما عداها (غيابٌ · `"true"` · `1`)
+   ⇒ `false`. والمسحُ على الذيل وحده (الحقولُ آخرُ الكائن بترتيب الإدراج) بلا `JSON.parse`
+   على المسار الحارّ — نفسُ نمط `srv`. */
+function _gasTailMeta(text) {
+  var out = { gv: '', dd: false };
+  if (typeof text !== 'string' || !text) return out;
+  var tail = text.slice(-160);
+  var mv = /"_v":"([0-9a-f]{7})"[,}]/.exec(tail);
+  if (mv) out.gv = mv[1];
+  if (/"_dedup":true[,}]/.test(tail)) out.dd = true;
+  return out;
+}
+
+/* ═══ `/dev-stats` — عدّاداتُ صحّة النقل للوحة المطوّر (عقد v1 · 2026-09-23) ═════════
+   🎯 **لماذا من الوركر:** سجلُّ `ev:'gas'` يحمل كلَّ إجهاضٍ سلفاً — فالناقصُ سطحُ قراءةٍ لا
+   قناةُ تبليغ. والقراءةُ من Workers Observability API ⇒ **صفرُ نداءٍ على GAS وصفرُ تخزينٍ جديد.**
+   🔒 **المصادقة:** رأسُ `X-Dev-Stats-Key` يُقارَن بـ`env.DEV_STATS_KEY` مقارنةً ثابتةَ الزمن.
+      يُنادى من `UrlFetchApp` في master-admin بعد تحقّقه من دور المطوّر — **لا من متصفّح**
+      ⇒ لا CORS. والسرُّ نصفان (Worker Secret + Script Property) يُدخلهما المالكُ بنفسه.
+   🔴 **قاعدةُ الفشل:** قسمٌ فشل استعلامُه ⇒ `null` + اسمُه في `missing` — **لا صفرَ أبداً**،
+      فالصفرُ الكاذبُ يُقرأ «لا أخطاء». وفشلُ `totals` نفسِه ⇒ 503 بلا جسمٍ جزئيّ. */
+var DEV_STATS_WINDOWS = { '6h': 6 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 24 * 3600e3 };
+var DEV_STATS_MIN_N   = 100;
+var DEV_STATS_TTL_S   = 300;
+var DEV_STATS_TOP_FN  = 40;
+var DEV_STATS_SCRIPT  = 'school-teacher-proxy';
+
+function _devStatsWindow(q) {
+  var k = (q === null || q === undefined || q === '') ? '24h' : String(q);
+  return Object.prototype.hasOwnProperty.call(DEV_STATS_WINDOWS, k) ? { key: k, ms: DEV_STATS_WINDOWS[k] } : null;
+}
+
+/* مقارنةٌ ثابتةُ الزمن بالنسبة لمحتوى السرّ: تمرّ على طول السرّ كاملاً دائماً. والسرُّ الغائب
+   أو الفارغ ⇒ `false` (fail-closed) — لا يُقبل مفتاحٌ فارغٌ لسرٍّ فارغ. */
+function _devStatsKeyOk(given, secret) {
+  if (typeof secret !== 'string' || secret.length < 16) return false;
+  if (typeof given !== 'string') given = '';
+  var diff = given.length ^ secret.length;
+  for (var i = 0; i < secret.length; i++) {
+    diff |= (given.charCodeAt(i % (given.length || 1)) || 0) ^ secret.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/* فاصلُ Wilson بثقة 95% لنسبة k/n. n=0 ⇒ `null` (لا نسبةَ بلا مقام). */
+function _wilson(k, n) {
+  if (!(n > 0)) return null;
+  var z = 1.959964, p = k / n, z2 = z * z;
+  var den = 1 + z2 / n;
+  var mid = (p + z2 / (2 * n)) / den;
+  var half = (z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n))) / den;
+  function r(x) { return Math.round(Math.max(0, Math.min(1, x)) * 10000) / 10000; }
+  return { lo: r(mid - half), hi: r(mid + half) };
+}
+
+/* خليّةٌ من عدّادات `why`. `n` = كلُّ الأحداث غير المُسترَدّة — و`dd:true` مُستبعدٌ قبل الوصول هنا. */
+function _devStatsCell(c) {
+  var ok = c.ok || 0, ab = c.abort_budget || 0;
+  var up = (c.upstream_status || 0) + (c.upstream_html || 0);
+  /* `transport` = فشلُ `fetch` نفسِه لا انقضاءُ مهلتنا — يُسمّى صراحةً (مراجعة #368)،
+     و`other` ما لا اسمَ له ⇒ **مجموعُ الحقول الخمسة = n دائماً**، فلا فئةَ تختبئ في المقام. */
+  var tr = c.transport || 0;
+  var n = 0;
+  for (var k in c) if (Object.prototype.hasOwnProperty.call(c, k)) n += c[k];
+  var w = _wilson(ab, n);
+  return { n: n, ok: ok, abort: ab, upstream: up, transport: tr, other: n - ok - ab - up - tr,
+           abortRate: n > 0 ? Math.round(ab / n * 10000) / 10000 : null,
+           wilsonLo: w ? w.lo : null, wilsonHi: w ? w.hi : null,
+           enough: n >= DEV_STATS_MIN_N };
+}
+
+/* صفوفُ الـAPI ⇒ `[{g:{key:value}, n}]`. الشكلُ المقيس: `result.calculations[0].aggregates[]`
+   كلٌّ بـ`groups:[{key,value}]` و`value` (العدّ). وأيُّ شكلٍ آخر ⇒ استثناءٌ لا مصفوفةٌ فارغة —
+   **فالفارغُ يُقرأ «صفرُ أحداث»** وهو ما تمنعه قاعدةُ الفشل. */
+function _devStatsRows(apiJson) {
+  if (!apiJson || apiJson.success === false) throw new Error('obs_api_error');
+  var calc = apiJson.result && apiJson.result.calculations;
+  if (!calc || !calc.length || !calc[0] || !calc[0].aggregates) throw new Error('obs_shape');
+  var agg = calc[0].aggregates, out = [];
+  for (var i = 0; i < agg.length; i++) {
+    var g = {}, gs = agg[i].groups || [];
+    for (var j = 0; j < gs.length; j++) g[gs[j].key] = gs[j].value;
+    out.push({ g: g, n: +agg[i].value || 0 });
+  }
+  return out;
+}
+
+/* يجمع الصفوفَ بمفتاحٍ مشتقّ ⇒ `{key: {why: count}}`، ويُسقط `dd:true` (ليست تنفيذاً) ويعدّها. */
+function _devStatsFold(rows, keyFn) {
+  var acc = {}, dedup = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r.g.dd === true) { dedup += r.n; continue; }
+    var k = keyFn(r.g);
+    if (k === null) continue;
+    var why = (typeof r.g.why === 'string' && r.g.why) ? r.g.why : 'other';
+    if (!acc[k]) acc[k] = {};
+    acc[k][why] = (acc[k][why] || 0) + r.n;
+  }
+  return { acc: acc, dedup: dedup };
+}
+
+/* 🔴 **لماذا الطرحُ لا التجميعُ بـ`dd` — مقيسٌ على الـAPI الحيّ 2026-09-23:** التجميعُ بحقلٍ
+   تفتقده الصفوفُ القديمة (`dd`) أعاد **`aggregates: []` بـ`success:true`** — أي أن الـAPI
+   **يُسقط كلَّ صفٍّ لا يحمل الحقلَ بصمت**، فنافذةٌ تعبر لحظةَ إضافته تُقرأ «صفرَ أحداث».
+   ⇒ الأبعادُ الموجودةُ في كلّ الصفوف (app · fn · why · النسخة) تُجمَّع **بلا** `dd`، ثمّ يُطرح
+   منها استعلامٌ مستقلّ مُفلتَرٌ بـ`dd = true`. والأبعادُ الجديدة (`hr` · `gv`) تُعلن **تغطيتَها**. */
+function _devStatsFoldMinus(rows, dedupRows, keyFn) {
+  var f = _devStatsFold(rows, keyFn);
+  f.subtracted = 0;
+  for (var i = 0; dedupRows && i < dedupRows.length; i++) {
+    var r = dedupRows[i], k = keyFn(r.g);
+    var why = (typeof r.g.why === 'string' && r.g.why) ? r.g.why : 'other';
+    if (k === null || !f.acc[k] || !f.acc[k][why]) continue;
+    var d = Math.min(f.acc[k][why], r.n);
+    f.acc[k][why] -= d;
+    f.subtracted += d;
+  }
+  return f;
+}
+
+/* تغطيةُ بُعدٍ جديد: كم من الأحداث حملته (بما فيها المُسترَدّة) من المجموع الخام. */
+function _devStatsCoverage(fold, rawN) {
+  var s = fold.dedup || 0;
+  for (var k in fold.acc) if (Object.prototype.hasOwnProperty.call(fold.acc, k)) {
+    for (var w in fold.acc[k]) if (Object.prototype.hasOwnProperty.call(fold.acc[k], w)) s += fold.acc[k][w];
+  }
+  return { coverage: rawN > 0 ? Math.round(Math.min(1, s / rawN) * 10000) / 10000 : null,
+           unbucketedN: Math.max(0, rawN - s) };
+}
+
+/* رفضُ المنظّم (503): العددُ وحصّتُه من كلّ ما طُلب (المنفَّذ `gasN` + المرفوض). بلا طرحٍ ولا
+   تجميعٍ بـ`why` — الرفضُ لا يبلغ GAS أصلاً. `share` = null حين لا مقام. */
+function _devStatsRejected(rows, gasN, top) {
+  var n = 0, byApp = {}, byFn = {};
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], a = typeof r.g.app === 'string' ? r.g.app : '', f = typeof r.g.fn === 'string' ? r.g.fn : '';
+    n += r.n;
+    byApp[a] = (byApp[a] || 0) + r.n;
+    byFn[a + '\u0001' + f] = (byFn[a + '\u0001' + f] || 0) + r.n;
+  }
+  var all = n + (gasN || 0);
+  function list(o, mk) {
+    var out = [];
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) out.push(Object.assign(mk(k), { n: o[k] }));
+    return out.sort(function (x, y) { return y.n - x.n; });
+  }
+  return {
+    n: n, share: all > 0 ? Math.round(n / all * 10000) / 10000 : null,
+    byApp: list(byApp, function (k) { return { app: k }; }),
+    byFn: list(byFn, function (k) { var p = k.split('\u0001'); return { app: p[0], fn: p[1] }; }).slice(0, top)
+  };
+}
+
+/* ساعةٌ UTC بصيغة السجلّ (`2026-09-22T12`) ⇒ حقولُ العرض بتوقيت اليمن (UTC+3 ثابتٌ بلا توقيتٍ صيفيّ). */
+function _devStatsHourYE(hr) {
+  var t = Date.parse(hr + ':00:00Z');
+  if (isNaN(t)) return null;
+  var ye = new Date(t + 3 * 3600e3).toISOString();
+  return { hourZ: new Date(t).toISOString().slice(0, 19) + 'Z', hourYE: ye.slice(11, 16), dateYE: ye.slice(0, 10) };
+}
+/* ═══ نهايةُ `/dev-stats` النقيّة ═══ */
+
+/* يبني جسمَ `/dev-stats` من ستّة استعلاماتٍ متوازية + قائمة النسخ. **ليست نقيّة** (fetch)،
+   لكنّ كلَّ تحويلٍ فيها يمرّ بالدوالّ النقيّة أعلاه — وهي المختبَرة. */
+async function _devStatsBuild(env, win, now) {
+  var from = now - win.ms, to = now;
+  var base = 'https://api.cloudflare.com/client/v4/accounts/' + env.CF_ACCOUNT_ID;
+  var auth = { 'Authorization': 'Bearer ' + env.CF_OBS_TOKEN, 'Content-Type': 'application/json' };
+  function q(ev, groupBys, extra) {
+    var filters = [
+      { key: '$metadata.service', operation: 'eq', type: 'string', value: DEV_STATS_SCRIPT },
+      { key: 'ev', operation: 'eq', type: 'string', value: ev }
+    ].concat(extra || []);
+    var body = {
+      queryId: 'dev-stats', view: 'calculations', chartType: 'aggregate', ignoreSeries: true,
+      dry: true, limit: 2000,
+      parameters: {
+        datasets: ['cloudflare-workers'],
+        filters: filters,
+        calculations: [{ operator: 'count', alias: 'n' }],
+        groupBys: groupBys.map(function (g) { return { type: g[1], value: g[0] }; }),
+        limit: 2000
+      },
+      timeframe: { from: from, to: to }
+    };
+    return fetch(base + '/workers/observability/telemetry/query',
+                 { method: 'POST', headers: auth, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); }).then(_devStatsRows);
+  }
+  var S = 'string', W = ['why', S], D = ['dd', 'boolean'], VER = '$workers.scriptVersion.id';
+  var DD_TRUE = [{ key: 'dd', operation: 'eq', type: 'boolean', value: true }];
+  var jobs = [
+    q('gas', [['app', S], W]),                                // 0 totals · byApp
+    q('gas', [['app', S], ['fn', S], W]),                     // 1 byFn
+    q('gas', [['hr', S], W, D]),                              // 2 byHour   (بُعدٌ جديد ⇒ تغطية)
+    q('gas', [[VER, S], W]),                                  // 3 byVersion
+    q('gas', [['gv', S], W, D]),                              // 4 byGasV   (بُعدٌ جديد ⇒ تغطية)
+    q('clienterr', [['app', S], ['fn', S], ['kind', S]]),     // 5
+    fetch(base + '/workers/scripts/' + DEV_STATS_SCRIPT + '/versions', { headers: auth })
+      .then(function (r) { return r.json(); }),               // 6 أرقامُ النسخ وتواريخُها
+    q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE),  // 7 المُسترَدّة — تُطرح من 0·1·3
+    /* 8 🔴 رفضُ المنظّم (503) — يُسجَّل `ev:'bulkhead'` **قبل** كتلة `ev:'gas'` فلا يبلغها أبداً
+       ⇒ بدونه تبدو اللوحةُ سليمةً في ذروة الإشباع بالضبط (مراجعة #368). */
+    q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }])
+  ];
+  var res = await Promise.allSettled(jobs);
+  function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
+  if (!val(0)) return null;                                   // totals ⇒ 503 عند المستدعي
+
+  var missing = [];
+  function cells(foldRes, mk) {
+    var out = [];
+    for (var k in foldRes.acc) if (Object.prototype.hasOwnProperty.call(foldRes.acc, k)) {
+      out.push(Object.assign(mk(k), _devStatsCell(foldRes.acc[k])));
+    }
+    return out;
+  }
+  var byAbort = function (a, b) { return (b.abort - a.abort) || (b.n - a.n); };
+  /* المُسترَدّةُ لا تدخل المقام. وإن فشل استعلامُها ⇒ `dedup:null` والأرقامُ تشملها (يُعلَن في missing). */
+  var dRows = val(7);
+  if (!dRows) missing.push('dedup');
+  var rawN = 0;
+  val(0).forEach(function (r) { rawN += r.n; });
+
+  var fT = _devStatsFoldMinus(val(0), dRows, function () { return 'all'; });
+  var fA = _devStatsFoldMinus(val(0), dRows, function (g) { return typeof g.app === 'string' ? g.app : ''; });
+  var body = {
+    v: 1, generatedAt: new Date(now).toISOString().slice(0, 19) + 'Z', cacheAgeS: 0,
+    window: { key: win.key, from: new Date(from).toISOString().slice(0, 19) + 'Z',
+              to: new Date(to).toISOString().slice(0, 19) + 'Z' },
+    tz: { name: 'Asia/Aden', offset: '+03:00' }, minN: DEV_STATS_MIN_N,
+    totals: _devStatsCell(fT.acc.all || {}),
+    byApp: cells(fA, function (k) { return { app: k }; }).sort(byAbort),
+    byFn: null, byHour: null, hourCoverage: null, byVersion: null, byGasV: null, gasVCoverage: null,
+    clienterr: null, rejected503: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
+  };
+
+  if (val(1)) {
+    var fnKey = function (g) { return (g.app || '') + '\u0001' + (g.fn || ''); };
+    body.byFn = cells(_devStatsFoldMinus(val(1), dRows, fnKey),
+      function (k) { var p = k.split('\u0001'); return { app: p[0], fn: p[1] }; })
+      .sort(byAbort).slice(0, DEV_STATS_TOP_FN);
+  } else missing.push('byFn');
+
+  if (val(2)) {
+    var fH = _devStatsFold(val(2), function (g) { return (typeof g.hr === 'string' && /^\d{4}-\d\d-\d\dT\d\d$/.test(g.hr)) ? g.hr : null; });
+    body.hourCoverage = _devStatsCoverage(fH, rawN);
+    body.byHour = cells(fH, function (k) { return _devStatsHourYE(k) || { hourZ: k }; })
+      .sort(function (a, b) { return a.hourZ < b.hourZ ? -1 : 1; });
+  } else missing.push('byHour');
+
+  if (val(3)) {
+    var vmeta = {}, vl = val(6);
+    if (vl && vl.result && vl.result.items) {
+      vl.result.items.forEach(function (it) {
+        vmeta[it.id] = { number: (typeof it.number === 'number') ? it.number : null,
+                         createdAt: (it.metadata && it.metadata.created_on) ? String(it.metadata.created_on).slice(0, 19) + 'Z' : null };
+      });
+    } else missing.push('versionMeta');
+    body.byVersion = cells(_devStatsFoldMinus(val(3), dRows, function (g) { return g[VER] || 'unknown'; }),
+      function (k) { var m = vmeta[k] || {}; return { id: k.slice(0, 8), number: m.number || null, createdAt: m.createdAt || null }; })
+      .sort(function (a, b) { return String(a.createdAt || '') < String(b.createdAt || '') ? -1 : 1; });
+  } else missing.push('byVersion');
+
+  if (val(4)) {
+    var fG = _devStatsFold(val(4), function (g) { return (typeof g.gv === 'string' && /^[0-9a-f]{7}$/.test(g.gv)) ? g.gv : 'unknown'; });
+    body.gasVCoverage = _devStatsCoverage(fG, rawN);
+    body.byGasV = cells(fG, function (k) { return { gasV: k }; }).sort(byAbort);
+  } else missing.push('byGasV');
+
+  if (val(8)) {
+    body.rejected503 = _devStatsRejected(val(8), body.totals.n, DEV_STATS_TOP_FN);
+  } else missing.push('rejected503');
+
+  if (val(5)) {
+    body.clienterr = val(5).map(function (r) {
+      return { app: r.g.app || '', fn: r.g.fn || '', kind: r.g.kind || '', n: r.n };
+    }).sort(function (a, b) { return b.n - a.n; }).slice(0, 60);
+  } else missing.push('clienterr');
+
+  body.partial = missing.length > 0;
+  return body;
+}
+
 /* ═══ حدُّ تسجيل المشاهدات العامّة لكلّ IP (قرار المالك 2026-09-19) ═══════════════
    🔴 **العلّة المقيسة:** `recordPublicNewsView`/`recordPublicNewsViewBatch` عامّتان **بلا
    توكن**، و«رقمُ الزائر» يصنعه العميلُ نفسُه ⇒ سكربتٌ بأرقامٍ عشوائيّةٍ يسجّل حتى 50
@@ -711,6 +1002,8 @@ var _RESERVED_TOP_PATHS = {
   // 'client-err' — وجهةُ أخطاء العميل (2026-09-18). **لازمٌ لا دفاعيّ** بنفس علّة 'csp-report':
   //    إسقاطُه يجعله مرشَّحَ slug مدرسةٍ فتُوجَّه تقاريرُ الأخطاء إلى صفحةِ مستأجر.
   'client-err': 1,
+  // 'dev-stats' — عدّاداتُ صحّة النقل للوحة المطوّر (2026-09-23). **لازمٌ** بنفس العلّة.
+  'dev-stats': 1,
   // 'register' — يُحوَّل إلى صفحة التسجيل (2026-09-19). **لازمٌ لا دفاعيّ**: كان يُقرأ slug
   //    مدرسةٍ فيُكلّف نداءَ GAS ثمّ ٤٠٤، وإسقاطُه يجعله قابلاً للاختطاف بتسجيل مدرسةٍ بالاسم.
   'register': 1
@@ -2564,10 +2857,15 @@ export default {
            يرسل `{fn, args, schoolId}` **بلا أيّ دور**، فالوركرُ لا يراه أصلاً.
            ⇒ `len` يقيس **المتغيّرَ المسبِّبَ نفسَه** لا وكيلَه: ثقلُ الحمولة.
            🔒 **وطولٌ لا محتوى** — صفرُ بايتٍ من الجسم يدخل السجلّ. */
+        /* `gv`/`dd` من ذيل الردّ (انظر `_gasTailMeta`) و`hr` ساعةُ UTC — ثلاثتُها أبعادُ
+           تجميعٍ لـ`/dev-stats`: الساعةُ بلا سلاسلَ زمنيّةٍ من الـAPI (`granularity` لا يُحترَم
+           مقيساً)، ونشرةُ GAS بجانب نسخة الوركر فيحمل كلُّ صفٍّ الطرفين معاً. */
+        var _bhTail = _gasTailMeta(lastText);
         _bhLog({ ev: 'gas', app: app, fn: _bhFn, ms: Date.now() - _bhT0, waitMs: _bhWaited,
                  gasMs: Date.now() - _bhT0 - _bhWaited, n: _bhN, q: _bhQ.length,
                  st: lastStatus, ok: good, srv: _bhSrv, why: _bhWhy,
-                 len: (typeof lastText === 'string') ? lastText.length : -1 });
+                 len: (typeof lastText === 'string') ? lastText.length : -1,
+                 gv: _bhTail.gv, dd: _bhTail.dd, hr: new Date().toISOString().slice(0, 13) });
         // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
         // (الرفض 503 يخرج قبل الـtry ولا يحجز مقعداً أصلاً). بلا هذا، أي مسار خروج
         // منسيّ يُسرّب مقعداً إلى الأبد ويُجمّد السقف تدريجياً.
@@ -3036,6 +3334,42 @@ export default {
        أو الكاذب يعني أن الجسمَ يُقرأ كاملاً قبل الرفض (نفسُ حدّ `/csp-report`؛ والسقفُ
        الفعليّ حدُّ طلب Workers) · و**صفرُ نداءٍ على GAS**. والردودُ بلا جسم: 204 قُبل · 400 رُفض ·
        413 كبير · 429 حدّ · 403 أصلٌ آخر. */
+    /* ── 1ي) عدّاداتُ صحّة النقل للوحة المطوّر: /dev-stats (عقد v1 · 2026-09-23) ──────
+       المنطقُ في `_devStats*` أعلى الملفّ. هنا الغلاف: GET حصراً · بلا CORS · السرُّ أوّلاً
+       ثمّ النافذة ثمّ الكاش — **فالكاشُ لا يصير طريقاً حول المصادقة** · وصفرُ نداءٍ على GAS. */
+    if (path === '/dev-stats') {
+      var dsHdr = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+      function dsJson(o, st) { return new Response(JSON.stringify(o), { status: st, headers: dsHdr }); }
+      if (request.method !== 'GET') {
+        return new Response(null, { status: 405, headers: { 'Allow': 'GET', 'Cache-Control': 'no-store' } });
+      }
+      if (!env.DEV_STATS_KEY || !env.CF_OBS_TOKEN || !env.CF_ACCOUNT_ID) {
+        return dsJson({ v: 1, error: 'not_configured' }, 503);
+      }
+      if (!_devStatsKeyOk(request.headers.get('X-Dev-Stats-Key'), env.DEV_STATS_KEY)) {
+        return dsJson({ v: 1, error: 'unauthorized' }, 401);
+      }
+      var dsWin = _devStatsWindow(url.searchParams.get('window'));
+      if (!dsWin) return dsJson({ v: 1, error: 'bad_window' }, 400);
+      var dsKey = new Request(url.origin + '/__dev-stats/v1/' + dsWin.key);
+      var dsHit = await caches.default.match(dsKey);
+      if (dsHit) {
+        var dsCached = await dsHit.json();
+        dsCached.cacheAgeS = Math.max(0, Math.round((Date.now() - Date.parse(dsCached.generatedAt)) / 1000));
+        return dsJson(dsCached, 200);
+      }
+      var dsBody = null;
+      try { dsBody = await _devStatsBuild(env, dsWin, Date.now()); } catch (e) { dsBody = null; }
+      if (!dsBody) return dsJson({ v: 1, error: 'obs_unavailable' }, 503);
+      /* الجزئيُّ لا يُخزَّن — كي لا يُثبَّت قسمٌ «تعذّر» خمسَ دقائق بعد أن يعود المصدر. */
+      if (!dsBody.partial) {
+        ctx.waitUntil(caches.default.put(dsKey, new Response(JSON.stringify(dsBody), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + DEV_STATS_TTL_S }
+        })));
+      }
+      return dsJson(dsBody, 200);
+    }
+
     if (path === '/client-err') {
       var ceNoStore = { 'Cache-Control': 'no-store' };
       if (request.method !== 'POST') {
