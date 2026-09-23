@@ -3737,6 +3737,35 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
         /q\('gas', \[\['app', S\], W\]\),/.test(src),
         '🔴 استعلامُ المجموع بلا `dd` (وإلّا سقطت الصفوفُ القديمة) · والاسترداد مُفلتَرٌ بـ`dd = true`');
 
+  // ⑤-ج 🔬 سببُ الرفض يُحمَل لا يُبتلَع (قِيس 2026-09-23: جولتا إصلاحٍ على التخمين بلا سبب).
+  var dg = call('_devStatsDiagOf(__v)', { diag: { st: 403, code: 10000, msg: 'Authentication error' } });
+  check(dg.st === 403 && dg.code === 10000, 'سببُ الـAPI المحمول (st/code) يُعاد كما هو');
+  var dg2 = call('_devStatsDiagOf(__v)', new Error('boom for e08b4b9ead7a4f1e7458bded98f35dd4'));
+  check(dg2.st === 0 && dg2.msg.indexOf('e08b4b9e') === -1 && dg2.msg.indexOf('…') > 0,
+        '🔒 استثناءٌ بلا سبب ⇒ st=0 · وسلسلةُ hex بطول ٣٢ (معرّفُ الحساب) تُطمس');
+  check(/\.then\(_devStatsApiJson\)\.then\(_devStatsRows\)/.test(src) && !/return r\.json\(\); \}\)\.then\(_devStatsRows\)/.test(src),
+        '🔴 الاستعلاماتُ تمرّ بـ`_devStatsApiJson` (يحمل السبب) لا بـ`r.json()` المجرّد');
+  check(/error: 'obs_unavailable', diag:/.test(src), '503 `obs_unavailable` يحمل `diag`');
+  check(/ev: 'devstats', act: 'fail', sec: dsSec, st: /.test(src), '🔬 والسببُ يُسجَّل `ev:devstats` (يُقرأ بلا مفتاح)');
+  function FR(st, text) { return { ok: st >= 200 && st < 300, status: st, text: function () { return Promise.resolve(text); } }; }
+  var apiJ = vm.runInContext('_devStatsApiJson', ds);
+  global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
+    return Promise.all([
+      apiJ(FR(403, '{"success":false,"errors":[{"code":10000,"message":"Authentication error for account e08b4b9ead7a4f1e7458bded98f35dd4"}]}'))
+        .then(function () { return null; }, function (e) { return e.diag; }),
+      apiJ(FR(502, '<html>bad gateway</html>')).then(function () { return null; }, function (e) { return e.diag; }),
+      apiJ(FR(200, '{"success":true,"result":{}}'))
+    ]).then(function (r) {
+      console.log('');
+      console.log('عدّاداتُ صحّة النقل /dev-stats — سببُ الرفض (غير متزامن):');
+      check(r[0] && r[0].st === 403 && r[0].code === 10000 && r[0].msg.indexOf('e08b4b9e') === -1,
+            '🔴 403 من الـAPI ⇒ استثناءٌ يحمل st=403 وcode=10000 · ومعرّفُ الحساب مطموس');
+      check(r[1] && r[1].st === 502 && r[1].code === null && r[1].msg.indexOf('<html>') === 0,
+            'ردٌّ غيرُ JSON ⇒ st والنصُّ المقتطَع');
+      check(r[2] && r[2].success === true, 'ضابطٌ معاكس: ردٌّ ناجحٌ ⇒ JSON بلا استثناء');
+    });
+  });
+
   // ⑥ الساعة بتوقيت اليمن.
   var h = call('_devStatsHourYE(__v)', '2026-09-22T21');
   check(h.hourZ === '2026-09-22T21:00:00Z' && h.hourYE === '00:00' && h.dateYE === '2026-09-23',
