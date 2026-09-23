@@ -777,6 +777,20 @@ function _settleLimited(thunks, limit) {
     for (var k = 0; k < Math.min(limit, n); k++) launch();
   });
 }
+/* يُخرج من تقسيم نشرة GAS كلَّ حدثٍ لا ردَّ له (`abort_budget` · `transport`) — لا يحمل `_v` بالبناء،
+   فبقاؤه يجعل `unknown` مقبرةَ الإجهاض وكلَّ نشرةٍ معروفةٍ «0٪». يُعاد عددُه منفصلاً ولا يُطوى. */
+function _devStatsGasVSplit(fold) {
+  var out = { acc: {}, dedup: fold.dedup }, aborts = 0;
+  for (var k in fold.acc) if (Object.prototype.hasOwnProperty.call(fold.acc, k)) {
+    var c = fold.acc[k], keep = {}, any = false;
+    for (var w in c) if (Object.prototype.hasOwnProperty.call(c, w)) {
+      if (w === 'abort_budget' || w === 'transport') { aborts += c[w]; continue; }
+      keep[w] = c[w]; any = true;
+    }
+    if (any) out.acc[k] = keep;
+  }
+  return { fold: out, aborts: aborts };
+}
 /* ═══ نهايةُ `/dev-stats` النقيّة ═══ */
 
 /* يبني جسمَ `/dev-stats` من ستّة استعلاماتٍ متوازية + قائمة النسخ. **ليست نقيّة** (fetch)،
@@ -894,7 +908,14 @@ async function _devStatsBuild(env, win, now) {
   if (val(4)) {
     var fG = _devStatsFold(val(4), function (g) { return (typeof g.gv === 'string' && /^[0-9a-f]{7}$/.test(g.gv)) ? g.gv : 'unknown'; });
     body.gasVCoverage = _devStatsCoverage(fG, rawN);
-    body.byGasV = cells(fG, function (k) { return { gasV: k }; }).sort(byAbort);
+    /* 🔴 **لا نسبةَ إجهاضٍ لكلّ نشرة GAS — منحازةٌ بالبناء (قِيس في اللوحة الحيّة 2026-09-23):**
+       `_v` يسافر في **ذيل الردّ**، والمُجهَضُ لا ردَّ له ⇒ كلُّ إجهاضٍ يقع في `unknown`، وكلُّ نشرةٍ
+       معروفةٍ تُظهر **0٪** مهما كانت (ظهر: `6eb8a81 · 0/587` مقابل `unknown · 260/396`).
+       ⇒ `_devStatsGasVSplit` يُخرج الإجهاضَ من الخلايا ويعدّه `abortsUnattributable`. */
+    var gSplit = _devStatsGasVSplit(fG);
+    body.byGasV = cells(gSplit.fold, function (k) { return { gasV: k }; })
+      .sort(function (a, b) { return b.n - a.n; });
+    body.gasVAbortsUnattributable = gSplit.aborts;
   } else missing.push('byGasV');
 
   if (val(8)) {
