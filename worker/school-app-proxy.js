@@ -737,6 +737,27 @@ function _devStatsHourYE(hr) {
   var ye = new Date(t + 3 * 3600e3).toISOString();
   return { hourZ: new Date(t).toISOString().slice(0, 19) + 'Z', hourYE: ye.slice(11, 16), dateYE: ye.slice(0, 10) };
 }
+/* 🔬 ردُّ Cloudflare API ⇒ JSON، أو استثناءٌ **يحمل سببَه** (`e.diag`) — كان `r.json()` مجرّداً،
+   فالرفضُ (403 نطاقُ توكن · 401 توكنٌ خاطئ · 404 حسابٌ خاطئ) يصير 503 واحداً بلا سبب، وقِيس
+   فعلاً 2026-09-23: جولتا إصلاحٍ على التخمين. 🔒 النصُّ مقتطَع، وأيُّ سلسلة hex بطول ٣٢ تُطمس
+   (معرّفُ الحساب) — ولا يُعرض إلّا بعد المصادقة. */
+function _devStatsApiJson(r) {
+  return r.text().then(function (t) {
+    var j = null;
+    try { j = JSON.parse(t); } catch (e) { j = null; }
+    if (r.ok && j && j.success !== false) return j;
+    var e1 = (j && j.errors && j.errors[0]) || {};
+    var err = new Error('obs_api');
+    err.diag = { st: r.status, code: (typeof e1.code === 'number') ? e1.code : null,
+                 msg: String(e1.message || (j ? '' : String(t || '').slice(0, 80)))
+                        .replace(/[0-9a-f]{32}/gi, '…').slice(0, 160) };
+    throw err;
+  });
+}
+function _devStatsDiagOf(reason) {
+  if (reason && reason.diag) return reason.diag;
+  return { st: 0, code: null, msg: String((reason && reason.message) || 'error').replace(/[0-9a-f]{32}/gi, '…').slice(0, 160) };
+}
 /* ═══ نهايةُ `/dev-stats` النقيّة ═══ */
 
 /* يبني جسمَ `/dev-stats` من ستّة استعلاماتٍ متوازية + قائمة النسخ. **ليست نقيّة** (fetch)،
@@ -764,7 +785,7 @@ async function _devStatsBuild(env, win, now) {
     };
     return fetch(base + '/workers/observability/telemetry/query',
                  { method: 'POST', headers: auth, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); }).then(_devStatsRows);
+      .then(_devStatsApiJson).then(_devStatsRows);
   }
   var S = 'string', W = ['why', S], D = ['dd', 'boolean'], VER = '$workers.scriptVersion.id';
   var DD_TRUE = [{ key: 'dd', operation: 'eq', type: 'boolean', value: true }];
@@ -776,7 +797,7 @@ async function _devStatsBuild(env, win, now) {
     q('gas', [['gv', S], W, D]),                              // 4 byGasV   (بُعدٌ جديد ⇒ تغطية)
     q('clienterr', [['app', S], ['fn', S], ['kind', S]]),     // 5
     fetch(base + '/workers/scripts/' + DEV_STATS_SCRIPT + '/versions', { headers: auth })
-      .then(function (r) { return r.json(); }),               // 6 أرقامُ النسخ وتواريخُها
+      .then(_devStatsApiJson),                                // 6 أرقامُ النسخ وتواريخُها
     q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE),  // 7 المُسترَدّة — تُطرح من 0·1·3
     /* 8 🔴 رفضُ المنظّم (503) — يُسجَّل `ev:'bulkhead'` **قبل** كتلة `ev:'gas'` فلا يبلغها أبداً
        ⇒ بدونه تبدو اللوحةُ سليمةً في ذروة الإشباع بالضبط (مراجعة #368). */
@@ -784,7 +805,13 @@ async function _devStatsBuild(env, win, now) {
   ];
   var res = await Promise.allSettled(jobs);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
-  if (!val(0)) return null;                                   // totals ⇒ 503 عند المستدعي
+  /* 🔬 سببُ كلّ قسمٍ فاشل — من ردّ الـAPI نفسِه (`_devStatsDiagOf`) لا تخميناً. */
+  var diag = {};
+  var NAMES = ['totals', 'byFn', 'byHour', 'byVersion', 'byGasV', 'clienterr', 'versionMeta', 'dedup', 'rejected503'];
+  for (var di = 0; di < res.length; di++) {
+    if (res[di].status === 'rejected') diag[NAMES[di]] = _devStatsDiagOf(res[di].reason);
+  }
+  if (!val(0)) return { __fail: true, diag: diag };            // totals ⇒ 503 عند المستدعي
 
   var missing = [];
   function cells(foldRes, mk) {
@@ -858,6 +885,7 @@ async function _devStatsBuild(env, win, now) {
   } else missing.push('clienterr');
 
   body.partial = missing.length > 0;
+  if (body.partial) body.diag = diag;
   return body;
 }
 
@@ -3422,7 +3450,21 @@ export default {
       }
       var dsBody = null;
       try { dsBody = await _devStatsBuild(env, dsWin, Date.now()); } catch (e) { dsBody = null; }
-      if (!dsBody) return dsJson({ v: 1, error: 'obs_unavailable' }, 503);
+      /* 🔬 السببُ في السجلّ أيضاً — الجسمُ خلف المفتاح، فلا يقرؤه إلّا المستدعي؛ والسجلُّ تقرؤه
+         جلسةُ الوركر بلا مفتاح. سطرٌ لكلّ قسمٍ فاشل: `st`/`code`/`msg` المطموس — بلا أيّ سرّ. */
+      var dsDiag = (!dsBody || dsBody.__fail) ? ((dsBody && dsBody.diag) || { totals: { st: 0, code: null, msg: 'exception' } })
+                                              : (dsBody.diag || null);
+      if (dsDiag) {
+        for (var dsSec in dsDiag) if (Object.prototype.hasOwnProperty.call(dsDiag, dsSec)) {
+          console.log(JSON.stringify({ ev: 'devstats', act: 'fail', sec: dsSec, st: dsDiag[dsSec].st,
+                                       code: dsDiag[dsSec].code, msg: dsDiag[dsSec].msg }));
+        }
+      }
+      if (!dsBody || dsBody.__fail) {
+        /* 🔬 `diag` يحمل سببَ الـAPI (رمزُ الحالة · رمزُ الخطإ · نصٌّ مقتطَع) — **بعد** المصادقة
+           وحدَها، ولا يحمل سرّاً: التوكنُ والحسابُ لا يدخلان الرسالة. */
+        return dsJson({ v: 1, error: 'obs_unavailable', diag: (dsBody && dsBody.diag) || { totals: { st: 0, code: null, msg: 'exception' } } }, 503);
+      }
       /* الجزئيُّ لا يُخزَّن — كي لا يُثبَّت قسمٌ «تعذّر» خمسَ دقائق بعد أن يعود المصدر. */
       if (!dsBody.partial) {
         ctx.waitUntil(caches.default.put(dsKey, new Response(JSON.stringify(dsBody), {
