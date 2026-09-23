@@ -1971,7 +1971,20 @@ function _tsCov(c) {
   if (c.coverage >= 1) return '';
   return ' <span style="color:#ef6c00;">— التغطية ' + _tsPct(c.coverage) + ' فقط (' + _errEsc(c.unbucketedN) + ' حدثاً خارجَ هذا التقسيم)</span>';
 }
-function _tsTable(title, rows, labelFn) {
+/* 🔴 خليّةُ نشرة GAS بلا نسبةِ إجهاض — منحازةٌ بالبناء: `_v` يسافر في ذيل الردّ والمُجهَضُ لا ردَّ له
+   ⇒ كلُّ نشرةٍ معروفةٍ كانت «0٪» (قِيس حيّاً 2026-09-23: 6eb8a81 · 0/587 مقابل unknown · 260/396).
+   ⇒ تُعرَض الأعدادُ وما له ردٌّ (خادم/نقل/أخرى) فقط، والإجهاضُ سطرٌ منفصلٌ لا يُنسَب (web#376). */
+function _tsGasVCell(c) {
+  if (!c) return '<span style="color:#c62828;">تعذّر القياس</span>';
+  return '<span>' + _errEsc(c.n) + ' نداءً' + _tsSplit(c) + '</span>';
+}
+function _tsUnattributable(x) {
+  var val = (typeof x === 'number') ? '<strong>' + _errEsc(x) + '</strong>'
+    : '<span style="color:#94a3b8;">غيرُ متاحٍ بعد (يلزم web#376)</span>';
+  return '<div style="font-size:12px;margin:2px 0 6px;">⚠️ الإجهاضُ لا يُنسَب إلى نشرة (لا ردَّ يحمل <code>_v</code>): ' + val + '</div>';
+}
+function _tsTable(title, rows, labelFn, cellFn) {
+  cellFn = cellFn || _tsCell;
   if (rows === null || rows === undefined) {
     return '<div style="margin:8px 0;"><strong>' + title + ':</strong> <span style="color:#c62828;">تعذّر القياس</span></div>';
   }
@@ -1979,7 +1992,7 @@ function _tsTable(title, rows, labelFn) {
   var h = '<div style="margin:10px 0 4px;"><strong>' + title + '</strong></div>' +
           '<table class="master-table" style="font-size:12px;"><tbody>';
   for (var i = 0; i < rows.length; i++) {
-    h += '<tr><td>' + labelFn(rows[i]) + '</td><td>' + _tsCell(rows[i]) + '</td></tr>';
+    h += '<tr><td>' + labelFn(rows[i]) + '</td><td>' + cellFn(rows[i]) + '</td></tr>';
   }
   return h + '</tbody></table>';
 }
@@ -1997,7 +2010,8 @@ function _tsRenderHtml(d) {
     return '#' + _errEsc(r.number) + ' <code>' + _errEsc(r.id) + '</code>' +
            ' <span style="color:#94a3b8;">' + _errEsc(r.createdAt || '') + '</span>';
   });
-  h += _tsTable('حسب نشرة GAS (_v)' + _tsCov(d.gasVCoverage), d.byGasV, function (r) { return '<code>' + _errEsc(r.gasV) + '</code>'; });
+  h += _tsTable('حسب نشرة GAS (_v) — ما له ردٌّ فقط' + _tsCov(d.gasVCoverage), d.byGasV, function (r) { return '<code>' + _errEsc(r.gasV) + '</code>'; }, _tsGasVCell);
+  h += _tsUnattributable(d.gasVAbortsUnattributable);
   h += _tsTable('حسب التطبيق', d.byApp, function (r) { return _errEsc(r.app); });
   h += _tsTable('حسب الدالّة (الأعلى إجهاضاً)', d.byFn, function (r) {
     return _errEsc(r.app) + ' · <code>' + _errEsc(r.fn) + '</code>';
