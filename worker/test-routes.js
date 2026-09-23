@@ -3789,6 +3789,16 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
     });
   });
 
+  // ⑤-د 🔴 انحيازُ نشرة GAS — الإجهاضُ لا يحمل `_v` (ظهر حيّاً: 6eb8a81 · 0٪ مقابل unknown · 65.7٪).
+  var gs = call('_devStatsGasVSplit(__v)', { acc: {
+    '6eb8a81': { ok: 587, upstream_status: 2 },
+    'unknown': { abort_budget: 260, ok: 136, transport: 4 } }, dedup: 0 });
+  check(gs.aborts === 264 && !('abort_budget' in (gs.fold.acc.unknown || {})) && gs.fold.acc.unknown.ok === 136,
+        '🔴 الإجهاضُ والنقلُ يخرجان من خلايا النشرة ويُعدّان منفصلين (لا «0٪» كاذبة)');
+  check(gs.fold.acc['6eb8a81'].ok === 587 && gs.fold.acc['6eb8a81'].upstream_status === 2,
+        'ضابطٌ معاكس: ما له ردٌّ (ok · upstream) يبقى في خلية نشرته');
+  check(/body\.gasVAbortsUnattributable = gSplit\.aborts;/.test(src), 'الموصول: `gasVAbortsUnattributable` في الجسم');
+
   // ⑥ الساعة بتوقيت اليمن.
   var h = call('_devStatsHourYE(__v)', '2026-09-22T21');
   check(h.hourZ === '2026-09-22T21:00:00Z' && h.hourYE === '00:00' && h.dateYE === '2026-09-23',
