@@ -3734,7 +3734,7 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
         '🔴 بُعدٌ جديدٌ يغطّي نصفَ النافذة ⇒ coverage=0.5 وunbucketed=100 (لا يُقرأ كاملاً)');
   check(call('_devStatsCoverage(__v, 0)', { acc: {}, dedup: 0 }).coverage === null, 'مقامٌ صفريّ ⇒ coverage=null');
   check(/DD_TRUE = \[\{ key: 'dd', operation: 'eq', type: 'boolean', value: true \}\]/.test(src) &&
-        /q\('gas', \[\['app', S\], W\]\),/.test(src),
+        /q\('gas', \[\['app', S\], W\]\); \}/.test(src),
         '🔴 استعلامُ المجموع بلا `dd` (وإلّا سقطت الصفوفُ القديمة) · والاسترداد مُفلتَرٌ بـ`dd = true`');
 
   // ⑤-ج 🔬 سببُ الرفض يُحمَل لا يُبتلَع (قِيس 2026-09-23: جولتا إصلاحٍ على التخمين بلا سبب).
@@ -3763,6 +3763,29 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
       check(r[1] && r[1].st === 502 && r[1].code === null && r[1].msg.indexOf('<html>') === 0,
             'ردٌّ غيرُ JSON ⇒ st والنصُّ المقتطَع');
       check(r[2] && r[2].success === true, 'ضابطٌ معاكس: ردٌّ ناجحٌ ⇒ JSON بلا استثناء');
+    }).then(function () {
+      /* 🔴 التوازي المحدود — التسعُ معاً أنتجت 429 (مقيس). يُقاس أقصى المتزامن فعلاً، والترتيبُ والشكل. */
+      var settle = vm.runInContext('_settleLimited', ds);
+      var active = 0, peak = 0;
+      function job(v, fail) {
+        return function () {
+          active++; if (active > peak) peak = active;
+          return new Promise(function (res, rej) {
+            setTimeout(function () { active--; if (fail) rej(new Error('x')); else res(v); }, 5);
+          });
+        };
+      }
+      var th = [job(0), job(1, true), job(2), job(3), job(4), job(5), job(6), job(7), job(8)];
+      return settle(th, 2).then(function (out) {
+        check(peak === 2, '🔴 أقصى المتزامن = 2 لا 9 (كانت التسعُ معاً ⇒ 429)');
+        check(out.length === 9 && out[0].value === 0 && out[8].value === 8 && out[1].status === 'rejected',
+              'الشكلُ والترتيبُ كـ`Promise.allSettled` حرفياً (الفاشلُ في موضعه)');
+        check(/await _settleLimited\(jobs, DEV_STATS_CONCURRENCY\)/.test(src) && !/Promise\.allSettled\(jobs\)/.test(src),
+              '🔴 البناءُ موصولٌ بالتوازي المحدود لا بـ`allSettled` على وعودٍ منطلقة');
+        var lim = vm.runInContext('DEV_STATS_CONCURRENCY', ds);
+        check(typeof lim === 'number' && lim >= 1 && lim <= 3, '🔴 `DEV_STATS_CONCURRENCY` بين 1 و3 (الثابتُ نفسُه لا قيمةُ الاختبار) [' + lim + ']');
+        return settle([], 2).then(function (e) { check(e.length === 0, 'قائمةٌ فارغة ⇒ تُحلّ فوراً (لا وعدَ معلَّق)'); });
+      });
     });
   });
 
@@ -3950,7 +3973,10 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
       check(w === 'store' && rvCalls.take === 1 && rvCalls.release === 1,
             '🔴 وضعُ الظلّ: التحديثُ يُحسَب في المنظّم (`_bhTake`) ويُحرَّر — لا يختفي من المعايرة');
     }).catch(function (e) { check(false, 'SWR: ' + e.message); }));
-    global.__swrPending = Promise.all(results);
+    /* 🔴 **يُسلسَل على السابق ولا يُستبدَل** — كان `= Promise.all(results)` يُسقط أيَّ فحصٍ غيرِ
+       متزامنٍ سُجِّل قبله، فيُطبع `RESULT` ويخرج قبل أن يُحكَم عليه (قِيس 2026-09-23: فحوصُ التوازي
+       المحدود لم تُطبع إطلاقاً). وهي بعينها فئةُ «فحصٌ بلا مُشغِّل». */
+    global.__swrPending = Promise.all([global.__swrPending].concat(results));
   }
   var swrSeg = src.slice(src.indexOf("if (_acFresh === 'fresh')"), src.indexOf('// ── حَجز مقعد قبل إطلاق أي محاولة نحو GAS'));
   check(/if \(_acFresh === 'stale' && ctx && ctx\.waitUntil\)/.test(swrSeg) &&

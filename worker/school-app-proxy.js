@@ -758,6 +758,25 @@ function _devStatsDiagOf(reason) {
   if (reason && reason.diag) return reason.diag;
   return { st: 0, code: null, msg: String((reason && reason.message) || 'error').replace(/[0-9a-f]{32}/gi, '…').slice(0, 160) };
 }
+/* تنفيذُ دوالَّ تُرجع وعوداً بتوازٍ لا يتجاوز `limit`، والنتيجةُ **بشكل `Promise.allSettled` وترتيبه**
+   حرفياً (`{status, value|reason}` بفهرس الدالّة) ⇒ لا يتغيّر شيءٌ في قارئ النتائج. */
+var DEV_STATS_CONCURRENCY = 2;
+function _settleLimited(thunks, limit) {
+  return new Promise(function (resolve) {
+    var out = new Array(thunks.length), next = 0, done = 0, n = thunks.length;
+    if (!n) { resolve(out); return; }
+    function launch() {
+      if (next >= n) return;
+      var i = next++;
+      var p;
+      try { p = Promise.resolve(thunks[i]()); } catch (e) { p = Promise.reject(e); }
+      p.then(function (v) { out[i] = { status: 'fulfilled', value: v }; },
+             function (e) { out[i] = { status: 'rejected', reason: e }; })
+       .then(function () { done++; if (done === n) resolve(out); else launch(); });
+    }
+    for (var k = 0; k < Math.min(limit, n); k++) launch();
+  });
+}
 /* ═══ نهايةُ `/dev-stats` النقيّة ═══ */
 
 /* يبني جسمَ `/dev-stats` من ستّة استعلاماتٍ متوازية + قائمة النسخ. **ليست نقيّة** (fetch)،
@@ -789,21 +808,25 @@ async function _devStatsBuild(env, win, now) {
   }
   var S = 'string', W = ['why', S], D = ['dd', 'boolean'], VER = '$workers.scriptVersion.id';
   var DD_TRUE = [{ key: 'dd', operation: 'eq', type: 'boolean', value: true }];
+  /* 🔴 **دوالُّ مؤجَّلة لا وعودٌ منطلقة** — كانت التسعُ تنطلق معاً فردّ الـAPI بـ429 على ثلاثٍ منها
+     (مقيس 2026-09-23 من سطور `ev:devstats`). ⇒ تُنفَّذ بتوازٍ محدود (`DEV_STATS_CONCURRENCY`). */
   var jobs = [
-    q('gas', [['app', S], W]),                                // 0 totals · byApp
-    q('gas', [['app', S], ['fn', S], W]),                     // 1 byFn
-    q('gas', [['hr', S], W, D]),                              // 2 byHour   (بُعدٌ جديد ⇒ تغطية)
-    q('gas', [[VER, S], W]),                                  // 3 byVersion
-    q('gas', [['gv', S], W, D]),                              // 4 byGasV   (بُعدٌ جديد ⇒ تغطية)
-    q('clienterr', [['app', S], ['fn', S], ['kind', S]]),     // 5
-    fetch(base + '/workers/scripts/' + DEV_STATS_SCRIPT + '/versions', { headers: auth })
-      .then(_devStatsApiJson),                                // 6 أرقامُ النسخ وتواريخُها
-    q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE),  // 7 المُسترَدّة — تُطرح من 0·1·3
+    function () { return q('gas', [['app', S], W]); },                               // 0 totals · byApp
+    function () { return q('gas', [['app', S], ['fn', S], W]); },                    // 1 byFn
+    function () { return q('gas', [['hr', S], W, D]); },                             // 2 byHour (تغطية)
+    function () { return q('gas', [[VER, S], W]); },                                 // 3 byVersion
+    function () { return q('gas', [['gv', S], W, D]); },                             // 4 byGasV (تغطية)
+    function () { return q('clienterr', [['app', S], ['fn', S], ['kind', S]]); },    // 5
+    function () {                                                                   // 6 أرقامُ النسخ
+      return fetch(base + '/workers/scripts/' + DEV_STATS_SCRIPT + '/versions', { headers: auth })
+        .then(_devStatsApiJson);
+    },
+    function () { return q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE); }, // 7 المُسترَدّة
     /* 8 🔴 رفضُ المنظّم (503) — يُسجَّل `ev:'bulkhead'` **قبل** كتلة `ev:'gas'` فلا يبلغها أبداً
        ⇒ بدونه تبدو اللوحةُ سليمةً في ذروة الإشباع بالضبط (مراجعة #368). */
-    q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }])
+    function () { return q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }]); }
   ];
-  var res = await Promise.allSettled(jobs);
+  var res = await _settleLimited(jobs, DEV_STATS_CONCURRENCY);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
   /* 🔬 سببُ كلّ قسمٍ فاشل — من ردّ الـAPI نفسِه (`_devStatsDiagOf`) لا تخميناً. */
   var diag = {};
