@@ -2933,6 +2933,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <h2 style="margin:0;">👥 إدارة المعلمين</h2>
         <button type="button" title="مساعدة" onclick="_helpOpen('teachers-mgmt')" style="background:#1149a3;color:#fff;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;">❓</button>
         <button onclick="tm_showAddModal()" style="background:#1149a3;color:#fff;border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:14px;">➕ إضافة معلم</button>
+        <button id="tm-backfill-btn" onclick="tm_backfillPreview()" style="display:none;background:#fff;color:#1149a3;border:1px solid #1149a3;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:14px;">🆔 المعرّفات الناقصة</button>
       </div>
       <div style="margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;">
         <input type="text" id="tm-search" placeholder="🔍 بحث باسم المعلم..." oninput="tm_filterList()" style="flex:1;padding:9px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -3054,6 +3055,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <button type="button" onclick="durr_preview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
           <button type="button" id="durr-apply" onclick="durr_apply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التوحيد</button>
           <div id="durr-out" style="margin-top:10px;font-size:13px;"></div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🧹 أوراقُ النسخ الاحتياطيّة المؤقّتة</div>
+          <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
+            أدواتُ الإصلاح تحفظ نسخةً من كلّ ورقةٍ قبل تعديلها (<b>«…_نسخة_تاريخ»</b>) — وتبقى بعدها.
+            يُعرَض هنا ما مضى عليه <b>يومٌ فأكثر</b> وحدَه (نسخُ اليوم لا تُمَسّ)، ويُحذف فقط بعد <b>نسخةٍ كاملةٍ من الملفّ على Drive</b>.
+            <br>🔴 <b>لا تُختار ورقةٌ حيّة</b> مهما كان اسمُها — الاختيارُ بنمط «نسخة + تاريخ» لا بالاسم الحرّ.
+          </div>
+          <button type="button" onclick="hk_preview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
+          <button type="button" id="hk-apply" onclick="hk_apply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">🗑️ حذف بعد النسخ</button>
+          <div id="hk-out" style="margin-top:10px;font-size:13px;"></div>
         </div>
       </div>
     </div>
@@ -8428,7 +8441,14 @@ function bootApp() {
       // الحزمة بذرت المفاتيح ⇒ إصابتا كاش، صفر نداء. (عضوٌ فشل خادمياً يتراجع لمحمّله
       //  الفردي — ثابت عزل الأعضاء، يبقى بلا مساس.)
       setTimeout(loadNotifCountsBundle, 50);
-      setTimeout(_loadMyPointsHeader, 150);
+      /* 🔴 النقاطُ تُطلَق الآن **فقط إن بذرتها الحزمة** (خطّة 09-23-ب · الدفعة ٣): عضوُها
+         `cacheOnly` يعود `deferred` حين يبرد كاشُ الخادم، فكان النداءُ هنا يُطلق الحسابَ
+         الكاملَ (ستُّ قراءاتٍ كاملة) **داخل رشقة الإقلاع** ⇒ 10 من 14 مُجهَضة.
+         ⇒ الباردُ يُؤجَّل إلى أوّل نبضةٍ ناجحة (لاقطُ `_bootDeferredExtras` القائم). */
+      var _ptsWarm = false;
+      try { _ptsWarm = !!ClientCache.get('my_points_header_' + ((App.user && App.user.schoolId) || '')); } catch (ePw) {}
+      if (_ptsWarm) setTimeout(_loadMyPointsHeader, 150);
+      else _bootDeferredExtras = true;
       setTimeout(_bootStartLists, 0);
       return;
     }
@@ -9111,6 +9131,7 @@ function loadNotifCountsBundle() {
       var rNotes = bundle.notes;
       if (rNotes && rNotes.success) {
         window._bellNotes = parseInt((rNotes.unread != null ? rNotes.unread : rNotes.count) || 0, 10) || 0;
+        if (typeof _applyNotesBadge === 'function') _applyNotesBadge(rNotes);
       }
       refreshBellBadge();
     });
@@ -11028,7 +11049,7 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-notes':            { roles:['admin','deputy','activities','teacher'],       accountant:false, supervisor:{ configurable:true, label:'💬 ملاحظات أولياء الأمور',      defaultVisible:true  } },
   'si-attendance':       { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'📋 الغياب اليومي',             defaultVisible:true  } },
   'si-teacher-absence':  { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'🧑‍🏫 غياب المعلمين',        defaultVisible:true  } },
-  'si-teachers-mgmt':    { roles:['admin','it'],                                  accountant:false, supervisor:{ configurable:true, label:'👥 إدارة المعلمين',            defaultVisible:false } },
+  'si-teachers-mgmt':    { roles:['admin','it'],                                  accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },   // 2026-09-23: `accounts.manage` لا تمنح المشرف ⇒ لا تُفعَّل له صفحةٌ يرفضها الخادم
   'si-adminStudents':    { roles:['admin'],                                       accountant:false, supervisor:{ configurable:true, label:'🔒 الحجب المالي',              defaultVisible:false } },
   'si-adminActivities':  { roles:['admin','deputy','activities'],                 accountant:false, supervisor:{ configurable:true, label:'📋 جميع الأنشطة',              defaultVisible:true  } },
   // المحاسب: مسموح **خادمياً منذ البداية** (`_tcCanCertificates` تُرجِع true للمحاسب صراحةً،
@@ -11283,7 +11304,8 @@ function initSidebarByRole() {
     // لا تُبقِ القائمة محجوبة عند خطأ — أظهِرها كي لا يُحبَس المستخدم.
     console.warn('initSidebarByRole error:', eSb);
   }
-  _refreshNotesBadge();
+  /* شارةُ الملاحظات تُرسم من حزمة الإشعارات (`loadNotifCountsBundle` ⇒ `_applyNotesBadge`)
+     لا بنداءٍ مستقلٍّ في كلّ إقلاع. (خطّة 09-23-ب · 1-أ) */
   if (sidebar) sidebar.classList.add('role-ready');   // يرفع حجب الوميض (CSS)
 
   /* 🔬 **قياسُ الانحراف — بعد اكتمال البناء لا أثناءه.**
@@ -14484,10 +14506,11 @@ function _ecPaymentBlockModalHtml() {
  * تحديث شارة الإشعارات (عدد الملاحظات غير المقروءة)
  * تُظهر الرقم على أيقونة الملاحظات في القائمة الجانبية
  */
-function _refreshNotesBadge() {
-  if (!App || !App.user || !App.user.token) return;
-
-  callServer('getUnreadNotesCountProtected', {}, function(r) {
+/* 🗑️ `_refreshNotesBadge` حُذفت (خطّة 09-23-ب · 1-أ): مستدعيها الوحيد كان `initSidebarByRole`.
+   🔴 الرسمُ منفصلٌ عن الجلب: الإقلاعُ لا يطلب `getUnreadNotesCountProtected` (قراءةُ ورقة
+   الملاحظات كاملةً في كلّ تحميل) — يرسم الشارةَ من `notes` في حزمة الإشعارات
+   (`loadNotifCountsBundle`)، وهي نفسُ الدالّة خادمياً. (خطّة 09-23-ب · 1-أ) */
+function _applyNotesBadge(r) {
     try {
       if (!r || !r.success) return;
       var badge = document.getElementById('notesBadge');
@@ -14505,9 +14528,8 @@ function _refreshNotesBadge() {
         }
       }
     } catch (e) {
-      console.error('[_refreshNotesBadge] error:', e);
+      console.error('[_applyNotesBadge] error:', e);
     }
-  });
 }
 
 // ==================== DASHBOARD (مُحسَّن لتحمل الأخطاء) ====================
@@ -26621,7 +26643,7 @@ function _stlGoPage(n) {
 }
 
 function exportStudentsList() {
-  if((App.user||{}).role==='accountant') return;
+  var _xr = (App.user||{}).role; if(_xr!=='admin' && _xr!=='deputy') return;   /* يطابق `students.records` خادمياً */
   showLoading('جاري التصدير...');
   callServer('adminExportStudents', {}, function(r) {
     hideLoading();
@@ -27700,7 +27722,7 @@ function _tcReadImportFile(file, cb) {
 // إظهار si-teachers-mgmt/si-lists-mgmt للمدير انتقل إلى مصدر الحقيقة الموحّد
 // (SIDEBAR_ROLE_RULES في initSidebarByRole) — أُبقِيت الدالة كـ no-op للتوافق.
 function tm_init() { /* لا شيء: عرض القائمة يُدار مركزياً في initSidebarByRole */ }
-function tm_load() { tm_setStatus('⏳ جارٍ التحميل...', '#1149a3'); document.getElementById('tm-list').innerHTML = '<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(listsRes) { if (listsRes && listsRes.success) _tmLists = listsRes; tm_populateGradeFilter(listsRes); }).withFailureHandler(function(){}).getEnhancedListsProtected({ token: App.user.token }); google.script.run.withSuccessHandler(function(res) { tm_setStatus('', ''); if (!res || !res.success) { tm_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828'); return; } _tmAllTeachers = res.teachers || []; tm_render(_tmAllTeachers); tm_renderStats(_tmAllTeachers); }).withFailureHandler(function(err) { tm_setStatus('❌ ' + err.message, '#c62828'); }).adminGetAllTeachersGrouped({ token: App.user.token }); }
+function tm_load() { tm_showBackfillBtn(); tm_setStatus('⏳ جارٍ التحميل...', '#1149a3'); document.getElementById('tm-list').innerHTML = '<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(listsRes) { if (listsRes && listsRes.success) _tmLists = listsRes; tm_populateGradeFilter(listsRes); }).withFailureHandler(function(){}).getEnhancedListsProtected({ token: App.user.token }); google.script.run.withSuccessHandler(function(res) { tm_setStatus('', ''); if (!res || !res.success) { tm_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828'); return; } _tmAllTeachers = res.teachers || []; tm_render(_tmAllTeachers); tm_renderStats(_tmAllTeachers); }).withFailureHandler(function(err) { tm_setStatus('❌ ' + err.message, '#c62828'); }).adminGetAllTeachersGrouped({ token: App.user.token }); }
 function tm_populateGradeFilter(listsRes) { var sel = document.getElementById('tm-filter-grade'); if (!sel || !listsRes || !listsRes.grades) return; sel.innerHTML = '<option value="">كل الفصول</option>'; for (var i=0;i<listsRes.grades.length;i++) { var opt=document.createElement('option'); opt.value=opt.textContent=listsRes.grades[i]; sel.appendChild(opt); } }
 function tm_render(teachers) { var container = document.getElementById('tm-list'); if (!teachers || teachers.length===0) { container.innerHTML='<p style="text-align:center;color:#999;padding:30px;">لا يوجد معلمون</p>'; return; } var html=''; for (var i=0;i<teachers.length;i++) { var t=teachers[i]; var roleLabels={admin:['مدير','role-admin'],deputy:['وكيل','role-deputy'],supervisor:['مشرف','role-supervisor'],teacher:['معلم','role-teacher']}; var roleInfo=roleLabels[t.role]||['معلم','role-teacher']; html+='<div class="teacher-card" id="tc-'+i+'"><div class="tc-header"><div style="display:flex;align-items:center;gap:10px;"><div style="width:38px;height:38px;border-radius:50%;background:#1149a3;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;">'+t.name.charAt(0)+'</div><div><div class="tc-name">'+t.name+'</div><span class="tc-role '+roleInfo[1]+'">'+roleInfo[0]+'</span></div></div><div class="tc-actions"><button class="tc-btn tc-btn-edit" onclick="tm_editTeacher(\''+t.name.replace(/'/g,"\\'")+'\')">✏️ تعديل</button><button class="tc-btn tc-btn-del" onclick="tm_deleteTeacher(\''+t.name.replace(/'/g,"\\'")+'\')">🗑️ حذف</button></div></div>'; if (t.role==='teacher'||t.role==='supervisor') { html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">'; for(var si=0;si<t.subjects.length;si++) html+='<span class="tc-tag" style="background:#e8f5e9;color:#2e7d32;">📚 '+t.subjects[si]+'</span>'; for(var gi=0;gi<t.grades.length;gi++) html+='<span class="tc-tag" style="background:#e3f2fd;color:#1565c0;">🏫 '+t.grades[gi]+'</span>'; for(var sci=0;sci<t.sections.length;sci++) html+='<span class="tc-tag" style="background:#fff3e0;color:#e65100;">🔡 '+t.sections[sci]+'</span>'; html+='</div>'; } html+='<div style="font-size:11px;color:var(--text-light);">'+t.assignments.length+' تعيين</div></div>'; } container.innerHTML=html; }
 function tm_renderStats(teachers) { var stats={teacher:0,supervisor:0,deputy:0,admin:0}; for(var i=0;i<teachers.length;i++) stats[teachers[i].role]++; var el=document.getElementById('tm-stats'); if(!el) return; el.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;"><span style="background:#e8eaf6;color:#3949ab;padding:4px 12px;border-radius:20px;font-size:12px;">👨‍🏫 '+stats.teacher+' معلم</span><span style="background:#fce4ec;color:#c62828;padding:4px 12px;border-radius:20px;">👑 '+stats.admin+' مدير</span><span style="background:#fff3e0;color:#e65100;">🔑 '+stats.deputy+' وكيل</span><span style="background:#e8f5e9;color:#2e7d32;">🛡️ '+stats.supervisor+' مشرف</span><span style="background:#f5f5f5;">📊 إجمالي: '+teachers.length+'</span></div>'; }
@@ -27731,6 +27753,26 @@ function tm_deleteTeacher(name){
 }
 function tm_closeModal(){ document.getElementById('tm-modal').style.display='none'; _tmEditingName=null; }
 function tm_setStatus(msg,color){ var el=document.getElementById('tm-status'); if(!el) return; if(!msg){ el.innerHTML=''; return; } el.innerHTML='<div style="background:'+color+'18;border-right:4px solid '+color+';padding:10px;border-radius:8px;color:'+color+';font-size:14px;">'+msg+'</div>'; }
+/* 🆔 تعبئةُ معرّفات المعلّمين الناقصة (خطّة 09-23-ج §٤) — للمدير وحدَه (`teachers.backfillIds`).
+   معاينةٌ أوّلاً ثمّ تنفيذٌ بزرٍّ ثانٍ داخل الصفحة (لا `confirm()`)؛ والكتابةُ في الخلايا الفارغة وحدها. */
+function tm_showBackfillBtn() { var b = document.getElementById('tm-backfill-btn'); if (b) b.style.display = (App.user && App.user.role === 'admin') ? '' : 'none'; }
+function tm_backfillPreview() {
+  tm_setStatus('⏳ جارٍ فحص المعرّفات الناقصة...', '#1149a3');
+  callServer('backfillTeacherIdsProtected', { token: App.user.token, preview: true }, function (r) {
+    if (!r || !r.success) { tm_setStatus('❌ ' + (r ? r.error : 'خطأ'), '#c62828'); return; }
+    if (!r.toFillCount) { tm_setStatus('✅ كلُّ المعلّمين لهم معرّف (' + r.alreadyHave + ')', '#2e7d32'); return; }
+    tm_setStatus('🆔 ' + r.toFillCount + ' معلّماً بلا معرّف · ' + r.alreadyHave + ' لهم معرّفٌ لا يُمَسّ. التعبئةُ تكتب في الخلايا الفارغة وحدها.' +
+      '<div style="margin-top:8px;"><button onclick="tm_backfillRun()" style="background:#1149a3;color:#fff;border:none;border-radius:8px;padding:6px 16px;cursor:pointer;">تعبئة الآن</button> ' +
+      '<button onclick="tm_setStatus(\'\', \'\')" style="background:#fff;border:1px solid #999;border-radius:8px;padding:6px 16px;cursor:pointer;">إلغاء</button></div>', '#1149a3');
+  }, function (e) { tm_setStatus('❌ ' + ((e && e.message) || e), '#c62828'); });
+}
+function tm_backfillRun() {
+  tm_setStatus('⏳ جارٍ التعبئة...', '#1149a3');
+  callServer('backfillTeacherIdsProtected', { token: App.user.token }, function (r) {
+    if (!r || !r.success) { tm_setStatus('❌ ' + (r ? r.error : 'خطأ'), '#c62828'); return; }
+    tm_setStatus('✅ مُلئ ' + r.filled + ' معرّفاً · ' + r.skipped + ' كان قائماً', '#2e7d32');
+  }, function (e) { tm_setStatus('❌ ' + ((e && e.message) || e), '#c62828'); });
+}
 
 // ==================== LM (إدارة القوائم) ====================
 /* 🔴 **`next` يُستدعى على النجاح والفشل معاً — والشرطُ هو كلُّ المعنى.**
@@ -29262,6 +29304,44 @@ function durr_preview(){
       done('<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّرت المعاينة')+'</div>');
     });
   });
+}
+
+/* ════════════ 🧹 أوراقُ النسخ الاحتياطيّة — معاينةٌ ثمّ حذفٌ بعد نسخةٍ كاملة (09-23-ج) ════════════
+   نفسُ عقد `durr_*`: زرُّ التنفيذ مقفولٌ حتى تُعرَض معاينة، ويُرسَل **ما عُرض** وحدَه. */
+var _hkLast = [];
+function hk_preview(){
+  var out = document.getElementById('hk-out'), btn = document.getElementById('hk-apply');
+  if(!out) return;
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; }
+  out.innerHTML = '⏳ جارٍ الفحص — بلا أيّ كتابة...';
+  callServer('sheetHousekeepingProtected', { token: App.user.token }, function(res){
+    if(!res || !res.success){ out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((res&&res.error)||'تعذّرت المعاينة')+'</div>'; return; }
+    _hkLast = (res.candidates||[]).map(function(c){ return c.name; });
+    if(!_hkLast.length){ out.innerHTML = '<div style="color:#2e7d32;">🟢 لا نسخَ مؤقّتةً أقدمَ من '+res.minAgeDays+' أيام.</div>'; return; }
+    var h = '<div style="font-weight:800;margin-bottom:6px;">'+_hkLast.length+' ورقةً ستُحذف بعد نسخ الملفّ كاملاً:</div>';
+    for(var i=0;i<res.candidates.length;i++){
+      var c = res.candidates[i];
+      h += '&nbsp;&nbsp;• '+escapeHtml(c.name)+' — '+c.rows+' صفّ · عمرُها '+c.ageDays+' يوماً<br>';
+    }
+    out.innerHTML = h;
+    if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
+  }, function(err){ out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّرت المعاينة')+'</div>'; });
+}
+function hk_apply(){
+  var out = document.getElementById('hk-out'), btn = document.getElementById('hk-apply');
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; }
+  if(!_hkLast.length) return;
+  confirmAction('حذفُ النسخ المؤقّتة',
+    'تُؤخَذ نسخةٌ كاملةٌ من ملفّ المدرسة على Drive أوّلاً، ثمّ تُحذف '+_hkLast.length+' ورقة.\nوإن فشل النسخُ لا يُحذف شيء.',
+    '🧹', function(){
+      if(out) out.innerHTML = '⏳ جارٍ النسخ ثمّ الحذف — لا تُغلق الصفحة...';
+      callServer('sheetHousekeepingProtected', { token: App.user.token, confirm: 'حذف', names: _hkLast }, function(res){
+        if(!res || !res.success){ if(out) out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((res&&res.error)||'تعذّر الحذف')+'</div>'; return; }
+        _hkLast = [];
+        if(out) out.innerHTML = '<div style="color:#2e7d32;">✅ حُذفت '+res.deleted.length+' ورقة · بقي '+res.remaining+
+          '<br><span style="font-size:12px;color:#546e7a;">النسخةُ الاحتياطيّة: '+escapeHtml(res.backupName||'')+'</span></div>';
+      }, function(err){ if(out) out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر الحذف')+'</div>'; });
+    }, { okText: '🗑️ حذف' });
 }
 
 function durr_apply(){
@@ -35705,12 +35785,15 @@ function _visitsBindVisibility(){
   });
 }
 
+/* 60ث لا 18ث (خطّة 09-23-ب · 1-هـ): كاشُ الخادم 25ث، فكان ~200 نداءٍ في الساعة لكلّ تبويبِ مديرٍ
+   مفتوحٍ على الزيارات، وكثيرٌ منها يعود بالمخزَّن نفسِه. والعودةُ للتبويب تستطلع فوراً. */
+var VISITS_ONLINE_POLL_MS = 60000;
 function _visitsStartPolling(){
   _visitsStopPolling();
   _visitsPollActive = true;
   _visitsBindVisibility();
   _visitsPollOnline();
-  _visitsPollTimer = setInterval(_visitsPollOnline, 18000);
+  _visitsPollTimer = setInterval(_visitsPollOnline, VISITS_ONLINE_POLL_MS);
 }
 
 function _visitsStopPolling(){

@@ -3231,7 +3231,7 @@ var SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 ساعات بالملي ثانية
    وأثقلها تنفيذياً: **بلا كاش خادمي** وتستدعي داخلياً أربع قارئات أوراق. والاستطلاع
    كان يعمل والتبويب مغلق — خلافاً لـ`studentHeartbeat` المجاور الذي يفحص الرؤية
    (والتعليق فوقه كان يوحي أن الشرط يشمل الاثنين، وهو لا يشمله — بند 82-ب). */
-var BADGE_INTERVAL_MS = 180 * 1000;  // تحديث Badges كل 3 دقائق (تبويب مرئي فقط)
+/* 🗑️ `BADGE_INTERVAL_MS` أُزيل 2026-09-23 (خطّة 09-23-ب · 2-أ): الشارةُ تركب النبضة، فلا استطلاعَ مستقلّاً. */
 
 // ─── حفظ جلسة الطالب في localStorage ───
 function lsSaveSession() {
@@ -4488,8 +4488,10 @@ function initApp() {
   // وتقليل-حمل-الاقلاع.md) — بيانات لا تُستخدَم أصلاً قبل فتح ذلك التبويب.
 
   // Badges تلقائية
+  /* 🔔 لا استطلاعَ مستقلّاً للشارات (خطّة 09-23-ب · 2-أ · قرارُ المالك): تصل مع كلّ نبضة
+     (كلَّ 4 دقائق وعند العودة للتبويب)، وأوّلُها مع حزمة الإقلاع. كان هنا `setInterval`
+     كلَّ 3 دقائق (~20 نداءً/ساعة لكلّ طالب). */
   loadNotificationBadges();
-  APP.badgeInterval = setInterval(loadNotificationBadges, BADGE_INTERVAL_MS);
 
   // Enter في حقول كلمة المرور
   bindPwModalEnter();
@@ -8714,12 +8716,16 @@ function _startHeartbeat() {
       function _bRel() { if (_bDone) return; _bDone = true; try { release(); } catch (eR) {} }
       try {
         google.script.run
-          .withSuccessHandler(function () { _hbDelayMs = _HB_BASE_MS; _bRel(); _scheduleNextBeat(); })
+          .withSuccessHandler(function (hr) {
+            _hbDelayMs = _HB_BASE_MS; _bRel(); _scheduleNextBeat();
+            /* 🔔 الشارةُ تركب النبضة (2-أ) — لا استطلاعَ مستقلّاً كلَّ 3 دقائق. */
+            if (hr && hr.ok && hr.badge) { try { _stuApplyBadge(hr.badge); } catch (eBd) {} }
+          })
           .withFailureHandler(function () {
             _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
             _bRel(); _scheduleNextBeat();
           })
-          .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken);
+          .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken, _stuBadgeReq());
       } catch (eBeat) { _bRel(); _scheduleNextBeat(); }
     };
     if (typeof _stuRunBackground === 'function') {
@@ -8736,9 +8742,8 @@ function _startHeartbeat() {
     var now = Date.now();
     if (now - _lastBeatAt < _BEAT_MIN_GAP_MS) return;
     _lastBeatAt = now;
+    /* نبضةُ العودة تحمل الشارةَ نفسَها (2-أ) — لا نداءَ ثانٍ. */
     beat();
-    /* الشارات تُحدَّث عند العودة أيضاً — يعوّض إيقاف الاستطلاع أثناء الإخفاء */
-    try { loadNotificationBadges(); } catch (eB) {}
   });
   // أول نبضة مؤجَّلة قليلاً (لا فورية) كي لا تتزامن مع حزمة نداءات initApp() الأخرى التي تُطلَق
   // في نفس اللفة — نفس إصلاح teacher/Teacher Dashboard.html (راجع _docs/2026-07-27-heartbeat-
@@ -9030,14 +9035,25 @@ function loadNotificationBadges() {
     function (r) {
       _badgeInFlight = false;
       if (!r || !r.ok || !r.badge) return;
-      var b = r.badge;
-      setBadge('badge-news', b.news);
-      setBadge('badge-violations', b.violations);
-      setBadge('badge-notes', b.notes);
-      setBadge('badge-homework', b.homework);
-      _stuMaybeNotifyNews(b.news);
+      _stuApplyBadge(r.badge);
     },
     function () { _badgeInFlight = false; /* صامت */ });
+}
+
+/* رسمُ الشارات من أيّ مصدر: نداؤها المستقلّ، أو ردُّ النبضة (خطّة 09-23-ب · 2-أ). */
+function _stuApplyBadge(b) {
+  if (!b) return;
+  setBadge('badge-news', b.news);
+  setBadge('badge-violations', b.violations);
+  setBadge('badge-notes', b.notes);
+  setBadge('badge-homework', b.homework);
+  _stuMaybeNotifyNews(b.news);
+}
+/* ما تحتاجه الشارةُ خادمياً — يُرسَل مع النبضة. */
+function _stuBadgeReq() {
+  if (!APP.user) return null;
+  var lastLogin = ssGet('lastLogin') || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  return { name: APP.user.name || '', klass: APP.user.class || '', section: APP.user.section || '', lastLogin: lastLogin };
 }
 
 function setBadge(id, count) {
@@ -9123,9 +9139,15 @@ document.addEventListener('DOMContentLoaded', function () {
     // لاحق (بما فيه نقل صفّ/شعبة من لوحة المعلّم) إلا بعد تسجيل خروج/دخول يدوي. لا يؤخّر
     // الظهور الأولي (العرض من الكاش فوري، هذا يلحق به بصمت) — نفس نمط استعادة الإخوة أعلاه،
     // يُطبَّق الآن على class/section (student/CLAUDE.md بند 8).
-    if (APP.user.id && APP.user.schoolId && APP.user.switchToken) {
+    /* 🔴 خطّة 09-23-ب · 1-ج: كان يُطلَق خامّاً (خارج بوّابة التزامن) في **كلّ** تحميلٍ بجلسةٍ
+       مستعادة، ويقرأ ورقةَ «الطلاب» كاملةً ⇒ مرّةً كلَّ 30 دقيقةً لكلّ طالب، وعبر المسار
+       الخلفيّ (يُسقَط عند الازدحام ويُعاد بعد 15ث، ثلاثَ مرّاتٍ على الأكثر).
+       والرمزُ (8 ساعات) يتجدّد بهامشٍ واسع: 30 دقيقةً ≪ 8 ساعات. */
+    if (APP.user.id && APP.user.schoolId && APP.user.switchToken && _stuSiblingsDue(APP.user.id)) {
+      _stuSibCall = function (release) {
       google.script.run
         .withSuccessHandler(function (r) {
+          release();
           /* خروجٌ قبل وصول الردّ يجعل `APP.user = null` (‏«setting 'siblings' of null» ×٤). */
           if (!APP.user) return;
           if (r && r.ok) {
@@ -9168,8 +9190,14 @@ document.addEventListener('DOMContentLoaded', function () {
             }
           }
         })
-        .withFailureHandler(function () { /* صامت — يبقى العرض المخزَّن كما هو */ })
+        .withFailureHandler(function () {
+          release();
+          /* صامت — يبقى العرض المخزَّن؛ ويُمحى الطابعُ كي يُعاد في التحميل التالي لا بعد 30 دقيقة. */
+          try { if (APP.user) localStorage.removeItem('stu_sib_refresh_' + APP.user.id); } catch (eLs) {}
+        })
         .refreshStudentSiblings(APP.user.id, APP.user.schoolId, APP.user.switchToken, getClientId());
+      };
+      _stuRefreshSiblingsBg(0);
     }
     // استعادة التبويب الأخير — الجسم في `_stu-js-shell.html::_stuApplyInitialTab`
     // كي يُنادى من مسار الدخول الطازج أيضاً لا من هذا الفرع وحده.
@@ -9200,6 +9228,27 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 });
+/* تحديثُ الإخوة/الفصل الخلفيّ (خطّة 09-23-ب · 1-ج) — `_stuSibCall` يُعيَّن في فرع الجلسة
+   المستعادة أعلاه (يحمل معالجاتِ الردّ كما كانت حرفياً)، وهذان يُقنّنانه. */
+var STU_SIBLINGS_REFRESH_MS = 30 * 60 * 1000;
+var _stuSibCall = null;
+function _stuSiblingsDue(id) {
+  try {
+    var t = parseInt(localStorage.getItem('stu_sib_refresh_' + id) || '0', 10) || 0;
+    return (Date.now() - t) >= STU_SIBLINGS_REFRESH_MS;
+  } catch (e) { return true; }
+}
+function _stuRefreshSiblingsBg(attempt) {
+  if (!APP.user || typeof _stuSibCall !== 'function') return;
+  _stuRunBackground('refreshStudentSiblings', function (release) {
+    if (!APP.user) { release(); return; }
+    try { localStorage.setItem('stu_sib_refresh_' + APP.user.id, String(Date.now())); } catch (eLs) {}
+    _stuSibCall(release);
+  }, function () {
+    if (attempt < 3) setTimeout(function () { _stuRefreshSiblingsBg(attempt + 1); }, 15000);
+  });
+}
+
 function initLazyImages() {
   if ('IntersectionObserver' in window) {
     var observer = new IntersectionObserver(function(entries) {
