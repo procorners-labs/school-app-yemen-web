@@ -5029,8 +5029,8 @@ function _startHeartbeat() {
      الإصرار على إيقاع 3 دقائق وقتها يزيد الضغط على الجذر نفسه. النجاح يعيد الإيقاع
      الأساسي فوراً. سلسلة setTimeout ذاتية الجدولة بدل setInterval كي يتحكم كل ردّ
      بموعد النبضة التالية. */
-  var _HB_BASE_MS = 4 * 60 * 1000;   // 3⇒4 (2026-09-17): −25٪ نبضات؛ ويبقى < ttl عدّادات الإشعارات 300ث
-  var _HB_MAX_MS  = 12 * 60 * 1000;
+  var _HB_BASE_MS = 8 * 60 * 1000;   // 3⇒4⇒8 — 4⇒8 (2026-09-24): قياسُ الوركر: النداءاتُ الدوريّة ~23٪ من زمن الحجز، والنبضةُ وسيطُها 9.6ث وعملُها ~1ث؛ ويبقى < ttl عدّادات الإشعارات 600ث
+  var _HB_MAX_MS  = 16 * 60 * 1000;
   var _hbDelayMs  = _HB_BASE_MS;
   var _hbTimer    = null;
   function _scheduleNextBeat() {
@@ -5072,7 +5072,7 @@ function _startHeartbeat() {
         try {
           if (r && r.notifCounts && r.notifCounts.success !== false &&
               !ClientCache.get('notif_bundle_' + _hbSid)) {
-            ClientCache.set('notif_bundle_' + _hbSid, r.notifCounts, 300);
+            ClientCache.set('notif_bundle_' + _hbSid, r.notifCounts, 600);
           }
         } catch (eSeedN) {}
         // إشعار فوري — عند **نجاح** النبضة فقط: نبضة فاشلة كانت تكلف نداءين خادميَّين
@@ -5520,10 +5520,10 @@ function _teacherBootBundlePrefetch(done, onSchemaReady) {
             ClientCache.set(_bootConfigCacheKey(), r.bootConfig, 600);
           }
           if (r.notifCounts && r.notifCounts.success !== false && !ClientCache.get('notif_bundle_' + sid)) {
-            ClientCache.set('notif_bundle_' + sid, r.notifCounts, 300);
+            ClientCache.set('notif_bundle_' + sid, r.notifCounts, 600);
           }
           if (r.myPointsHeader && r.myPointsHeader.success !== false && !ClientCache.get('my_points_header_' + sid)) {
-            ClientCache.set('my_points_header_' + sid, r.myPointsHeader, 180);
+            ClientCache.set('my_points_header_' + sid, r.myPointsHeader, 1800);
           }
         }
       } catch (eSeed) {}
@@ -8506,7 +8506,7 @@ function _loadMyPointsHeader() {
   if (!btn) return;
   // المفتاح مبصوم بـschoolId (بند 85-ب) — كان خاماً فيعرض نقاط مدرسة سابقة عند
   // التنقّل بـ?school= في نفس التبويب (رصدته المراجعة، إصلاح فرصة طبيعية).
-  callServer('getMyPointsHeaderProtected', {}, 'my_points_header_' + ((App.user && App.user.schoolId) || ''), 180, function(r) {
+  callServer('getMyPointsHeaderProtected', {}, 'my_points_header_' + ((App.user && App.user.schoolId) || ''), 1800, function(r) {
     if (!r || !r.success) return; // فشل صامت — الشريط يبقى مخفياً بلا إزعاج المستخدم
     var scoreEl = document.getElementById('navPointsScore');
     if (scoreEl) scoreEl.textContent = r.score + ' • #' + r.rank + '/' + r.totalTeachers;
@@ -9093,7 +9093,7 @@ function loadNotifCountsBundle() {
        الشرط الصحيح هو TTL **>** فترة النبضة، لا قيمة بعينها — يحرسه اختبار انحدار.
        والمفتاح مبصوم بـschoolId (بند 85-ب) — كان ثابتاً فيتسرّب عند تبديل ?school=
        داخل نفس التبويب دون خروج. */
-    callServer('getNotifCountsBundle', {}, 'notif_bundle_' + ((App.user && App.user.schoolId) || ''), 300, function (bundle) {
+    callServer('getNotifCountsBundle', {}, 'notif_bundle_' + ((App.user && App.user.schoolId) || ''), 600, function (bundle) {
       if (!bundle || !bundle.success) return;
       var rNews = bundle.news;
       if (rNews && rNews.success) {
@@ -36144,7 +36144,7 @@ function _visitsBindVisibility(){
 
 /* 60ث لا 18ث (خطّة 09-23-ب · 1-هـ): كاشُ الخادم 25ث، فكان ~200 نداءٍ في الساعة لكلّ تبويبِ مديرٍ
    مفتوحٍ على الزيارات، وكثيرٌ منها يعود بالمخزَّن نفسِه. والعودةُ للتبويب تستطلع فوراً. */
-var VISITS_ONLINE_POLL_MS = 60000;
+var VISITS_ONLINE_POLL_MS = 120000;   // 60⇒120ث (2026-09-24) — والنافذةُ 18د فلا يتغيّر مَن يظهر
 function _visitsStartPolling(){
   _visitsStopPolling();
   _visitsPollActive = true;

@@ -303,7 +303,10 @@
     var keys = Object.keys(trackedReads);
     if (keys.length === 0) return Promise.resolve(false);
 
-    return Promise.all(keys.map(function (k) {
+    /* 🔴 اثنان في آنٍ واحد لا الكلُّ دفعةً (2026-09-24): حدثُ `online` كان يُطلق كلَّ القراءات
+       المتتبَّعة معاً فتصطدم بحدّ الوسيط (503) لحظةَ عودة الاتصال بالضبط. */
+    var results = [], idx = 0, LIMIT = 2;
+    function one(k) {
       var r = trackedReads[k];
       return new Promise(function (resolve) {
         if (!window.__gasRawCall) { resolve(false); return; }
@@ -315,7 +318,15 @@
           });
         }, function () { resolve(false); }); // فشل/خطأ: لا نعدّه تغييراً
       });
-    })).then(function (results) {
+    }
+    function worker() {
+      if (idx >= keys.length) return Promise.resolve();
+      var k = keys[idx++];
+      return one(k).then(function (ch) { results.push(ch); return worker(); });
+    }
+    var ws = [];
+    for (var w = 0; w < Math.min(LIMIT, keys.length); w++) ws.push(worker());
+    return Promise.all(ws).then(function () {
       for (var i = 0; i < results.length; i++) if (results[i]) return true;
       return false;
     });

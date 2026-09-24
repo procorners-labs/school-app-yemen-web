@@ -8686,8 +8686,8 @@ function _startHeartbeat() {
      أصلاً**، فبقاؤه كان يجعل التراجعَ مستحيلاً لا مؤجَّلاً.
      📌 والمقياسُ: منصّةُ الطالب **6,435 نداءً/٢٤س (٧٠٪ من الحصّة)** و`studentHeartbeat`
      أكبرُ مساهمٍ فيها بـ**760**، وكلاهما يُنفَّذ في **نشرة المعلّم نفسها**. */
-  var _HB_BASE_MS = 4 * 60 * 1000;   // 3⇒4 (2026-09-17) — نفسُ إيقاع نبضة المعلّم
-  var _HB_MAX_MS  = 12 * 60 * 1000;
+  var _HB_BASE_MS = 8 * 60 * 1000;   // 3⇒4⇒8 — نفسُ إيقاع نبضة المعلّم — 4⇒8 (2026-09-24): قياسُ الوركر: النداءاتُ الدوريّة ~23٪ من زمن الحجز، والنبضةُ وسيطُها 9.6ث وعملُها ~1ث
+  var _HB_MAX_MS  = 16 * 60 * 1000;
   var _hbDelayMs  = _HB_BASE_MS;
   var _hbTimer    = null;
   function _scheduleNextBeat() {
@@ -8725,7 +8725,9 @@ function _startHeartbeat() {
             _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
             _bRel(); _scheduleNextBeat();
           })
-          .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken, _stuBadgeReq());
+          .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken,
+            /* شارةٌ طازجة (< 3د) ⇒ نبضةٌ بلا إعادة حسابها — كانت تُحسب مرّتين عند كلّ إقلاع */
+            (Date.now() - _stuBadgeAt < 3 * 60 * 1000) ? null : _stuBadgeReq());
       } catch (eBeat) { _bRel(); _scheduleNextBeat(); }
     };
     if (typeof _stuRunBackground === 'function') {
@@ -8861,6 +8863,7 @@ function _stuBootLoad() {
         setBadge('badge-notes', b.notes);
         setBadge('badge-homework', b.homework);
         _stuMaybeNotifyNews(b.news);
+        _stuBadgeAt = Date.now();
       }
 
       /* ── نظرة سريعة ── (2026-08-29)
@@ -9041,8 +9044,10 @@ function loadNotificationBadges() {
 }
 
 /* رسمُ الشارات من أيّ مصدر: نداؤها المستقلّ، أو ردُّ النبضة (خطّة 09-23-ب · 2-أ). */
+var _stuBadgeAt = 0;   // آخرُ تطبيقٍ لشارةٍ من الخادم — تقرؤه النبضة
 function _stuApplyBadge(b) {
   if (!b) return;
+  _stuBadgeAt = Date.now();
   setBadge('badge-news', b.news);
   setBadge('badge-violations', b.violations);
   setBadge('badge-notes', b.notes);
