@@ -3026,6 +3026,19 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <div id="snr-out" style="margin-top:10px;font-size:13px;"></div>
       </div>
 
+      <!-- 🔗 سلامة أكواد الطلاب — المدير وحدَه (الحارسُ الحقيقيُّ خادميّ). -->
+      <div id="sci-card" style="margin-top:22px;padding:14px;border:1px solid #cfd8dc;border-radius:10px;background:#fafafa;">
+        <div style="font-weight:800;margin-bottom:6px;">🔗 سلامة أكواد الطلاب</div>
+        <div style="font-size:13px;color:#546e7a;line-height:1.7;margin-bottom:10px;">
+          يكشف الأكوادَ المكرّرة والمؤقّتة، والسجلّاتِ (غياب · درجات · سلوك · ملاحظات · مالية) المعلَّقةَ بكودٍ لم يعد في «الطلاب».
+          <br>ويوحّدها إلى الكود الحالي <b>فقط</b> حين يطابق الاسمُ طالباً واحداً بلا التباس، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.
+        </div>
+        <label style="display:block;font-size:13px;margin-bottom:8px;"><input type="checkbox" id="sciClearExamples"> حذف صفوف «مثال» التجريبية من «الطلاب» و«طلاب_مالية»</label>
+        <button type="button" onclick="sciPreview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 فحص</button>
+        <button type="button" id="sciApplyBtn" onclick="sciApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التوحيد</button>
+        <div id="sci-out" style="margin-top:10px;font-size:13px;"></div>
+      </div>
+
       <!-- 🧭 تقرير توحيد البيانات — قراءةٌ محضة عبر كلّ أوراق المدرسة.
            موضعُه هنا مع أخويه بنفس قرار المالك 2026-09-21: أدواتُ القوائم والبيانات
            تُدار من شاشةٍ واحدة. 🔴 وليس له زرُّ تنفيذ — لأنه لا يكتب شيئاً أصلاً. -->
@@ -29436,6 +29449,75 @@ function snrApply(){
           return;
         }
         _snrRenderReport(res.report, true);
+      });
+    }
+  );
+}
+
+/* ═══ 🔗 سلامة أكواد الطلاب — فحصٌ ثمّ توحيد (نفس عقد أداة الأسماء) ═══ */
+var _sciPreviewed = false;
+
+function _sciRenderReport(rep, applied){
+  var out = document.getElementById('sci-out'); if(!out) return;
+  if(!rep){ out.innerHTML=''; return; }
+  var rows = '';
+  for(var i=0;i<(rep.sheets||[]).length;i++){
+    var s = rep.sheets[i];
+    rows += '<tr><td style="padding:3px 8px;">'+escapeHtml(s.sheet)+'</td>'+
+            '<td style="padding:3px 8px;text-align:center;">'+(s.orphanRows||0)+'</td>'+
+            '<td style="padding:3px 8px;text-align:center;font-weight:700;">'+(s.remap||0)+'</td>'+
+            '<td style="padding:3px 8px;text-align:center;color:#78909c;">'+((s.ambiguous||0)+(s.conflicts||0))+'</td>'+
+            '<td style="padding:3px 8px;text-align:center;color:#78909c;">'+(s.unmatched||0)+'</td></tr>';
+  }
+  var ex = rep.examples || {};
+  var head = applied
+    ? '<div style="background:#e8f5e9;color:#2e7d32;padding:10px;border-radius:8px;margin-bottom:8px;">✅ نُفِّذ — وُحِّد '+(rep.written||0)+' سجلّاً · حُذف '+(rep.examplesRemoved||0)+' صفّ مثال · الأثر في «سجل_تصحيح_الاسماء».</div>'
+    : '<div style="background:#fff8e1;color:#8d6e63;padding:10px;border-radius:8px;margin-bottom:8px;">🔍 فحص — '+(rep.students||0)+' طالباً · سجلّاتٌ يتيمة: '+(rep.totalOrphanRows||0)+' · قابلةٌ للتوحيد: '+(rep.totalRemap||0)+' · صفوف «مثال»: '+((ex.students||0)+(ex.finance||0))+'</div>';
+  var notes = '';
+  if(rep.duplicateCount) notes += '<div style="margin-top:6px;color:#c62828;">⚠️ أكوادٌ مكرّرة في «الطلاب»: '+rep.duplicateCount+' — '+(rep.duplicates||[]).map(function(d){return escapeHtml(d.code)+' (صفوف '+d.rows.join('،')+')';}).join(' · ')+' — <b>تُصحَّح يدوياً</b>.</div>';
+  if(rep.tempCodeCount) notes += '<div style="margin-top:6px;color:#8d6e63;">⚠️ أكوادٌ مؤقّتة (S…) في «الطلاب»: '+rep.tempCodeCount+' — '+(rep.tempCodes||[]).map(function(t){return 'صف '+t.row;}).join(' · ')+'</div>';
+  out.innerHTML = head +
+    '<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:#eceff1;"><th style="padding:4px 8px;text-align:right;">الورقة</th><th style="padding:4px 8px;">يتيم</th><th style="padding:4px 8px;">يُوحَّد</th><th style="padding:4px 8px;">ملتبس/متعارض</th><th style="padding:4px 8px;">بلا نظير</th></tr>'+rows+'</table>' +
+    '<div style="margin-top:6px;color:#78909c;">«بلا نظير» = طالبٌ لم يعد في «الطلاب» (منسحب) — سجلٌّ تاريخيٌّ لا يُلمس.</div>' + notes;
+}
+
+function sciPreview(){
+  var out = document.getElementById('sci-out');
+  if(out) out.innerHTML='⏳ جارٍ الفحص...';
+  callServer('auditStudentCodesProtected', {}, function(res){
+    if(!res || !res.success){
+      if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر الفحص')+'</div>';
+      return;
+    }
+    _sciPreviewed = true;
+    var r = res.report || {}, ex = r.examples || {};
+    var b = document.getElementById('sciApplyBtn');
+    if(b && (r.totalRemap || ex.students || ex.finance)){ b.disabled=false; b.style.opacity='1'; }
+    _sciRenderReport(r, false);
+  }, function(err){
+    if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر الاتصال — أعد المحاولة')+'</div>';
+  });
+}
+
+function sciApply(){
+  if(!_sciPreviewed){ toast('شغّل الفحص أولاً.', 'error'); return; }
+  var cb = document.getElementById('sciClearExamples');
+  var clearEx = !!(cb && cb.checked);
+  confirmAction(
+    'توحيد أكواد الطلاب',
+    'ستُحدَّث أكوادُ السجلّات اليتيمة إلى الكود الحالي للطالب، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.' + (clearEx ? '\nوستُحذف صفوف «مثال» بعد تسجيلها كاملةً.' : ''),
+    '🔗',
+    function(){
+      var out = document.getElementById('sci-out');
+      if(out) out.innerHTML='⏳ جارٍ التوحيد — لا تُغلق الصفحة...';
+      callServer('repairStudentCodesProtected', { confirm: 'توحيد', clearExamples: clearEx }, function(res){
+        if(!res || !res.success){
+          if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التوحيد')+'</div>';
+          return;
+        }
+        _sciRenderReport(res.report, true);
+      }, function(err){
+        if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر الاتصال — افحص مجدداً قبل الإعادة')+'</div>';
       });
     }
   );
