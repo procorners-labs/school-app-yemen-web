@@ -1164,7 +1164,10 @@ var _RESERVED_TOP_PATHS = {
    🔒 بـ`hasOwnProperty` لا `obj[k]`: مسارٌ مثل `/constructor` يجب ألّا يطابق شيئاً. */
 var _SAME_HOST_REDIRECTS = {
   '/pricing': '/#pricing',
-  '/register': '/master-admin/register.html'
+  '/register': '/master-admin/register.html',
+  /* 🧹 نسخةٌ مكرّرةٌ من صفحة الخبر (2026-09-25 · قرارُ المالك): صفرُ زيارةٍ في 7 أيام، والأصلُ
+     `/home/newsarticle.html`. **والاستعلامُ يُحفَظ** (`?news=<id>`) — انظر المعالج. */
+  '/home-all-school/newsarticle.html': '/home/newsarticle.html'
 };
 function _sameHostRedirectFor(path) {
   var p = String(path || '');
@@ -3343,8 +3346,10 @@ export default {
     if (_sameHostRedirect && (request.method === 'GET' || request.method === 'HEAD')) {
       var rdIsCanon = (url.hostname === 'yemenschoolz.com' ||
                        url.hostname === 'www.yemenschoolz.com');
+      /* الاستعلامُ يُحفَظ ما لم تحمل الوجهةُ مرساةً (`/#pricing`) — وإلّا فقد رابطُ الخبر `?news=`. */
+      var rdLoc = _sameHostRedirect.indexOf('#') === -1 ? _sameHostRedirect + url.search : _sameHostRedirect;
       var rdHeaders = {
-        'Location': _sameHostRedirect,
+        'Location': rdLoc,
         'Cache-Control': 'public, max-age=3600',
         'Strict-Transport-Security': rdIsCanon
           ? 'max-age=15552000; includeSubDomains'

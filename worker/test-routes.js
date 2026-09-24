@@ -3925,8 +3925,14 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
   var ks = Object.keys(vm.runInContext('_SAME_HOST_REDIRECTS', ctx));
   var allRel = ks.every(function (k) { var v = vm.runInContext('_SAME_HOST_REDIRECTS', ctx)[k]; return v.charAt(0) === '/' && v.charAt(1) !== '/'; });
   check(allRel, '🔴 كلُّ `Location` نسبيٌّ على المضيف نفسِه — لا `//` ولا مضيفٌ آخر (عقدُ المضيفات المجمَّدة)');
-  var reservedOk = ks.every(function (k) { return new RegExp("'" + k.slice(1) + "': 1").test(src); });
+  /* المقطعُ الأوّلُ هو ما يُقرأ slug — `/home-all-school/newsarticle.html` (2026-09-25) مقطعان وأوّلُهما المحجوز. */
+  var reservedOk = ks.every(function (k) { return new RegExp("'" + k.slice(1).split('/')[0] + "': 1").test(src); });
   check(reservedOk, '🔴 كلُّ مسارٍ مُحوَّلٍ محجوزٌ في `_RESERVED_TOP_PATHS` (وإلّا صار slug مدرسة)');
+  /* 🧹 نسخةُ الخبر المكرّرة ⇒ الأصل، **والاستعلامُ محفوظ** (‏`?news=<id>`)؛ و`/#pricing` بلا استعلام. */
+  check(f('/home-all-school/newsarticle.html') === '/home/newsarticle.html' &&
+        /var rdLoc = _sameHostRedirect\.indexOf\('#'\) === -1 \? _sameHostRedirect \+ url\.search : _sameHostRedirect;/.test(src) &&
+        /'Location': rdLoc,/.test(src),
+        '🧹 `/home-all-school/newsarticle.html` ⇒ 301 إلى `/home/newsarticle.html` مع حفظ `?news=` (قرارُ المالك 2026-09-25)');
   var hIdx = src.indexOf('_sameHostRedirectFor(path)');
   var slugIdx = src.indexOf('_schoolSlugFromPath(', src.indexOf('async fetch('));
   check(hIdx > 0 && (slugIdx < 0 || hIdx < slugIdx), '🔴 المعالجُ يسبق حسابَ الـslug (وإلّا ذهب `/register` إلى GAS)');
