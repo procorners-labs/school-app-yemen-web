@@ -3080,6 +3080,20 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         </div>
 
         <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">📚 توحيدُ أسماء المواد في جدول الحصص وجدول الاختبارات</div>
+          <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
+            يكتب اسمَ المادّة بصيغتها في «المقرَّرات» («عربي» ⇐ «اللغة العربية» · «انجلش» ⇐ «اللغة الانجليزية») —
+            <b>من المرادفات وحدَها</b>، فما لا يُحَلّ يُعرَض لتضيف مرادفَه.
+            <br>🔴 <b>لا يمسّ</b> أوراقَ الاختبار (عربي كتابي/قرائي) ولا الموادَّ الخدميّة ولا «اجازة»،
+            وفي جدول الحصص يُعدَّل اسمُ المادّة وحدَه.
+            <br>وتُؤخَذ نسخةٌ من كلّ ورقةٍ ستُكتَب، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.
+          </div>
+          <button type="button" onclick="snm_preview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
+          <button type="button" id="snm-apply" onclick="snm_apply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ توحيد الأسماء</button>
+          <div id="snm-out" style="margin-top:10px;font-size:13px;"></div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
           <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🧹 أوراقُ النسخ الاحتياطيّة المؤقّتة</div>
           <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
             أدواتُ الإصلاح تحفظ نسخةً من كلّ ورقةٍ قبل تعديلها (<b>«…_نسخة_تاريخ»</b>) — وتبقى بعدها.
@@ -29873,6 +29887,84 @@ function durr_apply(){
         if(out) out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر التوحيد')+'</div>';
       });
     }, { okText: '🧩 توحيد' });
+}
+
+/* ════════════ 📚 توحيدُ أسماء المواد — نفسُ عقد `durr_*`: التنفيذُ مقفولٌ حتى تُعرَض معاينة ════════════ */
+function snm_preview(){
+  var out = document.getElementById('snm-out'), btn = document.getElementById('snm-apply');
+  if(!out) return;
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; }
+  out.innerHTML = _durBusyMsg('جارٍ حسابُ ما سيتغيّر — بلا أيّ كتابة');
+  _durWithTimeout(out, function(done){
+    callServer('auditSubjectNamesProtected', { token: App.user.token }, function(res){
+      if(!res || !res.success){
+        done('<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّرت المعاينة')+'</div>');
+        return;
+      }
+      done(_snmRender(res, false));
+      if(btn && (res.cells||0) > 0){ btn.disabled = false; btn.style.opacity = '1'; }
+    }, function(err){
+      done('<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّرت المعاينة')+'</div>');
+    });
+  });
+}
+function snm_apply(){
+  var out = document.getElementById('snm-out'), btn = document.getElementById('snm-apply');
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; }
+  confirmAction('توحيدُ أسماء المواد',
+    'سيُكتب ما عرضته المعاينةُ في جدول الحصص وجدول الاختبارات.\nوتُؤخَذ نسخةٌ من كلّ ورقةٍ قبل أوّل خليّة، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.',
+    '📚', function(){
+      if(out) out.innerHTML = '⏳ جارٍ التوحيد — لا تُغلق الصفحة...';
+      callServer('repairSubjectNamesProtected', { token: App.user.token, confirm: 'توحيد' }, function(res){
+        if(!res || !res.success){
+          var msg = '<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التوحيد')+'</div>';
+          if(res && res.partial){
+            msg += '<div style="margin-top:6px;font-size:12px;">كُتب <b>'+res.written+'</b> من <b>'+res.planned+'</b>'+
+                   (res.failedAt ? ' · توقّف عند ورقة «'+escapeHtml(res.failedAt.sheet)+'»' : '')+
+                   '<br>النسخُ الاحتياطيّة: '+escapeHtml((res.backups||[]).join('، '))+'</div>';
+          }
+          if(out) out.innerHTML = msg;
+          return;
+        }
+        if(out) out.innerHTML = _snmRender(res, true);
+      }, function(err){
+        if(out) out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر التوحيد')+'</div>';
+      });
+    }, { okText: '📚 توحيد' });
+}
+function _snmRender(res, applied){
+  var h = '<div style="padding:8px;background:#fff;border:1px solid #b2dfdb;border-radius:8px;">';
+  if(applied){
+    h += '<div style="font-weight:800;color:#2e7d32;margin-bottom:6px;">✅ '+escapeHtml(res.message||'')+'</div>';
+    if((res.backups||[]).length){
+      h += '<div style="font-size:12px;color:#546e7a;">النسخُ الاحتياطيّة: '+escapeHtml(res.backups.join('، '))+'</div>';
+    }
+    h += '<div style="font-size:12px;color:#6d4c41;margin-top:4px;">وكلُّ تغييرٍ مسجَّلٌ في «سجل_توحيد_البيانات».</div>';
+  } else {
+    h += '<div style="font-weight:800;margin-bottom:6px;">معاينة: '+(res.cells||0)+' خليّةً ستُعدَّل</div>';
+    if(!(res.cells||0)) h += '<div style="color:#2e7d32;">🟢 كلُّ الأسماء كنسيّةٌ أصلاً.</div>';
+    if((res.errors||[]).length) h += '<div style="color:#c62828;margin-bottom:6px;">'+escapeHtml(res.errors.join(' · '))+'</div>';
+    var sh = res.sheets||[];
+    for(var s=0;s<sh.length;s++) h += '&nbsp;&nbsp;• '+escapeHtml(sh[s].sheet)+' — '+sh[s].cells+' خليّة<br>';
+  }
+  var nm = res.names||[];
+  if(nm.length){
+    h += '<div style="font-size:12px;margin-top:6px;"><b>الأسماء:</b><br>';
+    for(var n=0;n<nm.length;n++) h += '&nbsp;&nbsp;• «'+escapeHtml(nm[n].from)+'» ⇐ «<b>'+escapeHtml(nm[n].to)+'</b>» ×'+nm[n].count+'<br>';
+    h += '</div>';
+  }
+  var un = res.unresolved||[];
+  if(un.length){
+    h += '<div style="font-size:12px;margin-top:6px;color:#e65100;"><b>🟠 لا يُحَلّ (أضِف مرادفه في «المقرَّرات»):</b><br>';
+    for(var u=0;u<un.length;u++) h += '&nbsp;&nbsp;• «'+escapeHtml(un[u].name)+'» ×'+un[u].count+'<br>';
+    h += '</div>';
+  }
+  if(!applied){
+    h += '<div style="margin-top:8px;font-size:12px;color:#78909c;">';
+    for(var L=0;L<(res.limits||[]).length;L++) h += '⚠️ '+escapeHtml(res.limits[L])+'<br>';
+    h += '</div>';
+  }
+  return h + '</div>';
 }
 
 function _durrRender(res, applied){
