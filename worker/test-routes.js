@@ -3669,6 +3669,20 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(call('_gasTailMeta(__v)', null).gv === '' && call('_gasTailMeta(__v)', '').dd === false,
         'نصٌّ غائب ⇒ القيمُ الافتراضيّة بلا استثناء');
 
+  // ①-ب `own`: ASN مخرجِ جهاز المالك وحدَه ⇒ 1، وكلُّ ما عداه ⇒ 0 (بلا استثناء).
+  var ownAsn = vm.runInContext('OWNER_EGRESS_ASN', ds);
+  check(ownAsn === 51167, 'ASN المخرج = 51167 (Contabo — مقيسٌ بطلبٍ معلَّم)');
+  check(call('_ownFlag(__v)', { cf: { asn: 51167 } }) === 1, 'طلبٌ من ASN المالك ⇒ own:1');
+  check(call('_ownFlag(__v)', { cf: { asn: 30873 } }) === 0 &&
+        call('_ownFlag(__v)', { cf: { asn: '51167' } }) === 0 &&
+        call('_ownFlag(__v)', { cf: {} }) === 0 && call('_ownFlag(__v)', {}) === 0 &&
+        call('_ownFlag(__v)', null) === 0,
+        '🔴 شبكةُ يمنية · ASN نصّيّ · cf بلا asn · بلا cf · null ⇒ own:0');
+  check(/ev: 'gas',[\s\S]{0,900}?own: _ownFlag\(request\)/.test(src),
+        '🔴 الحقلُ موصولٌ في سطر `ev:\'gas\'`');
+  check(/act: _bhMode === 'shadow' \? 'would_block' : 'reject',[\s\S]{0,200}?own: _ownFlag\(request\)/.test(src),
+        '🔴 والحقلُ موصولٌ في سطر رفض المنظّم (503)');
+
   // ② النافذة: ثلاثُ قيمٍ وافتراضيٌّ، وكلُّ ما عداها ⇒ null.
   check(call('_devStatsWindow(__v)', null).key === '24h' && call('_devStatsWindow(__v)', '7d').key === '7d',
         'النافذةُ الافتراضيّة 24h · و7d مقبولة');
