@@ -75,6 +75,39 @@ var _RETIRED_GAS_APPS = {
   schedule: 'الجدول صار داخل منصّة المعلّم'
 };
 
+/* 🔎 **مرآةُ بوّابة رمز الطالب — للقياس لا للرفض (2026-09-24).**
+   المصدرُ الحاكم: `SchoolApp-gas/teacher/_stuTokenGate.js::STU_TOKEN_GATED` — 🔴 **هذه نسخةٌ
+   تنحرف بصمت إن تغيّر الأصل**، ولذلك لا تحجب شيئاً: تُسجّل `ev:'stugate'` حين يغيب الرمزُ أو
+   المعرّفُ **نصّاً** ويمرّ النداءُ إلى GAS كما هو. الغرض عدُّ ما يستهلك مقعدَ تنفيذٍ ليُرفَض
+   (عيّنةُ GAS: ٧١ رفضاً `hasToken=false`)، قبل أيّ قرارٍ بنقل الرفض إلى الحافّة.
+   ⚠️ لا تحقّقَ من التوقيع هنا (السرُّ في GAS)، فرمزٌ منتهٍ لا يُعَدّ — العدُّ حدٌّ أدنى. */
+var _STU_GATE_MIRROR = {
+  getGrades:                   { id: 0, token: 3 },
+  getStudentNotificationBadge: { id: 0, token: 6 },
+  getStudentReports:           { obj: 0, id: 0, token: 2 },
+  getAttendanceForStudent:     { obj: 0 },
+  getStudentNotes:             { obj: 0 },
+  getStudentBootBundle:        { obj: 0 },
+  submitNote:                  { obj: 0 }
+};
+/** `''` إن حمل النداءُ معرّفاً ورمزاً، وإلّا `'notoken'`/`'noid'`/`'parse'`. لا يرمي أبداً. */
+function _stuGateMissing(fn, body) {
+  try {
+    var spec = _STU_GATE_MIRROR[fn];
+    if (!spec || !body || body.length > 16384) return '';
+    var a = (JSON.parse(body) || {}).args || [];
+    var s = function (v) { return (v === undefined || v === null) ? '' : String(v).trim(); };
+    var id = '', token = '';
+    var o = (spec.obj !== undefined && a[spec.obj] && typeof a[spec.obj] === 'object') ? a[spec.obj] : null;
+    if (o) { id = s(o.studentId || o.code || o.id); token = s(o.switchToken); }
+    else {
+      if (spec.id !== undefined) id = s(a[spec.id]);
+      if (spec.token !== undefined) token = s(a[spec.token]);
+    }
+    return !token ? 'notoken' : (!id ? 'noid' : '');
+  } catch (e) { return 'parse'; }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  منظّم التزاحم (bulkhead) — المرحلة أ: حَكْم داخل العامل الواحد
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2591,6 +2624,13 @@ export default {
         var _bhM = _bhHead.match(/"fn"\s*:\s*"([A-Za-z][A-Za-z0-9_]{0,63})"/);
         if (_bhM) _bhFn = _bhM[1];
       } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
+
+      // ── بوّابةُ رمز الطالب — **تسجيلٌ فقط لا رفض** (2026-09-24 · مع جلسة `SchoolApp-gas`) ──
+      if (app === 'student' && request.method === 'POST' && _bhFn &&
+          Object.prototype.hasOwnProperty.call(_STU_GATE_MIRROR, _bhFn)) {
+        var _sgWhy = _stuGateMissing(_bhFn, init.body);
+        if (_sgWhy) _bhLog({ ev: 'stugate', act: 'would_reject', app: app, fn: _bhFn, why: _sgWhy });
+      }
 
       // ── حدُّ تسجيل المشاهدات العامّة لكلّ IP — قبل الكاش والمقعد (انظر `_publicViewRate`) ──
       var _pvFn = (request.method === 'POST' && app === 'home') ? _publicViewFnOf(init.body) : '';

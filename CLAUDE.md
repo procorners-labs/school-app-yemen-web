@@ -81,17 +81,19 @@ PLANNING-ONLY mode: When asked to plan, produce execution prompts and doc/memory
   **اسمَها هي**. 🔴 **ونسخةٌ احتياطيةٌ يدويّةٌ مُتحقَّقةٌ تسبق الكتابة** — البندُ مفتوحٌ لأن
   مشغّلَي النسخ زالا (أحدُهما كان يفشل 100% صامتاً) ⇒ لا شبكةَ أمانٍ آليّةٍ اليوم.
 
-**طبقة الخلفية:** 7 مشاريع GAS (ES5 صارم: `var`، دوال عادية، بلا قوالب نصية) + نقطة توجيه ثامنة
-- `home · home-all-school · teacher · student · cms · schedule · master-admin`
+**طبقة الخلفية:** 🔴 **مُصحَّحٌ 2026-09-24 — أربعةُ مشاريعَ لها مصدرٌ في `SchoolApp-gas`**
+(‏`home · teacher · cms · master-admin` — ES5 صارم: `var`، دوال عادية، بلا قوالب نصية)
+**و٨ أسماءٍ في `/gas/<app>`** (‏`home · home-all-school · teacher · student · cms · schedule · master-admin · pricing`)
+⇒ **٧ معرّفاتٍ مختلفة** (`student` = `teacher`)، منها `schedule` ⇒ **410 بلا نداءٍ على Google**.
 - 🔴 **و«كاملة» بطَلت لثلاثةٍ منها** — الجدولُ التالي هو الحاكم، ويُقرأ قبل أيّ توجيه.
 
 🔴 **وثلاثةٌ منها لم تعُد «كاملة» — حالةٌ تُقرأ قبل أي توجيه (مُصحَّحة 2026-08-29):**
 
 | المشروع | حالتُه الفعلية اليوم |
 |---|---|
-| `student` | **مُفطَم** — `/gas/student` يُخدَم من **نشرة `teacher`** بمُميِّز `app=student` (‏`school-app-proxy.js` · `GAS.student → GAS.teacher`). ونشرةُ `student` الخاصّة مسارُ **تراجعٍ خامل** لا سطحٌ عامل ⇒ 🔴 لا يُنشَر عليها |
-| `home-all-school` | **مُفطَم عملياً** — الجذرُ صار `/home/schools.html` وslug المدرسة `/home/index.html`. وآخرُ تبعيةٍ حيّة (نداءُ OG) نُقلت إلى `GAS.home` في ف2. 🟢 والنشرةُ تبقى حيّةً خاملة و`/home-all-school/index.html` يردّ 200 (بند 104 — تطبيق SchoolzYemen يشير إليه) |
-| `schedule` | متقاعدٌ كمصدرِ حقيقة (الشبكةُ صارت مصدرَ الحقيقة — برنامج «ش») |
+| `student` | **مُفطَم** — `/gas/student` يُخدَم من **نشرة `teacher`** بمُميِّز `app=student` (‏`school-app-proxy.js` · `GAS.student → GAS.teacher`). ونشرةُ `student@324` الخاصّة **حيّةٌ خاملةٌ وليست مسارَ تراجع** (مُصحَّحٌ 2026-09-24: `health` مباشرةً ⇒ `ok:false` — كودُها يقرأ ورقةً محذوفة؛ و**ستصير بوّابةَ تحويل** بموجةِ `SchoolApp-gas` 3 بموافقة المالك) ⇒ `GAS.student = GAS.teacher` **دائم**، و🔴 لا يُنشَر عليها |
+| `home-all-school` | **مُفطَم عملياً** — الجذرُ صار `/home/schools.html` وslug المدرسة `/home/index.html`. وآخرُ تبعيةٍ حيّة (نداءُ OG) نُقلت إلى `GAS.home` في ف2. 🟢 والنشرةُ تبقى حيّةً خاملة (‏`/gas/home-all-school` ⇒ 200) و`/home-all-school/index.html` يردّ 200 (بند 104 — حزمُ الأندرويد المنشورة) |
+| `schedule` | 🗑️ **متقاعد: `/gas/schedule` ⇒ 410** بلا نداءٍ على Google (`_RETIRED_GAS_APPS`)، ونشرتُه تردّ صفحةَ خطأ. و`/schedule/index.html` إعلانُ تقاعدٍ يردّ 200 |
 
 ⇒ **الحصّةُ المشتركة تُقرأ من هنا:** ‏٣٠ تنفيذاً متزامناً **لكلّ حساب** لا لكلّ مشروع، وكلُّها
 Execute-as-Me بنفس الحساب. وطيُّ `student` في نشرة `teacher` يجعل حملَ المنصّتين على **مشروع
@@ -212,7 +214,7 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 |---|---|---|---|
 | `/student/index.html` | ٥١٨٬٠٢٢ | **منصّةُ الطالب — حيّةٌ وعاملة** | 🔴 **سطحٌ حيٌّ مطلوب** |
 | `/schedule/index.html` | **٩٬١٠٩** | **صفحةُ تقاعد**: «توزيع الحصص — انتقل إلى منصّة المعلّم» | 🟢 **متقاعدٌ فعلاً** |
-| `/home-all-school/index.html` | ٩٩٬٣٠٧ | **نفسُ محتوى `/home/schools.html`** (‏`SRC_DIR_FOR`) | 🟢 **مفطومٌ فعلاً** |
+| `/home-all-school/index.html` | ١٣٧٬٩٧٦ (‏2026-09-24) | **نفسُ محتوى `/home/schools.html`** (‏`SRC_DIR_FOR`) | 🟢 **مفطومٌ فعلاً** |
 
 🎯 **⇒ اثنان من الثلاثة متقاعدان بالمعنى المطلوب** — المصدرُ حُذف، والسطحُ يخدم
 **بديلاً أو إعلانَ تقاعد**، لا المشروعَ القديم. **والثالثُ وحدَه حيٌّ بحقّ.**
@@ -234,7 +236,7 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 
 | المسار | الوظيفة |
 |---|---|
-| `/gas/<app>` | يمرّر POST/GET إلى GAS `/exec` المقابل (home/home-all-school/teacher/student/cms/schedule/master-admin) — 🔴 **ثمانيةُ مساراتٍ وسبعُ وجهات**: `/gas/student` يذهب إلى نشرة `teacher`. انظر §المعمارية والجدولَ الحاكم |
+| `/gas/<app>` | يمرّر POST/GET إلى GAS `/exec` المقابل — 🔴 **ثمانيةُ أسماءٍ وسبعةُ معرّفات** (مُصحَّحٌ 2026-09-24): `home` · `home-all-school` · `teacher` · `student` (⇒ نشرةُ `teacher`) · `cms` · `master-admin` · `pricing` (خاملةٌ تردّ 200) · `schedule` (⇒ **410** بلا نداء). انظر §المعمارية والجدولَ الحاكم |
 | `/qr-img?url=...` | Proxy لصور QR من `api.qrserver.com` (fallback عند الحجب) |
 | `/qr-download?url=&name=` | تحميل QR كـ attachment |
 | `/oauth` | إعادة توجيه OAuth من فيسبوك/إنستغرام → GAS CMS |
@@ -349,8 +351,8 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 
 **Deployment IDs الثابتة في الـWorker (لا تغيّرها):** انظر `var GAS` أعلى `worker/school-app-proxy.js`.
 🔴 **والجدولُ وحده لا يكفي — اقرأ السطرَ الذي يليه:** `GAS.student = GAS.teacher;` ⇒ القيمةُ
-المكتوبة تحت `student:` **ليست وجهةَ `/gas/student`**، بل مسارُ تراجعٍ خامل. ومن يقرأ الجدولَ
-مفرداً يخرج بثمانِ وجهاتٍ مستقلّة وهي **سبع**. (‏`grep -n "GAS.student" worker/school-app-proxy.js`.)
+المكتوبة تحت `student:` **ليست وجهةَ `/gas/student`**، بل **سجلُّ معرّفٍ لنشرةٍ حيّةٍ خاملة لا مسارُ تراجع**
+(مُصحَّحٌ 2026-09-24). ومن يقرأ الجدولَ مفرداً يخرج بثمانِ وجهاتٍ مستقلّة وهي **سبعةُ معرّفات**، وأحدُها (`schedule`) ⇒ 410. (‏`grep -n "GAS.student" worker/school-app-proxy.js`.)
 
 ---
 

@@ -4375,6 +4375,32 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
   });
 });
 
+/* ── 🔎 مرآةُ بوّابة رمز الطالب — تسجيلٌ لا رفض (2026-09-24) ─────────────────────────── */
+(function () {
+  console.log('');
+  console.log('مرآةُ بوّابة رمز الطالب (قياسٌ فقط):');
+  var a = src.indexOf('var _STU_GATE_MIRROR = {');
+  var b = src.indexOf('\n}', src.indexOf('function _stuGateMissing(')) + 2;
+  check(a > 0 && b > a, 'المرآةُ والدالّةُ موجودتان');
+  if (!(a > 0 && b > a)) return;
+  var cx = vm.createContext({}); vm.runInContext(src.slice(a, b), cx);
+  function m(fn, args) { cx.__b = JSON.stringify({ fn: fn, args: args }); cx.__f = fn; return vm.runInContext('_stuGateMissing(__f, __b)', cx); }
+  check(m('getStudentNotes', [{ studentId: 'S1', schoolId: 'X' }]) === 'notoken', 'كائنٌ بلا switchToken ⇒ notoken');
+  check(m('getStudentNotes', [{ studentId: 'S1', switchToken: 'T' }]) === '', '🔴 ضابطٌ معاكس: كائنٌ برمز ⇒ يمرّ');
+  check(m('getStudentNotes', [{ switchToken: 'T' }]) === 'noid', 'رمزٌ بلا معرّف ⇒ noid');
+  check(m('getGrades', ['S1', 'X', 0, 'T']) === '' && m('getGrades', ['S1', 'X', 0]) === 'notoken', 'موضعيّ: token في args[3]');
+  check(m('getStudentReports', ['S1', 'X', 'T']) === '' && m('getStudentReports', [{ code: 'S1', switchToken: 'T' }]) === '',
+        'getStudentReports بالشكلين (موضعيّ وكائن code)');
+  check(m('getNews', []) === '', 'دالّةٌ خارج القائمة ⇒ لا تُعَدّ');
+  cx.__b = '{bad'; cx.__f = 'getGrades';
+  check(vm.runInContext('_stuGateMissing(__f, __b)', cx) === 'parse', 'جسمٌ معطوب ⇒ parse لا استثناء');
+  /* 🔴 **لا رفضَ على الحافّة:** موضعُ الاستدعاء يسجّل ولا يعيد ردّاً — لو صار `return` هنا
+     لانكسر عميلٌ حقيقيّ بقائمةٍ قد تكون انحرفت عن `_stuTokenGate.js`. */
+  var site = src.slice(src.indexOf("var _sgWhy = _stuGateMissing("), src.indexOf("var _sgWhy = _stuGateMissing(") + 300);
+  check(/_bhLog\(\{ ev: 'stugate'/.test(site) && !/return /.test(site.split('\n      }')[0]),
+        '🔴 موضعُ الاستدعاء يسجّل ولا يرفض (لا `return`)');
+})();
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —
