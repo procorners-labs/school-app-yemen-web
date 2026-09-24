@@ -7828,6 +7828,7 @@ function _finishTeacherLoginSuccess(r, schoolId) {
     caps        : r.caps        || null,
     can         : r.can         || null,
     grantPages  : r.grantPages  || [],
+    hidePages   : r.hidePages   || [],
     customRole  : r.customRole  || '',
     subject     : r.subject     || (r.subjects && r.subjects[0]) || '',
     grade       : r.grade       || (r.classes && r.classes[0])   || '',
@@ -11322,6 +11323,42 @@ function _sbApplyGrantOverlay(u) {
   }
 }
 
+/* ★ **طبقةُ السحب** (2026-09-24): صفحةٌ قدرتُها مُطفأةٌ لهذه الجلسة لا تظهر — القائمةُ من الخادم
+ * (`_authHiddenPages`) بالمُحكِّم نفسِه. ويُخفى قسمُها إن لم يبقَ فيه عنصرٌ ظاهر. */
+function _sbApplyCapHide(u) {
+  var hp = (u && u.hidePages) ? u.hidePages : [];
+  for (var i = 0; i < hp.length; i++) {
+    var el = document.getElementById(String(hp[i] || ''));
+    if (!el || el.className.indexOf('sidebar-item') === -1) continue;
+    el.style.display = 'none';
+    var sec = el.parentNode;
+    while (sec && sec !== document.body && !(sec.className && String(sec.className).indexOf('sidebar-section') !== -1)) sec = sec.parentNode;
+    if (!sec || sec === document.body) continue;
+    var items = sec.querySelectorAll('.sidebar-item'), any = false;
+    for (var k = 0; k < items.length; k++) if (items[k].style.display !== 'none') { any = true; break; }
+    if (!any) sec.style.display = 'none';
+  }
+}
+
+/* 👁️ صفحاتُ الشريط التي يراها دورٌ **بقواعده وحدَها** — نقيّةٌ من المانيفست نفسِه وبنفس منطق
+ * `_sbApplyTable`/`_sbApplyAccountant`/`_applySupervisorPagePerms` (للمعاينة في صفحة الضبط). */
+function _sbRolePages(role, supPages) {
+  var out = [], M = SIDEBAR_PERMISSIONS_MANIFEST, perms = (supPages && supPages.length) ? supPages : null;
+  for (var id in M) {
+    if (!M.hasOwnProperty(id)) continue;
+    var e = M[id], sv = e.supervisor, show;
+    if (role === 'accountant') show = !!e.accountant;
+    else if (role === 'supervisor') {
+      if (id === 'si-social') show = false;
+      else if (sv && sv.alwaysHidden) show = false;
+      else if (sv && sv.configurable) show = perms ? perms.indexOf(id) >= 0 : sv.defaultVisible !== false;
+      else show = true;
+    } else show = !e.roles || e.roles.indexOf(role) >= 0;
+    if (show) out.push(id);
+  }
+  return out;
+}
+
 function initSidebarByRole() {
   var u = App.user;
   var sidebar = document.getElementById('sidebar');
@@ -11332,6 +11369,7 @@ function initSidebarByRole() {
     if (role === 'accountant')      { _sbApplyAccountant(); }
     else if (role === 'supervisor') { _sbApplySupervisor(u); }
     else                            { _sbApplyTable(role); }
+    _sbApplyCapHide(u);
     _sbApplyGrantOverlay(u);
   } catch (eSb) {
     // لا تُبقِ القائمة محجوبة عند خطأ — أظهِرها كي لا يُحبَس المستخدم.
@@ -11811,13 +11849,14 @@ function _rpmPageCatalog(){
   var caps=(_rpm&&_rpm.caps)||[];
   for(var c=0;c<caps.length;c++) if(caps[c].grantable) grant[caps[c].key]=1;
   for(var k in pc){ if(!pc.hasOwnProperty(k)||SKIP[k]) continue;
-    if(pc[k] && !grant[pc[k]]) continue;
+    if(pc[k] && (!grant[pc[k]] || !_rpmMayGrant(pc[k]))) continue;
     var el=document.getElementById(k); if(!el) continue;
     out.push({ key:k, label:(el.textContent||k).replace(/\s+/g,' ').trim(), cap:pc[k]||'' });
   }
   return out;
 }
-function _rpmGrantableCaps(){ var o=[], c=(_rpm&&_rpm.caps)||[]; for(var i=0;i<c.length;i++) if(c[i].grantable) o.push(c[i]); return o; }
+function _rpmMayGrant(cap){ return !!(_rpm && (_rpm.viewerIsOwner || hasCap(cap))); }
+function _rpmGrantableCaps(){ var o=[], c=(_rpm&&_rpm.caps)||[]; for(var i=0;i<c.length;i++) if(c[i].grantable && _rpmMayGrant(c[i].key)) o.push(c[i]); return o; }
 
 function _spvChecks(id, items, selected, valueOf, labelOf, onchange){
   var sel = selected||[];
@@ -11847,6 +11886,32 @@ function _rpmLinkPage(cb, capsBoxId){
 }
 function _rpmLinkPersonPage(cb){ _rpmLinkPage(cb,'spv-caps'); }
 function _rpmLinkCustomPage(cb){ _rpmLinkPage(cb,'crp-caps'); }
+/* 👁️ ما يظهر فعلاً = صفحاتُ الدور + الصفحاتُ الإضافيّة + صفحاتُ القدرات الفعّالة − صفحاتُ القدرات المُطفأة
+   (نفسُ طبقات الشريط: الدور ⇒ السحب ⇒ المنح). `eff` خريطةُ القدرات الفعّالة. */
+function _rpmVisiblePages(role, eff, extra, supPages){
+  var pc=(_rpm&&_rpm.pageCaps)||{}, set={}, out=[], base=_sbRolePages(role, supPages), ex=extra||[], k;
+  for(var i=0;i<base.length;i++) set[base[i]]=1;
+  for(var j=0;j<ex.length;j++) set[ex[j]]=1;
+  for(k in pc) if(pc.hasOwnProperty(k) && pc[k] && eff[pc[k]]) set[k]=1;
+  for(k in set){ if(!set.hasOwnProperty(k)) continue; if(pc[k] && !eff[pc[k]]) continue;
+    var el=document.getElementById(k); if(!el) continue;
+    out.push((el.textContent||k).replace(/\s+/g,' ').trim()); }
+  return out;
+}
+function _rpmPreviewHtml(labels){
+  var h='<div style="font-weight:700;margin:14px 0 6px;">👁️ ما يظهر في قائمته الآن ('+labels.length+')</div><div style="display:flex;flex-wrap:wrap;gap:5px;">';
+  for(var i=0;i<labels.length;i++) h+='<span style="padding:4px 9px;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;font-size:12px;">'+escapeHtml(labels[i])+'</span>';
+  return h+'</div>';
+}
+/* القدراتُ الفعّالة من مربّع اختيارٍ: المعروضُ بحالته، وغيرُ المعروض من `fallback`. */
+function _rpmEffFromBox(boxId, fallback){
+  var eff={}, k, box=document.getElementById(boxId);
+  for(k in fallback) if(fallback.hasOwnProperty(k) && fallback[k]) eff[k]=true;
+  if(!box) return eff;
+  var cbs=box.querySelectorAll('input[type=checkbox]');
+  for(var i=0;i<cbs.length;i++) eff[cbs[i].value]=cbs[i].checked;
+  return eff;
+}
 function _rpmStatus(id, ok, msg){ var st=document.getElementById(id); if(st) st.innerHTML='<span style="color:'+(ok?'#2e7d32':'#c62828')+';">'+(ok?'✅ ':'❌ ')+escapeHtml(msg||'')+'</span>'; }
 
 /* ── 👥 الأشخاص ── */
@@ -11872,9 +11937,11 @@ function _spvFilter(){
 function _spvRoleOptions(s){
   var cur = s.customRole ? ('custom:'+s.customRole) : s.role;
   var h='';
-  for(var i=0;i<_RPM_BASE_ROLES.length;i++){ var r=_RPM_BASE_ROLES[i]; h+='<option value="'+r+'"'+(cur===r?' selected':'')+'>'+_RPM_ROLE_AR[r]+'</option>'; }
+  for(var i=0;i<_RPM_BASE_ROLES.length;i++){ var r=_RPM_BASE_ROLES[i]; if(r==='deputy' && _rpm && !_rpm.viewerIsOwner && cur!=='deputy') continue; h+='<option value="'+r+'"'+(cur===r?' selected':'')+'>'+_RPM_ROLE_AR[r]+'</option>'; }
   var cr=(_rpm&&_rpm.customRoles)||[];
-  for(var k=0;k<cr.length;k++){ var v='custom:'+cr[k].name; h+='<option value="'+escapeHtml(v)+'"'+(cur===v?' selected':'')+'>✨ '+escapeHtml(cr[k].name)+'</option>'; }
+  for(var k=0;k<cr.length;k++){ var v='custom:'+cr[k].name, okc=true;
+    for(var ci=0;ci<(cr[k].caps||[]).length;ci++) if(!_rpmMayGrant(cr[k].caps[ci])) okc=false;
+    if(!okc && cur!==v) continue;   /* يحمل ما لا يملكه المفوَّض ⇒ يُسنده المدير وحدَه */ h+='<option value="'+escapeHtml(v)+'"'+(cur===v?' selected':'')+'>✨ '+escapeHtml(cr[k].name)+'</option>'; }
   return h;
 }
 function _spvPick(i){
@@ -11882,7 +11949,6 @@ function _spvPick(i){
   if(_spvCurrent!==s.name){ _spvCurrent=s.name; _spvRenderPeople(); return; }
   var Ls=(App&&App.lists)?App.lists:{};
   var f=document.getElementById('spv-form'); if(!f) return;
-  var idn=function(x){return x;};
   var isSup = s.role==='supervisor';
   f.innerHTML=
     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);">'+
@@ -11892,21 +11958,88 @@ function _spvPick(i){
       '<button onclick="_spvSetRole()" style="background:#0f766e;color:#fff;border:none;border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:700;">تغيير الدور</button>'+
       '<span id="spv-role-status" style="font-size:13px;"></span></div>'+
     (isSup ?
-      '<div style="font-size:12px;color:var(--text-light);margin-bottom:6px;">المشرف: اترك الصفوف فارغةً = يرى كلَّ الصفوف. حين تحدّدها يدير تلقائياً المعلّمين الذين لهم حصصٌ فيها.</div>'+
-      '<div style="font-weight:700;margin:10px 0 6px;">🏫 الصفوف المسؤول عنها</div>'+_spvChecks('spv-grades', Ls.grades||[], s.grades, idn, idn)+
-      '<div style="font-weight:700;margin:14px 0 6px;">🔠 الشعب المسؤول عنها</div>'+_spvChecks('spv-sections', Ls.sections||[], s.sections, idn, idn)
+      '<div style="font-size:12px;color:var(--text-light);margin-bottom:6px;">المشرف: اختر الصفوف، ولكلّ صفٍّ شعبَه إن أردت (صفٌّ بلا شعبٍ مختارة = كلُّ شعبه). لا شيءَ مختار = كلُّ المدرسة. ويدير تلقائياً معلّمي ما اخترت.</div>'+
+      '<div style="font-weight:700;margin:10px 0 6px;">🏫 الصفوف والشعب المسؤول عنها</div>'+_spvScopeGrid(s, Ls.grades||[], Ls.sections||[])
     : '')+
     '<div style="font-weight:700;margin:14px 0 6px;">📄 صفحاتٌ إضافيّة '+(isSup?'(للمشرف: الصفحاتُ المسموحة — فارغة = الافتراضي)':'تظهر له')+'</div>'+
        _spvChecks('spv-pages', _rpmPageCatalog(), s.pages, function(x){return x.key;}, function(x){return x.label;}, '_rpmLinkPersonPage')+
-    '<div style="font-weight:700;margin:14px 0 6px;">🔑 صلاحيّاتٌ إضافيّة له وحدَه</div>'+
-       _spvChecks('spv-caps', _rpmGrantableCaps(), s.caps, function(x){return x.key;}, function(x){return x.label;})+
+    '<div style="font-weight:700;margin:14px 0 6px;">🔑 صلاحيّاتُه (المعلَّمُ بإطارٍ برتقاليّ يخالف دورَه — له وحدَه)</div>'+
+       _spvCapsBox(s)+
+    '<div id="spv-preview"></div>'+
     '<div style="font-weight:700;margin:14px 0 6px;">📝 ملاحظات</div>'+
        '<input id="spv-notes" value="'+escapeHtml(s.notes||'')+'" style="padding:8px;border:1px solid #ddd;border-radius:8px;width:100%;max-width:420px;">'+
     '<div style="margin-top:16px;display:flex;gap:10px;align-items:center;">'+
        '<button onclick="_spvSave()" style="background:#1149a3;color:#fff;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;font-weight:700;">💾 حفظ</button>'+
        '<span id="spv-status" style="font-size:13px;"></span>'+
     '</div></div>';
+  var fm=f.firstChild; if(fm) fm.addEventListener('change', _spvPreview);
+  _spvPreview();
 }
+function _spvPreview(){
+  var box=document.getElementById('spv-preview'); if(!box) return;
+  var s=null; for(var i=0;i<_spvList.length;i++) if(_spvList[i].name===_spvCurrent) s=_spvList[i]; if(!s) return;
+  var eff=_rpmEffFromBox('spv-caps', _spvBaseline(s)), pages=_spvCollect('spv-pages'), cr=(_rpm&&_rpm.customRoles)||[], extra=pages.slice();
+  for(var j=0;j<cr.length;j++) if(s.customRole && cr[j].name===s.customRole) extra=extra.concat(cr[j].pages||[]);
+  var sup=s.role==='supervisor';
+  box.innerHTML=_rpmPreviewHtml(_rpmVisiblePages(s.role, eff, sup?[]:extra, sup?extra:null));
+}
+/* صلاحيّاتُ دوره الأساسيّ (بعد صفّ الدور) + دورِه المخصَّص — «ما يملكه بلا استثناءٍ شخصيّ». */
+function _spvBaseline(s){
+  var b={}, rs=(_rpm&&_rpm.roles)||[], cr=(_rpm&&_rpm.customRoles)||[];
+  for(var i=0;i<rs.length;i++) if(rs[i].role===s.role){ for(var k in rs[i].effective) if(rs[i].effective[k]) b[k]=1; }
+  for(var j=0;j<cr.length;j++) if(s.customRole && cr[j].name===s.customRole){ for(var q=0;q<cr[j].caps.length;q++) b[cr[j].caps[q]]=1; }
+  return b;
+}
+/* القدراتُ المعروضةُ للشخص: القابلةُ للمنح + ما يملكه دورُه (ليمكن سحبُه). */
+function _spvShownCaps(s){
+  var base=_spvBaseline(s), out=[], all=(_rpm&&_rpm.caps)||[];
+  for(var i=0;i<all.length;i++) if(all[i].grantable || base[all[i].key]) out.push(all[i]);
+  return out;
+}
+function _spvCapsBox(s){
+  var base=_spvBaseline(s), toks=s.caps||[], grant={}, deny={}, shown=_spvShownCaps(s);
+  for(var i=0;i<toks.length;i++){ var t=String(toks[i]); if(t.charAt(0)==='-') deny[t.substring(1)]=1; else grant[t]=1; }
+  var h='<div id="spv-caps" style="display:flex;flex-wrap:wrap;gap:6px;">';
+  for(var j=0;j<shown.length;j++){ var k=shown[j].key, on=(base[k]&&!deny[k])||!!grant[k], diff=on!==!!base[k], lk=!_rpmMayGrant(k);
+    h+='<label title="'+(lk?'يضبطها المدير وحدَه':'')+'" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:'+(diff?'2px solid #f59e0b':'1px solid #e2e8f0')+';border-radius:9px;background:'+(on?'#eef2ff':'#fff')+';font-size:13px;'+(lk?'opacity:.5;':'cursor:pointer;')+'">'+
+       '<input type="checkbox" value="'+escapeHtml(k)+'"'+(on?' checked':'')+(lk?' disabled':'')+'> '+escapeHtml(shown[j].label)+'</label>';
+  }
+  return h+'</div>';
+}
+/* الرموزُ المحفوظة: الفرقُ عن الدور وحدَه (`x` منحٌ · `-x` سحب)، وما لا يُعرَض من رموزٍ قديمةٍ يبقى كما هو. */
+function _spvCapsTokens(s){
+  var base=_spvBaseline(s), shown=_spvShownCaps(s), on=_spvCollect('spv-caps'), out=[], seen={};
+  for(var i=0;i<shown.length;i++){ var k=shown[i].key; seen[k]=1; var c=on.indexOf(k)>=0;
+    if(c && !base[k]) out.push(k); else if(!c && base[k]) out.push('-'+k); }
+  var old=s.caps||[]; for(var j=0;j<old.length;j++){ var t=String(old[j]), kk=t.charAt(0)==='-'?t.substring(1):t; if(!seen[kk]) out.push(t); }
+  return out;
+}
+/* شبكةُ النطاق: لكلّ صفٍّ مربّعُه وشعبُه. الأزواجُ `الصف/الشعبة`؛ والحرفُ المجرّد القديم يُعرَض على كلّ صفٍّ مختار. */
+function _spvScopeGrid(s, grades, secs){
+  var pairs={}, plain=[], sg=s.grades||[], ss=s.sections||[];
+  for(var i=0;i<ss.length;i++){ var t=String(ss[i]), k=t.indexOf('/'); if(k>0){ var g=t.substring(0,k); (pairs[g]=pairs[g]||[]).push(t.substring(k+1)); } else plain.push(t); }
+  var h='<div id="spv-scope" style="display:flex;flex-direction:column;gap:6px;">';
+  for(var j=0;j<grades.length;j++){ var g2=grades[j], gOn=sg.indexOf(g2)>=0||!!pairs[g2];
+    h+='<div data-g="'+escapeHtml(g2)+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:10px;">'+
+       '<label style="font-weight:700;min-width:110px;cursor:pointer;"><input type="checkbox" class="spv-g"'+(gOn?' checked':'')+'> '+escapeHtml(g2)+'</label>';
+    for(var q=0;q<secs.length;q++){ var x=secs[q], xOn=gOn&&(pairs[g2]?pairs[g2].indexOf(x)>=0:plain.indexOf(x)>=0);
+      h+='<label style="font-size:13px;cursor:pointer;"><input type="checkbox" class="spv-s" value="'+escapeHtml(x)+'"'+(xOn?' checked':'')+' onchange="_spvScopeSec(this)"> '+escapeHtml(x)+'</label>';
+    }
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+function _spvScopeSec(cb){ if(!cb.checked) return; var row=cb.parentNode.parentNode; var g=row.querySelector('.spv-g'); if(g) g.checked=true; }
+function _spvScopeCollect(){
+  var out={grades:[],sections:[]}, box=document.getElementById('spv-scope'); if(!box) return out;
+  var rows=box.querySelectorAll('[data-g]');
+  for(var i=0;i<rows.length;i++){ var g=rows[i].getAttribute('data-g'), gc=rows[i].querySelector('.spv-g');
+    if(!gc||!gc.checked) continue; out.grades.push(g);
+    var ss=rows[i].querySelectorAll('.spv-s:checked'); for(var j=0;j<ss.length;j++) out.sections.push(g+'/'+ss[j].value);
+  }
+  return out;
+}
+
 function _spvSetRole(){
   if(!_spvCurrent) return;
   var role=(document.getElementById('spv-role')||{}).value||'';
@@ -11924,10 +12057,10 @@ function _spvSetRole(){
 function _spvSave(){
   if(!_spvCurrent) return;
   _rpmStatus('spv-status', true, 'جارٍ الحفظ...');
-  /* السحبُ المكتوبُ في الورقة (`-قدرة`) لا يُعرَض مربّعاً فيُحفَظ كما هو — لا يضيع بالحفظ. */
-  var keepDeny=[]; for(var d0=0;d0<_spvList.length;d0++) if(_spvList[d0].name===_spvCurrent){ var oc=_spvList[d0].caps||[]; for(var d1=0;d1<oc.length;d1++) if(String(oc[d1]).charAt(0)==='-') keepDeny.push(oc[d1]); }
-  var p={ name:_spvCurrent, grades:_spvCollect('spv-grades'), sections:_spvCollect('spv-sections'),
-          pages:_spvCollect('spv-pages'), caps:_spvCollect('spv-caps').concat(keepDeny), notes:(document.getElementById('spv-notes')||{}).value||'' };
+  var cur=null; for(var d0=0;d0<_spvList.length;d0++) if(_spvList[d0].name===_spvCurrent) cur=_spvList[d0];
+  var sc=_spvScopeCollect();
+  var p={ name:_spvCurrent, grades:sc.grades, sections:sc.sections,
+          pages:_spvCollect('spv-pages'), caps:_spvCapsTokens(cur||{}), notes:(document.getElementById('spv-notes')||{}).value||'' };
   callServer('saveSupervisorPermsProtected', p, function(res){
     if(!res||!res.success) return _rpmStatus('spv-status', false, res?res.error:'خطأ');
     _rpmStatus('spv-status', true, res.message);
@@ -11945,14 +12078,26 @@ function _rpmRenderRoles(){
 }
 function _rpmPickRole(i){
   var r=_rpm.roles[i]; var f=document.getElementById('rpm-role-form'); if(!r||!f) return;
-  var h='<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;"><h3 style="margin:0 0 10px;">🧩 '+escapeHtml(r.label)+'</h3><div id="rpm-role-caps" style="display:flex;flex-wrap:wrap;gap:6px;">';
+  var ro = !_rpm.viewerIsOwner && (r.role===_rpm.viewerRole || r.role==='deputy');
+  var h='<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;"><h3 style="margin:0 0 10px;">🧩 '+escapeHtml(r.label)+'</h3>'+
+        (r.role==='deputy'&&_rpm.viewerIsOwner?'<div style="font-size:12px;color:var(--text-light);margin-bottom:8px;">فعّل «🛡️ ضبط صلاحيات الأدوار» ليتمكّن الوكيلُ من ضبط الآخرين — لا يضبط نفسَه ولا المديرَ ولا الوكلاء.</div>':'')+
+        (ro?'<div style="font-size:12px;color:#b45309;margin-bottom:8px;">🔒 هذا الدور يضبطه المدير وحدَه.</div>':'')+
+        '<div id="rpm-role-caps" style="display:flex;flex-wrap:wrap;gap:6px;">';
   for(var c=0;c<_rpm.caps.length;c++){ var cp=_rpm.caps[c], on=!!r.effective[cp.key], diff=on!==!!r.defaults[cp.key];
-    var lock = !cp.grantable && !r.defaults[cp.key];
+    var delegOk = !!(_rpm.viewerIsOwner && cp.delegable && cp.delegable.indexOf(r.role)>=0);
+    if (!cp.grantable && !delegOk && !r.defaults[cp.key] && !on) continue;   /* لا تُعرض قدرةٌ لا تخصّ هذا الدور */
+    var lock = (!cp.grantable && !delegOk && !r.defaults[cp.key]) || !_rpmMayGrant(cp.key);
     h+='<label style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:'+(diff?'2px solid #f59e0b':'1px solid #e2e8f0')+';border-radius:9px;background:'+(on?'#eef2ff':'#fff')+';font-size:13px;'+(lock?'opacity:.5;':'cursor:pointer;')+'">'+
        '<input type="checkbox" value="'+cp.key+'"'+(on?' checked':'')+(lock?' disabled':'')+'> '+escapeHtml(cp.label)+'</label>';
   }
-  h+='</div><div style="margin-top:14px;display:flex;gap:10px;align-items:center;"><button onclick="_rpmSaveRole('+i+')" style="background:#1149a3;color:#fff;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;font-weight:700;">💾 حفظ</button><span id="rpm-role-status" style="font-size:13px;"></span></div></div>';
+  h+='</div><div id="rpm-role-preview"></div><div style="margin-top:14px;display:flex;gap:10px;align-items:center;"><button onclick="_rpmSaveRole('+i+')" style="background:#1149a3;color:#fff;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;font-weight:700;">💾 حفظ</button><span id="rpm-role-status" style="font-size:13px;"></span></div></div>';
   f.innerHTML=h;
+  var rc=document.getElementById('rpm-role-caps'); if(rc) rc.addEventListener('change', function(){ _rpmRolePreview(i); });
+  _rpmRolePreview(i);
+}
+function _rpmRolePreview(i){
+  var r=_rpm.roles[i], box=document.getElementById('rpm-role-preview'); if(!r||!box) return;
+  box.innerHTML=_rpmPreviewHtml(_rpmVisiblePages(r.role, _rpmEffFromBox('rpm-role-caps', r.effective), [], null));
 }
 function _rpmSaveRole(i){
   var r=_rpm.roles[i]; if(!r) return;
@@ -30307,6 +30452,7 @@ window.onload = function() {
             caps        : r.caps        || saved.caps      || null,   // قدرات إضافية
             can         : r.can         || null,                      // القدراتُ الفعّالة من الخادم
             grantPages  : r.grantPages  || [],                        // صفحاتٌ منحها المدير
+            hidePages   : r.hidePages   || [],                        // صفحاتٌ قدرتُها مُطفأة
             customRole  : r.customRole  || '',
             subject     : r.subject     || (r.subjects  && r.subjects[0])  || '',
             grade       : r.grade       || (r.classes   && r.classes[0])   || '',
