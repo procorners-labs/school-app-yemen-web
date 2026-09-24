@@ -435,11 +435,15 @@ console.log('الرؤوس الأمنية وحقن og:url:');
    *    «غيرَ مخدوم»** فيُحذف المدخلُ ظنّاً أنه ميّت. */
   var dyn = /\n\s*var target = GAS\[app\];/.test(src);
   var retBlock = (src.match(/var _RETIRED_GAS_APPS = \{[\s\S]*?\n\};/) || [''])[0];
-  var notRetired = !!retBlock && !/['"]?pricing['"]?\s*:/.test(retBlock) && !/['"]home-all-school['"]\s*:/.test(retBlock);
+  /* 🧹 **وانقلب العقدُ 2026-09-24 بقرار المالك (حذفٌ نهائيّ):** `pricing` ⇒ 410 عبر `_RETIRED_GAS_APPS`
+   *    (صفرُ مستهلكٍ حقيقيٍّ في 7 أيام)، و`home-all-school` ⇒ نشرةُ `home` باسمٍ مستعار — صفحتُه
+   *    المجمَّدة مبنيّةٌ من `home/Schools.html` وكانت تنادي المشروعَ الخامل (طرفان للبيانات). */
+  var notRetired = !!retBlock && /['"]?pricing['"]?\s*:/.test(retBlock) && !/['"]home-all-school['"]\s*:/.test(retBlock) &&
+    /\nGAS\['home-all-school'\] = GAS\.home;/.test(src);
   var okDyn = dyn && notRetired;
   if (!okDyn) failed++;
   console.log((okDyn ? '  ✅ ' : '  ❌ ') +
-    '🔴 `/gas/pricing` و`/gas/home-all-school` مخدومان عمداً عبر `GAS[app]` الديناميكيّ وليسا في `_RETIRED_GAS_APPS` [dyn=' +
+    '🧹 `/gas/pricing` ⇒ 410 (`_RETIRED_GAS_APPS`) · و`/gas/home-all-school` ⇒ نشرةُ `home` باسمٍ مستعارٍ لا المشروعُ الخامل [dyn=' +
     dyn + ' · retBlock=' + (retBlock ? 'ok' : 'غائب') + ']');
 })();
 
@@ -1148,8 +1152,8 @@ console.log('عقد بوّابة الطالب (يحمي النقل إلى مشر
 // ⚠️ المفتاح في جدول `GAS` **بلا اقتباس** (`student:` لا `'student':`) — أوّل صياغة كتبته
 //    مقتبَساً فحمرّ الحارس على كودٍ سليم. مرساةٌ غير دقيقة تُنتج حكماً كاذباً في الاتجاهين
 //    (بند 115): هنا إنذاراً كاذباً، ولو انعكس الشرط لمرّت فراغاً.
-[[/^\s*student:\s*'https:\/\/script\.google\.com\/macros\/s\/[^']+\/exec'/m,
-  '🔴 مدخل `student` في جدول GAS قائم — سجلُّ معرّفٍ لا يُحذف (سياسةُ المعرّفات؛ `/gas/student` يُخدَم من `GAS.teacher`)'],
+[[/\nGAS\.student = GAS\.teacher;/,
+  '🔴 `/gas/student` ⇒ نشرةُ `teacher` باسمٍ مستعارٍ دائم (معرّفُ `student` حُذف 2026-09-24 بقرار المالك) — حذفُ السطر يقطع صفحةَ الطالب والـAPK'],
  [/if \(path === '\/portal' \|\| path === '\/portal\/'\) path = '\/student\/index\.html';/,
   '🔴 `/portal` إعادة كتابة **داخلية** لا 301 — الشريط يبقى `/portal`، والتطبيق لا يراه أصلاً'],
  [/'student': 1/,
@@ -1193,8 +1197,8 @@ console.log('');
 console.log('عقد مسار `/schedule` (يبقى بعد حذف المشروع من المصدر):');
 [[/'schedule': 1/,
   "🔴 `'schedule'` محجوز في `_RESERVED_TOP_PATHS` ⇒ لا يُقرأ slug مدرسة"],
- [/^\s*schedule:\s*'https:\/\/script\.google\.com\/macros\/s\/[^']+\/exec'/m,
-  '🔒 مدخل `schedule` في جدول GAS قائم — مسارُ تراجعٍ خامل، ومعرّف النشر لا يُحذف']
+ [/schedule:\s*'الجدول صار داخل منصّة المعلّم'/,
+  '🔒 `schedule` في `_RETIRED_GAS_APPS` ⇒ `/gas/schedule` 410 (معرّفُه حُذف 2026-09-24 بقرار المالك)']
 ].forEach(function (c) {
   var good = c[0].test(src);
   if (!good) failed++;
@@ -3921,8 +3925,14 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
   var ks = Object.keys(vm.runInContext('_SAME_HOST_REDIRECTS', ctx));
   var allRel = ks.every(function (k) { var v = vm.runInContext('_SAME_HOST_REDIRECTS', ctx)[k]; return v.charAt(0) === '/' && v.charAt(1) !== '/'; });
   check(allRel, '🔴 كلُّ `Location` نسبيٌّ على المضيف نفسِه — لا `//` ولا مضيفٌ آخر (عقدُ المضيفات المجمَّدة)');
-  var reservedOk = ks.every(function (k) { return new RegExp("'" + k.slice(1) + "': 1").test(src); });
+  /* المقطعُ الأوّلُ هو ما يُقرأ slug — `/home-all-school/newsarticle.html` (2026-09-25) مقطعان وأوّلُهما المحجوز. */
+  var reservedOk = ks.every(function (k) { return new RegExp("'" + k.slice(1).split('/')[0] + "': 1").test(src); });
   check(reservedOk, '🔴 كلُّ مسارٍ مُحوَّلٍ محجوزٌ في `_RESERVED_TOP_PATHS` (وإلّا صار slug مدرسة)');
+  /* 🧹 نسخةُ الخبر المكرّرة ⇒ الأصل، **والاستعلامُ محفوظ** (‏`?news=<id>`)؛ و`/#pricing` بلا استعلام. */
+  check(f('/home-all-school/newsarticle.html') === '/home/newsarticle.html' &&
+        /var rdLoc = _sameHostRedirect\.indexOf\('#'\) === -1 \? _sameHostRedirect \+ url\.search : _sameHostRedirect;/.test(src) &&
+        /'Location': rdLoc,/.test(src),
+        '🧹 `/home-all-school/newsarticle.html` ⇒ 301 إلى `/home/newsarticle.html` مع حفظ `?news=` (قرارُ المالك 2026-09-25)');
   var hIdx = src.indexOf('_sameHostRedirectFor(path)');
   var slugIdx = src.indexOf('_schoolSlugFromPath(', src.indexOf('async fetch('));
   check(hIdx > 0 && (slugIdx < 0 || hIdx < slugIdx), '🔴 المعالجُ يسبق حسابَ الـslug (وإلّا ذهب `/register` إلى GAS)');
@@ -4038,18 +4048,19 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
         '🗑️ `schedule` متقاعد (410) ومعه نصُّ البديل للمستخدم');
   check(!!RET && !Object.prototype.hasOwnProperty.call(RET, 'teacher') && !Object.prototype.hasOwnProperty.call(RET, 'student') &&
         !Object.prototype.hasOwnProperty.call(RET, 'home') && !Object.prototype.hasOwnProperty.call(RET, 'cms') &&
-        !Object.prototype.hasOwnProperty.call(RET, 'master-admin') && !Object.prototype.hasOwnProperty.call(RET, 'pricing') &&
+        !Object.prototype.hasOwnProperty.call(RET, 'master-admin') && Object.prototype.hasOwnProperty.call(RET, 'pricing') &&
         !Object.prototype.hasOwnProperty.call(RET, 'home-all-school'),
-        '🔴 ضابط معاكس: لا تطبيقَ حيٌّ في قائمة المتقاعدين (مشروعا pricing وhome-all-school قائمان — `/gas/<app>?action=health` ⇒ 200 لكليهما، و`schedule` ⇒ 410، قِيس 2026-09-24)');
-  var gIdx = src.indexOf("Object.prototype.hasOwnProperty.call(_RETIRED_GAS_APPS, app)");
+        '🔴 ضابط معاكس: لا تطبيقَ حيٌّ في قائمة المتقاعدين، و`pricing` فيها (2026-09-24) — و`home-all-school` خارجها لأنه اسمٌ مستعارٌ لـ`home`');
+  var gIdx = src.indexOf("if (Object.prototype.hasOwnProperty.call(_RETIRED_GAS_APPS, app)) {");
   var probeIdx = src.indexOf('_acProbe = _apiCacheProbe(init.body)');
   var optIdx = src.indexOf("if (request.method === 'OPTIONS') {", src.indexOf("var match = path.match(/^\\/gas\\/"));
   var gLineOk = /\n\s*if \(Object\.prototype\.hasOwnProperty\.call\(_RETIRED_GAS_APPS, app\)\) \{\s*\n\s*return jsonResponse\(\{ ok: false, retired: true,[^\n]*\n[^\n]*\}, 410\);/.test(src);
   check(gLineOk, '🔴 الشرطُ نافذٌ حرفياً (لا `false &&` ولا غيرُه) ويعيد 410');
   check(gIdx > 0 && gIdx < probeIdx && optIdx > 0 && optIdx < gIdx,
         '🔴 فحصُ التقاعد بعد OPTIONS وقبل الكاش والمنظّم وأيّ نداءٍ على Google');
-  check(/^\s*schedule:\s*'https:\/\/script\.google\.com\/macros\/s\/[^']+\/exec'/m.test(src),
-        '🔒 معرّفُ نشرة `schedule` باقٍ في جدول GAS — التقاعدُ في الوسيط لا حذفُ المعرّف');
+  check(!/^\s*(schedule|pricing|student|'home-all-school'):\s*'https:/m.test(src) &&
+        /if \(!target && !Object\.prototype\.hasOwnProperty\.call\(_RETIRED_GAS_APPS, app\)\)/.test(src),
+        '🧹 معرّفاتُ الأربعة المتقاعدة غائبةٌ عمداً عن `GAS` (2026-09-24) · والمتقاعدُ مستثنى من 404 فيبلغ 410');
   check(/el\.prepend\(this\.html/.test(src),
         '🔴 `prepend` لا `append` — يسبق سكربتَ الصفحة الذي يحفظ `window.SCHOOL_ID`');
 })();
