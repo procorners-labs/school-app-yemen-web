@@ -589,6 +589,21 @@ function _gasTailMeta(text) {
   return out;
 }
 
+/* ═══ `own` — حركةُ جهاز المالك تُعلَّم في سجلّ `ev:'gas'` (‏2026-09-24) ═══════════════
+   قِيس (‏09-23T00:30Z→09-24T00:30Z): **734 من 2472 طلبَ `/gas/` = 30٪** جاءت من ASN 51167
+   (‏Contabo — خادمُ نفق WireGuard الذي يخرج منه جهازُ المالك: متصفّحُه وفحوصُ جلساتِ Claude).
+   وأُثبتت الهويّةُ بطلبٍ معلَّمٍ من الجهاز نفسِه ظهر في السجلّ بـContabo/MUC.
+   ⇒ بلا هذا الحقل يختلط الاختبارُ بالمستخدمين في ترتيب الدوالّ ونوافذ «قبل/بعد»، لأن سطرَ
+   `ev:'gas'` لا يحمل حقولَ الطلب (التجميعُ عليها يعود فارغاً — مقيس).
+   🔒 **رقمُ ASN لا عنوانُ IP** — لا يُسجَّل IP ولا يُكتب في هذا المستودع العامّ.
+   ⚠️ **وحدُّه يُقال:** أيُّ عميلٍ آخرَ لـContabo يُعلَّم `own:1` أيضاً — مقبولٌ لأن حركةَ
+   Contabo المقيسة كلُّها من هذا المصدر؛ ويُعاد القياسُ إن تغيّر مخرجُ الجهاز (`egress`). */
+var OWNER_EGRESS_ASN = 51167;
+function _ownFlag(request) {
+  var asn = (request && request.cf && typeof request.cf.asn === 'number') ? request.cf.asn : -1;
+  return asn === OWNER_EGRESS_ASN ? 1 : 0;
+}
+
 /* ═══ `/dev-stats` — عدّاداتُ صحّة النقل للوحة المطوّر (عقد v1 · 2026-09-23) ═════════
    🎯 **لماذا من الوركر:** سجلُّ `ev:'gas'` يحمل كلَّ إجهاضٍ سلفاً — فالناقصُ سطحُ قراءةٍ لا
    قناةُ تبليغ. والقراءةُ من Workers Observability API ⇒ **صفرُ نداءٍ على GAS وصفرُ تخزينٍ جديد.**
@@ -2675,7 +2690,8 @@ export default {
       var _bhWaited = _bhOn ? (Date.now() - _bhT0) : 0;
       if (_bhOn && !_bhHeld) {
         _bhLog({ ev: 'bulkhead', act: _bhMode === 'shadow' ? 'would_block' : 'reject',
-                 app: app, fn: _bhFn, mode: _bhMode, waitMs: _bhWaited, n: _bhN, q: _bhQ.length });
+                 app: app, fn: _bhFn, mode: _bhMode, waitMs: _bhWaited, n: _bhN, q: _bhQ.length,
+                 own: _ownFlag(request) });
         if (_bhMode === 'shadow') {
           _bhHeld = _bhTake(app);         // يبقى الحساب متوازناً مع التحرير في finally
         } else {
@@ -2995,6 +3011,7 @@ export default {
                  st: lastStatus, ok: good, srv: _bhSrv, why: _bhWhy,
                  len: (typeof lastText === 'string') ? lastText.length : -1,
                  gv: _bhTail.gv, dd: _bhTail.dd, hr: new Date().toISOString().slice(0, 13),
+                 own: _ownFlag(request),
                  /* 🔬 الساقان — حاضرةٌ فقط حين `GAS_LEG_SPLIT=on`، وإلّا تغيب كلّياً (لا أصفارٌ
                     تُقرأ «ساقٌ بلا زمن»). `lg` موضعُ الإجهاض: `post` أو `get` أو `done`. */
                  lg: _legRec ? _legRec.leg : undefined, pms: _legRec ? _legRec.pms : undefined,
