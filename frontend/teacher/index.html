@@ -3079,6 +3079,42 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <div id="durr-out" style="margin-top:10px;font-size:13px;"></div>
         </div>
 
+        <!-- 🆔 هويّةُ المعلّم بالمعرّف (2026-09-24) — ختمُ السجلّات · المرادفات والسابقون · الاستبدال.
+             TeacherIdentity.js. للمدير وحدَه، وكلُّ كتابةٍ بمعاينةٍ ثمّ كلمةِ تأكيد. -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🆔 هويّةُ المعلّمين بالمعرّف</div>
+          <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
+            يربط كلَّ سجلٍّ (سلوك · واجب · خبر · مهمّة · ملاحظة · غياب) <b>بمعرّف كاتبه</b> لا باسمه —
+            فتغييرُ اسمِ معلّمٍ أو استبدالُه لا يُيتّم شيئاً.
+            <br>🔴 <b>السجلُّ التاريخيُّ يبقى باسم كاتبه</b>؛ والاستبدالُ ينقل التكليفَ والجدولَ والإشرافَ وحدَها.
+          </div>
+          <button type="button" onclick="tid_load()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 الحالة والمعاينة</button>
+          <button type="button" id="tid-stamp-btn" onclick="tid_stamp()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ ختم المعرّفات</button>
+          <div id="tid-out" style="margin-top:10px;font-size:13px;"></div>
+
+          <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;">
+            <b>مرادف/سابق:</b>
+            <input id="tid-map-name" placeholder="الاسم كما هو مكتوب في السجلّات" style="padding:6px;border:1px solid #ccc;border-radius:6px;min-width:12em;">
+            <select id="tid-map-kind" style="padding:6px;border-radius:6px;" onchange="document.getElementById('tid-map-id').disabled=(this.value!=='مرادف')">
+              <option value="مرادف">مرادفٌ لمعلّمٍ حاليّ</option>
+              <option value="سابق">معلّمٌ سابق (غادر)</option>
+              <option value="حذف">حذفُ المرادف</option>
+            </select>
+            <select id="tid-map-id" style="padding:6px;border-radius:6px;"><option value="">— المعلّم الحاليّ —</option></select>
+            <button type="button" onclick="tid_setMapping()" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;">حفظ</button>
+          </div>
+
+          <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;">
+            <b>استبدال معلّم:</b>
+            <select id="tid-rep-old" style="padding:6px;border-radius:6px;"><option value="">— المستبدَل —</option></select>
+            ⇐
+            <select id="tid-rep-new" style="padding:6px;border-radius:6px;"><option value="">— البديل —</option></select>
+            <button type="button" onclick="tid_replacePreview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;">🔍 معاينة</button>
+            <button type="button" id="tid-rep-btn" onclick="tid_replaceApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;opacity:.5;">✅ استبدال</button>
+          </div>
+          <div id="tid-rep-out" style="margin-top:8px;font-size:13px;"></div>
+        </div>
+
         <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
           <div style="font-weight:700;margin-bottom:6px;font-size:13px;">📚 توحيدُ أسماء المواد في جدول الحصص وجدول الاختبارات</div>
           <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
@@ -28127,7 +28163,7 @@ function tm_onSecAllToggle(chk){ var row=chk.closest('.asgn-row'); if(!row) retu
 function tm_onSecOptToggle(chk){ if(!chk.checked) return; var row=chk.closest('.asgn-row'); if(!row) return; var allBox=row.querySelector('.asgn-sec-all'); if(allBox&&allBox.checked) allBox.checked=false; }
 function tm_removeAssignment(btn){ var row=btn.parentElement; if(document.getElementById('tm-assignments-list').children.length<=1){ toast('يجب أن يبقى تعيين واحد على الأقل', 'warning'); return; } row.remove(); }
 function tm_collectAssignments(){ var rows=document.getElementById('tm-assignments-list').children; var asgns=[]; for(var i=0;i<rows.length;i++){ var subj=rows[i].querySelector('.asgn-subject').value; var grd=rows[i].querySelector('.asgn-grade').value; var allBox=rows[i].querySelector('.asgn-sec-all'); if(allBox&&allBox.checked){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:'جميع الشعب'}); } else { var opts=rows[i].querySelectorAll('.asgn-sec-opt:checked'); if(opts.length===0){ if(subj||grd) asgns.push({subject:subj, grade:grd, section:''}); } else { for(var k=0;k<opts.length;k++){ asgns.push({subject:subj, grade:grd, section:opts[k].value}); } } } } return asgns; }
-function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); tm_load(); },1200); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments}}); }
+function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); /* 🆔 التعديلُ يُحدَّد بالمعرّف والاسم الأصليّ لا بالاسم الجديد — وإلّا أُلحِق صفٌّ ثانٍ عند تغيير الاسم */ var tmOrigId=''; if(!isNew){ for(var oi=0;oi<_tmAllTeachers.length;oi++){ if(_tmAllTeachers[oi].name===_tmEditingName){ tmOrigId=_tmAllTeachers[oi].teacherId||''; break; } } } google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); tm_load(); },1200); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments, teacherId:tmOrigId, originalName:(isNew?'':_tmEditingName)}}); }
 function tm_deleteTeacher(name){
   confirmAction('حذف معلّم',
     'المعلّم: ' + name + '\n\nستُحذف جميع تعييناته معه.\n\n🔴 لا يمكن التراجع عن هذه العملية.',
@@ -29723,6 +29759,9 @@ function _durRender(res){
   innerT += '<b>تصنيفُ غيرِ المطابق:</b> '+
             '🟢 علامةُ طرفٍ زائدة <b>'+(bcl.punct||0)+'</b> · '+
             '🟢 كلمتان ملتصقتان <b>'+(bcl.spacing||0)+'</b> · '+
+            '🟢 مرادفٌ مسجَّل <b>'+(bcl.alias||0)+'</b> · '+
+            '🟡 معلّمٌ سابق (سجلٌّ تاريخيّ) <b>'+(bcl.former||0)+'</b> · '+
+            (T.linkedById ? '🆔 مربوطٌ بالمعرّف رغم تغيّر الاسم <b>'+T.linkedById+'</b> · ' : '')+
             '🔴 قيمةٌ مؤسّسيّةٌ لا معلّم <b>'+(bcl.entity||0)+'</b> · '+
             '🔴 لا يطابق أحداً <b>'+(bcl.absent||0)+'</b>';
   innerT += '<div style="color:#6d4c41;margin-top:4px;">🔴 الأخيران <b>لا يُصلَّحان</b> تلقائياً: المؤسّسيُّ ليس شخصاً، ومَن لا يطابق أحداً معلّمٌ غادر — وإعادةُ تسميته تزويرٌ لا تصحيح.</div>';
@@ -29816,6 +29855,100 @@ function durr_preview(){
       done('<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّرت المعاينة')+'</div>');
     });
   });
+}
+
+/* ════════════ 🆔 هويّةُ المعلّمين بالمعرّف (2026-09-24) — TeacherIdentity.js ════════════
+   نفسُ عقد `durr_*`: زرُّ التنفيذ مقفولٌ حتى تُعرَض معاينة، ويُقفَل بعد كلّ تشغيل. */
+var _tidStaff = [], _tidRepPending = null;
+function _tidErr(out, r){ if(out) out.innerHTML = '<div style="color:#c62828;">❌ '+escapeHtml((r&&(r.error||r.message))||'تعذّر التنفيذ')+'</div>'; }
+function _tidLock(id, on){ var b=document.getElementById(id); if(b){ b.disabled=!on; b.style.opacity=on?'1':'.5'; } }
+function _tidFillSelects(){
+  var ids = ['tid-map-id','tid-rep-old','tid-rep-new'];
+  for(var k=0;k<ids.length;k++){
+    var sel=document.getElementById(ids[k]); if(!sel) continue;
+    var first=sel.options[0]?sel.options[0].outerHTML:'';
+    var h=first;
+    for(var i=0;i<_tidStaff.length;i++){ if(!_tidStaff[i].teacherId) continue;
+      h+='<option value="'+escapeHtml(_tidStaff[i].teacherId)+'">'+escapeHtml(_tidStaff[i].name)+'</option>'; }
+    sel.innerHTML=h;
+  }
+}
+function tid_load(){
+  var out=document.getElementById('tid-out'); _tidLock('tid-stamp-btn', false);
+  if(out) out.innerHTML='⏳ جارٍ القراءة — بلا أيّ كتابة...';
+  callServer('getTeacherIdentityStateProtected', { token: App.user.token }, function(r){
+    if(!r||!r.success){ _tidErr(out,r); return; }
+    _tidStaff = r.staff||[]; _tidFillSelects();
+    var s=r.stamp||{}, h='';
+    if((s.errors||[]).length) h+='<div style="color:#c62828;">'+escapeHtml(s.errors.join(' · '))+'</div>';
+    h+='<div style="font-weight:800;margin-bottom:4px;">'+(s.toFill||0)+' صفّاً يُختَم بمعرّف كاتبه</div>';
+    var sh=s.sheets||[];
+    for(var i=0;i<sh.length;i++){ var p=sh[i];
+      if(p.missing||!p.hasNameCol) continue;
+      h+='&nbsp;&nbsp;• '+escapeHtml(p.sheet)+': '+p.rows+' صفّ · مختومٌ '+p.stamped+' · <b>يُختَم '+p.fill+'</b>'+
+         (p.former?' · 🟡 سابق '+p.former:'')+(p.unresolved?' · 🔴 بلا مقابل '+p.unresolved:'');
+      var top=p.unresolvedTop||[];
+      if(top.length) h+=' ('+top.map(function(t){return escapeHtml(t.name)+'×'+t.rows;}).join('، ')+')';
+      h+='<br>';
+    }
+    var m=r.mappings||[];
+    if(m.length){ h+='<div style="margin-top:6px;"><b>المرادفات:</b> '+m.map(function(x){
+      return escapeHtml(x.name)+' ⇐ '+(x.kind==='مرادف'?escapeHtml(x.currentName):'🟡 سابق'); }).join(' · ')+'</div>'; }
+    h+='<div style="color:#6d4c41;margin-top:4px;font-size:12px;">«بلا مقابل» لا يُختَم: سجّله مرادفاً لمعلّمٍ حاليّ أو معلّماً سابقاً ثمّ أعِد المعاينة.</div>';
+    if(out) out.innerHTML=h;
+    if(s.toFill>0) _tidLock('tid-stamp-btn', true);
+  }, function(e){ _tidErr(out,e); });
+}
+function tid_stamp(){
+  var out=document.getElementById('tid-out'); _tidLock('tid-stamp-btn', false);
+  confirmAction('ختمُ المعرّفات', 'يُكتب معرّفُ الكاتب في الخلايا الفارغة وحدَها من عمود «معرّف_المعلم».\nلا يُعدَّل اسمٌ ولا خليّةٌ مكتوبة.', '🆔', function(){
+    if(out) out.innerHTML='⏳ جارٍ الختم — لا تُغلق الصفحة...';
+    callServer('backfillRecordTeacherIdsProtected', { token: App.user.token, confirm: 'ختم' }, function(r){
+      if(!r||!r.success){ _tidErr(out,r); return; }
+      if(out) out.innerHTML='<div style="color:#2e7d32;">✅ '+escapeHtml(r.message||'تمّ')+'</div>';
+    }, function(e){ _tidErr(out,e); });
+  }, { okText: '🆔 ختم' });
+}
+function tid_setMapping(){
+  var out=document.getElementById('tid-out');
+  var name=(document.getElementById('tid-map-name').value||'').trim();
+  var kind=document.getElementById('tid-map-kind').value;
+  var id=document.getElementById('tid-map-id').value;
+  if(!name){ toast('اكتب الاسمَ كما هو في السجلّات', 'warning'); return; }
+  callServer('setTeacherNameMappingProtected', { token: App.user.token, name: name, kind: kind, teacherId: id }, function(r){
+    if(!r||!r.success){ _tidErr(out,r); return; }
+    toast('✅ '+(r.message||'حُفظ'), 'success'); tid_load();
+  }, function(e){ _tidErr(out,e); });
+}
+function tid_replacePreview(){
+  var out=document.getElementById('tid-rep-out'); _tidLock('tid-rep-btn', false); _tidRepPending=null;
+  var o=document.getElementById('tid-rep-old').value, n=document.getElementById('tid-rep-new').value;
+  if(!o||!n){ toast('اختر المعلّمَين', 'warning'); return; }
+  if(out) out.innerHTML='⏳ جارٍ الحساب — بلا أيّ كتابة...';
+  callServer('replaceTeacherProtected', { token: App.user.token, oldId: o, newId: n, preview: true }, function(r){
+    if(!r||!r.success){ _tidErr(out,r); return; }
+    var h='<b>'+escapeHtml(r.oldName)+'</b> ⇐ <b>'+escapeHtml(r.newName)+'</b>: '+
+      r.assignmentsMoved+' تعيين ينتقل'+(r.assignmentsAlreadyHeld?' ('+r.assignmentsAlreadyHeld+' عند البديل أصلاً)':'')+
+      ' · '+r.schedule+' حصّة · '+r.perms+' صفّ صلاحيات · '+r.weeklySup+' إشراف أسبوعي.';
+    if((r.conflicts||[]).length) h+='<div style="color:#c62828;">⛔ البديلُ مشغولٌ في: '+escapeHtml(r.conflicts.join('، '))+' — عدّل الجدول أوّلاً.</div>';
+    if((r.warnings||[]).length) h+='<div style="color:#e65100;">⚠️ '+escapeHtml(r.warnings.join(' · '))+'</div>';
+    h+='<div style="color:#6d4c41;font-size:12px;">السجلّاتُ التاريخيّة (سلوك · واجبات · أخبار …) تبقى باسم كاتبها.</div>';
+    if(out) out.innerHTML=h;
+    if(!(r.conflicts||[]).length){ _tidRepPending={o:o,n:n}; _tidLock('tid-rep-btn', true); }
+  }, function(e){ _tidErr(out,e); });
+}
+function tid_replaceApply(){
+  var out=document.getElementById('tid-rep-out'); _tidLock('tid-rep-btn', false);
+  if(!_tidRepPending) return;
+  var p=_tidRepPending; _tidRepPending=null;
+  confirmAction('استبدالُ معلّم', 'ينتقل التكليفُ والجدولُ والإشرافُ إلى البديل، بعد نسخةٍ احتياطيّة من كلّ ورقةٍ ستُكتَب.', '🔁', function(){
+    if(out) out.innerHTML='⏳ جارٍ الاستبدال — لا تُغلق الصفحة...';
+    callServer('replaceTeacherProtected', { token: App.user.token, oldId: p.o, newId: p.n, confirm: 'استبدال' }, function(r){
+      if(!r||!r.success){ _tidErr(out,r); return; }
+      if(out) out.innerHTML='<div style="color:#2e7d32;">✅ '+escapeHtml(r.message||'تمّ')+'</div>'+
+        ((r.warnings||[]).length?'<div style="color:#e65100;">⚠️ '+escapeHtml(r.warnings.join(' · '))+'</div>':'');
+    }, function(e){ _tidErr(out,e); });
+  }, { okText: '🔁 استبدال' });
 }
 
 /* ════════════ 🧹 أوراقُ النسخ الاحتياطيّة — معاينةٌ ثمّ حذفٌ بعد نسخةٍ كاملة (09-23-ج) ════════════
