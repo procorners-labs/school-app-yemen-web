@@ -425,8 +425,22 @@ console.log('الرؤوس الأمنية وحقن og:url:');
   var okP = readers === 0;
   if (!okP) failed++;
   console.log((okP ? '  ✅ ' : '  ❌ ') +
-    '🗑️ صفرُ قارئٍ لـ`GAS.pricing` في الكود (لا التعليق) — مدخلٌ خاملٌ لا مسارٌ نصفُ حيّ [' +
-    readers + ']');
+    '🗑️ صفرُ قارئٍ **حرفيٍّ** لـ`GAS.pricing` في الكود (لا التعليق) [' + readers + ']');
+
+  /* 🔴 **وحدُّ الفحص أعلاه يُقال — مُصحَّحٌ 2026-09-24:** «صفرُ قارئٍ حرفيّ» **ليس** «صفرَ
+   *    قارئ»: معالجُ `/gas/<app>` يقرأ `GAS[app]` **ديناميكياً** ⇒ `/gas/pricing` و
+   *    `/gas/home-all-school` **يُخدَمان فعلاً ويردّان 200** (قِيس حيّاً 2026-09-24).
+   *    ⇒ **وهذا مقصودٌ لا ثغرة:** قاعدةُ المالك «لا يُسقَط مسارٌ يردّ 200 اليوم»، والمشروعان
+   *    قائمان. فالفحصُ التالي يُثبت الوصولَ الديناميكيَّ صراحةً، **كي لا يُقرأ الصفرُ أعلاه
+   *    «غيرَ مخدوم»** فيُحذف المدخلُ ظنّاً أنه ميّت. */
+  var dyn = /\n\s*var target = GAS\[app\];/.test(src);
+  var retBlock = (src.match(/var _RETIRED_GAS_APPS = \{[\s\S]*?\n\};/) || [''])[0];
+  var notRetired = !!retBlock && !/['"]?pricing['"]?\s*:/.test(retBlock) && !/['"]home-all-school['"]\s*:/.test(retBlock);
+  var okDyn = dyn && notRetired;
+  if (!okDyn) failed++;
+  console.log((okDyn ? '  ✅ ' : '  ❌ ') +
+    '🔴 `/gas/pricing` و`/gas/home-all-school` مخدومان عمداً عبر `GAS[app]` الديناميكيّ وليسا في `_RETIRED_GAS_APPS` [dyn=' +
+    dyn + ' · retBlock=' + (retBlock ? 'ok' : 'غائب') + ']');
 })();
 
 /* ── 🔴 حقلُ `why` — سببُ الإخفاق مبنيَّ الشكل لا نصّاً عربياً (2026-09-10) ────────
@@ -1126,15 +1140,16 @@ console.log((gasSafe ? '  ✅ ' : '  ❌ ') +
 //   (١) `/portal` **لا يطابق** `/(…|student|…)/` — فأيّ رابط `/portal` يصل داخل تطبيق
 //       الأندرويد يُعدّ **خارجياً** ⇒ يفتح Chrome ويترك التطبيق. الرابط القصير للمشاركة
 //       البشرية وحدها؛ روابط داخل التطبيق تبقى على `/student/index.html`.
-//   (٢) معرّف نشر `student` **لا يُحذف أبداً** (‏`clasp undeploy` ممنوع) — يبقى مساراً
-//       للتراجع الفوري إن أخفق النقل، والمعرّف لا يعود إن حُذف.
+//   (٢) معرّف نشر `student` **لا يُحذف أبداً** (‏`clasp undeploy` ممنوع) — يبقى **سجلاً**
+//       لا مسارَ تراجع (مُصحَّحٌ 2026-09-24): النشرةُ حيّةٌ خاملة، لكنّ كودَها يقرأ ورقةً
+//       محذوفة، و`GAS.student = GAS.teacher` دائمٌ. والمعرّفُ لا يعود إن حُذف.
 console.log('');
 console.log('عقد بوّابة الطالب (يحمي النقل إلى مشروع المعلم):');
 // ⚠️ المفتاح في جدول `GAS` **بلا اقتباس** (`student:` لا `'student':`) — أوّل صياغة كتبته
 //    مقتبَساً فحمرّ الحارس على كودٍ سليم. مرساةٌ غير دقيقة تُنتج حكماً كاذباً في الاتجاهين
 //    (بند 115): هنا إنذاراً كاذباً، ولو انعكس الشرط لمرّت فراغاً.
 [[/^\s*student:\s*'https:\/\/script\.google\.com\/macros\/s\/[^']+\/exec'/m,
-  '🔴 مدخل `student` في جدول GAS قائم — حذفُه ينقطع `/gas/student` والأندرويد معاً (بند 124)'],
+  '🔴 مدخل `student` في جدول GAS قائم — سجلُّ معرّفٍ لا يُحذف (سياسةُ المعرّفات؛ `/gas/student` يُخدَم من `GAS.teacher`)'],
  [/if \(path === '\/portal' \|\| path === '\/portal\/'\) path = '\/student\/index\.html';/,
   '🔴 `/portal` إعادة كتابة **داخلية** لا 301 — الشريط يبقى `/portal`، والتطبيق لا يراه أصلاً'],
  [/'student': 1/,
@@ -3347,7 +3362,9 @@ console.log('عزلُ مفتاح كاش الحافّة (سلوكي عبر `vm`):
     //    ٨٪ فقط** ⇒ أوّلُ تقليمٍ عاديٍّ في `home/Schools.html` يُحمِّر الحارسَ **بلا عطب**،
     //    ويقول «الصفحةُ المجمَّدةُ فُرِّغت» وهي لم تُفرَّغ — بل كان خطُّ الأساس يقيس
     //    **ملفّاً استُبدل**. 🎯 فئةٌ تُسمّى: *حارسٌ يحمل خطَّ أساسٍ لشيءٍ لم يعد موجوداً.*
-    'home-all-school/index.html': 99307,
+    // 🔴 وأُعيد 2026-09-24: **١٣٧٬٩٧٦** — `home/Schools.html` نما (‏٩٩٬٣٠٧ ⇒ ١٣٧٬٩٧٦)، والعتبةُ
+    //    القديمة (٦٩٬٥١٥) كانت ستُجيز تفريغاً بنسبة ٥٠٪ دون أن تحمرّ. قِيس من `frontend/` بعد #386.
+    'home-all-school/index.html': 137976,
     'student/index.html': 517983,
     'schedule/index.html': 9109
   };
@@ -4023,7 +4040,7 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
         !Object.prototype.hasOwnProperty.call(RET, 'home') && !Object.prototype.hasOwnProperty.call(RET, 'cms') &&
         !Object.prototype.hasOwnProperty.call(RET, 'master-admin') && !Object.prototype.hasOwnProperty.call(RET, 'pricing') &&
         !Object.prototype.hasOwnProperty.call(RET, 'home-all-school'),
-        '🔴 ضابط معاكس: لا تطبيقَ حيٌّ في قائمة المتقاعدين (مشروعا pricing وhome-all-school قائمان)');
+        '🔴 ضابط معاكس: لا تطبيقَ حيٌّ في قائمة المتقاعدين (مشروعا pricing وhome-all-school قائمان — `/gas/<app>?action=health` ⇒ 200 لكليهما، و`schedule` ⇒ 410، قِيس 2026-09-24)');
   var gIdx = src.indexOf("Object.prototype.hasOwnProperty.call(_RETIRED_GAS_APPS, app)");
   var probeIdx = src.indexOf('_acProbe = _apiCacheProbe(init.body)');
   var optIdx = src.indexOf("if (request.method === 'OPTIONS') {", src.indexOf("var match = path.match(/^\\/gas\\/"));
@@ -4357,6 +4374,32 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
     check(/"GAS_LEG_SPLIT":\s*"(on|off)"/.test(wr), '🔴 `GAS_LEG_SPLIT` مُعلَنٌ صراحةً `on` أو `off` في wrangler.jsonc');
   });
 });
+
+/* ── 🔎 مرآةُ بوّابة رمز الطالب — تسجيلٌ لا رفض (2026-09-24) ─────────────────────────── */
+(function () {
+  console.log('');
+  console.log('مرآةُ بوّابة رمز الطالب (قياسٌ فقط):');
+  var a = src.indexOf('var _STU_GATE_MIRROR = {');
+  var b = src.indexOf('\n}', src.indexOf('function _stuGateMissing(')) + 2;
+  check(a > 0 && b > a, 'المرآةُ والدالّةُ موجودتان');
+  if (!(a > 0 && b > a)) return;
+  var cx = vm.createContext({}); vm.runInContext(src.slice(a, b), cx);
+  function m(fn, args) { cx.__b = JSON.stringify({ fn: fn, args: args }); cx.__f = fn; return vm.runInContext('_stuGateMissing(__f, __b)', cx); }
+  check(m('getStudentNotes', [{ studentId: 'S1', schoolId: 'X' }]) === 'notoken', 'كائنٌ بلا switchToken ⇒ notoken');
+  check(m('getStudentNotes', [{ studentId: 'S1', switchToken: 'T' }]) === '', '🔴 ضابطٌ معاكس: كائنٌ برمز ⇒ يمرّ');
+  check(m('getStudentNotes', [{ switchToken: 'T' }]) === 'noid', 'رمزٌ بلا معرّف ⇒ noid');
+  check(m('getGrades', ['S1', 'X', 0, 'T']) === '' && m('getGrades', ['S1', 'X', 0]) === 'notoken', 'موضعيّ: token في args[3]');
+  check(m('getStudentReports', ['S1', 'X', 'T']) === '' && m('getStudentReports', [{ code: 'S1', switchToken: 'T' }]) === '',
+        'getStudentReports بالشكلين (موضعيّ وكائن code)');
+  check(m('getNews', []) === '', 'دالّةٌ خارج القائمة ⇒ لا تُعَدّ');
+  cx.__b = '{bad'; cx.__f = 'getGrades';
+  check(vm.runInContext('_stuGateMissing(__f, __b)', cx) === 'parse', 'جسمٌ معطوب ⇒ parse لا استثناء');
+  /* 🔴 **لا رفضَ على الحافّة:** موضعُ الاستدعاء يسجّل ولا يعيد ردّاً — لو صار `return` هنا
+     لانكسر عميلٌ حقيقيّ بقائمةٍ قد تكون انحرفت عن `_stuTokenGate.js`. */
+  var site = src.slice(src.indexOf("var _sgWhy = _stuGateMissing("), src.indexOf("var _sgWhy = _stuGateMissing(") + 300);
+  check(/_bhLog\(\{ ev: 'stugate'/.test(site) && !/return /.test(site.split('\n      }')[0]),
+        '🔴 موضعُ الاستدعاء يسجّل ولا يرفض (لا `return`)');
+})();
 
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
