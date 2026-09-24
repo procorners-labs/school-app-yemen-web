@@ -3037,6 +3037,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <button type="button" onclick="sciPreview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 فحص</button>
         <button type="button" id="sciApplyBtn" onclick="sciApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">✅ تنفيذ التوحيد</button>
         <div id="sci-out" style="margin-top:10px;font-size:13px;"></div>
+        <div style="margin-top:14px;padding-top:10px;border-top:1px dashed #cfd8dc;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;">✏️ تغيير كود طالب في كلّ الأوراق</div>
+          <div style="font-size:12.5px;color:#546e7a;margin-bottom:8px;">يغيّر الكود في «الطلاب» وفي كلّ سجلّاته (غياب · درجات · سلوك · ملاحظات · مالية · مشاهدات) معاً. كلمة المرور لا تتغيّر.</div>
+          <input type="text" id="sciOldCode" placeholder="الكود الحالي" style="width:130px;padding:6px;border:1px solid #cfd8dc;border-radius:6px;">
+          <input type="text" id="sciNewCode" placeholder="الكود الجديد" style="width:130px;padding:6px;border:1px solid #cfd8dc;border-radius:6px;">
+          <button type="button" onclick="sciRenamePreview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;">🔍 معاينة</button>
+          <button type="button" id="sciRenameBtn" onclick="sciRenameApply()" disabled style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;opacity:.5;">✅ تغيير</button>
+          <div id="sci-rename-out" style="margin-top:8px;font-size:13px;"></div>
+        </div>
       </div>
 
       <!-- 🧭 تقرير توحيد البيانات — قراءةٌ محضة عبر كلّ أوراق المدرسة.
@@ -29518,6 +29527,65 @@ function sciApply(){
         _sciRenderReport(res.report, true);
       }, function(err){
         if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر الاتصال — افحص مجدداً قبل الإعادة')+'</div>';
+      });
+    }
+  );
+}
+
+/* ═══ ✏️ تغيير كود طالب في كلّ الأوراق — معاينةٌ ثمّ تنفيذ ═══ */
+var _sciRenameKey = '';
+
+function _sciRenameArgs(){
+  var o = document.getElementById('sciOldCode'), n = document.getElementById('sciNewCode');
+  return { oldCode: o ? String(o.value).trim() : '', newCode: n ? String(n.value).trim() : '' };
+}
+
+function _sciRenameCounts(c){
+  var parts = [];
+  for (var k in (c||{})) if (Object.prototype.hasOwnProperty.call(c, k)) parts.push(escapeHtml(k)+': '+c[k]);
+  return parts.join(' · ');
+}
+
+function sciRenamePreview(){
+  var out = document.getElementById('sci-rename-out'), b = document.getElementById('sciRenameBtn');
+  var a = _sciRenameArgs();
+  _sciRenameKey = '';
+  if(b){ b.disabled=true; b.style.opacity='.5'; }
+  if(out) out.innerHTML='⏳ جارٍ الفحص...';
+  callServer('renameStudentCodeProtected', a, function(res){
+    if(!res || !res.success){
+      if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر الفحص')+'</div>';
+      return;
+    }
+    _sciRenameKey = a.oldCode + '→' + a.newCode;
+    if(b){ b.disabled=false; b.style.opacity='1'; }
+    if(out) out.innerHTML='<div style="background:#fff8e1;color:#8d6e63;padding:8px;border-radius:8px;">🔍 سيتغيّر '+(res.total||0)+' خليّة — '+_sciRenameCounts(res.counts)+'</div>';
+  }, function(err){
+    if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر الاتصال — أعد المحاولة')+'</div>';
+  });
+}
+
+function sciRenameApply(){
+  var a = _sciRenameArgs();
+  if(!_sciRenameKey || _sciRenameKey !== a.oldCode + '→' + a.newCode){ toast('عاين التغيير أولاً.', 'error'); return; }
+  confirmAction(
+    'تغيير كود طالب',
+    'سيتغيّر الكود «'+a.oldCode+'» إلى «'+a.newCode+'» في كلّ الأوراق، ويُسجَّل كلُّ تغييرٍ بقيمته القديمة.',
+    '✏️',
+    function(){
+      var out = document.getElementById('sci-rename-out');
+      if(out) out.innerHTML='⏳ جارٍ التغيير — لا تُغلق الصفحة...';
+      a.confirm = 'تغيير';
+      callServer('renameStudentCodeProtected', a, function(res){
+        if(!res || !res.success){
+          if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((res&&(res.error||res.message))||'تعذّر التغيير')+'</div>';
+          return;
+        }
+        _sciRenameKey = '';
+        var b = document.getElementById('sciRenameBtn'); if(b){ b.disabled=true; b.style.opacity='.5'; }
+        if(out) out.innerHTML='<div style="background:#e8f5e9;color:#2e7d32;padding:8px;border-radius:8px;">✅ تغيّر '+(res.written||0)+' خليّة'+(res.skipped?(' · تُخطّي '+res.skipped+' تغيّر أثناء العملية'):'')+' — '+_sciRenameCounts(res.counts)+'</div>';
+      }, function(err){
+        if(out) out.innerHTML='<div style="color:#c62828;">❌ '+escapeHtml((err&&err.message)||'تعذّر الاتصال — عاين مجدداً قبل الإعادة')+'</div>';
       });
     }
   );
