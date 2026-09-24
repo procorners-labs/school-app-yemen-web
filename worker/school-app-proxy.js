@@ -20,59 +20,34 @@ var GITHUB_BASE = 'https://procorners-labs.github.io/school-app-yemen-web';
 
 var GAS = {
   home:     'https://script.google.com/macros/s/AKfycbzDfGEK6IpChVNl9k8xbt_iv5p6bLOktt-TvEzDp8yBpH3Ga3yNMen_0S2ZyuuvGtKFCA/exec',
-  'home-all-school': 'https://script.google.com/macros/s/AKfycbx21N0YQAqby2TV0q3lrxPHjGHo19y6_6ez0xeB4rvsncmSbRlyLh4iiNvrbtP6-ng2/exec',
   cms:      'https://script.google.com/macros/s/AKfycbz-iAj9L3ROOn4CAjmwkVBUqpWuxIx1LkgPLwKnHu7kHLWKCy3GVJNo1vZbnekop0VlMA/exec',
   teacher:  'https://script.google.com/macros/s/AKfycbwbiM1NdYlHf4XPpeftVcrJPmcrPJWm7KS2sSL4qtzZDMDtYo4sGdx6T-p8fAIArvND/exec',
-  // ⚠️ هذه القيمة **لم تعد وجهةَ `/gas/student`** منذ ص6 — انظر التحويل أسفل الجدول مباشرةً.
-  // 🔴 **ولم تعد مسارَ تراجعٍ أيضاً — مُصحَّحٌ 2026-09-24:** كان مكتوباً «غيرُ موجودٍ في Drive»
-  //    وهو **باطل**: النشرةُ **حيّةٌ خاملة** — `?action=health` مباشرةً ⇒ `app:"student"` ·
-  //    `ok:false` · `schedule:false` (قِيس 19:50Z و19:57Z من جلستين). **ومع ذلك لا يُعاد
-  //    `GAS.student` إلى هذه القيمة بحال:** كودُها القديم يقرأ ورقةً محذوفة ⇒ ذلك يكسر
-  //    منصّة الطالب كلَّها. والمعرّفُ يبقى **سجلاً** لا مساراً (سياسةُ المعرّفات).
-  // 🗑️ **و`pricing` تقاعد 2026-09-10** بقرار المالك: **معالجُ `/pricing` حُذف** من هذا
-  //    الملفّ (انظر شاهدةَ القبر في موضعه)، **ومعرّفُه أدناه بقي كما هو ولم يُمسّ.**
-  // 🔴 ولماذا بقي — سببان، والثاني منهما وقع فعلاً:
-  //    ① ‏(`schedule` نشرتُه تردّ صفحةَ خطأ ⇒ `/gas/schedule` يردّ 410. أمّا `student` فنشرتُه
-  //       **حيّةٌ خاملة** — مُصحَّحٌ 2026-09-24 — لكنها **ليست مسارَ تراجع** لأن كودَها يقرأ ورقةً
-  //       محذوفة. و`pricing` حيّةٌ خاملةٌ ومشروعُه قائم.) **النشرةُ تبقى حيّةً خاملة**، ولا
-  //       `clasp undeploy` بحال. وهذا الجدولُ **سجلُّ معرّفاتِ نشرٍ لا قائمةُ مساراتٍ فاعلة**.
-  //    ② 🔴 **وحاولتُ حذفَ السطر فحجبه `protect-deploy-ids`** — يقرأ **مجموعةَ** المعرّفات
-  //       ولا يميّز «إسقاطَ مدخلٍ خامل» من «تغييرِ معرّفٍ حيّ**، ونصُّه: إن كان مقصوداً فهو
-  //       **قرارُ مالكٍ صريحٌ يُنفَّذ بتعطيل الحارس لا بالالتفاف عليه**. ⇒ **لم يُتجاوَز.**
-  //    ⚠️ وأثرُ بقائه صفرٌ: **صفرُ قارئٍ لـ`GAS.pricing` بعد حذف المعالج** — يحرسه فحصٌ.
-  student:  'https://script.google.com/macros/s/AKfycbz6wFJBq6RUg7buXM5LIGfEa4eVXZguPeIyrkg-T-kbOUhWlJMypO3Ame6lmcHzdcwq/exec',
-  schedule: 'https://script.google.com/macros/s/AKfycbwbsWcoOZ23TUWDtxVTV1RyG2LJ7IYWTWuk9Jt-15OeB1JgqRIyGSRxZo3NB8ZI2ag/exec',
-  'master-admin': 'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec',
-  pricing:  'https://script.google.com/macros/s/AKfycbz11yUbrix4F1lE_GbiAFqE3EClGpoRvAb19LoLoABQX_Xo3i2U25jlQpOFcN9S_yLC/exec'
+  'master-admin': 'https://script.google.com/macros/s/AKfycbx5H6uYXb-6iVt_nT4YkdnYMhl6eZJSDxsULsKa2eyblZQcwzRo4CXR3Mh_ecRSZd4M/exec'
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ص6 — `/gas/student` يُخدَم من نشرة `teacher` (2026-08-19)
-// ═══════════════════════════════════════════════════════════════════════════
-//  منطق مشروع `student` كلُّه صار داخل مشروع `teacher` (ص4/ص5). وأُثبِت حيّاً قبل
-//  هذا السطر أنّ `/gas/teacher?app=student` يخدم **413,620 بايتاً من قالبنا مطابقةً
-//  حرفياً** لما يخدمه `/gas/student`، وأنّ `?app=student&action=health` يردّ
-//  `app=student · ok=true`. ⇒ النقل هنا تبديلُ وجهةٍ لا تغييرُ محتوى.
-//
-//  🔴 **ولماذا لا يُغيَّر المدخل في الجدول أعلاه:**
-//   (١) قيمته الأصلية **كانت** مسارَ التراجع الفوري (2026-08-19). 🔴 **وبطَل ذلك:** النشرةُ حيّةٌ
-//       خاملة (مُصحَّحٌ 2026-09-24 — لا «غيرُ موجودٍ في Drive» كما كُتب 09-19)، **لكنّ كودَها القديم
-//       يقرأ ورقةً محذوفة** (`health` ⇒ `schedule:false`) ⇒ لا تراجعَ إليه، و**هذا السطرُ دائمٌ لا مؤقّت**.
-//       والمعرّفُ يبقى في الجدول سجلاً فقط (`clasp undeploy` ممنوع — المعرّف لا يعود إن حُذف).
-//   (٢) `student: GAS.teacher` **داخل** الحرفيّة نفسها لا يعمل أصلاً: `GAS` لم يُسنَد
-//       بعد وقت تقييم الحرفيّة ⇒ `undefined` ⇒ «تطبيق غير معروف» على كل نداء.
-//
-//  ⚠️ ولا يكفي تبديلُ الوجهة وحده: معالج `/gas/<app>` يبني الهدف بـ`target + url.search`،
-//     فنداءٌ عارٍ يصل `doGet` المعلّم **بلا مُميِّز** فيخدم لوحة المعلّم بدل صفحة الطالب.
-//     المُميِّزُ `app=student` يُلحَق في المعالج **للمدخل `student` وحده** — انظر
-//     `fullTarget` أدناه، وقارئه `teacher/TeacherCore.js::doGet`.
+/* 🧹 **التنظيفُ النهائيّ (2026-09-24 · قرارُ المالك: حذفٌ نهائيّ) — أربعُ وجهاتٍ حيّة لا غير.**
+   حُذفت من الجدول معرّفاتُ `student` و`home-all-school` و`schedule` و`pricing`، ونُقلت مشاريعُها
+   إلى سلّة Drive. **والأسماءُ الأربعة تبقى مسارات، ولا يصل أيٌّ منها مشروعاً خاملاً:**
+     • `student` ⇒ نشرةُ `teacher` بمُميِّز `app=student` (منذ 2026-08-19 · ص6). صفحةُ الطالب
+       ومسارُها المجمَّد في الـAPK يناديانه.
+     • `home-all-school` ⇒ نشرةُ `home`. الصفحةُ المجمَّدة `/home-all-school/index.html` مبنيّةٌ من
+       `home/Schools.html` ودوالُّها دوالُّ `home` حرفياً (`listPartnerSchoolsPublic` ·
+       `getPublicPricingPublic`) — كانت تنادي المشروعَ الخاملَ عبر `GAS_ENDPOINT` فمرّت
+       البياناتُ من طرفين. ⇒ **طرفٌ واحد.**
+     • `schedule` و`pricing` ⇒ **410** بلا نداءٍ على Google (`_RETIRED_GAS_APPS`).
+   ⚠️ **ولا يُسنَد الاسمُ المستعار داخل الحرفيّة:** `GAS` لم يُسنَد بعد ⇒ `undefined`.
+   ⚠️ **و`app=student` يُلحَق في المعالج للمدخل `student` وحده** — وإلّا خدم `doGet` المعلّمِ
+   لوحةَ المعلّم بدل صفحة الطالب (قارئُه `teacher/TeacherCore.js::doGet`).
+   📜 القيمُ المحذوفة وسردُ قرارات الإبقاء السابقة في تاريخ git لهذا الملفّ (قبل #388). */
 GAS.student = GAS.teacher;
+GAS['home-all-school'] = GAS.home;
 
-/* 🗑️ تطبيقاتٌ متقاعدةٌ مشروعُها غيرُ موجود — `/gas/<app>` يردّ 410 بلا نداءٍ على Google (انظر المعالج).
-   القيمةُ بديلُ المستخدم نصّاً. ⚠️ **لا يُضاف اسمٌ هنا إلا بقياسين:** المشروعُ غيرُ موجود فعلاً،
-   وصفرُ مستهلكٍ عبر الوسيط. (`pricing` و`home-all-school` مشروعاهما قائمان ⇒ ليسا هنا.) */
+/* 🗑️ تطبيقاتٌ متقاعدة — `/gas/<app>` يردّ 410 بلا نداءٍ على Google، ويُفحَص **قبل** البحث في `GAS`
+   فلا يصير 404 بعد حذف المعرّف. القيمةُ بديلُ المستخدم نصّاً. ⚠️ **لا يُضاف اسمٌ هنا إلّا بقياس
+   صفرِ مستهلكٍ عبر الوسيط** — قِيس 7 أيام (09-17→09-24): `/gas/pricing` ⇒ مِجَسّاتُنا وحدها. */
 var _RETIRED_GAS_APPS = {
-  schedule: 'الجدول صار داخل منصّة المعلّم'
+  schedule: 'الجدول صار داخل منصّة المعلّم',
+  pricing:  'الأسعار في قسم «الأسعار» بالصفحة الرئيسية'
 };
 
 /* 🔎 **مرآةُ بوّابة رمز الطالب — للقياس لا للرفض (2026-09-24).**
@@ -2572,7 +2547,10 @@ export default {
     if (match) {
       var app = match[1];
       var target = GAS[app];
-      if (!target) return jsonResponse({ ok: false, error: 'تطبيق غير معروف: ' + app }, 404);
+      /* المتقاعدُ لا معرّفَ له في `GAS` منذ 2026-09-24 ⇒ يُستثنى من 404 هنا فيبلغ 410 أدناه. */
+      if (!target && !Object.prototype.hasOwnProperty.call(_RETIRED_GAS_APPS, app)) {
+        return jsonResponse({ ok: false, error: 'تطبيق غير معروف: ' + app }, 404);
+      }
 
       if (request.method === 'OPTIONS') {
         return withCors(new Response(null, { status: 204 }));
@@ -2583,8 +2561,8 @@ export default {
          بحالة 200 وبعنوان JSON** — مشروعُ الجدول لم يعد موجوداً (جلسة `SchoolApp-gas`: غيرُ موجود
          في Drive)، فـ«مسارُ التراجع الخامل» الموصوف في الحارس صار ميتاً. ⇒ ردٌّ صادقٌ مقروءٌ آلياً،
          وصفرُ نداءٍ على الحصّة. وصفرُ مستهلكٍ عبر الوسيط في ٣ أيام قِيست.
-         🔒 **ولا يُحذف معرّفُ النشرة من `GAS`** (سياسةُ المعرّفات، ويحرسه `test-routes.js`)، **ولا
-         يُمسّ المسارُ الثابت `/schedule/index.html`** (صفحةُ إعلان التقاعد — حزمُ الأندرويد تحمله). */
+         🧹 **ومنذ 2026-09-24 حُذف المعرّفُ من `GAS` بقرار المالك** (الحذفُ النهائيّ)، و`pricing` معه.
+         🔒 **ولا يُمسّ المسارُ الثابت `/schedule/index.html`** (صفحةُ إعلان التقاعد — حزمُ الأندرويد تحمله). */
       if (Object.prototype.hasOwnProperty.call(_RETIRED_GAS_APPS, app)) {
         return jsonResponse({ ok: false, retired: true, app: app,
           error: 'هذه الخدمة متقاعدة — ' + _RETIRED_GAS_APPS[app] }, 410);
