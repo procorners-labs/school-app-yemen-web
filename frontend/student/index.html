@@ -4490,8 +4490,10 @@ function initApp() {
   // Badges تلقائية
   /* 🔔 لا استطلاعَ مستقلّاً للشارات (خطّة 09-23-ب · 2-أ · قرارُ المالك): تصل مع كلّ نبضة
      (كلَّ 4 دقائق وعند العودة للتبويب)، وأوّلُها مع حزمة الإقلاع. كان هنا `setInterval`
-     كلَّ 3 دقائق (~20 نداءً/ساعة لكلّ طالب). */
-  loadNotificationBadges();
+     كلَّ 3 دقائق (~20 نداءً/ساعة لكلّ طالب).
+     🔴 **وسقط النداءُ المفرد هنا أيضاً (1أ · 2026-09-25):** كان يُطلَق بعد `_stuBootLoad()`
+     مباشرةً — يحجبه `_badgeInFlight` في الإقلاع البارد، **ويُطلَق فعلاً في الدافئ** بجانب
+     النبضة. والشارةُ الآن من الحزمة (بارد) أو من نبضةٍ مبكّرة (دافئ) — `_stuBootLoad` يملكها. */
 
   // Enter في حقول كلمة المرور
   bindPwModalEnter();
@@ -4499,56 +4501,11 @@ function initApp() {
   // مطالبة تقييم المنصة الذكية — localStorage بحت، بلا نداء خادم، لا تؤخّر أي مسار لاحق.
   try { _prMaybeNudge(); } catch (ePr) {}
 
-  /* طلب تقييم موجَّه من المدير لهذا الطالب تحديداً — يتجاوز جدولة المطالبة الذكية العادية
-     ويفتح نافذة التقييم مباشرة عند العثور على طلب "بانتظار".
-
-     ★ مخنوق بـ`localStorage` (مرّة كل 6 ساعات لكل طالب). كان يُنادى في **كل** إقلاع بلا
-     أي كاش عميل ولا خادم — 1,542 تنفيذاً/٢٤س، وهو الرقم الذي يساوي عملياً عدد إقلاعات
-     تطبيق الطالب. وطلبُ التقييم حدث نادر جداً يُنشئه المدير يدوياً، فتأخّر ظهوره ساعات
-     مقبول تماماً مقابل خفض ~٨٥٪ من نداءاته. */
-  try {
-    var _prKey = 'pr_req_ck_' + (APP.user.id || '');
-    var _prLast = 0;
-    try { _prLast = parseInt(localStorage.getItem(_prKey) || '0', 10) || 0; } catch (ePrLs) {}
-    if (!(Date.now() - _prLast < 6 * 60 * 60 * 1000)) {
-      try { localStorage.setItem(_prKey, String(Date.now())); } catch (ePrLs2) {}
-      /* 🔴 **مُبوَّبٌ ومؤجَّلٌ منذ 2026-09-22 — وكان يُطلَق داخل `initApp` بلا مهلةٍ ولا سقف.**
-         الخنقُ بـ`localStorage` يقلّل **تواترَه** ولا يمسّ **لحظتَه**: حين يمرّ الخنقُ
-         يقع النداءُ **داخل رشقة الإقلاع نفسِها** مزاحماً `getStudentBootBundle`
-         و`getHomeScheduleBundle` على المقاعد.
-         🎯 وهو من صنفٍ مُسمًّى مقيساً: **«ما ينجح دائماً لا يُقاس»** — `ok` بنسبة ١٠٠٪
-         فلا يظهر في أيّ مقياسِ إخفاق، **وطلبُ التقييم حدثٌ نادرٌ يُنشئه المديرُ يدوياً**
-         ⇒ تأخّرُ ثانيتين لا يُفقد شيئاً، والمقعدُ المُحرَّر يذهب لدخولِ طالب.
-         ⚠️ والتأجيلُ **بعد** الرشقة لا بدلها — والبوّابةُ تمنع تزامنَه معها. */
-      var _prRun = function (release) {
-        var _prDone = false;
-        function _prRel() { if (_prDone) return; _prDone = true; try { release(); } catch (eRR) {} }
-        try {
-          google.script.run
-            .withSuccessHandler(function (r) {
-              if (r && r.ok && r.pending) {
-                /* طلب وُجد فعلاً ⇒ أزِل الخنق كي يُعاد الفحص في الإقلاع التالي مباشرة
-                   (المدير قد يُرسل طلباً آخر، ولا نريد كتمه ست ساعات). */
-                try { localStorage.removeItem(_prKey); } catch (ePrLs3) {}
-                var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove();
-                openPlatformReviewModal(true);
-              }
-              _prRel();
-            })
-            .withFailureHandler(function () {
-              /* فشل النداء لا يستهلك نافذة الخنق — وإلا ضاع الطلب ست ساعات بسبب عطل عابر */
-              try { localStorage.removeItem(_prKey); } catch (ePrLs4) {}
-              _prRel();
-            })
-            .checkPendingPlatformReviewRequest({ schoolId: APP.user.schoolId, studentId: APP.user.id });
-        } catch (ePrCall) { try { localStorage.removeItem(_prKey); } catch (ePrLs5) {} _prRel(); }
-      };
-      setTimeout(function () {
-        if (typeof _stuRunGated === 'function') _stuRunGated('checkPendingPlatformReviewRequest', _prRun);
-        else _prRun(function () {});
-      }, 2500);
-    }
-  } catch (ePrReq) {}
+  /* 📝 طلبُ تقييمٍ موجَّهٌ من المدير لهذا الطالب — **لم يعد نداءً مستقلّاً (1أ · 2026-09-25).**
+     كان `checkPendingPlatformReviewRequest` يُطلَق هنا بعد 2.5ث (خنقٌ 6 ساعات) — ~440 نداءً/أسبوع
+     عيّنةً، كلٌّ يحجز مقعداً. صار حقلاً يركب حزمةَ الإقلاع (`wantReview`) أو النبضة (`reviewReq`)،
+     والخنقُ والفتحُ في `_stu-js-boot-runtime.html::_stuApplyReview`. والدالّةُ الخادميّة **باقيةٌ
+     مكشوفة** — صفحةٌ قديمةٌ مخبَّأةٌ تناديها ساعاتٍ بعد النشر. */
 
   // 🆕 تفعيل lazy loading الاحتياطي بعد تحميل التطبيق
   setTimeout(function() { initLazyImages(); }, 500);
@@ -8676,6 +8633,40 @@ function saveMyBirthdate(value) {
 var _hbTimerStarted = false;
 var _BEAT_MIN_GAP_MS = 60 * 1000;   /* حدّ أدنى بين نبضتَي «عودة للتبويب» (نظير teacher) */
 var _lastBeatAt = 0;
+
+/* ⚡ **1أ (2026-09-25): لا نبضةَ بعد 1.2ث من كلّ إقلاع.** كانت ~0.87 نبضةً لكلّ إقلاع (قياسُ
+   الوركر · 7 أيام) ولا تكتب شيئاً — تضع طابعَ البداية فقط — وتزاحم الحزمةَ على المقاعد في
+   ذروتها. صار الطابعُ داخل `getStudentBootBundle` (‏`_stuHeartbeatMarkStart`).
+   🔴 **والنبضةُ المبكّرة تبقى حيث لا حزمة:** الإقلاعُ الدافئ (كاشُ الأخبار والتعاميم حيّ) لا
+   يُطلق الحزمة، فكانت الشارةُ نداءً مستقلّاً **وفوقه** النبضةُ الأولى ⇒ نداءان. الآن نبضةٌ
+   واحدةٌ مبكّرةٌ تحمل الشارةَ وطابعَ البداية معاً. */
+var _stuEarlyBeatWanted = false;
+var _stuHbKick = null;               /* يُعرَّف داخل _startHeartbeat — تبديلُ الأخ بعد بدء المؤقّت */
+function _stuWantEarlyBeat() {
+  if (typeof _stuHbKick === 'function') { _stuHbKick(); return; }
+  _stuEarlyBeatWanted = true;
+}
+
+/* 📝 **فحصُ «طلب تقييم المنصة» يركب النبضةَ أو الحزمة (1أ) — لا نداءَ مستقلّاً.**
+   الخنقُ 6 ساعات لكلّ طالب كما كان (`pr_req_ck_<id>`)، **ويُختَم عند وصول ردٍّ فعليّ فقط**:
+   ردٌّ لا يحمل `review` (خادمٌ أقدم · فشل) لا يستهلك النافذة، فلا يضيع طلبٌ ست ساعات. */
+function _stuReviewKey() { return 'pr_req_ck_' + ((APP.user && APP.user.id) || ''); }
+function _stuReviewDue() {
+  if (!APP.user || !APP.user.id) return false;
+  var last = 0;
+  try { last = parseInt(localStorage.getItem(_stuReviewKey()) || '0', 10) || 0; } catch (e) {}
+  return !(Date.now() - last < 6 * 60 * 60 * 1000);
+}
+function _stuApplyReview(rv) {
+  if (!rv || !rv.ok) return;
+  try { localStorage.setItem(_stuReviewKey(), String(Date.now())); } catch (e1) {}
+  if (!rv.pending) return;
+  /* طلبٌ وُجد ⇒ أزِل الخنقَ كي يُعاد الفحصُ في الإقلاع التالي (المديرُ قد يُرسل آخر). */
+  try { localStorage.removeItem(_stuReviewKey()); } catch (e2) {}
+  try { var nb = document.getElementById('prNudgeBanner'); if (nb) nb.remove(); } catch (e3) {}
+  try { if (typeof openPlatformReviewModal === 'function') openPlatformReviewModal(true); } catch (e4) {}
+}
+
 function _startHeartbeat() {
   if (_hbTimerStarted) return;
   _hbTimerStarted = true;
@@ -8720,6 +8711,7 @@ function _startHeartbeat() {
             _hbDelayMs = _HB_BASE_MS; _bRel(); _scheduleNextBeat();
             /* 🔔 الشارةُ تركب النبضة (2-أ) — لا استطلاعَ مستقلّاً كلَّ 3 دقائق. */
             if (hr && hr.ok && hr.badge) { try { _stuApplyBadge(hr.badge); } catch (eBd) {} }
+            if (hr && hr.ok && hr.review) { try { _stuApplyReview(hr.review); } catch (eRv) {} }
           })
           .withFailureHandler(function () {
             _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
@@ -8727,7 +8719,8 @@ function _startHeartbeat() {
           })
           .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken,
             /* شارةٌ طازجة (< 3د) ⇒ نبضةٌ بلا إعادة حسابها — كانت تُحسب مرّتين عند كلّ إقلاع */
-            (Date.now() - _stuBadgeAt < 3 * 60 * 1000) ? null : _stuBadgeReq());
+            (Date.now() - _stuBadgeAt < 3 * 60 * 1000) ? null : _stuBadgeReq(),
+            _stuReviewDue() ? 1 : null);
       } catch (eBeat) { _bRel(); _scheduleNextBeat(); }
     };
     if (typeof _stuRunBackground === 'function') {
@@ -8752,7 +8745,14 @@ function _startHeartbeat() {
   // perf-and-boot-burst.md) المطبَّق هناك فقط سابقاً وليس هنا.
   // 🔴 وتُجدوَل عبر `_scheduleNextBeat` بعد أوّل تأخيرٍ قصير: النبضةُ الأولى تدخل **السلسلة**
   //    لا تقع خارجها، وإلّا بقيت نبضةٌ يتيمة لا يحكمها التراجعُ التكيّفي.
-  _hbTimer = setTimeout(beat, 1200);
+  // ⚡ 1أ: المبكّرةُ **فقط** حين طلبها إقلاعٌ بلا حزمة (`_stuWantEarlyBeat`)؛ وإلّا فالدورةُ
+  //    الأساسيّة (8د) — الحزمةُ وضعت طابعَ البداية وحملت الشارة.
+  _stuHbKick = function () {
+    if (_hbTimer) { try { clearTimeout(_hbTimer); } catch (eK) {} }
+    _hbTimer = setTimeout(beat, 1200);
+  };
+  if (_stuEarlyBeatWanted) { _stuEarlyBeatWanted = false; _stuHbKick(); }
+  else _scheduleNextBeat();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8790,7 +8790,9 @@ function _stuBootLoad() {
   if (newsWarm && circWarm) {
     loadHomeNews();
     loadHomeCirculars();
-    loadNotificationBadges();
+    /* ⚡ 1أ: نبضةٌ مبكّرةٌ تحمل الشارةَ (وطلبَ التقييم) بدل `loadNotificationBadges()` ثمّ نبضةٍ
+       ثانية بعد 1.2ث — نداءٌ واحدٌ لا اثنان في كلّ إقلاعٍ دافئ. */
+    _stuWantEarlyBeat();
     loadQuickStats();
     return;
   }
@@ -8823,7 +8825,8 @@ function _stuBootLoad() {
   callServerGated('getStudentBootBundle', [{
       klass: APP.user.class, section: APP.user.section,
       studentId: APP.user.id, studentName: APP.user.name,
-      lastLoginDate: lastLogin, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken
+      lastLoginDate: lastLogin, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken,
+      wantReview: _stuReviewDue()   /* 1أ: طلبُ التقييم يركب الحزمة بدل نداءٍ مستقلّ */
     }],
     function (r) {
       _badgeInFlight = false;
@@ -8865,6 +8868,7 @@ function _stuBootLoad() {
         _stuMaybeNotifyNews(b.news);
         _stuBadgeAt = Date.now();
       }
+      if (r.review) { try { _stuApplyReview(r.review); } catch (eRv) {} }
 
       /* ── نظرة سريعة ── (2026-08-29)
          🔴 القرارُ من **قيمة الاستهلاك** لا من وجود الحقل: `_stuApplyBootQuickStats`

@@ -9113,10 +9113,27 @@ function loadNotesNotifications() {
     if (typeof App === 'undefined' || !App || !App.user) return;
     callServer('getUnreadNotesCountProtected', {}, 'notes_pending', 90, function (r) {
       if (!r || !r.success) return;
+      _tcStashNotesCounts(r);
       window._bellNotes = parseInt((r.unread != null ? r.unread : r.count) || 0, 10) || 0;
       refreshBellBadge();
     });
   } catch (e) { /* تجاهل */ }
+}
+
+/* 🎯 M2-① (2026-09-25): آخرُ عدّاداتِ ملاحظات أولياء الأمور وصلت (من الحزمة أو بعد الردّ) —
+   لوحةُ الإشعارات تقرؤها بدل نداءٍ مستقلٍّ يقرأ الورقةَ كاملةً مرّةً أخرى. والنداءُ نفسُه
+   خادمياً (`getNotifCountsBundle.notes` = `getUnreadNotesCountProtected`) فالشكلُ واحد.
+   ⚠️ الحداثةُ ≤ `TC_NOTES_STASH_MAX_MS` (مدّةُ كاش الحزمة)، وإلّا عادت اللوحةُ إلى النداء. */
+var TC_NOTES_STASH_MAX_MS = 600000;
+/* 🔴 مبصومٌ بـschoolId كمفتاح الحزمة (بند 85-ب) — تبديلُ ?school= في التبويب نفسِه لا يُورِث عدّاداتِ مدرسةٍ أخرى. */
+function _tcNotesStashSchool() { return (typeof App !== 'undefined' && App && App.user && App.user.schoolId) || ''; }
+function _tcStashNotesCounts(r) {
+  if (r && r.success) window._tcNotesCounts = { r: r, at: Date.now(), sid: _tcNotesStashSchool() };
+}
+function _tcFreshNotesCounts() {
+  var s = window._tcNotesCounts;
+  return (s && s.r && s.sid === _tcNotesStashSchool() &&
+          (Date.now() - s.at) <= TC_NOTES_STASH_MAX_MS) ? s.r : null;
 }
 
 // تنبيه داخل التطبيق (toast + صوت) عند نشر خبر جديد فعلياً — لا عند أول تحميل (baseline فقط)
@@ -9218,6 +9235,7 @@ function loadNotifCountsBundle() {
       }
       var rNotes = bundle.notes;
       if (rNotes && rNotes.success) {
+        _tcStashNotesCounts(rNotes);
         window._bellNotes = parseInt((rNotes.unread != null ? rNotes.unread : rNotes.count) || 0, 10) || 0;
         if (typeof _applyNotesBadge === 'function') _applyNotesBadge(rNotes);
       }
@@ -9350,7 +9368,8 @@ function _loadNotificationsList() {
     render();
   }, function () { failed.news = true; render(); });
   // 2) ملاحظات أولياء الأمور غير المقروءة — نص متصاعد حسب أعلى مستوى إلحاح موجود
-  callServer('getUnreadNotesCountProtected', {}, function (r) {
+  //    M2-①: من آخر عدّاداتٍ وصلت إن كانت حديثة، وإلّا نداءٌ مستقلّ كما كان.
+  function _panelNotes(r) {
     var cnt  = (r && r.success) ? (parseInt(r.count, 10) || 0) : 0;
     var crit = (r && r.success) ? (parseInt(r.criticalCount, 10) || 0) : 0;
     var ovd  = (r && r.success) ? (parseInt(r.overdueCount, 10) || 0) : 0;
@@ -9364,7 +9383,16 @@ function _loadNotificationsList() {
         _notifItem(icon, title, sub, "closeNotificationsPanel();showSection('notes')");
     }
     render();
-  }, function () { failed.notes = true; render(); });
+  }
+  var _fresh = _tcFreshNotesCounts();
+  if (_fresh) {
+    _panelNotes(_fresh);
+  } else {
+    callServer('getUnreadNotesCountProtected', {}, function (r) {
+      _tcStashNotesCounts(r);
+      _panelNotes(r);
+    }, function () { failed.notes = true; render(); });
+  }
 }
 
 /**
