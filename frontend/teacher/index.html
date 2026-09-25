@@ -19309,6 +19309,13 @@ function saveAllGrades() {
     hideLoading();
     if (r.success) toast(r.message, 'success');
     else showError(r.error);
+  }, function(err) {
+    /* بلا معالجِ فشلٍ كانت طبقةُ التحميل تبقى عالقةً عند 502 — والحفظُ قد يكون تمّ عند Google.
+       الجسرُ يسترجع الجوابَ الحقيقيَّ أوّلاً (`opId`)، فما يصل هنا فشلٌ لم يُحسَم. */
+    hideLoading();
+    showError(err && err.__network
+      ? 'لم يصل تأكيدُ الحفظ بسبب ضغط الشبكة — أعد عرض الدرجات للتحقّق قبل الحفظ مرّةً أخرى.'
+      : ((err && err.message) || 'تعذّر حفظ الدرجات'));
   });
 }
 function clearAllGrades() { confirmAction('مسح الدرجات', 'سيتم مسح الدرجات المعروضة (لن يتأثر الشيت حتى تحفظ من جديد)', '🗑️', function() { var inputs = document.querySelectorAll('#gradesTable .grade-input'); for (var i = 0; i < inputs.length; i++) { inputs[i].value = ''; inputs[i].classList.remove('has-grade', 'error', 'saving'); } toast('تم المسح من الشاشة', 'info', 2000); }); }
