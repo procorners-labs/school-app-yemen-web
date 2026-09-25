@@ -226,6 +226,10 @@
   }
 
   var WRITE_RECOVER_DELAY_MS = 3000;
+  /* كتاباتٌ لا تدخل طابورَ OfflineSync لكنها تحمل `opId` وتسترجع جوابَها بعد 502 —
+     حفظُ الدرجات: التلقائيُّ يُعيد دفعتَه بنفسه، واليدويُّ ينتظر المعلّمُ نتيجتَه. */
+  var RECOVERABLE_ONLINE = { saveGradesProtected: true, autoSaveGradesBatchProtected: true };
+  var RECOVER_DELAYS_MS = [3000, 6000, 12000];
   /* معرّفُ عمليّةٍ يطابق `API_OP_ID_RE` في الخادم (`[A-Za-z0-9_-]{8,64}`). */
   function newOpId() {
     return 'op' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10) +
@@ -311,6 +315,30 @@
       } else {
         toQueue(userObject);
       }
+      return;
+    }
+
+    if (RECOVERABLE_ONLINE[fnName]) {
+      /* 🔑 كتابةٌ خارج الطابور تحمل `opId` وتسترجع جوابَها بعد 502 (2026-09-26).
+         🔴 **العطلُ المقيس:** حفظُ الدرجات يُجهَض في الوركر عند ~٢٥٫٧ث والتنفيذُ عند Google
+         قد يكتمل ⇒ المعلّمُ يرى فشلاً لحفظٍ تمّ، والحفظُ التلقائيّ يُعيده تنفيذاً ثانياً.
+         والخادمُ جاهزٌ منذ 2026-09-23 (`teacher/ApiEndpoint.js::_apiOpBegin`): المعرّفُ نفسُه
+         يُرجِع المخزَّن (`_dedup`) أو `pending` ما دام الأوّلُ جارياً.
+         ⇒ الاسترجاعُ يتكرّر **على `pending` وحده** بمهلٍ متزايدة (ردُّه قراءةُ كاشٍ رخيصة)،
+         وأيُّ ردٍّ آخر ينهيه — ولا يُضرَب الإشباعُ مرّتين. */
+      var rOpId = newOpId();
+      rawCall(fnName, args, onSuccess, function (err, uo) {
+        if (!(err && err.__saturated)) { if (onFailure) onFailure(err, uo); return; }
+        var recover = function (n) {
+          setTimeout(function () {
+            rawCall(fnName, args, onSuccess, function (err2, uo2) {
+              if (err2 && err2.__pending && n + 1 < RECOVER_DELAYS_MS.length) recover(n + 1);
+              else if (onFailure) onFailure(err2, uo2);
+            }, uo, rOpId);
+          }, RECOVER_DELAYS_MS[n]);
+        };
+        recover(0);
+      }, userObject, rOpId);
       return;
     }
 
