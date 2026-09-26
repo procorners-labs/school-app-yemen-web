@@ -8039,6 +8039,7 @@ function _examFindNextDay(months, todayStr) {
     var days = months[m].days;
     for (var d = 0; d < days.length; d++) {
       var day = days[d];
+      if (day.subjects && day.subjects.length === 1 && _examIsNoExamWord(day.subjects[0].name)) continue; // 🌴
       if (day.date && day.date >= todayStr && (!next || day.date < next.date)) {
         next = { date: day.date, month: months[m].month, subjects: day.subjects };
       }
@@ -8094,6 +8095,26 @@ function _examScrollToMonth(id) {
   el.scrollIntoView({ behavior: _examPrefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
+/* 🌴 (2026-09-26) العطلةُ من التقويم المدرسي صفٌّ رماديٌّ بين أيام الاختبار — لا مادّة ولا عدّاد.
+   ومرآةُ `_gecIsNoExamToken` لخادمٍ قديمٍ أو كاشٍ قبل النشر: يومٌ مادّتُه الوحيدة كلمةُ عطلة يُخفى. */
+var EXAM_NO_EXAM_WORDS = ['اجازه', 'لايوجد', 'لا يوجد', 'عطله'];
+function _examIsNoExamWord(name) {
+  var n = String(name == null ? '' : name).replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+  return !!n && EXAM_NO_EXAM_WORDS.indexOf(n) !== -1;
+}
+function _examHolidayRowHtml(hol, todayStr) {
+  var range = (hol.start === hol.end || !hol.end) ? _examFullDateAr(hol.start)
+    : (_examFullDateAr(hol.start) + ' — ' + _examFullDateAr(hol.end));
+  var isPast = !!(hol.end && hol.end < todayStr);
+  return '<tr class="exam-row exam-row-holiday' + (isPast ? ' exam-row-past' : '') + '" style="background:rgba(148,163,184,.14);">' +
+         '<td class="exam-cell-day"><span class="exam-day-daypill">' + esc(_examDayName(hol.start) || '—') + '</span></td>' +
+         '<td class="exam-cell-date">' + esc(range) + '</td>' +
+         '<td class="exam-cell-subjects"><div class="exam-day-subjects"><span class="exam-subj-chip">🌴 ' + esc(hol.title || 'إجازة') + '</span></div></td>' +
+         '<td class="exam-cell-status"><span class="exam-status-done">إجازة</span></td>' +
+         '</tr>';
+}
+
 function renderExamSchedule(r) {
   var w = $('examSchedWrap');
   var instructionsHtml = _examInstructionsHtml(r);
@@ -8116,8 +8137,17 @@ function renderExamSchedule(r) {
          '<div class="exam-table-wrap"><table class="exam-table">' +
          '<thead><tr><th>اليوم</th><th>التاريخ</th><th class="exam-th-subjects">المواد</th><th>الحالة</th></tr></thead>' +
          '<tbody>';
-    for (var d = 0; d < days.length; d++) {
+    // 🌴 عطلُ التقويم داخل مدى الشهر (حقلٌ جديد — خادمٌ قديمٌ بلا `holidays` ⇒ لا صفوف).
+    var hols = (mo.holidays || []).slice().sort(function (a, b) { return (a.start || '').localeCompare(b.start || ''); });
+    var hi = 0;
+    for (var d = 0; d <= days.length; d++) {
+      while (hi < hols.length && (d === days.length || !days[d].date || hols[hi].start <= days[d].date)) {
+        h += _examHolidayRowHtml(hols[hi], todayStr);
+        hi++;
+      }
+      if (d === days.length) break;
       var day = days[d];
+      if (_examIsNoExamWord(day.subjects && day.subjects.length === 1 ? day.subjects[0].name : '')) continue;
       var isPast = !!(day.date && day.date < todayStr);
       var isNext = !!(next && day.date === next.date);
       var dayName = day.date ? _examDayName(day.date) : '';
