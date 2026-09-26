@@ -13759,12 +13759,28 @@ function ec_ensureHolidaysLoaded(cb, force) {
 // هل يقع dateStr ضمن أي فترة إجازة حقيقية من التقويم المدرسي؟ مقارنة نصّية مباشرة (yyyy-mm-dd
 // تُقارَن مُعجَمياً بشكل صحيح زمنياً) — نفس أسلوب المقارنة المستخدَم أصلاً في getSchoolCalendarProtected.
 function _ecIsCalendarHoliday(dateStr) {
+  return !!_ecCalendarHolidayTitle(dateStr);
+}
+// عنوانُ فترة الإجازة التي يقع فيها التاريخ، أو '' — لتسمية التنبيه لا للحساب وحده.
+function _ecCalendarHolidayTitle(dateStr) {
+  if (!dateStr) return '';
   for (var i = 0; i < _ecCalHolidayRanges.length; i++) {
     var r = _ecCalHolidayRanges[i];
-    if (r.start <= dateStr && dateStr <= r.end) return true;
+    if (r.start <= dateStr && dateStr <= r.end) return r.title || 'إجازة';
   }
-  return false;
+  return '';
 }
+
+/* 🌴 كلمةُ عطلةٍ لا مادّة (2026-09-26 · التقويمُ مصدرُ العطل الوحيد) — مرآةُ الخادم
+   `teacher/GradesEntryCompliance.js::_gecIsNoExamToken` بالتطبيع نفسِه (`_tcNormSubj`):
+   الهمزاتُ ⇒ ا · ى ⇒ ي · ة ⇒ ه · وطيُّ الفراغات. والخادمُ يُسقطها أيضاً، فهذه حمايةُ تجربةٍ لا أمان. */
+var EC_NO_EXAM_WORDS = ['اجازه', 'لايوجد', 'لا يوجد', 'عطله'];
+function _ecIsNoExamWord(name) {
+  var n = String(name == null ? '' : name).replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+  return !!n && EC_NO_EXAM_WORDS.indexOf(n) !== -1;
+}
+var EC_NO_EXAM_WORD_MSG = '🌴 العطلة لا تُكتب مادّةً — أضِفها في «🗓️ التقويم المدرسي» بنوع «إجازة» فتُتخطّى تواريخُها تلقائياً';
 
 function _ecScheduleOverviewGradesFor(month) {
   var months = (_ecScheduleOverview && _ecScheduleOverview.months) || [];
@@ -13995,7 +14011,10 @@ function ec_timetableGradeToggle(detailsEl) {
     var list = [];
     for (var d = 0; d < days.length; d++) {
       var subs = (days[d].subjects || []).slice().sort(function (a, b) { return a.order - b.order; });
-      for (var s = 0; s < subs.length; s++) list.push({ name: subs[s].name, date: days[d].date || '' });
+      for (var s = 0; s < subs.length; s++) {
+        if (_ecIsNoExamWord(subs[s].name)) continue; // 🌴 خادمٌ قديمٌ أو كاشٌ عميليّ قبل النشر
+        list.push({ name: subs[s].name, date: days[d].date || '' });
+      }
     }
     _ecScheduleBoards[key] = { list: list, unscheduled: [] };
     ec_timetableComputeUnscheduled(key, grade);
@@ -14213,7 +14232,12 @@ function ec_timetableListHtml(key, board, locked) {
     var dayChip = dayName ?
       ('<span style="display:inline-block;min-width:46px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:' + (EC_DAY_COLORS[dayName] || '#64748b') + ';border-radius:6px;padding:3px 6px;flex:0 0 auto;">' + escapeHtml(dayName) + '</span>') :
       '<span style="display:inline-block;min-width:46px;text-align:center;font-size:11px;color:#94a3b8;flex:0 0 auto;">—</span>';
-    rows += '<div class="ec-tt-card ec-tt-row" data-subject="' + escapeHtml(item.name) + '" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:' + (locked ? 'default' : 'grab') + ';font-size:13px;touch-action:none;user-select:none;display:flex;align-items:center;gap:10px;' + (locked ? 'opacity:.75;' : '') + '">' +
+    // 🌴 مادّةٌ في يوم إجازةٍ من التقويم — تنبيهٌ لا منع (المديرُ يقرّر أيّهما الصحيح).
+    var holTitle = _ecCalendarHolidayTitle(item.date);
+    if (holTitle) {
+      dayChip += '<span title="' + escapeHtml('هذا اليوم إجازة في التقويم المدرسي: ' + holTitle) + '" style="display:inline-block;font-size:11px;font-weight:700;color:#9a3412;background:#fee2e2;border-radius:6px;padding:3px 6px;flex:0 0 auto;">🌴 إجازة</span>';
+    }
+    rows +='<div class="ec-tt-card ec-tt-row" data-subject="' + escapeHtml(item.name) + '" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:' + (locked ? 'default' : 'grab') + ';font-size:13px;touch-action:none;user-select:none;display:flex;align-items:center;gap:10px;' + (locked ? 'opacity:.75;' : '') + '">' +
       '<span style="font-weight:800;color:#1149a3;min-width:20px;">' + (i + 1) + '</span>' +
       '<span style="flex:1;font-weight:600;">' + escapeHtml(item.name) + '</span>' + editIcon +
       dayChip +
@@ -14587,6 +14611,7 @@ function ec_timetableAddSubjectPrompt(ev, key, colId) {
   name = name.trim();
   if (!name) return;
   if (name.length > 40) name = name.substring(0, 40); // حماية تخطيط الصف/البطاقة
+  if (_ecIsNoExamWord(name)) { toast(EC_NO_EXAM_WORD_MSG, 'warning'); return; }
   if (ec_timetableSubjectNameExists(board, name)) {
     toast('⚠️ هذه المادة موجودة أصلاً في هذه اللوحة', 'error');
     return;
@@ -14611,6 +14636,7 @@ function ec_timetableRenameSubjectPrompt(ev, key, colId, oldName) {
   newName = newName.trim();
   if (!newName || newName === oldName) return;
   if (newName.length > 40) newName = newName.substring(0, 40);
+  if (_ecIsNoExamWord(newName)) { toast(EC_NO_EXAM_WORD_MSG, 'warning'); return; }
   if (ec_timetableSubjectNameExists(board, newName)) {
     toast('⚠️ هذا الاسم موجود أصلاً في هذه اللوحة', 'error');
     return;
@@ -14727,6 +14753,11 @@ function ec_timetableSaveNow(key, manual, btnEl) {
           if (ce) ec_timetableRenderBoard(key, ce);
         });
       }
+    } else if (res.holidayConflicts && res.holidayConflicts.length) {
+      // 🌴 حُفظ — لكنّ مادّةً تقع في إجازةٍ من التقويم. تنبيهٌ صريح لا منعٌ صامت.
+      var hc = res.holidayConflicts[0];
+      toast('⚠️ حُفظ جدول ' + grade + ' — لكنّ «' + hc.name + '» في ' + hc.date + ' يوافق إجازة «' + hc.holiday + '»' +
+        (res.holidayConflicts.length > 1 ? (' (و' + (res.holidayConflicts.length - 1) + ' غيرها)') : ''), 'warning');
     } else if (manual) {
       toast('✅ تم حفظ جدول ' + grade, 'success');
     }
