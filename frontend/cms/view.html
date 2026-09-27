@@ -466,11 +466,17 @@
     var title = r.title || r.name || '';
     var body  = r.content || r.description || '';
     var media = r.mediaURL || r.videoURL || r.imageURL || '';
+    // 2026-09-27: creating a draft needs a CMS login (CMS token of this tab, or the teacher
+    // token in the link opened from the teacher dashboard).
+    var auth = { schoolId: window.SCHOOL_ID || '' };
+    try { auth.token = sessionStorage.getItem('cms_token') || ''; } catch (eT) { auth.token = ''; }
+    try { auth.teacherToken = new URLSearchParams(window.location.search).get('teacherToken') || ''; } catch (eU) {}
+    if (!auth.token && !auth.teacherToken) { alert('🔒 سجّل الدخول إلى إدارة المحتوى أولاً (صفحة الإضافة) ثم أعد المحاولة.'); return; }
     if (!confirm('إنشاء مسودة منشور من: ' + title + '؟')) return;
     google.script.run
       .withSuccessHandler(function (m) { alert(m); })
       .withFailureHandler(function (e) { alert('فشل: ' + e.message); })
-      .addManualDraft(kind, title, body, media, 'CMS', '', window.SCHOOL_ID);
+      .addManualDraft(kind, title, body, media, 'CMS', '', window.SCHOOL_ID, auth);
   }
 
   // عرض الأخبار
