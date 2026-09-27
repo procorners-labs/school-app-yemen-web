@@ -3803,43 +3803,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </div>
 </div>
 
-<!-- مودال إضافة/تعديل معلم (كلاسيكي) -->
-<div class="modal-backdrop" id="teacherModal">
-  <div class="modal-dialog">
-    <div class="modal-header"><span id="teacherModalTitle">👤 إضافة معلم</span><button class="modal-close" onclick="closeModal('teacherModal')">✕</button></div>
-    <div class="modal-body">
-      <input type="hidden" id="teacherRowIndex">
-      <div class="form-group mb-3"><label class="form-label">اسم المعلم <span style="color:var(--danger)">*</span></label><input type="text" class="form-control" id="teacherNameInput" placeholder="الاسم الكامل"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">المادة</label><select class="form-select" id="teacherSubjectInput"></select></div>
-        <div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="teacherGradeInput"></select></div>
-        <div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="teacherSectionInput"></select></div>
-      </div>
-      <div class="form-group mt-2"><label class="form-label">كلمة المرور <span style="color:var(--danger)">*</span></label><input type="text" class="form-control" id="teacherPasswordInput" placeholder="كلمة المرور"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('teacherModal')">إلغاء</button>
-      <button class="btn btn-primary" onclick="saveTeacher()">💾 حفظ</button>
-    </div>
-  </div>
-</div>
-
-<!-- مودال تغيير كلمة المرور -->
-<div class="modal-backdrop" id="changePasswordModal">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-header"><span>🔐 تغيير كلمة المرور</span><button class="modal-close" onclick="closeModal('changePasswordModal')">✕</button></div>
-    <div class="modal-body">
-      <div class="form-group mb-3"><label class="form-label">كلمة المرور الحالية</label><input type="password" class="form-control" id="oldPassword"></div>
-      <div class="form-group mb-3"><label class="form-label">كلمة المرور الجديدة</label><input type="password" class="form-control" id="newPassword"></div>
-      <div class="form-group"><label class="form-label">تأكيد كلمة المرور الجديدة</label><input type="password" class="form-control" id="confirmPassword"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('changePasswordModal')">إلغاء</button>
-      <button class="btn btn-primary" onclick="changePassword()">🔐 تغيير</button>
-    </div>
-  </div>
-</div>
-
 <!-- مودال تأكيد العملية -->
 <div class="modal-backdrop" id="confirmModal">
   <div class="modal-dialog modal-sm">
@@ -7821,7 +7784,7 @@ function doLogin() {
    var urlParams = new URLSearchParams(window.location.search);
   var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
                  ? SERVER_SCHOOL_ID
-                 : (urlParams.get('school') || '');
+                 : (urlParams.get('school') || urlParams.get('schoolId') || '');
 
   google.script.run
     .withSuccessHandler(function(r) {
@@ -8137,7 +8100,7 @@ function _biomRenderLoginButton() {
   wrap.innerHTML = '';
   if (!_biomSupported()) return;
   var urlParams = new URLSearchParams(window.location.search);
-  var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID : (urlParams.get('school') || '');
+  var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID : (urlParams.get('school') || urlParams.get('schoolId') || '');
   var dev = _biomLoadDevice(schoolId);
   if (!dev) return;
   var btn = document.createElement('button');
@@ -8240,6 +8203,8 @@ function doLogout() {
 
 function forceLogout(msg) {
   showLoginScreen();
+  // نلتقط التوكن قبل مسح الحالة كي يُلغى على الخادم أيضاً (كان يُرسَل فارغاً فيبقى صالحاً)
+  var token = (App.user && App.user.token) ? App.user.token : null;
   if (App.sessionInterval) {
     clearInterval(App.sessionInterval);
     App.sessionInterval = null;
@@ -8250,8 +8215,11 @@ function forceLogout(msg) {
   App.initDone = false;
   toast(msg || 'انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مجدداً.', 'warning', 6000);
   try {
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      google.script.run.handleTeacherLogout({ token: '' });
+    if (token && typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function() {})
+        .withFailureHandler(function() { console.warn('Server logout failed (ignored)'); })
+        .handleTeacherLogout({ token: token });
     }
   } catch(e) {}
 }
@@ -10935,7 +10903,6 @@ function _sectionRenderers() {
     notes: renderNotes,
     mySchedule: renderMySchedule,
     reports: renderReports,      // ← دالة احتياطية موجودة الآن
-    adminTeachers: renderAdminTeachers,
     adminActivities: renderAdminActivities,
     adminStudents: renderAdminStudents,
     studentDirectory: renderStudentDirectory,
@@ -15625,14 +15592,24 @@ function _renderSchedSetForm(s, breaks, allGrades) {
     '<div class="form-group"><label class="form-label">مدة طابور الصباح (دقيقة)</label><input type="number" class="form-control" id="ss-assembly" value="' + (s.assemblyMinutes || 15) + '"></div>' +
     '<div class="form-group"><label class="form-label">مدة الحصة (دقيقة)</label><input type="number" class="form-control" id="ss-period" value="' + (s.periodMinutes || 45) + '"></div>' +
     '<div class="form-group"><label class="form-label">مدة الاستراحة (دقيقة)</label><input type="number" class="form-control" id="ss-break" value="' + (s.breakMinutes || 25) + '"></div>' +
-    '<div class="form-group"><label class="form-label">عدد الحصص</label><input type="number" class="form-control" id="ss-count" value="' + (s.periodsCount || 7) + '"></div>' +
     '</div></div>';
+  // أيام الدوام وعدد حصص كل يوم (0 = عطلة) — يعمل بها الجدول والتوزيع والاقتراحات وبوابة الطالب.
+  var SS_WEEK = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+  var pbd = s.periodsByDay || {};
+  h += '<div class="filter-bar"><div class="filter-bar-title">📅 أيام الدوام وعدد حصص كل يوم <span style="font-weight:400;color:var(--text-muted);font-size:.8rem">(0 = عطلة)</span></div><div class="form-row">';
+  for (var wd = 0; wd < SS_WEEK.length; wd++) {
+    var dn = SS_WEEK[wd];
+    var dv = pbd.hasOwnProperty(dn) ? pbd[dn] : (wd < 5 ? (s.periodsCount || 7) : 0);
+    h += '<div class="form-group" style="min-width:90px"><label class="form-label">' + dn + '</label>' +
+      '<input type="number" min="0" max="12" class="form-control ss-day-count" data-day="' + dn + '" value="' + dv + '" oninput="_ssRefreshBreakOptions()"></div>';
+  }
+  h += '</div></div>';
   h += '<div class="filter-bar"><div class="filter-bar-title">☕ استراحة كل صف (بعد الحصة رقم)</div><div class="form-row" id="ss-breaks">';
   if (!grades.length) h += '<div style="color:var(--text-muted);font-size:.85rem">لا توجد صفوف — تأكد من رفع البيانات</div>';
   for (var i = 0; i < grades.length; i++) {
     var g = grades[i]; var after = breaks[g] || 2;
     var opts = '';
-    for (var p = 1; p <= (s.periodsCount || 7); p++) opts += '<option value="' + p + '"' + (p === after ? ' selected' : '') + '>بعد الحصة ' + p + '</option>';
+    for (var p = 1; p <= (s.maxPeriods || s.periodsCount || 7); p++) opts += '<option value="' + p + '"' + (p === after ? ' selected' : '') + '>بعد الحصة ' + p + '</option>';
     h += '<div class="form-group"><label class="form-label">' + escapeHtml(g) + '</label><select class="form-select ss-grade-break" data-grade="' + escapeHtml(g) + '">' + opts + '</select></div>';
   }
   h += '</div></div>';
@@ -15640,22 +15617,50 @@ function _renderSchedSetForm(s, breaks, allGrades) {
        '<div id="ss-status" style="margin-top:10px"></div>';
   body.innerHTML = h;
 }
-function saveScheduleSettings() {
+function _ssReadDayCounts() {
+  var out = {}, mx = 0, inputs = document.querySelectorAll('.ss-day-count');
+  for (var i = 0; i < inputs.length; i++) {
+    var n = Math.max(0, Math.min(12, parseInt(inputs[i].value, 10) || 0));
+    out[inputs[i].getAttribute('data-day')] = n; if (n > mx) mx = n;
+  }
+  return { byDay: out, max: mx };
+}
+// قوائم «بعد الحصة» تتبع أكبر عدد حصص في الأسبوع
+function _ssRefreshBreakOptions() {
+  var mx = _ssReadDayCounts().max || 1;
+  var sel = document.querySelectorAll('.ss-grade-break');
+  for (var i = 0; i < sel.length; i++) {
+    var cur = parseInt(sel[i].value, 10) || 2, opts = '';
+    for (var p = 1; p <= mx; p++) opts += '<option value="' + p + '"' + (p === Math.min(cur, mx) ? ' selected' : '') + '>بعد الحصة ' + p + '</option>';
+    sel[i].innerHTML = opts;
+  }
+}
+function saveScheduleSettings(confirmOutside) {
+  var dc = _ssReadDayCounts();
+  if (!dc.max) { toast('حدّد يوم دوامٍ واحداً على الأقل بعدد حصص أكبر من صفر', 'warning'); return; }
   var settings = {
     dayStart: document.getElementById('ss-start').value || '07:00',
     assemblyMinutes: parseInt(document.getElementById('ss-assembly').value, 10) || 0,
     periodMinutes: parseInt(document.getElementById('ss-period').value, 10) || 45,
     breakMinutes: parseInt(document.getElementById('ss-break').value, 10) || 0,
-    periodsCount: parseInt(document.getElementById('ss-count').value, 10) || 7
+    periodsCount: dc.max,
+    periodsByDay: dc.byDay
   };
   var breaksByGrade = {};
   var sel = document.querySelectorAll('.ss-grade-break');
   for (var i = 0; i < sel.length; i++) breaksByGrade[sel[i].getAttribute('data-grade')] = parseInt(sel[i].value, 10) || 2;
   var st = document.getElementById('ss-status');
   st.innerHTML = '<span style="color:var(--text)">⏳ جاري الحفظ…</span>';
-  callServer('saveScheduleSettingsProtected', { settings: settings, breaksByGrade: breaksByGrade }, function (r) {
-    if (r && r.success) { st.innerHTML = '<span style="color:#2e7d32">✅ ' + r.message + '</span>'; toast('✅ تم حفظ إعدادات الجدول', 'success'); }
-    else st.innerHTML = '<span style="color:#c62828">❌ ' + ((r && r.error) || 'فشل') + '</span>';
+  callServer('saveScheduleSettingsProtected', { settings: settings, breaksByGrade: breaksByGrade, confirmOutside: !!confirmOutside }, function (r) {
+    if (r && r.success) { st.innerHTML = '<span style="color:#2e7d32">✅ ' + escapeHtml(r.message) + '</span>'; toast('✅ تم حفظ إعدادات الجدول', 'success'); try { schedDist_refreshView(); } catch (eRf) {} }
+    else if (r && r.needsConfirm) {
+      // حصصٌ مسجّلة بعد آخر حصة في يومها الجديد: تُعرض ولا تُحذف، والحفظ بتأكيد
+      var li = '';
+      for (var k = 0; k < (r.outside || []).length; k++) { var o = r.outside[k]; li += '<li>' + escapeHtml(o.day + ' الحصة ' + o.period + ' — ' + o.teacher + ' — ' + o.grade + ' ' + (o.section || '') + ' (' + o.subject + ')') + '</li>'; }
+      st.innerHTML = '<div class="alert alert-warning">⚠️ ' + escapeHtml(r.error) + '<ul style="margin:6px 0;padding-right:18px">' + li + '</ul>' +
+        '<button class="btn btn-warning btn-sm" onclick="saveScheduleSettings(true)">حفظ رغم ذلك (تبقى الحصص وتظهر في تقرير التعارضات)</button></div>';
+    }
+    else st.innerHTML = '<span style="color:#c62828">❌ ' + escapeHtml((r && r.error) || 'فشل') + '</span>';
   }, function (e) { st.innerHTML = '<span style="color:#c62828">❌ ' + (e.message || e) + '</span>'; });
 }
 
@@ -16544,7 +16549,7 @@ function _schedDist_init() {
     // بذرُ الموجة الثانية من نفس اللقطة — `schedDist_showAllView` أدناه تستهلكهما
     // بلا نداءٍ ثانٍ. و`conflicts` قد تكون `[]` مشروعةً ⇒ الفحصُ على `!== null`.
     SD_BOOT.conflicts = (r.conflicts === null || r.conflicts === undefined) ? null : { list: r.conflicts };
-    SD_BOOT.grid = r.rows ? { rows: r.rows, days: r.days, periods: r.periods } : null;
+    SD_BOOT.grid = r.rows ? { rows: r.rows, days: r.days, periods: r.periods, periodsByDay: r.periodsByDay || null } : null;
     // لوحةُ «التواقيت العامة» تعيش في نفس التبويب وكانت نداءً رابعاً مستقلاً —
     // تُرسَم هنا إن كان سطحُها مركَّباً (‏`_schedDist_init` تُنادى من سطحين).
     try {
@@ -16652,6 +16657,7 @@ function schedDist_loadFullGrid() {
     SD_FULL_GRID.rows = g.rows || [];
     SD_FULL_GRID.days = g.days || [];
     SD_FULL_GRID.periods = g.periods || [];
+    SD_FULL_GRID.periodsByDay = g.periodsByDay || null;
     schedDist_renderFullGrid();
     return;
   }
@@ -16661,6 +16667,7 @@ function schedDist_loadFullGrid() {
     SD_FULL_GRID.rows = r.rows || [];
     SD_FULL_GRID.days = r.days || [];
     SD_FULL_GRID.periods = r.periods || [];
+    SD_FULL_GRID.periodsByDay = r.periodsByDay || null;
     schedDist_renderFullGrid();
   }, function (e) { if (SCHED_DIST.className !== 'الكل') return; box.innerHTML = '<div class="alert alert-danger">' + escapeHtml(e.message || e) + '</div>'; });
 }
@@ -16718,6 +16725,13 @@ function schedDist_renderFullGrid() {
       for (var pi = 0; pi < periods.length; pi++) {
         var meta = index[key][d + '_' + periods[pi]];
         var cellText = meta ? meta.text : '';
+        // بعد آخر حصة في هذا اليوم (إعدادات الجدول): خانة معطَّلة — وحصةٌ مسجّلة فيها تظهر بتحذير
+        var pbdF = SD_FULL_GRID.periodsByDay;
+        if (pbdF && pbdF.hasOwnProperty(days[d]) && periods[pi] > pbdF[days[d]]) {
+          h += '<td style="background:var(--surface-2,#f1f5f9);color:var(--text-muted);text-align:center" title="بعد آخر حصة في ' + escapeHtml(days[d]) + '">' +
+               (cellText ? '⚠️ ' + escapeHtml(cellText) : '—') + '</td>';
+          continue;
+        }
         // الفصل معروف من بيانات الخلية نفسها (لا اشتقاقاً من النص المعروض):
         // خلية مشغولة تحمل classKey صفّها؛ الفارغة تعرفه فقط بمنظور «حسب الفصل»
         // (مفتاح الجدول). فارغة بمنظور المعلّم = بلا سياق فصل ⇒ غير قابلة للنقر.
@@ -16819,7 +16833,9 @@ function _sdRenderConflicts(list) {
   var h = '<div class="alert alert-warning"><b>⚠️ ' + list.length + ' تعارضاً:</b><ul style="margin:6px 0 0;padding-right:18px">';
   for (var i = 0; i < list.length; i++) {
     var c = list[i];
-    if (c.type === 'class') {
+    if (c.type === 'outside') {
+      h += '<li>حصة خارج عدد حصص اليوم: ' + escapeHtml(c.day) + ' الحصة ' + c.period + ' (اليوم فيه ' + c.limit + ' حصص) — ' + escapeHtml(c.teacher) + ' — ' + escapeHtml(_sdClassLabel(c.grade, c.section)) + '</li>';
+    } else if (c.type === 'class') {
       h += '<li>الفصل ' + escapeHtml(_sdClassLabel(c.grade, c.section)) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period + ': معلّمان معاً (' + escapeHtml(c.teachers.join('، ')) + ')</li>';
     } else {
       h += '<li>المعلّم ' + escapeHtml(c.teacher) + ' — ' + escapeHtml(c.day) + ' الحصة ' + c.period + ': فصلان معاً (' + escapeHtml(c.classes.join('، ')) + ')</li>';
@@ -16891,6 +16907,10 @@ function schedDist_renderGrid(grid, days, periods) {
     h += '<tr><td><b>' + escapeHtml(days[d]) + '</b></td>';
     for (var pi = 0; pi < periods.length; pi++) {
       var val = grid[d][pi];
+      if (val === '') {   // الخادم يرسل '' لخانةٍ بعد آخر حصة في اليوم (و'-' للفارغة المتاحة)
+        h += '<td style="background:var(--surface-2,#f1f5f9);color:var(--text-muted);text-align:center" title="بعد آخر حصة في ' + escapeHtml(days[d]) + '">—</td>';
+        continue;
+      }
       var empty = (!val || val === '-');
       var cellLabel = empty ? '+' : escapeHtml(val);
       var cellClass = empty ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
@@ -19456,6 +19476,19 @@ function renderHomework() {
   loadHomework();
 }
 
+/* أزرار تعديل/حذف الواجب في الجدول كانت تستدعي دالّتين غير معرَّفتين */
+function editHomework(id) { openHomeworkModal(id); }
+function deleteHomeworkItem(id) {
+  confirmAction('حذف الواجب', 'هل تريد حذف هذا الواجب؟', '🗑️', function () {
+    showLoading();
+    callServer('deleteHomeworkProtected', { id: id }, function (r) {
+      hideLoading();
+      if (r && r.success) { toast(r.message || 'تم حذف الواجب', 'success'); loadHomework(); }
+      else showError(r ? r.error : 'فشل حذف الواجب');
+    });
+  });
+}
+
 function loadHomework() {
   var area = document.getElementById('homeworkListArea');
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div>';
@@ -20078,6 +20111,7 @@ function saveViolation() {
   showLoading('جاري حفظ التسجيل...');
   callServer('addViolationProtected', {
     studentRow: s.rowIndex,
+    studentCode: s.code,
     violation: type,
     teacherName: App.user.teacherName,
     reply: reply.trim(),
@@ -20103,13 +20137,25 @@ function deleteViolationItem(rowIndex) {
   }
   confirmAction('حذف السجل', 'هل تريد حذف هذا السجل السلوكي نهائياً؟', '🗑️', function() {
     showLoading('جاري حذف السجل...');
-    callServer('deleteViolationProtected', { rowIndex: rowIndex }, function(r) {
+    // بصمة الصف المعروض — الخادم يرفض الحذف إن انزاحت الصفوف منذ التحميل
+    var shown = null;
+    for (var i = 0; i < _allViolations.length; i++) {
+      if (String(_allViolations[i].rowIndex) === String(rowIndex)) { shown = _allViolations[i]; break; }
+    }
+    var payload = { rowIndex: rowIndex };
+    if (shown) payload.expect = { code: shown.code || '', date: shown.date || '', violation: shown.violation || '' };
+    callServer('deleteViolationProtected', payload, function(r) {
       hideLoading();
       if (r && r.success) {
         toast(r.message, 'success');
         _allViolations = [];
         loadViolations();
       } else {
+        if (r && r.stale) {
+          try { ClientCache.del('my_activities_vio_' + ((App.user && App.user.schoolId) || '')); } catch (e) {}
+          _allViolations = [];
+          loadViolations();
+        }
         showError(r ? r.error : 'فشل حذف السجل');
       }
     });
@@ -25559,7 +25605,8 @@ function showNewsViewers(newsId, newsTeacherName) {
     var viewRows = [];
     for (var vi = 0; vi < teacherViews.length; vi++) viewRows.push(_personRow(teacherViews[vi].userName || teacherViews[vi].userId, false, teacherViews[vi].ts));
     for (var si = 0; si < studentViews.length; si++) viewRows.push(_personRow(studentViews[si].userName || studentViews[si].userId, true, studentViews[si].ts));
-    html += _listBox(viewRows, 'لا توجد مشاهدات بعد') + '</div>';
+    html += _listBox(viewRows, 'لا توجد مشاهدات بعد') +
+      ((r.archivedViews || 0) > 0 ? '<p style="font-size:.74rem;color:var(--text-muted);margin:6px 2px 0;">📦 و' + r.archivedViews + ' مشاهدة أقدم من 60 يوماً (محفوظة في الأرشيف كعدد)</p>' : '') + '</div>';
 
     // ── قائمة المعجبين ────────────────────────────────────────
     html += '<div>' +
@@ -25623,13 +25670,24 @@ function deleteNoteItem(noteId, noteGrade) {
   if (!canDeleteParentNote({ grade: noteGrade })) { toast('غير مصرح لك بحذف هذه الملاحظة', 'error'); return; }
   confirmAction('حذف الملاحظة', 'هل تريد حذف هذه الملاحظة نهائياً؟', '🗑️', function() {
     showLoading('جاري الحذف...');
-    callServer('deleteNoteProtected', { noteId: noteId }, function(r) {
+    // بصمة الملاحظة المعروضة — الخادم يرفض الحذف إن انزاحت الصفوف منذ التحميل
+    var shown = null;
+    for (var i = 0; i < _allParentNotes.length; i++) {
+      if (String(_allParentNotes[i].id) === String(noteId)) { shown = _allParentNotes[i]; break; }
+    }
+    var payload = { noteId: noteId };
+    if (shown) payload.expect = { studentName: shown.studentName || '', message: shown.message || '', date: shown.date || '' };
+    callServer('deleteNoteProtected', payload, function(r) {
       hideLoading();
       if (r && r.success) {
         toast(r.message || 'تم الحذف بنجاح', 'success');
         try { ClientCache.del('parent_notes'); } catch (e) {}
         loadParentNotesForUI();
       } else {
+        if (r && r.stale) {
+          try { ClientCache.del('parent_notes'); } catch (e) {}
+          loadParentNotesForUI();
+        }
         showError(r ? r.error : 'فشل الحذف');
       }
     });
@@ -25841,6 +25899,16 @@ function _schedDays(rows) {
   return out;
 }
 
+// أعلى رقم حصة في صفوفٍ معيّنة (افتراضياً الجدول المخزَّن) — كان الجدول والطباعة يثبّتان 7
+// فتسقط الحصة الثامنة بصمت، ويظهر عمودٌ سابعٌ فارغ لمدرسة بستّ حصص.
+function _schedPeriodMaxOf(rows) {
+  rows = rows || [];
+  var mx = 0;
+  for (var i = 0; i < rows.length; i++) { var p = parseInt(rows[i].period, 10); if (p > mx) mx = p; }
+  if (mx < 1) mx = 7;
+  if (mx > SCHED_MAX_PERIODS) mx = SCHED_MAX_PERIODS;
+  return mx;
+}
 function _schedPeriodMax() {
   var rows = _cachedSchedule || [], mx = 0;
   for (var i = 0; i < rows.length; i++) { var p = parseInt(rows[i].period, 10); if (p > mx) mx = p; }
@@ -26028,7 +26096,7 @@ function renderScheduleData(rows) {
 function _schedGridTableHtml(rows, opts) {
   opts = opts || {};
   var days = _schedDays();
-  var pmax = 7;
+  var pmax = _schedPeriodMaxOf(rows);
   var dayIcons = { 'السبت':'🕌', 'الأحد':'📖', 'الاثنين':'✏️', 'الثلاثاء':'📐', 'الأربعاء':'🏆' };
   var dayColors = { 'السبت':'#667eea', 'الأحد':'#f5576c', 'الاثنين':'#4facfe', 'الثلاثاء':'#43e97b', 'الأربعاء':'#fa709a' };
   var grid = {};
@@ -26166,7 +26234,7 @@ function _schedPrintWindow(bodyHtml, title, page) {
 
 function _schedPrintGridTable(rows) {
   var days = _schedDays();
-  var pmax = 7;
+  var pmax = _schedPeriodMaxOf(rows);
   var grid = {};
   for (var d = 0; d < days.length; d++) { grid[d] = {}; for (var p = 0; p < pmax; p++) grid[d][p] = []; }
   for (var i = 0; i < rows.length; i++) {
@@ -26449,139 +26517,6 @@ function _schedBuildCanvas(rows, schoolName) {
 function _schedTruncStr(s, n) {
   s = String(s == null ? '' : s);
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
-}
-
-// ==================== ADMIN TEACHERS (كلاسيكي) ====================
-/* ★ ربطُ «إدارة المعلمين» بـ«ضبط صلاحيات الأدوار» (2026-09-24): زرّ 🛡️ يفتح الصفحةَ على الشخص. */
-function _tcOpenRolePerms(btn) {
-  _spvCurrent = btn.getAttribute('data-n') || null;
-  _rpmTab = 'people';
-  showSection('supervisorPerms');
-}
-
-function renderAdminTeachers() {
-  if (!hasCap('accounts.manage')) { toast('ليس لديك صلاحية الوصول', 'error'); showSection('dashboard'); return; }
-  var html = '<div class="section-card"><div class="section-header"><div class="section-header-icon" style="background:rgba(17,73,163,.1)">👥</div><div class="section-header-title">إدارة المعلمين</div><div class="btn-group"><button class="btn btn-primary btn-sm" onclick="openTeacherModal()">➕ إضافة معلم</button><button class="btn btn-secondary btn-sm" onclick="importTeachersPrompt()">📥 استيراد Excel</button></div></div><div class="section-body"><div class="search-wrap mb-3"><input type="text" class="form-control" id="teacherSearch" placeholder="🔍 بحث بالاسم أو المادة..." oninput="filterTeachersTable(this.value)"><span class="search-icon">🔍</span></div><input type="file" id="teachersImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="doImportTeachers(this)"><div id="teachersListArea"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div></div>';
-  document.getElementById('dynamicContent').innerHTML = html;
-  loadTeachersList();
-}
-function loadTeachersList() {
-  showLoading('جاري التحميل...');
-  callServer('adminGetAllTeachers', {}, 'admin_teachers', 300, function(r) {
-    hideLoading();
-    if (r.success) {
-      window._allTeachers = r.teachers || [];
-      filterTeachersTable('');
-    } else showError(r.error);
-  });
-}
-// 🆕 فرز تفاعلي بالنقر على رأس عمودي "عداد الدخول"/"مدة الاستخدام" — JS بحت على
-// المصفوفة المحمَّلة أصلاً بالذاكرة، بلا أي نداء خادم إضافي.
-var _teachersSortField = null, _teachersSortDir = 1;
-function _sortTeachersTable(field) {
-  var all = window._allTeachers || [];
-  if (_teachersSortField === field) _teachersSortDir = -_teachersSortDir;
-  else { _teachersSortField = field; _teachersSortDir = -1; }
-  all.sort(function(a, b) { return ((a[field] || 0) - (b[field] || 0)) * _teachersSortDir; });
-  filterTeachersTable(document.getElementById('teacherSearch') ? document.getElementById('teacherSearch').value : '');
-}
-function filterTeachersTable(q) {
-  var list = [];
-  var all = window._allTeachers || [];
-  for (var i = 0; i < all.length; i++) {
-    var t = all[i];
-    if (!q || (t.name || '').indexOf(q) !== -1 || (t.subject || '').indexOf(q) !== -1) list.push(t);
-  }
-  var area = document.getElementById('teachersListArea');
-  if (!list.length) {
-    area.innerHTML = '<div class="empty-state"><div class="es-icon">👥</div><div class="es-title">لا يوجد معلمون</div></div>';
-    return;
-  }
-  var html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>اسم المعلم</th><th>المادة</th><th>الفصل</th><th>الشعبة</th><th>كلمة المرور</th>' +
-    '<th style="cursor:pointer" onclick="_sortTeachersTable(\'loginCount\')" title="فرز حسب عدد مرات الدخول">🔑 دخول ⇅</th>' +
-    '<th style="cursor:pointer" onclick="_sortTeachersTable(\'usageMinutes\')" title="فرز حسب مدة الاستخدام">⏱️ الاستخدام (د) ⇅</th>' +
-    '<th>إجراءات</th></tr></thead><tbody>';
-  for (var i = 0; i < list.length; i++) {
-    var t = list[i];
-    html += '<tr><td>' + (i+1) + '</td><td><div class="d-flex align-center gap-2"><div class="tc-avatar" style="width:32px;height:32px;font-size:.8rem">' + ((t.name||'م')[0]) + '</div><strong>' + (t.name || '') + '</strong></div></td><td><span class="badge badge-primary">' + (t.subject || '') + '</span></td><td><span class="badge badge-info">' + (t.grade || '') + '</span></td><td><span class="badge badge-purple">' + (t.section || '') + '</span></td><td><code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:.8rem">' + (t.password || '') + '</code></td><td>' + (t.loginCount || 0) + '</td><td>' + (t.usageMinutes || 0) + '</td><td><div class="btn-group"><button class="btn btn-sm btn-warning" onclick="editTeacherAdmin(' + t.rowIndex + ')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteTeacherAdmin(' + t.rowIndex + ')">🗑️</button>' + (hasCap('rolePerms.manage') ? '<button class="btn btn-sm btn-secondary" title="الدور والصلاحيات" data-n="' + escapeHtml(t.name || '') + '" onclick="_tcOpenRolePerms(this)">🛡️</button>' : '') + '</div></td></tr>';
-  }
-  html += '</tbody></table></div>';
-  area.innerHTML = html;
-}
-function openTeacherModal(rowIndex, prefill) {
-  document.getElementById('teacherRowIndex').value = rowIndex || '';
-  document.getElementById('teacherModalTitle').textContent = rowIndex ? '✏️ تعديل معلم' : '👤 إضافة معلم جديد';
-  document.getElementById('teacherNameInput').value = (prefill && prefill.name) || '';
-  document.getElementById('teacherPasswordInput').value = (prefill && prefill.password) || '';
-  fillSelect('teacherSubjectInput', App.lists.subjects, 'اختر المادة', (prefill && prefill.subject) || '');
-  fillSelect('teacherGradeInput', App.lists.grades, 'اختر الفصل', (prefill && prefill.grade) || '');
-  fillSelect('teacherSectionInput', App.lists.sections, 'اختر الشعبة', (prefill && prefill.section) || '');
-  openModal('teacherModal');
-}
-function saveTeacher() {
-  var data = {
-    rowIndex: document.getElementById('teacherRowIndex').value || null,
-    name: document.getElementById('teacherNameInput').value.trim(),
-    subject: document.getElementById('teacherSubjectInput').value,
-    grade: document.getElementById('teacherGradeInput').value,
-    section: document.getElementById('teacherSectionInput').value,
-    password: document.getElementById('teacherPasswordInput').value.trim()
-  };
-  if (!data.name || !data.password || !data.subject || !data.grade || !data.section) {
-    toast('أكمل جميع الحقول', 'warning');
-    return;
-  }
-  showLoading('جاري الحفظ...');
-  callServer('adminSaveTeacher', { data: data }, function(r) {
-    hideLoading();
-    if (r.success) {
-      toast(r.message, 'success');
-      closeModal('teacherModal');
-      loadTeachersList();
-    } else showError(r.error);
-  });
-}
-function editTeacherAdmin(rowIndex) {
-  showLoading();
-  /* 🔴 أخطرُ الثلاثة: بلا هذا الفحص يُفتَح مودال التعديل على كائن الفشل المُصطنَع
-     (`{success:false,error}`) فتظهر حقولُ معلّمٍ حقيقيٍّ **فارغة**، وأوّلُ حفظٍ يكتب الفراغَ
-     فوق بياناته. ⇒ التوقّفُ هنا ليس تحسينَ رسالة بل منعُ كتابةٍ خاطئة. */
-  callServer('adminGetTeacher', { rowIndex: rowIndex }, function(t) {
-    hideLoading();
-    if (t && t.success === false) {
-      showError((t && t.error) || 'تعذّر جلب بيانات المعلم — أعد المحاولة');
-      return;
-    }
-    openTeacherModal(rowIndex, t);
-  });
-}
-function deleteTeacherAdmin(rowIndex) {
-  confirmAction('حذف المعلم', 'هل تريد حذف هذا المعلم نهائياً؟', '⚠️', function() {
-    showLoading();
-    callServer('adminDeleteTeacher', { rowIndex: rowIndex }, function(r) {
-      hideLoading();
-      if (r.success) {
-        toast(r.message, 'success');
-        loadTeachersList();
-      } else showError(r.error);
-    });
-  });
-}
-function importTeachersPrompt() { document.getElementById('teachersImportFile').click(); }
-function doImportTeachers(inp) {
-  var file = inp.files[0];
-  if (!file) return;
-  showLoading('جاري الاستيراد...');
-  _tcReadImportFile(file, function(data) {
-    callServer('adminImportTeachers', { excelData: data }, function(r) {
-      hideLoading();
-      inp.value = '';
-      if (r.success) {
-        toast(r.message, 'success');
-        loadTeachersList();
-      } else showError(r.error);
-    });
-  });
 }
 
 // ==================== ADMIN ACTIVITIES ====================
@@ -26900,7 +26835,7 @@ function sendStudentPaymentNotice(code) {
     '📨',
     function() {
       showLoading('جاري إرسال الإشعار...');
-      callServer('sendPaymentNoticeProtected', { studentName: st.name || '', grade: st.grade || '', section: st.section || '' }, function(r) {
+      callServer('sendPaymentNoticeProtected', { studentName: st.name || '', studentCode: code, grade: st.grade || '', section: st.section || '' }, function(r) {
         hideLoading();
         if (r && r.success) toast(r.message || 'تم إرسال الإشعار', 'success');
         else showError(r && r.error ? r.error : 'فشل إرسال الإشعار');
@@ -28305,7 +28240,7 @@ function lm_splitBehaviors(data){
 function lm_render(data){ var grid=document.getElementById('lm-grid'); if(!grid) return; var _b=lm_splitBehaviors(data); var panels=[{type:'grade',title:'🏫 الفصول الدراسية',items:data.grades||[],color:'#e3f2fd'},{type:'subject',title:'📚 المواد',items:data.subjects||[],color:'#e8f5e9'},{type:'section',title:'🔡 الشعب',items:data.sections||[],color:'#fff3e0'},{type:'violation',addPolarity:'merit',title:'🟢 تعزيز إيجابي',items:_b.merit,color:'#e8f5e9'},{type:'violation',addPolarity:'violation',title:'🟠 ملاحظات تحتاج إلى متابعة',items:_b.violation,color:'#fce4ec'}]; var html=''; for(var pi=0;pi<panels.length;pi++){ var p=panels[pi]; html+='<div class="list-panel" style="border-top:3px solid '+p.color.replace('e3','90')+';"><h4>'+p.title+'</h4><div style="margin-bottom:8px;">'; if(p.items.length===0) html+='<p style="color:#bbb;font-size:13px;text-align:center;padding:10px;">لا يوجد عناصر</p>'; else{ for(var ii=0;ii<p.items.length;ii++){ var rowIdx=lm_findRowIndex(data.rawRows,p.type,p.items[ii]); var pol=(p.type==='violation'&&data.violationPolarity)?(data.violationPolarity[p.items[ii]]||''):''; /* الوسمُ صار يقول **مصدرَ التصنيف** لا التصنيفَ نفسَه — فالقائمةُ تقوله أصلاً.
    🔴 والتمييزُ مهمّ: المُستنتَجُ من النصّ **قد ينتقل بين القائمتين** لو غُيّرت
    الكلمات، والمثبَّتُ لا ينتقل. فالمديرُ يرى أيَّها يحتاج تثبيتاً. */
-var polTag=(p.type!=='violation')?'':(pol?'<span title="تصنيفٌ مثبَّتٌ بيدك" style="font-size:11px;margin-left:6px;">📌</span>':'<span title="مُستنتَجٌ من نصّ الاسم — اضغط ✏️ لتثبيته" style="font-size:11px;margin-left:6px;opacity:.55;">◌</span>'); html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+polTag+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\',\''+pol+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\',\''+(p.addPolarity||'')+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
+var polTag=(p.type!=='violation')?'':(pol?'<span title="تصنيفٌ مثبَّتٌ بيدك" style="font-size:11px;margin-left:6px;">📌</span>':'<span title="مُستنتَجٌ من نصّ الاسم — اضغط ✏️ لتثبيته" style="font-size:11px;margin-left:6px;opacity:.55;">◌</span>'); html+='<div class="list-item"><span class="list-item-val">'+p.items[ii]+polTag+'</span><div class="list-item-actions"><button class="li-btn li-edit" onclick="lm_editItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\',\''+pol+'\')">✏️</button><button class="li-btn li-del" onclick="lm_deleteItem(\''+p.type+'\','+rowIdx+',\''+p.items[ii].replace(/'/g,"\\'")+'\')">🗑️</button></div></div>'; } } html+='</div><button onclick="lm_showAddModal(\''+p.type+'\',\''+p.title.replace(/'/g,"\\'")+'\',\''+(p.addPolarity||'')+'\')" style="width:100%;padding:7px;background:'+p.color+';border:none;border-radius:6px;cursor:pointer;font-size:12px;color:#333;">➕ إضافة للقائمة</button></div>'; } grid.innerHTML=html; }
 function lm_findRowIndex(rawRows,type,value){ if(!rawRows) return -1; var colMap={grade:'grade',subject:'subject',section:'section',violation:'violation'}; var col=colMap[type]; for(var i=0;i<rawRows.length;i++) if(rawRows[i][col]===value) return rawRows[i].rowIndex; return -1; }
 // يُظهر/يُخفي منتقيَ التصنيف ويضبط قيمتَه — لقائمة «أنواع السلوكيات» وحدَها.
 function lm_setPolarityUI(type,value){ var w=document.getElementById('lm-polarity-wrap'), s=document.getElementById('lm-polarity'); if(!w||!s) return; var on=(type==='violation'); w.style.display=on?'block':'none'; s.value=on?(value||''):''; }
@@ -28314,12 +28249,12 @@ function lm_setPolarityUI(type,value){ var w=document.getElementById('lm-polarit
    كلماتِه، **والافتراضيُّ سلبيٌّ بنيويّاً**. */
 function lm_showAddModal(type,title,preset){ _lmCurrentType=type; _lmIsEditMode=false; _lmCurrentRow=-1; document.getElementById('lm-modal-title').textContent='إضافة إلى: '+title; document.getElementById('lm-new-value').value=''; lm_setPolarityUI(type,preset||'');document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; document.getElementById('lm-new-value').focus(); }
 function lm_editItem(type,rowIdx,currentVal,polarity){ _lmCurrentType=type; _lmCurrentRow=rowIdx; _lmIsEditMode=true; document.getElementById('lm-modal-title').textContent='تعديل: '+currentVal; document.getElementById('lm-new-value').value=currentVal; lm_setPolarityUI(type,polarity||''); document.getElementById('lm-modal-status').innerHTML=''; document.getElementById('lm-modal').style.display='flex'; }
-function lm_deleteItem(type,rowIdx){
+function lm_deleteItem(type,rowIdx,val){   // val: القيمة المعروضة — يرفض الخادم الحذف إن تزحزحت الصفوف
   if(rowIdx<0){ toast('تعذر تحديد الصف', 'error'); return; }
   confirmAction('حذف عنصر من القوائم',
     'القائمة: ' + type + '\n\nسيُحذف هذا العنصر من ورقة «القوائم».\n⚠️ لن تتأثّر البيانات المرتبطة به سابقاً.',
     '🗑️', function () {
-    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx});
+    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx, value:val});
   }, { okText: '🗑️ حذف العنصر' });
 }
 function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val})); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, value:val})); } }
@@ -29261,6 +29196,7 @@ function renderLetterheads() {
   var cards = '';
   for (var i = 0; i < LH_TEMPLATES.length; i++) {
     var t = LH_TEMPLATES[i];
+    if (t.key === 'weeklySupPrint' && App.user && App.user.can && !hasCap('tasks.manage')) continue;   // الخادم يرفضه بدون tasks.manage
     if (!isAdminLike && t.roles.indexOf(role) === -1) continue;
     cards += '<div class="card" style="cursor:pointer;padding:16px;text-align:center;min-width:160px;" onclick="lhOpen(\'' + t.key + '\')">' +
       '<div style="font-size:28px;margin-bottom:8px;">' + t.icon + '</div>' +
@@ -30840,6 +30776,22 @@ function _setupPullToRefreshGuard() {
 }
 
 // ==================== STARTUP ====================
+/* فشلُ استعادة الجلسة بلا رفضٍ صريح من الخادم: لا نمسح الجلسة المحفوظة.
+   العابرُ (شبكة/ازدحام) ⇒ رسالةُ «غير متصل»؛ وخطأُ خادمٍ منطقيّ (مثل «المدرسة غير مفعّلة»)
+   ⇒ نعرض نصّه كما هو. */
+function _restoreKeepSessionOffline(err) {
+  hideLoading();
+  showLoginScreen();
+  var transient = !err || (typeof _csIsTransientErr === 'function' ? _csIsTransientErr(err) : true) ||
+                  (typeof navigator !== 'undefined' && navigator.onLine === false);
+  var m = '';
+  try { m = String((err && err.message) || err || ''); } catch (eM) { m = ''; }
+  var msg = (transient || !m)
+    ? 'تعذّر الاتصال بالخادم — جلستك محفوظة، أعد تحميل الصفحة عند عودة الاتصال.'
+    : m;
+  try { toast(msg, 'warning', 8000); } catch (eT) {}
+}
+
 window.onload = function() {
   _setupPullToRefreshGuard();
   showLoading('جاري التحقق من الجلسة...');
@@ -30907,18 +30859,22 @@ window.onload = function() {
           _startHeartbeat();
           hideLoading();
           bootApp();
-        } else {
+        } else if (r && r.valid === false) {
+          // الخادم صرّح بأن الجلسة منتهية/غير صالحة ⇒ هنا وحده نمسحها
           clearSession();
           hideLoading();
           showLoginScreen();
+        } else {
+          // ردٌّ فارغ/غير مفهوم ليس رفضاً صريحاً ⇒ نُبقي الجلسة (عطلٌ عابر)
+          _restoreKeepSessionOffline(null);
         }
       })
       .withFailureHandler(function(err) {
         clearTimeout(window._loginTimeout); clearTimeout(window._loginSlowTimer);
         console.error(err);
-        clearSession();
-        hideLoading();
-        showLoginScreen();
+        /* 🔴 فشلُ النقل/الشبكة ليس حكماً على الجلسة — كان يمسحها فيُطرد المعلم عند أي
+           انقطاعٍ عابر. نُبقيها في التخزين ونُظهر رسالةً؛ إعادةُ التحميل تستعيدها. */
+        _restoreKeepSessionOffline(err);
       })
       .checkSession(saved.token);
   } else {
@@ -32739,7 +32695,8 @@ function smm_schedulePost() {
     platforms, (document.getElementById('smm-c-type') || {}).value || 'بوست',
     content, (document.getElementById('smm-c-media') || {}).value || '',
     date, 'مجدول',
-    (App.user && App.user.teacherName) || '', '', window.SCHOOL_ID || ''
+    (App.user && App.user.teacherName) || '', '', window.SCHOOL_ID || '',
+    { teacherToken: (App.user && App.user.token) || '', schoolId: (App.user && App.user.schoolId) || window.SCHOOL_ID || '' }   // CMS يشترط الدخول (2026-09-27)
   ], function(res, err) {
     if (res) { smm_statusMsg('smm-compose-status', '✅ ' + (typeof res === 'string' ? res : 'تمت الجدولة'), 'success'); smm_loadPlan(); }
     else smm_statusMsg('smm-compose-status', '❌ ' + (err || 'خطأ'), 'error');
@@ -33005,23 +32962,24 @@ function sdir_addBehavior(i) {
 // تسجيل سلوك جماعي للطلاب المحددين (وضع المدير) — يفتح مودالاً لاختيار نوع السلوك مرّةً
 // ويسجّله لكل المحددين في طلب واحد (addViolationsBulkProtected). مثال: «متأخر عن الطابور».
 function sdir_bulkBehavior() {
-  var rows = [];
+  var rows = [], codes = [];
   for (var k in SDIR.selected) {
     if (SDIR.selected.hasOwnProperty(k)) {
       var st = SDIR.students[k];
-      if (st && st.rowIndex) rows.push(st.rowIndex);
+      if (st && st.rowIndex) { rows.push(st.rowIndex); codes.push(st.code || ''); }
     }
   }
   if (!rows.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
   _bulkVioOnSaved = null;   // مصدر الفتح = صفحة الأسماء (لا هوك تحديث إضافي)
-  _bulkVioPrepModal(rows);
+  _bulkVioPrepModal(rows, codes);
 }
 
 // تجهيز مودال السلوك الجماعي (العدّاد + قائمة الأنواع + تصفير الحقول) وفتحه —
 // مشترك بين مصدرَي الفتح: صفحة «أسماء الطلاب» وتبويب «تسجيل سلوك». يضع الأسطر في
 // SDIR._bulkRows الذي تقرؤه دالة الحفظ الموحّدة sdir_bulkBehaviorSave (لا تكرار للنداء الخادمي).
-function _bulkVioPrepModal(rows) {
+function _bulkVioPrepModal(rows, codes) {
   SDIR._bulkRows = rows;
+  SDIR._bulkCodes = codes || [];
   var cnt = document.getElementById('bulkVioCount');
   if (cnt) cnt.innerHTML = '📋 سيُسجَّل السلوك لـ <strong>' + rows.length + '</strong> طالب محدّد.';
   var list = (App.lists && App.lists.violations) ? App.lists.violations : [];
@@ -33071,7 +33029,7 @@ function sdir_bulkBehaviorSave() {
   var reply = (document.getElementById('bulkVioReply') || {}).value || '';
   showLoading('جاري تسجيل السلوك لـ ' + rows.length + ' طالب…');
   callServer('addViolationsBulkProtected',
-    { rows: rows, violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: _bulkVioPolarity },
+    { rows: rows, codes: SDIR._bulkCodes || [], violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: _bulkVioPolarity },
     function (r) {
       hideLoading();
       if (r && r.success) {
@@ -33254,11 +33212,11 @@ function vio_bulkUpdateCount() { var n = 0; for (var k in VIO.selected) { if (VI
 // _bulkVioPrepModal (المودال) و sdir_bulkBehaviorSave (الحفظ)، ويسجّل هوكاً لتحديث
 // القائمة بعد النجاح (مسح التحديد + إعادة الرسم).
 function vio_bulkBehavior() {
-  var rows = [];
+  var rows = [], codes = [];
   for (var k in VIO.selected) {
     if (VIO.selected.hasOwnProperty(k)) {
       var st = VIO.students[k];
-      if (st && st.rowIndex) rows.push(st.rowIndex);
+      if (st && st.rowIndex) { rows.push(st.rowIndex); codes.push(st.code || ''); }
     }
   }
   if (!rows.length) { toast('حدد طالباً واحداً على الأقل', 'warning'); return; }
@@ -33267,7 +33225,7 @@ function vio_bulkBehavior() {
     var a = document.getElementById('vioBulkAll'); if (a) a.checked = false;
     vio_bulkRenderRows();
   };
-  _bulkVioPrepModal(rows);
+  _bulkVioPrepModal(rows, codes);
 }
 
 // ═══ تسجيل الغياب من صفحة «أسماء الطلاب» (يعيد استخدام saveAttendanceProtected) ═══
@@ -33688,21 +33646,38 @@ function renderStudentStatus() {
     '</div></div>' +
     '<button class="btn btn-primary" onclick="sstat_generate()">🔍 إنشاء التقرير</button>' +
     '<div id="sstat-report" class="mt-3"></div></div></div>';
-  callServer('getStudentNamesProtected', {}, 'student_names_' + ((App.user && App.user.schoolId) || ''), 600, function (r) { if (r && r.success) SSTAT.names = r.students || []; });
+  callServer('getStudentNamesProtected', {}, 'student_names_' + ((App.user && App.user.schoolId) || ''), 600, function (r) { if (r && r.success) sstat_setNames(r.students || [], r.dups || {}); });
 }
 function sstat_flag(key, label) { return '<label style="font-size:13px"><input type="checkbox" class="sstat-cb" value="' + key + '" checked> ' + label + '</label>'; }
 function sstat_ac(q) { _acRender('sstat-ac', SSTAT.names, q, 'sstat_pick'); }
 function sstat_pick(v) { document.getElementById('sstat-name').value = v; _acHideNow('sstat-ac'); }
 
+// A name shared by several students is listed once per student as «الاسم · الفصل الشعبة · كود»,
+// and the report is requested by that code.
+function sstat_setNames(names, dups) {
+  var list = [], codeByLabel = {};
+  for (var i = 0; i < names.length; i++) {
+    var d = dups[names[i]];
+    if (!d || !d.length) { list.push(names[i]); continue; }
+    for (var j = 0; j < d.length; j++) {
+      var label = names[i] + ' · ' + d[j].grade + ' ' + d[j].section + ' · ' + d[j].code;
+      list.push(label); codeByLabel[label] = { code: d[j].code, name: names[i] };
+    }
+  }
+  SSTAT.names = list; SSTAT.codeByLabel = codeByLabel;
+}
 function sstat_generate() {
   var name = (document.getElementById('sstat-name').value || '').trim();
   if (!name) { toast('اكتب اسم الطالب', 'warning'); return; }
+  var picked = (SSTAT.codeByLabel || {})[name];
+  var code = picked ? picked.code : '';
+  if (picked) name = picked.name;
   var cbs = document.querySelectorAll('.sstat-cb');
   var sections = {};
   for (var i = 0; i < cbs.length; i++) sections[cbs[i].value] = cbs[i].checked;
   var rep = document.getElementById('sstat-report');
   rep.innerHTML = '<div class="empty-state"><div class="spinner"></div><div style="margin-top:10px">جاري إنشاء التقرير…</div></div>';
-  callServer('getStudentStatusReportProtected', { name: name, sections: sections }, function (r) {
+  callServer('getStudentStatusReportProtected', { name: name, code: code, sections: sections }, function (r) {
     if (!r || !r.success) { rep.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر إنشاء التقرير') + '</div>'; return; }
     rep.innerHTML = sstat_renderReport(r);
   }, function (e) { rep.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });

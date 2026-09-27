@@ -2854,6 +2854,8 @@ a { color: var(--pr); text-decoration: none; }
      (متغيّرٌ ميّت) ⇒ `<title>` يحترم المعامل والرأسُ لا. على السطح الثابت يستبدله
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
+  // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
+  var STU_BUILD = '12eb860';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -3065,15 +3067,47 @@ function _stuForceRelogin() {
   setTimeout(function () { _stuAuthKicked = false; }, 3000);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   رقمُ الجلسة (2026-09-27) — يُسقط ردوداً تصل بعد الخروج أو تبديل الأخ
+   ──────────────────────────────────────────────────────────────────────────────
+   ردٌّ من الخادم قد يصل بعد أن صار `APP.user` فارغاً (خروج / انتهاء جلسة) أو طالباً آخر
+   (تبديل الأخ) ⇒ «reading 'id' of null» أو كتابةُ بيانات طالبٍ في حساب أخيه. كلُّ ردٍّ يُغلَّف
+   بـ`_stuCb` عند الإرسال فيحمل رقم الجلسة وقتها، ويُسقَط إن تغيّر. والاستثناء داخل الردّ
+   لا يُبتلَع صامتاً: يُعاد رميُه بعد لحظة برسالةٍ تحمل اسمَ دالة الخادم وبصمةَ البناء
+   (‏`[fn=… b=…]`) فيظهر في «سجل_الأخطاء» ما يدلّ على الموضع بدل رقم سطرٍ لا يُعرف.
+   ══════════════════════════════════════════════════════════════════════════════ */
+var _STU_EPOCH = 0;
+function _stuEpochBump() { _STU_EPOCH++; }
+function _stuReportCbError(fnName, e) {
+  var build = (typeof STU_BUILD !== 'undefined' && STU_BUILD) ? STU_BUILD : '?';
+  var msg = '[fn=' + fnName + ' b=' + build + '] ' + ((e && e.message) || String(e));
+  try { console.error(msg, e); } catch (eC) {}
+  setTimeout(function () {
+    var er = new Error(msg);
+    try { if (e && e.stack) er.stack = msg + ' | ' + e.stack; } catch (eS) {}
+    throw er;
+  }, 0);
+}
+function _stuCb(fnName, cb) {
+  var ep = _STU_EPOCH;
+  return function () {
+    if (ep !== _STU_EPOCH) return;               // ردٌّ لجلسةٍ سابقة ⇒ يُسقَط
+    try { return cb.apply(this, arguments); }
+    catch (e) { _stuReportCbError(fnName, e); }
+  };
+}
+
 function callServerGated(fnName, args, onOk, onErr, staleKey) {
+  var ep = _STU_EPOCH;
   _stuRunGated(fnName, function (freeSlot) {
     var freed = false;
     function release() { if (freed) return; freed = true; try { freeSlot(); } catch (eF) {} }
     try {
       var runner = google.script.run
-        .withSuccessHandler(function (r) { release(); try { onOk(r); } catch (e) {} })
+        .withSuccessHandler(function (r) { release(); if (ep !== _STU_EPOCH) return; try { onOk(r); } catch (e) { _stuReportCbError(fnName, e); } })
         .withFailureHandler(function (err) {
           release();
+          if (ep !== _STU_EPOCH) return;
           if (_stuIsAuthExpired(err)) { _stuForceRelogin(); return; }
           if (staleKey && _stuIsRead(fnName) && _stuIsTransientErr(err)) {
             var st = (typeof ssGetStale === 'function') ? ssGetStale(staleKey) : null;
@@ -3084,7 +3118,7 @@ function callServerGated(fnName, args, onOk, onErr, staleKey) {
               return;
             }
           }
-          if (onErr) { try { onErr(err); } catch (e) {} }
+          if (onErr) { try { onErr(err); } catch (e) { _stuReportCbError(fnName, e); } }
         });
       runner[fnName].apply(runner, args || []);
     } catch (eDispatch) {
@@ -3097,6 +3131,9 @@ function callServerGated(fnName, args, onOk, onErr, staleKey) {
 var _pendingCalls = {};
 
 function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback) {
+  var ep = _STU_EPOCH;
+  callback = _stuCb(fnName, callback);
+  if (errorCallback) errorCallback = _stuCb(fnName, errorCallback);
   if (cacheKey) {
     var cached = ClientCache.get(cacheKey);
     if (cached) { callback(cached); return; }
@@ -3116,6 +3153,7 @@ function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback)
       google.script.run
         .withSuccessHandler(function(result) {
           release();
+          if (ep !== _STU_EPOCH) { if (cacheKey) delete _pendingCalls[cacheKey]; return; }   // لا كاشَ لردِّ جلسةٍ سابقة
           if (cacheKey && result && result.success !== false) {
             ClientCache.set(cacheKey, result, ttl);
           }
@@ -3131,7 +3169,10 @@ function callServerSmart(fnName, params, cacheKey, ttl, callback, errorCallback)
         })
         .withFailureHandler(function(err) {
           release();
-          if (_stuIsAuthExpired(err)) { _stuForceRelogin(); return; }
+          if (ep !== _STU_EPOCH) { if (cacheKey) delete _pendingCalls[cacheKey]; return; }
+          /* طابورُ الانتظار يُمحى قبل الخروج: وإلّا بقي المفتاحُ «جارياً» للأبد فتعلق الشاشةُ نفسها
+             على «جارٍ التحميل» بعد إعادة الدخول بالحساب نفسه. */
+          if (_stuIsAuthExpired(err)) { if (cacheKey) delete _pendingCalls[cacheKey]; _stuForceRelogin(); return; }
 
           /* ── التراجعُ للبائت عند الإشباع (بند 196) ───────────────────────────────
              🔴 **بثلاثة شروطٍ مجتمعة لا واحد:** قراءةٌ (الكتاباتُ لا تُخدَم من بائتٍ
@@ -3349,7 +3390,7 @@ function _prSubmit() {
   if (msgEl) msgEl.innerHTML = '';
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('submitPlatformReview', function (r) {
       if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
       if (r && r.ok) {
         toast('⭐ ' + (r.message || 'شكراً لتقييمك!'), 's');
@@ -3360,17 +3401,18 @@ function _prSubmit() {
       } else {
         if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">' + esc((r && r.error) || 'تعذّر إرسال التقييم') + '</span>';
       }
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('submitPlatformReview', function (e) {
       if (btn) { btn.disabled = false; btn.textContent = 'إرسال التقييم'; }
       if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">تعذّر الاتصال بالخادم — حاول مرة أخرى</span>';
-    })
+    }))
     .submitPlatformReview({
       schoolId: APP.user.schoolId,
       studentId: APP.user.id,
       studentName: APP.user.name,
       rating: _prRating,
-      comment: ($('prComment') || {}).value || ''
+      comment: ($('prComment') || {}).value || '',
+      switchToken: APP.user.switchToken
     });
 }
 
@@ -3582,9 +3624,15 @@ function _setupPullToRefreshGuardStu() {
 // ═══════════════════════════════════════════════════════════
 // 2. كاش الجلسة (sessionStorage)
 // ═══════════════════════════════════════════════════════════
+/* 🔒 مفتاحُ كاش الجلسة مربوطٌ بكود الطالب (2026-09-27): كان `'grades'` واحداً لكلّ الحسابات،
+   فردٌّ متأخّر بعد تبديل الأخ كان يُخزَّن ويُعرَض للأخ الآخر حتى ١٨٠ ثانية. */
+function _ssKey(key) {
+  var uid = (typeof APP !== 'undefined' && APP && APP.user && APP.user.id) ? APP.user.id : 'anon';
+  return SS_KEY + '_' + uid + '_' + key;
+}
 function ssGet(key) {
   try {
-    var raw = sessionStorage.getItem(SS_KEY + '_' + key);
+    var raw = sessionStorage.getItem(_ssKey(key));
     if (!raw) return null;
     var obj = JSON.parse(raw);
     /* 🔴 **لا `removeItem` عند الانتهاء** (بند 196) — نفسُ علّة `ClientCache.get`: القراءةُ
@@ -3603,7 +3651,7 @@ function ssGet(key) {
  */
 function ssGetStale(key) {
   try {
-    var raw = sessionStorage.getItem(SS_KEY + '_' + key);
+    var raw = sessionStorage.getItem(_ssKey(key));
     if (!raw) return null;
     var obj = JSON.parse(raw);
     if (!obj || !obj.exp) return null;
@@ -3620,12 +3668,12 @@ function ssSet(key, data, ttlSec) {
       data: data,
       exp: ttlSec ? Date.now() + ttlSec * 1000 : 0
     };
-    sessionStorage.setItem(SS_KEY + '_' + key, JSON.stringify(obj));
+    sessionStorage.setItem(_ssKey(key), JSON.stringify(obj));
   } catch (e) { /* تجاهل امتلاء التخزين */ }
 }
 
 function ssDel(key) {
-  try { sessionStorage.removeItem(SS_KEY + '_' + key); } catch (e) {}
+  try { sessionStorage.removeItem(_ssKey(key)); } catch (e) {}
 }
 
 /**
@@ -3837,10 +3885,11 @@ function doLogin() {
   btn.textContent = 'جارٍ التحقق...';
 
   // ✅ استخراج schoolId من المتغير العام (تم تعريفه في <head>) أو من الرابط
-  var schoolId = window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '';
+  var _stuQs = new URLSearchParams(window.location.search);
+  var schoolId = window.SCHOOL_ID || _stuQs.get('school') || _stuQs.get('schoolId') || ''; // `schoolId=` بديلٌ عند غياب `school=`
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('loginStudent', function (r) {
       btn.disabled = false;
       btn.textContent = 'تسجيل الدخول 🚪';
 
@@ -3874,19 +3923,20 @@ function doLogin() {
 
       // نجح الدخول
       _finishStudentLoginSuccess(r, schoolId);
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('loginStudent', function (e) {
       btn.disabled = false;
       btn.textContent = 'تسجيل الدخول 🚪';
       errEl.textContent = 'تعذّر الاتصال بالخادم: ' + (e.message || e);
       errEl.style.display = 'block';
-    })
+    }))
     .loginStudent(u, p, getClientId(), schoolId); // ✅ تمرير schoolId للخادم
 }
 
 // بناء APP.user وحفظ الجلسة وإقلاع التطبيق — مُستخرَجة من doLogin (بلا تغيير سلوكي) كي يُعاد
 // استخدامها من مسار الدخول بالبصمة (_biomLoginWithDevice أدناه).
 function _finishStudentLoginSuccess(r, schoolId) {
+  _stuEpochBump();   // جلسةٌ جديدة
   APP.user = {
     id: r.studentId,
     name: r.name,
@@ -4031,7 +4081,7 @@ function biomActivateOnThisDevice() {
 
       function saveLocalAndRegister(encrypted, storedSecretValue) {
         google.script.run
-          .withSuccessHandler(function (r) {
+          .withSuccessHandler(_stuCb('registerBiometricDeviceStudent', function (r) {
             if (r && r.ok) {
               _biomSaveDevice(APP.user.schoolId, {
                 deviceId: deviceId, credentialId: credentialIdB64, label: label,
@@ -4042,8 +4092,8 @@ function biomActivateOnThisDevice() {
             } else {
               _biomToast((r && r.error) || 'تعذّر تفعيل البصمة الآن');
             }
-          })
-          .withFailureHandler(function () { _biomToast('تعذّر الاتصال بالخادم لتفعيل البصمة'); })
+          }))
+          .withFailureHandler(_stuCb('registerBiometricDeviceStudent', function () { _biomToast('تعذّر الاتصال بالخادم لتفعيل البصمة'); }))
           .registerBiometricDeviceStudent({
             username: APP.user.id, password: pwd, clientId: getClientId(), schoolId: APP.user.schoolId,
             deviceId: deviceId, deviceLabel: label, deviceSecret: deviceSecretHex
@@ -4085,7 +4135,7 @@ function biomLoginWithDevice(schoolId) {
       var errEl = $('loginErr');
       if (btn) btn.disabled = true;
       google.script.run
-        .withSuccessHandler(function (r) {
+        .withSuccessHandler(_stuCb('loginStudentByDeviceProtected', function (r) {
           if (btn) btn.disabled = false;
           if (r && r.ok) {
             errEl.style.display = 'none';
@@ -4094,12 +4144,12 @@ function biomLoginWithDevice(schoolId) {
             errEl.textContent = (r && r.error) || 'تعذّر الدخول بالبصمة — استخدم كلمة المرور';
             errEl.style.display = 'block';
           }
-        })
-        .withFailureHandler(function () {
+        }))
+        .withFailureHandler(_stuCb('loginStudentByDeviceProtected', function () {
           if (btn) btn.disabled = false;
           errEl.textContent = 'تعذّر الاتصال بالخادم — استخدم كلمة المرور';
           errEl.style.display = 'block';
-        })
+        }))
         .loginStudentByDeviceProtected({ deviceId: dev.deviceId, deviceSecret: secretHex, schoolId: schoolId, clientId: getClientId() });
     }
     if (dev.encrypted) {
@@ -4188,7 +4238,7 @@ function biomLoadDevicesList() {
   var box = $('biomDevicesList');
   if (!box || !APP.user) return;
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('listMyBiometricDevicesStudent', function (r) {
       if (!r || !r.ok) { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">تعذّر تحميل الأجهزة</div>'; return; }
       if (!r.devices.length) { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">لا أجهزة بصمة مفعَّلة بعد</div>'; return; }
       var html = '';
@@ -4200,13 +4250,13 @@ function biomLoadDevicesList() {
           '<button class="btn-cancel" onclick="biomRevokeDevice(\'' + esc(d.deviceId.replace(/'/g, "\\'")) + '\')">🗑️ إزالة</button></div>';
       }
       box.innerHTML = html;
-    })
-    .withFailureHandler(function () { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">تعذّر الاتصال بالخادم</div>'; })
+    }))
+    .withFailureHandler(_stuCb('listMyBiometricDevicesStudent', function () { box.innerHTML = '<div style="font-size:13px;color:var(--muted)">تعذّر الاتصال بالخادم</div>'; }))
     .listMyBiometricDevicesStudent({ studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken });
 }
 function biomRevokeDevice(deviceId) {
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('revokeBiometricDeviceStudent', function (r) {
       if (r && r.ok) {
         _biomToast('تم إلغاء الجهاز');
         var dev = _biomLoadDevice(APP.user.schoolId);
@@ -4215,8 +4265,8 @@ function biomRevokeDevice(deviceId) {
       } else {
         _biomToast((r && r.error) || 'تعذّر إلغاء الجهاز');
       }
-    })
-    .withFailureHandler(function () { _biomToast('تعذّر الاتصال بالخادم'); })
+    }))
+    .withFailureHandler(_stuCb('revokeBiometricDeviceStudent', function () { _biomToast('تعذّر الاتصال بالخادم'); }))
     .revokeBiometricDeviceStudent({ studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken, deviceId: deviceId });
 }
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -4324,6 +4374,7 @@ function confirmLogout() {
     clearInterval(APP.badgeInterval);
     APP.badgeInterval = null;
   }
+  _stuEpochBump();   // ردودُ الجلسة المنتهية تُسقَط (_stuCb)
   APP = {
     user: null, currentTab: 'home', loaded: {}, cache: {},
     newsState: { items: [], page: 1, pageSize: 8, hasMore: false, loading: false },
@@ -4412,8 +4463,8 @@ window.registerFcmToken = function (deviceToken) {
     if (!_stuFcmShouldSend(deviceToken, sid)) return;
     _stuFcmMark(deviceToken, sid, false);           // وسمُ المحاولة **قبل** الإطلاق
     google.script.run
-      .withSuccessHandler(function () { _stuFcmMark(deviceToken, sid, true); })
-      .withFailureHandler(function () {})
+      .withSuccessHandler(_stuCb('registerDeviceToken', function () { _stuFcmMark(deviceToken, sid, true); }))
+      .withFailureHandler(_stuCb('registerDeviceToken', function () {}))
       .registerDeviceToken({ deviceToken: deviceToken, schoolId: sid, platform: 'android' });
   } catch (e) {}
 };
@@ -4581,6 +4632,7 @@ function _stuApplySwitch(r) {
   try { ssClearAll(); } catch (eSS2) {}
   // حالة «عرض المزيد» خارج APP — تُفرَّغ هنا صراحةً وإلا ورث الأخ الجديد عدّ الكشف السابق
   _lmShown = {}; _lmData = {};
+  _stuEpochBump();   // ردودُ حساب الأخ السابق تُسقَط (_stuCb)
   APP = {
     user: {
       id: r.studentId,
@@ -4627,7 +4679,7 @@ function switchSibling(targetCode, chip) {
   if (chip) chip.classList.add('loading');
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('switchStudentAccount', function (r) {
       if (chip) chip.classList.remove('loading');
 
       if (!r) { toast('لم يتم استلام رد من الخادم. حاول مرة أخرى.', 'e'); return; }
@@ -4648,11 +4700,11 @@ function switchSibling(targetCode, chip) {
       }
 
       _stuApplySwitch(r);
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('switchStudentAccount', function (e) {
       if (chip) chip.classList.remove('loading');
       toast('تعذّر الاتصال بالخادم: ' + (e.message || e), 'e');
-    })
+    }))
     .switchStudentAccount(targetCode, APP.user.schoolId, APP.user.id, APP.user.switchToken, getClientId());
 }
 
@@ -5054,7 +5106,8 @@ function loadHomeCirculars(force) {
   callServerSmart(
     'getStudentCircularsFiltered',
     { klass: APP.user.class, section: APP.user.section,
-      studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId },
+      studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId,
+      switchToken: APP.user.switchToken },   // 🔒 بدونه لا تُعاد التعاميم الموجَّهة للطالب بعينه
     cKey,
     120,
     function (r) { renderHomeCirculars((r && r.success) ? (r.circulars || []) : []); },
@@ -5606,13 +5659,16 @@ function loadFinance(force) {
  callServerSmart(
   'getStudentFinancialData',
   { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
-  'finance_' + APP.user.id,
+  /* مبصومٌ بالمدرسة (نفسُ نمط `_stuHomeNewsKey`): كودُ الطالب قد يتكرّر عبر المدارس.
+     المفتاحُ القديم `finance_<الكود>` يبقى مهمَلاً حتى ينتهي عمرُه. */
+  'finance_' + (APP.user.schoolId || '') + '_' + APP.user.id,
   120,
   function (r) {
     APP.loaded.finance = true;
     renderFinance(r);
   },
   function (e) {
+    if (typeof _stuIsAuthExpired === 'function' && _stuIsAuthExpired(e)) { _stuForceRelogin(); return; }
     w.innerHTML = errHTML('فشل تحميل البيانات المالية: ' + (e.message || e));
   }
 );
@@ -5674,7 +5730,7 @@ function loadHomework(force) {
 callServerSmart(
   'getAssignmentsForStudent',
   { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-  'homework_' + APP.user.class + '_' + APP.user.section,
+  'homework_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section,   // مبصومٌ بالمدرسة؛ القديمُ يبقى مهمَلاً
   180,
   function (data) {
     APP.loaded.homework = true;
@@ -5802,7 +5858,8 @@ function loadCirculars() {
     section    : APP.user.section,
     studentId  : APP.user.id,
     studentName: APP.user.name,
-    schoolId   : APP.user.schoolId
+    schoolId   : APP.user.schoolId,
+    switchToken: APP.user.switchToken   // 🔒 بدونه لا تُعاد التعاميم الموجَّهة للطالب بعينه
   };
   callServerSmart(
     'getStudentCircularsFiltered',
@@ -6075,11 +6132,11 @@ function _stuEnsureLogo(cb) {
   }
   try {
     google.script.run
-      .withSuccessHandler(function (b) {
+      .withSuccessHandler(_stuCb('getStudentSchoolBrand', function (b) {
         if (b && b.ok && b.logo) window._stuLogo = _stuToLh3(b.logo);
         flush(window._stuLogo || '');
-      })
-      .withFailureHandler(function () { flush(''); })
+      }))
+      .withFailureHandler(_stuCb('getStudentSchoolBrand', function () { flush(''); }))
       .getStudentSchoolBrand(sid);
   } catch (e) { flush(''); }
 }
@@ -7043,7 +7100,7 @@ function nsShareNews(newsId) {
     var title = 'خبر من ' + (owner || 'المدرسة');
 
     function _after() {
-      try { google.script.run.recordStudentNewsShare({ newsId: newsId, studentId: (APP.user && APP.user.id) || '', userName: (APP.user && APP.user.name) || '', schoolId: schoolId }); } catch (e) {}
+      try { google.script.run.recordStudentNewsShare({ newsId: newsId, studentId: (APP.user && APP.user.id) || '', userName: (APP.user && APP.user.name) || '', schoolId: schoolId, switchToken: (APP.user && APP.user.switchToken) || '' }); } catch (e) {}
     }
 
     // مشاركة الوسائط نفسها كملفات (صور/فيديو/PDF) — لا الرابط. النصّي يُحوَّل لصورة غلاف مولّدة.
@@ -7075,8 +7132,8 @@ function nsShareNews(newsId) {
 
   try {
     google.script.run
-      .withSuccessHandler(function (r) { _buildUrlAndContinue((r && r.ok && r.shareToken) ? r.shareToken : ''); })
-      .withFailureHandler(function () { _buildUrlAndContinue(''); })
+      .withSuccessHandler(_stuCb('stuGetNewsShareTokenProtected', function (r) { _buildUrlAndContinue((r && r.ok && r.shareToken) ? r.shareToken : ''); }))
+      .withFailureHandler(_stuCb('stuGetNewsShareTokenProtected', function () { _buildUrlAndContinue(''); }))
       .stuGetNewsShareTokenProtected({
         newsId: newsId,
         studentId: (APP.user && APP.user.id) || '',
@@ -7199,7 +7256,7 @@ function nsToggleLike(newsId, btn) {
   btn.disabled = true;
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('toggleStudentNewsLike', function (r) {
       btn.disabled = false;
       if (!r || !r.success) return;
 
@@ -7232,16 +7289,17 @@ function nsToggleLike(newsId, btn) {
           break;
         }
       }
-    })
-    .withFailureHandler(function () {
+    }))
+    .withFailureHandler(_stuCb('toggleStudentNewsLike', function () {
       btn.disabled = false;
       toast('تعذّر تنفيذ العملية', 'e');
-    })
+    }))
     .toggleStudentNewsLike({
     newsId: newsId,
     studentId: APP.user.id,
     userName: APP.user.name,
-    schoolId: APP.user.schoolId
+    schoolId: APP.user.schoolId,
+    switchToken: APP.user.switchToken
 });
 }
 
@@ -7293,13 +7351,14 @@ function markNewsViewed(newsId) {
   if (_stuViewedHas(newsId)) return;
   _stuViewedAdd(newsId);
   google.script.run
-    .withSuccessHandler(function () {})
-    .withFailureHandler(function () {})
+    .withSuccessHandler(_stuCb('recordStudentNewsView', function () {}))
+    .withFailureHandler(_stuCb('recordStudentNewsView', function () {}))
     .recordStudentNewsView({
     newsId: newsId,
     studentId: APP.user.id,
     userName: APP.user.name,
-    schoolId: APP.user.schoolId
+    schoolId: APP.user.schoolId,
+    switchToken: APP.user.switchToken
 });
 }
 
@@ -7331,7 +7390,7 @@ function markNewsViewedBatch(newsIds) {
   try {
     callServerGated('recordStudentNewsViewsBatch',
       [{ newsIds: fresh, studentId: APP.user.id, userName: APP.user.name,
-         schoolId: APP.user.schoolId }],
+         schoolId: APP.user.schoolId, switchToken: APP.user.switchToken }],
       function () {}, function () {});
   } catch (e) {}
 }
@@ -7361,13 +7420,16 @@ function loadViolations(force) {
   }
 
   // (م3) force=true (زر 🔄 أو العودة للتبويب): تجاوز كاش callServerSmart فعلياً
-  if (force) ClientCache.remove('violations_' + APP.user.id);
+  /* مبصومٌ بالمدرسة (نفسُ نمط `_stuHomeNewsKey`): كودُ الطالب قد يتكرّر عبر المدارس.
+     المفتاحُ القديم `violations_<الكود>` يبقى مهمَلاً حتى ينتهي عمرُه. */
+  var vKey = 'violations_' + (APP.user.schoolId || '') + '_' + APP.user.id;
+  if (force) ClientCache.remove(vKey);
 
   callServerSmart(
   'getViolations',
   { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken,
     studentName: APP.user.name, grade: APP.user.class, section: APP.user.section },
-  'violations_' + APP.user.id,
+  vKey,
   60,
   function (data) {
     APP.loaded.violations = true;
@@ -7375,6 +7437,7 @@ function loadViolations(force) {
     renderViolations(data);
   },
   function (e) {
+    if (typeof _stuIsAuthExpired === 'function' && _stuIsAuthExpired(e)) { _stuForceRelogin(); return; }
     w.innerHTML = errHTML('فشل تحميل السلوكيات: ' + (e.message || e));
   }
 );
@@ -7472,14 +7535,25 @@ function _applySchedSettings(cfg) {
     periodMin: (Number(s.periodMinutes) || 45),
     breakMin: (s.breakMinutes != null ? Number(s.breakMinutes) : 25),
     breakAfter: brAfter,
-    periodsCount: (Number(s.periodsCount) || 7)
+    periodsCount: (Number(s.periodsCount) || 7),
+    // أيام الدوام وعدد حصص كل يوم من «إعدادات الجدول» (غائبةٌ عند خادمٍ قديم ⇒ السلوك القديم)
+    periodsByDay: (s.periodsByDay && typeof s.periodsByDay === 'object') ? s.periodsByDay : null,
+    days: (s.days && s.days.length) ? s.days : null
   };
+}
+// عدد حصص يومٍ معيّن (0 = عطلة). بلا إعدادٍ لكل يوم: الخميس والجمعة عطلة كما كان.
+function _schedDayCount(day) {
+  var c = window.SCHED_TIMES_CFG || {};
+  if (c.periodsByDay) return c.periodsByDay.hasOwnProperty(day) ? (Number(c.periodsByDay[day]) || 0) : 0;
+  if (day === 'الخميس' || day === 'الجمعة') return 0;
+  return c.periodsCount || 7;
 }
 
 // يبني مواقيت الحصص (يطابق منطق المعلم _tcComputePeriodTimes تماماً)
-function _schedPeriodTimes() {
+// day: مواقيت ذلك اليوم بعدد حصصه · upto: احسب حتى هذه الحصة (لرأس الجدول بأقصى عدد)
+function _schedPeriodTimes(day, upto) {
   var c = window.SCHED_TIMES_CFG || { startMin: 420, assembly: 15, periodMin: 45, breakMin: 25, breakAfter: 0, periodsCount: 7 };
-  var pc = c.periodsCount || 7;
+  var pc = upto || (day ? _schedDayCount(day) : (c.periodsCount || 7));
   var assemblyEnd = c.startMin + (c.assembly || 0);
   var cursor = assemblyEnd, pt = {};
   for (var p = 1; p <= pc; p++) {
@@ -7556,13 +7630,13 @@ function renderHomeToday(r) {
   var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
   var todayName = dayByJs[now.getDay()] || '';
   var firstName = APP.user.firstName || APP.user.name || '';
-  if (todayName === 'الخميس' || todayName === 'الجمعة') {
+  if (_schedDayCount(todayName) === 0) {
     body.innerHTML = '<div class="ht-banner off">🌴 ' + esc(firstName) + '، اليوم ' + esc(todayName) + ' عطلة — استرخِ واستعد ليوم دراسي مشرق!</div>';
     return;
   }
   if (!r || !r.ok || !r.schedule) { body.innerHTML = '<div class="ht-banner info">📅 لم يُرفع جدولك بعد.</div>'; return; }
 
-  var st = _schedPeriodTimes();
+  var st = _schedPeriodTimes(todayName);
   var byPeriod = {};
   for (var i = 0; i < r.schedule.length; i++) { var s = r.schedule[i]; if (normDay(s.day) === todayName) byPeriod[parseInt(s.period, 10)] = s; }
   var nowMin = now.getHours() * 60 + now.getMinutes();
@@ -7687,7 +7761,9 @@ function renderSchedule(r) {
      ⚠️ والتطبيعُ يسبق المطابقة — `normDay` يوحّد صيغَ الهمزة، وبدونه يُقرأ «الاربعاء»
      يوماً سادساً فتنشأ عمودٌ مكرَّر. */
   var STU_WEEK_ORDER = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
-  var daySeen = { 'السبت': 1, 'الأحد': 1, 'الاثنين': 1, 'الثلاثاء': 1, 'الأربعاء': 1 };
+  var daySeen = {};
+  var cfgDays = (window.SCHED_TIMES_CFG && window.SCHED_TIMES_CFG.days) || ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  for (var cd = 0; cd < cfgDays.length; cd++) daySeen[cfgDays[cd]] = 1;
   for (var dq = 0; dq < r.schedule.length; dq++) {
     var dnq = normDay(r.schedule[dq].day);
     if (dnq && STU_WEEK_ORDER.indexOf(dnq) >= 0) daySeen[dnq] = 1;
@@ -7720,7 +7796,7 @@ function renderSchedule(r) {
   }
 
   // ── مواقيت الحصص (تطابق منطق المعلم تماماً، من إعدادات منصة المعلم) ──
-  var _st = _schedPeriodTimes();
+  var _st = _schedPeriodTimes(null, periods);   // رأسُ الجدول: كلُّ الأعمدة حتى أقصى حصة
   var SCFG = _st.cfg;
   var _fmtT = _schedFmtT;
   var pTimes = _st.pt;
@@ -7731,7 +7807,9 @@ function renderSchedule(r) {
   var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
   var todayName = dayByJs[jsDay] || '';
   var nowMin = now.getHours() * 60 + now.getMinutes();
-  var isWeekend = (todayName === 'الخميس' || todayName === 'الجمعة');
+  var isWeekend = (_schedDayCount(todayName) === 0);
+  var todayCount = _schedDayCount(todayName) || periods;
+  var tTimes = _schedPeriodTimes(todayName).pt;   // مواقيت اليوم بعدد حصصه
 
   // الحصة الحالية (للتمييز)
   var curPeriod = 0, status = '';
@@ -7740,11 +7818,12 @@ function renderSchedule(r) {
     if (nowMin < SCFG.startMin) status = 'قبل بدء الدوام';
     else if (nowMin < assemblyEnd) status = '🎌 طابور الصباح الآن';
     else {
-      for (var cp = 1; cp <= periods; cp++) {
-        if (nowMin >= pTimes[cp].s && nowMin < pTimes[cp].e) { curPeriod = cp; break; }
-        if (cp < periods && nowMin >= pTimes[cp].e && nowMin < pTimes[cp + 1].s) { status = '☕ استراحة الآن'; break; }
+      for (var cp = 1; cp <= todayCount; cp++) {
+        if (!tTimes[cp]) break;
+        if (nowMin >= tTimes[cp].s && nowMin < tTimes[cp].e) { curPeriod = cp; break; }
+        if (cp < todayCount && tTimes[cp + 1] && nowMin >= tTimes[cp].e && nowMin < tTimes[cp + 1].s) { status = '☕ استراحة الآن'; break; }
       }
-      if (!curPeriod && !status) status = (nowMin >= pTimes[periods].e) ? 'انتهى الدوام لهذا اليوم' : '';
+      if (!curPeriod && !status) status = (tTimes[todayCount] && nowMin >= tTimes[todayCount].e) ? 'انتهى الدوام لهذا اليوم' : '';
     }
   } else if (isWeekend) {
     status = '🌴 عطلة نهاية الأسبوع';
@@ -7756,7 +7835,7 @@ function renderSchedule(r) {
     var cc = grid[todayName] ? grid[todayName][curPeriod] : null;
     banner = '<div class="sched-now sched-now-live">🟢 الآن: الحصة ' + curPeriod +
              (cc ? ' — ' + esc(cc.subject || '') + (cc.teacher ? ' · 👤 ' + esc(cc.teacher) : '') : ' (لا حصة)') +
-             ' <span style="opacity:.8">(' + _fmtT(pTimes[curPeriod].s) + ' – ' + _fmtT(pTimes[curPeriod].e) + ')</span></div>';
+             ' <span style="opacity:.8">(' + _fmtT(tTimes[curPeriod].s) + ' – ' + _fmtT(tTimes[curPeriod].e) + ')</span></div>';
   } else if (status) {
     banner = '<div class="sched-now">' + esc(status) + ' — ' + esc(todayName) + '</div>';
   }
@@ -7764,7 +7843,7 @@ function renderSchedule(r) {
   var h = banner + '<div class="sched-wrap"><table class="sched-table"><thead><tr>' +
           '<th>اليوم</th>';
   for (var ph = 1; ph <= periods; ph++) {
-    h += '<th>الحصة ' + ph + '<div class="period-time">' + _fmtT(pTimes[ph].s) + ' – ' + _fmtT(pTimes[ph].e) + '</div></th>';
+    h += '<th>الحصة ' + ph + (pTimes[ph] ? '<div class="period-time">' + _fmtT(pTimes[ph].s) + ' – ' + _fmtT(pTimes[ph].e) + '</div>' : '') + '</th>';
   }
   h += '</tr></thead><tbody>';
 
@@ -7775,6 +7854,10 @@ function renderSchedule(r) {
     for (var pp = 1; pp <= periods; pp++) {
       var cell = grid[days[dr]][pp];
       var liveCls = (isToday && pp === curPeriod) ? ' class="sched-cell-now"' : '';
+      if (!cell && pp > _schedDayCount(days[dr])) {   // بعد آخر حصة في هذا اليوم
+        h += '<td class="empty" style="opacity:.35">·</td>';
+        continue;
+      }
       if (cell) {
         h += '<td' + liveCls + '>' +
              '<div class="subject">' + esc(cell.subject || '—') + '</div>' +
@@ -7796,21 +7879,25 @@ function renderSchedule(r) {
 // ═══════════════════════════════════════════════════════════
 function loadTeachersList() {
   google.script.run
-    .withSuccessHandler(function (list) {
+    .withSuccessHandler(_stuCb('getTeachersForClass', function (list) {
       APP.teachersList = list || [];
       _renderNoteTeacherOptions();
 
       // بعد تعبئة القائمة: اجلب حالة الحدّ الأسبوعي لتعطيل من استُنفدت حصته —
       // فشل الطلب لا يمنع الإرسال (الخادم هو الحكم النهائي داخل submitNote).
       google.script.run
-        .withSuccessHandler(function (status) {
+        .withSuccessHandler(_stuCb('getNoteWeeklyStatus', function (status) {
           APP.noteWeeklyExhausted = (status && status.exhaustedTeachers) || [];
           _renderNoteTeacherOptions();
-        })
-        .withFailureHandler(function () { /* تجاهل صامت */ })
-        .getNoteWeeklyStatus({ studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId });
-    })
-    .withFailureHandler(function () { /* تجاهل صامت */ })
+        }))
+        .withFailureHandler(_stuCb('getNoteWeeklyStatus', function (e) {
+          if (typeof _stuIsAuthExpired === 'function' && _stuIsAuthExpired(e)) { _stuForceRelogin(); return; }
+          /* غير ذلك: تجاهل صامت */
+        }))
+        .getNoteWeeklyStatus({ studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId,
+                               switchToken: APP.user.switchToken });   // 🔒 الخادم يشترط رمز الجلسة
+    }))
+    .withFailureHandler(_stuCb('getTeachersForClass', function () { /* تجاهل صامت */ }))
     .getTeachersForClass({ className: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId });
 }
 
@@ -7891,7 +7978,7 @@ function submitMyNote() {
   showLoad('جارٍ إرسال الملاحظة...');
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('submitNote', function (r) {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'إرسال الملاحظة ✉️';
@@ -7913,14 +8000,14 @@ function submitMyNote() {
       } else {
         toast((r && r.error) || 'تعذّر الإرسال', 'e');
       }
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('submitNote', function (e) {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'إرسال الملاحظة ✉️';
       if (typeof _stuIsAuthExpired === 'function' && _stuIsAuthExpired(e)) { _stuForceRelogin(); return; }
       toast('فشل الإرسال: ' + (e.message || e), 'e');
-    })
+    }))
     .submitNote({
     studentId: APP.user.id,
     studentName: APP.user.name,
@@ -7943,7 +8030,7 @@ function loadExamSchedule(force) {
   callServerSmart(
     'getStudentExamSchedule',
     { klass: APP.user.class, schoolId: APP.user.schoolId },
-    'examSchedule_' + APP.user.class,
+    'examSchedule_' + (APP.user.schoolId || '') + '_' + APP.user.class,   // مبصومٌ بالمدرسة؛ القديمُ يبقى مهمَلاً
     600,
     function (r) {
       APP.loaded.examSchedule = true;
@@ -8430,7 +8517,7 @@ function loadAttendance(force) {
   callServerSmart(
   'getAttendanceForStudent',
   { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
-  'attendance_' + APP.user.id,
+  'attendance_' + (APP.user.schoolId || '') + '_' + APP.user.id,   // مبصومٌ بالمدرسة؛ القديمُ يبقى مهمَلاً
   120,
   function (r) {
     APP.loaded.attendance = true;
@@ -8487,7 +8574,7 @@ function changeMyPassword() {
   showLoad('جارٍ تغيير كلمة المرور...');
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('changePassword', function (r) {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'حفظ';
@@ -8501,13 +8588,13 @@ function changeMyPassword() {
       } else {
         toast((r && r.error) || 'تعذّر التغيير', 'e');
       }
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('changePassword', function (e) {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'حفظ';
       toast('فشل: ' + (e.message || e), 'e');
-    })
+    }))
     .changePassword(APP.user.id, cur, ne, APP.user.schoolId);
 }
 
@@ -8530,7 +8617,7 @@ function saveMyEmail() {
   showLoad('جارٍ حفظ البريد الإلكتروني...');
 
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('updateMyEmail', function (r) {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'حفظ';
@@ -8543,13 +8630,13 @@ function saveMyEmail() {
       } else {
         toast((r && r.error) || 'تعذّر الحفظ', 'e');
       }
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('updateMyEmail', function (e) {
       hideLoad();
       btn.disabled = false;
       btn.textContent = 'حفظ';
       toast('فشل: ' + (e.message || e), 'e');
-    })
+    }))
     .updateMyEmail(APP.user.id, email, APP.user.schoolId, APP.user.switchToken);
 }
 
@@ -8631,7 +8718,7 @@ function openBirthdatePicker() {
 
 function saveMyBirthdate(value) {
   google.script.run
-    .withSuccessHandler(function (r) {
+    .withSuccessHandler(_stuCb('updateMyBirthdate', function (r) {
       if (r && r.ok) {
         APP.user.birthdate = r.birthdate || value;
         lsSaveSession();
@@ -8646,13 +8733,13 @@ function saveMyBirthdate(value) {
         renderBirthdateChip();
         toast((r && r.error) || 'تعذّر الحفظ', 'e');
       }
-    })
-    .withFailureHandler(function (e) {
+    }))
+    .withFailureHandler(_stuCb('updateMyBirthdate', function (e) {
       var liveFail = document.getElementById('birthdateChip');
       if (liveFail && liveFail.tagName === 'INPUT') liveFail.replaceWith(_birthdateChipToSpan());
       renderBirthdateChip();
       toast('تعذّر الاتصال بالخادم: ' + (e.message || e), 'e');
-    })
+    }))
     .updateMyBirthdate(APP.user.id, value, APP.user.schoolId, APP.user.switchToken);
 }
 
@@ -8737,16 +8824,16 @@ function _startHeartbeat() {
       function _bRel() { if (_bDone) return; _bDone = true; try { release(); } catch (eR) {} }
       try {
         google.script.run
-          .withSuccessHandler(function (hr) {
+          .withSuccessHandler(_stuCb('studentHeartbeat', function (hr) {
             _hbDelayMs = _HB_BASE_MS; _bRel(); _scheduleNextBeat();
             /* 🔔 الشارةُ تركب النبضة (2-أ) — لا استطلاعَ مستقلّاً كلَّ 3 دقائق. */
             if (hr && hr.ok && hr.badge) { try { _stuApplyBadge(hr.badge); } catch (eBd) {} }
             if (hr && hr.ok && hr.review) { try { _stuApplyReview(hr.review); } catch (eRv) {} }
-          })
-          .withFailureHandler(function () {
+          }))
+          .withFailureHandler(_stuCb('studentHeartbeat', function () {
             _hbDelayMs = Math.min(_hbDelayMs * 2, _HB_MAX_MS);
             _bRel(); _scheduleNextBeat();
-          })
+          }))
           .studentHeartbeat(APP.user.id, APP.user.schoolId, APP.user.switchToken,
             /* شارةٌ طازجة (< 3د) ⇒ نبضةٌ بلا إعادة حسابها — كانت تُحسب مرّتين عند كلّ إقلاع */
             (Date.now() - _stuBadgeAt < 3 * 60 * 1000) ? null : _stuBadgeReq(),
@@ -9168,6 +9255,7 @@ document.addEventListener('DOMContentLoaded', function () {
     savedSession = null;
   }
   if (savedSession && savedSession.user) {
+    _stuEpochBump();
     APP.user = savedSession.user;
     _stuShowApp();
     initApp();
@@ -9185,10 +9273,19 @@ document.addEventListener('DOMContentLoaded', function () {
     if (APP.user.id && APP.user.schoolId && APP.user.switchToken && _stuSiblingsDue(APP.user.id)) {
       _stuSibCall = function (release) {
       google.script.run
-        .withSuccessHandler(function (r) {
+        .withSuccessHandler(_stuCb('refreshStudentSiblings', function (r) {
           release();
           /* خروجٌ قبل وصول الردّ يجعل `APP.user = null` (‏«setting 'siblings' of null» ×٤). */
           if (!APP.user) return;
+          /* 🔒 الخادمُ يعيد فحصَ الحجب المالي عند تجديد الرمز: محجوبٌ ⇒ نفسُ شاشة الحجب التي
+             يعرضها الدخول (`_stu-js-login.html`)، مع مسح الجلسة المحفوظة كي لا تُستعاد. */
+          if (r && r.blocked) {
+            try { confirmLogout(); } catch (eLo) {}
+            $('loginScreen').style.display = 'none';
+            $('blockedTxt').textContent = r.error || 'حسابك معلق مؤقتاً';
+            $('blockedMsg').classList.add('show');
+            return;
+          }
           if (r && r.ok) {
             APP.user.siblings = r.siblings || [];
             APP.user.switchToken = r.switchToken || APP.user.switchToken;
@@ -9228,12 +9325,12 @@ document.addEventListener('DOMContentLoaded', function () {
               try { loadHomeToday(); } catch (eHT) {}
             }
           }
-        })
-        .withFailureHandler(function () {
+        }))
+        .withFailureHandler(_stuCb('refreshStudentSiblings', function () {
           release();
           /* صامت — يبقى العرض المخزَّن؛ ويُمحى الطابعُ كي يُعاد في التحميل التالي لا بعد 30 دقيقة. */
           try { if (APP.user) localStorage.removeItem('stu_sib_refresh_' + APP.user.id); } catch (eLs) {}
-        })
+        }))
         .refreshStudentSiblings(APP.user.id, APP.user.schoolId, APP.user.switchToken, getClientId());
       };
       _stuRefreshSiblingsBg(0);
@@ -9547,13 +9644,13 @@ function initLazyImages() {
       function _rel() { if (_done) return; _done = true; try { release(); } catch (eR) {} }
       try {
         google.script.run
-          .withSuccessHandler(function (res) {
+          .withSuccessHandler(_stuCb('getStudentSchoolBrand', function (res) {
             // 🔴 بوّابةُ قبولٍ واحدة: اسمٌ حقيقيّ أو لا شيء — لا طلاءَ ولا تخزينَ لحمولةٍ فارغة.
             if (res && res.ok && res.name) { applyBrand(res, true); _stApplyReturnHref(res.slug); _rel(); return; }
             try { window.__stBrandLastError = (res && res.code) || 'EMPTY'; } catch (eBE) {}
             _rel();
-          })
-          .withFailureHandler(function () { try { window.__stBrandLastError = 'NETWORK'; } catch (eBF) {} _rel(); })
+          }))
+          .withFailureHandler(_stuCb('getStudentSchoolBrand', function () { try { window.__stBrandLastError = 'NETWORK'; } catch (eBF) {} _rel(); }))
           .getStudentSchoolBrand(_stBrandSid);
       } catch (e) { _rel(); }
     }

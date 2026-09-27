@@ -330,6 +330,16 @@
       .checkCmsSession({ token: token });
   }
   var _cmsPendingAction = null;
+  // 2026-09-27: every content write needs a CMS login (the server refuses without a token).
+  // Returns true and opens the login (auto-login from the teacher dashboard link first) when
+  // there is no token; the action runs again after login.
+  function _cmsNeedLogin(retry) { if (_cmsToken()) return false; _cmsRequireAuth(retry); return true; }
+  function _cmsAuth() { return { token: _cmsToken(), schoolId: window.SCHOOL_ID || '' }; }
+  function _cmsLoginExpired(res) {
+    var txt = (res && typeof res === 'object') ? (res.requiresLogin ? 'x' : '') : String(res || '');
+    if (txt && (txt === 'x' || txt.indexOf('سجّل الدخول إلى إدارة المحتوى') !== -1)) { _cmsSetToken(''); _cmsShowGate(); return true; }
+    return false;
+  }
   // بعد نجاح الدخول من داخل البوابة، تابع الإجراء الذي استدعاها إن وُجد
   (function () {
     var origHide = _cmsHideGate;
@@ -370,6 +380,7 @@
   });
 
   function setStatus(elId, msg, type) {
+    if (type !== 'info') _cmsLoginExpired(msg);
     var el = document.getElementById(elId);
     el.textContent = msg;
     el.className = 'status-message';
@@ -398,6 +409,7 @@
 
   // دالة عامة لرفع الملفات
   function uploadFile(fileInput, folderType, statusId, urlFieldId) {
+    if (_cmsNeedLogin(function () { uploadFile(fileInput, folderType, statusId, urlFieldId); })) return;
     var file = fileInput.files[0];
     if (!file) { setStatus(statusId, '⚠️ الرجاء اختيار ملف', 'error'); return; }
     setStatus(statusId, '⏳ جاري رفع الملف...', 'info');
@@ -405,6 +417,7 @@
     reader.onload = function(ev) {
       google.script.run
         .withSuccessHandler(function(res) {
+          if (_cmsLoginExpired(res)) { setStatus(statusId, '🔒 سجّل الدخول ثم أعد الرفع', 'error'); return; }
           if (res.success) {
             document.getElementById(urlFieldId).value = res.url;
             setStatus(statusId, '✅ تم رفع الملف إلى ' + res.folder, 'success');
@@ -412,7 +425,7 @@
             setStatus(statusId, '❌ فشل الرفع: ' + res.error, 'error');
           }
         })
-        .uploadFileToDrive(ev.target.result, file.name, folderType);
+        .uploadFileToDrive(ev.target.result, file.name, folderType, _cmsAuth());
     };
     reader.readAsDataURL(file);
   }
@@ -423,10 +436,12 @@
   var _uploaded = { news: null, image: null, video: null };
 
   function resumableUpload(file, folderType, statusId, cb) {
+    if (_cmsNeedLogin(function () { resumableUpload(file, folderType, statusId, cb); })) return;
     if (!file) { setStatus(statusId, '⚠️ الرجاء اختيار ملف', 'error'); return; }
     setStatus(statusId, '⏳ تجهيز الرفع…', 'info');
     google.script.run
       .withSuccessHandler(function(res) {
+        if (_cmsLoginExpired(res)) { setStatus(statusId, '🔒 سجّل الدخول ثم أعد الرفع', 'error'); return; }
         if (!res || !res.ok) { setStatus(statusId, '❌ ' + ((res && res.error) || 'تعذّر بدء الرفع'), 'error'); return; }
         // المسار الأساسي: عبر وسيط الـWorker /drive-upload (يعمل داخل اليمن — يتجاوز الحجب وCORS).
         // fallback: إن رجع الوكيل 404 أو فشل الاتصال، تراجع تلقائياً للرفع المباشر إلى sessionUri.
@@ -435,7 +450,7 @@
         _putResumableBytes(proxyUrl, res.sessionUri, file, statusId, cb, false);
       })
       .withFailureHandler(function(err) { setStatus(statusId, '❌ خطأ: ' + err.message, 'error'); })
-      .createDriveUploadSession(file.name, file.type, folderType, window.SCHOOL_ID, file.size);
+      .createDriveUploadSession(file.name, file.type, folderType, window.SCHOOL_ID, file.size, _cmsAuth());
   }
 
   // يرفع بايتات الملف عبر PUT إلى url (وسيط الـWorker)، فإن فشل (404/اتصال) يتراجع
@@ -499,6 +514,7 @@
 
   // دوال الإرسال
   function submitNews() {
+    if (_cmsNeedLogin(submitNews)) return;
     var title = document.getElementById('newsTitle').value.trim();
     var content = document.getElementById('newsContent').value.trim();
     var mediaURL = document.getElementById('newsMediaURL').value;
@@ -529,17 +545,18 @@
       google.script.run
         .withSuccessHandler(function(msg) { setStatus('newsStatus', msg, 'success'); _resetNews(); })
         .withFailureHandler(function(err) { setStatus('newsStatus', '❌ خطأ: ' + err.message, 'error'); })
-        .registerUploadedMedia(_uploaded.news, 'news', title, content, userName, fingerprint, window.SCHOOL_ID);
+        .registerUploadedMedia(_uploaded.news, 'news', title, content, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
       return;
     }
     // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
     google.script.run
       .withSuccessHandler(function(msg) { setStatus('newsStatus', msg, 'success'); _resetNews(); })
       .withFailureHandler(function(err) { setStatus('newsStatus', '❌ خطأ: ' + err.message, 'error'); })
-      .addNews(title, content, mediaType, mediaURL, userName, fingerprint, window.SCHOOL_ID);
+      .addNews(title, content, mediaType, mediaURL, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
   }
 
   function submitVideo() {
+    if (_cmsNeedLogin(submitVideo)) return;
     var title = document.getElementById('videoTitle').value.trim();
     var desc = document.getElementById('videoDesc').value.trim();
     var url = document.getElementById('videoURL').value.trim();
@@ -553,11 +570,12 @@
         document.getElementById('videoDesc').value = '';
         document.getElementById('videoURL').value = '';
       })
-      .addVideo(title, desc, url, userName, fingerprint, window.SCHOOL_ID);
+      .addVideo(title, desc, url, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
   }
 
   // رفع ملف فيديو من الجهاز → Drive → المكتبة
   function submitVideoUpload() {
+    if (_cmsNeedLogin(submitVideoUpload)) return;
     var title = document.getElementById('videoTitle').value.trim();
     var desc = document.getElementById('videoDesc').value.trim();
     var fi = document.getElementById('videoFileInput');
@@ -574,7 +592,7 @@
           if (ok) { document.getElementById('videoTitle').value=''; document.getElementById('videoDesc').value=''; fi.value=''; _uploaded.video = null; }
         })
         .withFailureHandler(function(err) { setStatus('videoStatus', '❌ خطأ: ' + err.message, 'error'); })
-        .registerUploadedMedia(fileId, 'video', title, desc, userName, fingerprint, window.SCHOOL_ID);
+        .registerUploadedMedia(fileId, 'video', title, desc, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
     });
   }
 
@@ -690,6 +708,7 @@
   // السوشل" فعلياً (switchTab أعلاه) بعد أن أصبحت smmGetSocialSettings موثَّقة.
 
   function submitImage() {
+    if (_cmsNeedLogin(submitImage)) return;
     var name = document.getElementById('imageName').value.trim();
     var desc = document.getElementById('imageDesc').value.trim();
     var url = document.getElementById('imageMediaURL').value;
@@ -710,13 +729,13 @@
       google.script.run
         .withSuccessHandler(function(msg) { setStatus('imageStatus', msg, 'success'); _resetImage(); })
         .withFailureHandler(function(err) { setStatus('imageStatus', '❌ خطأ: ' + err.message, 'error'); })
-        .registerUploadedMedia(_uploaded.image, 'image', name, desc, userName, fingerprint, window.SCHOOL_ID);
+        .registerUploadedMedia(_uploaded.image, 'image', name, desc, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
       return;
     }
     // ✅ تمرير schoolId كمعامل إضافي لدعم تعدد المدارس
     google.script.run
       .withSuccessHandler(function(msg) { setStatus('imageStatus', msg, 'success'); _resetImage(); })
-      .addImage(name, desc, url, userName, fingerprint, window.SCHOOL_ID);
+      .addImage(name, desc, url, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
   }
 
   function updatePostTypes() {
@@ -742,6 +761,7 @@
   document.getElementById('platformSelect').addEventListener('change', updatePostTypes);
 
   function submitSchedule() {
+    if (_cmsNeedLogin(submitSchedule)) return;
     var checks = document.querySelectorAll('.plat-cb');
     var platforms = [];
     for (var i = 0; i < checks.length; i++) { if (checks[i].checked) platforms.push(checks[i].value); }
@@ -766,7 +786,7 @@
         for (var j = 0; j < checks.length; j++) checks[j].checked = false;
       })
       .withFailureHandler(function(err) { setStatus('scheduleStatus', '❌ خطأ: ' + err.message, 'error'); })
-      .addScheduleMulti(platforms, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, window.SCHOOL_ID);
+      .addScheduleMulti(platforms, postType, content, mediaURL, scheduledDate, status, userName, fingerprint, window.SCHOOL_ID, _cmsAuth());
   }
 
   // ربط أزرار الإرسال
