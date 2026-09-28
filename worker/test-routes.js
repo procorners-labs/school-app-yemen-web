@@ -3110,7 +3110,7 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
   var aEnd = src.indexOf('\n};', aIdx) + 3;
   check(aIdx >= 0 && aEnd > aIdx, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
   if (aIdx < 0 || aEnd <= aIdx) return;
-  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {} });
+  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {}, _apiArgsClassFeed: function () {} });
   var fns;
   try { vm.runInContext(src.slice(aIdx, aEnd), actx); fns = vm.runInContext('API_CACHE_FNS', actx); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
@@ -3172,7 +3172,7 @@ console.log('عقدُ كاش الحافّة المنشور — مطابقةٌ ث
   var aEnd2 = src.indexOf('\n};', aIdx2) + 3;
   check(aIdx2 >= 0 && aEnd2 > aIdx2, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
   if (aIdx2 < 0 || aEnd2 <= aIdx2) return;
-  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {} });
+  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {}, _apiArgsClassFeed: function () {} });
   var live;
   try { vm.runInContext(src.slice(aIdx2, aEnd2), cctx); live = Object.keys(vm.runInContext('API_CACHE_FNS', cctx)); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
@@ -3931,6 +3931,27 @@ console.log('كاشُ الحافّة — جدول الاختبارات مبصو�
   check(f([{ klass: 'الأول', schoolId: 'S', v: 'x' }]) === false, '`v` غير رقميّ ⇒ لا يُخزَّن');
   check(f([{ klass: 'الأول', schoolId: 'S', v: '1', switchToken: 't' }]) === false, 'مفتاحٌ زائد (توكن) ⇒ لا يُخزَّن');
   check(/getStudentExamSchedule:\s*\{\s*args: _apiArgsExamSched/.test(src), 'المدخل مسجَّلٌ في `API_CACHE_FNS` بمدقّقه');
+})();
+
+/* ── موجزُ الفصل على الحافّة (2026-09-28، الدفعة 17): `v` = جيلا الأخبار والتعاميم + خانةُ ١٠ دقائق ── */
+console.log('');
+console.log('كاشُ الحافّة — موجزُ الفصل (أخبار + تعاميم عامّة) مبصومٌ بجيليه:');
+(function () {
+  var i = src.indexOf('var _API_FEED_KEYS');
+  var j = src.indexOf('\n}\n', src.indexOf('function _apiArgsClassFeed', i)) + 3;
+  check(i > 0 && j > i, 'ضابط: استُخرج `_apiArgsClassFeed`');
+  if (!(i > 0 && j > i)) return;
+  var fctx = vm.createContext({ _apiSafeScalar: function (x) { return typeof x === 'string' && x.length < 200; } });
+  vm.runInContext(src.slice(i, j), fctx);
+  var f = fctx._apiArgsClassFeed;
+  var ok1 = { schoolId: 'S', klass: 'الأول', section: 'أ', v: '1790000000000.0.2983' };
+  check(f([ok1]) === true, 'جيلُ أخبار + جيلُ تعاميم (0 قبل أوّل تعميم) + خانة ⇒ يُخزَّن');
+  check(f([{ schoolId: 'S', klass: 'الأول', section: 'أ' }]) === false, 'بلا `v` ⇒ لا يُخزَّن (صفحةٌ أقدم تمرّ إلى GAS)');
+  check(f([{ schoolId: 'S', klass: 'الأول', section: 'أ', v: '0.0.2983' }]) === false, 'جيلُ أخبارٍ صفر ⇒ لا يُخزَّن');
+  check(f([{ schoolId: 'S', klass: 'الأول', section: 'أ', v: '1790000000000.5' }]) === false, 'بلا خانة الزمن ⇒ لا يُخزَّن (تقادمُ cms بلا سقف)');
+  check(f([{ schoolId: 'S', klass: 'الأول', section: 'أ', v: ok1.v, studentId: '3017' }]) === false, '🔒 مفتاحُ طالبٍ بعينه ⇒ لا يُخزَّن (الموجزُ عامٌّ للفصل وحده)');
+  check(f([{ schoolId: 'S', klass: 'الأول', section: 'أ', v: ok1.v, switchToken: 't' }]) === false, '🔒 توكن ⇒ لا يُخزَّن');
+  check(/getClassFeedBundle:\s*\{\s*args: _apiArgsClassFeed,\s*ttl: 900,/.test(src), 'المدخل مسجَّلٌ في `API_CACHE_FNS` بمدقّقه (‏900ث)');
 })();
 
 /* ── 🟢 تحويلا `/pricing` و`/register` + حقنُ `window.SCHOOL_ID` (2026-09-19) ──────── */
