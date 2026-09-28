@@ -4821,6 +4821,21 @@ function _csHandleSessionExpired(forToken) {
   try { if (typeof showLoginScreen === 'function') showLoginScreen(); } catch (e) {}
 }
 
+/* 📡 (الدفعة 15 · 2026-09-28) أخطاءُ `callServer` تصل «سجل_الأخطاء» باسم الدالّة — كانت
+   `console.error` وحده فلا يراها أحد. **ما يُبلَّغ:** ① رميٌ داخل معالج الردّ (علّةُ واجهة)،
+   ② رميٌ متزامن عند الإرسال. **وما لا يُبلَّغ هنا:** استثناءُ الخادم (`ok:false`) — يبلّغه
+   `assets/gas-bridge.js` مركزيّاً لكلّ الصفحات؛ والفشلُ العابر (502/503/شبكة) — يسجّله الوسيطُ
+   (`ev=gas` و`/client-err`)، وتبليغُه لـmaster لحظةَ الإشباع يزيد الحِملَ على ما يبلّغ عنه —
+   ولا `CS_QUIET_FNS` (النبضة). `reportAppError` يطوي المكرّر ويسقف بـ8. */
+function _csReport(kind, fnName, err) {
+  try {
+    if (typeof window.reportAppError !== 'function') return;
+    if (typeof CS_QUIET_FNS !== 'undefined' && CS_QUIET_FNS[fnName]) return;
+    window.reportAppError('callback', String((err && err.message) || err || '').substring(0, 400),
+                          (err && err.stack) ? String(err.stack) : '', fnName);
+  } catch (eRep) {}
+}
+
 function callServer(fnName, params, a3, a4, a5, a6) {
   // ── تطبيع المعاملات تلقائياً حسب النوع ──
   var cacheKey = null, ttl = 0, callback = null, errorCallback = null;
@@ -4850,7 +4865,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
       var cached = ClientCache.get(cacheKey);
       if (cached) {
         setTimeout(function() {
-          try { callback(cached); } catch (e) { console.error('cache cb error:', e); }
+          try { callback(cached); } catch (e) { console.error('cache cb error:', e); _csReport('cb', fnName, e); }
         }, 0);
         return;
       }
@@ -4891,7 +4906,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
           joinSettled = true;
           var seeded = null;
           try { seeded = ClientCache.get(cacheKey); } catch (eJ) {}
-          if (seeded) { try { callback(seeded); } catch (eJC) { console.error('cb error:', eJC); } return; }
+          if (seeded) { try { callback(seeded); } catch (eJC) { console.error('cb error:', eJC); _csReport('cb', fnName, eJC); } return; }
           if (_csSessionExpiredShown) {
             try { callback({ success: false, requiresLogin: true, error: 'انتهت الجلسة' }); } catch (eJS) {}
             return;
@@ -4976,11 +4991,11 @@ function callServer(fnName, params, a3, a4, a5, a6) {
         for (var i = 0; i < queue.length; i++) {
           var item = queue[i];
           if (item && typeof item.cb === 'function') {
-            try { item.cb(result); } catch (e) { console.error('cb error:', e); }
+            try { item.cb(result); } catch (e) { console.error('cb error:', e); _csReport('cb', fnName, e); }
           }
         }
       } else {
-        try { callback(result); } catch (e) { console.error('cb error:', e); }
+        try { callback(result); } catch (e) { console.error('cb error:', e); _csReport('cb', fnName, e); }
       }
     })
     .withFailureHandler(function(err) {
@@ -5046,6 +5061,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
     freeSlot();   // 🔴 رميٌ متزامن يجب ألّا يحجز خانةً إلى الأبد
     if (dedupKey) delete _pendingCalls[dedupKey];
     if (!CS_QUIET_FNS[fnName]) console.error('[callServer] ' + fnName + ' dispatch failed:', eDispatch);
+    _csReport('cb', fnName, eDispatch);
     if (errorCallback) { try { errorCallback(eDispatch); } catch (e) {} }
     else { try { callback({ success: false, error: 'تعذّر إرسال الطلب' }); } catch (e) {} }
   }
