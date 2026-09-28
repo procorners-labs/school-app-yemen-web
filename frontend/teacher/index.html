@@ -3080,6 +3080,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <div id="durr-out" style="margin-top:10px;font-size:13px;"></div>
         </div>
 
+        <!-- 🔗 ربطُ كلّ البيانات بالمعرّفات (الدفعة 18) — _IdMigration.js. للمدير وحدَه: معاينةٌ ثمّ كلمةُ تأكيد. -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🔗 ربطُ كلّ البيانات بالمعرّفات</div>
+          <div style="font-size:12px;color:#546e7a;line-height:1.7;margin-bottom:8px;">
+            ينشئ سجلَّ <b>«الفصول»</b> (معرّف لكلّ صفّ وشعبة)، ويختم <b>معرّف_المعلم · معرّف_الفصل · معرّف_المادة</b> في كلّ الأوراق،
+            ويبني <b>«التعيينات»</b>، ويعيد أوراقَ الجدول بالمعرّفات. لا يغيّر اسماً ولا يحذف صفّاً، ويأخذ نسخةً احتياطيةً أوّلاً.
+          </div>
+          <button type="button" onclick="idm_preview()" style="background:#455a64;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🔍 معاينة (بلا كتابة)</button>
+          <button type="button" id="idm-run-btn" onclick="idm_run()" disabled style="background:#1149a3;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;opacity:.5;">🔗 تنفيذ الربط</button>
+          <div id="idm-out" style="margin-top:10px;font-size:13px;"></div>
+        </div>
+
         <!-- 🆔 هويّةُ المعلّم بالمعرّف (2026-09-24) — ختمُ السجلّات · المرادفات والسابقون · الاستبدال.
              TeacherIdentity.js. للمدير وحدَه، وكلُّ كتابةٍ بمعاينةٍ ثمّ كلمةِ تأكيد. -->
         <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #b2dfdb;">
@@ -29942,6 +29954,49 @@ function _tidFillSelects(){
       h+='<option value="'+escapeHtml(_tidStaff[i].teacherId)+'">'+escapeHtml(_tidStaff[i].name)+'</option>'; }
     sel.innerHTML=h;
   }
+}
+/* 🔗 ربطُ كلّ البيانات بالمعرّفات (الدفعة 18) — runIdMigrationProtected: معاينةٌ ثمّ تنفيذٌ بكلمة التأكيد. */
+var _idmConfirm = '';
+function _idmList(arr){ return (arr||[]).map(function(x){ return escapeHtml(x.v)+'×'+x.n; }).join('، '); }
+function _idmRender(r){
+  var rep=r.report||{}, h='', st=rep.steps||[];
+  h+='<div style="font-weight:800;margin-bottom:4px;">'+(rep.dryRun?'🔍 معاينة — لم يُكتب شيء':'✅ نُفّذ الربط')+(rep.ms?' ('+Math.round(rep.ms/1000)+' ث)':'')+'</div>';
+  for(var i=0;i<st.length;i++){ var s=st[i];
+    if(s.step==='سجلّ الفصول') h+='• <b>الفصول</b>: موجود '+s.existing+' · يُضاف '+s.added+(s.addedList&&s.addedList.length?' <span style="color:#546e7a;">('+escapeHtml(s.addedList.slice(0,20).join('، '))+(s.addedList.length>20?'…':'')+')</span>':'')+'<br>';
+    else if(s.step==='معرّف_المعلم') h+='• <b>معرّف_المعلم</b>: يُختم '+(s.toFill||0)+(s.written?' · كُتب '+s.written:'')+'<br>';
+    else if(s.step==='معرّف_الفصل ومعرّف_المادة'){ var sh=s.sheets||[];
+      for(var k=0;k<sh.length;k++){ var p=sh[k]; if(p.missing||!p.rows) continue;
+        h+='&nbsp;&nbsp;• '+escapeHtml(p.sheet)+': '+p.rows+' صفّ · فصلٌ مختوم '+p.clsStamped+' · <b>يُختم '+p.clsFill+'</b>'+(p.clsFix?' · يُصحَّح '+p.clsFix:'')+
+          (p.hasSubject?' · مادّة: مختوم '+p.subStamped+' · <b>يُختم '+p.subFill+'</b>':'')+
+          (p.clsUnresolved&&p.clsUnresolved.length?' · 🔴 '+_idmList(p.clsUnresolved):'')+'<br>'; } }
+    else if(s.step==='التعيينات') h+='• <b>التعيينات</b>: '+(s.rows||0)+' صفّ'+(s.unresolved!=null?' · بلا ربطٍ كامل '+s.unresolved:'')+(s.note?' <span style="color:#546e7a;">('+escapeHtml(s.note)+')</span>':'')+'<br>';
+    else if(s.step==='الجدول') h+='• <b>الجدول</b>: '+(s.rebuilt?'أُعيد بناؤه من '+s.rebuilt+' حصّة':escapeHtml(s.note||s.error||''))+'<br>';
+  }
+  var u=rep.unresolved||{};
+  if((u.teachers||[]).length) h+='<div style="color:#c62828;">🔴 أسماءُ معلّمين بلا مقابل: '+_idmList(u.teachers)+'</div>';
+  if((u.classes||[]).length) h+='<div style="color:#c62828;">🔴 صفوفٌ/شعبٌ لا تُعرف: '+_idmList(u.classes)+'</div>';
+  if((u.subjects||[]).length) h+='<div style="color:#e65100;">🟡 موادُّ لا تُعرف: '+_idmList(u.subjects)+'</div>';
+  if((rep.next||[]).length) h+='<div style="margin-top:6px;"><b>الخطوات التالية:</b><br>'+rep.next.map(function(x){return '➜ '+escapeHtml(x);}).join('<br>')+'</div>';
+  if(rep.backupFileId) h+='<div style="color:#546e7a;font-size:12px;">النسخة الاحتياطية: '+escapeHtml(rep.backupFileId)+'</div>';
+  return h;
+}
+function idm_preview(){
+  var out=document.getElementById('idm-out'); _tidLock('idm-run-btn', false);
+  if(out) out.innerHTML='⏳ جارٍ الجرد — بلا أيّ كتابة...';
+  callServer('runIdMigrationProtected', { token: App.user.token }, function(r){
+    if(!r||!r.success){ _tidErr(out,r); return; }
+    _idmConfirm=r.confirmWord||''; if(out) out.innerHTML=_idmRender(r); _tidLock('idm-run-btn', true);
+  }, function(e){ _tidErr(out,e); });
+}
+function idm_run(){
+  var out=document.getElementById('idm-out'); _tidLock('idm-run-btn', false);
+  confirmAction('ربطُ البيانات بالمعرّفات', 'تُؤخذ نسخةٌ احتياطية من الملف، ثمّ تُكتب أعمدةُ المعرّفات وورقتا «الفصول» و«التعيينات».\nلا يُغيَّر اسمٌ ولا يُحذف صفّ.', '🔗', function(){
+    if(out) out.innerHTML='⏳ جارٍ التنفيذ — قد يستغرق دقيقة، لا تُغلق الصفحة...';
+    callServer('runIdMigrationProtected', { token: App.user.token, confirm: _idmConfirm }, function(r){
+      if(!r||!r.success){ _tidErr(out,r); return; }
+      if(out) out.innerHTML=_idmRender(r);
+    }, function(e){ _tidErr(out,e); });
+  }, { okText: '🔗 تنفيذ' });
 }
 function tid_load(){
   var out=document.getElementById('tid-out'); _tidLock('tid-stamp-btn', false);
