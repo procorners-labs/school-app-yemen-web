@@ -462,6 +462,12 @@
     renderTable(fullAuditData);
   };
 
+  function _auditAuth() {
+    var t = ''; try { t = sessionStorage.getItem('cms_token') || ''; } catch (e) {}
+    var sid = window.SCHOOL_ID || ''; try { sid = sid || new URLSearchParams(location.search).get('school') || ''; } catch (e) {}
+    return { token: t, schoolId: sid };
+  }
+
   // تحميل السجل
   window.loadAuditLog = function() {
     document.getElementById('tableBody').innerHTML = '<tr><td colspan="7" class="loading-row">⏳ جاري التحميل...</td></tr>';
@@ -473,6 +479,12 @@
 
     google.script.run
       .withSuccessHandler(function(data) {
+        if (data && !Array.isArray(data)) {
+          var msg = data.requiresLogin ? 'سجّل الدخول من لوحة المحتوى أولاً ثم افتح السجل.' : (data.error || 'تعذر تحميل السجل');
+          document.getElementById('tableBody').innerHTML = '<tr><td colspan="7" class="empty-row">🔒 ' + escapeHtml(msg) + '</td></tr>';
+          fullAuditData = [];
+          return;
+        }
         fullAuditData = data || [];
         renderTable(fullAuditData);
       })
@@ -480,7 +492,7 @@
         document.getElementById('tableBody').innerHTML = '<tr><td colspan="7" class="empty-row">❌ تعذر تحميل السجل: ' + escapeHtml(err.message) + '</td></tr>';
         fullAuditData = [];
       })
-      .getAuditLog(500);
+      .getAuditLog(500, _auditAuth());
   };
 
   // ربط الفلاتر
