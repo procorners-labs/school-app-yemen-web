@@ -2856,7 +2856,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = 'c26ffdb';
+  var STU_BUILD = '3f482b7';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -8961,6 +8961,43 @@ var _badgeInFlight = false;
 
    وأي إخفاق — كليّ أو جزئي — يسقط إلى المحمّلات المفردة، فلا تتحوّل الحزمة إلى نقطة فشل
    واحدة تُفرغ الشاشة الرئيسية (الأعضاء معزولون خادمياً بـtry/catch لكلٍّ على حدة). */
+/* ═══ (الدفعة 17 · 2026-09-28) موجزُ الفصل من الحافّة ═══
+   `getClassFeedBundle` عامٌّ للفصل (لا رمز ولا كود) ⇒ يخدمه الوسيطُ من Cloudflare لكلّ طلاب الفصل
+   بلا تنفيذ GAS. `v` = جيلُ الخادم (يتغيّر فور أيّ تعديل) + خانةُ ١٠ دقائق (سقفُ تقادمِ ما يكتبه cms).
+   الموجَّهةُ لهذا الطالب جاءت برمزه في الحزمة (`r.circulars`) فتُدمَج هنا. أيُّ فشل ⇒ المحمّلان
+   المفردان القديمان (لا شاشةَ فارغة). وشارةُ الأخبار تُعَدّ هنا بنفس منطق الخادم حرفياً
+   (‏`_stuNotificationBadgeInternal_`: خبرٌ تاريخُه بعد آخر دخول). */
+function _stuFeedSlot() { return String(Math.floor(Date.now() / 600000)); }
+function _stuLoadClassFeed(r, lastLogin) {
+  var tgt = (r && r.circulars && !r.circularsFailed && r.circulars.success !== false && r.circulars.circulars)
+    ? r.circulars.circulars : [];
+  var v = String(r.feedGen) + '.' + _stuFeedSlot();
+  callServerGated('getClassFeedBundle', [{
+      schoolId: APP.user.schoolId, klass: APP.user.class, section: APP.user.section, v: v
+    }],
+    function (f) {
+      if (!f || f.ok !== true || !Array.isArray(f.news) || !Array.isArray(f.circulars)) {
+        loadHomeNews(); loadHomeCirculars(); return;
+      }
+      try { ClientCache.set(_stuHomeNewsKey(), f.news, 180); } catch (eN) {}
+      renderHomeNews(f.news.length ? f.news.slice(0, 3) : []);
+      var seen = {}, all = [];
+      tgt.concat(f.circulars).forEach(function (c) {
+        if (!c || seen[c.id]) return; seen[c.id] = 1; all.push(c);
+      });
+      all.sort(function (a, b) { return (parseInt(b.id, 10) || 0) - (parseInt(a.id, 10) || 0); });
+      try { ClientCache.set(_stuHomeCircKey(), { success: true, circulars: all }, 120); } catch (eC) {}
+      renderHomeCirculars(all);
+      var ll = lastLogin ? new Date(lastLogin) : new Date(0), n = 0;
+      for (var i = 0; i < f.news.length; i++) {
+        var d = f.news[i] && f.news[i].date ? new Date(f.news[i].date) : new Date(0);
+        if (d > ll) n++;
+      }
+      try { setBadge('badge-news', n); _stuMaybeNotifyNews(n); } catch (eB) {}
+    },
+    function () { loadHomeNews(); loadHomeCirculars(); });
+}
+
 function _stuBootLoad() {
   if (!APP.user || !APP.user.id) return;
 
@@ -9027,7 +9064,8 @@ function _stuBootLoad() {
       klass: APP.user.class, section: APP.user.section,
       studentId: APP.user.id, studentName: APP.user.name,
       lastLoginDate: lastLogin, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken,
-      wantReview: _stuReviewDue()   /* 1أ: طلبُ التقييم يركب الحزمة بدل نداءٍ مستقلّ */
+      wantReview: _stuReviewDue(),  /* 1أ: طلبُ التقييم يركب الحزمة بدل نداءٍ مستقلّ */
+      feedEdge: true                /* (الدفعة 17) الأخبارُ والتعاميمُ العامّة من الحافّة — الحزمةُ للخاصّ وحده */
     }],
     function (r) {
       _badgeInFlight = false;
@@ -9038,8 +9076,17 @@ function _stuBootLoad() {
         return;
       }
 
+      /* (الدفعة 17) خادمٌ يدعم الحافّة ⇒ الأخبارُ والتعاميمُ العامّة من `getClassFeedBundle` (يُخدَم
+         من Cloudflare لكلّ الفصل)، والموجَّهةُ لهذا الطالب في `r.circulars`. خادمٌ أقدم يتجاهل
+         `feedEdge` فيُعيد `r.news` كما كان ⇒ المسارُ القديم أدناه حرفياً. */
+      var _fromEdge = !!(r.newsFromEdge && r.feedGen);
+      if (_fromEdge) {
+        _stuLoadClassFeed(r, lastLogin);
+      }
       // ── الأخبار ──
-      if (r.news && !r.newsFailed) {
+      if (_fromEdge) {
+        /* تُرسَم من الموجز */
+      } else if (r.news && !r.newsFailed) {
         try { ClientCache.set(newsKey, r.news, 180); } catch (eNs) {}
         renderHomeNews(r.news.length ? r.news.slice(0, 3) : []);
       } else {
@@ -9052,7 +9099,9 @@ function _stuBootLoad() {
          فعلَم `circularsFailed` لا يُرفَع أصلاً في تلك الحالة. وتخزين تلك الاستجابة
          يُجمِّد «لا تعاميم» ١٢٠ ثانية على عطل عابر — بينما `callServerSmart` ترفض
          تخزينها بنفس الشرط حرفياً. حذفُه = انحدار صامت من عائلة بند 71. */
-      if (r.circulars && !r.circularsFailed && r.circulars.success !== false) {
+      if (_fromEdge) {
+        /* تُدمَج الموجَّهةُ مع العامّة في `_stuLoadClassFeed` */
+      } else if (r.circulars && !r.circularsFailed && r.circulars.success !== false) {
         try { ClientCache.set(circKey, r.circulars, 120); } catch (eCs) {}
         renderHomeCirculars(r.circulars.circulars || []);
       } else {
@@ -9062,11 +9111,13 @@ function _stuBootLoad() {
       // ── الشارات ── (نفس منطق loadNotificationBadges حرفياً)
       if (r.badge && r.badge.ok && r.badge.badge) {
         var b = r.badge.badge;
-        setBadge('badge-news', b.news);
+        /* (الدفعة 17) مع الحافّة شارةُ الأخبار تُعَدّ من الموجز (`_stuLoadClassFeed`) — `null` هنا
+           كان سيُصفّر عدّاد التنبيه فيُطلق «أخبار جديدة» كاذبةً عند وصول الموجز. */
+        if (!_fromEdge) setBadge('badge-news', b.news);
         setBadge('badge-violations', b.violations);
         setBadge('badge-notes', b.notes);
         setBadge('badge-homework', b.homework);
-        _stuMaybeNotifyNews(b.news);
+        if (!_fromEdge) _stuMaybeNotifyNews(b.news);
         _stuBadgeAt = Date.now();
       }
       if (r.review) { try { _stuApplyReview(r.review); } catch (eRv) {} }
