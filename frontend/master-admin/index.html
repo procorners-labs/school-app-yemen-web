@@ -896,6 +896,7 @@ function login_submit() {
   statusEl.innerHTML = '<div class="status-msg status-info">⏳ جارٍ التحقق...</div>';
   btn.disabled = true;
   btn.textContent = '⏳ جارٍ الدخول...';
+  var _t0Login = Date.now();
 
   google.script.run
     .withSuccessHandler(function(res) {
@@ -926,6 +927,13 @@ function login_submit() {
     .withFailureHandler(function(err) {
       btn.disabled = false;
       btn.textContent = '🔐 تسجيل الدخول';
+      /* 📡 (الدفعة 14F) فشلُ الدخول (مهلة/ازدحام/شبكة) يُسجَّل في «سجل_الأخطاء» بزمنه — كان يُعرض فقط. */
+      try {
+        if (typeof window.reportAppError === 'function') {
+          window.reportAppError('login-fail', String((err && err.message) || err).substring(0, 300),
+            'elapsed_ms=' + (Date.now() - _t0Login), 'masterLogin');
+        }
+      } catch (eRep) {}
       statusEl.innerHTML = '<div class="status-msg status-error">❌ ' + err.message + '</div>';
     })
     .masterLogin({
