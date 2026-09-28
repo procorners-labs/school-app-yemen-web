@@ -1862,6 +1862,26 @@ function _apiArgsSchedule(args) {
   return true;
 }
 
+/* ‏`getStudentExamSchedule(params)` — `{schoolId, klass|class|grade, v}` (2026-09-28، الدفعة 11).
+   🔴 **`v` إلزاميٌّ للتخزين:** هو «جيلُ» جدول الاختبارات (خاصيةٌ دائمة في GAS تُرفع عند حفظ
+   الجدول أو رؤية الأشهر أو التعليمات، وتصل العميلَ في حزمة الإقلاع). فهو داخل مفتاح الحافّة
+   ⇒ أيُّ تعديلٍ في الكنترول يغيّر المفتاح فلا يُخدَم جدولٌ قديم — بلا قناة مسح. نداءٌ بلا `v`
+   (صفحةٌ أقدم أو إقلاعٌ لم يحمل الجيل) **لا يُخزَّن** ويمرّ إلى GAS كما كان. */
+var _API_EXAM_KEYS = { schoolId: 1, klass: 1, 'class': 1, grade: 1, v: 1 };
+function _apiArgsExamSched(args) {
+  if (args.length !== 1) return false;
+  var o = args[0];
+  if (!o || typeof o !== 'object') return false;
+  if (Object.prototype.toString.call(o) === '[object Array]') return false;
+  var k = Object.keys(o);
+  if (k.length > 3) return false;
+  for (var i = 0; i < k.length; i++) {
+    if (!_API_EXAM_KEYS.hasOwnProperty(k[i])) return false;
+    if (!_apiSafeScalar(o[k[i]])) return false;
+  }
+  return typeof o.v === 'string' && /^[0-9]{1,16}$/.test(o.v) && o.v !== '0';
+}
+
 /* 🔴 **القائمة البيضاء وشرطُ التخزين معاً في مدخلٍ واحد** — لا جدولان يتباعدان.
    `ok(b)` تُقرَّر **لكلّ دالّة على حدة** لأن العقود مختلفة فعلاً: الثلاثة الأولى تُرجِع
    `{ok:true,…}`، بينما `getHomeScheduleBundle` تُرجِع `{settings, schedule}` **بلا `ok`
@@ -1941,6 +1961,14 @@ var API_CACHE_FNS = {
       if (!b.settings || !b.schedule) return false;
       return b.settings.ok !== false && b.schedule.ok !== false;
     }
+  },
+  /* جدول اختبارات الصفّ للطالب (الدفعة 11) — انظر `_apiArgsExamSched`: المفتاحُ يحمل جيلَ
+     الجدول، فالتعديلُ يظهر فوراً مهما طال `ttl`. والجدولُ الفارغ لا يُخزَّن (قد يُملأ بعد دقيقة
+     دون رفع جيلٍ لم يكن). */
+  getStudentExamSchedule: {
+    args: _apiArgsExamSched,
+    ttl: 600,
+    ok: function (b) { return b.ok === true && Array.isArray(b.months) && b.months.length > 0; }
   },
   /* 🟢 **`checkAppVersion(pkg)` — 2026-09-17.** تقرأ خصائصَ السكربت وحدها
      (‏`teacher/AppVersionCheck.js`) ⇒ لا جلسة ولا توكن ولا مستأجر. وقِيس أنها تبلغ

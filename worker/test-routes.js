@@ -3096,7 +3096,7 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
   var aEnd = src.indexOf('\n};', aIdx) + 3;
   check(aIdx >= 0 && aEnd > aIdx, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
   if (aIdx < 0 || aEnd <= aIdx) return;
-  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {} });
+  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {} });
   var fns;
   try { vm.runInContext(src.slice(aIdx, aEnd), actx); fns = vm.runInContext('API_CACHE_FNS', actx); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
@@ -3158,7 +3158,7 @@ console.log('عقدُ كاش الحافّة المنشور — مطابقةٌ ث
   var aEnd2 = src.indexOf('\n};', aIdx2) + 3;
   check(aIdx2 >= 0 && aEnd2 > aIdx2, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
   if (aIdx2 < 0 || aEnd2 <= aIdx2) return;
-  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {} });
+  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {} });
   var live;
   try { vm.runInContext(src.slice(aIdx2, aEnd2), cctx); live = Object.keys(vm.runInContext('API_CACHE_FNS', cctx)); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
@@ -3898,6 +3898,25 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(/ok: true, result: \{ success: true, throttled: true/.test(seg),
         '🔴 الردُّ `ok:true` — فلا يعيد `gas-bridge.js` المحاولة فيضاعف الحِمل');
   check(seg.indexOf('CF-Connecting-IP') > 0 && !/ip\s*:/.test(seg), 'يُقرأ IP للحدّ وحده ولا يُسجَّل');
+})();
+
+/* ── جدول الاختبارات على الحافّة (2026-09-28، الدفعة 11): `v` إلزاميٌّ للتخزين ── */
+console.log('');
+console.log('كاشُ الحافّة — جدول الاختبارات مبصومٌ بجيله:');
+(function () {
+  var i = src.indexOf('var _API_EXAM_KEYS');
+  var j = src.indexOf('\n}\n', src.indexOf('function _apiArgsExamSched', i)) + 3;
+  check(i > 0 && j > i, 'ضابط: استُخرج `_apiArgsExamSched`');
+  if (!(i > 0 && j > i)) return;
+  var ectx = vm.createContext({ _apiSafeScalar: function (x) { return typeof x === 'string' && x.length < 200; } });
+  vm.runInContext(src.slice(i, j), ectx);
+  var f = ectx._apiArgsExamSched;
+  check(f([{ klass: 'الأول', schoolId: 'S', v: '1790000000000' }]) === true, 'مع `v` رقميّ ⇒ يُخزَّن (والجيلُ داخل المفتاح)');
+  check(f([{ klass: 'الأول', schoolId: 'S' }]) === false, 'بلا `v` ⇒ لا يُخزَّن (صفحةٌ أقدم تمرّ إلى GAS)');
+  check(f([{ klass: 'الأول', schoolId: 'S', v: '0' }]) === false, '`v = 0` (لا جيل بعد) ⇒ لا يُخزَّن');
+  check(f([{ klass: 'الأول', schoolId: 'S', v: 'x' }]) === false, '`v` غير رقميّ ⇒ لا يُخزَّن');
+  check(f([{ klass: 'الأول', schoolId: 'S', v: '1', switchToken: 't' }]) === false, 'مفتاحٌ زائد (توكن) ⇒ لا يُخزَّن');
+  check(/getStudentExamSchedule:\s*\{\s*args: _apiArgsExamSched/.test(src), 'المدخل مسجَّلٌ في `API_CACHE_FNS` بمدقّقه');
 })();
 
 /* ── 🟢 تحويلا `/pricing` و`/register` + حقنُ `window.SCHOOL_ID` (2026-09-19) ──────── */
