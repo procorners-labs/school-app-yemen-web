@@ -175,6 +175,10 @@
       var data = null;
       try { data = JSON.parse(text); } catch (e) {
         // رد غير JSON (بوابة أسر/صفحة خطأ) — نعدّه خطأ شبكة ليعمل التراجع للكاش.
+        /* 📡 (الدفعة 15) ويُبلَّغ: 200 بصفحة HTML (صفحةُ 404/خطأ Google مساء 2026-09-28) لا
+           يراه الوسيطُ فشلاً (رمزُه 200) ⇒ كان غائباً عن كلّ قناة. `network` + الرمزُ الحقيقيّ
+           يميّزه عن الانقطاع (0) في «صحّة النقل». */
+        _reportTransport('network', fnName, xhr.status || 0, Date.now() - _t0);
         if (onFailure) onFailure(netError('رد غير صالح'), userObject);
         return;
       }
@@ -189,6 +193,16 @@
         if (onFailure) onFailure(pe, userObject);
       } else {
         // الخادم رد بنجاح اتصال لكن بخطأ منطقي — ليس خطأ شبكة.
+        /* 📡 (الدفعة 15) `ok:false` من `doPost` = استثناءٌ رماه الخادم أو دالّةٌ مفقودة — **علّةٌ
+           لا خطأُ مستخدم** (كلمةُ المرور الخاطئة تعود `ok:true` بـ`success:false`). يُبلَّغ هنا
+           **مرّةً مركزيّاً** فيُغطّي كلَّ `withFailureHandler(function(){})` الصامت في الصفحات،
+           عبر `reportAppError` (يطوي المكرّر ويسقف بـ8 للصفحة) إلى «سجل_الأخطاء». ولا يُبلَّغ
+           خطأُ مُبلِّغ الأخطاء نفسِه (حلقة). */
+        try {
+          if (fnName !== 'logAppErrorPublic' && typeof window.reportAppError === 'function') {
+            window.reportAppError('server', String((data && data.error) || 'خطأ في الخادم').substring(0, 400), '', fnName);
+          }
+        } catch (eRep) {}
         if (onFailure) onFailure(new Error((data && data.error) || 'خطأ في الخادم'), userObject);
       }
     };

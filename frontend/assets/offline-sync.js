@@ -208,7 +208,16 @@
       if (!window.__gasRawCall) { resolve({ kind: 'network' }); return; }
       /* عمليّةٌ قديمةٌ في الطابور قبل هذه الطبقة بلا `opId` ⇒ تُرسَل بلاه كما كانت (لا اختلاق). */
       var oid = (typeof op.opId === 'string' && OP_ID_RE.test(op.opId)) ? op.opId : undefined;
-      window.__gasRawCall(op.fn, op.args, function () {
+      window.__gasRawCall(op.fn, op.args, function (res) {
+        /* 🔴 (الدفعة 15 · 2026-09-28) ردٌّ منطقيٌّ فاشل `{success:false}` (لا صلاحية · صفٌّ تغيّر ·
+           قيمةٌ مرفوضة) كان يُحذف من الطابور **كأنه نجح** ⇒ كتابةُ المعلّم تضيع بصمت. الآن تُعامَل
+           كخطأ خادم: تبقى «فاشلة» للمراجعة وتُبلَّغ. */
+        if (res && typeof res === 'object' && res.success === false) {
+          var why = String(res.error || res.message || 'رفض الخادم العملية');
+          try { if (typeof window.reportAppError === 'function') window.reportAppError('offline-replay', why.substring(0, 400), '', op.fn); } catch (eR) {}
+          resolve({ kind: 'server', error: why });
+          return;
+        }
         resolve({ kind: 'ok' });
       }, function (err) {
         // نميّز خطأ الشبكة عن خطأ الخادم المنطقي عبر علامة يضبطها الجسر.
