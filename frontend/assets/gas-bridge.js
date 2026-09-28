@@ -98,6 +98,13 @@
   // أخطاء الشبكة (status 0/مهلة/onerror/رد غير صالح/خطأ بوابة) تُعلَّم __network=true.
   function rawCall(fnName, args, onSuccess, onFailure, userObject, opId) {
     var _t0 = Date.now();
+    /* 🔴 (2026-09-28) **نتيجةٌ واحدةٌ لكلّ XHR.** عند المهلة أو انقطاع الشبكة يطلق المتصفح
+       `onreadystatechange` (status 0) **ثم** `ontimeout`/`onerror` ⇒ كان `onFailure` يُستدعى
+       مرّتين: القراءةُ تُعاد مرّتين بدل مرّة، والكتابةُ قد تُصَفّ في الطابور مرّتين. */
+    var _settled = false;
+    var _okCb = onSuccess, _koCb = onFailure;
+    onSuccess = _okCb && function (r, u) { if (_settled) return; _settled = true; _okCb(r, u); };
+    onFailure = _koCb && function (e, u) { if (_settled) return; _settled = true; _koCb(e, u); };
     var endpoint = window.GAS_ENDPOINT;
     if (!endpoint) {
       if (onFailure) onFailure(new Error('GAS_ENDPOINT غير مُعرّف'), userObject);
