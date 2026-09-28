@@ -331,6 +331,135 @@ function _gasShouldRetry(timedOut, attempt, maxAttempts) {
   return attempt < (maxAttempts - 1);
 }
 
+/* ═══ `GAS_HEDGE` — طلبٌ احتياطيٌّ للقراءات العالقة (‏2026-09-28 · الدفعة 13، بطلب المالك) ═══════
+   🎯 **العلّةُ مقيسةٌ لا مفترضة:**
+     · ‏09-25: التزامنُ عبر الوركر متوسّطُه **0.24** وقمّتُه 2–4 ⇒ حصّةُ الثلاثين **لا تُبلَغ**.
+     · ‏09-23: ‏**48٪** من الإجهاض في ساق **GET** بعد أن انتهى العملُ عند Google، و52٪ في POST.
+     · ‏09-28: ساعةُ 14:00 بـ**38 نداءً فقط** أُجهض منها 37٪ ⇒ توقّفٌ عشوائيٌّ عند Google لا ازدحام.
+   ⇒ نداءٌ عالقٌ لا يُنقذه الانتظار، ونداءٌ **جديد** في اللحظة نفسها ينجح غالباً (وسيطُ الناجح 6.3ث).
+   🔴 **وما نُفي سابقاً لا يُعاد:** تكرارُ ساق GET وحدَها لا يُفيد (المفتاحُ يُحجز عند أوّل GET).
+      الاحتياطيُّ هنا **طلبٌ كاملٌ جديد** بمفتاحه ومساره المستقلّ.
+   🔒 **الحدود:**
+     · **قراءاتٌ مراجَعةٌ فقط** (`HEDGE_FNS`)، رُوجعت كلُّ دالّةٍ في `teacher/` و`public/` ألّا
+       كتابةَ غيرَ متكرّرة الأثر فيها. ويحرسها `school-platform/tests/worker_hedge.test.js`.
+     · جسمٌ فيه `opId` ⇒ لا احتياطيّ أبداً (كتابة).
+     · مرّةً واحدة · بعد `HEDGE_AT_MS` · وفقط إن بقي `HEDGE_MIN_LEFT_MS` من ميزانية المحاولة
+       ومقعدٌ حرٌّ في المنظّم (يُحجز للاحتياطيّ ويُحرَّر بانتهائه).
+     · الأصليُّ ينتهي (بخطإٍ أو ردٍّ رديء) **قبل** موعد الاحتياطيّ ⇒ لا احتياطيّ، والسلوكُ القديم حرفياً.
+     · **الميزانيةُ الكلّيّة لا تتغيّر** ⇒ المستخدمُ لا ينتظر أطولَ أبداً.
+   🔒 **والتراجعُ متغيّرُ بيئة:** `GAS_HEDGE` ⇒ أيُّ قيمةٍ غير `on`. (fail-closed كالظلّ.) */
+var HEDGE_AT_MS        = 11000;
+var HEDGE_MIN_LEFT_MS  = 8000;
+var HEDGE_BODY_MAX     = 4096;
+var HEDGE_FNS = {
+  student: {
+    getStudentBootBundle: 1, getGrades: 1, getStudentReports: 1, getHomeScheduleBundle: 1,
+    getAttendanceForStudent: 1, getViolations: 1, getAssignmentsForStudent: 1,
+    getStudentFinancialData: 1, getStudentExamSchedule: 1, getStudentNewsFiltered: 1,
+    getStudentNotes: 1, getStudentSchoolBrand: 1, getTeachersForClass: 1, getNoteWeeklyStatus: 1
+  },
+  teacher: {
+    getTeacherBootBundle: 1, getStudentsProtected: 1, getStudentsDirectoryProtected: 1,
+    getListsDataProtected: 1, getMyScheduleProtected: 1, getNotifCountsBundle: 1, checkAppVersion: 1
+  },
+  home: { getHomePageBundle: 1 }
+};
+/* 🔴 وسيطٌ يجعل القراءةَ «تُستهلَك مرّةً» ⇒ لا احتياطيّ حين يكون حاضراً صادقاً. مراجعة الدفعة 13:
+   `getStudentBootBundle` مع `wantReview` يستدعي `checkPendingPlatformReviewRequest`، الذي يقلب طلبَ
+   التقييم إلى «معروض» تحت قفل ⇒ نسختان متوازيتان تجعلان واحدةً فقط ترى الطلب، وقد نُسلِّم الخاسرة. */
+var HEDGE_UNSAFE_ARGS = { getStudentBootBundle: 'wantReview' };
+function _hedgeOn(env) {
+  try { return !!(env && String(env.GAS_HEDGE || '').toLowerCase() === 'on'); }
+  catch (e) { return false; }
+}
+/** اسمُ الدالّة إن كان الطلبُ مؤهَّلاً للاحتياطيّ، وإلّا `''`. 🔴 يُقرأ بـ`JSON.parse` لا برجيكس
+ *  (نفسُ درس `_bhIsLoginBody`: المفتاحُ المكرَّر يُنفَّذ آخرُه). وأيُّ شكٍّ ⇒ `''` (fail-closed). */
+function _hedgeFnOf(app, method, body) {
+  try {
+    if (method !== 'POST' || typeof body !== 'string' || body.length > HEDGE_BODY_MAX) return '';
+    var set = HEDGE_FNS[app];
+    if (!set) return '';
+    var o = JSON.parse(body);
+    if (!o || typeof o !== 'object' || typeof o.fn !== 'string') return '';
+    if (Object.prototype.hasOwnProperty.call(o, 'opId')) return '';
+    if (!Object.prototype.hasOwnProperty.call(set, o.fn)) return '';
+    var ua = Object.prototype.hasOwnProperty.call(HEDGE_UNSAFE_ARGS, o.fn) ? HEDGE_UNSAFE_ARGS[o.fn] : '';
+    if (ua) {
+      var args = Array.isArray(o.args) ? o.args : [];
+      for (var i = 0; i < args.length; i++) {
+        if (args[i] && typeof args[i] === 'object' && args[i][ua]) return '';
+      }
+    }
+    return o.fn;
+  } catch (e) { return ''; }
+}
+/** سباقُ الأصليّ مع احتياطيٍّ مؤجَّل. `startLeg(signal)` ⇒ `Promise<Response>`.
+ *  `hedgeStart()` ⇒ `true` إن سُمح بالاحتياطيّ الآن (ويحجز مقعده)، و`hedgeEnd()` يحرّره.
+ *  يُحلّ بـ`{status, text, winner:'p'|'h', hedged}` لأوّل ردٍّ **جيّد**؛ فإن لم يكن جيّدٌ فبأوّل
+ *  ردٍّ وصل؛ فإن رُفض الطرفان فبرفضٍ يحمل `hedged`. إجهاضُ `primaryCtl` (مؤقّتُ الميزانية) يُجهض
+ *  الاحتياطيَّ معه ⇒ **سقفٌ واحدٌ للطرفين**. والفائزُ يُجهض الآخرَ فوراً. */
+function _gasHedgedFetch(startLeg, primaryCtl, hedgeAtMs, hedgeStart, hedgeEnd, isPost) {
+  return new Promise(function (resolve, reject) {
+    var settled = false, pending = 0, firstBad = null, firstErr = null;
+    var hedged = false, hedgeCtl = null, timer = null;
+    function good(x) {
+      return x.status >= 200 && x.status < 400 && !(isPost && String(x.text).charAt(0) === '<');
+    }
+    function finish() {
+      if (settled || pending > 0) return;
+      /* الأصليُّ انتهى قبل موعد الاحتياطيّ ⇒ يُلغى الموعد ويُسلَّم الناتجُ فوراً (السلوكُ القديم). */
+      if (timer) { clearTimeout(timer); timer = null; }
+      settled = true;
+      if (firstBad) { firstBad.hedged = hedged; resolve(firstBad); return; }
+      var e = firstErr || new Error('hedge_failed');
+      try { e.hedged = hedged; } catch (e2) {}
+      reject(e);
+    }
+    function run(tag, signal) {
+      pending++;
+      var p;
+      try { p = Promise.resolve(startLeg(signal)); } catch (e) { p = Promise.reject(e); }
+      p.then(function (r) {
+        return r.text().then(function (t) { return { status: r.status, text: t, winner: tag }; });
+      }).then(function (x) {
+        pending--;
+        if (tag === 'h' && hedgeEnd) { try { hedgeEnd(); } catch (e) {} }
+        if (settled) return;
+        if (good(x)) {
+          settled = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+          x.hedged = hedged;
+          try { if (tag === 'p') { if (hedgeCtl) hedgeCtl.abort(); } else primaryCtl.abort(); } catch (e) {}
+          resolve(x);
+          return;
+        }
+        if (!firstBad) firstBad = x;
+        finish();
+      }, function (err) {
+        pending--;
+        if (tag === 'h' && hedgeEnd) { try { hedgeEnd(); } catch (e) {} }
+        if (settled) return;
+        if (!firstErr || tag === 'p') firstErr = err;   // خطأُ الأصليّ هو المرجع
+        finish();
+      });
+    }
+    timer = setTimeout(function () {
+      timer = null;
+      if (settled) return;
+      var go = false;
+      try { go = !primaryCtl.signal.aborted && !!(hedgeStart && hedgeStart()); } catch (e) { go = false; }
+      if (!go) return;
+      hedged = true;
+      hedgeCtl = new AbortController();
+      try {
+        primaryCtl.signal.addEventListener('abort', function () { try { hedgeCtl.abort(); } catch (e) {} });
+      } catch (e) {}
+      run('h', hedgeCtl.signal);
+    }, hedgeAtMs);
+    run('p', primaryCtl.signal);
+  });
+}
+
 /* ═══ `GAS_LEG_SPLIT` — فصلُ ساقَي النداء قياساً محضاً (‏2026-09-23 · خطّةٌ مشتركة) ═══════
    🎯 **السؤال:** `redirect:'follow'` يجمع ساقَي Apps Script في `gasMs` واحد — POST إلى
    `/exec` يردّ 302 بمفتاح نتيجة، ثمّ GET على `script.googleusercontent.com` يسترجعها. ⇒
@@ -818,6 +947,19 @@ function _devStatsGasVSplit(fold) {
   }
   return { fold: out, aborts: aborts };
 }
+/* 🛟 ملخّصُ الاحتياطيّ: `fired` ما أُطلق فيه · `rescued` ما سلّمه الاحتياطيُّ ناجحاً (إجهاضٌ تفاداه
+   المستخدم) · `primaryWon` الأصليُّ سبق بعد الإطلاق · `failed` لم ينجح أيٌّ منهما. */
+function _devStatsHedge(rows) {
+  var out = { fired: 0, rescued: 0, primaryWon: 0, failed: 0 };
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], ok = r.g.why === 'ok';
+    out.fired += r.n;
+    if (ok && r.g.hw === 'h') out.rescued += r.n;
+    else if (ok && r.g.hw === 'p') out.primaryWon += r.n;
+    else out.failed += r.n;
+  }
+  return out;
+}
 /* ═══ نهايةُ `/dev-stats` النقيّة ═══ */
 
 /* يبني جسمَ `/dev-stats` من ستّة استعلاماتٍ متوازية + قائمة النسخ. **ليست نقيّة** (fetch)،
@@ -865,13 +1007,15 @@ async function _devStatsBuild(env, win, now) {
     function () { return q('gas', [['app', S], ['fn', S], W, [VER, S]], DD_TRUE); }, // 7 المُسترَدّة
     /* 8 🔴 رفضُ المنظّم (503) — يُسجَّل `ev:'bulkhead'` **قبل** كتلة `ev:'gas'` فلا يبلغها أبداً
        ⇒ بدونه تبدو اللوحةُ سليمةً في ذروة الإشباع بالضبط (مراجعة #368). */
-    function () { return q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }]); }
+    function () { return q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }]); },
+    /* 9 🛟 الاحتياطيّ (`GAS_HEDGE`): ما أُطلق فيه احتياطيٌّ، بمَن فاز وبالنتيجة. */
+    function () { return q('gas', [['hw', S], W], [{ key: 'hg', operation: 'eq', type: 'boolean', value: true }]); }
   ];
   var res = await _settleLimited(jobs, DEV_STATS_CONCURRENCY);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
   /* 🔬 سببُ كلّ قسمٍ فاشل — من ردّ الـAPI نفسِه (`_devStatsDiagOf`) لا تخميناً. */
   var diag = {};
-  var NAMES = ['totals', 'byFn', 'byHour', 'byVersion', 'byGasV', 'clienterr', 'versionMeta', 'dedup', 'rejected503'];
+  var NAMES = ['totals', 'byFn', 'byHour', 'byVersion', 'byGasV', 'clienterr', 'versionMeta', 'dedup', 'rejected503', 'hedge'];
   for (var di = 0; di < res.length; di++) {
     if (res[di].status === 'rejected') diag[NAMES[di]] = _devStatsDiagOf(res[di].reason);
   }
@@ -902,7 +1046,7 @@ async function _devStatsBuild(env, win, now) {
     totals: _devStatsCell(fT.acc.all || {}),
     byApp: cells(fA, function (k) { return { app: k }; }).sort(byAbort),
     byFn: null, byHour: null, hourCoverage: null, byVersion: null, byGasV: null, gasVCoverage: null,
-    clienterr: null, rejected503: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
+    clienterr: null, rejected503: null, hedge: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
   };
 
   if (val(1)) {
@@ -948,6 +1092,9 @@ async function _devStatsBuild(env, win, now) {
   if (val(8)) {
     body.rejected503 = _devStatsRejected(val(8), body.totals.n, DEV_STATS_TOP_FN);
   } else missing.push('rejected503');
+
+  if (val(9)) body.hedge = _devStatsHedge(val(9));
+  else missing.push('hedge');
 
   if (val(5)) {
     body.clienterr = val(5).map(function (r) {
@@ -2794,6 +2941,11 @@ export default {
       var _bhWhy = 'ok';
       var _legSplit = _gasLegSplitOn(env);
       var _legRec = null;
+      /* 🛟 `GAS_HEDGE` (انظر `_gasHedgedFetch`): لا يعمل مع `GAS_LEG_SPLIT` (قياسُ الساقين يفترض طلباً
+         واحداً)، ويُعطَّل معه قياسُ الظلّ للطلب نفسِه (الظلُّ يترك الأصليَّ حيّاً بعد المهلة). */
+      var _hedgeFn = (!_legSplit && _hedgeOn(env)) ? _hedgeFnOf(app, init.method, init.body) : '';
+      var _hgRec = null;      // { hg, hw, hms } لسجلّ `ev:'gas'` — للمؤهَّل وحدَه
+      var _hgSeat = null;
       // فاصل واحد بين المحاولتين — يمتصّ اعتراض/برود GAS المتقطّع قبل إرجاع HTML للجسر.
       // (‏«~6%» حُذف هنا أيضاً 2026-09-08 — انظر التعليق عند بداية حلقة المحاولات.)
       // ⚠️ 2026-07-28: كان العدد 4 محاولات (250/600/1200ms). حادثة 502 متكرّرة (تسجيل دخول
@@ -2892,7 +3044,7 @@ export default {
         var timedOut = false;
         /* 🔬 **عيّنةُ الظلّ تُقرَّر قبل المؤقّت لا داخله** — قرارٌ داخل المؤقّت يجعل
            المسارَين يفترقان في لحظةٍ لا نتحكّم بها، فيصير السلوكُ غيرَ قابلٍ للتفسير. */
-        var _shadowThis = _shadowOn(env) && !!(ctx && ctx.waitUntil) && (Math.random() < SHADOW_SAMPLE);
+        var _shadowThis = !_hedgeFn && _shadowOn(env) && !!(ctx && ctx.waitUntil) && (Math.random() < SHADOW_SAMPLE);
         var abortTimer = setTimeout(function () {
           timedOut = true;
           /* 🔴 المسارُ العاديُّ يُجهض كما كان حرفياً. وعيّنةُ الظلّ **لا تُجهَض هنا** —
@@ -2905,8 +3057,31 @@ export default {
           /* 🔬 `GAS_LEG_SPLIT`: الساقان بأيدينا قياساً — والنتيجةُ مطابقةٌ لـ`follow` (انظر
              `_gasFetchSplit`). والسجلُّ يحمل آخرَ محاولةٍ وحدَها، كبقيّة حقول `ev:'gas'`. */
           _legRec = { leg: '', pms: -1, gms: -1, g3: 0, gh: -1 };
-          var _fetchP = _legSplit ? _gasFetchSplit(fullTarget, init, _legRec) : fetch(fullTarget, init);
           var gasResp;
+          if (_hedgeFn) {
+            /* 🛟 سباقُ الأصليّ والاحتياطيّ — `controller` نفسُه يُجهض الطرفين عند انقضاء الميزانية،
+               فتمرّ النتيجةُ بكتلة `catch` أدناه كما كانت (`abort_budget` · 502 · بلا إعادة). */
+            var _hx;
+            try {
+              _hx = await _gasHedgedFetch(
+                function (sig) { return fetch(fullTarget, Object.assign({}, init, { signal: sig })); },
+                controller, HEDGE_AT_MS,
+                function () {
+                  if ((_plan.timeoutMs - HEDGE_AT_MS) < HEDGE_MIN_LEFT_MS) return false;
+                  if (!_bhCan(app)) return false;        // لا مقعدَ حرّاً ⇒ لا احتياطيّ
+                  _hgSeat = _bhTake(app);
+                  return true;
+                },
+                function () { if (_hgSeat) { _bhRelease(_hgSeat); _hgSeat = null; } },
+                isPost);
+            } catch (eHg) {
+              _hgRec = { hg: !!(eHg && eHg.hedged), hw: '-', hms: Date.now() - _attemptAt };
+              throw eHg;
+            }
+            _hgRec = { hg: !!_hx.hedged, hw: _hx.hedged ? _hx.winner : 'p', hms: Date.now() - _attemptAt };
+            gasResp = { status: _hx.status, text: function () { return Promise.resolve(_hx.text); } };
+          } else {
+          var _fetchP = _legSplit ? _gasFetchSplit(fullTarget, init, _legRec) : fetch(fullTarget, init);
           if (_shadowThis) {
             /* 🔴 **سباقٌ لا انتظار:** المستخدمُ يُخدَم في موعده بالضبط، والوعدُ يبقى حيّاً
                للظلّ. ولولا السباق لَحجب الانتظارُ الردَّ حتى يكتمل — أي لقِسنا بتغيير ما نقيس. */
@@ -2924,6 +3099,7 @@ export default {
             gasResp = _raced;
           } else {
             gasResp = await _fetchP;
+          }
           }
           lastText = await gasResp.text();
           lastStatus = gasResp.status;
@@ -3072,7 +3248,12 @@ export default {
                     تُقرأ «ساقٌ بلا زمن»). `lg` موضعُ الإجهاض: `post` أو `get` أو `done`. */
                  lg: _legRec ? _legRec.leg : undefined, pms: _legRec ? _legRec.pms : undefined,
                  gms: _legRec ? _legRec.gms : undefined, g3: _legRec ? _legRec.g3 : undefined,
-                 gh: _legRec ? _legRec.gh : undefined });
+                 gh: _legRec ? _legRec.gh : undefined,
+                 /* 🛟 الاحتياطيّ — للطلب المؤهَّل وحدَه، وإلّا تغيب الحقولُ كلّياً. `hg` منطقيٌّ
+                    (أُطلق أم لا) · `hw` مَن سُلِّم ردُّه: `p` الأصليّ · `h` الاحتياطيّ · `-` لا أحد. */
+                 hg: _hgRec ? _hgRec.hg : undefined, hw: _hgRec ? _hgRec.hw : undefined,
+                 hms: _hgRec ? _hgRec.hms : undefined });
+        if (_hgSeat) { _bhRelease(_hgSeat); _hgSeat = null; }   // حارسٌ: لا مقعدَ احتياطيٍّ يتسرّب
         // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
         // (الرفض 503 يخرج قبل الـtry ولا يحجز مقعداً أصلاً). بلا هذا، أي مسار خروج
         // منسيّ يُسرّب مقعداً إلى الأبد ويُجمّد السقف تدريجياً.
