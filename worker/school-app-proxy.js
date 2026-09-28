@@ -2042,6 +2042,27 @@ function _apiArgsExamSched(args) {
   return typeof o.v === 'string' && /^[0-9]{1,16}$/.test(o.v) && o.v !== '0';
 }
 
+/* ‏`getClassFeedBundle(params)` — `{schoolId, klass|class, section, v}` (2026-09-28، الدفعة 17).
+   موجزُ الفصل العامّ (أخبارُ الفصل + التعاميمُ العامّة) — نموذجُ قراءةٍ على الحافّة: متطابقٌ لكلّ
+   طلاب الفصل ولا يحمل حقلاً لطالبٍ بعينه (الموجَّهةُ تبقى في `getStudentBootBundle` برمزها).
+   🔴 `v` إلزاميّ = `جيلُ الأخبار.جيلُ التعاميم.خانةُ ١٠ دقائق`: الجيلان يرفعهما GAS عند كلّ كتابة
+   (‏`_tcBumpNewsGen_` · `_tcGenBump_('circ')`) فالتعديلُ يغيّر المفتاح فوراً، والخانةُ تُسقِف
+   تقادمَ ما يكتبه مشروعٌ آخر (‏cms) في «الاخبار» بعشر دقائق. بلا `v` صالح ⇒ لا تخزين ويمرّ إلى GAS. */
+var _API_FEED_KEYS = { schoolId: 1, klass: 1, 'class': 1, section: 1, v: 1 };
+function _apiArgsClassFeed(args) {
+  if (args.length !== 1) return false;
+  var o = args[0];
+  if (!o || typeof o !== 'object') return false;
+  if (Object.prototype.toString.call(o) === '[object Array]') return false;
+  var k = Object.keys(o);
+  if (k.length > 4) return false;
+  for (var i = 0; i < k.length; i++) {
+    if (!_API_FEED_KEYS.hasOwnProperty(k[i])) return false;
+    if (!_apiSafeScalar(o[k[i]])) return false;
+  }
+  return typeof o.v === 'string' && /^[1-9][0-9]{0,15}\.[0-9]{1,16}\.[0-9]{1,10}$/.test(o.v);
+}
+
 /* 🔴 **القائمة البيضاء وشرطُ التخزين معاً في مدخلٍ واحد** — لا جدولان يتباعدان.
    `ok(b)` تُقرَّر **لكلّ دالّة على حدة** لأن العقود مختلفة فعلاً: الثلاثة الأولى تُرجِع
    `{ok:true,…}`، بينما `getHomeScheduleBundle` تُرجِع `{settings, schedule}` **بلا `ok`
@@ -2125,6 +2146,13 @@ var API_CACHE_FNS = {
   /* جدول اختبارات الصفّ للطالب (الدفعة 11) — انظر `_apiArgsExamSched`: المفتاحُ يحمل جيلَ
      الجدول، فالتعديلُ يظهر فوراً مهما طال `ttl`. والجدولُ الفارغ لا يُخزَّن (قد يُملأ بعد دقيقة
      دون رفع جيلٍ لم يكن). */
+  /* موجزُ الفصل (الدفعة 17) — انظر `_apiArgsClassFeed`. قائمتان فارغتان تُخزَّنان: الفصلُ بلا أخبار
+     حالةٌ صحيحة، وأيُّ خبرٍ جديد يرفع الجيل فيغيّر المفتاح. */
+  getClassFeedBundle: {
+    args: _apiArgsClassFeed,
+    ttl: 900,
+    ok: function (b) { return b.ok === true && Array.isArray(b.news) && Array.isArray(b.circulars); }
+  },
   getStudentExamSchedule: {
     args: _apiArgsExamSched,
     ttl: 600,
