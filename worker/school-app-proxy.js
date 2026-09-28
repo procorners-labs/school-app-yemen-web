@@ -2381,7 +2381,10 @@ _LogoInner.prototype.element = function (el) {
    لكسر الوثيقة كلّها — والاسم يأتي من شيت يحرّره بشر. */
 function _BrandHead(brand) { this.brand = brand; }
 _BrandHead.prototype.element = function (el) {
-  var json = JSON.stringify(this.brand).replace(/</g, '\\u003c');
+  /* و U+2028/U+2029 تُهرَّبان أيضاً (2026-09-28): `JSON.stringify` لا يهرّبهما، وهما «نهايةُ سطر»
+     داخل سلسلة JS على محرّكاتٍ أقدم من ES2019 (Chrome < 66) ⇒ اسمُ مدرسةٍ يحملهما يكسر السكربت. */
+  var json = JSON.stringify(this.brand).replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   el.append('<script>window.__SCHOOL_BRAND__=' + json + ';window.__HOME_BRAND__=window.__SCHOOL_BRAND__;</' + 'script>', { html: true });
 };
 
