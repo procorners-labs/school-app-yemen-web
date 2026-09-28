@@ -2856,7 +2856,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '57f3604';
+  var STU_BUILD = '6c1e41d';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -2866,6 +2866,55 @@ a { color: var(--pr); text-decoration: none; }
    ⇒ رقمٌ واحد يستهلكه الجميع، فانحرافُهما يصير مستحيلاً لا مرصوداً (بند 113). */
 var STU_REPORTS_TTL_SEC = 180;
 var STU_REPORTS_TTL_MS  = STU_REPORTS_TTL_SEC * 1000;
+
+/* 🚪 بوّابةُ «اختر مدرستك» للطالب (2026-09-29، الدفعة 20-ب) — نظيرُ `__TC_NO_TENANT__` في
+   `teacher/_js-core-bridge.html` حرفياً في المنطق: «الرابطُ ثمّ البوّابة، ولا حلقةَ ثالثة».
+   كان رابطُ الطالب بلا مدرسة يفتح ملفَّ مدرسةٍ بعينها بصمت؛ الآن كلُّ المدارس سواء.
+   لا نداءَ خادم هنا: رابطٌ إلى دليل المدارس القائم. */
+function _stuTenantIdFromAnySource() {
+  var v = '';
+  try { if (window.__SCHOOL_BRAND__ && window.__SCHOOL_BRAND__.schoolId) v = window.__SCHOOL_BRAND__.schoolId; } catch (e) {}
+  if (!v && typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) v = SERVER_SCHOOL_ID;
+  if (!v && window.SCHOOL_ID) v = window.SCHOOL_ID;
+  if (!v) {
+    try { var q = new URLSearchParams(window.location.search); v = q.get('school') || q.get('schoolId') || ''; } catch (e2) {}
+  }
+  return (v === null || v === undefined) ? '' : String(v).trim();
+}
+window.__STU_NO_TENANT__ = !_stuTenantIdFromAnySource();
+if (window.__STU_NO_TENANT__) {
+  (function () {
+    function _stuShowTenantGate() {
+      if (document.getElementById('stuTenantGate')) return;
+      var d = document.createElement('div');
+      d.id = 'stuTenantGate';
+      d.setAttribute('role', 'alertdialog');
+      d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;' +
+        'align-items:center;justify-content:center;padding:24px;' +
+        'background:#0f172a;color:#f8fafc;font-family:inherit;direction:rtl;text-align:center;';
+      var box = document.createElement('div');
+      box.style.cssText = 'max-width:520px;line-height:1.9;';
+      var h = document.createElement('h1');
+      h.style.cssText = 'font-size:1.5rem;margin:0 0 12px;';
+      h.textContent = 'اختر مدرستك أولاً';
+      var p = document.createElement('p');
+      p.style.cssText = 'margin:0 0 22px;opacity:.85;';
+      p.textContent = 'هذا الرابط لا يحدّد مدرسةً بعينها، ولا تُفتح المنصّة بلا تحديد المدرسة. '
+        + 'اختر مدرستك من الدليل، أو استخدم الرابط الذي زوّدتك به مدرستك.';
+      var a = document.createElement('a');
+      a.href = 'https://yemenschoolz.com/';
+      a.target = '_top';
+      a.textContent = 'دليل المدارس';
+      a.style.cssText = 'display:inline-block;padding:12px 28px;border-radius:10px;' +
+        'background:#38bdf8;color:#0f172a;font-weight:700;text-decoration:none;';
+      box.appendChild(h); box.appendChild(p); box.appendChild(a);
+      d.appendChild(box);
+      document.body.appendChild(d);
+    }
+    if (document.body) _stuShowTenantGate();
+    else document.addEventListener('DOMContentLoaded', _stuShowTenantGate);
+  })();
+}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    سقفُ التزامن لسطح الطالب (بند 196) — **نقلُ عقدٍ قائم لا اختراعُ نمطٍ ثانٍ**
@@ -9393,6 +9442,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try { ssClearAll(); } catch (eSS) {} // ✅ يمسح أيضاً كاش sessionStorage (درجات/مالية/واجبات...) لا localStorage فقط
     savedSession = null;
   }
+  if (window.__STU_NO_TENANT__) savedSession = null;   // بوّابةُ «اختر مدرستك» (الدفعة 20-ب): لا نداءَ بلا مدرسة
   if (savedSession && savedSession.user) {
     _stuEpochBump();
     APP.user = savedSession.user;
