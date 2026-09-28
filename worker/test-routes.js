@@ -4431,6 +4431,107 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
         '🔴 موضعُ الاستدعاء يسجّل ولا يرفض (لا `return`)');
 })();
 
+/* ═══ 🛟 `GAS_HEDGE` — الطلبُ الاحتياطيّ للقراءات العالقة (الدفعة 13) ═══════════════════════════
+   الدوالُّ النقيّة تُستخرج وتُشغَّل بـ`fetch` وهميّ ومهلٍ قصيرة (مقياسُ زمنٍ مصغَّر، والمنطقُ نفسُه). */
+global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  console.log('\n🛟 GAS_HEDGE — الطلب الاحتياطي');
+  function cut(from, to) { var a = src.indexOf(from), b = src.indexOf(to, a + 1); return (a === -1 || b === -1) ? '' : src.slice(a, b); }
+  var hSrc = cut('var HEDGE_AT_MS', '\n/* ═══ `GAS_LEG_SPLIT`');
+  var dSrc = cut('function _devStatsHedge(', '\n/* ═══ نهايةُ `/dev-stats` النقيّة');
+  check(!!hSrc && !!dSrc, 'الدوالّ موجودة: _hedgeOn · _hedgeFnOf · _gasHedgedFetch · _devStatsHedge');
+  var hx = vm.createContext({ setTimeout: setTimeout, clearTimeout: clearTimeout, AbortController: AbortController, Promise: Promise, Error: Error });
+  vm.runInContext(hSrc + '\n' + dSrc, hx);
+  var H = function (n) { return vm.runInContext(n, hx); };
+
+  check(H('_hedgeOn')({ GAS_HEDGE: 'on' }) && !H('_hedgeOn')({}) && !H('_hedgeOn')({ GAS_HEDGE: 'yes' }), 'fail-closed: لا يعمل إلا بـ`on` صراحةً');
+  var fnOf = H('_hedgeFnOf');
+  check(fnOf('student', 'POST', '{"fn":"getGrades","args":["1"]}') === 'getGrades', 'قراءةٌ مؤهَّلة ⇒ اسمُها');
+  check(fnOf('student', 'POST', '{"fn":"loginStudent","args":[]}') === '', 'الدخول غيرُ مؤهَّل');
+  check(fnOf('student', 'POST', '{"fn":"studentHeartbeat"}') === '' && fnOf('student', 'POST', '{"fn":"registerDeviceToken"}') === '', 'النبض وتسجيل الجهاز غيرُ مؤهَّلين');
+  check(fnOf('student', 'POST', '{"fn":"getGrades","opId":"abcdefgh12"}') === '', 'جسمٌ فيه opId ⇒ لا احتياطيّ');
+  check(fnOf('student', 'POST', '{"fn":"getStudentBootBundle","args":[{"studentId":"1","wantReview":true}]}') === '' &&
+        fnOf('student', 'POST', '{"fn":"getStudentBootBundle","args":[{"studentId":"1"}]}') === 'getStudentBootBundle',
+        'حزمة الإقلاع مع wantReview (طلب التقييم يُستهلك مرّة) ⇒ لا احتياطيّ؛ وبدونه ⇒ مؤهَّلة');
+  check(fnOf('teacher', 'POST', '{"fn":"getGrades"}') === '' && fnOf('teacher', 'POST', '{"fn":"getTeacherBootBundle"}') === 'getTeacherBootBundle', 'القائمة لكلّ تطبيق على حدة');
+  check(fnOf('student', 'GET', '{"fn":"getGrades"}') === '' && fnOf('student', 'POST', '{bad') === '', 'GET أو جسمٌ معطوب ⇒ لا');
+  check(fnOf('student', 'POST', '{"fn":"getGrades","fn":"autoSaveGradesBatchProtected"}') === '', 'المفتاحُ المكرَّر: يُحكم بما يُنفَّذ (الأخير) لا بالأوّل');
+  check(fnOf('student', 'POST', '{"fn":"getGrades","args":["' + 'x'.repeat(5000) + '"]}') === '', 'جسمٌ كبير ⇒ لا تحليل ولا احتياطيّ');
+  var FNS = H('HEDGE_FNS');
+  var banned = /^(login|handle|save|autoSave|update|delete|add|register|submit|send|mark|set|create|remove|record|import)|Heartbeat/i;
+  var bad = [];
+  Object.keys(FNS).forEach(function (a) { Object.keys(FNS[a]).forEach(function (f) { if (banned.test(f)) bad.push(a + '.' + f); }); });
+  check(bad.length === 0, 'لا اسمَ كتابةٍ في HEDGE_FNS' + (bad.length ? ': ' + bad.join(', ') : ''));
+
+  var HF = H('_gasHedgedFetch');
+  function resp(status, text, ms, sig) {
+    return new Promise(function (res, rej) {
+      var t = setTimeout(function () { res({ status: status, text: function () { return Promise.resolve(text); } }); }, ms);
+      if (sig) sig.addEventListener('abort', function () { clearTimeout(t); var e = new Error('aborted'); e.name = 'AbortError'; rej(e); });
+    });
+  }
+  var seats = 0;
+  function start() { seats++; return true; }
+  function end() { seats--; }
+  var cases = [];
+  // ١) الأصليُّ عالق ⇒ الاحتياطيُّ يفوز، والأصليُّ يُجهَض
+  cases.push((function () {
+    var calls = 0, pCtl = new AbortController(), primAborted = false;
+    pCtl.signal.addEventListener('abort', function () { primAborted = true; });
+    return HF(function (sig) { calls++; return calls === 1 ? resp(200, '{"ok":1}', 1000, sig) : resp(200, '{"ok":2}', 20, sig); },
+              pCtl, 40, start, end, true).then(function (x) {
+      check(x.winner === 'h' && x.hedged === true && x.text === '{"ok":2}' && calls === 2 && primAborted, 'الأصليّ عالق ⇒ فاز الاحتياطيّ وأُجهض الأصليّ');
+    });
+  })());
+  // ٢) الأصليُّ يردّ قبل الموعد ⇒ لا احتياطيّ
+  cases.push((function () {
+    var calls = 0;
+    return HF(function (sig) { calls++; return resp(200, '{"ok":1}', 10, sig); }, new AbortController(), 60, start, end, true)
+      .then(function (x) {
+        return new Promise(function (r) { setTimeout(r, 90); }).then(function () {
+          check(x.winner === 'p' && x.hedged === false && calls === 1, 'الأصليّ قبل الموعد ⇒ طلبٌ واحد فقط');
+        });
+      });
+  })());
+  // ٣) hedgeStart يرفض (لا مقعد/لا ميزانية) ⇒ ينتظر الأصليَّ وحده
+  cases.push((function () {
+    var calls = 0;
+    return HF(function (sig) { calls++; return resp(200, '{"ok":1}', 80, sig); }, new AbortController(), 20, function () { return false; }, end, true)
+      .then(function (x) { check(x.winner === 'p' && x.hedged === false && calls === 1, 'لا مقعدَ/ميزانية ⇒ لا احتياطيّ، ويُنتظر الأصليّ'); });
+  })());
+  // ٤) ردٌّ HTML من الاحتياطيّ لا يُعدّ فوزاً ⇒ يُنتظر الأصليّ
+  cases.push((function () {
+    var calls = 0;
+    return HF(function (sig) { calls++; return calls === 1 ? resp(200, '{"ok":1}', 120, sig) : resp(200, '<html>', 10, sig); },
+              new AbortController(), 20, start, end, true)
+      .then(function (x) { check(x.winner === 'p' && x.text === '{"ok":1}', 'ردُّ HTML من الاحتياطيّ ليس فوزاً ⇒ سُلِّم الأصليّ الجيّد'); });
+  })());
+  // ٥) مؤقّتُ الميزانية يُجهض الأصليَّ ⇒ الاحتياطيُّ يُجهَض معه، ورفضٌ يحمل hedged
+  cases.push((function () {
+    var pCtl = new AbortController();
+    setTimeout(function () { pCtl.abort(); }, 70);
+    return HF(function (sig) { return resp(200, '{"ok":1}', 5000, sig); }, pCtl, 20, start, end, true)
+      .then(function () { check(false, 'الميزانية ⇒ رفضٌ لا نجاح'); },
+            function (e) { check(e && e.hedged === true, 'انقضاء الميزانية يُجهض الطرفين (سقفٌ واحد) والرفضُ يحمل hedged'); });
+  })());
+  // ٦) الأصليّ يفشل سريعاً قبل الموعد ⇒ رفضٌ فوريّ (السلوك القديم: إعادةُ الحلقة)
+  cases.push((function () {
+    var t0 = Date.now(), calls = 0;
+    return HF(function () { calls++; return Promise.reject(new Error('net')); }, new AbortController(), 200, start, end, true)
+      .then(function () { check(false, 'فشلٌ سريع ⇒ رفض'); },
+            function (e) { check(Date.now() - t0 < 150 && calls === 1 && e.hedged === false, 'فشلُ نقلٍ سريع قبل الموعد ⇒ رفضٌ فوريّ بلا احتياطيّ'); });
+  })());
+  return Promise.all(cases).then(function () {
+    check(seats === 0, 'كلُّ مقعدٍ احتياطيّ حُجز حُرِّر (لا تسرّب)');
+    var sum = H('_devStatsHedge')([{ g: { hw: 'h', why: 'ok' }, n: 5 }, { g: { hw: 'p', why: 'ok' }, n: 3 }, { g: { hw: '-', why: 'abort_budget' }, n: 2 }]);
+    check(sum.fired === 10 && sum.rescued === 5 && sum.primaryWon === 3 && sum.failed === 2, '/dev-stats: أُطلق 10 · أنقذ 5 · سبق الأصليّ 3 · فشل 2');
+    var site = src.slice(src.indexOf('var _hedgeFn = '), src.indexOf('var _hedgeFn = ') + 200);
+    check(/!_legSplit && _hedgeOn\(env\)/.test(site), 'لا يعمل مع GAS_LEG_SPLIT، ويتبع مفتاح البيئة');
+    check(/var _shadowThis = !_hedgeFn && _shadowOn\(env\)/.test(src), 'الظلّ مُعطَّل للطلب المؤهَّل للاحتياطيّ');
+    check(/"GAS_HEDGE": "(on|off)"/.test(fs.readFileSync(path.join(__dirname, '..', 'wrangler.jsonc'), 'utf8')), '`GAS_HEDGE` مُعلَنٌ صراحةً في wrangler.jsonc');
+  });
+});
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —
