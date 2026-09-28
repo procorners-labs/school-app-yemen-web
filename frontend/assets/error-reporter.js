@@ -23,6 +23,8 @@
   var MAX_PER_PAGE = 8;      // سقفٌ لكلّ تحميلِ صفحة — عاصفةٌ لا تُغرق القناة
   var sent = 0;
   var seen = {};             // طيُّ المكرّر عميلياً قبل أن يصل الخادم
+  /* متصفحٌ بلا `Promise`/`Proxy` لا يُشغّل المنصّة أصلاً — ضجيجُه لا يُبلَّغ (انظر isForeign). */
+  var LEGACY_BROWSER = (typeof window.Promise !== 'function' || typeof window.Proxy !== 'function');
 
   function qp(name) {
     try {
@@ -111,15 +113,32 @@
      لا تعمل بأثرٍ رجعيّ). ⇒ يحقن البناءُ في `<head>` مِلقَطاً مضمَّناً بلا طلبِ شبكة يدفع في
      `window.__errQ`، وهذا الملفُّ يصرّفه. **الطابورُ هو ما يجعل القناةَ ترى أوّلَ خطإٍ لا آخرَه.** */
   try {
-    var q = window.__errQ || [];
+    var q = LEGACY_BROWSER ? [] : (window.__errQ || []);
     for (var qi = 0; qi < q.length; qi++) {
       report(q[qi][0], q[qi][1], q[qi][2], q[qi][3] || '');
     }
     window.__errQ = null;
   } catch (eQ) {}
 
+  /* 🔴 (2026-09-28) **ما ليس من كودنا لا يُبلَّغ.** أكبرُ صفوف لوحة الأخطاء كانت من
+     `static.cloudflareinsights.com/beacon.min.js` (تحقنه Cloudflare على الحافة) و`gtag`
+     على متصفحاتٍ قديمة لا تُشغّل المنصّةَ أصلاً. ⇒ نتجاهل:
+       • خطأً ملفُّه من أصلٍ غير أصل الصفحة؛
+       • `Script error.` بلا ملفّ (خطأٌ عابرُ أصلٍ أخفاه المتصفح — لا معلومةَ فيه)؛
+       • كلَّ شيءٍ على متصفحٍ بلا `Promise` أو `Proxy` (الجسرُ لا يعمل عليه أصلاً). */
+  function isForeign(filename, message) {
+    try {
+      var f = String(filename || '');
+      if (!f) return /^Script error\.?$/.test(String(message || ''));
+      var o = window.location.origin;
+      return !(f === o || f.indexOf(o + '/') === 0);
+    } catch (e) { return false; }
+  }
+  window.__errIsForeign = isForeign;
+
   window.addEventListener('error', function (ev) {
     try {
+      if (LEGACY_BROWSER || isForeign(ev.filename, ev.message)) return;
       var where = (ev.filename || '') + ':' + (ev.lineno || 0) + ':' + (ev.colno || 0);
       report('js', (ev.message || 'Unknown error') + ' @ ' + where,
              ev.error ? ev.error.stack : '', '');

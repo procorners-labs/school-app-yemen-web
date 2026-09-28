@@ -56,7 +56,8 @@
 <script>
   (function(){var Q=window.__errQ=window.__errQ||[];
    function push(a){try{if(Q.length<20)Q.push(a);}catch(e){}}
-   window.addEventListener("error",function(ev){try{push(["js",(ev.message||"Unknown error")+" @ "+(ev.filename||"")+":"+(ev.lineno||0)+":"+(ev.colno||0),ev.error?ev.error.stack:"",""]);}catch(e){}});
+   function foreign(ev){try{var f=String(ev.filename||"");if(!f)return /^Script error.?$/.test(String(ev.message||""));return f.indexOf(location.origin+"/")!==0&&f!==location.origin;}catch(e){return false;}}
+   window.addEventListener("error",function(ev){try{if(foreign(ev))return;push(["js",(ev.message||"Unknown error")+" @ "+(ev.filename||"")+":"+(ev.lineno||0)+":"+(ev.colno||0),ev.error?ev.error.stack:"",""]);}catch(e){}});
    window.addEventListener("unhandledrejection",function(ev){try{var r=ev.reason;push(["promise",(r&&r.message)?r.message:String(r),(r&&r.stack)?r.stack:"",""]);}catch(e){}});
   })();
 </script>
@@ -2855,7 +2856,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '12eb860';
+  var STU_BUILD = '19d5277';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -3019,6 +3020,14 @@ function _stuHomeNewsKey() {
 function _stuHomeCircKey() {
   return 'circ_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' +
          APP.user.section + '_' + APP.user.id;
+}
+/* (2026-09-28) نفسُ البصمة لمفتاحين بقيا بلا مدرسة: تقاريرُ الطالب (الكودُ يتكرّر عبر المدارس)
+   وحزمةُ الجدول (تسميةُ الصفّ والشعبة شائعة). */
+function _stuReportsKey() {
+  return 'reports_' + (APP.user.schoolId || '') + '_' + APP.user.id;
+}
+function _stuSchedKey() {
+  return 'sched_bundle_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section;
 }
 
 /* هل الفشلُ عابرٌ (إشباع/شبكة) أم منطقيٌّ من الخادم؟ — التراجعُ للبائت للأوّل وحده.
@@ -5199,7 +5208,7 @@ function _stuRenderQuickStats(data) {
    على وجود الحقل (بند 157: الأثرُ لا الاسم). */
 function _stuApplyBootQuickStats(rpt) {
   if (!rpt || !rpt.ok || !rpt.data || !rpt.data.summary) return false;
-  try { ClientCache.set('reports_' + APP.user.id, rpt, STU_REPORTS_TTL_SEC); } catch (eQs) {}
+  try { ClientCache.set(_stuReportsKey(), rpt, STU_REPORTS_TTL_SEC); } catch (eQs) {}
   _stuRenderQuickStats(rpt.data);
   return true;
 }
@@ -5207,11 +5216,11 @@ function _stuApplyBootQuickStats(rpt) {
 function loadQuickStats(force) {
   // إحصائيات سريعة — نفس مصدر تبويب «تقاريري» وبنفس مفتاح الكاش
   // (استدعاء خادم واحد يخدم الرئيسية والتقارير معاً، ويعمل مع تراجع الكاش دون اتصال)
-  if (force) ClientCache.remove('reports_' + APP.user.id);
+  if (force) ClientCache.remove(_stuReportsKey());
   callServerSmart(
     'getStudentReports',
     { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
-    'reports_' + APP.user.id,
+    _stuReportsKey(),
     STU_REPORTS_TTL_SEC,
     function (r) {
       _stuRenderQuickStats((r && r.ok && r.data) ? r.data : null);
@@ -7595,7 +7604,7 @@ function loadHomeToday() {
   // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
   callServerSmart('getHomeScheduleBundle',
     { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-    'sched_bundle_' + APP.user.class + '_' + APP.user.section, 600,
+    _stuSchedKey(), 600,
     function (bundle) {
       if (bundle && bundle.settings) _applySchedSettings(bundle.settings);
       if (bundle && bundle.schedule && bundle.schedule.ok) {
@@ -7714,7 +7723,7 @@ function loadSchedule(force) {
   callServerSmart(
     'getHomeScheduleBundle',
     { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-    force ? null : ('sched_bundle_' + APP.user.class + '_' + APP.user.section),
+    force ? null : _stuSchedKey(),
     600,
     function (bundle) {
       /* الإعداداتُ أوّلاً — `renderSchedule` يعتمد التواقيت، وهذا هو سببُ انتظارِ
@@ -8325,7 +8334,7 @@ function loadReports(force) {
   callServerSmart(
   'getStudentReports',
   { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
-  'reports_' + APP.user.id,
+  _stuReportsKey(),
   STU_REPORTS_TTL_SEC,          // نفسُ المصدر الذي تقرؤه الرئيسية ونافذةُ التحديث (بند 194)
   function (r) {
     APP.loaded.reports = true;
@@ -9320,7 +9329,7 @@ document.addEventListener('DOMContentLoaded', function () {
                  ⇒ الإبطالُ **قبل** النداء يجعل كلَّ مسارٍ صحيحاً: الحزمةُ تدهس المفتاح
                  بالطازج، والتراجعُ يجده بارداً فيجلب. (بند 189: توحيدُ النداءات يوجب
                  توحيدَ مسار الفشل.) */
-              try { ClientCache.remove('reports_' + APP.user.id); } catch (eQS) {}
+              try { ClientCache.remove(_stuReportsKey()); } catch (eQS) {}
               try { _stuBootLoad(); } catch (eBL) {}
               try { loadHomeToday(); } catch (eHT) {}
             }
