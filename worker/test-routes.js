@@ -1817,8 +1817,13 @@ var LOGIN_MARGIN_MIN_MS = 2000;
      كانتا مبوَّبتين خلف توفّر مستودعٍ خاصٍّ لا علاقةَ لهما به ⇒ **لا تُشغَّلان في CI
      إطلاقاً**، وهي البيئةُ التي تُلزم وحدَها. 🎯 **وحارسٌ يتخطّى صامتاً في البيئة
      المُلزِمة ليس حارساً** — والقسمةُ الصحيحةُ بمصدر المُدخَل لا بموضع الكتلة. */
+  /* (الدفعة 14و) المصدرُ الحيّ منذ 2026-09-28 هو `school-platform` (‏school-app-yemen-gas)؛
+     `SchoolApp-gas` نسخةٌ قديمة قد تبقى على القرص فتُقاس المهلةُ من كودٍ متقادم. */
+  var _gasRoot = path.dirname(path.dirname(__dirname));
   var GAS = process.env.SCHOOLAPP_GAS_DIR ||
-            path.join(path.dirname(path.dirname(__dirname)), 'SchoolApp-gas');
+            (fs.existsSync(path.join(_gasRoot, 'school-platform', 'teacher'))
+              ? path.join(_gasRoot, 'school-platform')
+              : path.join(_gasRoot, 'SchoolApp-gas'));
   var gasOk = false;
   try { gasOk = fs.statSync(path.join(GAS, 'teacher')).isDirectory(); } catch (e) { gasOk = false; }
 
@@ -1840,12 +1845,21 @@ var LOGIN_MARGIN_MIN_MS = 2000;
   var budM = /var TOTAL_BUDGET_MS = \(isPost \? (\d+) : (\d+)\) - _bhWaited;/.exec(src);
   var napM = /var delays = \[(\d+)\];/.exec(src);
   var minM = /var GAS_MIN_ATTEMPT_MS = (\d+);/.exec(src);
-  check(!!winM && !!attM && !!budM && !!napM && !!minM,
+  /* 🔴 (الدفعة 14و · 2026-09-28) دوالُّ الدخول لها ميزانيةُ POST خاصّة (`LOGIN_POST_BUDGET_MS`)
+     تحلّ محلّ السقف العامّ ⇒ أسوأُ زمنِ دخولٍ يُحسب منها لا من 26,000. والسطرُ الذي يطبّقها
+     يُفحص نصّاً: بدونه يبقى الثابتُ ميّتاً والمحاكاةُ تَعِد بما لا يُنفَّذ. */
+  var lbM = /var LOGIN_POST_BUDGET_MS = (\d+);/.exec(src);
+  check(!!lbM && /\n\s*if \(isPost && _bhIsLoginBody\(init\.body\)\) TOTAL_BUDGET_MS = LOGIN_POST_BUDGET_MS - _bhWaited;/.test(src),
+        '🔴 ميزانيةُ الدخول مُعلَنةٌ **ومطبَّقةٌ** على POST الدخول وحده');
+  var ttlM = /var BH_SEAT_TTL_MS = (\d+);/.exec(src);
+  check(!!ttlM && !!lbM && Number(ttlM[1]) > Number(lbM[1]) + 2000,
+        '🔴 عمرُ المقعد (' + (ttlM && ttlM[1]) + ') أطولُ من ميزانية الدخول بهامش — لا يُحصَد مقعدُ دخولٍ حيّ');
+  check(!!winM && !!attM && !!budM && !!napM && !!minM && !!lbM,
         'قُرئت ثوابتُ الحلقة الخمسة من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
   var worstLoginMs = -1;
-  if (winM && attM && budM && napM && minM) {
+  if (winM && attM && budM && napM && minM && lbM) {
     var MARGIN = Number(attM[1]), MINATT = Number(minM[1]);
-    var NAP = Number(napM[1]), BASE = Number(budM[1]);
+    var NAP = Number(napM[1]), BASE = Number(lbM[1]);   // مسارُ الدخول (الدفعة 14و)
     var _planT = function (elapsed, budget) {
       var t = budget - elapsed - MARGIN;
       return (t < MINATT) ? 0 : t;
@@ -1905,7 +1919,7 @@ var LOGIN_MARGIN_MIN_MS = 2000;
        🟢 والدلالةُ باقيةٌ بعد الفطم: دوالُّ الطالب لها توأمٌ منفَّذٌ في `teacher/`
        (‏`GAS.student = GAS.teacher`) ⇒ قراءةُ `teacher/` وحدَها تكفي، و`student/` يُقرأ
        **إن وُجد** بوصفه أرشيفاً لا مصدراً. */
-    var apps = ['teacher', 'student'].filter(function (app) {
+    var apps = ['teacher', 'student', 'master'].filter(function (app) {
       try { return fs.statSync(path.join(GAS, app)).isDirectory(); } catch (e) { return false; }
     });
     check(apps.length > 0, 'ضابط: مجلدُ تطبيقٍ واحدٌ على الأقلّ قائم (صفرٌ = عمى لا نجاح) — ' +
