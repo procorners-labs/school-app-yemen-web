@@ -2856,7 +2856,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = 'cd5a53e';
+  var STU_BUILD = 'f4f4ce4';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -2974,6 +2974,7 @@ var ClientCache = {
       var obj = { d: data, e: Date.now() + (ttlSeconds || 180) * 1000 };
       sessionStorage.setItem(this._prefix + key, JSON.stringify(obj));
     } catch (e) {}
+    LsCache.set(key, data);   // يُنسخ للجهاز فقط ما في قائمة LsCache البيضاء
   },
   get: function(key) {
     try {
@@ -3001,6 +3002,49 @@ var ClientCache = {
   },
   remove: function(key) {
     try { sessionStorage.removeItem(this._prefix + key); } catch (e) {}
+  }
+};
+
+/* ══════════════════════════════════════════════════════
+   (الدفعة 11) نسخةٌ دائمة على الجهاز لرسمٍ فوريّ عند فتح التطبيق — بقيودٍ صارمة للخصوصية:
+   • قائمةٌ بيضاء: أخبارُ الفصل وتعاميمه فقط (محتوى المدرسة للفصل). لا درجات ولا مالية ولا
+     ملاحظات ولا تقارير ولا أيّ بيانٍ شخصيّ.
+   • المفتاحُ مبصومٌ بالمدرسة والفصل (والتعاميم بكود الطالب) — مفاتيح `_stuHome*Key`.
+   • عمرٌ أقصى 24 ساعة، والعرضُ منه مؤقّتٌ دائماً: البياناتُ الحيّة تُعيد الرسم فوراً.
+   • يُمسح كلُّه عند الخروج وتبديل الأخ واختلاف المدرسة (`ssClearAll`).
+   ══════════════════════════════════════════════════════ */
+var LsCache = {
+  _prefix: 'stu_ls_v1_',
+  _maxAgeMs: 24 * 60 * 60 * 1000,
+  allowed: function (key) {
+    return typeof key === 'string' && (key.indexOf('home_news_') === 0 || key.indexOf('circ_') === 0);
+  },
+  set: function (key, data) {
+    if (!this.allowed(key)) return;
+    try { localStorage.setItem(this._prefix + key, JSON.stringify({ d: data, t: Date.now() })); } catch (e) {}
+  },
+  get: function (key) {
+    if (!this.allowed(key)) return null;
+    try {
+      var raw = localStorage.getItem(this._prefix + key);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || typeof o.t !== 'number' || Date.now() - o.t > this._maxAgeMs) {
+        localStorage.removeItem(this._prefix + key);
+        return null;
+      }
+      return o.d;
+    } catch (e) { return null; }
+  },
+  clearAll: function () {
+    try {
+      var rm = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(this._prefix) === 0) rm.push(k);
+      }
+      for (var j = 0; j < rm.length; j++) localStorage.removeItem(rm[j]);
+    } catch (e) {}
   }
 };
 
@@ -3715,6 +3759,7 @@ function ssClearAll() {
     }
     for (i = 0; i < toRemove.length; i++) sessionStorage.removeItem(toRemove[i]);
   } catch (e) {}
+  if (typeof LsCache !== 'undefined') LsCache.clearAll();   // الدفعة 11: النسخة الدائمة على الجهاز أيضاً
 }
 
 // ── حفظ/استعادة اختيارات الفلاتر (localStorage — تبقى بعد إغلاق التطبيق) ──
@@ -8051,10 +8096,15 @@ function submitMyNote() {
 function loadExamSchedule(force) {
   var w = $('examSchedWrap');
   w.innerHTML = loaderHTML('جارٍ تحميل جدول الاختبارات...');
+  /* (الدفعة 11) `v` = جيلُ جدول الاختبارات من حزمة الإقلاع: الوركر يخزّن الجدول على الحافّة
+     بمفتاحٍ يحمله، فأيُّ تعديلٍ في الكنترول يغيّر المفتاح فلا يُخدَم جدولٌ قديم. والخادمُ يتجاهله. */
+  var ev = String(APP.examGen || ClientCache.get('exam_gen_' + (APP.user.schoolId || '')) || '');   // بلا بصمة ⇒ الوركر لا يخزّن
+  var args = ev ? { klass: APP.user.class, schoolId: APP.user.schoolId, v: ev }
+                : { klass: APP.user.class, schoolId: APP.user.schoolId };
   callServerSmart(
     'getStudentExamSchedule',
-    { klass: APP.user.class, schoolId: APP.user.schoolId },
-    'examSchedule_' + (APP.user.schoolId || '') + '_' + APP.user.class,   // مبصومٌ بالمدرسة؛ القديمُ يبقى مهمَلاً
+    args,
+    'examSchedule_' + (APP.user.schoolId || '') + '_' + APP.user.class + (ev ? '_' + ev : ''),   // مبصومٌ بالمدرسة والجيل
     600,
     function (r) {
       APP.loaded.examSchedule = true;
@@ -8951,8 +9001,18 @@ function _stuBootLoad() {
   _badgeInFlight = true;
 
   if (!newsWarm) {
-    var wn = $('homeNews');
-    if (wn) wn.innerHTML = loaderHTML('جارٍ تحميل الإشعارات...');
+    /* (الدفعة 11) رسمٌ فوريّ من نسخة الجهاز (≤24س) بدل مؤشّر التحميل؛ الحزمةُ تعيد الرسم حيّاً */
+    var lsNews = LsCache.get(newsKey);
+    if (lsNews && lsNews.length !== undefined) {
+      try { renderHomeNews(lsNews.length ? lsNews.slice(0, 3) : []); } catch (eLn) {}
+    } else {
+      var wn = $('homeNews');
+      if (wn) wn.innerHTML = loaderHTML('جارٍ تحميل الإشعارات...');
+    }
+  }
+  if (!circWarm) {
+    var lsCirc = LsCache.get(circKey);
+    if (lsCirc && lsCirc.success !== false && lsCirc.circulars) { try { renderHomeCirculars(lsCirc.circulars || []); } catch (eLc) {} }
   }
 
   var lastLogin = ssGet('lastLogin');
@@ -9010,6 +9070,10 @@ function _stuBootLoad() {
         _stuBadgeAt = Date.now();
       }
       if (r.review) { try { _stuApplyReview(r.review); } catch (eRv) {} }
+      if (r.examGen) {   // الدفعة 11: بصمةُ جدول الاختبارات (تبقى للإقلاع الدافئ الذي لا يطلب الحزمة)
+        APP.examGen = String(r.examGen);
+        try { ClientCache.set('exam_gen_' + (APP.user.schoolId || ''), APP.examGen, 180); } catch (eEg) {}
+      }
 
       /* ── نظرة سريعة ── (2026-08-29)
          🔴 القرارُ من **قيمة الاستهلاك** لا من وجود الحقل: `_stuApplyBootQuickStats`
