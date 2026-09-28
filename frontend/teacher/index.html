@@ -7658,10 +7658,24 @@ function _loginArmBtn(btn, busyText) {
    (`🚪 دخول إلى المنصة` و`🔓 دخول بالبصمة — <الجهاز>`)، ونصٌّ مفروضٌ كان سيمحو اسم
    الجهاز من زرّ البصمة عند أوّل فشل. و`_loginLabel` يُخزَّن على العنصر لأن التبريد
    يستبدل النصّ مؤقّتاً فلا يصلح مصدراً لنفسه. */
-function _loginShowFailure(btn, err) {
+/* 📡 (الدفعة 14F · 2026-09-28) كلُّ فشلِ دخولٍ غيرِ «كلمة مرور خاطئة» يُسجَّل في «سجل_الأخطاء»
+   بزمنه — مهلةُ ٢٨ث كانت تُعرض للمستخدم ولا تصل أيَّ سجلّ، فلم يَظهر انقطاعُ الدخول مساء
+   2026-09-28 إلا ببلاغٍ شفهيّ. `reportAppError` من `assets/error-reporter.js` (السطحُ المستضاف
+   وحده) ⇒ `typeof` يحرس صفحةَ `doGet`. لا اسمَ مستخدمٍ ولا كلمةَ مرورٍ في البلاغ. */
+function _loginReport(kind, msg, fn) {
+  try {
+    if (typeof window.reportAppError !== 'function') return;
+    var ms = window._loginT0 ? (Date.now() - window._loginT0) : 0;
+    /* الزمنُ في `stack` لا في الرسالة: البصمةُ من الرسالة ⇒ تكرارُ الفشل نفسِه يُطوى في صفٍّ واحد. */
+    window.reportAppError('login-' + kind, String(msg || '').substring(0, 300), 'elapsed_ms=' + ms, fn || 'handleTeacherLogin');
+  } catch (eRep) {}
+}
+
+function _loginShowFailure(btn, err, fn) {
   var info = (typeof window.gasErrorInfo === 'function')
     ? window.gasErrorInfo(err)
     : { kind: 'offline', text: 'تعذّر الاتصال — تحقّق من الشبكة وأعد المحاولة.' };
+  _loginReport(info.kind || 'fail', (err && err.message) || info.text, fn);
   shakeLoginError(info.text);
   if (!btn) return;
   /* ⚠️ الالتقاط يقع في `_loginArmBtn` **قبل** التعطيل — لا هنا: وقت الفشل يكون النصّ
@@ -7778,9 +7792,11 @@ function doLogin() {
   }
   _loginArmBtn(btn, '⏳ جاري التحقق...');
   clearTimeout(window._loginTimer);
+  window._loginT0 = Date.now();
   window._loginTimer = setTimeout(function() {
     btn.disabled = false;
     btn.textContent = '🚪 دخول إلى المنصة';
+    _loginReport('timeout', 'انتهت مهلة الدخول في الصفحة (' + (_LOGIN_TIMEOUT / 1000) + 'ث) والطلب ما زال جارياً');
     /* 🔴 النصّ يوافق ما يعنيه بلوغُ 28ث فعلاً: الوسيط استنفد ميزانيته (24ث) ⇒ **ازدحام
        لا انقطاع شبكة**. الرسالة القديمة كانت تقود المستخدم لفحص الراوتر وهو سليم. */
     shakeLoginError('الخدمة مزدحمة الآن — أعد المحاولة بعد لحظات.');
@@ -7798,6 +7814,7 @@ function doLogin() {
       btn.disabled = false;
       btn.textContent = '🚪 دخول إلى المنصة';
       if (r && r.success) {
+        if (window._loginT0 && Date.now() - window._loginT0 > 15000) _loginReport('slow', 'دخولٌ ناجحٌ لكنه بطيء');
         _loginAttempts = 0;
         _loginLocked = false;
         clearInterval(_loginLockTimer);
@@ -7808,6 +7825,7 @@ function doLogin() {
         // عطل نظام (وصول للشيت) — ليس خطأ كلمة مرور، لا يُحسَب من عدّاد المحاولات المحلي
         // ولا يُقرَن برقم مُختلَق (نفس ضمانة _stu_failSystem بمنصة الطالب).
         if (r && r.systemError) {
+          _loginReport('system', r.error || 'systemError');
           shakeLoginError(r.error || 'تعذّر الوصول لبيانات المدرسة مؤقتاً، يرجى المحاولة مجدداً');
           return;
         }
@@ -8064,6 +8082,7 @@ function biomLoginWithDevice(schoolId) {
     function proceedWithSecret(secretHex) {
       var btn = document.getElementById('loginBtn');
       _loginArmBtn(btn);   // يلتقط العنوان قبل التعطيل — مصدرٌ واحد مع مسار كلمة المرور
+      window._loginT0 = Date.now();
       callServer('handleTeacherLoginByDevice', {
         deviceId: dev.deviceId, deviceSecret: secretHex, schoolId: schoolId
       }, function (r) {
@@ -8078,7 +8097,7 @@ function biomLoginWithDevice(schoolId) {
         /* 🔴 كان `function ()` **بلا وسيط أصلاً** ⇒ نصٌّ واحد لكل الأسباب: ازدحامٌ
            وانقطاعُ شبكةٍ وعطلُ خادمٍ سواءً. وإصلاحُ مسار كلمة المرور وحده هو نمط
            «حارسٌ يُصلَح في حالته وتُترَك أخواته» (بندا 123 · 168) — فالمصدر واحد. */
-        _loginShowFailure(btn, err);
+        _loginShowFailure(btn, err, 'handleTeacherLoginByDevice');
       });
     }
     if (dev.encrypted) {
