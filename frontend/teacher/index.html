@@ -37,6 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
+    window.WEB_BUILD_TS = 202609290214;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -8306,6 +8307,35 @@ function showLoginScreen() {
 // ════════════════════════════════════════════════════════
 // ⭐ bootApp — مُعدَّلة لاستدعاء loadSchemaConfig أولاً
 // ════════════════════════════════════════════════════════
+// شريط تحذير لمدير المدرسة: مهلة قراءةٍ فقط بعد انتهاء الاشتراك، أو اقترابٌ من حدّ الخطة.
+// تحذيرٌ فقط بلا منع (قرار المالك). يُعرض مرّةً في الجلسة.
+function _planUsageBanner() {
+  try {
+    if (!App.user || !App.user.token || window.__planBannerShown) return;
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.success || !r.show || window.__planBannerShown) return;
+      window.__planBannerShown = true;
+      var msg = r.status === 'GRACE'
+        ? 'انتهى اشتراك المدرسة: المنصة للقراءة فقط حتى التجديد. تواصل مع إدارة المنصة.'
+        : (r.over ? 'تجاوز عدد الطلاب (' + r.students + ') حدّ خطة «' + (r.plan && r.plan.name || '') + '» (' + r.plan.limit + '). يُرجى ترقية الخطة.'
+                  : 'اقترب عدد الطلاب (' + r.students + ') من حدّ خطة «' + (r.plan && r.plan.name || '') + '» (' + r.plan.limit + ').');
+      var bar = document.createElement('div');
+      bar.setAttribute('role', 'status');
+      bar.style.cssText = 'position:sticky;top:0;z-index:50;background:' + (r.status === 'GRACE' ? '#b71c1c' : '#e65100') +
+        ';color:#fff;padding:8px 14px;font-size:14px;text-align:center;';
+      bar.textContent = msg;
+      var close = document.createElement('button');
+      close.textContent = '×';
+      close.setAttribute('aria-label', 'إغلاق');
+      close.style.cssText = 'background:none;border:0;color:#fff;font-size:18px;margin-inline-start:10px;cursor:pointer;';
+      close.onclick = function () { bar.remove(); };
+      bar.appendChild(close);
+      var main = document.getElementById('mainApp');
+      if (main) main.insertBefore(bar, main.firstChild);
+    }).withFailureHandler(function () {}).getPlanUsageProtected({ token: App.user.token });
+  } catch (e) {}
+}
+
 function bootApp() {
   // انتقال بصري سريع (~320ms، CSS بحت) من شاشة الدخول للوحة التحكم بدل القطع الفوري
   // السابق (Phase 3) — لا يؤخّر أي منطق لاحق، مجرّد تراكب opacity قبل الإخفاء الفعلي.
@@ -8326,6 +8356,7 @@ function bootApp() {
 
   // تحديث شريط التنقل العلوي
   updateNavUser();
+  setTimeout(_planUsageBanner, 5000);   // تحذير الخطة/مهلة القراءة للمدير (الدفعة 21) — بعد إقلاع اللوحة
 
   // ── القائمة الجانبية حسب الدور: مصدر حقيقة واحد يُحسم مبكراً (قبل أي مسار غير
   //   متزامن) كي يستقرّ العرض قبل أول رسم فلا وميض. idempotent. يشمل قسم الإدارة

@@ -116,6 +116,9 @@
        و`fn` أوّلاً لأن إسنادَ سجلّ الوركر يقرأ أوّلَ ٢٠٠ محرف. والعقدُ الخادميّ في
        `teacher/ApiEndpoint.js` (منعُ التنفيذ المزدوج). */
     var body = { fn: fnName, args: args, schoolId: window.SCHOOL_ID || null };
+    /* `cv` رقمُ بناء الصفحة، ويُرسل مع الكتابات وحدها: القراءاتُ تبقى بثلاثة مفاتيح لكاش الحافّة.
+       الخادم يردّ UPDATE_REQUIRED إن كانت الصفحة أقدم من الحدّ (الدفعة 21). */
+    if (opId && window.WEB_BUILD_TS) body.cv = window.WEB_BUILD_TS;
     if (opId) body.opId = opId;
     var payload = JSON.stringify(body);
 
@@ -191,6 +194,15 @@
         var pe = netError('قيد التنفيذ — سيُستكمَل تلقائياً');
         pe.__pending = true;
         if (onFailure) onFailure(pe, userObject);
+      } else if (data && data.code === 'UPDATE_REQUIRED') {
+        /* الصفحة أقدم من الحدّ الذي يقبله الخادم للكتابة (الدفعة 21): الكتابةُ تبقى في الطابور
+           (خطأ شبكة معلَّق)، وتُعاد الصفحة مرّةً واحدة فتُعاد الكتابة برقم البناء الجديد. */
+        var ue = netError(data.error || 'صدر تحديثٌ للمنصة — أعد تحميل الصفحة');
+        ue.__pending = true;
+        if (onFailure) onFailure(ue, userObject);
+        try {
+          if (!sessionStorage.getItem('__updReload')) { sessionStorage.setItem('__updReload', '1'); location.reload(); }
+        } catch (eUr) {}
       } else {
         // الخادم رد بنجاح اتصال لكن بخطأ منطقي — ليس خطأ شبكة.
         /* 📡 (الدفعة 15) `ok:false` من `doPost` = استثناءٌ رماه الخادم أو دالّةٌ مفقودة — **علّةٌ
