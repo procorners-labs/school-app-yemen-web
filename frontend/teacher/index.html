@@ -19719,6 +19719,13 @@ var _vioFilteredList   = [];    // القائمة المفلترة الحالي�
 var _vioCurrentPage    = 1;     // الصفحة الحالية
 var _vioPageSize       = 20;    // عدد المخالفات في كل صفحة
 var _vioTotalPages     = 1;     // إجمالي عدد الصفحات
+// (الدفعة 10) آخر 90 يوماً افتراضياً؛ «عرض الأقدم» يجلب السجلّ كاملاً (مفتاح كاشٍ منفصل)
+var _vioShowAll        = false;
+var _vioOlderCount     = 0;
+function _vioCacheKey() {
+  return 'my_activities_vio_' + (_vioShowAll ? 'all_' : 'd90_') + ((App.user && App.user.schoolId) || '');
+}
+function vioShowOlder() { _vioShowAll = true; loadViolations(); }
 
 // دالة مساعدة: تحدد لون الشارة بناءً على نوع السلوك (إيجابي/سلبي/محايد)
 //   إيجابي = أخضر · سلبي = أحمر · غير ذلك (ملاحظة/محايد) = كهرماني — لا أحمر افتراضي.
@@ -19781,12 +19788,14 @@ function renderViolations() {
           '<div class="sk-line skeleton"></div>' +
           '<div class="sk-line skeleton w75"></div>' +
         '</div>' +
+        '<div id="vioOlderArea"></div>' +
       '</div>' +
     '</div>';
   // استعادة آخر فلاتر مستخدمة قبل أول تحميل (تُحفظ محلياً)
   if (_fltRestore('vio', ['vioFilterGrade', 'vioFilterSection', 'vioSort', 'vioFilterSearch'])) {
     filterGradeCascade('vioFilterGrade', 'vioFilterSection', null);
   }
+  _vioShowAll = false;   // كلّ فتحٍ للصفحة يبدأ بآخر 90 يوماً
   loadViolations();
   vio_bulkLoad();
 }
@@ -19797,14 +19806,25 @@ function loadViolations() {
   if (area) area.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
 
   // kinds:violations — صفحة السلوك تستهلك المخالفات وحدها؛ كانت تدفع كلفة قراءة 3 أوراق كاملة
-  callServer('getMyActivitiesProtected', { kinds: ['violations'] }, 'my_activities_vio_' + ((App.user && App.user.schoolId) || ''), 90, function(r) {
+  var vioArgs = _vioShowAll ? { kinds: ['violations'] } : { kinds: ['violations'], sinceDays: 90 };
+  callServer('getMyActivitiesProtected', vioArgs, _vioCacheKey(), 90, function(r) {
     if (r && r.success) {
       _allViolations = (r.data && r.data.violations) ? r.data.violations : [];
+      _vioOlderCount = (!_vioShowAll && r.data && r.data.olderCount) ? r.data.olderCount : 0;
+      _vioRenderOlderBtn();
       filterViolations();
     } else {
       if (area) area.innerHTML = '<div class="alert alert-warning">⚠️ تعذر تحميل السجل السلوكي</div>';
     }
   });
+}
+
+function _vioRenderOlderBtn() {
+  var el = document.getElementById('vioOlderArea');
+  if (!el) return;
+  el.innerHTML = _vioOlderCount > 0
+    ? '<div style="text-align:center;margin:12px 0;"><button class="btn btn-secondary" onclick="vioShowOlder()">📂 عرض الأقدم (' + _vioOlderCount + ' سجلّاً قبل 90 يوماً)</button></div>'
+    : '';
 }
 
 // --- 3. فلترة المخالفات (محلياً) وتحديث الصفحة الأولى ---
@@ -20153,7 +20173,7 @@ function deleteViolationItem(rowIndex) {
         loadViolations();
       } else {
         if (r && r.stale) {
-          try { ClientCache.del('my_activities_vio_' + ((App.user && App.user.schoolId) || '')); } catch (e) {}
+          try { ClientCache.del(_vioCacheKey()); } catch (e) {}
           _allViolations = [];
           loadViolations();
         }

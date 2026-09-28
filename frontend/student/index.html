@@ -2856,7 +2856,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '683588a';
+  var STU_BUILD = 'cd5a53e';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -7887,6 +7887,21 @@ function renderSchedule(r) {
 // 13. الملاحظات (ولي الأمر)
 // ═══════════════════════════════════════════════════════════
 function loadTeachersList() {
+  // (الدفعة 10) نداءٌ واحد بدل نداءين متتاليين؛ عند فشله (خادمٌ أقدم مثلاً) يعود للمسار السابق
+  google.script.run
+    .withSuccessHandler(_stuCb('getStudentNoteFormBundle', function (b) {
+      if (!b || !b.ok) { _loadTeachersListLegacy(); return; }
+      APP.teachersList = b.teachers || [];
+      APP.noteWeeklyExhausted = (b.weekly && b.weekly.exhaustedTeachers) || [];
+      _renderNoteTeacherOptions();
+    }))
+    .withFailureHandler(_stuCb('getStudentNoteFormBundle', function (e) {
+      if (typeof _stuIsAuthExpired === 'function' && _stuIsAuthExpired(e)) { _stuForceRelogin(); return; }
+      _loadTeachersListLegacy();
+    }))
+    .getStudentNoteFormBundle({ studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken });
+}
+function _loadTeachersListLegacy() {
   google.script.run
     .withSuccessHandler(_stuCb('getTeachersForClass', function (list) {
       APP.teachersList = list || [];
