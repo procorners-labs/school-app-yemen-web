@@ -12,6 +12,19 @@
     withUserObject: true
   };
 
+  // نسخةٌ من `SLOW_ADMIN_FNS` في الوسيط (school-app-proxy.js)، ويفرض تطابقهما
+  // tests/worker_contract.test.js. مهلةٌ 95 ث، وبلا إعادة محاولة.
+  var SLOW_ADMIN_FNS = {
+    runIdMigrationProtected: 1,
+    archiveAcademicYearProtected: 1,
+    getScheduleDistBundleProtected: 1,
+    publishScheduleSyncProtected: 1,
+    redistributeAllProtected: 1,
+    autoDistributeAllProtected: 1,
+    importScheduleGridProtected: 1,
+    repairDataUnificationProtected: 1
+  };
+
   // علامة على أخطاء الشبكة (تعذّر الوصول للخادم) لتمييزها عن أخطاء الخادم المنطقية.
   function netError(msg) { var e = new Error(msg); e.__network = true; return e; }
 
@@ -131,7 +144,8 @@
     // ثانية تحت ضغط تزامن حقيقي [استجابة ناجحة لا فاشلة]، فكانت المهلة القديمة (30 ثانية بالضبط)
     // تُسقِط نداءات كانت لتنجح لو أُمهلت قليلاً أكثر — راجع _docs/…-heartbeat-boot-burst).
     var _isUpload = /upload|media|attach/i.test(fnName);
-    xhr.timeout = _isUpload ? 180000 : 60000;
+    // أدوات المدير الطويلة (الدفعة 25أ): الوسيط يمهلها 90 ث، فالجسر ينتظر 95 ث.
+    xhr.timeout = _isUpload ? 180000 : (SLOW_ADMIN_FNS.hasOwnProperty(fnName) ? 95000 : 60000);
 
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
@@ -248,7 +262,8 @@
       rawCall(fnName, args, onSuccess, function (err, uo) {
         // `!err.__saturated` هو الشرط الحاكم: 503/429 تعني أن المورد مستنفد **الآن**، فإعادة
         // المحاولة بعد 900ms تضربه ثانيةً وهو لم يتعافَ. تُمرَّر للأعلى فوراً ليقع التراجع للكاش.
-        if (err && err.__network && !err.__saturated && n < left) {
+        // أدوات المدير الطويلة لا تُعاد: انقطاعها بعد 95 ث يعني أن التنفيذ ما زال جارياً في GAS.
+        if (err && err.__network && !err.__saturated && n < left && !SLOW_ADMIN_FNS.hasOwnProperty(fnName)) {
           setTimeout(function () { attempt(n + 1); }, delays[n] || 1500);
         } else if (onFailure) {
           onFailure(err, uo);
