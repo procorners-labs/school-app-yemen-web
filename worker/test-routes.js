@@ -1865,6 +1865,29 @@ var LOGIN_MARGIN_MIN_MS = 2000;
   var ttlM = /var BH_SEAT_TTL_MS = (\d+);/.exec(src);
   check(!!ttlM && !!lbM && Number(ttlM[1]) > Number(lbM[1]) + 2000,
         '🔴 عمرُ المقعد (' + (ttlM && ttlM[1]) + ') أطولُ من ميزانية الدخول بهامش — لا يُحصَد مقعدُ دخولٍ حيّ');
+  /* (الدفعة 25أ) أدواتُ المدير الطويلة: 90ث، محاولةٌ واحدة، بلا hedge، وحارسٌ مغلقٌ عند الشكّ. */
+  var saM = /var SLOW_ADMIN_BUDGET_MS = (\d+);/.exec(src);
+  check(!!saM && Number(saM[1]) >= 60000 && Number(saM[1]) <= 95000, 'ميزانيةُ أدوات المدير (' + (saM && saM[1]) + ') بين 60ث و95ث (تحت جدار الحافّة ~100ث)');
+  check(!!saM && !!ttlM && Number(ttlM[1]) > Number(saM[1]) + 2000, '🔴 عمرُ المقعد أطولُ من ميزانية أدوات المدير بهامش');
+  check(/\n\s*if \(_slowAdmin\) TOTAL_BUDGET_MS = SLOW_ADMIN_BUDGET_MS - _bhWaited;/.test(src) && /var _slowAdmin = isPost && _slowAdminBody\(init\.body\);/.test(src),
+        '🔴 ميزانيةُ أدوات المدير مُعلَنةٌ **ومطبَّقةٌ** على POST وحده');
+  check(/_gasShouldRetry\(timedOut, attempt, _slowAdmin \? 1 : GAS_MAX_ATTEMPTS\)/.test(src), '🔴 أدواتُ المدير لا تُعاد (تنفيذٌ ثانٍ ممنوع)');
+  (function () {
+    var i0 = src.indexOf('var SLOW_ADMIN_FNS = {'), i1 = src.indexOf('};', i0);
+    var names = (src.slice(i0, i1).match(/^\s*([A-Za-z_$][\w$]*)\s*:/mg) || []).map(function (x) { return x.replace(/[\s:]/g, ''); });
+    check(names.length >= 2, 'SLOW_ADMIN_FNS فيها ' + names.length + ' اسماً');
+    var hi0 = src.indexOf('var HEDGE_FNS'), hs = src.slice(hi0, src.indexOf('};', hi0));
+    check(names.every(function (n) { return hs.indexOf(n) < 0; }), 'لا اسمَ من أدوات المدير في HEDGE_FNS');
+    var f0 = src.indexOf('function _slowAdminBody('), f1 = src.indexOf('\n}', f0) + 2;
+    var ctxSrc = 'var BH_LOGIN_BODY_MAX = 4096; var SLOW_ADMIN_FNS = ' + src.slice(src.indexOf('{', i0), i1 + 1) + ';' + src.slice(f0, f1) + '; return _slowAdminBody;';
+    var SA = new Function(ctxSrc)();
+    check(SA(JSON.stringify({ fn: 'runIdMigrationProtected', args: [] })) === true, '_slowAdminBody يقبل اسماً من القائمة');
+    check(SA(JSON.stringify({ fn: 'getGrades' })) === false, '_slowAdminBody يرفض اسماً خارجها');
+    check(SA('{"fn":"runIdMigrationProtected","fn":"getGrades"}') === false, '🔴 المفتاح المكرَّر يأخذ آخر قيمة (لا انتحال)');
+    check(SA(JSON.stringify({ fn: 'toString' })) === false, '🔴 toString لا يرث امتيازاً');
+    check(SA('{"fn":"runIdMigrationProtected","x":"' + new Array(5000).join('a') + '"}') === false, 'الجسم الضخم ⇒ النافذة العادية');
+    check(SA(null) === false && SA('not json') === false, 'غيرُ النصّ وغيرُ JSON ⇒ false');
+  })();
   check(!!winM && !!attM && !!budM && !!napM && !!minM && !!lbM,
         'قُرئت ثوابتُ الحلقة الخمسة من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
   var worstLoginMs = -1;
@@ -2876,8 +2899,10 @@ console.log('ضابطُ الفئة — «مَن يقرأ هذا نصّاً؟»:'
                          'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
                          'data-brand-host="phone"', 'data-brand-host="address"',
                          /* روابطُ البوّابات (2026-09-19 · `_PortalHref`): حذفُها من المصدر يُصمِت
-                            الكتابةَ الخادميّة فيعود الرابطُ عارياً — وكان هذا الحارسُ سيبقى أخضر. */
-                         'data-portal="teacher"', 'data-portal="student"']],
+                            الكتابةَ الخادميّة فيعود الرابطُ عارياً — وكان هذا الحارسُ سيبقى أخضر.
+                            (2026-09-29، public 164) زرُّ «تسجيل الدخول» الواحد: بقي `teacher` وحده،
+                            فالصفحةُ الموحّدة توجّه الطالب بنفسها؛ ولا زرَّ `student` في الموقع العامّ. */
+                         'data-portal="teacher"']],
     ['teacher/index.html', ['school-brand-name', 'id="tchLoginLogo"', 'id="tchNavLogo"',
                             'id="tchLoginContact"', 'id="tchLoginAddress"',
                             'data-brand="name"', 'data-brand="phone"', 'data-brand="address"',
@@ -4573,7 +4598,7 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
     check(sum.fired === 10 && sum.rescued === 5 && sum.primaryWon === 3 && sum.failed === 2, '/dev-stats: أُطلق 10 · أنقذ 5 · سبق الأصليّ 3 · فشل 2');
     var site = src.slice(src.indexOf('var _hedgeFn = '), src.indexOf('var _hedgeFn = ') + 200);
     check(/!_legSplit && _hedgeOn\(env\)/.test(site), 'لا يعمل مع GAS_LEG_SPLIT، ويتبع مفتاح البيئة');
-    check(/var _shadowThis = !_hedgeFn && _shadowOn\(env\)/.test(src), 'الظلّ مُعطَّل للطلب المؤهَّل للاحتياطيّ');
+    check(/var _shadowThis = !_hedgeFn && !_slowAdmin && _shadowOn\(env\)/.test(src), 'الظلّ مُعطَّل للطلب المؤهَّل للاحتياطيّ ولأدوات المدير الطويلة');
     check(/"GAS_HEDGE": "(on|off)"/.test(fs.readFileSync(path.join(__dirname, '..', 'wrangler.jsonc'), 'utf8')), '`GAS_HEDGE` مُعلَنٌ صراحةً في wrangler.jsonc');
   });
 });
