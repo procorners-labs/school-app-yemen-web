@@ -150,7 +150,7 @@ var BH_ISO_APP     = 5;      // سقف فرعي لكل تطبيق داخل عا�
 // عند أوّل فحصٍ أو تحرير. والقيمة = ميزانية الوسيط الكاملة (24,000) + هامشٌ للإفلات من
 // السباق ⇒ **لا يُسترَدّ مقعدٌ لطلبٍ ما يزال حيّاً**: الطلب مقتولٌ بالمهلة قبلها حتماً.
 // ⇒ العدّاد يعود مقياساً صادقاً للتزامن، والحماية تصير قابلةً للتفعيل أصلاً.
-var BH_SEAT_TTL_MS = 56000;   // > LOGIN_POST_BUDGET_MS (50,000) + هامش — كان 30000 (الدفعة 14و)
+var BH_SEAT_TTL_MS = 96000;   // > SLOW_ADMIN_BUDGET_MS (90,000) + هامش — كان 56000 (الدفعة 25أ)، و30000 قبلها
 
 // ── جِتَر على مهلة الانتظار (‏2026-08-21) ──────────────────────────────────────
 // 🔴 تصادفٌ مقيس: `BH_MAX_WAIT_MS = 8000` كان **يساوي بالضبط** مؤقّت إفراجٍ عميليّ
@@ -212,6 +212,35 @@ var BH_LOGIN_WAIT_MS = 12000;
    ⚠️ `BH_SEAT_TTL_MS` رُفع معها إلى 56,000 كي لا يُحصَد مقعدُ دخولٍ ما يزال حيّاً.
    التراجع: 26000 هنا و28000 في `_LOGIN_TIMEOUT` و30000 للمقعد. */
 var LOGIN_POST_BUDGET_MS = 50000;
+
+/* ── أدوات المدير الطويلة (الدفعة 25أ، 2026-09-29) ─────────────────────────────
+   🔴 **القياس:** لوحة «صحّة النقل» 24 ساعة: `getScheduleDistBundleProtected` 8/8 مُجهَض،
+   و`runIdMigrationProtected` 4/4 — معاينةُ الربط تحتاج 70–85ث فتُقطع عند 26ث دائماً،
+   والمدير لا يرى نتيجةً أبداً إلا من رابط /exec المباشر.
+   ⇒ لهذه الأسماء وحدها ميزانيةٌ 90ث (تحت جدار الحافّة ~100ث)، والجسر ينتظر 95ث.
+   **بلا إعادة محاولة ولا hedge ولا ظلّ:** كلّها أدواتُ مديرٍ نادرة وبعضُها يكتب، فتنفيذٌ
+   ثانٍ ممنوع. الحدُّ العامّ (26ث/24ث) لم يُمَسّ. التراجع: حذفُ الاسم من القائمة.
+   الأسماء حقيقيّةٌ في GAS (`tests/worker_contract.test.js`). */
+var SLOW_ADMIN_BUDGET_MS = 90000;
+var SLOW_ADMIN_FNS = {
+  runIdMigrationProtected       : 1,   // teacher — الربط بالمعرّفات (معاينة 70–85ث)
+  archiveAcademicYearProtected  : 1,   // teacher — أرشفة نهاية العام
+  getScheduleDistBundleProtected: 1,   // teacher — صفحة توزيع الجدول (36ث مقيس)
+  publishScheduleSyncProtected  : 1,   // teacher — إعادة بناء عرضَي الجدول
+  redistributeAllProtected      : 1,   // teacher — إعادة توزيع الجدول
+  autoDistributeAllProtected    : 1,   // teacher — التوزيع التلقائي
+  importScheduleGridProtected   : 1,   // teacher — استيراد شبكة الجدول
+  repairDataUnificationProtected: 1    // teacher — إصلاح توحيد البيانات
+};
+/* نفسُ حارس `_bhIsLoginBody`: تحليلٌ حقيقيّ مقيَّدُ الحجم و`hasOwnProperty`، وأيُّ شكٍّ
+   ⇒ النافذةُ العادية (fail-closed على الامتياز). */
+function _slowAdminBody(body) {
+  try {
+    if (typeof body !== 'string' || body.length > BH_LOGIN_BODY_MAX) return false;
+    var o = JSON.parse(body);
+    return !!(o && typeof o.fn === 'string' && SLOW_ADMIN_FNS.hasOwnProperty(o.fn));
+  } catch (e) { return false; }
+}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    خطّةُ محاولةِ GAS — ميزانيةٌ متبقّية لا ثابتٌ أعمى · ولا إعادةَ محاولةٍ على المهلة
@@ -3062,6 +3091,8 @@ export default {
             `gas-abort-ceiling-raised-doPost-26500` يحمل خطَّ الأساس النهاريّ. */
       var TOTAL_BUDGET_MS = (isPost ? 26000 : 24000) - _bhWaited;
       if (isPost && _bhIsLoginBody(init.body)) TOTAL_BUDGET_MS = LOGIN_POST_BUDGET_MS - _bhWaited;   // الدخول 50ث (الدفعة 14و)
+      var _slowAdmin = isPost && _slowAdminBody(init.body);
+      if (_slowAdmin) TOTAL_BUDGET_MS = SLOW_ADMIN_BUDGET_MS - _bhWaited;   // أدوات المدير 90ث (الدفعة 25أ)
       /* 🔴 **مهلةُ المحاولة صارت الميزانيةَ المتبقّية لا `PER_ATTEMPT_TIMEOUT_MS = 11500`
          الثابتة (‏2026-08-29).** القياسُ الحيّ: نداءُ صحّةٍ **مكاش** استغرق 20,958ms ونجح،
          بينما الثابتُ يُجهضه عند 11,500ms ثمّ يفتح تنفيذاً ثانياً على حصّةٍ مشبَعة أصلاً.
@@ -3086,7 +3117,7 @@ export default {
         var timedOut = false;
         /* 🔬 **عيّنةُ الظلّ تُقرَّر قبل المؤقّت لا داخله** — قرارٌ داخل المؤقّت يجعل
            المسارَين يفترقان في لحظةٍ لا نتحكّم بها، فيصير السلوكُ غيرَ قابلٍ للتفسير. */
-        var _shadowThis = !_hedgeFn && _shadowOn(env) && !!(ctx && ctx.waitUntil) && (Math.random() < SHADOW_SAMPLE);
+        var _shadowThis = !_hedgeFn && !_slowAdmin && _shadowOn(env) && !!(ctx && ctx.waitUntil) && (Math.random() < SHADOW_SAMPLE);
         var abortTimer = setTimeout(function () {
           timedOut = true;
           /* 🔴 المسارُ العاديُّ يُجهض كما كان حرفياً. وعيّنةُ الظلّ **لا تُجهَض هنا** —
@@ -3180,7 +3211,7 @@ export default {
         /* 🔴 **الخروجُ على فشل المهلة — جوهرُ الإصلاح.** تنفيذُ GAS ما زال جارياً على
            الخادم، فالمحاولةُ الثانية تفتح ثانياً بلا أن تُلغي الأول ⇒ مضاعفةُ استهلاك
            الحصّة في لحظة الإشباع (بند 128). وفشلُ النقل السريع يمرّ إلى إعادة المحاولة. */
-        if (!_gasShouldRetry(timedOut, attempt, GAS_MAX_ATTEMPTS)) break;
+        if (!_gasShouldRetry(timedOut, attempt, _slowAdmin ? 1 : GAS_MAX_ATTEMPTS)) break;   // أدوات المدير: محاولةٌ واحدة
         if ((Date.now() - loopStart) < TOTAL_BUDGET_MS) {
           /* 🔴 مقصوصٌ على المتبقّي من الميزانية — رصدَته المراجعة 2026-08-21: النوم كان
              غير مشروط بها، فطلبٌ انتظر 12ث ثم استغرقت محاولتُه 11.5ث كان يُضيف 700ms
