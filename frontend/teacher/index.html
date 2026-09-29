@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202609290324;
+    window.WEB_BUILD_TS = 202609290432;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -467,6 +467,26 @@
       font-size:.95rem; font-weight:500; margin-bottom:14px;
     }
 
+    /* 🎓 اختيار الدور في شاشة الدخول (`_js-login-role.html`) */
+    .login-role-seg {
+      display:flex; gap:4px; padding:4px; margin-bottom:12px;
+      background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18);
+      border-radius:var(--radius-md);
+    }
+    .login-role-seg button {
+      flex:1 1 0; min-width:0; padding:9px 6px; border:none; border-radius:calc(var(--radius-md) - 3px);
+      background:transparent; color:rgba(255,255,255,.75); font-family:var(--font);
+      font-size:.9rem; font-weight:600; cursor:pointer; transition:var(--transition);
+    }
+    .login-role-seg button.active {
+      background:linear-gradient(135deg, var(--primary), var(--secondary)); color:#fff;
+      box-shadow:0 2px 10px rgba(17,73,163,.35);
+    }
+    .login-role-note {
+      text-align:center; color:rgba(255,255,255,.75); font-size:.8rem;
+      margin:-4px 0 10px; line-height:1.6;
+    }
+    .login-role-note a { color:#fff; font-weight:700; }
     .input-group-custom { position:relative; margin-bottom:12px; }
     .input-icon {
       position:absolute; right:14px; top:50%; transform:translateY(-50%);
@@ -2531,8 +2551,15 @@ input, select, textarea, .form-control, .form-select, .grade-input {
          المدرسة وحده. لا تُعِد إدراجها هنا دون قرار جديد. -->
     <div class="login-body">
       <p class="login-welcome" id="loginWelcomeText">أهلاً بك! 👋 يرجى إدخال بيانات الدخول</p>
+      <!-- 🎓 اختيار الدور — `_js-login-role.html` (الطالب يُسلَّم لبوّابته، لا جلسة معلم) -->
+      <div class="login-role-seg" role="tablist" aria-label="نوع الحساب">
+        <button type="button" id="lrSegTeacher" class="active" role="tab" aria-selected="true" onclick="_lrSetRole('teacher')">👨‍🏫 معلم / موظف</button>
+        <button type="button" id="lrSegStudent" role="tab" aria-selected="false" onclick="_lrSetRole('student')">🎓 طالب</button>
+      </div>
+      <div class="login-role-note" id="lrAutoNote" style="display:none;">تم التبديل إلى دخول الطالب — <a href="#" onclick="_lrSetRole('teacher');return false;">تراجع</a></div>
+      <div class="login-role-note" id="lrStudentHint" style="display:none;">ادخل بكودك أو اسمك وكلمة المرور التي أعطتك إياها إدارة المدرسة.</div>
       <div class="input-group-custom">
-        <span class="input-icon">👤</span>
+        <span class="input-icon" id="lrUserIcon">👤</span>
         <input type="text" id="loginUsername" class="login-input" placeholder="اسم المستخدم (اسم المدرس)" autocomplete="username">
       </div>
       <div class="input-group-custom">
@@ -7741,7 +7768,7 @@ function _startLoginLockCountdown(sec) {
       clearInterval(_loginLockTimer);
       _loginLocked = false;
       _loginAttempts = 0;
-      if (btn) { btn.disabled = false; btn.textContent = '🚪 دخول إلى المنصة'; }
+      if (btn) { btn.disabled = false; btn.textContent = btn._loginLabel || '🚪 دخول إلى المنصة'; }
       hideLoginError();
       var ri0 = document.getElementById('loginRateInfo');
       if (ri0) ri0.style.display = 'none';
@@ -7822,6 +7849,8 @@ function doLogin() {
     shakeLoginError('تعذّر تحميل مكوّن الاتصال. أعد تحميل الصفحة.');
     return;
   }
+  // 🎓 دور «طالب» ⇒ `loginStudent` ثم بوّابة الطالب (`_js-login-role.html`)؛ مسار المعلم أدناه كما هو.
+  if (typeof _lrRole !== 'undefined' && _lrRole === 'student') return _doStudentLoginFromTeacherScreen(username, password, btn);
   _loginArmBtn(btn, '⏳ جاري التحقق...');
   clearTimeout(window._loginTimer);
   window._loginT0 = Date.now();
@@ -8803,6 +8832,158 @@ function openModal(id) {
  * إغلاق مودال بمعرف العنصر
  * @param {string} id - معرف المودال
  */
+/* ══════════════════════════════════════════════════════════════════════════
+   🎓 دور «طالب» في شاشة دخول المعلمين (2026-09-29 · قرار مالك)
+   ══════════════════════════════════════════════════════════════════════════
+   زرّ تبديل «معلم / طالب» + تبديلٌ تلقائي حين يُكتب كودٌ رقمي. الطالب يُدخَل بـ`loginStudent`
+   **القائمة كما هي** (نفسُ حدّ المحاولات والحجب المالي والإخوة) ثم يُسلَّم إلى بوّابة الطالب.
+
+   🔴 **لا دورَ `student` في جلسات المعلمين:** لا `saveSession` ولا `bootApp` هنا أبداً.
+   التسليمُ عبر `localStorage.studentSession_v1` بالشكل الذي تكتبه البوّابة نفسُها
+   (`_stu-js-core.html::lsSaveSession`) — والبوّابة تستعيده عند الإقلاع ثم تجدّد الرمزَ
+   والإخوة وتعيد فحصَ الحجب بنفسها (`refreshStudentSiblings`). الصفحتان على نفس الـorigin
+   في الموقع المستضاف ⇒ **صفرُ نداءٍ إضافي**. شرطُ الاستعادة: `?school` = `user.schoolId`.
+   ⚠️ على `/exec` القديم الـorigin مختلف ⇒ تُفتح البوّابة المستضافة ويُعاد الدخول فيها.
+   يحرسه `tests/teacher_login_student_role.test.js`. */
+var _lrRole = 'teacher';
+var _LR_KEY = 'loginRole_v1';
+var _LR_STU_SESSION_KEY = 'studentSession_v1';   // = LS_SESSION_KEY في `_stu-js-core.html`
+
+/* كودُ طالب: ٣ أرقام فأكثر، لاتينية أو عربية. أسماءُ المعلمين نصٌّ عربي أو بريد ⇒ لا تلتبس
+   (فُحص عمود «المدرسين» 2026-09-29: صفرُ اسمٍ رقمي). */
+function _lrLooksLikeStudentCode(v) {
+  var s = String(v == null ? '' : v).replace(/\s+/g, '');
+  return /^[0-9٠-٩]{3,}$/.test(s);
+}
+
+function _lrSchoolId() {
+  var sid = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID : '';
+  if (!sid) {
+    try { var q = new URLSearchParams(window.location.search); sid = q.get('school') || q.get('schoolId') || ''; } catch (e) {}
+  }
+  if (!sid && window.SCHOOL_ID) sid = window.SCHOOL_ID;
+  return String(sid || '').trim();
+}
+
+/* نفسُ حقول `_finishStudentLoginSuccess` (`_stu-js-login.html`) حرفياً — الاختبار يقارنهما. */
+function _lrStudentUser(r, schoolId) {
+  return {
+    id: r.studentId,
+    name: r.name,
+    firstName: r.firstName,
+    class: r.class || '',
+    section: r.section || '',
+    role: r.role,
+    schoolId: schoolId,
+    email: r.email || '',
+    birthdate: r.birthdate || '',
+    siblings: r.siblings || [],
+    switchToken: r.switchToken || ''
+  };
+}
+
+function _lrStudentPortalUrl(schoolId) {
+  var path = '/student/index.html?school=' + encodeURIComponent(schoolId);
+  return window.GAS_ENDPOINT ? path : 'https://yemenschoolz.com' + path;
+}
+
+function _lrSetRole(role, auto) {
+  _lrRole = (role === 'student') ? 'student' : 'teacher';
+  var stu = _lrRole === 'student';
+  try { localStorage.setItem(_LR_KEY, _lrRole); } catch (e) {}
+  var t = document.getElementById('lrSegTeacher'), s = document.getElementById('lrSegStudent');
+  if (t) { t.classList.toggle('active', !stu); t.setAttribute('aria-selected', stu ? 'false' : 'true'); }
+  if (s) { s.classList.toggle('active', stu);  s.setAttribute('aria-selected', stu ? 'true' : 'false'); }
+  var u = document.getElementById('loginUsername');
+  if (u) {
+    u.placeholder = stu ? 'كود الطالب أو اسمه' : 'اسم المستخدم (اسم المدرس)';
+    u.setAttribute('autocomplete', stu ? 'off' : 'username');
+  }
+  var ic = document.getElementById('lrUserIcon');
+  if (ic) ic.textContent = stu ? '🎓' : '👤';
+  var bio = document.getElementById('biomLoginBtnWrap');
+  if (bio) bio.style.display = stu ? 'none' : '';
+  var help = document.querySelector('#loginScreen .login-help');
+  if (help) help.style.display = stu ? 'none' : '';
+  var hint = document.getElementById('lrStudentHint');
+  if (hint) hint.style.display = stu ? 'block' : 'none';
+  var note = document.getElementById('lrAutoNote');
+  if (note) note.style.display = (stu && auto) ? 'block' : 'none';
+  var btn = document.getElementById('loginBtn');
+  if (btn && !btn.disabled) btn.textContent = stu ? '🎓 دخول الطالب' : '🚪 دخول إلى المنصة';
+  if (btn) btn._loginLabel = stu ? '🎓 دخول الطالب' : '🚪 دخول إلى المنصة';
+  var ri = document.getElementById('loginRateInfo');
+  if (ri) ri.style.display = 'none';
+  if (typeof hideLoginError === 'function') hideLoginError();
+}
+
+function _doStudentLoginFromTeacherScreen(username, password, btn) {
+  var sid = _lrSchoolId();
+  if (!sid) { shakeLoginError('رابط المدرسة مطلوب لدخول الطالب — افتح رابط مدرستك.'); return; }
+  _loginArmBtn(btn, '⏳ جاري التحقق...');
+  clearTimeout(window._loginTimer);
+  window._loginT0 = Date.now();
+  var label = '🎓 دخول الطالب';
+  var reset = function () { btn.disabled = false; btn.textContent = label; };
+  window._loginTimer = setTimeout(function () {
+    reset();
+    _loginReport('timeout', 'انتهت مهلة دخول الطالب في الصفحة', 'loginStudent');
+    shakeLoginError('الخدمة مزدحمة الآن — أعد المحاولة بعد لحظات.');
+  }, _LOGIN_TIMEOUT);
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      clearTimeout(window._loginTimer);
+      if (!r) { reset(); shakeLoginError('لم يتم استلام رد من الخادم. حاول مرة أخرى.'); return; }
+      if (r.blocked) { reset(); shakeLoginError(r.error || 'حسابك معلق مؤقتاً'); return; }
+      if (!r.ok) {
+        reset();
+        if (r.rateLimited) { _startLoginLockCountdown(r.retryAfterSec || 900); return; }
+        var m = r.error || 'فشل تسجيل الدخول';
+        if (typeof r.attemptsLeft === 'number') m += ' (' + r.attemptsLeft + ' محاولة متبقية)';
+        shakeLoginError(m);
+        return;
+      }
+      /* `loginStudent` تقبل «المدير» وتعيد `role:'admin'` — مكانه دخولُ المعلم لا البوّابة. */
+      if (r.role !== 'student') {
+        reset();
+        _lrSetRole('teacher');
+        shakeLoginError('هذا حساب إداري — اختر «معلم / موظف» ثم ادخل.');
+        return;
+      }
+      try {
+        localStorage.setItem(_LR_STU_SESSION_KEY, JSON.stringify({
+          user: _lrStudentUser(r, sid), tab: 'home', savedAt: Date.now()
+        }));
+      } catch (eLs) {}
+      var pw = document.getElementById('loginPassword');
+      if (pw) pw.value = '';
+      btn.textContent = '⏳ جارٍ فتح بوابة الطالب…';
+      window.location.href = _lrStudentPortalUrl(sid);
+    })
+    .withFailureHandler(function (e) {
+      clearTimeout(window._loginTimer);
+      _loginShowFailure(btn, e, 'loginStudent');
+    })
+    .loginStudent(username, password, getClientId(), sid);
+}
+
+(function _lrInit() {
+  function init() {
+    var role = 'teacher';
+    try { role = localStorage.getItem(_LR_KEY) || 'teacher'; } catch (e) {}
+    try { if (new URLSearchParams(window.location.search).get('role') === 'student') role = 'student'; } catch (e2) {}
+    _lrSetRole(role);
+    var u = document.getElementById('loginUsername');
+    if (u) u.addEventListener('input', function () {
+      if (_lrRole === 'teacher' && _lrLooksLikeStudentCode(u.value)) _lrSetRole('student', true);
+    });
+  }
+  if (typeof document === 'undefined') return;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
 function closeModal(id) {
   var el = document.getElementById(id);
   if (el) el.classList.remove('show');
