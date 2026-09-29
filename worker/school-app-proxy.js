@@ -3564,7 +3564,12 @@ export default {
     //    صراحةً في مسار 404. وشرط المضيف على HSTS **يبقى محفوظاً**: تثبيت HTTPS ١٨٠
     //    يوماً على نطاق إرثي يخدم متجراً منفصلاً لا رجعة فيه.
     if (path === '/app' || path === '/app/' || path === '/download' || path === '/download/') {
-      var apPkg = 'com.proconrers.schoolappyemen';
+      // التطبيق بحسب المدرسة (قرار المالك 2026-09-29): بلا مدرسة أو مع الإبداع ⇒ تطبيقها
+      // المنشور (كل الروابط القديمة بلا `school` تبقى كما هي)، وأيّ مدرسة أخرى ⇒ «يمن سكولز».
+      var apSchool = String(url.searchParams.get('school') || '').trim().toLowerCase();
+      var apPkg = (!apSchool || apSchool === 'abdaawatmuaz' ||
+                   apSchool === '12725ed7-c139-422c-a2d1-ec0ddd358104')
+        ? 'com.proconrers.schoolappyemen' : 'com.yemenschoolz.app';
       var apRef = url.searchParams.get('ref') || '';
       var apTarget = 'https://play.google.com/store/apps/details?id=' + apPkg +
         (apRef ? '&referrer=' + encodeURIComponent(apRef) : '');

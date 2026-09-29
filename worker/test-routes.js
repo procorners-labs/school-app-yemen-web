@@ -1404,6 +1404,17 @@ if (!appBlock) {
   check(!!r3 && r3.headers['X-Robots-Tag'] === 'noindex, follow',
         'ضابط: النطاق الإرثي لا يُفهرَس');
 
+  // التطبيق بحسب المدرسة: الإبداع (slug أو UUID) ⇒ تطبيقها، وغيرها ⇒ «يمن سكولز».
+  var PLAY_EBDAA = /details\?id=com\.proconrers\.schoolappyemen(&|$)/, PLAY_YS = /details\?id=com\.yemenschoolz\.app(&|$)/;
+  var r4 = runBlock(appBlock, '/app', 'yemenschoolz.com', '?school=abdaawatmuaz');
+  check(!!r4 && PLAY_EBDAA.test(r4.headers['Location'] || ''), '`/app?school=abdaawatmuaz` ⇒ تطبيق الإبداع');
+  var r5 = runBlock(appBlock, '/app', 'yemenschoolz.com', '?school=12725ed7-c139-422c-a2d1-ec0ddd358104&ref=qr');
+  check(!!r5 && PLAY_EBDAA.test(r5.headers['Location'] || '') && /referrer=qr$/.test(r5.headers['Location'] || ''),
+        '`/app?school=<UUID الإبداع>&ref=qr` ⇒ تطبيق الإبداع مع `referrer`');
+  var r6 = runBlock(appBlock, '/download', 'yemenschoolz.com', '?school=ibn-khaldoun&ref=wa');
+  check(!!r6 && r6.status === 302 && PLAY_YS.test(r6.headers['Location'] || '') && /referrer=wa$/.test(r6.headers['Location'] || ''),
+        '`/download?school=<مدرسة أخرى>` ⇒ تطبيق «يمن سكولز» مع `referrer`');
+
   // ضابط: مسار لا يخصّ الميزة لا تلتقطه الكتلة إطلاقاً.
   check(runBlock(appBlock, '/appointments', 'yemenschoolz.com', '') === null,
         '🔴 ضابط معاكس: `/appointments` لا تلتقطه كتلة `/app` (الحجز بالمقطع لا بالبادئة)');
