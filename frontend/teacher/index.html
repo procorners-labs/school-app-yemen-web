@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202609290633;
+    window.WEB_BUILD_TS = 202609290651;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -30143,12 +30143,37 @@ function idm_preview(){
 function idm_run(){
   var out=document.getElementById('idm-out'); _tidLock('idm-run-btn', false);
   confirmAction('ربطُ البيانات بالمعرّفات', 'تُؤخذ نسخةٌ احتياطية من الملف، ثمّ تُكتب أعمدةُ المعرّفات وورقتا «الفصول» و«التعيينات».\nلا يُغيَّر اسمٌ ولا يُحذف صفّ.', '🔗', function(){
-    if(out) out.innerHTML='⏳ جارٍ التنفيذ — قد يستغرق دقيقة، لا تُغلق الصفحة...';
-    callServer('runIdMigrationProtected', { token: App.user.token, confirm: _idmConfirm }, function(r){
+    if(out) out.innerHTML='⏳ جارٍ بدء التنفيذ في الخلفية...';
+    callServer('runIdMigrationProtected', { token: App.user.token, confirm: _idmConfirm, background: true }, function(r){
       if(!r||!r.success){ _tidErr(out,r); return; }
-      if(out) out.innerHTML=_idmRender(r);
+      if(r.background && r.job){ _idmPoll(r.job.id, out, Date.now()); return; }
+      if(out) out.innerHTML=_idmRender(r);   /* خادمٌ قديم نفّذ مباشرة */
     }, function(e){ _tidErr(out,e); });
   }, { okText: '🔗 تنفيذ' });
+}
+/* التنفيذ يعمل في الخلفية (الدفعة 25ب) لأنه قد يستغرق دقيقتين، فوق مهلة الموقع.
+   نسأل عن حالته كل 5 ثوانٍ حتى 8 دقائق. انقطاعُ نداء السؤال لا يوقف المهمة، فنعيد السؤال. */
+var IDM_POLL_MS = 5000, IDM_POLL_MAX_MS = 8 * 60 * 1000;
+function _idmPoll(jobId, out, t0){
+  setTimeout(function(){
+    var late = (Date.now() - t0) > IDM_POLL_MAX_MS;
+    callServer('getBackgroundJobStatusProtected', { token: App.user.token, jobId: jobId }, function(r){
+      if(!r||!r.success){ _tidErr(out,r); return; }
+      var j = r.job || {};
+      if(j.status === 'done'){
+        if(r.result && r.result.success){ if(out) out.innerHTML=_idmRender(r.result); }
+        else _tidErr(out, r.result || { error: 'انتهى التنفيذ، لكن تعذّرت قراءة نتيجته. افتح المعاينة لترى الحال.' });
+        return;
+      }
+      if(j.status === 'failed'){ _tidErr(out, { error: j.error || 'توقّف التنفيذ.' }); return; }
+      if(late){ _tidErr(out, { error: 'ما زال التنفيذ جارياً في الخلفية. افتح المعاينة بعد دقائق لترى الحال.' }); return; }
+      if(out) out.innerHTML='⏳ جارٍ التنفيذ في الخلفية ('+Math.round((Date.now()-t0)/1000)+' ث) — ستظهر النتيجة هنا، ولا يلزم إبقاء الصفحة مفتوحة.';
+      _idmPoll(jobId, out, t0);
+    }, function(e){
+      if(late){ _tidErr(out, e); return; }
+      _idmPoll(jobId, out, t0);
+    });
+  }, IDM_POLL_MS);
 }
 function tid_load(){
   var out=document.getElementById('tid-out'); _tidLock('tid-stamp-btn', false);
