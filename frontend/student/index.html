@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202609290447;
+    window.WEB_BUILD_TS = 202609290513;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -100,7 +100,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>يمن سكولز | Yemen Schoolz — منصة الطالب</title>
+<title>يمن سكولز | Yemen Schoolz — دخول المعلمين والطلاب</title>
 
 <script>
 (function () {
@@ -2245,7 +2245,7 @@ a { color: var(--pr); text-decoration: none; }
       <div class="login-badge-orbit o2" aria-hidden="true"><span class="login-sparkle"></span></div>
       <div class="login-logo brand-mark-fallback" id="stuLoginLogo" data-brand="logo"></div>
     </div>
-    <h1>منصة الطالب</h1>
+    <h1>تسجيل الدخول للطلاب والمعلمين</h1>
     <!-- 🔴 نصٌّ محايد لا اسمُ المنتج — هذه خانةُ هوية المدرسة (بند 175).
          `data-brand` خطّافٌ ثابت للسطوح الثلاثة (2026-09-03): يعيد الوسيطُ كتابةَ الهوية
          بعائلة محدِّدٍ واحدة `[data-brand=…]` بدل محدِّدٍ لكل صفحة. المحدِّداتُ القديمة باقية. -->
@@ -2256,7 +2256,7 @@ a { color: var(--pr); text-decoration: none; }
 
     <div class="field">
       <label>اسم المستخدم</label>
-      <input type="text" id="username" autocomplete="username" placeholder="الاسم الأول أو كود الطالب">
+      <input type="text" id="username" autocomplete="username" placeholder="الاسم أو كود الطالب أو البريد">
     </div>
     <div class="field">
       <label>كلمة المرور</label>
@@ -2857,7 +2857,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = 'a93b666';
+  var STU_BUILD = 'ddb92a3';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -3992,10 +3992,15 @@ function doLogin() {
   var _stuQs = new URLSearchParams(window.location.search);
   var schoolId = window.SCHOOL_ID || _stuQs.get('school') || _stuQs.get('schoolId') || ''; // `schoolId=` بديلٌ عند غياب `school=`
 
+  /* 🔑 صفحة دخول واحدة (توحيد 2026-09-29): `handleTeacherLogin({unified, prefer:'student'})` — الخادم يحدّد
+     النوعَ من الحساب: طالبٌ ⇒ البوّابةُ هنا كما كانت · موظّفٌ ⇒ لوحةُ المعلمين (`_stuHandoffStaff`).
+     `prefer:'student'` ⇒ الاسمُ يُبحث في الطلاب أوّلاً فلا يبطؤ دخولُ الطالب. */
   google.script.run
-    .withSuccessHandler(_stuCb('loginStudent', function (r) {
+    .withSuccessHandler(_stuCb('handleTeacherLogin', function (res) {
       btn.disabled = false;
       btn.textContent = 'تسجيل الدخول 🚪';
+      if (res && res.success && res.token && res.kind !== 'student') { _stuHandoffStaff(res, schoolId, btn); return; }
+      var r = _stuUnifiedToStudent(res);
 
       if (!r) {
         errEl.textContent = 'لم يتم استلام رد من الخادم. حاول مرة أخرى.';
@@ -4028,13 +4033,67 @@ function doLogin() {
       // نجح الدخول
       _finishStudentLoginSuccess(r, schoolId);
     }))
-    .withFailureHandler(_stuCb('loginStudent', function (e) {
+    .withFailureHandler(_stuCb('handleTeacherLogin', function (e) {
       btn.disabled = false;
       btn.textContent = 'تسجيل الدخول 🚪';
       errEl.textContent = 'تعذّر الاتصال بالخادم: ' + (e.message || e);
       errEl.style.display = 'block';
     }))
-    .loginStudent(u, p, getClientId(), schoolId); // ✅ تمرير schoolId للخادم
+    .handleTeacherLogin({ username: u, password: p, clientId: getClientId(), schoolId: schoolId,
+                          unified: true, prefer: 'student' });
+}
+
+/* ردُّ الدخول الموحّد ⇒ شكلُ ردِّ `loginStudent` الذي يفهمه باقي هذا الملف حرفياً. */
+function _stuUnifiedToStudent(res) {
+  if (!res) return null;
+  if (res.success && res.kind === 'student' && res.student) return res.student;
+  return { ok: false, blocked: !!res.blocked, error: res.error, rateLimited: !!res.rateLimited,
+           retryAfterSec: res.retryAfterSec, attemptsLeft: res.attemptsLeft, systemError: !!res.systemError };
+}
+
+/* نفسُ حقول `_finishTeacherLoginSuccess` (`_js-platform-reviews.html`) حرفياً — الاختبار يقارنهما. */
+function _stuStaffSessionData(r, schoolId) {
+  return {
+    token       : r.token,
+    teacherName : r.teacherName || '',
+    schoolId    : schoolId,
+    subjects    : r.subjects    || [],
+    classes     : r.classes     || [],
+    sections    : r.sections    || [],
+    assignments : r.assignments || null,
+    isAdmin     : (r.isAdmin === true),
+    role        : r.role        || 'teacher',
+    pagePerms   : r.pagePerms   || null,
+    caps        : r.caps        || null,
+    can         : r.can         || null,
+    grantPages  : r.grantPages  || [],
+    hidePages   : r.hidePages   || [],
+    customRole  : r.customRole  || '',
+    subject     : r.subject     || (r.subjects && r.subjects[0]) || '',
+    grade       : r.grade       || (r.classes && r.classes[0])   || '',
+    section     : r.section     || (r.sections && r.sections[0]) || '',
+    email       : r.email       || '',
+    allSubjectsNonGraded: !!r.allSubjectsNonGraded,
+    expiresIn   : r.expiresIn   || 28800
+  };
+}
+
+/* موظّفٌ دخل من صفحة الطالب ⇒ جلستُه بالشكل الذي تستعيده لوحةُ المعلمين (`loadSession`:
+   `teacherSession_v1 = {data, savedAt}`، وتتحقّق منها بـ`checkSession(token)` ثم `bootApp`)،
+   والرابطُ بنفس `?school` = `data.schoolId` (شرطُ الاستعادة). لا توكنَ في الرابط. */
+function _stuHandoffStaff(r, schoolId, btn) {
+  var errEl = $('loginErr');
+  if (!schoolId) {
+    if (errEl) { errEl.textContent = 'رابط المدرسة مطلوب — افتح رابط مدرستك.'; errEl.style.display = 'block'; }
+    return;
+  }
+  var data = _stuStaffSessionData(r, schoolId);
+  try { sessionStorage.setItem('teacherSession', JSON.stringify(data)); } catch (eS) {}
+  try { localStorage.setItem('teacherSession_v1', JSON.stringify({ data: data, savedAt: Date.now() })); } catch (eL) {}
+  try { $('password').value = ''; } catch (eP) {}
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ فتح لوحة المعلمين…'; }
+  var path = '/teacher/index.html?school=' + encodeURIComponent(schoolId);
+  window.location.href = window.GAS_ENDPOINT ? path : 'https://yemenschoolz.com' + path;
 }
 
 // بناء APP.user وحفظ الجلسة وإقلاع التطبيق — مُستخرَجة من doLogin (بلا تغيير سلوكي) كي يُعاد
@@ -6059,7 +6118,8 @@ function fetchNewsPage() {
     page: APP.newsState.page,
     pageSize: APP.newsState.pageSize,
     studentId: APP.user.id,
-    schoolId: APP.user.schoolId
+    schoolId: APP.user.schoolId,
+    switchToken: APP.user.switchToken || ''   // 🔒 أسماء المعجِبين و«إعجابي» لصاحب رمزٍ صالح فقط
 };
 
   callServerSmart(
