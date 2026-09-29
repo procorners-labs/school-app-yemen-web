@@ -33,7 +33,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/home';
-    window.WEB_BUILD_TS = 202609290214;
+    window.WEB_BUILD_TS = 202609290321;
     window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -471,6 +471,7 @@ img,video,iframe{max-width:100%;display:block}
   display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:52px;
   animation:fadeUp .75s var(--ease-out) .9s both;
 }
+.hero-chip[hidden],.hero-tag[hidden],.tick-item[hidden]{display:none!important}
 .hero-chip{
   display:inline-flex;align-items:center;gap:10px;
   padding:12px 22px;border-radius:16px;
@@ -1319,9 +1320,8 @@ window.__homeApplyCachedBrand();
   <div class="hero-orb orb-c"></div>
 
   <div class="hero-body">
-    <div class="hero-tag" id="heroTag">
+    <div class="hero-tag" id="heroTag" hidden>
       <span class="dot"></span>
-      رائدون في التعليم منذ أكثر من ٢٠ عاماً
     </div>
     
     <h1 class="hero-h1" id="heroH1">نحو جيلٍ <span class="shine">واعدٍ</span> مع <span class="school-brand-name">يمن سكولز</span></h1>
@@ -1337,10 +1337,9 @@ window.__homeApplyCachedBrand();
       </a>
     </div>
     <div class="hero-chips">
-      <div class="hero-chip"><i class="fas fa-calendar-check"></i> <span id="hcYears">٢٠+</span> عاماً من التميز</div>
-      <div class="hero-chip"><i class="fas fa-venus-mars"></i> بنين وبنات · أقسام منفصلة</div>
+      <div class="hero-chip" hidden><i class="fas fa-calendar-check"></i> <span id="hcYears"></span> عاماً من التميز</div>
       <div class="hero-chip"><i class="fas fa-bolt"></i> متابعة رقمية لحظية</div>
-      <div class="hero-chip"><i class="fas fa-trophy"></i> <span id="hcAwards">١٠+</span> جائزة تربوية</div>
+      <div class="hero-chip"><i class="fas fa-trophy"></i> <span id="hcAwards"></span> جائزة تربوية</div>
     </div>
   </div>
 
@@ -1354,13 +1353,13 @@ window.__homeApplyCachedBrand();
 <div class="ticker" aria-hidden="true">
   <div class="ticker-inner" id="tickerInner">
     <span class="tick-item"><i class="fas fa-star"></i> <span class="school-brand-name">يمن سكولز</span></span>
-    <span class="tick-item"><i class="fas fa-award"></i> <span class="tick-founded">رائدون في التعليم منذ ٢٠٠٤</span></span>
+    <span class="tick-item" hidden><i class="fas fa-award"></i> <span class="tick-founded"></span></span>
     <span class="tick-item"><i class="fas fa-chalkboard-user"></i> كادر تعليمي متميز</span>
     <span class="tick-item"><i class="fas fa-trophy"></i> إنجازات محلية ودولية</span>
     <span class="tick-item"><i class="fas fa-graduation-cap"></i> منهج متكامل ومتطور</span>
     <span class="tick-item"><i class="fas fa-heart"></i> نبني جيلاً واعداً</span>
     <span class="tick-item"><i class="fas fa-star"></i> <span class="school-brand-name">يمن سكولز</span></span>
-    <span class="tick-item"><i class="fas fa-award"></i> <span class="tick-founded">رائدون في التعليم منذ ٢٠٠٤</span></span>
+    <span class="tick-item" hidden><i class="fas fa-award"></i> <span class="tick-founded"></span></span>
     <span class="tick-item"><i class="fas fa-chalkboard-user"></i> كادر تعليمي متميز</span>
     <span class="tick-item"><i class="fas fa-trophy"></i> إنجازات محلية ودولية</span>
     <span class="tick-item"><i class="fas fa-graduation-cap"></i> منهج متكامل ومتطور</span>
@@ -1444,7 +1443,7 @@ window.__homeApplyCachedBrand();
       <div class="sh-tag"><i class="fas fa-layer-group"></i> المراحل الدراسية</div>
       <h2>مراحل تعليمية <em>متكاملة</em> من الروضة إلى الثانوية</h2>
       <div class="sh-bar"></div>
-      <p class="sh-sub">تعليم متدرّج عالي الجودة عبر أربع مراحل دراسية، بأقسام منفصلة للبنين والبنات، في بيئة آمنة ومحفّزة على الإبداع.</p>
+      <p class="sh-sub">تعليم متدرّج عالي الجودة عبر مراحل دراسية متكاملة، في بيئة آمنة ومحفّزة على الإبداع.</p>
     </div>
     <div class="feat-grid">
       <div class="feat-card reveal" data-delay="1">
@@ -1801,10 +1800,11 @@ function counter(el,target,suffix){
 function renderStats(s){
   if(!s)return;
   var data=[
-    {id:'yearsCount',   hid:'hcYears',   v:+(s.years||20)},
-    {id:'awardsCount',  hid:'hcAwards',  v:+(s.awards||10)}
+    {id:'yearsCount',   hid:'hcYears',   v:+(s.years||0)},
+    {id:'awardsCount',  hid:'hcAwards',  v:+(s.awards||0)}
   ];
   data.forEach(function(d){
+    if(!d.v) return;   // لا رقمَ مفترَض لأيّ مدرسة: ما لم يُصرَّح به يبقى مخفيّاً
     counter($(d.id),d.v);
     var hel=$(d.hid);
     if(hel)hel.textContent=toArabicNum(d.v)+'+';
@@ -1957,7 +1957,7 @@ function _homeContactHost(el){
   var host = el && el.parentNode;
   return (host && host.tagName && host.tagName.toLowerCase() === 'span') ? host : el;
 }
-function _homeContactField(id, value, owner){
+function _homeContactField(id, value){
   var el = $(id); if(!el) return false;
   var v = (value == null) ? '' : String(value).trim();
   var host = _homeContactHost(el);
@@ -1967,38 +1967,34 @@ function _homeContactField(id, value, owner){
 }
 
 function _homeApplyPageContent(b){
-  var p=(b&&b.page)||{}, owner=!!(b&&b.isOwner), i;
+  var p=(b&&b.page)||{}, i;
 
-  if(!_homeSetTextIf('heroSub', p.tagline) && !owner) _homeHideIf('heroSub');
+  if(!_homeSetTextIf('heroSub', p.tagline)) _homeHideIf('heroSub');
 
   _homeSetTextIf('aboutTitle', p.aboutTitle);
-  if(!_homeSetTextIf('aboutText', p.aboutText) && !owner) _homeHideIf('aboutText');
+  if(!_homeSetTextIf('aboutText', p.aboutText)) _homeHideIf('aboutText');
 
   var fy=parseInt(p.foundedYear,10), yrs=0;
   if(fy) yrs=(new Date()).getFullYear()-fy;
-  if(yrs>0){
-    var hc=$('hcYears'); if(hc) hc.textContent=toArabicNum(yrs)+'+';
-    var ht=$('heroTag');
-    if(ht) ht.textContent='رائدون في التعليم منذ أكثر من '+toArabicNum(yrs)+' عاماً';
-    var tk=document.querySelectorAll('.tick-founded');
-    for(i=0;i<tk.length;i++) tk[i].textContent='رائدون في التعليم منذ '+toArabicNum(fy);
-  } else if(!owner){
-    _homeHideIf('hcYears'); _homeHideIf('heroTag');
-    var tk2=document.querySelectorAll('.tick-founded');
-    for(i=0;i<tk2.length;i++) tk2[i].style.display='none';
+  var hc=$('hcYears'), ht=$('heroTag'), tk=document.querySelectorAll('.tick-founded');
+  if(hc){ hc.textContent=yrs>0?toArabicNum(yrs)+'+':''; if(hc.parentNode) hc.parentNode.hidden=!(yrs>0); }
+  if(ht){ ht.textContent=yrs>0?'رائدون في التعليم منذ أكثر من '+toArabicNum(yrs)+' عاماً':''; ht.hidden=!(yrs>0); }
+  for(i=0;i<tk.length;i++){
+    tk[i].textContent=yrs>0?'رائدون في التعليم منذ '+toArabicNum(fy):'';
+    if(tk[i].parentNode) tk[i].parentNode.hidden=!(yrs>0);
   }
   var aw=parseInt(p.awards!=null?p.awards:'',10);
   if(!aw){ var ac=$('hcAwards'); if(ac&&ac.parentNode) ac.parentNode.style.display='none'; }
 
-  _homeFillCards('#stages .feat-card', p.stages, owner);
-  _homeFillCards('#about  .feat-card', p.features, owner);
+  _homeFillCards('#stages .feat-card', p.stages);
+  _homeFillCards('#about  .feat-card', p.features);
 
-  _homeContactField('ftEmail', p.email,   owner);
-  _homeContactField('tbAddr',  p.address, owner);
-  _homeContactField('ftAddr',  p.address, owner);
+  _homeContactField('ftEmail', p.email);
+  _homeContactField('tbAddr',  p.address);
+  _homeContactField('ftAddr',  p.address);
 }
 
-function _homeFillCards(sel, list, owner){
+function _homeFillCards(sel, list){
   var cards=document.querySelectorAll(sel), i;
   if(!cards.length) return;
   if(!list || !list.length) return;   // لا بيانات ⇒ الساكن المحايد يبقى للجميع
@@ -2525,7 +2521,10 @@ function _homeApplyPortalLinks(sid){
 function _homeWirePlatformLink(b){
   var el = document.getElementById('tbPlatform');
   if(!el) return;
-  el.hidden = !!(b && b.isOwner === true);
+  var q = '', ps = '';
+  try{ q = (new URLSearchParams(window.location.search)).get('school') || ''; }catch(e){}
+  try{ ps = (typeof window.__hasPathSlug === 'function') ? window.__hasPathSlug() : ''; }catch(e2){}
+  el.hidden = !(q || ps);
 }
 
 function _homeSafeApply(label, fn){
@@ -2631,7 +2630,7 @@ function loadHomeBundle(){
         if(window.applySchoolSeo && b.brand) _homeSafeApply('seo', function(){
           var m={},k; for(k in window.SCHOOL_PROFILE) m[k]=window.SCHOOL_PROFILE[k];
           if(b.brand.name)    m.name=b.brand.name;
-          if(!b.isOwner)      m.alternateName='';   // لا اسم بديل لمدرسة أخرى
+          m.alternateName='';                       // لا اسم بديل ثابت لأيّ مدرسة
           if(b.brand.logo)    m.logo=b.brand.logo;
           if(b.brand.phone)   m.telephone=b.brand.phone;
           if(b.brand.address) m.streetAddress=b.brand.address;
@@ -2944,12 +2943,12 @@ document.addEventListener('DOMContentLoaded',function(){
     if(el) el.textContent = value || '';
   }
 
-  function applyContacts(p, isOwner){
+  function applyContacts(p){
     var waDisplay = (p.whatsapp || '').replace(/^\+?967/, '');
-    _homeContactField('tbPhone', p.phoneDisplay, isOwner);
-    _homeContactField('fcPhone', p.phoneDisplay, isOwner);
-    _homeContactField('tbWa', waDisplay, isOwner);
-    _homeContactField('fcWa', waDisplay, isOwner);
+    _homeContactField('tbPhone', p.phoneDisplay);
+    _homeContactField('fcPhone', p.phoneDisplay);
+    _homeContactField('tbWa', waDisplay);
+    _homeContactField('fcWa', waDisplay);
     setLink('tbFb', p.facebook); setLink('ftFb', p.facebook);
     setLink('tbIg', p.instagram); setLink('ftIg', p.instagram);
     setLink('tbYt', p.youtube); setLink('ftYt', p.youtube);
@@ -2959,10 +2958,10 @@ document.addEventListener('DOMContentLoaded',function(){
     window.__homeApplyBrandDom(p.name, p.logo || '');
   }
 
-  function applySeo(p, isOwner){
+  function applySeo(p){
     if(!p || !p.name) return;
     p.phoneDisplay = (p.telephone || '').replace(/^\+967/, '');
-    applyContacts(p, isOwner === true);
+    applyContacts(p);
     applyBrandText(p);
     document.title = window.__homeDocTitle(p.name, p.tagline);
     setMeta('meta[name="description"]', p.description);
