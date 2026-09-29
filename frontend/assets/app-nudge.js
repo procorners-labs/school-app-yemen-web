@@ -38,8 +38,21 @@
 (function () {
   'use strict';
 
-  var APP_ID = 'com.proconrers.schoolappyemen';
-  var PLAY_URL = 'https://play.google.com/store/apps/details?id=' + APP_ID;
+  /* التطبيق بحسب مدرسة الصفحة (2026-09-29): الزرّ يفتح `/app?school=<المدرسة>` والوسيط
+   * يختار الحزمة — الإبداع أو بلا مدرسة ⇒ تطبيقها، وغيرها ⇒ «يمن سكولز». نقطةُ قرارٍ
+   * واحدة في الوسيط (`worker/school-app-proxy.js` ‏1و) بدل نسخة ثانية هنا تنحرف عنها. */
+  var RESERVED_ROOT = { portal: 1, app: 1, download: 1, home: 1, teacher: 1, student: 1 };
+  function pageSchool() {
+    var q = '';
+    try { q = new URLSearchParams(window.location.search).get('school') || ''; } catch (e) { q = ''; }
+    if (q) return q;
+    var m = /^\/([a-z0-9-]+)\/?$/.exec(((window.location && window.location.pathname) || '').toLowerCase());
+    return (m && !RESERVED_ROOT[m[1]]) ? m[1] : '';
+  }
+  function appUrl() {
+    var sc = pageSchool();
+    return '/app?ref=nudge' + (sc ? '&school=' + encodeURIComponent(sc) : '');
+  }
 
   var SNOOZE_MS = 30 * 24 * 60 * 60 * 1000; /* ٣٠ يوماً */
   var KEY_SNOOZE = 'schoolz_nudge_install_until';
@@ -174,8 +187,9 @@
     }
 
     go.onclick = function () {
-      try { window.open(PLAY_URL, '_blank'); }
-      catch (e) { window.location.href = PLAY_URL; }
+      var target = appUrl();
+      try { window.open(target, '_blank'); }
+      catch (e) { window.location.href = target; }
       close();
     };
     no.onclick = function () { snooze(); close(); };
