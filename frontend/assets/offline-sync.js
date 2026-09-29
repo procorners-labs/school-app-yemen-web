@@ -43,11 +43,11 @@
     uploadFileToDrive: true
   };
 
-  // دوال تُحفظ جلستها بشكل دائم بعد نجاحها.
-  var SESSION_FNS = {
-    handleTeacherLogin: 'teacher',
-    loginStudent: 'student'
-  };
+  /* 🔒 L4 (2026-09-29): **لا تُحفظ ردودُ الدخول هنا بعد اليوم.** كانت تُكتب كلُّ ردٍّ (حتى الفاشل، ومعه
+     `switchToken` ورموزُ الإخوة) في `teacherSession_v2`/`studentSession_v2` وفي IndexedDB، ولا أحدَ يقرؤها
+     (الصفحتان تحفظان جلستيهما بنفسيهما: `teacherSession_v1` و`studentSession_v1`)، والخروجُ لا يمسحها ⇒
+     رموزٌ تبقى على الأجهزة المشتركة. `purgeLegacySessions` يمسح ما بقي منها عند كلّ تحميل. */
+  var SESSION_FNS = {};
 
   function classify(fn) {
     if (!fn || typeof fn !== 'string') return 'online-only';
@@ -382,6 +382,11 @@
   var SESSION_LS_KEYS = { teacher: 'teacherSession_v2', student: 'studentSession_v2' };
   var SESSION_TTL_MS  = 28800000; // 8 ساعات
 
+  function purgeLegacySessions() {
+    try { localStorage.removeItem('teacherSession_v2'); localStorage.removeItem('studentSession_v2'); } catch (e) {}
+    try { OfflineDB.del(KV, 'session:teacher'); OfflineDB.del(KV, 'session:student'); } catch (e2) {}
+  }
+
   function persistSession(fn, result) {
     var which = SESSION_FNS[fn];
     if (!which || !result) return;
@@ -518,6 +523,7 @@
     flush: flush,
     persistSession: persistSession,
     getPersistedSession: getPersistedSession,
+    purgeLegacySessions: purgeLegacySessions,
     pendingCount: pendingCount,
     trackRead: trackRead,
     revalidate: revalidate,
@@ -528,6 +534,7 @@
 
   // ── المشغّلات ────────────────────────────────────────────────
   function init() {
+    purgeLegacySessions();
     UI.ensure();
     if (isOnline()) flush();
 

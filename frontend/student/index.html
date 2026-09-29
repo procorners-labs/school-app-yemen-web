@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202609290513;
+    window.WEB_BUILD_TS = 202609290615;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -47,7 +47,7 @@
         try { history.replaceState(history.state, '', '/' + String(_pm[1]).toLowerCase() + '/index.html?school=' + encodeURIComponent(_s1) + (window.location.hash || '')); } catch (eRS) {}
       }
     }
-    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '';
+    window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || _pSlug || window.SCHOOL_ID || '';
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -2857,7 +2857,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = 'ddb92a3';
+  var STU_BUILD = 'de98840';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -3378,6 +3378,16 @@ var SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 ساعات بالملي ثانية
 /* 🗑️ `BADGE_INTERVAL_MS` أُزيل 2026-09-23 (خطّة 09-23-ب · 2-أ): الشارةُ تركب النبضة، فلا استطلاعَ مستقلّاً. */
 
 // ─── حفظ جلسة الطالب في localStorage ───
+/* L1: نظيرُ `_tcSessionSchoolMatches` في لوحة المعلمين — الجلسةُ تحمل UUID والـslug، والرابطُ أيّاً منهما. */
+function _stuSessionSchoolMatches(user, req) {
+  var r = String(req || '').trim().toLowerCase();
+  if (!r || !user) return true;
+  var ids = [user.schoolId, user.schoolSlug];
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i] && String(ids[i]).trim().toLowerCase() === r) return true;
+  }
+  return false;
+}
 function lsSaveSession() {
   try {
     var obj = {
@@ -3989,14 +3999,25 @@ function doLogin() {
   btn.textContent = 'جارٍ التحقق...';
 
   // ✅ استخراج schoolId من المتغير العام (تم تعريفه في <head>) أو من الرابط
-  var _stuQs = new URLSearchParams(window.location.search);
-  var schoolId = window.SCHOOL_ID || _stuQs.get('school') || _stuQs.get('schoolId') || ''; // `schoolId=` بديلٌ عند غياب `school=`
+  // L5: مصدرٌ واحد للمدرسة (`_stu-js-core.html::_stuTenantIdFromAnySource`) — يقرأ `SERVER_SCHOOL_ID` أيضاً،
+  // فلا تفرغ المدرسةُ على `/exec` (كانت تُسجَّل على المدرسة الافتراضية).
+  var schoolId = _stuTenantIdFromAnySource();
+
+  // L5: مهلةٌ كلوحة المعلمين (55ث > ميزانية الوسيط للدخول 50ث) — بلاها يبقى الزرّ «جارٍ التحقق» بلا نهاية.
+  clearTimeout(window._stuLoginTimer);
+  window._stuLoginTimer = setTimeout(function () {
+    btn.disabled = false;
+    btn.textContent = 'تسجيل الدخول 🚪';
+    errEl.textContent = 'الخدمة مزدحمة الآن — أعد المحاولة بعد لحظات.';
+    errEl.style.display = 'block';
+  }, 55000);
 
   /* 🔑 صفحة دخول واحدة (توحيد 2026-09-29): `handleTeacherLogin({unified, prefer:'student'})` — الخادم يحدّد
      النوعَ من الحساب: طالبٌ ⇒ البوّابةُ هنا كما كانت · موظّفٌ ⇒ لوحةُ المعلمين (`_stuHandoffStaff`).
      `prefer:'student'` ⇒ الاسمُ يُبحث في الطلاب أوّلاً فلا يبطؤ دخولُ الطالب. */
   google.script.run
     .withSuccessHandler(_stuCb('handleTeacherLogin', function (res) {
+      clearTimeout(window._stuLoginTimer);
       btn.disabled = false;
       btn.textContent = 'تسجيل الدخول 🚪';
       if (res && res.success && res.token && res.kind !== 'student') { _stuHandoffStaff(res, schoolId, btn); return; }
@@ -4034,9 +4055,12 @@ function doLogin() {
       _finishStudentLoginSuccess(r, schoolId);
     }))
     .withFailureHandler(_stuCb('handleTeacherLogin', function (e) {
+      clearTimeout(window._stuLoginTimer);
       btn.disabled = false;
       btn.textContent = 'تسجيل الدخول 🚪';
-      errEl.textContent = 'تعذّر الاتصال بالخادم: ' + (e.message || e);
+      // L5: نصُّ الجسر المميِّز (ازدحام/شبكة/خادم) كما في لوحة المعلمين، لا «تعذّر الاتصال» لكلّ شيء.
+      var _gi = (typeof window.gasErrorInfo === 'function') ? window.gasErrorInfo(e) : null;
+      errEl.textContent = _gi ? _gi.text : 'تعذّر الاتصال بالخادم: ' + ((e && e.message) || e);
       errEl.style.display = 'block';
     }))
     .handleTeacherLogin({ username: u, password: p, clientId: getClientId(), schoolId: schoolId,
@@ -4056,7 +4080,8 @@ function _stuStaffSessionData(r, schoolId) {
   return {
     token       : r.token,
     teacherName : r.teacherName || '',
-    schoolId    : schoolId,
+    schoolId    : r.schoolId    || schoolId,   // L1: المعرّفُ الثابت (UUID) من الخادم، وإلّا قيمةُ الرابط
+    schoolSlug  : r.schoolSlug  || '',
     subjects    : r.subjects    || [],
     classes     : r.classes     || [],
     sections    : r.sections    || [],
@@ -4090,10 +4115,25 @@ function _stuHandoffStaff(r, schoolId, btn) {
   var data = _stuStaffSessionData(r, schoolId);
   try { sessionStorage.setItem('teacherSession', JSON.stringify(data)); } catch (eS) {}
   try { localStorage.setItem('teacherSession_v1', JSON.stringify({ data: data, savedAt: Date.now() })); } catch (eL) {}
+  /* L3: جلسةٌ صدرت للتوّ ⇒ اللوحةُ تُقلع فوراً وتتحقّق بـ`checkSession` في الخلفية (كالدخول المباشر). */
+  try { localStorage.setItem('teacherHandoffAt', String(Date.now())); } catch (eH) {}
   try { $('password').value = ''; } catch (eP) {}
   if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ فتح لوحة المعلمين…'; }
-  var path = '/teacher/index.html?school=' + encodeURIComponent(schoolId);
-  window.location.href = window.GAS_ENDPOINT ? path : 'https://yemenschoolz.com' + path;
+  var urlSchool = schoolId;   // L5: الرابطُ بصيغة المستخدم (slug أو UUID)
+  try { var _q = new URLSearchParams(window.location.search); urlSchool = _q.get('school') || _q.get('schoolId') || schoolId; } catch (eQ) {}
+  var path = '/teacher/index.html?school=' + encodeURIComponent(urlSchool);
+  if (window.GAS_ENDPOINT) { window.location.href = path; return; }
+  /* L5: على `/exec` التنقّلُ البرمجي لا يغادر إطارَ Google المعزول ⇒ رابطٌ `_top` بنقرة المستخدم، ونصٌّ صادق. */
+  if (btn) { btn.disabled = false; btn.textContent = 'تسجيل الدخول 🚪'; }
+  if (errEl) {
+    errEl.textContent = 'تمّ التحقّق. ';
+    var a = document.createElement('a');
+    a.href = 'https://yemenschoolz.com' + path; a.target = '_top'; a.rel = 'noopener';
+    a.textContent = 'متابعة إلى لوحة المعلمين ←'; a.style.fontWeight = '700';
+    errEl.appendChild(a);
+    errEl.appendChild(document.createTextNode(' (قد يُطلب منك الدخول مرّةً واحدة هناك)'));
+    errEl.style.display = 'block';
+  }
 }
 
 // بناء APP.user وحفظ الجلسة وإقلاع التطبيق — مُستخرَجة من doLogin (بلا تغيير سلوكي) كي يُعاد
@@ -4107,12 +4147,15 @@ function _finishStudentLoginSuccess(r, schoolId) {
     class: r.class || '',
     section: r.section || '',
     role: r.role,
-    schoolId: schoolId,
+    schoolId: r.schoolId || schoolId,   // L1: المعرّفُ الثابت (UUID) من الخادم
+    schoolSlug: r.schoolSlug || '',
     email: r.email || '',
     birthdate: r.birthdate || '',
     siblings: r.siblings || [],
     switchToken: r.switchToken || ''
   };
+  /* L3: الدخولُ حسب الإخوةَ والحجبَ للتوّ ⇒ لا `refreshStudentSiblings` مكرّر عند أوّل استعادة. */
+  try { localStorage.setItem('stu_sib_refresh_' + r.studentId, String(Date.now())); } catch (eSib) {}
   _stuShowApp();
   initApp();
   _startHeartbeat();
@@ -4533,6 +4576,14 @@ function confirmLogout() {
   closeModal('logoutModal');
   ssClearAll();
   lsClearSession(); // مسح الجلسة المحفوظة في localStorage
+  /* L4: جهازٌ مشترك ⇒ الخروجُ يمسح جلسةَ لوحة المعلمين أيضاً (تُسلَّم إليها من هنا عبر `_stuHandoffStaff`). */
+  var _tTok = '';
+  try { var _tRaw = JSON.parse(localStorage.getItem('teacherSession_v1') || 'null'); _tTok = (_tRaw && _tRaw.data && _tRaw.data.token) || ''; } catch (eTr) {}
+  try { sessionStorage.removeItem('teacherSession'); } catch (eTs) {}
+  try { localStorage.removeItem('teacherSession_v1'); localStorage.removeItem('teacherHandoffAt'); } catch (eTl) {}
+  if (_tTok) {   // والتوكنُ يُلغى على الخادم كما في `doLogout` باللوحة
+    try { google.script.run.withSuccessHandler(_stuCb('handleTeacherLogout', function () {})).withFailureHandler(_stuCb('handleTeacherLogout', function () {})).handleTeacherLogout({ token: _tTok }); } catch (eTo) {}
+  }
   if (APP.badgeInterval) {
     clearInterval(APP.badgeInterval);
     APP.badgeInterval = null;
@@ -9498,7 +9549,8 @@ document.addEventListener('DOMContentLoaded', function () {
      🔒 ولا ثغرة عزل: الجلسة تُحلّ خادمياً من `session.schoolId`. */
   var _reqSchool = '';
   try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || ''; } catch (eRS) {}
-  if (_reqSchool && savedSession && savedSession.user && savedSession.user.schoolId && savedSession.user.schoolId !== _reqSchool) {
+  /* L1 (2026-09-29): الجلسةُ تحفظ المعرّفَ الثابت والـslug معاً ⇒ الصيغتان تطابقان المدرسةَ نفسها. */
+  if (_reqSchool && savedSession && savedSession.user && savedSession.user.schoolId && !_stuSessionSchoolMatches(savedSession.user, _reqSchool)) {
     try { lsClearSession(); } catch (eCS) {}
     try { ssClearAll(); } catch (eSS) {} // ✅ يمسح أيضاً كاش sessionStorage (درجات/مالية/واجبات...) لا localStorage فقط
     savedSession = null;
@@ -10091,7 +10143,7 @@ var STU_MOTIVATION_COLORS = ['#ffd166', '#06d6a0', '#4cc9f0', '#f4a261', '#c77df
                 (s.address ? '<div class="psd-meta">📍 ' + s.address + '</div>' : '') +
                 (s.phone ? '<div class="psd-meta">📞 <span dir="ltr">' + s.phone + '</span></div>' : '') +
                 (social ? '<div class="psd-social">' + social + '</div>' : '') +
-                (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="' + entryHref('teacher', 'dashboard', s) + '">👨‍🏫 دخول المعلمين</a><a class="psd-btn psd-btn-s" href="' + entryHref('student', 'home', s) + '">🎓 دخول الطلاب</a></div>' : '') +
+                (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="' + entryHref('teacher', 'dashboard', s) + '">🔑 تسجيل الدخول</a></div>' : '') +
               '</div></div>';
     }
     grid.innerHTML = html;

@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202609290513;
+    window.WEB_BUILD_TS = 202609290615;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -47,7 +47,7 @@
         try { history.replaceState(history.state, '', '/' + String(_pm[1]).toLowerCase() + '/index.html?school=' + encodeURIComponent(_s1) + (window.location.hash || '')); } catch (eRS) {}
       }
     }
-    window.SCHOOL_ID = qs.get('schoolId') || qs.get('school') || _pSlug || window.SCHOOL_ID || '';
+    window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || _pSlug || window.SCHOOL_ID || '';
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -4523,7 +4523,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
                   (s.address ? '<div class="psd-meta">📍 ' + s.address + '</div>' : '') +
                   (s.phone ? '<div class="psd-meta">📞 <span dir="ltr">' + s.phone + '</span></div>' : '') +
                   (social ? '<div class="psd-social">' + social + '</div>' : '') +
-                  (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="' + entryHref('teacher', 'dashboard', s) + '">👨‍🏫 دخول المعلمين</a><a class="psd-btn psd-btn-s" href="' + entryHref('student', 'home', s) + '">🎓 دخول الطلاب</a></div>' : '') +
+                  (s.schoolId ? '<div class="psd-actions"><a class="psd-btn psd-btn-t" href="' + entryHref('teacher', 'dashboard', s) + '">🔑 تسجيل الدخول</a></div>' : '') +
                 '</div></div>';
       }
       grid.innerHTML = html;
@@ -7618,6 +7618,17 @@ function saveSession(userData) {
      خاصّيةُ قالبٍ تُعدَّل، والحارس يبقى صامتاً لو انعكس. */
   try { if (typeof _csSessionExpiredShown !== 'undefined') _csSessionExpiredShown = false; } catch(e) {}
 }
+/* L1: هل رابطُ المدرسة (`?school=`) هو مدرسةُ الجلسة المحفوظة؟ الجلسةُ تحمل المعرّفَ الثابت (UUID)
+   والـslug، والرابطُ قد يحمل أيّاً منهما — بلا حساسيّةٍ لحالة الأحرف. */
+function _tcSessionSchoolMatches(saved, req) {
+  var r = String(req || '').trim().toLowerCase();
+  if (!r || !saved) return true;
+  var ids = [saved.schoolId, saved.schoolSlug];
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i] && String(ids[i]).trim().toLowerCase() === r) return true;
+  }
+  return false;
+}
 function loadSession() {
   // أولاً: حاول من sessionStorage (أسرع — نفس الجلسة)
   try {
@@ -7643,6 +7654,7 @@ function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
   try { sessionStorage.removeItem('teacherLists_v5'); } catch(e) {}
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
+  try { localStorage.removeItem('teacherHandoffAt'); } catch(e) {}
   try { ClientCache.clear(); } catch(e) {} // ✅ يمسح أيضاً كل كاش callServer المخزَّن بـsessionStorage
                                            // (كان يبقى من مدرسة/جلسة سابقة عند تبديل ?school=)
   /* 🔴 وطابور النداءات الطائرة معه — لا الكاش وحده. `doLogout()` لا يُعيد تحميل الصفحة،
@@ -7783,12 +7795,16 @@ function togglePasswordVisibility() {
   }
 }
 
-function shakeLoginError(msg) {
+/* `sticky` (L5): رسالةٌ تبقى حتى المحاولة التالية — الحجبُ المالي كان يختفي بعد 3 ثوانٍ قبل أن يُقرأ،
+   وصفحةُ الطالب تعرضه شاشةً ثابتة. `_shakeLoginTimer` يمنع مؤقّتاً قديماً من إخفاء رسالةٍ أحدث. */
+var _shakeLoginTimer = null;
+function shakeLoginError(msg, sticky) {
   var el = document.getElementById('loginError');
   if (el) {
     el.textContent = msg;
     el.classList.add('show');
-    setTimeout(function() { el.classList.remove('show'); }, 3000);
+    clearTimeout(_shakeLoginTimer);
+    if (!sticky) _shakeLoginTimer = setTimeout(function() { el.classList.remove('show'); }, 3000);
   }
 }
 
@@ -7835,10 +7851,8 @@ function doLogin() {
   }, _LOGIN_TIMEOUT);
 
   // ★ استخراج schoolId من الرابط (إذا وُجد)
-   var urlParams = new URLSearchParams(window.location.search);
-  var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
-                 ? SERVER_SCHOOL_ID
-                 : (urlParams.get('school') || urlParams.get('schoolId') || '');
+   // L5: مصدرٌ واحد للمدرسة (`_js-login-role.html::_lrSchoolId`): SERVER_SCHOOL_ID ثم ?school ثم ?schoolId ثم SCHOOL_ID
+  var schoolId = _lrSchoolId();
 
   google.script.run
     .withSuccessHandler(function(r) {
@@ -7851,7 +7865,7 @@ function doLogin() {
         _lrHandoffStudent(r.student, schoolId, btn);
         return;
       }
-      if (r && r.blocked) { shakeLoginError(r.error || 'حسابك معلق مؤقتاً'); return; }
+      if (r && r.blocked) { shakeLoginError(r.error || 'حسابك معلق مؤقتاً', true); return; }
       if (r && r.success) {
         if (window._loginT0 && Date.now() - window._loginT0 > 15000) _loginReport('slow', 'دخولٌ ناجحٌ لكنه بطيء');
         _loginAttempts = 0;
@@ -7916,7 +7930,8 @@ function _finishTeacherLoginSuccess(r, schoolId) {
   App.user = {
     token       : r.token,
     teacherName : r.teacherName || '',
-    schoolId    : schoolId,
+    schoolId    : r.schoolId    || schoolId,   // L1: المعرّفُ الثابت (UUID) من الخادم، وإلّا قيمةُ الرابط
+    schoolSlug  : r.schoolSlug  || '',
     subjects    : r.subjects    || [],
     classes     : r.classes     || [],
     sections    : r.sections    || [],
@@ -8252,6 +8267,9 @@ function doLogout() {
     App.sessionInterval = null;
   }
   clearSession();
+  /* L4: خروجٌ صريح على جهازٍ مشترك ⇒ تُمسح جلسةُ بوّابة الطالب أيضاً (كانت تُستعاد تلقائياً لمن يفتحها
+     بعدك). انتهاءُ الجلسة (`forceLogout`) لا يمسّها — هي حسابٌ آخر لم يطلب الخروج. */
+  try { localStorage.removeItem('studentSession_v1'); } catch(eStu) {}
   resetGradeBatchState();   /* لا تترك درجات مؤجَّلة تحاول الإرسال بتوكن مفقود */
   App.user = null;
   App.initDone = false;
@@ -8846,7 +8864,8 @@ function _lrStudentUser(r, schoolId) {
     class: r.class || '',
     section: r.section || '',
     role: r.role,
-    schoolId: schoolId,
+    schoolId: r.schoolId || schoolId,   // L1: المعرّفُ الثابت (UUID) من الخادم
+    schoolSlug: r.schoolSlug || '',
     email: r.email || '',
     birthdate: r.birthdate || '',
     siblings: r.siblings || [],
@@ -8859,6 +8878,32 @@ function _lrStudentPortalUrl(schoolId) {
   return window.GAS_ENDPOINT ? path : 'https://yemenschoolz.com' + path;
 }
 
+/* L5: الرابطُ بصيغة المستخدم (`?school=` الخام: slug أو UUID)، وإلّا المعرّف المُرسَل. حارسا الاستعادة
+   يقبلان الصيغتين (L1)، فهذا للجمال والاتّساق لا للصحّة. */
+function _lrUrlSchool(fallback) {
+  try { var q = new URLSearchParams(window.location.search); var v = q.get('school') || q.get('schoolId'); if (v) return String(v).trim(); } catch (e) {}
+  return String(fallback || '').trim();
+}
+
+/* L5: على `/exec` (بلا `GAS_ENDPOINT`) الصفحةُ داخل إطار Google المعزول: التنقّلُ البرمجي لا يغادر الإطار،
+   والجلسةُ المكتوبة تخصّ origin آخر. رابطٌ بـ`target="_top"` بنقرة المستخدم يفتح الموقع فعلاً، مع نصٍّ صادق. */
+function _lrGoTo(url, btn, label, errEl) {
+  if (window.GAS_ENDPOINT) { window.location.href = url; return; }
+  var box = errEl || document.getElementById('loginError');
+  if (btn) { btn.disabled = false; btn.textContent = label; }
+  if (box && document.createElement) {
+    box.textContent = 'تمّ التحقّق. ';
+    var a = document.createElement('a');
+    a.href = url; a.target = '_top'; a.rel = 'noopener';
+    a.textContent = label + ' ←';
+    a.style.fontWeight = '700';
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(' (قد يُطلب منك الدخول مرّةً واحدة هناك)'));
+    if (box.classList) box.classList.add('show');
+    if (box.style) box.style.display = 'block';
+  }
+}
+
 /* يسلّم الطالبَ لبوّابته. `schoolId` هنا هو نفسُه المُرسَل مع الدخول ⇒ يطابق `?school` في الرابط. */
 function _lrHandoffStudent(stu, schoolId, btn) {
   if (!stu || !stu.switchToken || !schoolId) {
@@ -8869,11 +8914,13 @@ function _lrHandoffStudent(stu, schoolId, btn) {
     localStorage.setItem(_LR_STU_SESSION_KEY, JSON.stringify({
       user: _lrStudentUser(stu, schoolId), tab: 'home', savedAt: Date.now()
     }));
+    /* L3: الدخولُ حسب الإخوةَ والحجبَ للتوّ ⇒ البوّابةُ لا تعيد `refreshStudentSiblings` عند الوصول. */
+    localStorage.setItem('stu_sib_refresh_' + stu.studentId, String(Date.now()));
   } catch (eLs) {}
   var pw = document.getElementById('loginPassword');
   if (pw) pw.value = '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ فتح بوابة الطالب…'; }
-  window.location.href = _lrStudentPortalUrl(schoolId);
+  _lrGoTo(_lrStudentPortalUrl(_lrUrlSchool(schoolId)), btn, 'متابعة إلى بوابة الطالب', null);
   return true;
 }
 
@@ -31038,9 +31085,28 @@ window.onload = function() {
      `withAuth` — فالـslug في المسار **لا يمنح وصولاً** لمدرسة أخرى بحال. */
   var _reqSchool = '';
   try { var _qsp = new URLSearchParams(window.location.search); _reqSchool = _qsp.get('school') || _qsp.get('schoolId') || ''; } catch (eRS) {}
-  if (_reqSchool && saved && saved.schoolId && saved.schoolId !== _reqSchool) {
+  /* L1 (2026-09-29): الجلسةُ تحفظ المعرّفَ الثابت (UUID) والـslug معاً ⇒ رابطُ المدرسة بأيّ صيغةٍ يطابق،
+     ولا تُمسح الجلسة عند التبديل بين `?school=<slug>` و`?school=<uuid>` للمدرسة نفسها. */
+  if (_reqSchool && saved && saved.schoolId && !_tcSessionSchoolMatches(saved, _reqSchool)) {
     clearSession();
     saved = null;
+  }
+  /* L3: موظّفٌ وصل للتوّ من صفحة الطالب (`_stuHandoffStaff`، أقلّ من دقيقتين) ⇒ جلستُه صدرت الآن من
+     `handleTeacherLogin` نفسه ⇒ إقلاعٌ فوري كالدخول المباشر، و`checkSession` في الخلفية: رفضٌ صريح ⇒ خروج. */
+  var _hoAt = 0;
+  try { _hoAt = parseInt(localStorage.getItem('teacherHandoffAt') || '0', 10) || 0; localStorage.removeItem('teacherHandoffAt'); } catch (eHo) {}
+  if (saved && saved.token && _hoAt && (Date.now() - _hoAt) < 120000) {
+    App.user = saved;
+    _startHeartbeat();
+    hideLoading();
+    bootApp();
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (r && r.valid === false) { clearSession(); try { window.location.reload(); } catch (eRl) {} }
+      })
+      .withFailureHandler(function () {})
+      .checkSession(saved.token);
+    return;
   }
   if (saved && saved.token) {
     // على cold-start لـ GAS/شبكة بطيئة يواصل الجسر إعادة المحاولة (checkSession = قراءة:
@@ -31063,6 +31129,7 @@ window.onload = function() {
             token       : r.token       || saved.token,
             teacherName : r.teacherName || saved.teacherName || '',
             schoolId    : saved.schoolId || '',   // ← مهم: استعادة schoolId
+            schoolSlug  : saved.schoolSlug || '',
             subjects    : r.subjects    || saved.subjects  || [],
             classes     : r.classes     || saved.classes   || [],
             sections    : r.sections    || saved.sections  || [],
