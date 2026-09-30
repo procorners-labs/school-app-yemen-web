@@ -4603,6 +4603,30 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
   });
 });
 
+/* ═══ 🔬 ملخّصُ الظلّ في `/dev-stats` (الدفعة 26ب) — هل كانت ميزانيةُ 50ث ستُنقذ المقطوع؟ ═══════ */
+(function () {
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  console.log('\n🔬 /dev-stats — ملخّص الظلّ');
+  var a = src.indexOf('var SHADOW_RESCUE_MS'), b = src.indexOf('\n/* ═══ نهايةُ `/dev-stats` النقيّة', a);
+  check(a > -1 && b > a, '`_devStatsShadow` داخل قسم الدوالّ النقيّة');
+  var sx = vm.createContext({});
+  vm.runInContext(src.slice(a, b), sx);
+  var S = vm.runInContext('_devStatsShadow', sx);
+  var all = [{ g: { app: 'student', fn: 'getGrades' }, n: 10 }, { g: { app: 'student', fn: 'getStudentReports' }, n: 4 },
+             { g: { app: 'teacher', fn: 'getGrades' }, n: 1 }];
+  var json = [{ g: { app: 'student', fn: 'getGrades' }, n: 7 }, { g: { app: 'student', fn: 'getStudentReports' }, n: 1 }];
+  var fast = [{ g: { app: 'student', fn: 'getGrades' }, n: 6 }];
+  var r = S(all, json, fast, 2);
+  check(r.total.n === 15 && r.total.json === 8 && r.total.fast === 6 && r.rescueMs === 49000, 'المجاميع: مقطوع 15 · بجسمنا 8 · خلال 49ث 6');
+  check(r.byFn.length === 2 && r.byFn[0].fn === 'getGrades' && r.byFn[0].app === 'student' && r.byFn[0].fast === 6 && r.byFn[1].json === 1,
+        'لكلّ دالّةٍ وتطبيق على حدة، مرتّبةٌ بالعدد ومقصوصةٌ بالحدّ');
+  check(S([], [], [], 5).total.n === 0 && S(null, null, null).byFn.length === 0, 'بلا صفوف ⇒ أصفار لا خطأ');
+  check(/'gasshadow', \[\['app', S\], \['fn', S\]\], \[\{ key: 'srv', operation: 'gte', type: 'number', value: 0 \},\s*\{ key: 'shadowMs', operation: 'lte', type: 'number', value: SHADOW_RESCUE_MS \}\]/.test(src),
+        'استعلامُ «خلال 49ث» يشترط جسمَ دالّتنا (srv ≥ 0) لا الاكتمالَ وحدَه (وثيقة 09-22: 8/11 صفحة HTML)');
+  check(/body\.shadow = _devStatsShadow\(val\(10\), val\(11\), val\(12\), DEV_STATS_TOP_FN\)/.test(src) && /'shadow', 'shadowJson', 'shadowFast'\]/.test(src),
+        'الجسمُ يحمل `shadow`، وفشلُ أيّ استعلامٍ منها يُعلَن في missing/diag');
+})();
+
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
 /* 🔴 **حارسُ الحارس:** وعدٌ معلَّقٌ لا يُحلّ يجعل العمليةَ تنتهي **بلا سطر `RESULT` وبرمز 0** —

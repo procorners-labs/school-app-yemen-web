@@ -1002,6 +1002,27 @@ function _devStatsHedge(rows) {
   }
   return out;
 }
+/* 🔬 ملخّصُ الظلّ (الدفعة 26ب، 2026-09-30): كلُّ نداءٍ قُطع عند الميزانية يُترك حيّاً (`SHADOW_ABORT`)
+   ويُسجَّل `ev:'gasshadow'` بزمن اكتماله الحقيقيّ. **«اكتمل» ليست «نجح»** (وثيقة 09-22: 8 من 11 عادت
+   صفحةَ HTML) ⇒ يُعدّ ثلاثةٌ لكلّ دالّة: `n` كلُّ المقطوع، `json` ما عاد بجسم دالّتنا (`srv >= 0`) في أيّ
+   وقت، و`fast` ما عاد بجسمها خلال `SHADOW_RESCUE_MS` من بدء المحاولة. **`fast / n` هو ما كان سيُنقَذ
+   لو كانت الميزانيةُ 50ث** — الرقمُ الذي يحكم رفعَها أو عدمه، لا تقديرٌ. */
+var SHADOW_RESCUE_MS = 49000;
+function _devStatsShadow(allRows, jsonRows, fastRows, top) {
+  var acc = {}, total = { n: 0, json: 0, fast: 0 };
+  function add(rows, field) {
+    for (var i = 0; i < (rows || []).length; i++) {
+      var r = rows[i], k = (r.g.app || '') + '\u0001' + (r.g.fn || '');
+      if (!acc[k]) acc[k] = { app: r.g.app || '', fn: r.g.fn || '', n: 0, json: 0, fast: 0 };
+      acc[k][field] += r.n; total[field] += r.n;
+    }
+  }
+  add(allRows, 'n'); add(jsonRows, 'json'); add(fastRows, 'fast');
+  var byFn = [];
+  for (var k in acc) if (Object.prototype.hasOwnProperty.call(acc, k)) byFn.push(acc[k]);
+  byFn.sort(function (a, b) { return (b.n - a.n) || (b.fast - a.fast); });
+  return { rescueMs: SHADOW_RESCUE_MS, total: total, byFn: byFn.slice(0, top || 25) };
+}
 /* ═══ نهايةُ `/dev-stats` النقيّة ═══ */
 
 /* يبني جسمَ `/dev-stats` من ستّة استعلاماتٍ متوازية + قائمة النسخ. **ليست نقيّة** (fetch)،
@@ -1051,13 +1072,21 @@ async function _devStatsBuild(env, win, now) {
        ⇒ بدونه تبدو اللوحةُ سليمةً في ذروة الإشباع بالضبط (مراجعة #368). */
     function () { return q('bulkhead', [['app', S], ['fn', S]], [{ key: 'act', operation: 'eq', type: 'string', value: 'reject' }]); },
     /* 9 🛟 الاحتياطيّ (`GAS_HEDGE`): ما أُطلق فيه احتياطيٌّ، بمَن فاز وبالنتيجة. */
-    function () { return q('gas', [['hw', S], W], [{ key: 'hg', operation: 'eq', type: 'boolean', value: true }]); }
+    function () { return q('gas', [['hw', S], W], [{ key: 'hg', operation: 'eq', type: 'boolean', value: true }]); },
+    /* 10–12 🔬 الظلّ: كلُّ المقطوع · ما عاد بجسم دالّتنا · وما عاد به خلال 49ث (انظر `_devStatsShadow`). */
+    function () { return q('gasshadow', [['app', S], ['fn', S]]); },
+    function () { return q('gasshadow', [['app', S], ['fn', S]], [{ key: 'srv', operation: 'gte', type: 'number', value: 0 }]); },
+    function () {
+      return q('gasshadow', [['app', S], ['fn', S]], [{ key: 'srv', operation: 'gte', type: 'number', value: 0 },
+        { key: 'shadowMs', operation: 'lte', type: 'number', value: SHADOW_RESCUE_MS }]);
+    }
   ];
   var res = await _settleLimited(jobs, DEV_STATS_CONCURRENCY);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
   /* 🔬 سببُ كلّ قسمٍ فاشل — من ردّ الـAPI نفسِه (`_devStatsDiagOf`) لا تخميناً. */
   var diag = {};
-  var NAMES = ['totals', 'byFn', 'byHour', 'byVersion', 'byGasV', 'clienterr', 'versionMeta', 'dedup', 'rejected503', 'hedge'];
+  var NAMES = ['totals', 'byFn', 'byHour', 'byVersion', 'byGasV', 'clienterr', 'versionMeta', 'dedup', 'rejected503', 'hedge',
+               'shadow', 'shadowJson', 'shadowFast'];
   for (var di = 0; di < res.length; di++) {
     if (res[di].status === 'rejected') diag[NAMES[di]] = _devStatsDiagOf(res[di].reason);
   }
@@ -1088,7 +1117,7 @@ async function _devStatsBuild(env, win, now) {
     totals: _devStatsCell(fT.acc.all || {}),
     byApp: cells(fA, function (k) { return { app: k }; }).sort(byAbort),
     byFn: null, byHour: null, hourCoverage: null, byVersion: null, byGasV: null, gasVCoverage: null,
-    clienterr: null, rejected503: null, hedge: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
+    clienterr: null, rejected503: null, hedge: null, shadow: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
   };
 
   if (val(1)) {
@@ -1137,6 +1166,9 @@ async function _devStatsBuild(env, win, now) {
 
   if (val(9)) body.hedge = _devStatsHedge(val(9));
   else missing.push('hedge');
+
+  if (val(10) && val(11) && val(12)) body.shadow = _devStatsShadow(val(10), val(11), val(12), DEV_STATS_TOP_FN);
+  else missing.push('shadow');
 
   if (val(5)) {
     body.clienterr = val(5).map(function (r) {
