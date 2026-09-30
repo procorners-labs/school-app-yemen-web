@@ -941,7 +941,9 @@ function _devStatsSubtract(fold, rows, keyFn) {
 function _devStatsHealth(rows) {
   var all = {}, byApp = {};
   for (var i = 0; i < rows.length; i++) {
-    var r = rows[i], a = typeof r.g.app === 'string' ? r.g.app : '';
+    var r = rows[i];
+    if (r.g.dd === true) continue;   // (28l) نفسُ قاعدة `_devStatsSubtract`: المُسترَدُّ ليس تنفيذاً
+    var a = typeof r.g.app === 'string' ? r.g.app : '';
     var why = (typeof r.g.why === 'string' && r.g.why) ? r.g.why : 'other';
     all[why] = (all[why] || 0) + r.n;
     if (!byApp[a]) byApp[a] = {};
@@ -1128,8 +1130,8 @@ async function _devStatsBuild(env, win, now) {
       return q('gasshadow', [['app', S], ['fn', S]], [{ key: 'srv', operation: 'gte', type: 'number', value: 0 },
         { key: 'shadowMs', operation: 'lte', type: 'number', value: SHADOW_RESCUE_MS }]);
     },
-    /* 13 🔬 فحصُ الصحّة (الدفعة 27e) — بأبعاد كلّ قسمٍ يُطرح منه (app · hr · النسخة) ويُطرح بـ`_devStatsSubtract`. */
-    function () { return q('gas', [['app', S], ['hr', S], [VER, S], W], [{ key: 'fn', operation: 'eq', type: 'string', value: DEV_STATS_HEALTH_FN }]); }
+    /* 13 🔬 فحصُ الصحّة (الدفعة 27e) — بأبعاد كلّ قسمٍ يُطرح منه (app · hr · النسخة · gv منذ 28l) و`dd` كي يُستثنى المُسترَدّ فعلاً، ويُطرح بـ`_devStatsSubtract`. */
+    function () { return q('gas', [['app', S], ['hr', S], [VER, S], ['gv', S], W, D], [{ key: 'fn', operation: 'eq', type: 'string', value: DEV_STATS_HEALTH_FN }]); }
   ];
   var res = await _settleLimited(jobs, DEV_STATS_CONCURRENCY);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
@@ -1208,7 +1210,9 @@ async function _devStatsBuild(env, win, now) {
   } else missing.push('byVersion');
 
   if (val(4)) {
-    var fG = _devStatsFold(val(4), function (g) { return (typeof g.gv === 'string' && /^[0-9a-f]{7}$/.test(g.gv)) ? g.gv : 'unknown'; });
+    var gvKey = function (g) { return (typeof g.gv === 'string' && /^[0-9a-f]{7}$/.test(g.gv)) ? g.gv : 'unknown'; };
+    var fG = _devStatsFold(val(4), gvKey);
+    _devStatsSubtract(fG, hRows, gvKey);   // (28l) فحصُ الصحّة خارجَ هذا البُعد كغيره — وإجهاضُه يسقط من `unknown` قبل الفصل
     body.gasVCoverage = _devStatsCoverage(fG, rawN);
     /* 🔴 **لا نسبةَ إجهاضٍ لكلّ نشرة GAS — منحازةٌ بالبناء (قِيس في اللوحة الحيّة 2026-09-23):**
        `_v` يسافر في **ذيل الردّ**، والمُجهَضُ لا ردَّ له ⇒ كلُّ إجهاضٍ يقع في `unknown`، وكلُّ نشرةٍ
@@ -1218,10 +1222,6 @@ async function _devStatsBuild(env, win, now) {
     body.byGasV = cells(gSplit.fold, function (k) { return { gasV: k }; })
       .sort(function (a, b) { return b.n - a.n; });
     body.gasVAbortsUnattributable = gSplit.aborts;
-    /* فحصُ الصحّة المُجهَض بلا `_v` أيضاً ⇒ يُطرح من عدّاد غير المنسوب (لا يمسّ الخلايا: الإجهاضُ خارجها أصلاً). */
-    var hAborts = 0;
-    (hRows || []).forEach(function (r) { if (r.g.why === 'abort_budget' || r.g.why === 'transport') hAborts += r.n; });
-    body.gasVAbortsUnattributable = Math.max(0, body.gasVAbortsUnattributable - hAborts);
   } else missing.push('byGasV');
 
   if (val(8)) {
@@ -2229,7 +2229,7 @@ var API_CACHE_FNS = {
   },
   getHomeScheduleBundle: {
     args: _apiArgsSchedule,
-    /* 🔴 **`ttl` صريحٌ 1800 — والافتراضي `600` كان يُخفق حتماً، قِيس 2026-09-06:**
+    /* 📜 **(تاريخ — القيمةُ الحاليّة 600 منذ الدفعة 28l، انظر أسفل هذه الكتلة.)** كان `ttl` صريحاً 1800 لأن الافتراضي `600` كان يُخفق حتماً، قِيس 2026-09-06:
        `uniq(k) = 33` مقابل `n = 167` في نافذةِ حركةٍ فعليّة ~١٤٤ دقيقة ⇒ **المفتاحُ
        الواحد يُطلب كلّ ~٢٩ دقيقة وسطيّاً** — أي **خارج نافذة الـ١٠ دقائق**، فأكثرُ
        النداءات المتكرّرة تُخفق ولا تُصيب. والتجزئةُ حقيقيةٌ لا وهمية (الضابطُ الوهميّ
@@ -2243,7 +2243,14 @@ var API_CACHE_FNS = {
        رشقيّاً فبعضُ الإصابة واقعٌ عند 600 أصلاً والمكسبُ أقلُّ من المتوقَّع — لم يُفرَّق
        بينهما، ويلزمه توزيعُ الفواصل. ⇒ **يُعاد قياسُ `hit/store` لهذه الدالّة بعد يوم
        ويُراجَع الرقم**، ولا يُقرأ 1800 قيمةً نهائية. */
-    ttl: 1800,
+    /* 🔴 **الدفعة 28l (N10): 600 لا 1800.** مفتاحُ هذه الدالّة بلا جيلِ `sched` — GAS يرفعه عند كلّ
+       إعادة بناءٍ للجدول (`_tcGenBump_('sched')`) لكنه **لا يصل العميلَ ولا الوسيط** (حزمةُ الإقلاع تحمل
+       `feedGen` = أخبار.تعاميم وحدها)، فلا `v` يُبنى منه كما في `getClassFeedBundle`. ⇒ أقصى تأخّرٍ
+       لتعديل الجدول صار خانةَ ١٠ دقائق لا نصفَ ساعة (والبياتُ عند إجهاضنا وحده فوقها كما لغيرها).
+       والمقايضةُ: إصاباتٌ أقلّ (المفتاحُ يُطلب كلّ ~٢٩ دقيقة وسطيّاً — انظر أدناه).
+       ↩️ **ليعود 1800 أو أطول:** GAS يُرجع `schedGen` في حزمة الإقلاع، والعميلُ يرسل
+       `v = schedGen.slot`، ويُضاف `v` إلى `_API_SCHED_KEYS` شرطاً للتخزين (نمطُ `_apiArgsClassFeed`). */
+    ttl: 600,
     /* كلُّ عضوٍ مغلَّفٌ بمعالج خطئه في GAS ويردّ `{ok:false,error}` عند الإخفاق.
        فالشرط: العضوان حاضران **ولا أحدهما خطأ**.
        ⚠️ **وكان مكتوباً هنا «عند غياب ورقة الجدول» — وبطَل 2026-09-05:** المسطّحةُ

@@ -2424,7 +2424,7 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
           freshOf('getHomePageBundle', undefined) === 'expired',
           '🔒 عمرٌ مجهول ⇒ `expired` (fail-closed) لا `fresh`');
     /* 🔴 **أقوى ضابطٍ في المجموعة:** يُثبت أن البوّابةَ تقرأ الجدولَ لا ثابتاً واحداً.
-       `getHomeScheduleBundle` طزاجتُها 1800 و`getHomePageBundle` 120 ⇒ عمرُ 600 **طازجٌ
+       `getHomeScheduleBundle` طزاجتُها 600 و`getHomePageBundle` 120 ⇒ عمرُ 600 **طازجٌ
        للأولى وليس للثانية**. وثابتٌ موحَّدٌ يجعلهما متساويَين فيحمرّ هذا وحدَه. */
     check(ttlOf('getHomeScheduleBundle') !== tHome,
           'ضابط: الدالّتان مختلفتا الطزاجة أصلاً (وإلّا الفحصُ التالي بلا معنى)');
@@ -3138,7 +3138,7 @@ console.log('وسيطُ الفيديو — المعرّفُ الفارغ (سلو
         '🔒 ضابط معاكس: صفرُ `max-age` في فرع المعرّف الفارغ');
 })();
 
-// ── 🔴 `ttl` جدول الحصص: 1800 لهذه الدالّة **وحدها** ─────────────────────────
+// ── 🔴 `ttl` جدول الحصص: 600 (كان 1800؛ الدفعة 28l) ─────────────────────────
 console.log('');
 console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي عبر `vm`):');
 (function () {
@@ -3152,8 +3152,8 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
   check(!!fns && typeof fns === 'object', 'ضابط: الكائنُ قابلٌ للقراءة فعلاً');
 
-  check(fns.getHomeScheduleBundle && fns.getHomeScheduleBundle.ttl === 1800,
-        '🔴 `getHomeScheduleBundle.ttl === 1800` — الافتراضي 600 كان يُخفق حتماً (المفتاحُ كلّ ~٢٩ دقيقة)');
+  check(fns.getHomeScheduleBundle && fns.getHomeScheduleBundle.ttl === 600,
+        '🔴 `getHomeScheduleBundle.ttl === 600` (الدفعة 28l، N10) — المفتاحُ بلا جيل `sched` ⇒ تعديلُ الجدول يظهر خلال ١٠ دقائق لا ٣٠');
   /* 🟢 **البراندان ساعةٌ بقرار المالك 2026-09-19** (التخزينُ كان يغلب الإصابة ⇒ دورةُ حياةٍ
      قصيرة). كان هنا ضابطٌ يشترط «بلا `ttl`» كي لا يعمّ رفعُ الجدول بلا قصد — والرفعُ
      هنا **مقصودٌ ومُقرّ**، فصار الضابطُ القيمةَ المقرَّة نفسَها بالضبط. */
@@ -4756,8 +4756,9 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
       { app: 'student', fn: 'getX',   why: 'abort_budget', n: 5 },
       { app: 'student', fn: 'health', why: 'abort_budget', n: 3 },
       { app: 'student', fn: 'health', why: 'ok',           n: 2 },
-      { app: 'teacher', fn: 'health', why: 'ok',           n: 4 }
-    ].map(function (e) { e.hr = '2026-09-30T10'; e['$workers.scriptVersion.id'] = VERID; e.dd = false; e.gv = ''; e.ev = 'gas'; return e; });
+      { app: 'teacher', fn: 'health', why: 'ok',           n: 4, gv: 'abc1234' },
+      { app: 'student', fn: 'health', why: 'ok',           n: 1, dd: true }   // (28l) مُسترَدٌّ: لا يُعدّ صحّةً ولا يُطرح مرّتين
+    ].map(function (e) { e.hr = '2026-09-30T10'; e['$workers.scriptVersion.id'] = VERID; if (e.dd === undefined) e.dd = false; if (e.gv === undefined) e.gv = ''; e.ev = 'gas'; return e; });
     var failHealth = false;
     function fakeFetch(u, init) {
       if (/\/versions$/.test(u)) return Promise.resolve({ ok: true, status: 200, text: function () { return Promise.resolve('{"success":true,"result":{"items":[]}}'); } });
@@ -4801,6 +4802,12 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
             '(د) بالساعة: 15 · 5 — والتغطيةُ 1 (المقامُ الخامُ طُرح منه أيضاً)');
       check(body.byVersion.length === 1 && body.byVersion[0].n === 15 && body.byVersion[0].abort === 5, '(د) بالنسخة: 15 · 5');
       check(body.gasVAbortsUnattributable === 5, '(د) إجهاضُ الصحّة خارجَ «غير المنسوب لنشرة GAS» أيضاً');
+      /* (28l) بُعدُ `gv` يُطرح منه فحصُ الصحّة كبقيّة الأبعاد — كان يُطوى خاماً فيظهر صفُّ نشرةٍ من الصحّة وحدها. */
+      check(Array.isArray(body.byGasV) && body.byGasV.length === 1 && body.byGasV[0].gasV === 'unknown' && body.byGasV[0].n === 10 &&
+            !body.byGasV.some(function (x) { return x.gasV === 'abc1234'; }),
+            '(د) 🔴 بنشرة GAS: `unknown` n=10 (بلا الصحّة) · ولا صفَّ `abc1234` (صحّةٌ فقط)');
+      check(body.gasVCoverage && body.gasVCoverage.coverage === 1 && body.gasVCoverage.unbucketedN === 0,
+            '(د) تغطيةُ `gv` = 1 على المقام المطروح منه الصحّة');
       check(body.health && body.health.n === 9 && body.health.abort === 3 && body.health.byApp.length === 2 && body.missing.indexOf('health') < 0,
             '(د) فحصُ الصحّة معدودٌ منفصلاً: `health` n=9 · abort=3 · بتطبيقين');
       failHealth = true;
