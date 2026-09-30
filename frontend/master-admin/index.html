@@ -35,7 +35,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/master-admin';
-    window.WEB_BUILD_TS = 202609290651;
+    window.WEB_BUILD_TS = 202609302221;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -2002,6 +2002,22 @@ function _tsTable(title, rows, labelFn, cellFn) {
   }
   return h + '</tbody></table>';
 }
+/* 🔬 (الدفعة 26ب) الظلّ: كلُّ نداءٍ قُطع عند 26ث يُترك يكتمل ويُقاس. «عاد بردّ دالّتنا خلال 49ث» هو ما كانت
+   ميزانيةُ 50ث ستُنقذه؛ والباقي يعود صفحةً أو لا يعود، فالانتظارُ الأطول لا يفيده. يظهر فقط حين يرسله الوركر. */
+function _tsShadow(s) {
+  if (s === undefined) return '';
+  if (s === null) return '<div style="margin-bottom:6px;">🔬 الظلّ: <span style="color:#c62828;">تعذّر القياس</span></div>';
+  var t = s.total || {}, pct = function (a, b) { return b ? Math.round(a * 1000 / b) / 10 + '٪' : '—'; };
+  var h = '<div style="margin:8px 0 4px;"><strong>🔬 الظلّ (نداءاتٌ قُطعت وتُركت تكتمل):</strong> قُطع ' + _errEsc(t.n) +
+          ' · عاد بردّ دالّتنا ' + _errEsc(t.json) + ' · خلال 49ث <strong style="color:#2e7d32;">' + _errEsc(t.fast) +
+          '</strong> (' + pct(t.fast, t.n) + ' كانت ستُنقَذ بميزانية 50ث)</div>';
+  var rows = s.byFn || [];
+  for (var i = 0; i < rows.length && i < 15; i++) {
+    h += '<div style="font-size:12px;">' + _errEsc(rows[i].app) + ' · <code>' + _errEsc(rows[i].fn) + '</code> قُطع ' +
+         _errEsc(rows[i].n) + ' · بردّنا ' + _errEsc(rows[i].json) + ' · خلال 49ث ' + _errEsc(rows[i].fast) + ' (' + pct(rows[i].fast, rows[i].n) + ')</div>';
+  }
+  return h;
+}
 function _tsRenderHtml(d) {
   if (!d) return '<span style="color:#c62828;">تعذّر القياس</span>';
   var h = '<div style="margin-bottom:8px;"><strong>الإجمالي (إجهاضٌ/كلّ النداءات):</strong> ' + _tsCell(d.totals) + '</div>';
@@ -2018,6 +2034,7 @@ function _tsRenderHtml(d) {
          '</strong> · أنقذ <strong style="color:#2e7d32;">' + _errEsc(d.hedge.rescued) + '</strong>' +
          ' · سبق الأصليّ ' + _errEsc(d.hedge.primaryWon) + ' · لم ينجح أيٌّ منهما ' + _errEsc(d.hedge.failed) + '</div>';
   }
+  h += _tsShadow(d.shadow);
   h += _tsTable('حسب نسخة الوركر (مقاطعُ النشر)', d.byVersion, function (r) {
     return '#' + _errEsc(r.number) + ' <code>' + _errEsc(r.id) + '</code>' +
            ' <span style="color:#94a3b8;">' + _errEsc(r.createdAt || '') + '</span>';
