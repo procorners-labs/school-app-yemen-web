@@ -1130,8 +1130,8 @@ async function _devStatsBuild(env, win, now) {
       return q('gasshadow', [['app', S], ['fn', S]], [{ key: 'srv', operation: 'gte', type: 'number', value: 0 },
         { key: 'shadowMs', operation: 'lte', type: 'number', value: SHADOW_RESCUE_MS }]);
     },
-    /* 13 🔬 فحصُ الصحّة (الدفعة 27e) — بأبعاد كلّ قسمٍ يُطرح منه (app · hr · النسخة · gv منذ 28l) ويُطرح بـ`_devStatsSubtract`. */
-    function () { return q('gas', [['app', S], ['hr', S], [VER, S], ['gv', S], W], [{ key: 'fn', operation: 'eq', type: 'string', value: DEV_STATS_HEALTH_FN }]); }
+    /* 13 🔬 فحصُ الصحّة (الدفعة 27e) — بأبعاد كلّ قسمٍ يُطرح منه (app · hr · النسخة · gv منذ 28l) و`dd` كي يُستثنى المُسترَدّ فعلاً، ويُطرح بـ`_devStatsSubtract`. */
+    function () { return q('gas', [['app', S], ['hr', S], [VER, S], ['gv', S], W, D], [{ key: 'fn', operation: 'eq', type: 'string', value: DEV_STATS_HEALTH_FN }]); }
   ];
   var res = await _settleLimited(jobs, DEV_STATS_CONCURRENCY);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
@@ -2229,7 +2229,7 @@ var API_CACHE_FNS = {
   },
   getHomeScheduleBundle: {
     args: _apiArgsSchedule,
-    /* 🔴 **`ttl` صريحٌ 1800 — والافتراضي `600` كان يُخفق حتماً، قِيس 2026-09-06:**
+    /* 📜 **(تاريخ — القيمةُ الحاليّة 600 منذ الدفعة 28l، انظر أسفل هذه الكتلة.)** كان `ttl` صريحاً 1800 لأن الافتراضي `600` كان يُخفق حتماً، قِيس 2026-09-06:
        `uniq(k) = 33` مقابل `n = 167` في نافذةِ حركةٍ فعليّة ~١٤٤ دقيقة ⇒ **المفتاحُ
        الواحد يُطلب كلّ ~٢٩ دقيقة وسطيّاً** — أي **خارج نافذة الـ١٠ دقائق**، فأكثرُ
        النداءات المتكرّرة تُخفق ولا تُصيب. والتجزئةُ حقيقيةٌ لا وهمية (الضابطُ الوهميّ

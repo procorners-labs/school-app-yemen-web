@@ -4756,8 +4756,9 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
       { app: 'student', fn: 'getX',   why: 'abort_budget', n: 5 },
       { app: 'student', fn: 'health', why: 'abort_budget', n: 3 },
       { app: 'student', fn: 'health', why: 'ok',           n: 2 },
-      { app: 'teacher', fn: 'health', why: 'ok',           n: 4, gv: 'abc1234' }
-    ].map(function (e) { e.hr = '2026-09-30T10'; e['$workers.scriptVersion.id'] = VERID; e.dd = false; if (e.gv === undefined) e.gv = ''; e.ev = 'gas'; return e; });
+      { app: 'teacher', fn: 'health', why: 'ok',           n: 4, gv: 'abc1234' },
+      { app: 'student', fn: 'health', why: 'ok',           n: 1, dd: true }   // (28l) مُسترَدٌّ: لا يُعدّ صحّةً ولا يُطرح مرّتين
+    ].map(function (e) { e.hr = '2026-09-30T10'; e['$workers.scriptVersion.id'] = VERID; if (e.dd === undefined) e.dd = false; if (e.gv === undefined) e.gv = ''; e.ev = 'gas'; return e; });
     var failHealth = false;
     function fakeFetch(u, init) {
       if (/\/versions$/.test(u)) return Promise.resolve({ ok: true, status: 200, text: function () { return Promise.resolve('{"success":true,"result":{"items":[]}}'); } });
