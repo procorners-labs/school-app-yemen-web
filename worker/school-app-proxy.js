@@ -800,6 +800,18 @@ var DEV_STATS_MIN_N   = 100;
 var DEV_STATS_TTL_S   = 300;
 var DEV_STATS_TOP_FN  = 40;
 var DEV_STATS_SCRIPT  = 'school-teacher-proxy';
+/* 🔬 اسمُ فحص الصحّة في سجلّ `ev:'gas'` (الدفعة 27e) — يضعه المعالجُ لـ`GET ?action=health`، ويُطرح هنا
+   من كلّ نسب الإجهاض: أداةُ تشخيصٍ (المراقبُ كلَّ ٣ ساعات) لا حِملُ مستخدم. ويبقى معدوداً في `body.health`. */
+var DEV_STATS_HEALTH_FN = 'health';
+
+/* 🔴 **مفتاحُ كاش `/dev-stats` يحمل نسخةَ الوركر (الدفعة 27e)** — كان `/__dev-stats/v1/<win>` وحده ⇒ جسمٌ
+   بُني قبل نشرٍ يُخدَم بعده حتى `DEV_STATS_TTL_S` (قِيس: لوحةُ المالك بلا حقل `shadow` بعد web#436).
+   النسخةُ من ربط `version_metadata` (`env.CF_VERSION_METADATA.id` — `wrangler.jsonc`)، مُنقّاةً إلى hex/`-`.
+   وغيابُ الربط ⇒ `nover` (السلوكُ القديم: مفتاحٌ ثابت) لا استثناء. */
+function _devStatsCacheKeyPath(winKey, verMeta) {
+  var id = (verMeta && typeof verMeta.id === 'string') ? verMeta.id.toLowerCase().replace(/[^0-9a-f-]/g, '').slice(0, 36) : '';
+  return '/__dev-stats/v1/' + (id || 'nover') + '/' + winKey;
+}
 
 function _devStatsWindow(q) {
   var k = (q === null || q === undefined || q === '') ? '24h' : String(q);
@@ -903,6 +915,42 @@ function _devStatsCoverage(fold, rawN) {
   }
   return { coverage: rawN > 0 ? Math.round(Math.min(1, s / rawN) * 10000) / 10000 : null,
            unbucketedN: Math.max(0, rawN - s) };
+}
+
+/* 🔬 **طرحُ فحص الصحّة (الدفعة 27e)** — صفوفُ استعلامٍ مُفلتَرٍ بـ`fn = health` (‏`eq` المقيسة، لا `neq`
+   غيرُ مجرَّبةٍ على الـAPI) تُطرح من طيٍّ قائمٍ بمفتاحه، بنفس قاعدة `_devStatsFoldMinus`: لا يتجاوز الموجود
+   (لا عدَّ سالباً)، و`rows = null` (استعلامٌ فاشل) ⇒ لا طرح. والمفتاحُ الذي صار صفراً يُحذف (لا صفَّ فارغ). */
+function _devStatsSubtract(fold, rows, keyFn) {
+  var s = 0;
+  for (var i = 0; rows && i < rows.length; i++) {
+    var r = rows[i];
+    if (r.g.dd === true) continue;
+    var k = keyFn(r.g);
+    var why = (typeof r.g.why === 'string' && r.g.why) ? r.g.why : 'other';
+    if (k === null || !fold.acc[k] || !fold.acc[k][why]) continue;
+    var d = Math.min(fold.acc[k][why], r.n);
+    fold.acc[k][why] -= d;
+    s += d;
+    var left = 0;
+    for (var w in fold.acc[k]) if (Object.prototype.hasOwnProperty.call(fold.acc[k], w)) left += fold.acc[k][w];
+    if (left === 0) delete fold.acc[k];
+  }
+  return s;
+}
+/* ملخّصُ فحص الصحّة — معدودٌ في مكانٍ لا يمسّ النسب: خليّةٌ كاملة + تقسيمٌ بالتطبيق. */
+function _devStatsHealth(rows) {
+  var all = {}, byApp = {};
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], a = typeof r.g.app === 'string' ? r.g.app : '';
+    var why = (typeof r.g.why === 'string' && r.g.why) ? r.g.why : 'other';
+    all[why] = (all[why] || 0) + r.n;
+    if (!byApp[a]) byApp[a] = {};
+    byApp[a][why] = (byApp[a][why] || 0) + r.n;
+  }
+  var list = [];
+  for (var k in byApp) if (Object.prototype.hasOwnProperty.call(byApp, k)) list.push(Object.assign({ app: k }, _devStatsCell(byApp[k])));
+  list.sort(function (x, y) { return y.n - x.n; });
+  return Object.assign({ fn: DEV_STATS_HEALTH_FN }, _devStatsCell(all), { byApp: list });
 }
 
 /* رفضُ المنظّم (503): العددُ وحصّتُه من كلّ ما طُلب (المنفَّذ `gasN` + المرفوض). بلا طرحٍ ولا
@@ -1079,14 +1127,16 @@ async function _devStatsBuild(env, win, now) {
     function () {
       return q('gasshadow', [['app', S], ['fn', S]], [{ key: 'srv', operation: 'gte', type: 'number', value: 0 },
         { key: 'shadowMs', operation: 'lte', type: 'number', value: SHADOW_RESCUE_MS }]);
-    }
+    },
+    /* 13 🔬 فحصُ الصحّة (الدفعة 27e) — بأبعاد كلّ قسمٍ يُطرح منه (app · hr · النسخة) ويُطرح بـ`_devStatsSubtract`. */
+    function () { return q('gas', [['app', S], ['hr', S], [VER, S], W], [{ key: 'fn', operation: 'eq', type: 'string', value: DEV_STATS_HEALTH_FN }]); }
   ];
   var res = await _settleLimited(jobs, DEV_STATS_CONCURRENCY);
   function val(i) { return res[i].status === 'fulfilled' ? res[i].value : null; }
   /* 🔬 سببُ كلّ قسمٍ فاشل — من ردّ الـAPI نفسِه (`_devStatsDiagOf`) لا تخميناً. */
   var diag = {};
   var NAMES = ['totals', 'byFn', 'byHour', 'byVersion', 'byGasV', 'clienterr', 'versionMeta', 'dedup', 'rejected503', 'hedge',
-               'shadow', 'shadowJson', 'shadowFast'];
+               'shadow', 'shadowJson', 'shadowFast', 'health'];
   for (var di = 0; di < res.length; di++) {
     if (res[di].status === 'rejected') diag[NAMES[di]] = _devStatsDiagOf(res[di].reason);
   }
@@ -1106,9 +1156,14 @@ async function _devStatsBuild(env, win, now) {
   if (!dRows) missing.push('dedup');
   var rawN = 0;
   val(0).forEach(function (r) { rawN += r.n; });
+  /* 🔬 فحصُ الصحّة خارجَ كلّ نسب الإجهاض (الدفعة 27e). فشلُ استعلامه ⇒ لا طرح (الأرقامُ كما كانت) ويُعلَن. */
+  var hRows = val(13), hKeyHr = function (g) { return (typeof g.hr === 'string' && /^\d{4}-\d\d-\d\dT\d\d$/.test(g.hr)) ? g.hr : null; };
+  if (!hRows) missing.push('health');
 
   var fT = _devStatsFoldMinus(val(0), dRows, function () { return 'all'; });
   var fA = _devStatsFoldMinus(val(0), dRows, function (g) { return typeof g.app === 'string' ? g.app : ''; });
+  rawN -= _devStatsSubtract(fT, hRows, function () { return 'all'; });
+  _devStatsSubtract(fA, hRows, function (g) { return typeof g.app === 'string' ? g.app : ''; });
   var body = {
     v: 1, generatedAt: new Date(now).toISOString().slice(0, 19) + 'Z', cacheAgeS: 0,
     window: { key: win.key, from: new Date(from).toISOString().slice(0, 19) + 'Z',
@@ -1117,18 +1172,20 @@ async function _devStatsBuild(env, win, now) {
     totals: _devStatsCell(fT.acc.all || {}),
     byApp: cells(fA, function (k) { return { app: k }; }).sort(byAbort),
     byFn: null, byHour: null, hourCoverage: null, byVersion: null, byGasV: null, gasVCoverage: null,
-    clienterr: null, rejected503: null, hedge: null, shadow: null, dedup: dRows ? { n: fT.subtracted } : null, partial: false, missing: missing
+    clienterr: null, rejected503: null, hedge: null, shadow: null, dedup: dRows ? { n: fT.subtracted } : null,
+    health: hRows ? _devStatsHealth(hRows) : null, partial: false, missing: missing
   };
 
   if (val(1)) {
-    var fnKey = function (g) { return (g.app || '') + '\u0001' + (g.fn || ''); };
+    var fnKey = function (g) { return g.fn === DEV_STATS_HEALTH_FN ? null : (g.app || '') + '\u0001' + (g.fn || ''); };
     body.byFn = cells(_devStatsFoldMinus(val(1), dRows, fnKey),
       function (k) { var p = k.split('\u0001'); return { app: p[0], fn: p[1] }; })
       .sort(byAbort).slice(0, DEV_STATS_TOP_FN);
   } else missing.push('byFn');
 
   if (val(2)) {
-    var fH = _devStatsFold(val(2), function (g) { return (typeof g.hr === 'string' && /^\d{4}-\d\d-\d\dT\d\d$/.test(g.hr)) ? g.hr : null; });
+    var fH = _devStatsFold(val(2), hKeyHr);
+    _devStatsSubtract(fH, hRows, hKeyHr);
     body.hourCoverage = _devStatsCoverage(fH, rawN);
     body.byHour = cells(fH, function (k) { return _devStatsHourYE(k) || { hourZ: k }; })
       .sort(function (a, b) { return a.hourZ < b.hourZ ? -1 : 1; });
@@ -1142,7 +1199,10 @@ async function _devStatsBuild(env, win, now) {
                          createdAt: (it.metadata && it.metadata.created_on) ? String(it.metadata.created_on).slice(0, 19) + 'Z' : null };
       });
     } else missing.push('versionMeta');
-    body.byVersion = cells(_devStatsFoldMinus(val(3), dRows, function (g) { return g[VER] || 'unknown'; }),
+    var verKey = function (g) { return g[VER] || 'unknown'; };
+    var fV = _devStatsFoldMinus(val(3), dRows, verKey);
+    _devStatsSubtract(fV, hRows, verKey);
+    body.byVersion = cells(fV,
       function (k) { var m = vmeta[k] || {}; return { id: k.slice(0, 8), number: m.number || null, createdAt: m.createdAt || null }; })
       .sort(function (a, b) { return String(a.createdAt || '') < String(b.createdAt || '') ? -1 : 1; });
   } else missing.push('byVersion');
@@ -1158,6 +1218,10 @@ async function _devStatsBuild(env, win, now) {
     body.byGasV = cells(gSplit.fold, function (k) { return { gasV: k }; })
       .sort(function (a, b) { return b.n - a.n; });
     body.gasVAbortsUnattributable = gSplit.aborts;
+    /* فحصُ الصحّة المُجهَض بلا `_v` أيضاً ⇒ يُطرح من عدّاد غير المنسوب (لا يمسّ الخلايا: الإجهاضُ خارجها أصلاً). */
+    var hAborts = 0;
+    (hRows || []).forEach(function (r) { if (r.g.why === 'abort_budget' || r.g.why === 'transport') hAborts += r.n; });
+    body.gasVAbortsUnattributable = Math.max(0, body.gasVAbortsUnattributable - hAborts);
   } else missing.push('byGasV');
 
   if (val(8)) {
@@ -2497,6 +2561,51 @@ function _apiCacheFreshness(fn, age) {
   return 'expired';
 }
 
+/* 🛟 **موجزُ الفصل: الخانةُ السابقة عند إخفاق GAS (الدفعة 27e، 2026-09-30).**
+   `v` = `جيلُ الأخبار.جيلُ التعاميم.خانةُ ١٠ دقائق` ⇒ كلُّ خانةٍ مفتاحٌ جديد، وأوّلُ زائرٍ فيها يذهب
+   إلى GAS، والتراجعُ البائتُ أدناه يحتاج مدخلاً **بالمفتاح نفسِه** لا تملكه خانةٌ جديدةٌ أبداً
+   (قِيس: ٧٠ من ١١٠ إخفاقاً أُجهضت في ٧ أيام). ⇒ عند الإخفاق يُبحث عن **الطلب نفسِه** بخانةٍ أقدم
+   بواحدةٍ ثمّ باثنتين. 🔒 **الجيلان لا يتغيّران** (الجزءُ الأخير وحده يُنقَص) ⇒ لا يُخدَم أبداً
+   محتوىً سبقته كتابةٌ رفعت جيلاً. 🔴 **ولهذه الدالّة وحدَها** — دالّةٌ أخرى ⇒ `null`.
+   والمفتاحُ يُبنى بـ`_apiCacheKey` نفسِه من `argsKey` مُعاد الترميز بنفس `JSON.stringify` الذي بناه
+   في `_apiCacheProbe` (‏ترتيبُ المفاتيح محفوظ) ⇒ لا تركيبَ نصّيّاً موازياً ينحرف بصمت.
+   ⚠️ والموجزُ بلا حقلٍ لطالبٍ بعينه (انظر `_apiArgsClassFeed`) — فالخانةُ السابقة لا تكشف شيئاً جديداً. */
+var API_FEED_PREVSLOT_FN = 'getClassFeedBundle';
+var API_FEED_PREVSLOT_MAX = 2;
+function _apiFeedSlotProbe(probe, back) {
+  try {
+    if (!probe || probe.fn !== API_FEED_PREVSLOT_FN || !probe.argsKey) return null;
+    if (!(back >= 1 && back <= API_FEED_PREVSLOT_MAX)) return null;
+    var raw = JSON.parse(decodeURIComponent(probe.argsKey));
+    var o = raw && raw[0] && raw[0][0];
+    if (!o || typeof o.v !== 'string') return null;
+    var m = /^([1-9][0-9]{0,15}\.[0-9]{1,16})\.([0-9]{1,10})$/.exec(o.v);
+    if (!m) return null;
+    var slot = Number(m[2]) - back;
+    if (!(slot >= 0)) return null;
+    o.v = m[1] + '.' + slot;
+    return { fn: probe.fn, argsKey: encodeURIComponent(JSON.stringify(raw)), back: back };
+  } catch (e) { return null; }
+}
+/* سببُ الإخفاق الذي يُسوِّغ الخانةَ السابقة: إجهاضُنا · فشلُ النقل · صفحةُ HTML · أو 5xx من المنبع.
+   ⚠️ **لا 4xx** — ردٌّ يقول «طلبُك خطأ» لا يُغطّى بمحتوىً قديم. */
+function _apiFeedPrevSlotWhy(why, status) {
+  if (why === 'abort_budget' || why === 'transport' || why === 'upstream_html') return true;
+  return why === 'upstream_status' && status >= 500;
+}
+/** يُرجِع `{text, age, back}` من أحدث خانةٍ سابقةٍ صالحة (طازجةً أو بائتة)، وإلّا `null`. */
+async function _apiFeedPrevSlotGet(origin, app, probe) {
+  for (var back = 1; back <= API_FEED_PREVSLOT_MAX; back++) {
+    var p = _apiFeedSlotProbe(probe, back);
+    if (!p) return null;
+    var hit = await _apiCacheGet(origin, app, p);
+    if (hit && _apiCacheFreshness(p.fn, hit.age) !== 'expired') {
+      return { text: hit.text, age: hit.age, back: back };
+    }
+  }
+  return null;
+}
+
 /* يُخزّن **`text` خاماً كما هو** (بذيله `"_ms"`) — `assets/gas-bridge.js` يستهلكه نصّاً،
    فإعادةُ بنائه تُلوّث المخرَج المخدوم. والطابعُ الزمنيّ في **رأس مدخل الكاش** لا داخل
    الحمولة، أسوةً بـ`X-Brand-Ts`. يُرجِع `true` إن خُزّن فعلاً (للسجلّ). */
@@ -2885,6 +2994,10 @@ export default {
         var _bhM = _bhHead.match(/"fn"\s*:\s*"([A-Za-z][A-Za-z0-9_]{0,63})"/);
         if (_bhM) _bhFn = _bhM[1];
       } catch (e) { /* لا نُفشِل طلباً بسبب سجلّ */ }
+      /* 🔬 **فحصُ الصحّة يُسمّى (الدفعة 27e):** `GET ?action=health` بلا جسم ⇒ كان `fn` فارغاً فيظهر في
+         `/dev-stats` كـ`student · ` بإجهاضاتٍ تُحسب على المنصّة. الاسمُ ثابتٌ لا من المستخدم، و`/dev-stats`
+         يطرحه من نسب الإجهاض (`_devStatsHealth`). وصفرُ أثرٍ على القرار: الإعفاءُ من المنظّم بـ`action` أدناه. */
+      if (!_bhFn && request.method === 'GET' && url.searchParams.get('action') === 'health') _bhFn = DEV_STATS_HEALTH_FN;
 
       // ── بوّابةُ رمز الطالب — **تسجيلٌ فقط لا رفض** (2026-09-24 · مع جلسة `SchoolApp-gas`) ──
       if (app === 'student' && request.method === 'POST' && _bhFn &&
@@ -3277,6 +3390,24 @@ export default {
             'X-Api-Stale': String(_acStale.age)
           }
         }));
+      }
+      /* 🛟 **موجزُ الفصل وحدَه: الخانةُ السابقة (الدفعة 27e)** — انظر `_apiFeedSlotProbe`. يأتي **بعد**
+         التراجع البائت بالمفتاح نفسِه (الأحدثُ أوّلاً)، و`ev:'gas'` يبقى `ok:false` بسببه كما هو.
+         ويُعدّ بـ`act:'stale'` **و**`stale:'prevslot'` ⇒ يُفصَل عن البائت بالمفتاح نفسِه. */
+      if (!good && _acProbe && _acProbe.fn === API_FEED_PREVSLOT_FN && _apiFeedPrevSlotWhy(_bhWhy, lastStatus)) {
+        var _psHit = await _apiFeedPrevSlotGet(url.origin, app, _acProbe);
+        if (_psHit) {
+          _bhLog({ ev: 'apicache', act: 'stale', stale: 'prevslot', app: app, fn: _acProbe.fn,
+                   k: _apiKeyFp(_acProbe.argsKey), age: _psHit.age, back: _psHit.back, why: _bhWhy });
+          return withCors(new Response(_psHit.text, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'X-Api-Cache': 'stale-prevslot',
+              'X-Api-Stale': String(_psHit.age)
+            }
+          }));
+        }
       }
 
       // عند استنفاد المحاولات لطلب JSON (POST) باستجابة غير صالحة (HTML/4xx):
@@ -3851,7 +3982,7 @@ export default {
       }
       var dsWin = _devStatsWindow(url.searchParams.get('window'));
       if (!dsWin) return dsJson({ v: 1, error: 'bad_window' }, 400);
-      var dsKey = new Request(url.origin + '/__dev-stats/v1/' + dsWin.key);
+      var dsKey = new Request(url.origin + _devStatsCacheKeyPath(dsWin.key, env.CF_VERSION_METADATA));
       var dsHit = await caches.default.match(dsKey);
       if (dsHit) {
         var dsCached = await dsHit.json();
