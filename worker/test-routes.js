@@ -4623,9 +4623,212 @@ global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
   check(S([], [], [], 5).total.n === 0 && S(null, null, null).byFn.length === 0, 'بلا صفوف ⇒ أصفار لا خطأ');
   check(/'gasshadow', \[\['app', S\], \['fn', S\]\], \[\{ key: 'srv', operation: 'gte', type: 'number', value: 0 \},\s*\{ key: 'shadowMs', operation: 'lte', type: 'number', value: SHADOW_RESCUE_MS \}\]/.test(src),
         'استعلامُ «خلال 49ث» يشترط جسمَ دالّتنا (srv ≥ 0) لا الاكتمالَ وحدَه (وثيقة 09-22: 8/11 صفحة HTML)');
-  check(/body\.shadow = _devStatsShadow\(val\(10\), val\(11\), val\(12\), DEV_STATS_TOP_FN\)/.test(src) && /'shadow', 'shadowJson', 'shadowFast'\]/.test(src),
+  check(/body\.shadow = _devStatsShadow\(val\(10\), val\(11\), val\(12\), DEV_STATS_TOP_FN\)/.test(src) && /'shadow', 'shadowJson', 'shadowFast'[\],]/.test(src),
         'الجسمُ يحمل `shadow`، وفشلُ أيّ استعلامٍ منها يُعلَن في missing/diag');
 })();
+
+/* ═══ الدفعة 27e — الخانةُ السابقة لموجز الفصل · تسميةُ فحص الصحّة · مفتاحُ كاش `/dev-stats` بالنسخة ═══
+   سلوكيٌّ بـ`vm` على الكود الحيّ (لا نسخة)، ولكلّ قبولٍ ضابطُه المعاكس. */
+global.__swrPending = Promise.resolve(global.__swrPending).then(function () {
+  console.log('');
+  console.log('الدفعة 27e — موجزُ الفصل من الخانة السابقة · فحصُ الصحّة · مفتاحُ /dev-stats:');
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+
+  /* ── (أ–ج) الخانةُ السابقة — كتلةُ كاش الحافّة كما هي (async حقيقيّ، بلا تجريد) ── */
+  var aIdx = src.indexOf('var API_CACHE_TTL_S');
+  var aEnd = src.indexOf('\n}', src.indexOf('async function _apiCachePut(')) + 2;
+  var blk = (aIdx >= 0 && aEnd > aIdx) ? src.slice(aIdx, aEnd) : '';
+  check(blk.indexOf('function _apiFeedSlotProbe(') > 0 && blk.indexOf('async function _apiFeedPrevSlotGet(') > 0,
+        'ضابط: دوالُّ الخانة السابقة داخل كتلة الكاش المستخرَجة (وإلّا الفحصُ أجوف)');
+  if (!blk) return;
+  var store = {}, matches = [];
+  function FakeResponse(body, init) {
+    var h = (init && init.headers) || {};
+    this._t = body;
+    this.headers = { get: function (k) { return h[k] === undefined ? null : h[k]; } };
+    this.text = function () { return Promise.resolve(body); };
+  }
+  var fc = vm.createContext({
+    Date: Date, JSON: JSON, Object: Object, Number: Number, String: String, Math: Math, Promise: Promise,
+    encodeURIComponent: encodeURIComponent, decodeURIComponent: decodeURIComponent, Response: FakeResponse,
+    Request: function (url) { this.url = url; },
+    caches: { default: {
+      match: function (req) { matches.push(req.url); var e = store[req.url];
+                              return Promise.resolve(e ? new FakeResponse(e.text, { headers: { 'X-Api-Ts': e.ts } }) : undefined); },
+      put: function () { return Promise.resolve(); }
+    } }
+  });
+  vm.runInContext(blk, fc);
+  var probe = vm.runInContext('_apiCacheProbe', fc);
+  var slotP = vm.runInContext('_apiFeedSlotProbe', fc);
+  var prevGet = vm.runInContext('_apiFeedPrevSlotGet', fc);
+  var why = vm.runInContext('_apiFeedPrevSlotWhy', fc);
+  var keyOf = vm.runInContext('_apiCacheKey', fc);
+  var SID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301', O = 'https://yemenschoolz.com';
+  function feed(v) { return probe(JSON.stringify({ fn: 'getClassFeedBundle', args: [{ schoolId: SID, klass: 'الأول', section: 'أ', v: v }] })); }
+  function putAt(p, ageS, text) { store[keyOf(O, 'student', p.fn, p.argsKey).url] = { text: text, ts: String(Date.now() - ageS * 1000) }; }
+
+  var cur = feed('12.7.100');
+  check(!!cur && !!cur.argsKey, 'ضابط: طلبُ الموجز الحاليّ مؤهَّلٌ للكاش');
+  var s1 = slotP(cur, 1), s2 = slotP(cur, 2);
+  check(s1 && s2 && s1.argsKey === feed('12.7.99').argsKey && s2.argsKey === feed('12.7.98').argsKey,
+        '🔴 الخانةُ السابقة = **نفسُ مفتاح** `_apiCacheProbe` لنفس الطلب بـ`v` خانتُه −1/−2 (لا تركيبَ نصّيٌّ موازٍ)');
+  check(s1.argsKey !== feed('12.8.99').argsKey && s1.argsKey !== feed('13.7.99').argsKey,
+        '🔒 الجيلان لا يتغيّران — مفتاحُ الخانة السابقة ≠ مفتاحِ جيلٍ آخر');
+  check(slotP(cur, 3) === null && slotP(cur, 0) === null && slotP(feed('12.7.0'), 1) === null,
+        '🔒 لا أبعدَ من خانتين · ولا خانةَ سالبة');
+  check(why('abort_budget', 502) && why('transport', 502) && why('upstream_html', 200) && why('upstream_status', 500) &&
+        !why('upstream_status', 404) && !why('ok', 200),
+        'الأسبابُ: إجهاض · نقل · HTML · 5xx ⇒ نعم — و4xx · نجاح ⇒ لا');
+
+  var feedText = '{"ok":true,"news":[],"circulars":[],"_ms":5}';
+  var otherFn = probe(JSON.stringify({ fn: 'getHomeScheduleBundle', args: [{ schoolId: SID, klass: 'الأول', section: 'أ' }] }));
+  return Promise.resolve().then(function () {
+    // (ب) لا مدخلَ سابق ⇒ null (السلوكُ القديم: الخطأ يُمرَّر).
+    return prevGet(O, 'student', cur).then(function (r) {
+      check(r === null && matches.length === 2, '(ب) لا مدخلَ في الخانتين السابقتين ⇒ null (يمرّ الإخفاقُ كما كان) — بحثٌ في خانتين فقط');
+    });
+  }).then(function () {
+    // (أ) مدخلُ الخانة −2 وحده ⇒ يُخدَم بـback=2.
+    putAt(s2, 700, feedText);
+    return prevGet(O, 'student', cur).then(function (r) {
+      check(r && r.back === 2 && r.text === feedText && r.age >= 699, '(أ) مدخلُ الخانة −2 وحده ⇒ يُخدَم (back=2) بعمره');
+    });
+  }).then(function () {
+    putAt(s1, 120, feedText.replace('[]', '[1]'));
+    return prevGet(O, 'student', cur).then(function (r) {
+      check(r && r.back === 1 && r.text.indexOf('[1]') > 0, '(أ) الأحدثُ أوّلاً: الخانة −1 تسبق −2');
+    });
+  }).then(function () {
+    store = {};
+    putAt(s1, 900 + 600 + 60, feedText);
+    return prevGet(O, 'student', cur).then(function (r) {
+      check(r === null, '🔒 مدخلٌ منتهٍ (أقدم من ttl + نافذة البيات) ⇒ لا يُخدَم');
+    });
+  }).then(function () {
+    store = {};
+    putAt(feed('13.7.99'), 60, feedText);
+    return prevGet(O, 'student', cur).then(function (r) {
+      check(r === null, '🔒 مدخلُ الخانة السابقة **بجيلٍ آخر** (خبرٌ جديد) ⇒ لا يُخدَم');
+    });
+  }).then(function () {
+    // (ج) دالّةٌ أخرى لا تحصل على الخانة السابقة أبداً.
+    store = {}; matches = [];
+    putAt(otherFn, 60, '{"settings":{},"schedule":[]}');
+    return prevGet(O, 'student', otherFn).then(function (r) {
+      check(slotP(otherFn, 1) === null && r === null && matches.length === 0,
+            '(ج) 🔴 دالّةٌ مخزَّنةٌ أخرى ⇒ لا خانةَ سابقة (ولا قراءةَ كاشٍ إطلاقاً)');
+    });
+  }).then(function () {
+    // الموصولُ في المعالج: بعد التراجع البائت، قبل خطأ الـPOST، مشروطٌ بالدالّة والسبب، ولا يقلب `good`.
+    var iSA = src.indexOf("'X-Api-Cache': 'stale-abort'");
+    var iPS = src.indexOf('if (!good && _acProbe && _acProbe.fn === API_FEED_PREVSLOT_FN && _apiFeedPrevSlotWhy(_bhWhy, lastStatus))');
+    var iPost = src.indexOf('if (!good && isPost) {');
+    check(iSA > 0 && iPS > iSA && iPost > iPS, '🔴 فرعُ الخانة السابقة بعد التراجع البائت (الأحدثُ أوّلاً) وقبل ردّ الخطإ');
+    var psBlk = iPS > 0 ? src.slice(iPS, iPost) : '';
+    check(/act: 'stale', stale: 'prevslot'/.test(psBlk) && /'X-Api-Cache': 'stale-prevslot'/.test(psBlk) &&
+          /'X-Api-Stale': String\(_psHit\.age\)/.test(psBlk) && /if \(_psHit\)/.test(psBlk),
+          'الخدمةُ مرئيّة: `act:stale · stale:prevslot` في السجلّ و`X-Api-Cache`/`X-Api-Stale` في الردّ · وبلا مدخلٍ يمرّ الخطأ');
+    check(psBlk.indexOf('good = true') === -1 && vm.runInContext('API_FEED_PREVSLOT_FN', fc) === 'getClassFeedBundle',
+          '🔒 لا يقلب `good` (عدّادُ الإشباع على المنبع) · والدالّةُ الوحيدة `getClassFeedBundle`');
+  }).then(function () {
+    /* ── (د) فحصُ الصحّة: الاسمُ في المعالج + الطرحُ في `/dev-stats` بالبناء الحقيقيّ ── */
+    var hm = /\n\s*(if \(!_bhFn && request\.method === 'GET' && url\.searchParams\.get\('action'\) === 'health'\) _bhFn = DEV_STATS_HEALTH_FN;)/.exec(src);
+    check(!!hm, '(د) سطرُ التسمية موجود');
+    if (!hm) return;
+    var iLbl = src.indexOf(hm[1]), iFnRx = src.indexOf('if (_bhM) _bhFn = _bhM[1];'), iGasLog = src.indexOf("_bhLog({ ev: 'gas', app: app, fn: _bhFn");
+    check(iFnRx > 0 && iLbl > iFnRx && iGasLog > iLbl, 'التسميةُ بعد استخراج `fn` من الجسم وقبل سطر `ev:\'gas\'`');
+    function lbl(method, qs, fn0) {
+      var c = vm.createContext({ _bhFn: fn0, DEV_STATS_HEALTH_FN: 'health', request: { method: method },
+                                 url: new URL('https://x.test/gas/student' + qs) });
+      vm.runInContext(hm[1], c);
+      return c._bhFn;
+    }
+    check(lbl('GET', '?action=health', '') === 'health', '(د) `GET ?action=health` ⇒ fn=`health`');
+    check(lbl('GET', '', '') === '' && lbl('POST', '?action=health', '') === '' && lbl('GET', '?action=health', 'getX') === 'getX',
+          '🔒 ضابطٌ معاكس: GET بلا action · POST · أو fn من الجسم ⇒ بلا تغيير');
+
+    var a = src.indexOf('/* ═══ ذيلُ ردّ GAS: `_v` و`_dedup`');
+    var bEnd = src.indexOf('\n}', src.indexOf('async function _devStatsBuild(')) + 2;
+    var VERID = 'aaaaaaaa-1111-2222-3333-444444444444';
+    var EV = [
+      { app: 'student', fn: 'getX',   why: 'ok',           n: 10 },
+      { app: 'student', fn: 'getX',   why: 'abort_budget', n: 5 },
+      { app: 'student', fn: 'health', why: 'abort_budget', n: 3 },
+      { app: 'student', fn: 'health', why: 'ok',           n: 2 },
+      { app: 'teacher', fn: 'health', why: 'ok',           n: 4 }
+    ].map(function (e) { e.hr = '2026-09-30T10'; e['$workers.scriptVersion.id'] = VERID; e.dd = false; e.gv = ''; e.ev = 'gas'; return e; });
+    var failHealth = false;
+    function fakeFetch(u, init) {
+      if (/\/versions$/.test(u)) return Promise.resolve({ ok: true, status: 200, text: function () { return Promise.resolve('{"success":true,"result":{"items":[]}}'); } });
+      var b = JSON.parse(init.body), P = b.parameters, fl = P.filters;
+      var isHealth = fl.some(function (f) { return f.key === 'fn' && f.value === 'health'; });
+      if (isHealth && failHealth) return Promise.resolve({ ok: false, status: 429, text: function () { return Promise.resolve('{"success":false,"errors":[{"code":1,"message":"rate"}]}'); } });
+      var rows = EV.filter(function (e) {
+        return fl.every(function (f) {
+          if (f.key === '$metadata.service') return true;
+          if (f.operation !== 'eq') return false;          // gte/lte لا تنطبق على هذه البيانات
+          return e[f.key] === f.value;
+        });
+      });
+      var gk = P.groupBys.map(function (g) { return g.value; }), acc = {};
+      rows.forEach(function (e) {
+        if (gk.some(function (k) { return e[k] === undefined; })) return;   // الـAPI يُسقط الحقلَ الغائب
+        var key = JSON.stringify(gk.map(function (k) { return e[k]; }));
+        acc[key] = (acc[key] || 0) + e.n;
+      });
+      var aggs = Object.keys(acc).map(function (k) {
+        var vs = JSON.parse(k);
+        return { value: acc[k], groups: gk.map(function (g, i) { return { key: g, value: vs[i] }; }) };
+      });
+      var out = JSON.stringify({ success: true, result: { calculations: [{ aggregates: aggs }] } });
+      return Promise.resolve({ ok: true, status: 200, text: function () { return Promise.resolve(out); } });
+    }
+    var bc = vm.createContext({ Math: Math, Date: Date, String: String, Object: Object, JSON: JSON, isNaN: isNaN,
+                                Number: Number, Promise: Promise, setTimeout: setTimeout, fetch: fakeFetch });
+    vm.runInContext(src.slice(a, bEnd), bc);
+    var build = vm.runInContext('_devStatsBuild', bc);
+    var env = { CF_ACCOUNT_ID: 'acc', CF_OBS_TOKEN: 'tok' }, win = { key: '24h', ms: 24 * 3600e3 };
+    return build(env, win, Date.now()).then(function (body) {
+      check(body.totals.n === 15 && body.totals.abort === 5 && body.totals.abortRate === 0.3333,
+            '(د) 🔴 الإجمالي بلا فحص الصحّة: n=15 · abort=5 (كان 24 · 8)');
+      var st = body.byApp.filter(function (x) { return x.app === 'student'; })[0];
+      check(st && st.n === 15 && st.abort === 5 && !body.byApp.some(function (x) { return x.app === 'teacher'; }),
+            '(د) بالتطبيق: `student` بلا الصحّة · و`teacher` (صحّةٌ فقط) يختفي لا صفٌّ صفريّ');
+      check(body.byFn.length === 1 && body.byFn[0].fn === 'getX', '(د) بالدالّة: لا صفَّ `health`');
+      check(body.byHour.length === 1 && body.byHour[0].n === 15 && body.byHour[0].abort === 5 &&
+            body.hourCoverage && body.hourCoverage.coverage === 1,
+            '(د) بالساعة: 15 · 5 — والتغطيةُ 1 (المقامُ الخامُ طُرح منه أيضاً)');
+      check(body.byVersion.length === 1 && body.byVersion[0].n === 15 && body.byVersion[0].abort === 5, '(د) بالنسخة: 15 · 5');
+      check(body.gasVAbortsUnattributable === 5, '(د) إجهاضُ الصحّة خارجَ «غير المنسوب لنشرة GAS» أيضاً');
+      check(body.health && body.health.n === 9 && body.health.abort === 3 && body.health.byApp.length === 2 && body.missing.indexOf('health') < 0,
+            '(د) فحصُ الصحّة معدودٌ منفصلاً: `health` n=9 · abort=3 · بتطبيقين');
+      failHealth = true;
+      return build(env, win, Date.now());
+    }).then(function (body2) {
+      check(body2.totals.n === 24 && body2.health === null && body2.missing.indexOf('health') >= 0 && body2.partial === true,
+            '🔒 ضابطٌ معاكس: فشلُ استعلام الصحّة ⇒ لا طرح (الأرقامُ كما كانت) ويُعلَن في missing');
+    });
+  }).then(function () {
+    /* ── (هـ) مفتاحُ كاش `/dev-stats` يحمل نسخةَ الوركر ── */
+    var kc = vm.createContext({ String: String });
+    var ki = src.indexOf('function _devStatsCacheKeyPath(');
+    vm.runInContext(src.slice(ki, src.indexOf('\n}', ki) + 2), kc);
+    var K = vm.runInContext('_devStatsCacheKeyPath', kc);
+    var k1 = K('24h', { id: 'AAAAAAAA-1111-2222-3333-444444444444' }), k2 = K('24h', { id: 'bbbbbbbb-1111-2222-3333-444444444444' });
+    check(k1 === '/__dev-stats/v1/aaaaaaaa-1111-2222-3333-444444444444/24h' && k1 !== k2,
+          '(هـ) 🔴 المفتاحُ يحمل نسخةَ الوركر — نشرٌ جديد ⇒ مفتاحٌ جديد');
+    check(K('7d', null) === '/__dev-stats/v1/nover/7d' && K('24h', {}) === '/__dev-stats/v1/nover/24h' &&
+          K('24h', { id: '../x?y' }) === '/__dev-stats/v1/nover/24h' && K('24h', { id: 'zz/..ab' }) === '/__dev-stats/v1/ab/24h',
+          '🔒 بلا ربط ⇒ `nover` (السلوكُ القديم) · ومحارفُ غيرُ hex/`-` تُنقّى');
+    check(src.indexOf("_devStatsCacheKeyPath(dsWin.key, env.CF_VERSION_METADATA)") > 0 &&
+          src.indexOf("'/__dev-stats/v1/' + dsWin.key") < 0,
+          '(هـ) المعالجُ يبني المفتاحَ بالنسخة — ولا مفتاحَ بلا نسخة');
+    var wr = fs.readFileSync(path.join(__dirname, '..', 'wrangler.jsonc'), 'utf8');
+    check(/"version_metadata":\s*\{\s*"binding":\s*"CF_VERSION_METADATA"\s*\}/.test(wr),
+          '(هـ) ربطُ `version_metadata` باسم `CF_VERSION_METADATA` مُعلَنٌ في wrangler.jsonc');
+  });
+});
 
 /* 🔴 الفحوصُ غيرُ المتزامنة (SWR) تُنتظَر **قبل** سطر `RESULT` — وإلّا طُبعت بعده فصارت زينةً
    لا حارساً (فئةُ «فحصٌ بلا مُشغِّل»). */
