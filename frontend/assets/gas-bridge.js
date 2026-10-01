@@ -25,6 +25,26 @@
     repairDataUnificationProtected: 1
   };
 
+  /* 🔒 (الدفعة 29a2 · 2026-10-01) **دوالُّ الدخول تتجاوز طبقة العمل دون اتصال كلَّها:** نقلٌ خامٌ واحد —
+     لا كاشَ قراءةٍ ولا تتبّعَ لإعادة التحقّق ولا طابورَ ولا حفظَ جلسة. نسخةٌ مطابقةٌ لـ`LOGIN_FNS`/`isLoginFn`
+     في `offline-sync.js` (يفرض تطابقَهما `tests/login_never_cached.test.js`)، وتُفحص هنا **قبل**
+     `OS.classify` لا بعده: عاملُ الخدمة يخدم الملفّين من كاشه ويحدّث كلّاً على حدة، فقد يلتقي جسرٌ جديدٌ
+     بمحرّكٍ قديمٍ يعدّ `login*` قراءةً — وهذا الحارسُ يكفي وحده عندئذٍ. */
+  var LOGIN_FNS = {
+    handleTeacherLogin: true,
+    handleTeacherLoginByDevice: true,
+    loginStudent: true,
+    loginStudentByDeviceProtected: true,
+    masterLogin: true,
+    handleCmsLogin: true,
+    handleCmsAutoLogin: true,
+    switchStudentAccount: true,
+    refreshStudentSiblings: true
+  };
+  function isLoginFn(fn) {
+    return typeof fn === 'string' && (Object.prototype.hasOwnProperty.call(LOGIN_FNS, fn) || /login/i.test(fn));
+  }
+
   // علامة على أخطاء الشبكة (تعذّر الوصول للخادم) لتمييزها عن أخطاء الخادم المنطقية.
   function netError(msg) { var e = new Error(msg); e.__network = true; return e; }
 
@@ -70,7 +90,9 @@
   window.gasErrorInfo = gasErrorInfo;
 
   /* 📡 تبليغُ إخفاقات النقل التي **لا تصل الحافّة أصلاً** (2026-09-18، قرار مالك).
-     الوسيطُ يسجّل كلَّ نداءٍ يصله (`ev=gas`)، فالـ5xx مسجَّلٌ هناك سلفاً ولا يُكرَّر.
+     الوسيطُ يسجّل كلَّ نداءٍ يصله (`ev=gas`)، فالـ5xx الذي مرّ به مسجَّلٌ هناك سلفاً — ومنذ 28k
+     يُضاف ما **رآه العميل** بنوع `http5xx` (بحدٍّ ٢ للصفحة، انظر `_reportHttp`): 5xx من طبقة
+     Cloudflare نفسِها لا يبلغ سجلَّ الوسيط أبداً.
      الغائبُ عن كلّ قناة: انقطاعُ الشبكة ومهلةُ العميل (`status 0`) — تُرسَل إلى
      `POST /client-err` في الوسيط (‏web#314) **بصفر نداءٍ لـGAS**: التبليغُ عبر GAS كان
      سيضيف حِملاً على المورد المشبع لحظةَ إشباعه، فيُغذّي العَرَضَ الذي يبلّغ عنه.
@@ -105,6 +127,30 @@
         x.send(json);
       }
     } catch (eCe) {}
+  }
+
+  /* 📡 (الدفعة 28k) **5xx والردودُ غيرُ JSON** (صفحةُ خطإٍ HTML · جسمٌ فارغ) تُبلَّغ عبر المسار
+     نفسِه أعلاه — `/client-err` في الوسيط، **صفرُ نداءٍ على GAS** (قرارُ المالك: إخفاقُ النقل
+     يقع لحظةَ الإشباع، وتبليغُه عبر GAS يغذّي العَرَض). الوسيطُ يقبل `kind: 'http5xx'` أصلاً.
+     ⚠️ **وعقدُ الوسيط قائمةٌ بيضاءُ مغلقة** (مفتاحٌ زائدٌ ⇒ رفضُ البلاغ كلِّه — `_clientErrSanitize`):
+        فمقتطفُ الجسم (١٢٠ محرفاً) وبصمةُ البناء يذهبان إلى سطر `[GSR-HTTP]` في الطرفيّة لا إلى البلاغ.
+     🔒 مرّةً لكلّ (نوع · دالّة · رمز) في الصفحة، و5xx بحدٍّ ٢ كي لا تستهلك سقفَ الخمسة الذي
+        تحتاجه الانقطاعاتُ (`status 0`) — وهي الغائبةُ عن سجلّ الوسيط. ولا تغيّرٌ فيما يستلمه المستدعي. */
+  var _lastV = '';            // آخرُ `_v` (بصمةُ بناء الخادم) في ردٍّ سليم
+  var _httpSeen = {}, _http5xxSent = 0;
+  function _reportHttp(kind, fnName, status, ms, text) {
+    try {
+      var snip = String(text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 120);
+      try {
+        console.warn('[GSR-HTTP] ' + fnName + ' status=' + status + ' b=' + (_lastV || '?') +
+                     ' w=' + (window.WEB_BUILD_TS || '?') + ' body="' + snip + '"');
+      } catch (eW) {}
+      var k = kind + '|' + fnName + '|' + status;
+      if (_httpSeen[k]) return;
+      _httpSeen[k] = 1;
+      if (kind === 'http5xx') { if (_http5xxSent >= 2) return; _http5xxSent++; }
+      _reportTransport(kind, fnName, status, ms);
+    } catch (eH) {}
   }
 
   // النقل الخام: نفس سلوك google.script.run الأصلي عبر XHR.
@@ -177,6 +223,11 @@
         //    الأعطال العابرة التي وُجدت إعادةُ المحاولة لأجلها أصلاً.
         var _sat = (xhr.status === 503 || xhr.status === 429 ||
                     xhr.status === 502 || xhr.status === 504);
+        if (xhr.status >= 500 && xhr.status <= 599) {
+          var _body5 = '';
+          try { _body5 = xhr.responseText; } catch (eRt) { _body5 = ''; }
+          _reportHttp('http5xx', fnName, xhr.status, Date.now() - _t0, _body5);
+        }
         if (onFailure) {
           onFailure(
             _sat
@@ -195,10 +246,11 @@
         /* 📡 (الدفعة 15) ويُبلَّغ: 200 بصفحة HTML (صفحةُ 404/خطأ Google مساء 2026-09-28) لا
            يراه الوسيطُ فشلاً (رمزُه 200) ⇒ كان غائباً عن كلّ قناة. `network` + الرمزُ الحقيقيّ
            يميّزه عن الانقطاع (0) في «صحّة النقل». */
-        _reportTransport('network', fnName, xhr.status || 0, Date.now() - _t0);
+        _reportHttp('network', fnName, xhr.status || 0, Date.now() - _t0, text);
         if (onFailure) onFailure(netError('رد غير صالح'), userObject);
         return;
       }
+      try { if (data && typeof data._v === 'string' && /^[0-9a-f]{7}$/.test(data._v)) _lastV = data._v; } catch (eV) {}
 
       if (data && data.ok) {
         if (onSuccess) onSuccess(data.result, userObject);
@@ -224,12 +276,15 @@
            **مرّةً مركزيّاً** فيُغطّي كلَّ `withFailureHandler(function(){})` الصامت في الصفحات،
            عبر `reportAppError` (يطوي المكرّر ويسقف بـ8 للصفحة) إلى «سجل_الأخطاء». ولا يُبلَّغ
            خطأُ مُبلِّغ الأخطاء نفسِه (حلقة). */
+        /* (28k) `__reported` يخبر معالجَ الصفحة (`_gsrFail`) أن البلاغ أُرسل هنا فلا يُكرَّر. */
+        var _srvErr = new Error((data && data.error) || 'خطأ في الخادم');
         try {
           if (fnName !== 'logAppErrorPublic' && typeof window.reportAppError === 'function') {
             window.reportAppError('server', String((data && data.error) || 'خطأ في الخادم').substring(0, 400), '', fnName);
+            _srvErr.__reported = true;
           }
         } catch (eRep) {}
-        if (onFailure) onFailure(new Error((data && data.error) || 'خطأ في الخادم'), userObject);
+        if (onFailure) onFailure(_srvErr, userObject);
       }
     };
 
@@ -292,7 +347,8 @@
   // طبقة العمل دون اتصال فوق النقل الخام (تستشير window.OfflineSync).
   function callServer(fnName, args, onSuccess, onFailure, userObject) {
     var OS = window.OfflineSync;
-    if (!OS) { rawCall(fnName, args, onSuccess, onFailure, userObject); return; }
+    // 🔒 29a2: دالّةُ الدخول لا تلمس `OS` أبداً (انظر `LOGIN_FNS` أعلاه).
+    if (!OS || isLoginFn(fnName)) { rawCall(fnName, args, onSuccess, onFailure, userObject); return; }
 
     var app = OS.appName();
     var schoolId = window.SCHOOL_ID || null;

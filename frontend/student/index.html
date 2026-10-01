@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202610010254;
+    window.WEB_BUILD_TS = 202610010730;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2857,7 +2857,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '23126fe';
+  var STU_BUILD = '8519e6a';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -3199,6 +3199,23 @@ function _stuCb(fnName, cb) {
     catch (e) { _stuReportCbError(fnName, e); }
   };
 }
+/* 📡 (الدفعة 28k) معالجُ الفشل المشترك لنداءات الخلفية التي كانت تُتجاهَل بصمت (`function () {}`).
+   **لا رسالةَ للطالب** كما كان؛ يُضاف سطرُ `[GSR-FAIL] <fn>` في الطرفيّة، وبلاغٌ لما لم يُبلَّغ
+   مركزياً وحده: العابرُ (`_stuIsTransientErr` — يسجّله الوسيط) وانتهاءُ الجلسة ليسا علّة، واستثناءُ
+   الخادم أبلغه الجسرُ (`__reported`). سقفٌ ٥ للصفحة، والبصمةُ `b=` كبلاغات `_stuReportCbError`. */
+var _stuGsrFailSent = 0;
+function _stuGsrFail(fnName) {
+  return function (err) {
+    try { console.warn('[GSR-FAIL] ' + fnName, err); } catch (eW) {}
+    try {
+      if (!err || err.__network || err.__reported || _stuIsTransientErr(err) || _stuIsAuthExpired(err)) return;
+      if (_stuGsrFailSent >= 5 || typeof window.reportAppError !== 'function') return;
+      _stuGsrFailSent++;
+      var build = (typeof STU_BUILD !== 'undefined' && STU_BUILD) ? STU_BUILD : '?';
+      window.reportAppError('gsr-fail', ('[b=' + build + '] ' + String((err && err.message) || err)).substring(0, 300), '', fnName);
+    } catch (eRep) {}
+  };
+}
 
 function callServerGated(fnName, args, onOk, onErr, staleKey) {
   var ep = _STU_EPOCH;
@@ -3417,6 +3434,10 @@ function lsLoadSession() {
 // ─── مسح الجلسة من localStorage ───
 function lsClearSession() {
   try { localStorage.removeItem(LS_SESSION_KEY); } catch(e) {}
+  /* 🔒 29a2: وأيُّ ردِّ دخولٍ بقي في كاش العمل دون اتصال (IndexedDB) — الإصدارُ السابق كان يحفظ ردَّ
+     `loginStudentByDeviceProtected` كاملاً (`switchToken` والإخوة) ولا يمسحه الخروج. الموقعُ المستضاف وحده.
+     (فحصُ جلسة اللوحة `checkSession` يُمسح في `confirmLogout` وحده: الاستعادةُ الفاشلة هنا لا تُنهي تلك الجلسة.) */
+  try { if (window.OfflineSync && window.OfflineSync.purgeLoginCache) window.OfflineSync.purgeLoginCache(); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4581,8 +4602,11 @@ function confirmLogout() {
   try { var _tRaw = JSON.parse(localStorage.getItem('teacherSession_v1') || 'null'); _tTok = (_tRaw && _tRaw.data && _tRaw.data.token) || ''; } catch (eTr) {}
   try { sessionStorage.removeItem('teacherSession'); } catch (eTs) {}
   try { localStorage.removeItem('teacherSession_v1'); localStorage.removeItem('teacherHandoffAt'); } catch (eTl) {}
+  /* 🔒 29a2: ومعها فحصُها المخزَّن دون اتصال (`checkSession` يحمل توكنَها) — هنا لا في `lsClearSession`: الاستعادةُ
+     الفاشلة تمرّ بتلك ولا تُنهي جلسةَ اللوحة. الموقعُ المستضاف وحده. */
+  try { if (window.OfflineSync && window.OfflineSync.purgeSessionCache) window.OfflineSync.purgeSessionCache('checkSession'); } catch (eTp) {}
   if (_tTok) {   // والتوكنُ يُلغى على الخادم كما في `doLogout` باللوحة
-    try { google.script.run.withSuccessHandler(_stuCb('handleTeacherLogout', function () {})).withFailureHandler(_stuCb('handleTeacherLogout', function () {})).handleTeacherLogout({ token: _tTok }); } catch (eTo) {}
+    try { google.script.run.withSuccessHandler(_stuCb('handleTeacherLogout', function () {})).withFailureHandler(_stuCb('handleTeacherLogout', _stuGsrFail('handleTeacherLogout'))).handleTeacherLogout({ token: _tTok }); } catch (eTo) {}
   }
   if (APP.badgeInterval) {
     clearInterval(APP.badgeInterval);
@@ -4678,7 +4702,7 @@ window.registerFcmToken = function (deviceToken) {
     _stuFcmMark(deviceToken, sid, false);           // وسمُ المحاولة **قبل** الإطلاق
     google.script.run
       .withSuccessHandler(_stuCb('registerDeviceToken', function () { _stuFcmMark(deviceToken, sid, true); }))
-      .withFailureHandler(_stuCb('registerDeviceToken', function () {}))
+      .withFailureHandler(_stuCb('registerDeviceToken', _stuGsrFail('registerDeviceToken')))
       .registerDeviceToken({ deviceToken: deviceToken, schoolId: sid, platform: 'android' });
   } catch (e) {}
 };
@@ -7567,7 +7591,7 @@ function markNewsViewed(newsId) {
   _stuViewedAdd(newsId);
   google.script.run
     .withSuccessHandler(_stuCb('recordStudentNewsView', function () {}))
-    .withFailureHandler(_stuCb('recordStudentNewsView', function () {}))
+    .withFailureHandler(_stuCb('recordStudentNewsView', _stuGsrFail('recordStudentNewsView')))
     .recordStudentNewsView({
     newsId: newsId,
     studentId: APP.user.id,
@@ -8127,7 +8151,7 @@ function _loadTeachersListLegacy() {
         .getNoteWeeklyStatus({ studentId: APP.user.id, studentName: APP.user.name, schoolId: APP.user.schoolId,
                                switchToken: APP.user.switchToken });   // 🔒 الخادم يشترط رمز الجلسة
     }))
-    .withFailureHandler(_stuCb('getTeachersForClass', function () { /* تجاهل صامت */ }))
+    .withFailureHandler(_stuCb('getTeachersForClass', _stuGsrFail('getTeachersForClass')))   /* لا رسالة: سطرُ طرفيّة وبلاغ فقط */
     .getTeachersForClass({ className: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId });
 }
 
@@ -10158,7 +10182,7 @@ var STU_MOTIVATION_COLORS = ['#ffd166', '#06d6a0', '#4cc9f0', '#f4a261', '#c77df
       if (ss && ss.user && (!req || ss.user.schoolId === req)) return;  // جلسة صالحة لنفس المدرسة → تخطَّ
       google.script.run
         .withSuccessHandler(function (res) { if (res && res.success && res.schools && res.schools.length) render(res.schools); })
-        .withFailureHandler(function () {})
+        .withFailureHandler(_stuGsrFail('listPartnerSchoolsPublic'))
         .listPartnerSchoolsPublic();
     } catch (e) {}
   }

@@ -35,7 +35,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/master-admin';
-    window.WEB_BUILD_TS = 202610010254;
+    window.WEB_BUILD_TS = 202610010730;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -735,6 +735,23 @@ var _logoFName = '';
 var _animTid   = null;      // Timer ID للأنيميشن
 var _animIdx   = 0;
 var _dupConfirmed = false;  // متابعة صريحة رغم تحذير تكرار اسم مدرسة قائمة
+
+/* 📡 (الدفعة 28k) معالجُ الفشل المشترك لنداءات الخلفية التي كان معالجُ فشلها دالّةً فارغة.
+   لا رسالةَ للزائر كما كان؛ سطرُ `[GSR-FAIL] <fn>` في الطرفيّة، وبلاغٌ لما لم يُبلَّغ مركزياً وحده
+   (لا إخفاقَ نقل — يسجّله الوسيط — ولا ما أبلغه الجسر `__reported`). سقفٌ ٥ للصفحة. */
+var _gsrFailSent = 0;
+function _gsrFail(fnName) {
+  return function (err) {
+    try { console.warn('[GSR-FAIL] ' + fnName, err); } catch (eW) {}
+    try {
+      var msg = String((err && err.message) || err || '');
+      if (!err || err.__network || err.__reported || /NetworkError|HTTP 0|timeout|مهلة|فشل الاتصال|مزدحم/i.test(msg)) return;
+      if (_gsrFailSent >= 5 || typeof window.reportAppError !== 'function') return;
+      _gsrFailSent++;
+      window.reportAppError('gsr-fail', msg.substring(0, 300), '', fnName);
+    } catch (eRep) {}
+  };
+}
 
 // ══════════════════════════════════════════════════════════════
 //  navStep — الدالة الوحيدة للتنقل (لا override)
@@ -1700,7 +1717,7 @@ function _applyReferralFromUrl() {
       try {
         google.script.run
           .withSuccessHandler(function () {})
-          .withFailureHandler(function () {})
+          .withFailureHandler(_gsrFail('logReferralClickPublic'))
           .logReferralClickPublic(ref);
       } catch (eCall) {}
     }
