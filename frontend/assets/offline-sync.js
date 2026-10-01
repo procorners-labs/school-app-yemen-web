@@ -43,6 +43,29 @@
     uploadFileToDrive: true
   };
 
+  /* 🔒 (الدفعة 29a2 · 2026-10-01) **دوالُّ الدخول على الشبكة وحدها: لا كاشَ ولا طابورَ ولا إعادةَ تشغيل.**
+     كانت القاعدةُ العامّة في `classify` تعدّ كلَّ `login*` قراءةً ⇒ ردُّ `loginStudentByDeviceProtected`
+     كاملاً (`switchToken` ورموزُ الإخوة من `_stuBuildLoginResult_`) يُكتب في `readcache` ولا يمسحه
+     الخروج، و`revalidate()` يُعيد الدخولَ بـ`deviceSecret` عند عودة الاتصال، ودون اتصالٍ يُخدَم الردُّ
+     القديم كأنه دخولٌ جديد. ⇒ «دالّةُ دخول» = كلُّ اسمٍ يذكر `login` بأيّ حالة أحرف + هذه القائمة:
+     أسماءُ `BH_LOGIN_FNS` في الوسيط ودخولُ CMS، ودالّتا الطالب اللتان تُصدران `switchToken`.
+     🔁 نسخةٌ مطابقةٌ في `gas-bridge.js` (‏`LOGIN_FNS`) — يفرض تطابقَهما `tests/login_never_cached.test.js`. */
+  var LOGIN_FNS = {
+    handleTeacherLogin: true,
+    handleTeacherLoginByDevice: true,
+    loginStudent: true,
+    loginStudentByDeviceProtected: true,
+    masterLogin: true,
+    handleCmsLogin: true,
+    handleCmsAutoLogin: true,
+    switchStudentAccount: true,
+    refreshStudentSiblings: true
+  };
+
+  function isLoginFn(fn) {
+    return typeof fn === 'string' && (Object.prototype.hasOwnProperty.call(LOGIN_FNS, fn) || /login/i.test(fn));
+  }
+
   /* 🔒 L4 (2026-09-29): **لا تُحفظ ردودُ الدخول هنا بعد اليوم.** كانت تُكتب كلُّ ردٍّ (حتى الفاشل، ومعه
      `switchToken` ورموزُ الإخوة) في `teacherSession_v2`/`studentSession_v2` وفي IndexedDB، ولا أحدَ يقرؤها
      (الصفحتان تحفظان جلستيهما بنفسيهما: `teacherSession_v1` و`studentSession_v1`)، والخروجُ لا يمسحها ⇒
@@ -51,6 +74,7 @@
 
   function classify(fn) {
     if (!fn || typeof fn !== 'string') return 'online-only';
+    if (isLoginFn(fn)) return 'online-only';   // 🔒 29a2: قبل كلّ قاعدة
     if (ONLINE_ONLY[fn]) return 'online-only';
     if (WRITE_QUEUEABLE[fn]) return 'write';
     /* 🔴 **`upload|media|attach` تُستثنى قبل أيّ قاعدةٍ عامّة — وهي فجوةٌ كامنةٌ لا حالةٌ واقعة.**
@@ -60,8 +84,8 @@
        🎯 والتصنيفان يجب أن يفترقا **أبداً** — نسختان تتباعدان بصمت. */
     if (/upload|media|attach/i.test(fn)) return 'online-only';
 
-    // قاعدة عامّة: الدوال التي تبدأ بـ get أو check/login (قراءة) تُخزَّن.
-    if (/^get/i.test(fn) || /^check/i.test(fn) || /^login/i.test(fn)) return 'read';
+    // قاعدة عامّة: الدوال التي تبدأ بـ get أو check (قراءة) تُخزَّن. (`login*` ليست قراءةً — 29a2 أعلاه)
+    if (/^get/i.test(fn) || /^check/i.test(fn)) return 'read';
 
     /* 🔴 **`list*` قراءةٌ أيضاً — وسقوطُها كان فجوةً مقيسة، لا احتياطاً مقصوداً.**
 
@@ -122,6 +146,15 @@
     return (app || '?') + ':' + fn + ':' + hashArgs(args) + ':' + (schoolId || '');
   }
 
+  // هل الدالّةُ في مفتاح `readKey` تحقّق `test`؟ هي الثالثةُ من الآخر (قد يحوي `app` نقطتين حين تكون
+  // `GAS_ENDPOINT` رابطاً كاملاً)، والثانيةُ من الأوّل احتياطاً.
+  function readKeyHasFn(key, test) {
+    var p = String(key || '').split(':');
+    if (p.length < 4) return false;
+    return test(p[p.length - 3]) || test(p[1]);
+  }
+  function readKeyIsLogin(key) { return readKeyHasFn(key, isLoginFn); }
+
   function appName() {
     // /gas/teacher → teacher
     var ep = window.GAS_ENDPOINT || '';
@@ -135,12 +168,14 @@
 
   // ── كاش القراءة ──────────────────────────────────────────────
   function cacheRead(app, fn, args, schoolId, result) {
+    if (isLoginFn(fn)) return Promise.resolve();   // 🔒 29a2: ردُّ الدخول لا يُكتب أبداً (ولو طلبه جسرٌ قديم)
     return OfflineDB.set(READCACHE, readKey(app, fn, args, schoolId), {
       result: result, savedAt: nowISO()
     });
   }
 
   function getCachedRead(app, fn, args, schoolId) {
+    if (isLoginFn(fn)) return Promise.resolve(null);   // ولا يُخدَم ردُّ دخولٍ قديم
     return OfflineDB.get(READCACHE, readKey(app, fn, args, schoolId));
   }
 
@@ -150,6 +185,8 @@
      وُلدت الكتابةُ متّصلةً فأُرسلت مرّةً قبل الطابور؛ وإلّا يُولَّد هنا. */
   var OP_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
   function enqueue(app, fn, args, schoolId, opId) {
+    // 🔒 29a2: دالّةُ دخولٍ لا تدخل الطابور (وسائطُها كلمةُ مرورٍ أو `deviceSecret`) — ولا «نجاحَ» متفائلاً لها.
+    if (isLoginFn(fn)) return Promise.reject(new Error('online-only: ' + fn));
     var op = {
       key: newOpId(),
       opId: (typeof opId === 'string' && OP_ID_RE.test(opId)) ? opId
@@ -186,6 +223,100 @@
     });
   }
 
+  // ── سجلّ الكتابات الفاشلة (الدفعة 28k) ────────────────────────
+  /* 🔴 الكتابةُ التي يرفضها الخادمُ منطقياً عند إعادة التشغيل كانت تبقى في الطابور «فاشلةً»
+     **بلا سقفٍ ولا طريقِ مراجعة، وبوسائطها كاملةً**: توكنُ الجلسة في كلّ نداء، وكلمةُ مرور
+     المعلّم الجديد في `adminSaveTeacherGrouped`. ⇒ تُنقل الآن إلى سجلٍّ مختصرٍ في `kv` (آخرُ
+     ٥٠): الدالّة، ملخّصُ الوسائط **بلا أيّ سرّ**، نصُّ الخطأ، الوقت — ثمّ تُحذف من الطابور.
+     المراجعةُ من الطرفيّة: `OfflineSync.failed()` ⇒ وعدٌ بالقائمة، و`OfflineSync.clearFailed()`.
+     🔒 لا يُحفظ هنا ردُّ خادمٍ أبداً (ولا ردُّ دخول) — نصُّ الخطأ وحده. */
+  var FAILED_KEY = 'failed_writes';
+  var FAILED_MAX = 50;
+  /* (29a2) و`pw`/`newPw`/`oldPw` و`apiKey`/`inviteKey` أيضاً (`^pw|pw$|key$`)؛ و`deviceSecret` تغطّيه `secret`،
+     وقيمتُه (٦٤ محرفاً ست عشرياً) تُحجب بـ`SECRET_VAL_RE` ولو مُرِّرت بلا مفتاح. */
+  var SECRET_KEY_RE = /pass|pwd|token|secret|otp|hash|cookie|session|auth|credential|signature|bridgesig|كلمة|رمز|^pw|pw$|key$/i;
+  var SECRET_EXACT_RE = /^(sig|pin|key)$/i;
+  var SECRET_VAL_RE = /^[A-Za-z0-9_\-.+\/=]{24,}$/;   // قيمةٌ تشبه التوكن: طويلةٌ بلا مسافات
+
+  function redactValue(v, depth) {
+    if (v === null || v === undefined) return v;
+    if (typeof v === 'string') {
+      if (SECRET_VAL_RE.test(v)) return '[redacted]';
+      return v.length > 60 ? v.substring(0, 60) + '…' : v;
+    }
+    if (typeof v !== 'object') return v;
+    if (depth > 3) return '…';
+    var i, out;
+    if (Object.prototype.toString.call(v) === '[object Array]') {
+      out = [];
+      for (i = 0; i < v.length && i < 10; i++) out.push(redactValue(v[i], depth + 1));
+      if (v.length > 10) out.push('…+' + (v.length - 10));
+      return out;
+    }
+    out = {};
+    var n = 0;
+    for (var k in v) {
+      if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+      if (n++ >= 20) { out['…'] = '+'; break; }
+      out[k] = (SECRET_KEY_RE.test(k) || SECRET_EXACT_RE.test(k)) ? '[redacted]' : redactValue(v[k], depth + 1);
+    }
+    return out;
+  }
+
+  // ملخّصٌ قصيرٌ للوسائط للمراجعة — بلا كلمات مرور ولا توكنات (مفتاحاً أو قيمةً).
+  function summarizeArgs(fn, args) {
+    if (/login|logout|password|passwd/i.test(String(fn || ''))) return '';
+    var s = '';
+    try { s = JSON.stringify(redactValue(args, 0)) || ''; } catch (e) { s = ''; }
+    return s.length > 300 ? s.substring(0, 300) + '…' : s;
+  }
+
+  function failedList() {
+    return OfflineDB.get(KV, FAILED_KEY).then(function (list) {
+      return (Object.prototype.toString.call(list) === '[object Array]') ? list.slice() : [];
+    });
+  }
+
+  function recordFailed(op, error) {
+    var rec = {
+      at: nowISO(),
+      createdAt: op.createdAt || '',
+      app: op.app || '',
+      fn: String(op.fn || ''),
+      schoolId: op.schoolId || '',
+      opId: op.opId || '',
+      tries: op.tries || 0,
+      error: String(error || '').substring(0, 300),
+      args: summarizeArgs(op.fn, op.args)
+    };
+    return failedList().then(function (list) {
+      list.push(rec);
+      if (list.length > FAILED_MAX) list = list.slice(list.length - FAILED_MAX);
+      return OfflineDB.set(KV, FAILED_KEY, list);
+    }).then(function () { return rec; });
+  }
+
+  // يُسجَّل المختصرُ أوّلاً، ثم يُحذف من الطابور — فإن تعذّر التسجيلُ بقيت العمليّةُ كما هي.
+  function moveToFailed(op, error) {
+    return recordFailed(op, error).then(function () { return OfflineDB.del(OUTBOX, op.key); });
+  }
+
+  function clearFailed() {
+    return OfflineDB.del(KV, FAILED_KEY).then(function () { UI.refresh(); });
+  }
+
+  // عمليّاتٌ عُلِّمت «فاشلة» قبل هذه الطبقة وبقيت في الطابور بوسائطها الكاملة ⇒ تُنقل مرّةً.
+  function migrateLegacyFailed() {
+    return pendingOps().then(function (ops) {
+      var chain = Promise.resolve();
+      ops.forEach(function (op) {
+        if (op.status !== 'failed') return;
+        chain = chain.then(function () { return moveToFailed(op, op.lastError || ''); });
+      });
+      return chain;
+    })['catch'](function () {});
+  }
+
   // ── المزامنة ─────────────────────────────────────────────────
   var _flushing = false;
   var _retryTimer = null;
@@ -211,9 +342,13 @@
       window.__gasRawCall(op.fn, op.args, function (res) {
         /* 🔴 (الدفعة 15 · 2026-09-28) ردٌّ منطقيٌّ فاشل `{success:false}` (لا صلاحية · صفٌّ تغيّر ·
            قيمةٌ مرفوضة) كان يُحذف من الطابور **كأنه نجح** ⇒ كتابةُ المعلّم تضيع بصمت. الآن تُعامَل
-           كخطأ خادم: تبقى «فاشلة» للمراجعة وتُبلَّغ. */
-        if (res && typeof res === 'object' && res.success === false) {
+           كخطأ خادم: تُنقل إلى سجلّ الفاشلة للمراجعة وتُبلَّغ.
+           (28k) و`{ok:false}` مثلُها — وكان يمرّ نجاحاً. أمّا «الخادم مشغول» (`busy:true` · قفلٌ
+           لم يُنل) فعابرٌ لا رفض: يبقى في الطابور ويُعاد لاحقاً — الخادمُ لا يخزّن الفشلَ المنطقيّ
+           لنفس `opId` (‏`_apiOpEnd_`) فالإعادةُ تُنفَّذ فعلاً. */
+        if (res && typeof res === 'object' && (res.success === false || res.ok === false)) {
           var why = String(res.error || res.message || 'رفض الخادم العملية');
+          if (res.busy === true || /الخادم مشغول|العملية مشغولة/.test(why)) { resolve({ kind: 'network', busy: true }); return; }
           try { if (typeof window.reportAppError === 'function') window.reportAppError('offline-replay', why.substring(0, 400), '', op.fn); } catch (eR) {}
           resolve({ kind: 'server', error: why });
           return;
@@ -222,7 +357,10 @@
       }, function (err) {
         // نميّز خطأ الشبكة عن خطأ الخادم المنطقي عبر علامة يضبطها الجسر.
         var net = err && err.__network === true;
-        resolve({ kind: net ? 'network' : 'server', error: (err && err.message) || 'خطأ' });
+        var msg = (err && err.message) || 'خطأ';
+        /* (28k) استثناءُ خادمٍ يُسقط الكتابةَ من الطابور ⇒ يُبلَّغ بوصفه إسقاطاً (الجسرُ بلّغ الاستثناءَ نفسَه). */
+        if (!net) { try { if (typeof window.reportAppError === 'function') window.reportAppError('offline-replay', String(msg).substring(0, 400), '', op.fn); } catch (eR2) {} }
+        resolve({ kind: net ? 'network' : 'server', error: msg });
       }, undefined, oid);
     });
   }
@@ -253,11 +391,14 @@
               return OfflineDB.del(OUTBOX, op.key).then(function () { UI.refresh(); return false; });
             }
             if (r.kind === 'server') {
-              // خطأ منطقي من الخادم: لن تنجح بالإعادة — نعلّمها فاشلة ونُبقيها للمراجعة.
+              // خطأ منطقي من الخادم: لن تنجح بالإعادة — تُنقل إلى سجلّ الفاشلة (مختصرةً بلا أسرار) للمراجعة.
               failed++;
-              op.status = 'failed';
-              op.lastError = r.error;
-              return OfflineDB.set(OUTBOX, op.key, op).then(function () { UI.refresh(); return false; });
+              return moveToFailed(op, r.error).then(function () { UI.refresh(); return false; }, function () {
+                // تعذّر التسجيل ⇒ لا حذف: تبقى «فاشلة» في الطابور كما كانت (لا فقدَ صامت).
+                op.status = 'failed';
+                op.lastError = r.error;
+                return OfflineDB.set(OUTBOX, op.key, op).then(function () { UI.refresh(); return false; });
+              });
             }
             // خطأ شبكة: نتوقّف ونعيد المحاولة لاحقاً (نُبقي الترتيب).
             op.status = 'pending';
@@ -300,6 +441,7 @@
   var trackedReads = {}; // key → {app, fn, args, schoolId}
 
   function trackRead(app, fn, args, schoolId) {
+    if (isLoginFn(fn)) return;   // 🔒 29a2: الدخولُ لا يُعاد تشغيلُه عند عودة الاتصال
     try { trackedReads[readKey(app, fn, args, schoolId)] = { app: app, fn: fn, args: args, schoolId: schoolId }; }
     catch (e) {}
   }
@@ -309,7 +451,7 @@
   // يعيد جلب كل القراءات المتتبَّعة، يحدّث الكاش، ويُرجع true إن تغيّرت أي نتيجة.
   function revalidate() {
     if (!isOnline()) return Promise.resolve(false);
-    var keys = Object.keys(trackedReads);
+    var keys = Object.keys(trackedReads).filter(function (k) { return !isLoginFn(trackedReads[k].fn); });   // 🔒 29a2
     if (keys.length === 0) return Promise.resolve(false);
 
     /* 🔴 اثنان في آنٍ واحد لا الكلُّ دفعةً (2026-09-24): حدثُ `online` كان يُطلق كلَّ القراءات
@@ -387,7 +529,34 @@
     try { OfflineDB.del(KV, 'session:teacher'); OfflineDB.del(KV, 'session:student'); } catch (e2) {}
   }
 
+  /* 🔒 (29a2) ردودُ الدخول التي حفظها الإصدارُ السابق في `readcache` تُمسح عند كلّ تحميل (بالمفاتيح
+     وحدها، فالتحميلاتُ التالية لا تجد شيئاً)، وتستدعيه صفحتا الخروج أيضاً (`clearSession` في اللوحة ·
+     `lsClearSession` في البوّابة). `OfflineDB.purge` يمسح IndexedDB ونسخةَ localStorage الاحتياطية معاً.
+     ⚠️ وإن خدم عاملُ الخدمة `offline-db.js` قديماً بلا `purge` يُؤجَّل المسحُ إلى تحميلٍ لاحق — بلا رمي. */
+  function purgeReadcache(pred) {
+    try {
+      if (typeof OfflineDB.purge !== 'function') return Promise.resolve(0);
+      return OfflineDB.purge(READCACHE, pred)['catch'](function () { return 0; });
+    } catch (e) { return Promise.resolve(0); }
+  }
+  function purgeLoginCache() { return purgeReadcache(readKeyIsLogin); }
+
+  /* 🔒 (29a2) **فحوصُ الجلسة قراءاتٌ عاديّة تبقى مخزّنةً ما دامت الجلسةُ حيّة** — استعادةُ اللوحة دون اتصال
+     تقوم عليها (بلا ردٍّ مخزَّن يظهر الدخولُ: `_restoreKeepSessionOffline`) — **وتُمسح حين تنتهي جلستُها وحدها:**
+     `checkSession` يُعيد التوكنَ نفسَه في ردّه، و`checkMasterSession`/`checkCmsSession` هويّةَ الجلسة (الاسم والدور).
+     ولا قراءةَ مخزّنةً أخرى تُعيد توكناً (مسحُ مفاتيح `token`/`switchToken` في المشاريع الأربعة · 2026-10-01).
+     ⚠️ والصفحاتُ كلُّها أصلٌ واحد (IndexedDB واحدة) ⇒ كلُّ خروجٍ يمسح فحصَ **الجلسة التي ينهيها** (`checkFn`)
+     لا فحوصَ جلساتٍ أخرى ما زالت حيّةً على الجهاز نفسِه. وردودُ الدخول تُمسح معه دائماً. */
+  var SESSION_CHECK_FNS = { checkSession: true, checkMasterSession: true, checkCmsSession: true };
+  function purgeSessionCache(checkFn) {
+    var own = Object.prototype.hasOwnProperty.call(SESSION_CHECK_FNS, checkFn) ? checkFn : '';
+    return purgeReadcache(function (k) {
+      return readKeyIsLogin(k) || (own !== '' && readKeyHasFn(k, function (f) { return f === own; }));
+    });
+  }
+
   function persistSession(fn, result) {
+    if (isLoginFn(fn)) return;   // 🔒 L4 + 29a2: ردُّ الدخول لا يُحفظ هنا أبداً
     var which = SESSION_FNS[fn];
     if (!which || !result) return;
     // كتابة في IndexedDB (للعمل دون اتصال الكامل)
@@ -524,7 +693,11 @@
     persistSession: persistSession,
     getPersistedSession: getPersistedSession,
     purgeLegacySessions: purgeLegacySessions,
+    purgeLoginCache: purgeLoginCache,   // (29a2) يستدعيه الخروج أيضاً
+    purgeSessionCache: purgeSessionCache,   // (29a2) الخروج: + فحصُ الجلسة التي تنتهي ('checkSession' …)
     pendingCount: pendingCount,
+    failed: failedList,        // (28k) الكتاباتُ التي رفضها الخادم: آخرُ ٥٠، بلا أسرار
+    clearFailed: clearFailed,
     trackRead: trackRead,
     revalidate: revalidate,
     syncNow: syncNow,
@@ -535,6 +708,8 @@
   // ── المشغّلات ────────────────────────────────────────────────
   function init() {
     purgeLegacySessions();
+    purgeLoginCache();
+    migrateLegacyFailed();
     UI.ensure();
     if (isOnline()) flush();
 

@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610010254;
+    window.WEB_BUILD_TS = 202610010730;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -4538,7 +4538,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         if (s && s.token && (!req || s.schoolId === req)) return;  // جلسة صالحة لنفس المدرسة → تخطَّ
         google.script.run
           .withSuccessHandler(function (res) { if (res && res.success && res.schools && res.schools.length) render(res.schools); })
-          .withFailureHandler(function () {})
+          .withFailureHandler(_gsrFail('listPartnerSchoolsPublic'))
           .listPartnerSchoolsPublic();
       } catch (e) {}
     }
@@ -4847,6 +4847,25 @@ function _csReport(kind, fnName, err) {
     window.reportAppError('callback', String((err && err.message) || err || '').substring(0, 400),
                           (err && err.stack) ? String(err.stack) : '', fnName);
   } catch (eRep) {}
+}
+
+/* 📡 (الدفعة 28k) معالجُ الفشل المشترك لنداءات الخلفية التي كان معالجُ فشلها دالّةً فارغة.
+   **السلوكُ الظاهر لا يتغيّر** (لا رسالةَ ولا toast)؛ يُضاف سطرُ `[GSR-FAIL] <fn>` في الطرفيّة، وبلاغٌ
+   **لما لم يُبلَّغ مركزياً وحده**: إخفاقُ النقل (`__network`/502/مهلة) يسجّله الوسيطُ و`/client-err`
+   (قرارُ المالك: لا يُبلَّغ عبر GAS لحظةَ الإشباع)، واستثناءُ الخادم أبلغه الجسرُ (`__reported`).
+   سقفٌ ٥ للصفحة فوق سقف `reportAppError` (٨) وطيِّه للمكرّر. */
+var _gsrFailSent = 0;
+function _gsrFail(fnName) {
+  return function (err) {
+    try { console.warn('[GSR-FAIL] ' + fnName, err); } catch (eW) {}
+    try {
+      var msg = String((err && err.message) || err || '');
+      if (!err || err.__network || err.__reported || /NetworkError|HTTP 0|timeout|مهلة|فشل الاتصال|مزدحم/i.test(msg)) return;
+      if (_gsrFailSent >= 5 || typeof window.reportAppError !== 'function') return;
+      _gsrFailSent++;
+      window.reportAppError('gsr-fail', msg.substring(0, 300), '', fnName);
+    } catch (eRep) {}
+  };
 }
 
 function callServer(fnName, params, a3, a4, a5, a6) {
@@ -7662,6 +7681,9 @@ function clearSession() {
      مفتاح الطيّ مبصوم بالهوية أصلاً (`_csFoldIdentity`) فهذا حزامٌ ثانٍ لا بديل. */
   try { _pendingCalls = {}; } catch(e) {}
   try { _bootDeferredExtras = false; } catch(e) {}
+  /* 🔒 29a2: وأيُّ ردِّ دخولٍ بقي في كاش العمل دون اتصال (IndexedDB)، وفحصُ هذه الجلسة المخزَّن (`checkSession`
+     يحمل توكنَها) — يبقى مخزَّناً ما دامت حيّةً للاستعادة دون اتصال، ويُمسح هنا حين تنتهي. الموقعُ المستضاف وحده. */
+  try { if (window.OfflineSync && window.OfflineSync.purgeSessionCache) window.OfflineSync.purgeSessionCache('checkSession'); } catch(e) {}
 }
 
 // ==================== LOGIN / LOGOUT ====================
@@ -8358,7 +8380,7 @@ function _planUsageBanner() {
       bar.appendChild(close);
       var main = document.getElementById('mainApp');
       if (main) main.insertBefore(bar, main.firstChild);
-    }).withFailureHandler(function () {}).getPlanUsageProtected({ token: App.user.token });
+    }).withFailureHandler(_gsrFail('getPlanUsageProtected')).getPlanUsageProtected({ token: App.user.token });
   } catch (e) {}
 }
 
@@ -16113,7 +16135,7 @@ function _sbInit() {
         var prev = document.getElementById('sbLogoPreview');
         if (prev && r.logo) { prev.src = r.logo; prev.style.display = 'inline-block'; }
       })
-      .withFailureHandler(function () {})
+      .withFailureHandler(_gsrFail('getTeacherSchoolBrand'))
       .getTeacherSchoolBrand(sid);
   } catch (e) {}
   // حالة اتصال فيسبوك — نفس قناة callCMS القائمة فعلياً في تبويب "السوشل ميديا والنشر"،
@@ -28371,7 +28393,7 @@ function _tcReadImportFile(file, cb) {
 // إظهار si-teachers-mgmt/si-lists-mgmt للمدير انتقل إلى مصدر الحقيقة الموحّد
 // (SIDEBAR_ROLE_RULES في initSidebarByRole) — أُبقِيت الدالة كـ no-op للتوافق.
 function tm_init() { /* لا شيء: عرض القائمة يُدار مركزياً في initSidebarByRole */ }
-function tm_load() { tm_showBackfillBtn(); tm_setStatus('⏳ جارٍ التحميل...', '#1149a3'); document.getElementById('tm-list').innerHTML = '<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(listsRes) { if (listsRes && listsRes.success) _tmLists = listsRes; tm_populateGradeFilter(listsRes); }).withFailureHandler(function(){}).getEnhancedListsProtected({ token: App.user.token }); google.script.run.withSuccessHandler(function(res) { tm_setStatus('', ''); if (!res || !res.success) { tm_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828'); return; } _tmAllTeachers = res.teachers || []; tm_render(_tmAllTeachers); tm_renderStats(_tmAllTeachers); }).withFailureHandler(function(err) { tm_setStatus('❌ ' + err.message, '#c62828'); }).adminGetAllTeachersGrouped({ token: App.user.token }); }
+function tm_load() { tm_showBackfillBtn(); tm_setStatus('⏳ جارٍ التحميل...', '#1149a3'); document.getElementById('tm-list').innerHTML = '<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(listsRes) { if (listsRes && listsRes.success) _tmLists = listsRes; tm_populateGradeFilter(listsRes); }).withFailureHandler(_gsrFail('getEnhancedListsProtected')).getEnhancedListsProtected({ token: App.user.token }); google.script.run.withSuccessHandler(function(res) { tm_setStatus('', ''); if (!res || !res.success) { tm_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828'); return; } _tmAllTeachers = res.teachers || []; tm_render(_tmAllTeachers); tm_renderStats(_tmAllTeachers); }).withFailureHandler(function(err) { tm_setStatus('❌ ' + err.message, '#c62828'); }).adminGetAllTeachersGrouped({ token: App.user.token }); }
 function tm_populateGradeFilter(listsRes) { var sel = document.getElementById('tm-filter-grade'); if (!sel || !listsRes || !listsRes.grades) return; sel.innerHTML = '<option value="">كل الفصول</option>'; for (var i=0;i<listsRes.grades.length;i++) { var opt=document.createElement('option'); opt.value=opt.textContent=listsRes.grades[i]; sel.appendChild(opt); } }
 function tm_render(teachers) { var container = document.getElementById('tm-list'); if (!teachers || teachers.length===0) { container.innerHTML='<p style="text-align:center;color:#999;padding:30px;">لا يوجد معلمون</p>'; return; } var html=''; for (var i=0;i<teachers.length;i++) { var t=teachers[i]; var roleLabels={admin:['مدير','role-admin'],deputy:['وكيل','role-deputy'],supervisor:['مشرف','role-supervisor'],teacher:['معلم','role-teacher']}; var roleInfo=roleLabels[t.role]||['معلم','role-teacher']; html+='<div class="teacher-card" id="tc-'+i+'"><div class="tc-header"><div style="display:flex;align-items:center;gap:10px;"><div style="width:38px;height:38px;border-radius:50%;background:#1149a3;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;">'+t.name.charAt(0)+'</div><div><div class="tc-name">'+t.name+'</div><span class="tc-role '+roleInfo[1]+'">'+roleInfo[0]+'</span></div></div><div class="tc-actions"><button class="tc-btn tc-btn-edit" onclick="tm_editTeacher(\''+t.name.replace(/'/g,"\\'")+'\')">✏️ تعديل</button><button class="tc-btn tc-btn-del" onclick="tm_deleteTeacher(\''+t.name.replace(/'/g,"\\'")+'\')">🗑️ حذف</button></div></div>'; if (t.role==='teacher'||t.role==='supervisor') { html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">'; for(var si=0;si<t.subjects.length;si++) html+='<span class="tc-tag" style="background:#e8f5e9;color:#2e7d32;">📚 '+t.subjects[si]+'</span>'; for(var gi=0;gi<t.grades.length;gi++) html+='<span class="tc-tag" style="background:#e3f2fd;color:#1565c0;">🏫 '+t.grades[gi]+'</span>'; for(var sci=0;sci<t.sections.length;sci++) html+='<span class="tc-tag" style="background:#fff3e0;color:#e65100;">🔡 '+t.sections[sci]+'</span>'; html+='</div>'; } html+='<div style="font-size:11px;color:var(--text-light);">'+t.assignments.length+' تعيين'+tm_weeklyBadge(t)+'</div></div>'; } container.innerHTML=html; }
 function tm_renderStats(teachers) { var stats={teacher:0,supervisor:0,deputy:0,admin:0}; for(var i=0;i<teachers.length;i++) stats[teachers[i].role]++; var el=document.getElementById('tm-stats'); if(!el) return; el.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;"><span style="background:#e8eaf6;color:#3949ab;padding:4px 12px;border-radius:20px;font-size:12px;">👨‍🏫 '+stats.teacher+' معلم</span><span style="background:#fce4ec;color:#c62828;padding:4px 12px;border-radius:20px;">👑 '+stats.admin+' مدير</span><span style="background:#fff3e0;color:#e65100;">🔑 '+stats.deputy+' وكيل</span><span style="background:#e8f5e9;color:#2e7d32;">🛡️ '+stats.supervisor+' مشرف</span><span style="background:#f5f5f5;">📊 إجمالي: '+teachers.length+'</span></div>'; }
@@ -31129,7 +31151,7 @@ window.onload = function() {
       .withSuccessHandler(function (r) {
         if (r && r.valid === false) { clearSession(); try { window.location.reload(); } catch (eRl) {} }
       })
-      .withFailureHandler(function () {})
+      .withFailureHandler(_gsrFail('checkSession'))
       .checkSession(saved.token);
     return;
   }

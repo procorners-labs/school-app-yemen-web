@@ -35,7 +35,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/cms';
-    window.WEB_BUILD_TS = 202610010254;
+    window.WEB_BUILD_TS = 202610010730;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -218,7 +218,11 @@
   // 2026-07-19: بوابة مصادقة CMS — نفس نمط cms/AddForm.html حرفياً.
   // ══════════════════════════════════════════════════════
   function _cmsToken() { try { return sessionStorage.getItem('cms_token') || ''; } catch (e) { return ''; } }
-  function _cmsSetToken(t) { try { sessionStorage.setItem('cms_token', t || ''); } catch (e) {} }
+  function _cmsSetToken(t) {
+    try { sessionStorage.setItem('cms_token', t || ''); } catch (e) {}
+    /* 🔒 29a2: مسحُ الجلسة يمسح معه فحصَها المخزَّن دون اتصال (`checkCmsSession`) وأيَّ ردِّ دخولٍ بقي — الموقعُ المستضاف وحده. */
+    if (!t) { try { if (window.OfflineSync && window.OfflineSync.purgeSessionCache) window.OfflineSync.purgeSessionCache('checkCmsSession'); } catch (eP) {} }
+  }
   function _cmsClientId() {
     try {
       var id = localStorage.getItem('cms_clientId');
@@ -429,7 +433,8 @@
       return;
     }
     try {
-      google.script.run.withFailureHandler(function () {})
+      /* (28k) فشلُ المُبلِّغ نفسِه **يُسجَّل في الطرفيّة ولا يُبلَّغ** — بلاغٌ عن بلاغٍ فاشلٍ حلقة. */
+      google.script.run.withFailureHandler(function (eLog) { try { console.warn('[GSR-FAIL] logClientError', eLog); } catch (eW) {} })
         .logClientError(page, msg, stack || '', navigator.userAgent);
     } catch (e) { /* لا يُعاد رميُ خطإٍ من داخل معالج الأخطاء */ }
   }

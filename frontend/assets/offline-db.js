@@ -86,6 +86,17 @@
       } catch (e) {}
       return Promise.resolve(out);
     },
+    keys: function (store) {
+      var out = [];
+      try {
+        var prefix = 'odb:' + store + ':';
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf(prefix) === 0) out.push(k.substring(prefix.length));
+        }
+      } catch (e) {}
+      return Promise.resolve(out);
+    },
     clear: function (store) {
       try {
         var prefix = 'odb:' + store + ':';
@@ -124,6 +135,11 @@
         return (recs || []).map(function (r) { return r.value; });
       });
     },
+    keys: function (store) {
+      return tx(store, 'readonly').then(function (os) {
+        return (typeof os.getAllKeys === 'function') ? reqToPromise(os.getAllKeys()) : [];
+      });
+    },
     clear: function (store) {
       return tx(store, 'readwrite').then(function (os) {
         return reqToPromise(os.clear());
@@ -144,12 +160,34 @@
     }
   }
 
+  /* (الدفعة 29a2) يحذف كلَّ مفتاحٍ يحقّق `pred(key)` — من IndexedDB **ومن** نسخة localStorage الاحتياطية
+     كلتيهما (كتابةٌ تراجعت يوماً إليها لفشلٍ عابرٍ في IndexedDB لا تنجو). يقرأ المفاتيحَ وحدها لا القيم،
+     ويُرجِع وعداً بعدد المحذوف، ولا يرفض أبداً. يستعمله `offline-sync.js::purgeLoginCache`. */
+  function purge(store, pred) {
+    var n = 0;
+    function run(im) {
+      return im.keys(store).then(function (keys) {
+        var chain = Promise.resolve();
+        (keys || []).forEach(function (k) {
+          var hit = false;
+          try { hit = !!pred(k); } catch (e) {}
+          if (hit) chain = chain.then(function () { return im.del(store, k); }).then(function () { n++; });
+        });
+        return chain;
+      })['catch'](function () {});
+    }
+    return (_hasIDB ? run(idbImpl) : Promise.resolve())
+      .then(function () { return run(lsImpl); })
+      .then(function () { return n; });
+  }
+
   window.OfflineDB = {
     get: function (store, key) { return safe('get', store, key); },
     set: function (store, key, value) { return safe('set', store, key, value); },
     del: function (store, key) { return safe('del', store, key); },
     all: function (store) { return safe('all', store); },
     clear: function (store) { return safe('clear', store); },
+    purge: purge,
     hasIndexedDB: _hasIDB
   };
 })();

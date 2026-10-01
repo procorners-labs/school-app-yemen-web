@@ -35,7 +35,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/master-admin';
-    window.WEB_BUILD_TS = 202610010254;
+    window.WEB_BUILD_TS = 202610010730;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -760,6 +760,24 @@ var App = {
 var _allAuditLogs  = [];
 var _allSchools    = [];
 
+/* 📡 (الدفعة 28k) معالجُ الفشل المشترك لنداءات الخلفية التي كان معالجُ فشلها دالّةً فارغة.
+   **لا رسالةَ للمستخدم** كما كان؛ يُضاف سطرُ `[GSR-FAIL] <fn>` في الطرفيّة، وبلاغٌ لما لم يُبلَّغ
+   مركزياً وحده: إخفاقُ النقل يسجّله الوسيط (لا يُبلَّغ عبر GAS لحظةَ الإشباع)، واستثناءُ الخادم أبلغه
+   الجسرُ (`__reported`). سقفٌ ٥ للصفحة فوق سقف `reportAppError`. */
+var _gsrFailSent = 0;
+function _gsrFail(fnName) {
+  return function (err) {
+    try { console.warn('[GSR-FAIL] ' + fnName, err); } catch (eW) {}
+    try {
+      var msg = String((err && err.message) || err || '');
+      if (!err || err.__network || err.__reported || /NetworkError|HTTP 0|timeout|مهلة|فشل الاتصال|مزدحم/i.test(msg)) return;
+      if (_gsrFailSent >= 5 || typeof window.reportAppError !== 'function') return;
+      _gsrFailSent++;
+      window.reportAppError('gsr-fail', msg.substring(0, 300), '', fnName);
+    } catch (eRep) {}
+  };
+}
+
 // 🔴 حُذفت _dateRangeShortcuts 2026-08-23 (بند 182) — صارت بلا مستدعٍ بعد إسقاط
 // قسم التقارير؛ ودالّة معرَّفة بلا مستدعٍ ميّتةٌ صامتة (الدرس المسجَّل).
 
@@ -806,7 +824,7 @@ function init() {
           //dashboard_load(); // لا حاجة الآن، سننتقل لاحقًا إلى portals
         }
       })
-      .withFailureHandler(function() {})
+      .withFailureHandler(_gsrFail('checkMasterSession'))
       .checkMasterSession({ token: savedToken });
   }
 
@@ -835,7 +853,7 @@ function _loadPublicPartners() {
           _renderPublicPartners(res.schools);
         }
       })
-      .withFailureHandler(function() {})
+      .withFailureHandler(_gsrFail('listPartnerSchoolsPublic'))
       .listPartnerSchoolsPublic();
   } catch (e) {}
 }
@@ -1008,7 +1026,7 @@ function _loadSchoolBrand() {
           document.documentElement.style.setProperty('--brand-color', b.color);
         }
       })
-      .withFailureHandler(function() {})
+      .withFailureHandler(_gsrFail('getSchoolBrandProtected'))
       /* 🔴 `schoolId: ''` ثابتاً — المالكُ هو الداخلُ الوحيد (‏`masterLogin` يرفض سواه)،
          والفرعُ الآخرُ كان لا يُبلَغ. ⚠️ **ولا تُحذف النداءُ نفسُه:** يجلب هويّةَ المنصّة
          (الشعارَ واللونَ والهاتف) للشريط الجانبيّ — لا هويّةَ مدرسةٍ بعينها. */
@@ -1025,6 +1043,8 @@ function app_logout() {
     google.script.run.masterLogout({ token: App.token });
   }
   sessionStorage.removeItem('master_token');
+  /* 🔒 29a2: ومعه فحصُ الجلسة المخزَّن دون اتصال (`checkMasterSession`: الاسم والدور) وأيُّ ردِّ دخولٍ بقي — الموقعُ المستضاف وحده. */
+  try { if (window.OfflineSync && window.OfflineSync.purgeSessionCache) window.OfflineSync.purgeSessionCache('checkMasterSession'); } catch (eP) {}
   App.token = '';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
@@ -1168,8 +1188,8 @@ function _fmt(num) {
 /* 🔴 **اسمُ «المزامنة» كان يصف ماضياً لا حاضراً** — خطواتُ المزامنة الفعلية أُسقطت في ح2،
    ولم يبقَ خلف الزرّ إلّا `collectAllStats()` واحدة. ⇒ أُعيدت التسميةُ إلى ما تفعله فعلاً.
    🔒 **والنقطةُ الخادميةُ `masterSyncAll` باقيةٌ باسمها** — متصفّحٌ بصفحةٍ مخبّأة ينادي
-   الاسمَ القديم ساعاتٍ بعد النشر (سابقةُ بند 35)، **و`_masterSyncAllInternal` لها مشغّلٌ
-   يوميٌّ قائم** (`setupMasterTriggers` ⇒ 03:00) فحذفُها يكسر تحديثَ اللوحة الصامت. */
+   الاسمَ القديم ساعاتٍ بعد النشر (سابقةُ بند 35)، **و`_masterSyncAllInternal` يناديها المشغّلُ
+   الليلي كلَّ يوم** (`_nightlyMaintRun` خطوةُ `stats`، `setupMasterTriggers` ⇒ 02:00) فحذفُها يكسر تحديثَ اللوحة الصامت. */
 function stats_recalc() {
   var btn  = document.getElementById('btn-stats-recalc');
   var prog = document.getElementById('stats-progress');
@@ -1344,7 +1364,7 @@ function requests_load() {
       var b = document.getElementById('nav-requests-badge');
       if (b) { b.style.display = n ? 'inline-block' : 'none'; b.textContent = String(n); }
     })
-    .withFailureHandler(function () {})
+    .withFailureHandler(_gsrFail('listSchoolRequestsProtected'))
     .listSchoolRequestsProtected({ token: App.token, status: '' });
 }
 
@@ -1474,7 +1494,7 @@ function referrals_load() {
 
   google.script.run
     .withSuccessHandler(function(res) { if (res && res.success) _renderReferralTeacherStats(res.teacherStats || []); })
-    .withFailureHandler(function() {})
+    .withFailureHandler(_gsrFail('referralTeacherStatsProtected'))
     .referralTeacherStatsProtected({ token: App.token });
 }
 
@@ -2152,14 +2172,14 @@ function errors_render() {
 function errors_setStatus(id, status) {
   google.script.run
     .withSuccessHandler(function (res) { if (res && res.success) errors_load(); })
-    .withFailureHandler(function () {})
+    .withFailureHandler(_gsrFail('updateErrorStatusProtected'))
     .updateErrorStatusProtected({ token: App.token, id: id, status: status });
 }
 
 function audit_load() {
   google.script.run
     .withSuccessHandler(function(res) { if (res && res.success) { _allAuditLogs = res.logs || []; _renderAudit(_allAuditLogs); } })
-    .withFailureHandler(function() {})
+    .withFailureHandler(_gsrFail('getAuditLogProtected'))
     .getAuditLogProtected({ token: App.token, limit: 200 });
 }
 
@@ -2201,7 +2221,7 @@ function settings_loadAll() {
       }
       el.innerHTML = html + '</tbody></table>';
     })
-    .withFailureHandler(function() {})
+    .withFailureHandler(_gsrFail('getAllSettingsProtected'))
     .getAllSettingsProtected({ token: App.token });
 }
 
@@ -2248,7 +2268,7 @@ function owner_loadSchoolSelector() {
       sel.innerHTML = html;
       sel.value = App.viewSchoolId || '';
     })
-    .withFailureHandler(function() {})
+    .withFailureHandler(_gsrFail('getAllSchoolsProtected'))
     .getAllSchoolsProtected({ token: App.token });
 }
 

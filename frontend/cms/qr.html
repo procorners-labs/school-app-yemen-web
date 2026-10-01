@@ -35,7 +35,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/cms';
-    window.WEB_BUILD_TS = 202610010254;
+    window.WEB_BUILD_TS = 202610010730;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -763,6 +763,23 @@ var STATE = {
   previewTimer: null  // مؤقت debounce للمعاينة الفورية
 };
 
+/* 📡 (الدفعة 28k) معالجُ الفشل المشترك لنداءات الخلفية التي كان معالجُ فشلها دالّةً فارغة.
+   لا رسالةَ للمستخدم كما كان؛ سطرُ `[GSR-FAIL] <fn>` في الطرفيّة، وبلاغٌ لما لم يُبلَّغ مركزياً وحده
+   (لا إخفاقَ نقل — يسجّله الوسيط — ولا ما أبلغه الجسر `__reported`). سقفٌ ٥ للصفحة. */
+var _gsrFailSent = 0;
+function _gsrFail(fnName) {
+  return function (err) {
+    try { console.warn('[GSR-FAIL] ' + fnName, err); } catch (eW) {}
+    try {
+      var msg = String((err && err.message) || err || '');
+      if (!err || err.__network || err.__reported || /NetworkError|HTTP 0|timeout|مهلة|فشل الاتصال|مزدحم/i.test(msg)) return;
+      if (_gsrFailSent >= 5 || typeof window.reportAppError !== 'function') return;
+      _gsrFailSent++;
+      window.reportAppError('gsr-fail', msg.substring(0, 300), '', fnName);
+    } catch (eRep) {}
+  };
+}
+
 // استخراج schoolId من URL
 var _SCHOOL_ID = (function() {
   var qs = new URLSearchParams(window.location.search);
@@ -774,7 +791,11 @@ var _SCHOOL_ID = (function() {
 // handleCmsLogin في cms/CMSAuth.js، مفوَّضة بالكامل لتسجيل دخول teacher الحيّ).
 // ══════════════════════════════════════════════════════
 function _cmsToken() { try { return sessionStorage.getItem('cms_token') || ''; } catch (e) { return ''; } }
-function _cmsSetToken(t) { try { sessionStorage.setItem('cms_token', t || ''); } catch (e) {} }
+function _cmsSetToken(t) {
+  try { sessionStorage.setItem('cms_token', t || ''); } catch (e) {}
+  /* 🔒 29a2: مسحُ الجلسة يمسح معه فحصَها المخزَّن دون اتصال (`checkCmsSession`) وأيَّ ردِّ دخولٍ بقي — الموقعُ المستضاف وحده. */
+  if (!t) { try { if (window.OfflineSync && window.OfflineSync.purgeSessionCache) window.OfflineSync.purgeSessionCache('checkCmsSession'); } catch (eP) {} }
+}
 function _cmsClientId() {
   try {
     var id = localStorage.getItem('cms_clientId');
@@ -854,7 +875,7 @@ var _cmsPendingAction = null;
     try {
       google.script.run
         .withSuccessHandler(function (res) { if (res && res.ok) applyBrand(res); })
-        .withFailureHandler(function () {})
+        .withFailureHandler(_gsrFail('getCmsSchoolBrand'))
         .getCmsSchoolBrand(_SCHOOL_ID);
     } catch (e) {}
   }
