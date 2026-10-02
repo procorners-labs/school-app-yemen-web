@@ -230,7 +230,14 @@ var SLOW_ADMIN_FNS = {
   redistributeAllProtected      : 1,   // teacher — إعادة توزيع الجدول
   autoDistributeAllProtected    : 1,   // teacher — التوزيع التلقائي
   importScheduleGridProtected   : 1,   // teacher — استيراد شبكة الجدول
-  repairDataUnificationProtected: 1    // teacher — إصلاح توحيد البيانات
+  repairDataUnificationProtected: 1,   // teacher — إصلاح توحيد البيانات
+  previewPromotionProtected     : 1,   // teacher — مقترحات الترقية (36h: تقرأ المدرسة كلّها)
+  savePromotionDraftProtected   : 1,   // teacher — حفظ مسودة الترقية (36h)
+  startYearRolloverProtected    : 1,   // teacher — معاينة الترحيل السنوي تقرأ المدرسة كلّها (36o؛ التنفيذ مهمّةٌ خلفيّة)
+  restoreFromRolloverSnapshotProtected: 1,  // teacher — الاسترجاع من لقطة الترحيل (36o)
+  promoteSingleStudentProtected : 1,   // teacher — ترقية طالب واحد + مزامنة قائمة الدرجات (36o)
+  getEvaluationIndicatorsProtected: 1,  // teacher — مؤشرات التقييم (37c: حتى 60 معلماً + التزام الدرجات بلا كاش)
+  getSupervisionTeamProtected   : 1    // teacher — فريق المشرف (37a: التعيينات + الطلاب + حالة الشهر)
 };
 /* نفسُ حارس `_bhIsLoginBody`: تحليلٌ حقيقيّ مقيَّدُ الحجم و`hasOwnProperty`، وأيُّ شكٍّ
    ⇒ النافذةُ العادية (fail-closed على الامتياز). */
@@ -1301,6 +1308,51 @@ function _publicViewRate(ip, now) {
   return h.n <= PV_RATE_MAX;
 }
 /* ═══ نهايةُ حدّ المشاهدات العامّة ═══ */
+
+/* ═══ حدُّ طلب الالتحاق العامّ لكلّ IP (الدفعة 36o · 2026-10-02) ══════════════════
+   `issueAdmissionChallenge` و`submitAdmissionApplication` (‏`public/Admission.js`) عامّتان بلا توكن: كلُّ
+   نداءٍ يفتح ملفَّ المدرسة في GAS، والإرسالُ يكتب صفّاً تحت قفل السكربت. للخادم حدودُه (300 سؤال/ساعة للمدرسة،
+   وعدّاداتُ الزائر)، لكنّ سكربتاً واحداً يستنزف حصّةَ المدرسة كلَّها قبل أن يبلغها ⇒ **يُكبَح هنا قبل الكاش
+   والمقعد** على نمط `_publicViewRate` (نافذةٌ ثابتةٌ لكلّ IP ولكلّ دالّة، حدُّ المثيل لا حدٌّ عالميّ).
+   🟢 **والردُّ بشكل ما تنتظره الصفحة** `{ok:true, result:{ok:false, error:'محاولات كثيرة، حاول لاحقاً'}}`:
+   `ok:true` ⇒ `gas-bridge.js` لا يعيد المحاولة، والصفحةُ تعرض `result.error` كأيّ رفضٍ من الخادم.
+   ⚠️ IP مشتركٌ في اليمن (CGNAT): الحدُّ لكلّ دالّةٍ على حدة، والسؤالُ أسخى من الإرسال. **ولا يُسجَّل عنوانُ IP.** */
+var ADM_RATE_RULES = {
+  issueAdmissionChallenge   : { win: 600000,  max: 20 },   // 20 سؤالاً / 10 دقائق
+  submitAdmissionApplication: { win: 3600000, max: 30 }    // 30 إرسالاً / ساعة (CGNAT: عنوانٌ واحد لعدّة أسر — كان 10)
+};
+var ADM_RATE_TRACK_MAX = 5000;
+var ADM_RATE_MSG = 'محاولات كثيرة، حاول لاحقاً';
+var _admHits = {};
+var _admTracked = 0;
+
+/** اسمُ دالّة الالتحاق من الجسم كاملاً (`JSON.parse` كما يقرؤه GAS — لا نافذة `_bhFn`)، أو `''`. */
+function _admissionFnOf(body) {
+  try {
+    var o = JSON.parse(String(body || ''));
+    var fn = (o && typeof o === 'object') ? o.fn : '';
+    return (typeof fn === 'string' && Object.prototype.hasOwnProperty.call(ADM_RATE_RULES, fn)) ? fn : '';
+  } catch (e) { return ''; }
+}
+
+/** `true` = مسموح. نافذةٌ ثابتةٌ لكلّ (دالّة، IP)؛ و`now` يُمرَّر ليُختبَر بلا ساعة. */
+function _admissionRate(fn, ip, now) {
+  var rule = Object.prototype.hasOwnProperty.call(ADM_RATE_RULES, fn) ? ADM_RATE_RULES[fn] : null;
+  if (!rule) return true;
+  var key = fn + '|' + String(ip || '-');
+  var h = _admHits[key];
+  if (!h || now - h.t0 >= rule.win) {
+    if (!h) {
+      if (_admTracked >= ADM_RATE_TRACK_MAX) { _admHits = {}; _admTracked = 0; }
+      _admTracked++;
+    }
+    _admHits[key] = { t0: now, n: 1 };
+    return true;
+  }
+  h.n++;
+  return h.n <= rule.max;
+}
+/* ═══ نهايةُ حدّ طلب الالتحاق ═══ */
 
 /* ═══ سياسةُ وسيط الفيديو `/media/drive/<fileId>` — دالّتان نقيّتان ═══════════════
    🔴 العلّةُ المقيسة (2026-09-06): `Cache-Control: public, max-age=86400, immutable`
@@ -3019,6 +3071,16 @@ export default {
         _bhLog({ ev: 'pubview', act: 'throttle', app: app, fn: _pvFn });
         return withCors(new Response(
           JSON.stringify({ ok: true, result: { success: true, throttled: true, recorded: 0 } }),
+          { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8',
+                                    'Cache-Control': 'no-store' } }));
+      }
+
+      // ── حدُّ طلب الالتحاق العامّ لكلّ IP — قبل الكاش والمقعد (انظر `_admissionRate`، الدفعة 36o) ──
+      var _admFn = (request.method === 'POST' && app === 'home') ? _admissionFnOf(init.body) : '';
+      if (_admFn && !_admissionRate(_admFn, request.headers.get('CF-Connecting-IP'), Date.now())) {
+        _bhLog({ ev: 'admission', act: 'throttle', app: app, fn: _admFn });
+        return withCors(new Response(
+          JSON.stringify({ ok: true, result: { ok: false, error: ADM_RATE_MSG } }),
           { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8',
                                     'Cache-Control': 'no-store' } }));
       }
