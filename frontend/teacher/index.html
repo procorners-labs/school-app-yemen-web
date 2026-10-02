@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610030104;
+    window.WEB_BUILD_TS = 202610030248;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -5357,8 +5357,14 @@ var _gradesHasMore = false;
    «ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية» وهو **زعمٌ خاطئ**: القيمتان كانتا `[]`
    عند التصريح، والافتراضات محبوسة داخل `loadBootConfig` لا تُطبَّق إلا بعودة نداء.
    ⚠️ لا تُفلتر ALL_MONTHS أبداً (السبب في التعليق أسفل MONTHS_STATE). */
+// 38f: the page's ONE month fallback, used only when the server reply lacks the lists (older server).
 var BOOT_DEF_MONTHS = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
 var BOOT_DEF_TERM   = ['نصف العام','نهاية العام'];
+// 38f: the page's ONE week fallback; getBootConfigBundle's `days` ({week, schoolDays}, SCHED_WEEK) replaces it.
+var BOOT_DEF_WEEK   = ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
+var WEEK_DAYS       = BOOT_DEF_WEEK.slice();
+var WEEK_BASE_DAYS  = BOOT_DEF_WEEK.slice(0, 5);
+function _weekDayByJs(jsDay) { return WEEK_DAYS[((Number(jsDay) + 1) % 7 + 7) % 7] || ''; }   // 0 = الأحد … 6 = السبت
 var ALL_MONTHS = BOOT_DEF_MONTHS.slice();   // ← يُستبدَل بردّ getBootConfigBundle
 var TERM_MONTHS = BOOT_DEF_TERM.slice();    // ← يُستبدَل بردّ getBootConfigBundle
 var GRADE_SCHEMA = null;        // ← كائن تكوين الدرجات الكامل
@@ -5608,19 +5614,19 @@ function gmsAdminToggleMonth(month, open, el) {
 function loadSchemaConfig(callback) {
   callServer('getSchemaConfig', {}, 'schema_config', 600, function(res) {
     if (res && res.success) {
-      ALL_MONTHS   = res.orderedMonths || ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
-      TERM_MONTHS  = res.termMonths   || ['نصف العام','نهاية العام'];
+      ALL_MONTHS   = res.orderedMonths || BOOT_DEF_MONTHS;   // 38f: one fallback (BOOT_DEF_*)
+      TERM_MONTHS  = res.termMonths   || BOOT_DEF_TERM;
       GRADE_SCHEMA = res;
     } else {
       // Fallback في حالة فشل الخادم — نضمن عدم تعطل الواجهة
-      ALL_MONTHS  = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
-      TERM_MONTHS = ['نصف العام','نهاية العام'];
+      ALL_MONTHS  = BOOT_DEF_MONTHS;
+      TERM_MONTHS = BOOT_DEF_TERM;
     }
     if (typeof callback === 'function') callback();
   }, function() {
     // خطأ في الاتصال — استخدام الافتراضيات
-    ALL_MONTHS  = ['محرم','صفر','نصف العام','جماد اول','جماد ثاني','نهاية العام'];
-    TERM_MONTHS = ['نصف العام','نهاية العام'];
+    ALL_MONTHS  = BOOT_DEF_MONTHS;
+    TERM_MONTHS = BOOT_DEF_TERM;
     if (typeof callback === 'function') callback();
   });
 }
@@ -5723,13 +5729,20 @@ function loadBootConfig(callback) {
   var DEF_TERM   = BOOT_DEF_TERM;
   callServer('getBootConfigBundle', {}, _bootConfigCacheKey(), 600, function(bundle) {
     var res = bundle && bundle.schema;
+    /* 38f: `bundle.months` ({ordered, valid}, GradeSchema.js) is the month source; an older server sends
+       only `schema.orderedMonths`, and without either the page keeps its one fallback (BOOT_DEF_MONTHS). */
+    var srvMonths = (bundle && bundle.months && bundle.months.ordered && bundle.months.ordered.length) ? bundle.months.ordered : null;
     if (res && res.success) {
-      ALL_MONTHS   = res.orderedMonths || DEF_MONTHS;
+      ALL_MONTHS   = srvMonths || res.orderedMonths || DEF_MONTHS;
       TERM_MONTHS  = res.termMonths   || DEF_TERM;
       GRADE_SCHEMA = res;
     } else {
-      ALL_MONTHS  = DEF_MONTHS;
+      ALL_MONTHS  = srvMonths || DEF_MONTHS;
       TERM_MONTHS = DEF_TERM;
+    }
+    if (bundle && bundle.days && bundle.days.week && bundle.days.week.length === 7) {   // 38f: days from the server
+      WEEK_DAYS = bundle.days.week.slice();
+      if (bundle.days.schoolDays && bundle.days.schoolDays.length) WEEK_BASE_DAYS = bundle.days.schoolDays.slice();
     }
     if (bundle && bundle.v3 && bundle.v3.success !== false) V3_CONFIG = bundle.v3;
     // حالة الفترات: غيابها لا يُعطّل شيئاً — null ⇒ كل الفترات مفتوحة (fail-open).
@@ -12800,9 +12813,8 @@ function ec_loadData() {
   }, function(err) { el.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + err.message + '</p>'; });
 }
 
-// نفس ALL_MONTHS_ORDERED (teacher/TeacherCore.js:27) — تُستخدَم لجدولة أيام الاختبارات (تبويب
-// "جدول الاختبارات") لأي شهر من الستة، بصرف النظر عن فترة "نوع الاختبار" المختارة أدناه.
-var EC_EXAM_TYPES = ['محرم', 'صفر', 'نصف العام', 'جماد اول', 'جماد ثاني', 'نهاية العام'];
+// 38f: جدولةُ أيام الاختبارات (تبويب "جدول الاختبارات") لأيّ شهرٍ من الستة تقرأ ALL_MONTHS مباشرةً
+// (من ردّ الإقلاع، والاحتياطُ الوحيد BOOT_DEF_MONTHS في _js-core-bridge) — لا نسخةَ ثانية هنا.
 
 // "نوع الاختبار (فترة الدرجات)" — على عكس جدولة الأيام أعلاه، هذا الحقل يُحدِّد فترة درجات حقيقية
 // من ورقة «الدرجات» يُرصَد عليها امتحان الكنترول لاحقاً (رصد الدرجات/بطاقات الجلوس). قاصر عمداً على
@@ -12811,11 +12823,10 @@ var EC_EXAM_TYPES = ['محرم', 'صفر', 'نصف العام', 'جماد اول
 // منفصلة (سلوك/واجب/شفهي/تحريري) بلا "درجة امتحان" واحدة آمنة للربط بها — أي محاولة سابقة لإتاحة
 // الأشهر الستة هنا كانت تعرض "رصد الدرجات" فارغاً دوماً لغير نهاية العام، وتفشل الحفظ صراحةً لغير
 // فترتَي الامتحان (خطأ "نوع الدرجة exam_score غير صالح لهذا الشهر" من autoSaveSingleGradeProtected).
-var EC_GRADE_PERIODS = ['نصف العام', 'نهاية العام'];
-function _ecExamTypeOptionsHtml(selected) {
+function _ecExamTypeOptionsHtml(selected) {   // 38f: فترتا الامتحان = TERM_MONTHS (من ردّ الإقلاع)
   var h = '';
-  for (var i = 0; i < EC_GRADE_PERIODS.length; i++) {
-    var v = EC_GRADE_PERIODS[i];
+  for (var i = 0; i < TERM_MONTHS.length; i++) {
+    var v = TERM_MONTHS[i];
     h += '<option value="' + escapeHtml(v) + '"' + (v === selected ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
   }
   return h;
@@ -13832,7 +13843,7 @@ function ec_gradesLoad() {
 }
 
 // نهاية العام تُبنى عبر مسار خاص (خمسة أعمدة محسوبة، الحقل ye_final = النهائي منها) بينما نصف
-// العام (فترة درجات حقيقية أخرى مسموحة، راجع EC_GRADE_PERIODS) يُقرأ من exam_score العادي مباشرة
+// العام (فترة درجات حقيقية أخرى مسموحة، راجع TERM_MONTHS) يُقرأ من exam_score العادي مباشرة
 // — قراءة ye_final وحده دوماً كانت تُظهر الدرجات فارغة لكل رصد بفترة نصف العام رغم نجاح الحفظ فعلياً.
 function _ecGradeValueOf(stu, month) {
   var v = (month === 'نهاية العام') ? stu.ye_final : stu.exam_score;
@@ -14309,7 +14320,7 @@ function ec_timetableMatrixToggle(detailsEl) {
   var sel = document.getElementById('ec-tt-matrix-month');
   if (sel) {
     var opts = '';
-    for (var m = 0; m < EC_EXAM_TYPES.length; m++) opts += '<option value="' + escapeHtml(EC_EXAM_TYPES[m]) + '">' + escapeHtml(EC_EXAM_TYPES[m]) + '</option>';
+    for (var m = 0; m < ALL_MONTHS.length; m++) opts += '<option value="' + escapeHtml(ALL_MONTHS[m]) + '">' + escapeHtml(ALL_MONTHS[m]) + '</option>';
     sel.innerHTML = opts;
   }
   ec_timetableRenderMatrix();
@@ -14384,8 +14395,8 @@ function ec_timetableRenderPage() {
       '<p style="font-size:12px;color:#64748b;margin:0;flex:1;min-width:240px;">افتح أي شهر لترى كل الصفوف، ثم افتح صفاً لتوزيع مواده بالسحب. حدِّد تاريخ اليوم الأول فقط — بقية أيام ذلك الصف تُحسَب تلقائياً (تتخطّى الخميس/الجمعة وإجازات التقويم المدرسي أعلاه).</p>' +
       '<button type="button" class="ec-tt-print-btn" onclick="ec_ttRefreshAll()">🔄 تحديث</button>' +
     '</div>';
-  for (var m = 0; m < EC_EXAM_TYPES.length; m++) {
-    var month = EC_EXAM_TYPES[m];
+  for (var m = 0; m < ALL_MONTHS.length; m++) {
+    var month = ALL_MONTHS[m];
     var monthGrades = _ecScheduleOverviewGradesFor(month);
     var countsByGrade = {};
     for (var mg = 0; mg < monthGrades.length; mg++) {
@@ -14856,7 +14867,7 @@ function _ecNextWorkingDay(dateStr) {
 // "يوم N" في اللوحة/الطباعة/المصفوفة. بناء Date من مكوّنات محلية (لا new Date(dateStr) المُفسَّر
 // UTC) بنفس أسلوب _ecFmtYmd/_ecNextWorkingDay أعلاه لتفادي انزياح التوقيت. يُعيد '' إن كان التاريخ
 // فارغاً/غير صالح — كل مستدعٍ يتراجع عندها لتسمية "يوم N" الترتيبية كاحتياط.
-var EC_DAY_NAMES_BY_JS = { 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة', 6: 'السبت' };
+// 38f: the JS-index day names come from WEEK_DAYS (_weekDayByJs, _js-core-bridge).
 // نفس لوحة الألوان الخماسية المُستخدَمة أصلاً لأيام الأسبوع بميزة "توزيع الحصص" — إعادة استخدام
 // مباشرة لاتساق بصري بين الميزتين، لا لوحة تصميم جديدة.
 var EC_DAY_COLORS = { 'السبت': '#667eea', 'الأحد': '#f5576c', 'الاثنين': '#4facfe', 'الثلاثاء': '#43e97b', 'الأربعاء': '#fa709a' };
@@ -14868,7 +14879,7 @@ function _ecDayNameFromDate(dateStr) {
   if (!y || !mo || !d) return '';
   var dt = new Date(y, mo - 1, d);
   if (isNaN(dt.getTime())) return '';
-  return EC_DAY_NAMES_BY_JS[dt.getDay()] || '';
+  return _weekDayByJs(dt.getDay());   // 38f
 }
 
 // لوحة ألوان ديناميكية لكل مادة في الطباعة (نطاق: الطباعة فقط، لا اللوحة الحيّة) — اللون يُحسَب حسب
@@ -14919,8 +14930,8 @@ function ec_timetableVisibilityHtml() {
      مؤشَّرة**، لأن تأشيرها يُثبِّت الادّعاء الخاطئ نفسه. */
   var failed = (_ecTTLoad.visibility === 'failed');
   var rows = '';
-  for (var i = 0; i < EC_EXAM_TYPES.length; i++) {
-    var month = EC_EXAM_TYPES[i];
+  for (var i = 0; i < ALL_MONTHS.length; i++) {
+    var month = ALL_MONTHS[i];
     var visible = !failed && (_ecMonthVisibility.hasOwnProperty(month) ? _ecMonthVisibility[month] : true);
     var monthEsc = escapeHtml(month.replace(/'/g, "\\'"));
     rows += '<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:12px;cursor:' +
@@ -16079,7 +16090,7 @@ function _renderSchedSetForm(s, breaks, allGrades) {
     '<div class="form-group"><label class="form-label">مدة الاستراحة (دقيقة)</label><input type="number" class="form-control" id="ss-break" value="' + (s.breakMinutes || 25) + '"></div>' +
     '</div></div>';
   // أيام الدوام وعدد حصص كل يوم (0 = عطلة) — يعمل بها الجدول والتوزيع والاقتراحات وبوابة الطالب.
-  var SS_WEEK = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+  var SS_WEEK = WEEK_DAYS;   // 38f: from the boot reply (_js-core-bridge)
   var pbd = s.periodsByDay || {};
   h += '<div class="filter-bar"><div class="filter-bar-title">📅 أيام الدوام وعدد حصص كل يوم <span style="font-weight:400;color:var(--text-muted);font-size:.8rem">(0 = عطلة)</span></div><div class="form-row">';
   for (var wd = 0; wd < SS_WEEK.length; wd++) {
@@ -26439,21 +26450,20 @@ function _schedDistinctSubjects() {
    ⚠️ **والسقفُ الأعلى يبقى** — بـ`SCHED_MAX_PERIODS` بدل السبع: صفٌّ تالفٌ بحصّة `99`
    كان سيُولّد جدولاً بمئة عمود. رُفع الحدُّ ولم يُلغَ. (نظيرُ `SM_MAX_PERIODS` خادمياً.)
    ══════════════════════════════════════════════════════════════════════════════ */
-var SCHED_WEEK_ORDER = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
-var SCHED_BASE_DAYS  = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+// 38f: WEEK_DAYS / WEEK_BASE_DAYS (_js-core-bridge, from the boot reply) — no copy here.
 var SCHED_MAX_PERIODS = 12;
 
 /* الأيامُ المعروضة = الخمسةُ الأساس + كلُّ يومٍ يحمل حصّةً فعلاً، بترتيب الأسبوع
    القانونيّ لا بترتيب الظهور. يُقرأ من `_cachedSchedule` — نفسِ مصدرِ كلّ العارضين. */
 function _schedDays(rows) {
   var src = rows || _cachedSchedule || [], seen = {}, i, out = [];
-  for (i = 0; i < SCHED_BASE_DAYS.length; i++) seen[SCHED_BASE_DAYS[i]] = true;
+  for (i = 0; i < WEEK_BASE_DAYS.length; i++) seen[WEEK_BASE_DAYS[i]] = true;
   for (i = 0; i < src.length; i++) {
     var dn = String((src[i] && src[i].day) || '').trim();
-    if (dn && SCHED_WEEK_ORDER.indexOf(dn) >= 0) seen[dn] = true;
+    if (dn && WEEK_DAYS.indexOf(dn) >= 0) seen[dn] = true;
   }
-  for (i = 0; i < SCHED_WEEK_ORDER.length; i++) {
-    if (seen[SCHED_WEEK_ORDER[i]]) out.push(SCHED_WEEK_ORDER[i]);
+  for (i = 0; i < WEEK_DAYS.length; i++) {
+    if (seen[WEEK_DAYS[i]]) out.push(WEEK_DAYS[i]);
   }
   return out;
 }
@@ -37166,8 +37176,7 @@ function _visitsTopUsers(list){
 }
 
 function _visitsWeekdayBars(weekday){
-  var names=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-  var pairs=[]; for(var i=0;i<7;i++) pairs.push({ name:names[i], value:weekday[i]||0 });
+  var pairs=[]; for(var i=0;i<7;i++) pairs.push({ name:_weekDayByJs(i), value:weekday[i]||0 });   // 38f: 0 = الأحد (WEEK_DAYS)
   return _tfBars(pairs, 'var(--tf-blue)');
 }
 
