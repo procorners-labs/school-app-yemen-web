@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202610022050;
+    window.WEB_BUILD_TS = 202610030104;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -48,6 +48,12 @@
       }
     }
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || _pSlug || window.SCHOOL_ID || '';
+    var _rawSid = qs.get('school') || qs.get('schoolId') || _pSlug || '';
+    var _canon = String(window.__CANON_SCHOOL__ || '').toLowerCase();
+    var _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!_uuidRe.test(_canon) || (_uuidRe.test(_rawSid) && String(_rawSid).toLowerCase() !== _canon)) _canon = '';
+    if (_rawSid && !_uuidRe.test(_rawSid)) window.SCHOOL_SLUG = String(_rawSid).toLowerCase();
+    if (_canon) window.SCHOOL_ID = _canon;
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -2857,7 +2863,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = 'b2fae8e';
+  var STU_BUILD = '754031a';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -4115,6 +4121,7 @@ function _stuStaffSessionData(r, schoolId) {
     grantPages  : r.grantPages  || [],
     hidePages   : r.hidePages   || [],
     customRole  : r.customRole  || '',
+    extraRoles  : r.extraRoles  || [],   // 38b: الأدوارُ الإضافيّة من الخادم (`_sbEffectiveRoles`/`_tcHasRoleOrExtra`)
     subject     : r.subject     || (r.subjects && r.subjects[0]) || '',
     grade       : r.grade       || (r.classes && r.classes[0])   || '',
     section     : r.section     || (r.sections && r.sections[0]) || '',
@@ -4142,6 +4149,8 @@ function _stuHandoffStaff(r, schoolId, btn) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ فتح لوحة المعلمين…'; }
   var urlSchool = schoolId;   // L5: الرابطُ بصيغة المستخدم (slug أو UUID)
   try { var _q = new URLSearchParams(window.location.search); urlSchool = _q.get('school') || _q.get('schoolId') || schoolId; } catch (eQ) {}
+  /* 38b: على الموقع المستضاف الرابطُ بـslug المدرسة حين يعطيه الخادم (حارسُ الاستعادة يقبل الشكلين). */
+  if (window.GAS_ENDPOINT && r && r.schoolSlug && /^[a-z0-9-]+$/i.test(String(r.schoolSlug))) urlSchool = String(r.schoolSlug).toLowerCase();
   var path = '/teacher/index.html?school=' + encodeURIComponent(urlSchool);
   if (window.GAS_ENDPOINT) { window.location.href = path; return; }
   /* L5: على `/exec` التنقّلُ البرمجي لا يغادر إطارَ Google المعزول ⇒ رابطٌ `_top` بنقرة المستخدم، ونصٌّ صادق. */
@@ -4177,6 +4186,9 @@ function _finishStudentLoginSuccess(r, schoolId) {
   };
   /* L3: الدخولُ حسب الإخوةَ والحجبَ للتوّ ⇒ لا `refreshStudentSiblings` مكرّر عند أوّل استعادة. */
   try { localStorage.setItem('stu_sib_refresh_' + r.studentId, String(Date.now())); } catch (eSib) {}
+  // 38b: الـUUID من الخادم لكلّ نداءٍ ومفتاحٍ بعد الدخول، والرابطُ بـslug المدرسة.
+  if (typeof _stuAdoptCanonSchool === 'function') _stuAdoptCanonSchool(APP.user);
+  if (typeof _stuCanonUrlAfterLogin === 'function') _stuCanonUrlAfterLogin(APP.user.schoolSlug);
   _stuShowApp();
   initApp();
   _startHeartbeat();
@@ -4199,10 +4211,34 @@ function _finishStudentLoginSuccess(r, schoolId) {
 //  confirmLogout(). خط الدفاع الوحيد لسيناريو حاسوب مشترك هو عرض اسم صاحب الجهاز على الزرّ.
 // ═══════════════════════════════════════════════════════════════════════════
 var BIOM_LS_PREFIX = 'biomDevice_student_';
-function _biomLsKey(schoolId) { return BIOM_LS_PREFIX + (schoolId || 'default'); }
+/* 38b: المفتاحُ بمعرّف المدرسة القانونيّ (UUID) — كان الحفظُ بالـUUID والقراءةُ بالخام، فاختفى الزرّ على
+   رابط الـslug. مفتاحٌ قديمٌ بشكلٍ آخر للمدرسة نفسِها يُنقَل مرّةً ويُمحى (`_stuSchoolLsKey`). */
+function _biomLsKey(schoolId) {
+  if (!schoolId) return BIOM_LS_PREFIX + 'default';
+  return (typeof _stuSchoolLsKey === 'function') ? _stuSchoolLsKey(BIOM_LS_PREFIX, '', schoolId) : BIOM_LS_PREFIX + schoolId;
+}
 function _biomLoadDevice(schoolId) {
-  try { var raw = localStorage.getItem(_biomLsKey(schoolId)); return raw ? JSON.parse(raw) : null; }
+  try {
+    var raw = localStorage.getItem(_biomLsKey(schoolId));
+    if (!raw && schoolId) raw = _biomFindBySlug(schoolId);   // 38b
+    return raw ? JSON.parse(raw) : null;
+  }
   catch (e) { return null; }
+}
+/* 38b: صفحةٌ لم يحلّ الوسيطُ slugها (المعرّفُ هنا slug) وجهازٌ محفوظٌ بالـUUID: يُعرَف من `schoolSlug` المحفوظ معه. */
+function _biomFindBySlug(slug) {
+  try {
+    var s = String(slug || '').toLowerCase();
+    if (!s || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) return null;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k || k.indexOf(BIOM_LS_PREFIX) !== 0) continue;
+      var v = localStorage.getItem(k);
+      var o = v ? JSON.parse(v) : null;
+      if (o && o.schoolSlug && String(o.schoolSlug).toLowerCase() === s) return v;
+    }
+  } catch (e) {}
+  return null;
 }
 function _biomSaveDevice(schoolId, obj) {
   try { localStorage.setItem(_biomLsKey(schoolId), JSON.stringify(obj)); } catch (e) {}
@@ -4312,7 +4348,8 @@ function biomActivateOnThisDevice() {
             if (r && r.ok) {
               _biomSaveDevice(APP.user.schoolId, {
                 deviceId: deviceId, credentialId: credentialIdB64, label: label,
-                encrypted: encrypted, secret: storedSecretValue
+                encrypted: encrypted, secret: storedSecretValue,
+                schoolSlug: APP.user.schoolSlug || ''   // 38b: يُعرَف به الجهازُ على رابط slug غير محلول
               });
               _biomToast('✅ تم تفعيل الدخول بالبصمة على هذا الجهاز');
               try { _biomRenderProfileSection(); } catch (eR) {}
@@ -4411,7 +4448,9 @@ function _biomRenderLoginButton() {
   if (!wrap) return;
   wrap.innerHTML = '';
   if (!_biomSupported()) return;
-  var schoolId = window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '';
+  // 38b: نفسُ المعرّف القانونيّ الذي يُحفظ به الجهاز (UUID حين يُعرَف)، لا الخامُ من الرابط.
+  var schoolId = (typeof _stuCanonSchool === 'function') ? _stuCanonSchool()
+    : (window.SCHOOL_ID || (new URLSearchParams(window.location.search)).get('school') || '');
   var dev = _biomLoadDevice(schoolId);
   if (!dev) return;
   var btn = document.createElement('button');
@@ -5934,6 +5973,20 @@ function renderFinance(r) {
           '</div>' +
           '<div class="progress"><div class="progress-bar ' + barCls + '" style="width:' + pctR + '%"></div></div>' +
           '<div class="progress-info"><span>' + pctR + '% مسدّد</span><span>' + r.paymentsCount + ' دفعة</span></div>';
+
+  /* 38g: «الباقي من السابق» داخلٌ في «إجمالي الرسوم» أصلاً — يُعرض تفصيلاً لا يُضاف مرّةً ثانية. */
+  if (Number(r.prevDebt) > 0) {
+    h += '<div style="margin-top:10px;font-size:13px;color:var(--muted);line-height:1.8;">منها: ' +
+         (r.formattedTuition ? 'الرسوم الدراسية <b>' + esc(r.formattedTuition) + '</b> + ' : '') +
+         'الباقي من السابق <b>' + esc(r.formattedPrevDebt) + '</b></div>';
+  }
+  /* 38g: حسابُ العائلة (إخوةٌ يشتركون في حسابٍ واحد) — رسومُ الإخوة قد تكون على صفّ أخٍ واحد. */
+  if (r.family && r.family.size >= 2) {
+    h += '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--bdr);border-radius:10px;font-size:13px;line-height:1.9;">' +
+         '<div style="font-weight:600;">👨‍👩‍👦 حساب العائلة (' + esc(String(r.family.size)) + ' إخوة)</div>' +
+         '<div>الإجمالي <b>' + esc(r.family.formattedFees) + '</b> · المسدّد <b>' + esc(r.family.formattedPaid) + '</b> · المتبقي <b>' + esc(r.family.formattedRemaining) + '</b></div>' +
+         '</div>';
+  }
 
   if (r.payments && r.payments.length > 0) {
     h += '<div style="margin-top:18px;"><div style="font-weight:600;font-size:14px;margin-bottom:8px;color:var(--muted);">📋 سجل الدفعات</div><div class="payments-list">';
@@ -9141,6 +9194,15 @@ var _lastBeatAt = 0;
    واحدةٌ مبكّرةٌ تحمل الشارةَ وطابعَ البداية معاً. */
 var _stuEarlyBeatWanted = false;
 var _stuHbKick = null;               /* يُعرَّف داخل _startHeartbeat — تبديلُ الأخ بعد بدء المؤقّت */
+/* 🔒 شاشةُ الحجب المالي بعد جلسةٍ مستعادة (38e2) — مسحُ الجلسة المحفوظة كي لا تُستعاد، ثم نفسُ شاشة الدخول
+   المحجوب (`_stu-js-login.html`). يستعملها تجديدُ الرمز (`refreshStudentSiblings`) وحزمةُ الإقلاع. */
+function _stuShowBlockedScreen(r) {
+  try { confirmLogout(); } catch (eLo) {}
+  $('loginScreen').style.display = 'none';
+  $('blockedTxt').textContent = (r && r.error) || 'حسابك معلق مؤقتاً';
+  $('blockedMsg').classList.add('show');
+}
+
 function _stuWantEarlyBeat() {
   if (typeof _stuHbKick === 'function') { _stuHbKick(); return; }
   _stuEarlyBeatWanted = true;
@@ -9377,6 +9439,9 @@ function _stuBootLoad() {
     }],
     function (r) {
       _badgeInFlight = false;
+      /* 🔒 38e2: الحزمةُ تردّ `{ok:false, blocked:true}` لجلسةٍ مستعادةٍ محجوبةٍ مالياً (38g) ⇒ نفسُ شاشة الحجب
+         التي يعرضها الدخول، لا تفرُّعٌ إلى نداءاتٍ بديلةٍ تُحمِّل الأقسامَ واحداً واحداً. */
+      if (r && r.blocked) { _stuShowBlockedScreen(r); return; }
       if (!r || !r.ok) {
         /* ردٌّ وصل بحمولةٍ فاشلة ⇒ الخادمُ نفّذ ولم يُشبَع ⇒ التفرّعُ مشروع.
            (‏مسارُ الإشباع لا يصل هنا أصلاً: الجسرُ يستدعي `withFailureHandler`.) */
@@ -9706,6 +9771,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (savedSession && savedSession.user) {
     _stuEpochBump();
     APP.user = savedSession.user;
+    _stuAdoptCanonSchool(APP.user);   // 38b: الـUUID من الجلسة لكلّ نداءٍ ومفتاح
     _stuShowApp();
     initApp();
     _startHeartbeat();
@@ -9728,13 +9794,7 @@ document.addEventListener('DOMContentLoaded', function () {
           if (!APP.user) return;
           /* 🔒 الخادمُ يعيد فحصَ الحجب المالي عند تجديد الرمز: محجوبٌ ⇒ نفسُ شاشة الحجب التي
              يعرضها الدخول (`_stu-js-login.html`)، مع مسح الجلسة المحفوظة كي لا تُستعاد. */
-          if (r && r.blocked) {
-            try { confirmLogout(); } catch (eLo) {}
-            $('loginScreen').style.display = 'none';
-            $('blockedTxt').textContent = r.error || 'حسابك معلق مؤقتاً';
-            $('blockedMsg').classList.add('show');
-            return;
-          }
+          if (r && r.blocked) { _stuShowBlockedScreen(r); return; }
           if (r && r.ok) {
             APP.user.siblings = r.siblings || [];
             APP.user.switchToken = r.switchToken || APP.user.switchToken;
@@ -9860,6 +9920,75 @@ function initLazyImages() {
   }
 }
 
+/* ══ 38b: معرّفُ المدرسة القانونيّ للمفاتيح المحلّية (نظيرُ `_tcCanonSchool` في لوحة المعلمين) ══
+   رابطُ الـslug ورابطُ الـUUID لنفس المدرسة كانا يكتبان مفتاحين (بصمة · هويّة · لون). الآن بالـUUID:
+   من الجلسة (`APP.user.schoolId`) ثمّ ما يحقنه الوسيط ثمّ الخام؛ والمفتاحُ القديمُ بشكلٍ آخر يُنقَل مرّةً ويُمحى. */
+var _STU_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _stuCanonSchool() {
+  var v = '';
+  try { if (typeof APP !== 'undefined' && APP && APP.user && APP.user.schoolId) v = APP.user.schoolId; } catch (e) {}
+  if (!v) { try { if (window.__CANON_SCHOOL__) v = window.__CANON_SCHOOL__; } catch (e1) {} }
+  if (!v) { try { if (window.__SCHOOL_BRAND__ && window.__SCHOOL_BRAND__.schoolId) v = window.__SCHOOL_BRAND__.schoolId; } catch (e2) {} }
+  if (!v && typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) v = SERVER_SCHOOL_ID;
+  if (!v) v = window.SCHOOL_ID || '';
+  return String(v || '').trim();
+}
+function _stuSchoolAliases() {
+  var out = [], seen = {};
+  function add(x) { x = String(x || '').trim(); if (x && !seen[x]) { seen[x] = 1; out.push(x); } }
+  try { add(window.SCHOOL_SLUG); } catch (e) {}
+  try { var q = new URLSearchParams(window.location.search); add(q.get('school')); add(q.get('schoolId')); } catch (e1) {}
+  try { if (typeof SERVER_SCHOOL_ID !== 'undefined') add(SERVER_SCHOOL_ID); } catch (e2) {}
+  try { add(window.SCHOOL_ID); } catch (e3) {}
+  try { if (typeof APP !== 'undefined' && APP && APP.user) add(APP.user.schoolSlug); } catch (e4) {}
+  try { if (window._schoolBrand) add(window._schoolBrand.slug); } catch (e5) {}
+  return out;
+}
+function _stuSchoolLsKey(prefix, suffix, sid) {
+  var canon = String(sid || _stuCanonSchool() || '');
+  suffix = suffix || '';
+  var key = prefix + canon + suffix;
+  if (!canon) return key;
+  try {
+    if (localStorage.getItem(key) === null) {
+      var al = _stuSchoolAliases();
+      for (var i = 0; i < al.length; i++) {
+        if (al[i] === canon) continue;
+        var ok = prefix + al[i] + suffix;
+        var ov = localStorage.getItem(ok);
+        if (ov !== null) { localStorage.setItem(key, ov); localStorage.removeItem(ok); break; }
+      }
+    }
+  } catch (eLs) {}
+  return key;
+}
+/* بعد دخولٍ أو استعادةِ جلسة: الـUUID من الخادم يصير `SCHOOL_ID` (والخامُ في `SCHOOL_SLUG`). */
+function _stuAdoptCanonSchool(user) {
+  try {
+    var u = user && user.schoolId ? String(user.schoolId) : '';
+    if (!_STU_UUID_RE.test(u)) return;
+    var cur = String(window.SCHOOL_ID || '');
+    if (cur && !_STU_UUID_RE.test(cur) && !window.SCHOOL_SLUG) window.SCHOOL_SLUG = cur.toLowerCase();
+    window.SCHOOL_ID = u;
+  } catch (e) {}
+}
+/* بعد الدخول: معاملُ `school` في الرابط يصير slug المدرسة (المسارُ والقسم كما هما، ولا توكنَ في الرابط). */
+function _stuCanonUrlAfterLogin(slug) {
+  try {
+    var s = String(slug || '').trim().toLowerCase();
+    if (!s || !/^[a-z0-9-]+$/.test(s)) return;
+    if (!window.history || typeof window.history.replaceState !== 'function') return;
+    var search = String(window.location.search || '');
+    if (!/[?&]school(Id)?=/.test(search)) return;
+    var q = new URLSearchParams(search);
+    var cur = q.get('school') || q.get('schoolId') || '';
+    if (String(cur).toLowerCase() === s) return;
+    q.delete('schoolId');
+    q.set('school', s);
+    window.history.replaceState(window.history.state, '', window.location.pathname + '?' + q.toString() + (window.location.hash || ''));
+  } catch (e) {}
+}
+
 /* ── عرض هوية المدرسة ديناميكيًا (الاسم/الشعار/الهاتف حسب schoolId) بدل القيم الثابتة ── */
 (function () {
   // window.SCHOOL_ID فارغ = رابط بلا معرّف مدرسة: getStudentSchoolBrand('') تحلّه ديناميكياً
@@ -9873,7 +10002,7 @@ function initLazyImages() {
   var _stBrandSid = (_stInj && _stInj.schoolId) ? String(_stInj.schoolId)
                     : ((typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID)
                     ? SERVER_SCHOOL_ID : (window.SCHOOL_ID || ''));
-  var _stBrandCacheKey = 'stBrand_' + _stBrandSid;
+  var _stBrandCacheKey = _stBrandSid ? _stuSchoolLsKey('stBrand_', '', _stBrandSid) : 'stBrand_';   // 38b: بالـUUID مع نقل القديم
   // م1: كاش دافئ يتخطّى نداء getStudentSchoolBrand الإقلاعي بالكامل (كان 758-919
   // نداء/24س في كل فتح صفحة رغم أن هوية المدرسة اسم/شعار/لون تتغيّر نادراً) — 6 ساعات
   // كافية لتقليم الغالبية العظمى من النداءات مع تحديث خلال نفس اليوم الدراسي.
@@ -10014,7 +10143,7 @@ function initLazyImages() {
     }
     if (b.color) {
       applyTheme(b.color);
-      if (persist) { try { if (window.localStorage) localStorage.setItem('stTheme_' + (window.SCHOOL_ID || ''), b.color); } catch (eLS) {} }
+      if (persist) { try { if (window.localStorage) localStorage.setItem(_stuSchoolLsKey('stTheme_', ''), b.color); } catch (eLS) {} }   // 38b
     }
     if (b.name) {
       var els = document.querySelectorAll('.school-brand-name');
@@ -10076,7 +10205,7 @@ function initLazyImages() {
     return 'https://' + u;
   }
   // استرجاع فوري لآخر لون مطبَّق لهذه المدرسة (يمنع وميض اللون ويغطّي وضع عدم الاتصال).
-  try { var _stLastColor = (window.localStorage) ? localStorage.getItem('stTheme_' + (window.SCHOOL_ID || '')) : null; if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
+  try { var _stLastColor = (window.localStorage) ? localStorage.getItem(_stuSchoolLsKey('stTheme_', '')) : null;   /* 38b: بالـUUID مع نقل القديم */ if (_stLastColor) applyTheme(_stLastColor); } catch (eLR) {}
   /* 🔴 **مُبوَّبٌ منذ 2026-09-22 — وكان يتجاوز بوّابةَ التزامن كلَّها.**
      العلّةُ بنيويّةٌ لا تصنيفيّة: `_stuIsRead('getStudentSchoolBrand')` تُرجِع `true`،
      **لكنّ البوّابةَ لا تُطبَّق إلّا على ما يمرّ بـ`callServerGated`/`callServerSmart`**

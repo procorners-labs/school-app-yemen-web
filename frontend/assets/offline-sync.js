@@ -145,8 +145,22 @@
     return (h >>> 0).toString(36);
   }
 
+  /* 38b: المدرسةُ في مفتاح الكاش بشكلها القانونيّ (UUID): الوسيطُ يحقن `__CANON_SCHOOL__` لهذه الصفحة،
+     فالـslug الخامُ لها نفسِها يُقرأ به ⇒ رابطُ الـslug ورابطُ الـUUID يتشاركان مدخلاً واحداً. */
+  var SCHOOL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function canonSchool(schoolId) {
+    var s = String(schoolId || '');
+    try {
+      var c = String(window.__CANON_SCHOOL__ || '');
+      var raw = String(window.SCHOOL_SLUG || '');
+      if (s && c && SCHOOL_UUID_RE.test(c) && !SCHOOL_UUID_RE.test(s) && raw && s.toLowerCase() === raw.toLowerCase()) {
+        return c.toLowerCase();
+      }
+    } catch (e) {}
+    return s;
+  }
   function readKey(app, fn, args, schoolId) {
-    return (app || '?') + ':' + fn + ':' + hashArgs(args) + ':' + (schoolId || '');
+    return (app || '?') + ':' + fn + ':' + hashArgs(args) + ':' + canonSchool(schoolId);
   }
 
   // هل الدالّةُ في مفتاح `readKey` تحقّق `test`؟ هي الثالثةُ من الآخر (قد يحوي `app` نقطتين حين تكون
@@ -179,7 +193,27 @@
 
   function getCachedRead(app, fn, args, schoolId) {
     if (isLoginFn(fn)) return Promise.resolve(null);   // ولا يُخدَم ردُّ دخولٍ قديم
-    return OfflineDB.get(READCACHE, readKey(app, fn, args, schoolId));
+    var key = readKey(app, fn, args, schoolId);
+    /* 38b: إخفاقٌ بالمفتاح القانونيّ ⇒ قراءةٌ لمرّةٍ واحدة بالمفتاح القديم (الـslug الخام لهذه الصفحة)،
+       ثمّ يُكتب بالقانونيّ ويُمحى القديم — فلا يتيتّم كاشُ من فتح الرابطَ بالـslug قبل اليوم. */
+    var old = '';
+    try {
+      var raw = String(window.SCHOOL_SLUG || '');
+      if (raw) {
+        var ok = (app || '?') + ':' + fn + ':' + hashArgs(args) + ':' + raw;
+        if (ok !== key) old = ok;
+      }
+    } catch (e) { old = ''; }
+    if (!old) return OfflineDB.get(READCACHE, key);
+    return OfflineDB.get(READCACHE, key).then(function (hit) {
+      if (hit) return hit;
+      return OfflineDB.get(READCACHE, old).then(function (prev) {
+        if (!prev) return prev;
+        return OfflineDB.set(READCACHE, key, prev).then(function () {
+          return OfflineDB.del(READCACHE, old);
+        }, function () {}).then(function () { return prev; }, function () { return prev; });
+      });
+    });
   }
 
   // ── طابور الكتابة ────────────────────────────────────────────
