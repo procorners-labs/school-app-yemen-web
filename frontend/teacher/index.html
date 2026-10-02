@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610022050;
+    window.WEB_BUILD_TS = 202610030104;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -48,6 +48,12 @@
       }
     }
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || _pSlug || window.SCHOOL_ID || '';
+    var _rawSid = qs.get('school') || qs.get('schoolId') || _pSlug || '';
+    var _canon = String(window.__CANON_SCHOOL__ || '').toLowerCase();
+    var _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!_uuidRe.test(_canon) || (_uuidRe.test(_rawSid) && String(_rawSid).toLowerCase() !== _canon)) _canon = '';
+    if (_rawSid && !_uuidRe.test(_rawSid)) window.SCHOOL_SLUG = String(_rawSid).toLowerCase();
+    if (_canon) window.SCHOOL_ID = _canon;
   })();
 </script>
 <!-- طبقة العمل دون اتصال + المزامنة التلقائية (تُحمَّل قبل الجسر) -->
@@ -4093,6 +4099,89 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     return (v === null || v === undefined) ? '' : String(v).trim();
   }
 
+  /* ══ 38b: معرّفُ المدرسة القانونيّ للمفاتيح المحلّية (localStorage) ══════════════════
+     رابطُ الـslug ورابطُ الـUUID لنفس المدرسة كانا يكتبان مفتاحين (بصمة · هويّة · مرشّحات ·
+     إظهار الدرجات) ⇒ زرُّ البصمة يختفي على رابط الـslug. الآن: المفتاحُ بالـUUID — من الجلسة
+     (`App.user.schoolId`، يعطيه الخادم) ثمّ ما يحقنه الوسيط ثمّ الخام. ومفتاحٌ قديمٌ بشكلٍ آخر
+     للمدرسة نفسِها يُقرأ مرّةً ويُنقَل إلى الجديد ثمّ يُمحى (`_tcSchoolLsKey`). */
+  var _TC_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function _tcCanonSchool() {
+    var v = '';
+    try { if (typeof App !== 'undefined' && App && App.user && App.user.schoolId) v = App.user.schoolId; } catch (e) {}
+    if (!v) { try { if (window.__CANON_SCHOOL__) v = window.__CANON_SCHOOL__; } catch (e1) {} }
+    if (!v) { try { if (window.__SCHOOL_BRAND__ && window.__SCHOOL_BRAND__.schoolId) v = window.__SCHOOL_BRAND__.schoolId; } catch (e2) {} }
+    if (!v && typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) v = SERVER_SCHOOL_ID;
+    if (!v) v = window.SCHOOL_ID || '';
+    return String(v || '').trim();
+  }
+  /* الأشكالُ الأخرى للمدرسة نفسِها التي كُتبت بها مفاتيحُ قديمة (slug · معامل الرابط · الخام). */
+  function _tcSchoolAliases() {
+    var out = [], seen = {};
+    function add(x) { x = String(x || '').trim(); if (x && !seen[x]) { seen[x] = 1; out.push(x); } }
+    try { add(window.SCHOOL_SLUG); } catch (e) {}
+    try { var q = new URLSearchParams(window.location.search); add(q.get('school')); add(q.get('schoolId')); } catch (e1) {}
+    try { if (typeof SERVER_SCHOOL_ID !== 'undefined') add(SERVER_SCHOOL_ID); } catch (e2) {}
+    try { add(window.SCHOOL_ID); } catch (e3) {}
+    try { if (typeof App !== 'undefined' && App && App.user) add(App.user.schoolSlug); } catch (e4) {}
+    try { if (window._schoolBrand) add(window._schoolBrand.slug); } catch (e5) {}
+    return out;
+  }
+  /* يُرجِع `prefix + <UUID> + suffix`؛ وإن غاب ووُجد المفتاحُ بشكلٍ قديمٍ نُقل إليه ومُحي القديم. */
+  function _tcSchoolLsKey(prefix, suffix, sid) {
+    var canon = String(sid || _tcCanonSchool() || '');
+    suffix = suffix || '';
+    var key = prefix + canon + suffix;
+    if (!canon) return key;
+    try {
+      if (localStorage.getItem(key) === null) {
+        var al = _tcSchoolAliases();
+        for (var i = 0; i < al.length; i++) {
+          if (al[i] === canon) continue;
+          var ok = prefix + al[i] + suffix;
+          var ov = localStorage.getItem(ok);
+          if (ov !== null) { localStorage.setItem(key, ov); localStorage.removeItem(ok); break; }
+        }
+      }
+    } catch (eLs) {}
+    return key;
+  }
+  /* يمحو المفتاحَ بكلّ أشكال المدرسة (القانونيّ والقديمة) — لإبطالٍ لا يترك نسخةً بشكلٍ آخر. */
+  function _tcSchoolLsRemove(prefix, suffix) {
+    suffix = suffix || '';
+    var ids = [_tcCanonSchool()].concat(_tcSchoolAliases());
+    for (var i = 0; i < ids.length; i++) {
+      if (!ids[i]) continue;
+      try { localStorage.removeItem(prefix + ids[i] + suffix); } catch (e) {}
+    }
+  }
+  /* بعد دخولٍ أو استعادةِ جلسة: الخادمُ أعطى الـUUID ⇒ يصير `SCHOOL_ID` القانونيّ (والخامُ في `SCHOOL_SLUG`). */
+  function _tcAdoptCanonSchool(user) {
+    try {
+      var u = user && user.schoolId ? String(user.schoolId) : '';
+      if (!_TC_UUID_RE.test(u)) return;
+      var cur = String(window.SCHOOL_ID || '');
+      if (cur && !_TC_UUID_RE.test(cur) && !window.SCHOOL_SLUG) window.SCHOOL_SLUG = cur.toLowerCase();
+      window.SCHOOL_ID = u;
+    } catch (e) {}
+  }
+  /* 38b: بعد الدخول يُقنَّن الرابطُ إلى slug المدرسة (يبقى المسارُ والقسم، يُبدَّل معاملُ `school`
+     وحده، ولا توكنَ في الرابط أبداً). بلا slug معروف أو بلا `?school=` في الرابط ⇒ لا شيء. */
+  function _tcCanonUrlAfterLogin(slug) {
+    try {
+      var s = String(slug || '').trim().toLowerCase();
+      if (!s || !/^[a-z0-9-]+$/.test(s)) return;
+      if (!window.history || typeof window.history.replaceState !== 'function') return;
+      var search = String(window.location.search || '');
+      if (!/[?&]school(Id)?=/.test(search)) return;
+      var q = new URLSearchParams(search);
+      var cur = q.get('school') || q.get('schoolId') || '';
+      if (String(cur).toLowerCase() === s) return;
+      q.delete('schoolId');
+      q.set('school', s);
+      window.history.replaceState(window.history.state, '', window.location.pathname + '?' + q.toString() + (window.location.hash || ''));
+    } catch (e) {}
+  }
+
   /* 🧹 تنظيفٌ لمرّةٍ واحدة: يمحو `tc_last_school` من أجهزةٍ كتبته في نافذة 09-17/09-18.
      بغيرِه يبقى المفتاحُ في متصفّحاتِهم أبداً — غيرَ مقروءٍ لكنه أثرُ هويّةٍ لا مبرّر له. */
   try { localStorage.removeItem('tc_last_school'); } catch (eClr) {}
@@ -4147,7 +4236,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
               : (window.SCHOOL_ID || ''));
     // sid فارغ = رابط بلا معرّف مدرسة: getTeacherSchoolBrand('') تحلّه ديناميكياً لصفّ
     // المدرسة الافتراضية في Schools (مطابقة teacher_file_id)، فلا تُنهِ النداء هنا.
-    var _tcBrandCacheKey = 'tcBrand_' + sid;
+    var _tcBrandCacheKey = sid ? _tcSchoolLsKey('tcBrand_', '', sid) : 'tcBrand_';   // 38b: بالـUUID مع نقل المفتاح القديم
     var _tcCachedBrand = null;
     var _tcBrandSavedAt = 0;
     // كاش دافئ = صفر نداء إقلاعي (نفس نمط student المنشور بـم1، `Student Portal.html`).
@@ -4550,22 +4639,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       grid.innerHTML = html;
       wrap.style.display = 'block';
     }
-    function load() {
-      try {
-        // تحسين أداء: لا تجلب دليل الشركاء إن كان المستخدم سيُسجَّل تلقائيًا (لن تظهر شاشة الدخول)
-        var s = (typeof loadSession === 'function') ? loadSession() : null;
-        var req = (window.SCHOOL_ID || '');
-        try { var q = new URLSearchParams(window.location.search); req = q.get('school') || q.get('schoolId') || req; } catch (eq) {}
-        if (s && s.token && (!req || s.schoolId === req)) return;  // جلسة صالحة لنفس المدرسة → تخطَّ
-        google.script.run
-          .withSuccessHandler(function (res) { if (res && res.success && res.schools && res.schools.length) render(res.schools); })
-          .withFailureHandler(_gsrFail('listPartnerSchoolsPublic'))
-          .listPartnerSchoolsPublic();
-      } catch (e) {}
-    }
-    // 🏫 دليل المدارس الشريكة يظهر فقط في الصفحة العامة (master-admin/index.html) —
-    // مُعطَّل عمدًا في منصّة المعلمين بناءً على طلب المالك (لا يُحمَّل ولا يُعرَض هنا).
-    if (false) { load(); }
+    /* 38b: حُذف `load()` الميّت (`if (false)`، كان يقارن `s.schoolId === req` بالمعرّف الخام). الدليلُ معطَّلٌ هنا
+       بطلب المالك (يظهر في الصفحة العامة وحدها)؛ وتبقى البطاقةُ نفسَ مكوّن `_stu-js-tail.html`. */
   })();
 // ══════════════════════════════════════════════════════
 // Smart Client Cache مع TTL
@@ -5841,7 +5916,8 @@ function isAdmin() {
 function _tcHasRoleOrExtra(r) {
   if (!App.user) return false;
   if (String(App.user.role || '') === r) return true;
-  var x = App.user.extraRoles || [];
+  // 38e2: القارئُ الموحَّد `_sbExtraRoles` (‏_js-nav-permissions.html) يقرأ extraRoles أو can['role.*'] لجلسةٍ بلا الحقل.
+  var x = (typeof _sbExtraRoles === 'function') ? _sbExtraRoles(App.user) : (App.user.extraRoles || []);
   for (var i = 0; i < x.length; i++) { if (String(x[i] || '') === r) return true; }
   return false;
 }
@@ -6014,9 +6090,10 @@ function _isNonGradedSubjClient(subj) {
 }
 
 function gradesVisPrefKey() {
-  var sch = (window.SCHOOL_ID || (App.user && App.user.schoolId) || 'default');
+  var sch = _tcCanonSchool();   // 38b: UUID الجلسة أوّلاً، مع نقل المفتاح القديم (slug/خام)
   var uid = (App.user && (App.user.id || App.user.name)) || 'me';
-  return 'gradesVis_' + sch + '_' + uid;
+  if (!sch) return 'gradesVis_default_' + uid;
+  return _tcSchoolLsKey('gradesVis_', '_' + uid, sch);
 }
 function loadGradesVisPref() {
   try {
@@ -6365,7 +6442,7 @@ function filterGradeCascade(gradeId, sectionId, applyFnName, allLabel) {
 // تجعل الفلاتر «تتذكّر» آخر اختيار عند العودة للقسم أو إعادة فتح المنصة.
 function _fltKey(page) {
   var who = (typeof App !== 'undefined' && App.user && App.user.teacherName) ? App.user.teacherName : '';
-  return 'tcflt_' + (window.SCHOOL_ID || '') + '_' + who + '_' + page;
+  return _tcSchoolLsKey('tcflt_', '_' + who + '_' + page);   // 38b: بالـUUID مع نقل المفتاح القديم
 }
 /* 🔤 **تسمياتُ الأدوار — مصدرٌ واحدٌ لكلّ سطح (2026-09-13، بلاغُ مالك).**
  * التفصيلُ والعلّةُ في `_js-news-cards-notes.html::_roleLabelFull`.
@@ -7987,6 +8064,7 @@ function _finishTeacherLoginSuccess(r, schoolId) {
     grantPages  : r.grantPages  || [],
     hidePages   : r.hidePages   || [],
     customRole  : r.customRole  || '',
+    extraRoles  : r.extraRoles  || [],   // 38b: الأدوارُ الإضافيّة من الخادم (`_sbEffectiveRoles`/`_tcHasRoleOrExtra`)
     subject     : r.subject     || (r.subjects && r.subjects[0]) || '',
     grade       : r.grade       || (r.classes && r.classes[0])   || '',
     section     : r.section     || (r.sections && r.sections[0]) || '',
@@ -7995,6 +8073,9 @@ function _finishTeacherLoginSuccess(r, schoolId) {
     expiresIn   : r.expiresIn   || 28800
   };
   saveSession(App.user);
+  // 38b: المعرّفُ القانونيّ (UUID) من الخادم لكلّ نداءٍ ومفتاحٍ بعد الدخول، والرابطُ بـslug المدرسة.
+  if (typeof _tcAdoptCanonSchool === 'function') _tcAdoptCanonSchool(App.user);
+  if (typeof _tcCanonUrlAfterLogin === 'function') _tcCanonUrlAfterLogin(App.user.schoolSlug);
   _startHeartbeat();
   hideLoginError();
   bootApp();
@@ -8011,13 +8092,34 @@ function _finishTeacherLoginSuccess(r, schoolId) {
 // ═══════════════════════════════════════════════════════════════════════════
 var BIOM_LS_PREFIX = 'biomDevice_teacher_';
 
-function _biomLsKey(schoolId) { return BIOM_LS_PREFIX + (schoolId || 'default'); }
+/* 38b: المفتاحُ بمعرّف المدرسة القانونيّ (UUID) — كان الحفظُ بالـUUID والقراءةُ بالخام، فاختفى الزرّ على
+   رابط الـslug. مفتاحٌ قديمٌ بشكلٍ آخر للمدرسة نفسِها يُنقَل مرّةً ويُمحى (`_tcSchoolLsKey`). */
+function _biomLsKey(schoolId) {
+  if (!schoolId) return BIOM_LS_PREFIX + 'default';
+  return (typeof _tcSchoolLsKey === 'function') ? _tcSchoolLsKey(BIOM_LS_PREFIX, '', schoolId) : BIOM_LS_PREFIX + schoolId;
+}
 
 function _biomLoadDevice(schoolId) {
   try {
     var raw = localStorage.getItem(_biomLsKey(schoolId));
+    if (!raw && schoolId) raw = _biomFindBySlug(schoolId);   // 38b
     return raw ? JSON.parse(raw) : null;
   } catch (e) { return null; }
+}
+/* 38b: صفحةٌ لم يحلّ الوسيطُ slugها (المعرّفُ هنا slug) وجهازٌ محفوظٌ بالـUUID: يُعرَف من `schoolSlug` المحفوظ معه. */
+function _biomFindBySlug(slug) {
+  try {
+    var s = String(slug || '').toLowerCase();
+    if (!s || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) return null;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k || k.indexOf(BIOM_LS_PREFIX) !== 0) continue;
+      var v = localStorage.getItem(k);
+      var o = v ? JSON.parse(v) : null;
+      if (o && o.schoolSlug && String(o.schoolSlug).toLowerCase() === s) return v;
+    }
+  } catch (e) {}
+  return null;
 }
 function _biomSaveDevice(schoolId, obj) {
   try { localStorage.setItem(_biomLsKey(schoolId), JSON.stringify(obj)); } catch (e) {}
@@ -8135,7 +8237,8 @@ function biomActivateOnThisDevice() {
           if (r && r.success) {
             _biomSaveDevice(App.user.schoolId, {
               deviceId: deviceId, credentialId: credentialIdB64, label: teacherName,
-              encrypted: encrypted, secret: storedSecretValue
+              encrypted: encrypted, secret: storedSecretValue,
+              schoolSlug: App.user.schoolSlug || ''   // 38b: يُعرَف به الجهازُ على رابط slug غير محلول
             });
             toast('✅ تم تفعيل الدخول بالبصمة على هذا الجهاز', 'success');
             try { _biomRenderProfileSection(); } catch (eRefresh) {}
@@ -8222,8 +8325,10 @@ function _biomRenderLoginButton() {
   if (!wrap) return;
   wrap.innerHTML = '';
   if (!_biomSupported()) return;
+  // 38b: نفسُ المعرّف القانونيّ الذي يُحفظ به الجهاز (UUID حين يُعرَف)، لا الخامُ من الرابط.
   var urlParams = new URLSearchParams(window.location.search);
-  var schoolId = (typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID : (urlParams.get('school') || urlParams.get('schoolId') || '');
+  var schoolId = (typeof _tcCanonSchool === 'function') ? _tcCanonSchool()
+    : ((typeof SERVER_SCHOOL_ID !== 'undefined' && SERVER_SCHOOL_ID) ? SERVER_SCHOOL_ID : (urlParams.get('school') || urlParams.get('schoolId') || ''));
   var dev = _biomLoadDevice(schoolId);
   if (!dev) return;
   var btn = document.createElement('button');
@@ -8966,7 +9071,11 @@ function _lrHandoffStudent(stu, schoolId, btn) {
   var pw = document.getElementById('loginPassword');
   if (pw) pw.value = '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ فتح بوابة الطالب…'; }
-  _lrGoTo(_lrStudentPortalUrl(_lrUrlSchool(schoolId)), btn, 'متابعة إلى بوابة الطالب', null);
+  /* 38b: على الموقع المستضاف الرابطُ بـslug المدرسة حين يعطيه الخادم (الشكلُ القانونيّ للرابط)؛
+     حارسُ الاستعادة يقبل الشكلين، والجلسةُ تحمل الـUUID. بلا slug ⇒ صيغةُ المستخدم كما كانت. */
+  var _lrSlug = (window.GAS_ENDPOINT && stu.schoolSlug && /^[a-z0-9-]+$/i.test(String(stu.schoolSlug)))
+    ? String(stu.schoolSlug).toLowerCase() : '';
+  _lrGoTo(_lrStudentPortalUrl(_lrSlug || _lrUrlSchool(schoolId)), btn, 'متابعة إلى بوابة الطالب', null);
   return true;
 }
 
@@ -11394,11 +11503,13 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-attendance':       { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'📋 الغياب اليومي',             defaultVisible:true  } },
   'si-teacher-absence':  { roles:['admin','deputy'],                              accountant:true, /* 2026-09-24: قرارُ مالك — غيابُ المعلّمين مع المحاسب */ supervisor:{ configurable:true, label:'🧑‍🏫 غياب المعلمين',        defaultVisible:true  } },
   'si-teachers-mgmt':    { roles:['admin','deputy','it'],                         accountant:true, /* 2026-09-24: `accounts.manage` = المدير والوكيل والحاسوب والمحاسب */ supervisor:{ configurable:false, alwaysHidden:true } },   // 2026-09-23: `accounts.manage` لا تمنح المشرف ⇒ لا تُفعَّل له صفحةٌ يرفضها الخادم
-  'si-adminStudents':    { roles:['admin'],                                       accountant:false, /* 2026-09-24: الخادمُ يقبل المديرَ وحدَه (`saveBlockSettings`/`renderAdminStudents`) ⇒ لا تُفعَّل لمشرفٍ صفحةٌ يرفضها */ supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-adminStudents':    { roles:['admin'],                                       accountant:false, /* 38e: `students.admin` · 2026-09-24: الخادمُ يقبل المديرَ وحدَه (`saveBlockSettings`/`renderAdminStudents`) ⇒ لا تُفعَّل لمشرفٍ صفحةٌ يرفضها */ supervisor:{ configurable:false, alwaysHidden:true } },
   'si-adminActivities':  { roles:['admin','deputy','activities'],                 accountant:false, supervisor:{ configurable:true, label:'📋 جميع الأنشطة',              defaultVisible:true  } },
   // المحاسب: مسموح **خادمياً منذ البداية** (`_tcCanCertificates` تُرجِع true للمحاسب صراحةً،
   // وتعليق `getScoreSheetsDataProtected` يقول «مدير/وكيل/محاسب») — وكانت القائمة وحدها تُخفيهما.
   // أي عكس بند 28: الخادم يسمح والعرض يمنع. فُتِحا بطلب المالك 2026-08-10 بلا أي تغيير خادمي.
+  // 38e: المشرفُ لا يملك `certificates.read` افتراضياً فتبقيان مخفيّتين عنه؛ وتعليمُهما في صفحاته
+  // يمنحه القدرةَ نفسَها خادمياً (pagePerms ⇒ caps في `_auth_buildTeacherFromName_`) — فالمفتاحُ صادق.
   'si-certificates':     { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'🏅 الشهادات',                  defaultVisible:false } },
   'si-scoresheets':      { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'📋 الكشوفات',                  defaultVisible:false } },
   'si-myTasks':          { roles:null,                                           accountant:true,  supervisor:{ configurable:true, label:'✅ مهامي',                     defaultVisible:true  } },
@@ -11411,13 +11522,15 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   // الصفحات المحفوظة كان لا يرى تقييمه (31c) ولا يؤكّد الاطلاع عليه.
   'si-evaluations':      { roles:['admin','deputy','activities','teacher','it','media'], accountant:true, supervisor:null },
   // الدفعة 30: `playground.view` = المدير والوكيل والمحاسب والمشرف والأنشطة؛ الحجزُ والحساباتُ بقدرتَين أدقّ داخل الصفحة.
-  'si-playground':       { roles:['admin','deputy','activities'],                 accountant:true,  supervisor:{ configurable:true, label:'⚽ الملعب', defaultVisible:false } },
+  // 38e: المشرفُ يملك `playground.view` افتراضياً ⇒ ظاهرةٌ له افتراضياً (قائمةُ صفحاته المحفوظة تبقى الحاكمة).
+  'si-playground':       { roles:['admin','deputy','activities'],                 accountant:true,  supervisor:{ configurable:true, label:'⚽ الملعب', defaultVisible:true  } },
   'si-studentDirectory': { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🎒 أسماء الطلاب',              defaultVisible:true  } },
   'si-studentStatus':    { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🔎 بيان حالة طالب',            defaultVisible:true  } },
   // الدفعة 36: الخادمُ يفحص القدرةَ بنفسه — `archive.view` · `books.view` · `admissions.manage` · `promotion.review`.
   // القبولُ والترقيةُ لا تُمنحان للمشرف ⇒ مخفيّتان عنه دوماً (لا تُفعَّل له صفحةٌ يرفضها الخادم).
   'si-docArchive':       { roles:['admin','deputy','it'],                         accountant:false, supervisor:{ configurable:true, label:'🗂️ أرشيف الوثائق',             defaultVisible:true  } },
-  'si-textbooks':        { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'📚 الكتب المدرسية',            defaultVisible:false } },
+  // 38e: المشرفُ يملك `books.view` افتراضياً ⇒ ظاهرةٌ له افتراضياً.
+  'si-textbooks':        { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'📚 الكتب المدرسية',            defaultVisible:true  } },
   'si-admissions':       { roles:['admin','deputy','it'],                         accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-promotion':        { roles:['admin','deputy'] /* 36q: `promotion.review`؛ التشغيل والاسترجاع `promotion.run` للمدير داخل الصفحة */, accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-letterheads':      { roles:['admin','deputy','teacher'],                    accountant:false, supervisor:{ configurable:true, label:'🗂️ ديباجات المدرسة',           defaultVisible:true  } },
@@ -11431,18 +11544,18 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   // تغييرُ هذا العلم وحده إلى true. و`_sbApplyAccountant` تهبط على أوّل عنصر **ظاهر**
   // لا على اسم قسم مثبَّت — وإلّا أنزل هذا الإخفاءُ المحاسبَ على صفحة مخفيّة.
   'si-financial':        { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
-  'si-visits':           { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-visits':           { roles:['admin'] /* 38e: `visits.view` */,              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-supervisorPerms':  { roles:['admin'],  /* 2026-09-24: «ضبط صلاحيات الأدوار» — `rolePerms.manage` للمدير وحدَه */ accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-lists-mgmt':       { roles:['admin','deputy'],                              accountant:false, /* 2026-09-24: `lists.manage` */ supervisor:{ configurable:false, alwaysHidden:true } },
   'si-examctrl':         { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-schedSettings':    { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
-  'si-schoolTemplate':   { roles:['admin'],                                       accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-schoolTemplate':   { roles:['admin'] /* 38e: `schoolTemplate.manage` */,    accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   // `deputy` أُضيف 2026-08-10 لأن «🔗 منصاتي» انتقلت إلى داخل هذه الصفحة وأُسقط عنصرها
   // من الشريط — و`getMyPlatformLinksProtected` تقبل المدير والوكيل معاً، فبقاء الصفحة
   // على `admin` وحده كان سيسلب الوكيلَ ميزةً عاملة. ونموذجُ تعديل البيانات نفسه يبقى
   // للمدير حصراً **داخل** `renderSchoolBrand` (جسر HMAC يقبل مدير المدرسة وحده) —
   // فلا زرَّ حفظٍ ظاهرٍ يرفضه الخادم (بند 30).
-  'si-schoolBrand':      { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-schoolBrand':      { roles:['admin','deputy'] /* 38e: `schoolBrand.manage` */, accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   // 🗑️ حُذفا 2026-08-10 بطلب المالك: `si-auditLog` (خرج سجل التدقيق كاملاً من المنصّة،
   // ودالّته `getSchoolAuditLogProtected` صارت محجوبة عن الويب) و`si-myPortals` (انتقل
   // محتواها إلى صفحة «بيانات المدرسة» أعلاه).
@@ -11546,14 +11659,31 @@ function _sbSyncSections() {
  * دورَيه، **ولا تُخفى صفحةٌ كان يراها**. ومَن بلا `extraRoles` مخرَجُه **مطابقٌ حرفياً**
  * لما قبل التغيير — ويفرضه ضابطٌ يحسب مجموعةَ صفحاتِ كلِّ دورٍ من الثمانية قبل/بعد.
  * ⚠️ وتُقصَر على الأدوار القانونية الثمانية فلا تُسرّب قيمةً غريبةً من الجلسة. */
+/* 38e: الأدوارُ الإضافيّةُ من الجلسة (`extraRoles`)، وإن غابت (صفحةٌ أو جلسةٌ أقدم لا تحملها)
+ * فمن قدرات الخادم `can['role.it'|'role.media'|'role.activities']` — ولا تكون إلّا هذه الثلاثة
+ * (كـ`AUTH_EXTRA_ROLES` في الخادم): الدورُ الإضافيُّ لا يصنع مديراً ولا وكيلاً. */
+var SB_EXTRA_ROLES = { activities:1, it:1, media:1 };
+function _sbExtraRoles(u) {
+  var out = [], i, e;
+  if (u && Object.prototype.toString.call(u.extraRoles) === '[object Array]') {
+    for (i = 0; i < u.extraRoles.length; i++) {
+      e = String(u.extraRoles[i] || '');
+      if (SB_EXTRA_ROLES[e] && out.indexOf(e) === -1) out.push(e);
+    }
+    return out;
+  }
+  var can = (u && u.can) ? u.can : null;
+  if (can) for (e in SB_EXTRA_ROLES) if (SB_EXTRA_ROLES.hasOwnProperty(e) && can['role.' + e] === true) out.push(e);
+  return out;
+}
 function _sbEffectiveRoles(role, u) {
   var LEGAL = { admin:1, deputy:1, supervisor:1, accountant:1, activities:1, it:1, media:1, teacher:1 };
   var out = [];
   if (LEGAL[role]) out.push(role);
-  var extra = (u && u.extraRoles) ? u.extraRoles : [];
+  var extra = _sbExtraRoles(u);
   for (var i = 0; i < extra.length; i++) {
-    var e = String(extra[i] || '');
-    if (LEGAL[e] && out.indexOf(e) === -1) out.push(e);
+    var e = extra[i];
+    if (out.indexOf(e) === -1) out.push(e);
   }
   if (!out.length) out.push('teacher');   // نفسُ تراجعِ `_sbResolveRole`
   return out;
@@ -15855,7 +15985,9 @@ function renderScheduleSettings() {
 var SGT_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 function _sgtBlockHtml() {
-  if ((App.user || {}).role !== 'admin') return '';
+  // 38e2: نفسُ بوّابة الخادم (`teacherBridgeActionProtected` ⇒ `schoolTemplate.manage`، المديرُ افتراضياً).
+  var _u = App.user || {};
+  if (!(_u.can ? hasCap('schoolTemplate.manage') : _u.role === 'admin')) return '';
   return '' +
     '<div class="section-header" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
       '<div class="section-header-icon" style="background:rgba(16,185,129,.12)">📄</div>' +
@@ -16096,6 +16228,9 @@ function renderSchoolTemplateBridge() {
 // للوكيل، والنموذج وحده محجوب عنه، و«منصاتي» تظهر للاثنين.
 function renderSchoolBrand() {
   var el = document.getElementById('dynamicContent');
+  /* 38e2 (بموافقة القائد): الصفحةُ و«منصّاتي» بقدرة `schoolBrand.manage` (المديرُ والوكيلُ افتراضياً)، أمّا نموذجُ
+     التعديل فيبقى للمدير حرفياً كخادمه (`updateBrand` و`_SchoolPageContent.js` و`CMS_ALLOWED_ROLES` في cms) —
+     ربطُه بالقدرة كان سيمنح الوكيلَ تعديلَ هويّة المدرسة. */
   var _sbIsAdmin = ((App.user || {}).role === 'admin');
   if (!_sbIsAdmin) {
     // الوكيل: «منصاتي» وحدها — بلا نموذج تعديل يرفضه الخادم أصلاً.
@@ -16360,6 +16495,8 @@ function _sbSubmit(payload, st) {
                    ? SERVER_SCHOOL_ID : (window.SCHOOL_ID || '');
         localStorage.removeItem('tcBrand_' + _sid);
         localStorage.removeItem('tcBrand_');
+        // 38b: والمفتاحُ بكلّ أشكال المدرسة (UUID · slug · الخام) — لا تبقى هويّةٌ قديمة بشكلٍ آخر.
+        if (typeof _tcSchoolLsRemove === 'function') _tcSchoolLsRemove('tcBrand_', '');
       }
     } catch (eDrop) {}
     try {
@@ -27037,9 +27174,16 @@ function renderAdminActivitiesTab(tab) {
 }
 // ==================== ADMIN STUDENTS (نسخة مصححة لـ ES5) ====================
 
+/* 38e2: الصفحةُ بقدرة `students.admin`، والحجبُ وإشعاراتُ السداد بقدرة `finance.manage` — كما يفحصها الخادم،
+   فمن مُنح القدرةَ بالورقة لا يرى زرّاً يرفضه الخادم. جلسةٌ قديمةٌ بلا `can` ⇒ المديرُ وحده كما كان. */
+function _asCan(cap) {
+  if (App.user && App.user.can) return hasCap(cap);
+  return isFullAdmin();
+}
+
 function renderAdminStudents() {
   if (!App.user) { toast('بيانات المستخدم غير متوفرة', 'error'); showSection('dashboard'); return; }
-  if (!isFullAdmin()) {
+  if (!_asCan('students.admin')) {
     toast('صفحة الحجب المالي متاحة للمدير فقط', 'error');
     showSection('dashboard');
     return;
@@ -27113,7 +27257,7 @@ window._allStudentsRaw = [];
 window._filteredStudents = [];
 
 function loadStudentsList() {
-  if (!isFullAdmin()) return;
+  if (!_asCan('students.admin')) return;
   showLoading('جاري تحميل بيانات الطلاب...');
   callServer('adminGetAllStudents', {}, 'admin_students', 300, function(r) {
     hideLoading();
@@ -27147,7 +27291,7 @@ function loadStudentsList() {
 
 function loadBlockSettings() {
   // منع الوكيل والمشرف من الوصول إلى إعدادات الحجب المالي
-  if (!isFullAdmin()) {
+  if (!_asCan('finance.manage')) {
     toast('غير مصرح لك بهذه العملية', 'error');
     return;
   }
@@ -27177,7 +27321,7 @@ function updateBlockStatsWithCurrentSettings() {
 
 function saveBlockSettings() {
   // منع الوكيل والمشرف من الوصول إلى إعدادات الحجب المالي
-  if (!isFullAdmin()) {
+  if (!_asCan('finance.manage')) {
     toast('غير مصرح لك بهذه العملية', 'error');
     return;
   }
@@ -27202,7 +27346,7 @@ function saveBlockSettings() {
 
 function saveFinancialBlockSettings() {
   // منع الوكيل والمشرف من الوصول إلى إعدادات الحجب المالي
-  if (!isFullAdmin()) {
+  if (!_asCan('finance.manage')) {
     toast('غير مصرح لك بهذه العملية', 'error');
     return;
   }
@@ -27268,7 +27412,7 @@ function sendStudentPaymentNotice(code) {
 
 // (ج4) إرسال إشعارات سداد لكل المتأخّرين دفعةً (متبقّي > 0)
 function sendBulkPaymentNotices() {
-  if (!isFullAdmin()) { toast('غير مصرح لك بهذه العملية', 'error'); return; }
+  if (!_asCan('finance.manage')) { toast('غير مصرح لك بهذه العملية', 'error'); return; }
   confirmAction(
     'إرسال إشعارات للمتأخّرين',
     'إرسال إشعار سداد لكل طالب لديه رسوم متبقّية؟ (يُتجاوز من أُرسل له إشعار اليوم)',
@@ -27287,7 +27431,7 @@ function sendBulkPaymentNotices() {
 // (ج4) تبديل حجب رسوم طالب واحد عن منصته (قائمة العمود F في «الاعدادات»)
 function toggleStudentFeesHidden(code, hide) {
   if (!code) return;
-  if (!isFullAdmin()) { toast('غير مصرح لك بهذه العملية', 'error'); return; }
+  if (!_asCan('finance.manage')) { toast('غير مصرح لك بهذه العملية', 'error'); return; }
   showLoading(hide ? 'جاري حجب الرسوم...' : 'جاري إظهار الرسوم...');
   callServer('setStudentFeesHiddenProtected', { studentCode: code, hidden: hide }, function(r) {
     hideLoading();
@@ -31325,6 +31469,7 @@ window.onload = function() {
   try { _hoAt = parseInt(localStorage.getItem('teacherHandoffAt') || '0', 10) || 0; localStorage.removeItem('teacherHandoffAt'); } catch (eHo) {}
   if (saved && saved.token && _hoAt && (Date.now() - _hoAt) < 120000) {
     App.user = saved;
+    if (typeof _tcAdoptCanonSchool === 'function') _tcAdoptCanonSchool(App.user);   // 38b
     _startHeartbeat();
     hideLoading();
     bootApp();
@@ -31370,6 +31515,7 @@ window.onload = function() {
             grantPages  : r.grantPages  || [],                        // صفحاتٌ منحها المدير
             hidePages   : r.hidePages   || [],                        // صفحاتٌ قدرتُها مُطفأة
             customRole  : r.customRole  || '',
+            extraRoles  : r.extraRoles  || saved.extraRoles || [],    // 38b: الأدوارُ الإضافيّة
             subject     : r.subject     || (r.subjects  && r.subjects[0])  || '',
             grade       : r.grade       || (r.classes   && r.classes[0])   || '',
             section     : r.section     || (r.sections  && r.sections[0])  || '',
@@ -31379,6 +31525,7 @@ window.onload = function() {
           };
           // تحديث الجلسة المحفوظة بالبيانات الجديدة من الخادم
           saveSession(App.user);
+          if (typeof _tcAdoptCanonSchool === 'function') _tcAdoptCanonSchool(App.user);   // 38b
           _startHeartbeat();
           hideLoading();
           bootApp();
@@ -36345,7 +36492,7 @@ function _tfOpForm(type, prefill){
       _tfFld('tfop-code','كود الطالب','list="tfop-stulist" value="'+_tfEsc(prefill.code||'')+'" oninput="_tfOpFillName()"')+
       _tfFld('tfop-name','اسم الطالب','value="'+_tfEsc(prefill.name||'')+'"')+
       _tfFld('tfop-newfee','الرسوم الدراسية الجديدة (ريال)','type="number" inputmode="numeric" value="'+(prefill.newFee||'')+'"')+
-      '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.6;">تُحدِّث «الرسوم الدراسية» للطالب في سجلّ المدرسة فورًا.</div>';
+      '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.6;">تُحدِّث «الرسوم الدراسية» للطالب، و«اجمالي الرسوم» = الجديدة + «الباقي من السابق»، في سجلّ المدرسة فورًا.</div>';
   } else { return; }
   body+='<div id="tfop-status" style="margin-top:12px;font-size:13px;min-height:18px;"></div>'+
     '<div id="tfop-btns" style="margin-top:10px;display:flex;gap:8px;">'+
@@ -36383,7 +36530,9 @@ function _tfOpSubmit(type){
     var doneMsg=res.direct?
       '✅ ظهرت فورًا في السجل المالي.':
       '✅ سُجّلت العملية في سجلّ المدرسة.';
-    if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">'+doneMsg+'</span>'+
+    /* 38g: سندٌ بلا كود يُحفظ، لكنّه لا يدخل في رصيد أيّ طالب (الأرصدة كلُّها بالكود) — تنبيهُ الخادم يظهر هنا. */
+    var warnMsg=res.warning?('<div style="margin-top:6px;color:var(--tf-amber);font-weight:700;">⚠️ '+_tfEsc(res.warning)+'</div>'):'';
+    if(st) st.innerHTML='<span style="color:var(--tf-green);font-weight:700;">'+doneMsg+'</span>'+warnMsg+
       '<div style="margin-top:10px;display:flex;gap:8px;">'+
       '<button class="tf-abtn" style="background:var(--tf-blue);color:#fff;border-color:var(--tf-blue);" onclick="_tfPrintLastOp()">🖨️ طباعة السند</button>'+
       '<button class="tf-abtn" onclick="_tfModalClose();_tfLoad(true);">إغلاق</button></div>';
