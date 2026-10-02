@@ -239,7 +239,7 @@ Apps Script واحد** ⇒ حملُ الطالب يُسقط دخولَ المع�
 | `/gas/<app>` | يمرّر POST/GET إلى GAS `/exec` المقابل — 🔴 **ثمانيةُ أسماءٍ وسبعةُ معرّفات** (مُصحَّحٌ 2026-09-24): `home` · `home-all-school` · `teacher` · `student` (⇒ نشرةُ `teacher`) · `cms` · `master-admin` · `pricing` (خاملةٌ تردّ 200) · `schedule` (⇒ **410** بلا نداء). انظر §المعمارية والجدولَ الحاكم |
 | `/qr-img?url=...` | Proxy لصور QR من `api.qrserver.com` (fallback عند الحجب) |
 | `/qr-download?url=&name=` | تحميل QR كـ attachment |
-| `/oauth` | إعادة توجيه OAuth من فيسبوك/إنستغرام → GAS CMS |
+| `/oauth` | عودة OAuth من فيسبوك (34g): الوسيط يكمل الربط من الخادم (`GAS.cms?action=fb_oauth&format=json`، لطلبات GET فقط) ويعرض صفحته على yemenschoolz.com، ثم يعيد المستخدم إلى `returnUrl` (‏`https://yemenschoolz.com/` فقط). لا تحويل 302 إلى GAS: صفحة GAS لا تستطيع نقل النافذة العليا |
 | `/pricing` · `/register` | **301 على المضيف نفسِه** (2026-09-19): `/pricing` ⇒ `/#pricing` (قرار المالك: الأسعار في قسم الرئيسية وحدَه) · `/register` ⇒ `/master-admin/register.html` (كان يُقرأ slug فيكلّف نداءَ GAS ثمّ ٤٠٤). `Location` نسبيّ و`max-age=3600`. 🔒 **الاسمان محجوزان** في `_RESERVED_TOP_PATHS` — إسقاطُهما يجعلهما slug مدرسةٍ قابلاً للاختطاف |
 | `/media/drive/<fileId>` | بثّ فيديو Google Drive كـ `video/mp4` مع دعم Range requests (بثّ مباشر بلا تخزين، يتجاوز فحص الفيروسات لملفات Drive الكبيرة) |
 | `/drive-upload` | وسيط رفع resumable إلى جلسة Drive (PUT مباشر)، مع تحقّق SSRF مقيَّد بنطاق `*.googleapis.com` فقط |

@@ -2948,6 +2948,151 @@ function _brandRewrite(rw, brand, surface) {
   return rw;
 }
 
+/* ═══ 34g-2 (2026-10-02) — عودة ربط فيسبوك: الوسيط يُكمل الربط ويعرض صفحته هو ═══
+   كان /oauth يحوّل 302 إلى cms، فتُعرض صفحة GAS داخل إطار جوجل ويبقى المتصفّح على رابط
+   script.google.com؛ ولا تستطيع تلك الصفحة إعادة النافذة العليا إلى المنصّة، وموقعنا يمنع تأطيره.
+   الآن ينادي الوسيط cms من الخادم (action=fb_oauth&format=json) ثم يعرض صفحة عربية صغيرة على نطاقنا:
+   زرٌّ يعيد المستخدم إلى الصفحة التي بدأ منها، والنجاحُ وحده يعود تلقائياً بعد 3 ثوانٍ (meta refresh بلا سكربت).
+   العقد مع cms: ردّ 200 بصيغة JSON فيه ok و title و message (نصّ لا HTML) و returnUrl و returnLabel.
+   النتيجة المجهولة (ليست JSON، أو بلا ok و message، أو عطل شبكة، أو مهلة) ⇒ صفحة فشل محايدة، ولا رجوع
+   إلى 302 أبداً: رمز الربط لمرّة واحدة، وربما استهلكه النداء الأوّل.
+   نداءٌ نادر (ربطٌ واحد لكلّ مدرسة) ⇒ خارج المنظّم عمداً، بمهلته الخاصّة.
+   الحارس: school-app-yemen-gas/tests/worker_oauth_34g.test.js يقرأ هذه الكتلة من هذا الملف ويشغّلها. */
+var OAUTH_SITE = 'https://yemenschoolz.com/';
+var OAUTH_FALLBACK_RETURN = 'https://yemenschoolz.com/teacher/index.html';
+var OAUTH_CMS_TIMEOUT_MS = 60000;
+var OAUTH_UNKNOWN_MSG = 'تعذّر التأكد من نتيجة الربط. افتح «بيانات المدرسة» لترى الحالة، أو اضغط «اتصل بفيسبوك» من جديد.';
+var OAUTH_INFO = {
+  info: true, ok: false, title: 'ربط صفحة فيسبوك',
+  message: 'هذه صفحة العودة بعد الموافقة في فيسبوك. لبدء الربط افتح «بيانات المدرسة» واضغط «اتصل بفيسبوك».',
+  returnUrl: OAUTH_FALLBACK_RETURN, returnLabel: 'افتح منصّة المدرسة'
+};
+
+// هل في الاستعلام نتيجةٌ من فيسبوك؟ بلا code ولا state ولا error ⇒ صفحة تعريف بلا أيّ نداء على GAS.
+function _oauthHasResult(sp) {
+  return !!sp && (sp.has('code') || sp.has('state') || sp.has('error'));
+}
+
+// رابط cms: action و format أوّلاً ثم الاستعلام الأصلي كما هو. في Apps Script يأخذ e.parameter أوّل قيمة
+// لكلّ اسم، فلا يستطيع استعلامٌ مصنوع أن يغيّرهما.
+function _oauthCmsUrl(base, search) {
+  var qs = String(search || '').replace(/^\?/, '');
+  return base + '?action=fb_oauth&format=json' + (qs ? '&' + qs : '');
+}
+
+// رابط العودة على نطاقنا وحده: يبدأ حرفياً بـ https://yemenschoolz.com/ (الشرطة الأخيرة ترفض
+// yemenschoolz.com.evil.com و @ والمنفذ)، ومحارفه ASCII مطبوعة بلا فراغ ولا علامات تنصيص ولا
+// أقواس زاوية ولا شرطة مائلة عكسية. وإلّا ⇒ منصّة المعلّم.
+function _oauthReturnUrl(u) {
+  var s = (typeof u === 'string') ? u : '';
+  if (s.length > 2000 || s.indexOf(OAUTH_SITE) !== 0) return OAUTH_FALLBACK_RETURN;
+  if (!/^[\x21-\x7e]+$/.test(s) || /[\x22\x27\x3c\x3e\x5c\x60]/.test(s)) return OAUTH_FALLBACK_RETURN;
+  return s;
+}
+
+// نتيجة مجهولة: رسالة محايدة وزرّ إلى منصّة المعلّم. why للسجلّ وحده (قيمٌ ثابتة من هنا لا من الطلب).
+function _oauthUnknown(why) {
+  return { known: false, ok: false, why: why, title: 'نتيجة الربط غير مؤكَّدة', message: OAUTH_UNKNOWN_MSG,
+           returnUrl: OAUTH_FALLBACK_RETURN, returnLabel: 'افتح منصّة المدرسة' };
+}
+
+// ردّ cms ⇒ نتيجة معروفة، أو null حين لا يحمل ok منطقياً ورسالةً غير فارغة (هما ما يحدّد النتيجة).
+// للعنوان والزرّ بديلان، والرابط يمرّ بالتحقّق، والأطوال محدودة.
+function _oauthNormalize(j) {
+  if (!j || typeof j !== 'object' || typeof j.ok !== 'boolean' ||
+      typeof j.message !== 'string' || !j.message.trim()) return null;
+  var title = (typeof j.title === 'string' && j.title.trim()) ? j.title.trim() : (j.ok ? 'تم الربط بنجاح' : 'تعذّر الربط');
+  var label = (typeof j.returnLabel === 'string' && j.returnLabel.trim()) ? j.returnLabel.trim() : 'العودة إلى المنصّة';
+  return { known: true, ok: j.ok, title: title.slice(0, 150), message: j.message.trim().slice(0, 2000),
+           returnUrl: _oauthReturnUrl(j.returnUrl), returnLabel: label.slice(0, 80) };
+}
+
+// نداء cms من الخادم بمهلة OAUTH_CMS_TIMEOUT_MS. fetch يتبع تحويل جوجل إلى googleusercontent وحده.
+// لا يرمي أبداً: كلّ عطل ⇒ _oauthUnknown بسببه.
+async function _oauthFetchResult(cmsUrl) {
+  var ctl = new AbortController();
+  var timer = setTimeout(function () { ctl.abort(); }, OAUTH_CMS_TIMEOUT_MS);
+  try {
+    var resp = await fetch(cmsUrl, { method: 'GET', redirect: 'follow', signal: ctl.signal });
+    var txt = await resp.text();
+    if (!resp.ok) return _oauthUnknown('http_' + resp.status);
+    var j;
+    try { j = JSON.parse(txt); } catch (eJ) { return _oauthUnknown('nonjson'); }
+    return _oauthNormalize(j) || _oauthUnknown('shape');
+  } catch (e) {
+    return _oauthUnknown(ctl.signal.aborted ? 'timeout' : 'network');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// صفحة النتيجة: عربية RTL بلا موارد خارجية ولا سكربت. كلّ نصّ يمرّ بـ _attrEsc (يهرّب الأربعة الخطرة)
+// فيصلح للنصّ وللسمة بين علامتي تنصيص مزدوجتين، والرابط يُعاد فحصه هنا أيضاً.
+// النجاح وحده يعود تلقائياً بعد 3 ثوانٍ؛ الفشل يبقى ليقرأ المستخدم الرسالة.
+function _oauthPage(r) {
+  r = r || {};
+  var info = r.info === true, ok = r.ok === true && !info;
+  var href = _attrEsc(_oauthReturnUrl(r.returnUrl));
+  var title = _attrEsc(r.title);
+  var tone = ok ? '#1e8e3e' : (info ? '#0F5C8C' : '#c5221f');
+  var mark = ok ? '&#10003;' : (info ? 'i' : '!');
+  return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/>' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1"/>' +
+    '<meta name="robots" content="noindex, nofollow"/>' +
+    (ok ? '<meta http-equiv="refresh" content="3;url=' + href + '"/>' : '') +
+    '<link rel="icon" href="data:,"/>' +
+    '<title>' + title + ' | يمن سكولز</title>' +
+    '<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;' +
+    'background:#f1f5f9;color:#0f172a;font-family:Cairo,Tahoma,sans-serif;padding:16px}' +
+    '.c{background:#fff;width:100%;max-width:28rem;padding:28px 22px;border-radius:16px;text-align:center;' +
+    'box-shadow:0 10px 30px rgba(15,23,42,.1)}' +
+    '.i{width:64px;height:64px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;' +
+    'background:' + tone + ';color:#fff;font-size:34px;font-weight:700;line-height:1}' +
+    'h1{margin:0 0 10px;font-size:1.3rem;color:#0F5C8C}' +
+    '.m{margin:0 0 20px;line-height:1.9;color:#334155;white-space:pre-line;overflow-wrap:anywhere}' +
+    '.b{display:inline-block;background:#0F5C8C;color:#fff;text-decoration:none;padding:11px 24px;' +
+    'border-radius:10px;font-weight:700}.s{margin:14px 0 0;font-size:.85rem;color:#64748b}</style>' +
+    '</head><body><main class="c">' +
+    '<div class="i" aria-hidden="true">' + mark + '</div>' +
+    '<h1>' + title + '</h1>' +
+    '<p class="m">' + _attrEsc(r.message) + '</p>' +
+    '<a class="b" href="' + href + '">' + _attrEsc(r.returnLabel) + '</a>' +
+    (ok ? '<p class="s">ستعود تلقائياً خلال ثوانٍ.</p>' : '') +
+    '</main></body></html>';
+}
+
+// رؤوس الصفحة: المسار يعود مبكراً فلا يمرّ بكتلة الرؤوس الأمنية أسفل الملف، فتُكتب كاملةً هنا ولا يغيّرها
+// شيءٌ بعدها. الرابط يحمل code لمرّة واحدة ⇒ no-referrer و no-store. ولا سكربت ⇒ CSP بلا script-src.
+// و HSTS مشروطٌ بالمضيف كبقيّة المسارات المبكرة.
+function _oauthHeaders(hostname) {
+  var canon = (hostname === 'yemenschoolz.com' || hostname === 'www.yemenschoolz.com');
+  return {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'Strict-Transport-Security': canon ? 'max-age=15552000; includeSubDomains' : 'max-age=300',
+    'X-Robots-Tag': 'noindex, nofollow'
+  };
+}
+
+// المعالج كاملاً. لا يُسجَّل الاستعلام ولا code ولا state أبداً: السجلّ يحمل النتيجة والزمن وسبب الجهالة فقط.
+// 🔴 (مراجعة 34g) GET وحده يُكمل الربط: رابط العودة لمرّة واحدة، فطلبُ HEAD أو POST (فاحصُ روابط، معاينة)
+// كان سيستهلكه قبل وصول متصفّح المستخدم. غيرُ GET ⇒ صفحة المعلومات بلا أيّ نداءٍ لـcms.
+async function _oauthRoute(url, method) {
+  var res = OAUTH_INFO;
+  if (method === 'GET' && _oauthHasResult(url.searchParams)) {
+    var t0 = Date.now();
+    res = await _oauthFetchResult(_oauthCmsUrl(GAS.cms, url.search));
+    _bhLog({ ev: 'oauth', act: res.known ? (res.ok ? 'ok' : 'fail') : 'unknown',
+             why: res.known ? undefined : res.why, ms: Date.now() - t0 });
+  }
+  return new Response(_oauthPage(res), { status: 200, headers: _oauthHeaders(url.hostname) });
+}
+/* ═══ نهايةُ عودة OAuth (34g-2) ═══ */
+
 export default {
   async fetch(request, env, ctx) {
     var url = new URL(request.url);
@@ -3612,16 +3757,14 @@ export default {
     }
 
     // ── 1ب) عودة OAuth من فيسبوك/إنستغرام: /oauth ───────────────
-    //   Meta يعيد التوجيه إلى /oauth?code=...&state=schoolId
-    //   إعادة توجيه حقيقية (لا جلب+بثّ) — صفحات GAS HtmlService تُخدَم داخل
-    //   إطار Sandbox من جوجل يعتمد مسارات نسبية (goog.script.init، CSS/JS ثابتة)؛
-    //   جلب البايتات وبثّها تحت نطاقنا يكسر تلك المسارات (goog is not defined،
-    //   404 على mae_html_css_rtl.css) ويترك الإطار فارغاً. التوجيه الحقيقي يُبقي
-    //   المتصفّح على نطاق جوجل الصحيح فتعمل الصفحة كبقية صفحات GAS الأخرى.
+    //   Meta يعيد التوجيه إلى /oauth?code=...&state=... (state رمزٌ موقَّع لمرّة واحدة منذ 34f، فيه
+    //   المدرسة)، أو إلى /oauth?error=... حين يرفض المستخدم.
+    //   🔁 34g-2: لم يعد تحويلاً 302 إلى cms — صفحة GAS كانت تبقى داخل إطار جوجل على رابط
+    //   script.google.com ولا تستطيع إعادة النافذة العليا. الوسيط يُكمل الربط من الخادم بصيغة JSON
+    //   ويعرض صفحته هو على نطاقنا (_oauthRoute أعلى الملف). ولا يُبثّ HTML جوجل كما هو (كان يكسر
+    //   مساراته النسبية): نقرأ JSON ونبني صفحتنا.
     if (path === '/oauth' || path === '/oauth/') {
-      var qs = url.search ? url.search.replace(/^\?/, '') : '';
-      var oauthTarget = GAS.cms + '?action=fb_oauth' + (qs ? '&' + qs : '');
-      return Response.redirect(oauthTarget, 302);
+      return _oauthRoute(url, request.method);
     }
 
     /* ── 🗑️ 1ج) `/pricing` — حُذف المعالجُ 2026-09-10 بقرار المالك ─────────────────
