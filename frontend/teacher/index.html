@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610022043;
+    window.WEB_BUILD_TS = 202610022050;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -8444,7 +8444,8 @@ function bootApp() {
     var _dlQs = new URLSearchParams(window.location.search);
     var _dlOpen = (_dlQs.get('open') || '').trim();
     // قائمة سماح صريحة: أي قيمة أخرى تُتجاهَل بصمت — لا نمرّر نصّاً حرّاً إلى showSection.
-    var _DL_ALLOWED = { financial: 'si-financial' };
+    // schoolBrand (34g-2): رابط العودة بعد ربط فيسبوك (returnUrl من cms عبر صفحة الوسيط /oauth).
+    var _DL_ALLOWED = { financial: 'si-financial', schoolBrand: 'si-schoolBrand' };
     if (_dlOpen && _DL_ALLOWED.hasOwnProperty(_dlOpen)) {
       var _dlBtn = document.getElementById(_DL_ALLOWED[_dlOpen]);
       if (_dlBtn && _dlBtn.style.display !== 'none') showSection(_dlOpen);
@@ -16260,8 +16261,14 @@ function _sbInit() {
       .withFailureHandler(_gsrFail('getTeacherSchoolBrand'))
       .getTeacherSchoolBrand(sid);
   } catch (e) {}
-  // حالة اتصال فيسبوك — نفس قناة callCMS القائمة فعلياً في تبويب "السوشل ميديا والنشر"،
-  // بلا أي جسر جديد. تعرض fb_page_name فقط — أبداً fb_page_token_mask.
+  _sbLoadFbStatus();
+}
+
+// حالة اتصال فيسبوك — نفس قناة callCMS القائمة فعلياً في تبويب "السوشل ميديا والنشر"،
+// بلا أي جسر جديد. تعرض fb_page_name فقط — أبداً fb_page_token_mask.
+// 34g-2: دالّةٌ مستقلّة لأنها تُنادى من موضعين: فتح القسم (_sbInit) وعودة التركيز بعد «اتصل بفيسبوك».
+function _sbLoadFbStatus() {
+  var sid = (App.user && App.user.schoolId) || '';
   callCMS('smmGetSocialSettings', { schoolId: sid, teacherToken: (App.user && App.user.token) || '' }, function (res) {
     var st = document.getElementById('sbFbStatus');
     if (!st) return;
@@ -16280,11 +16287,30 @@ function sbConnectFacebook() {
   callCMS('getFbConnectUrl', { schoolId: sid, teacherToken: (App.user && App.user.token) || '' }, function (res) {
     if (res && res.success && res.url) {
       window.open(res.url, '_blank', 'noopener');
-      if (st) st.innerHTML = '🔗 أكمل الموافقة بالنافذة الجديدة ثم عُد وحدّث الصفحة.';
+      if (st) st.innerHTML = '🔗 أكمل الموافقة في نافذة فيسبوك، وستعود بعدها تلقائياً إلى «بيانات المدرسة».';
+      _sbFbRefreshOnReturn();
     } else if (st) {
       st.innerHTML = '❌ ' + escapeHtml((res && res.error) || 'تعذّر بناء رابط الاتصال');
     }
   });
+}
+
+// 34g-2: تنتهي الموافقة في التبويب الجديد (صفحة الوسيط /oauth تعيده إلى «بيانات المدرسة»)، فيبقى هذا
+// التبويب على حالته القديمة. نحدّث سطر الحالة مرّةً واحدة حين يعود التركيز إليه (focus، أو
+// visibilitychange على الجوّال)، ثم يُزال المستمع. ضغطٌ ثانٍ قبل العودة لا يضيف مستمعاً آخر.
+var _sbFbReturnArmed = false;
+function _sbFbRefreshOnReturn() {
+  if (_sbFbReturnArmed) return;
+  _sbFbReturnArmed = true;
+  var onBack = function () {
+    if (document.visibilityState === 'hidden') return;
+    window.removeEventListener('focus', onBack);
+    document.removeEventListener('visibilitychange', onBack);
+    _sbFbReturnArmed = false;
+    if (document.getElementById('sbFbStatus')) _sbLoadFbStatus();
+  };
+  window.addEventListener('focus', onBack);
+  document.addEventListener('visibilitychange', onBack);
 }
 
 function sbSave() {
