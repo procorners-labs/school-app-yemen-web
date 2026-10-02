@@ -35,12 +35,15 @@
   };
 
   // دوال يجب أن تصل الشبكة فوراً (تفشل بلطف دون اتصال): مصادقة/رفع ملفات/كتابات خارج النطاق.
+  // getFbConnectUrl (34g-2): رابط ربط فيسبوك يحمل state لمرّة واحدة صالحاً ١٥ دقيقة ⇒ نسخةٌ مخزّنة منه
+  // منتهيةٌ دائماً، فلا تُخزَّن ولا تُخدَم بائتةً (البادئة get كانت تجعلها قراءة).
   var ONLINE_ONLY = {
     handleTeacherLogin: true,
     loginStudent: true,
     handleTeacherLogout: true,
     changePassword: true,
-    uploadFileToDrive: true
+    uploadFileToDrive: true,
+    getFbConnectUrl: true
   };
 
   /* 🔒 (الدفعة 29a2 · 2026-10-01) **دوالُّ الدخول على الشبكة وحدها: لا كاشَ ولا طابورَ ولا إعادةَ تشغيل.**
