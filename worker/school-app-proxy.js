@@ -3079,9 +3079,11 @@ function _oauthHeaders(hostname) {
 }
 
 // المعالج كاملاً. لا يُسجَّل الاستعلام ولا code ولا state أبداً: السجلّ يحمل النتيجة والزمن وسبب الجهالة فقط.
-async function _oauthRoute(url) {
+// 🔴 (مراجعة 34g) GET وحده يُكمل الربط: رابط العودة لمرّة واحدة، فطلبُ HEAD أو POST (فاحصُ روابط، معاينة)
+// كان سيستهلكه قبل وصول متصفّح المستخدم. غيرُ GET ⇒ صفحة المعلومات بلا أيّ نداءٍ لـcms.
+async function _oauthRoute(url, method) {
   var res = OAUTH_INFO;
-  if (_oauthHasResult(url.searchParams)) {
+  if (method === 'GET' && _oauthHasResult(url.searchParams)) {
     var t0 = Date.now();
     res = await _oauthFetchResult(_oauthCmsUrl(GAS.cms, url.search));
     _bhLog({ ev: 'oauth', act: res.known ? (res.ok ? 'ok' : 'fail') : 'unknown',
@@ -3762,7 +3764,7 @@ export default {
     //   ويعرض صفحته هو على نطاقنا (_oauthRoute أعلى الملف). ولا يُبثّ HTML جوجل كما هو (كان يكسر
     //   مساراته النسبية): نقرأ JSON ونبني صفحتنا.
     if (path === '/oauth' || path === '/oauth/') {
-      return _oauthRoute(url);
+      return _oauthRoute(url, request.method);
     }
 
     /* ── 🗑️ 1ج) `/pricing` — حُذف المعالجُ 2026-09-10 بقرار المالك ─────────────────
