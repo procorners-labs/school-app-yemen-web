@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202610020945;
+    window.WEB_BUILD_TS = 202610021150;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2857,7 +2857,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = 'ac37316';
+  var STU_BUILD = 'a60f947';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -8925,6 +8925,8 @@ function renderBirthdateChip() {
 // بطاقة تذكير بارزة أعلى الرئيسية (لا الشارة الصغيرة وحدها) — تظهر فقط عند خلو الحقل، وتختفي
 // فوراً عند الحفظ الناجح (استدعاء إضافي من saveMyBirthdate) بلا حاجة لإعادة تحميل الصفحة.
 function renderBirthdateNotice() {
+  // (36p) initApp يناديها مع كلّ دخولٍ وتبديلِ أخ ⇒ تُجدوِل بطاقتي «وثائقي» و«كتبي» بعد رشقة الإقلاع (مرّةً لكلّ جلسة)
+  try { _stuRecSchedule(); } catch (eRc) {}
   var card = $('birthdateNoticeCard');
   if (!card) return;
   card.style.display = APP.user.birthdate ? 'none' : 'block';
@@ -9000,6 +9002,127 @@ function saveMyBirthdate(value) {
       toast('تعذّر الاتصال بالخادم: ' + (e.message || e), 'e');
     }))
     .updateMyBirthdate(APP.user.id, value, APP.user.schoolId, APP.user.switchToken);
+}
+
+// ==================== (36p) بطاقتا «وثائقي» و«كتبي» — قراءةٌ فقط ====================
+// getStudentRecordsCard (صنف `token`) ⇒ {ok, docs|null, books|null}. تُحمَّل كسولةً بعد رشقة الإقلاع، وتُخفى كلُّ بطاقةٍ
+// جزؤها null (مدرسةٌ بلا كتالوج وثائق أو بلا سجلّ كتب). الفشلُ صامت: البطاقتان تبقيان مخفيّتين ولا تُحجب الرئيسية.
+var _stuRecTimer = null, _stuRecFor = '';
+
+// هويّةُ الطالب المعروض الآن (الحقبة + المدرسة + الكود): ردٌّ متأخّرٌ لأخٍ سابقٍ لا يُرسم فوق بطاقات الحاليّ.
+function _stuRecWho() {
+  return (APP.user && APP.user.id) ? _STU_EPOCH + '|' + (APP.user.schoolId || '') + '|' + APP.user.id : '';
+}
+
+function _stuRecSchedule() {
+  if (!APP.user || !APP.user.id || !APP.user.switchToken) return;
+  var who = _stuRecWho();
+  if (who === _stuRecFor) return;          // حفظُ تاريخ الميلاد يعيد نداء renderBirthdateNotice — لا إعادة تحميل
+  _stuRecFor = who;
+  _stuRecHide();                           // بطاقتا الأخ السابق لا تبقيان ظاهرتين
+  if (_stuRecTimer) clearTimeout(_stuRecTimer);
+  _stuRecTimer = setTimeout(function () { _stuRecTimer = null; loadStudentRecordsCard(); }, 4000);
+}
+
+function loadStudentRecordsCard(force) {
+  if (!APP.user || !APP.user.id || !APP.user.switchToken) return;
+  var key = 'recCard_' + (APP.user.schoolId || '') + '_' + APP.user.id, who = _stuRecWho();
+  if (force) { try { ClientCache.remove(key); } catch (eRm) {} }
+  try {
+    callServerSmart(
+      'getStudentRecordsCard',
+      { studentId: APP.user.id, schoolId: APP.user.schoolId, switchToken: APP.user.switchToken },
+      key,
+      600,
+      function (r) { if (_stuRecWho() === who) _stuRecRender(r); },   // ردُّ أخٍ سابق (تبديلٌ أثناء الطلب) يُهمَل
+      function () { if (_stuRecWho() === who) _stuRecHide(); }
+    );
+  } catch (e) { _stuRecHide(); }
+}
+
+function _stuRecHide() {
+  var ids = ['stuDocsCard', 'stuBooksCard'];
+  for (var i = 0; i < ids.length; i++) { var el = document.getElementById(ids[i]); if (el) el.style.display = 'none'; }
+}
+
+// البطاقةُ تُنشأ مرّةً داخل الرئيسية بعد بطاقة «آخر الإشعارات» (قبل «الوصول السريع»)، و«كتبي» بعد «وثائقي».
+function _stuRecCard(id, ic, title, afterEl) {
+  var el = document.getElementById(id);
+  if (el) return el;
+  var home = document.querySelector('section[data-section="home"]');
+  if (!home) return null;
+  el = document.createElement('div');
+  el.className = 'card';
+  el.id = id;
+  el.style.display = 'none';
+  el.innerHTML = '<div class="card-h"><div class="ttl"><span class="ic">' + esc(ic) + '</span> ' + esc(title) + '</div></div>' +
+                 '<div class="stu-rec-body"></div>';
+  var anchor = afterEl;
+  if (!anchor) { var news = document.getElementById('homeNews'); anchor = news && news.closest ? news.closest('.card') : null; }
+  if (anchor && anchor.parentNode === home) home.insertBefore(el, anchor.nextSibling);
+  else home.appendChild(el);
+  return el;
+}
+
+function _stuRecPill(text, kind) {
+  var c = { ok: ['var(--ok-bg)', 'var(--ok)'], err: ['var(--err-bg)', 'var(--err)'], info: ['var(--info-bg)', 'var(--info)'],
+            warn: ['var(--warn-bg)', 'var(--warn-text)'], mute: ['var(--bg-2)', 'var(--muted)'] }[kind] || ['var(--bg-2)', 'var(--muted)'];
+  return '<span style="flex-shrink:0;font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;background:' + c[0] + ';color:' + c[1] + ';">' + esc(text) + '</span>';
+}
+
+function _stuRecRow(name, pill) {
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 2px;border-bottom:1px solid var(--bdr);font-size:13px;">' +
+         '<span>' + name + '</span>' + pill + '</div>';
+}
+
+function _stuRecDocsHTML(d) {
+  var h = d.complete
+    ? '<div style="font-weight:700;color:var(--ok);margin-bottom:6px;">✅ ملفّك مكتمل</div>'
+    : '<div style="font-weight:700;color:var(--err);margin-bottom:6px;">⚠️ ناقص ' + esc((d.missing || []).length) + ' من الوثائق الإلزامية</div>';
+  var req = d.required || [];
+  for (var i = 0; i < req.length; i++) {
+    var st = req[i].status || '', kind = 'err';
+    if (st === 'مستلمة') kind = 'ok';
+    else if (st === 'معفاة') kind = 'info';
+    else if (st === 'مسحوبة') kind = 'warn';
+    else if (!req[i].mandatory) kind = 'mute';
+    h += _stuRecRow(esc(req[i].name) + (req[i].mandatory ? '' : ' <span style="color:var(--muted);font-size:11px;">(اختيارية)</span>'), _stuRecPill(st, kind));
+  }
+  return h;
+}
+
+function _stuRecBooksHTML(b) {
+  var ent = b.entitled || [], got = 0, h = '';
+  for (var i = 0; i < ent.length; i++) if (ent[i].status === 'مستلم') got++;
+  h += '<div style="font-weight:700;color:' + (got === ent.length ? 'var(--ok)' : 'var(--txt)') + ';margin-bottom:6px;">📚 استلمت ' +
+       esc(got) + ' من ' + esc(ent.length) + ' كتاباً هذا العام</div>';
+  for (var j = 0; j < ent.length; j++) {
+    var st = ent[j].status || '';
+    h += _stuRecRow(esc(ent[j].subject), _stuRecPill(st, st === 'مستلم' ? 'ok' : (st === 'أُرجع' ? 'mute' : 'err')));
+  }
+  if (b.held && b.held.length) {
+    var names = [];
+    for (var k = 0; k < b.held.length; k++) names.push(esc(b.held[k]));
+    h += '<div style="margin-top:8px;font-size:12px;color:var(--muted);">بحوزتك من صفوفٍ سابقة: ' + names.join('، ') + '</div>';
+  }
+  return h;
+}
+
+function _stuRecRender(r) {
+  if (!r || !r.ok) { _stuRecHide(); return; }
+  var note = '<div style="margin-top:8px;font-size:11px;color:var(--muted);">للاستفسار راجع إدارة المدرسة.</div>';
+  var hasDocs = !!(r.docs && r.docs.required && r.docs.required.length);
+  var hasBooks = !!(r.books && r.books.entitled && r.books.entitled.length);
+  var docsEl = (hasDocs || document.getElementById('stuDocsCard')) ? _stuRecCard('stuDocsCard', '📁', 'وثائقي', null) : null;
+  if (docsEl) {
+    docsEl.querySelector('.stu-rec-body').innerHTML = hasDocs ? _stuRecDocsHTML(r.docs) + note : '';
+    docsEl.style.display = hasDocs ? '' : 'none';
+  }
+  var booksEl = (hasBooks || document.getElementById('stuBooksCard')) ? _stuRecCard('stuBooksCard', '📚', 'كتبي', docsEl) : null;
+  if (booksEl) {
+    booksEl.querySelector('.stu-rec-body').innerHTML = hasBooks ? _stuRecBooksHTML(r.books) + note : '';
+    booksEl.style.display = hasBooks ? '' : 'none';
+  }
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================

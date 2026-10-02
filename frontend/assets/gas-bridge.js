@@ -22,7 +22,14 @@
     redistributeAllProtected: 1,
     autoDistributeAllProtected: 1,
     importScheduleGridProtected: 1,
-    repairDataUnificationProtected: 1
+    repairDataUnificationProtected: 1,
+    previewPromotionProtected: 1,
+    savePromotionDraftProtected: 1,
+    startYearRolloverProtected: 1,
+    restoreFromRolloverSnapshotProtected: 1,
+    promoteSingleStudentProtected: 1,
+    getEvaluationIndicatorsProtected: 1,
+    getSupervisionTeamProtected: 1
   };
 
   /* 🔒 (الدفعة 29a2 · 2026-10-01) **دوالُّ الدخول تتجاوز طبقة العمل دون اتصال كلَّها:** نقلٌ خامٌ واحد —
@@ -334,7 +341,9 @@
   /* الدفعتان 30/31: الحجزُ والحركةُ الماليّة والتقييم — إعادةُ محاولةٍ بلا `opId` بعد 502 كانت ستسجّل
      الدفعةَ أو التقييمَ مرّتين (الخادمُ يُرجِع جوابَ المعرّف نفسِه ولا يُنفّذ ثانيةً). */
   var RECOVERABLE_ONLINE = { saveGradesProtected: true, autoSaveGradesBatchProtected: true,
-    addPlaygroundTxProtected: true, savePlaygroundBookingProtected: true, saveEvaluationProtected: true };
+    addPlaygroundTxProtected: true, savePlaygroundBookingProtected: true, saveEvaluationProtected: true,
+    /* 37: تعديلُ التقييم والحفظُ الجماعيّ للشبكة الشهرية */
+    updateEvaluationProtected: true, saveEvaluationsBatchProtected: true, approveEvaluationsProtected: true };
   var RECOVER_DELAYS_MS = [3000, 6000, 12000];
   /* معرّفُ عمليّةٍ يطابق `API_OP_ID_RE` في الخادم (`[A-Za-z0-9_-]{8,64}`). */
   function newOpId() {
