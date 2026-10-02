@@ -2525,12 +2525,27 @@ function _apiKeyFp(argsKey) {
   return ('0000000' + h.toString(16)).slice(-8);
 }
 
+/* 38b: هويّةُ المستأجر في **مفتاح** الكاش بالـUUID القانونيّ — الـslug يُحَلّ عبر `pairs`
+   (‏`{slug:uuid}` من سجلّ الـslugs المخزَّن). القيمةُ المرسَلة إلى GAS لا تتغيّر (الخادمُ يقبل
+   الشكلين)؛ المفتاحُ وحده يتوحّد ⇒ رابطُ الـslug ورابطُ الـUUID يتشاركان مدخلاً واحداً.
+   بلا زوجٍ معروف ⇒ القيمةُ كما وصلت (fail-open: سلوكُ الأمس). */
+var _API_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _apiCanonTenant(v, pairs) {
+  if (typeof v !== 'string' || v === '' || _API_UUID_RE.test(v)) return v;
+  var k = v.toLowerCase();
+  if (pairs && Object.prototype.hasOwnProperty.call(pairs, k) && _API_UUID_RE.test(String(pairs[k]))) {
+    return String(pairs[k]).toLowerCase();
+  }
+  return v;
+}
+
 /* يُحلّل الجسم ويُرجِع `{fn, argsKey}` إن كان مؤهَّلاً، وإلّا `null`.
    🔴 **بـ`JSON.parse` لا برجيكس** — نفس درس `_bhIsLoginBody`: الرجيكس يأخذ **أوّل** قيمةٍ
    لمفتاحٍ مكرَّر و`JSON.parse` يأخذ **آخرها**، فجسمٌ مصنوع
    `{"fn":"getHomePageBundle",…,"fn":"دالّةٌ أخرى"}` كان **سيُصيب الكاش باسمٍ ويُنفّذ غيره**.
-   وأيُّ شكٍّ ⇒ `null` ⇒ المسارُ العادي (fail-closed). */
-function _apiCacheProbe(body) {
+   وأيُّ شكٍّ ⇒ `null` ⇒ المسارُ العادي (fail-closed).
+   38b: `pairs` اختياريّ — بلاه وبمستأجرٍ slug يُرجَع `canon:true` فيعيد المستدعي المِجَسّ بالأزواج. */
+function _apiCacheProbe(body, pairs) {
   try {
     if (typeof body !== 'string' || body.length > API_CACHE_BODY_MAX) return null;
     var o = JSON.parse(body);
@@ -2577,9 +2592,27 @@ function _apiCacheProbe(body) {
     if (sid === '' && _argSid === '' && _argTenant === '' && !API_CACHE_FNS[o.fn].tenantless) return { fn: o.fn, reject: 'sid' };
     /* 🔴 `schoolId` **داخل المفتاح** — يُحلّ المستأجر خادمياً، فإسقاطُه من المفتاح يخلط
        مدرسةً بأخرى. والحدُّ يُقاس على الخام لا على المُرمَّز (انظر تبريره أعلى الكتلة). */
-    var raw = JSON.stringify([args, sid]);
+    /* 38b: المفتاحُ بالمعرّف القانونيّ (انظر `_apiCanonTenant`) — في المواضع الثلاثة التي تسافر فيها الهويّة. */
+    var _slugSeen = false;
+    var _cn = function (v) {
+      var c = _apiCanonTenant(v, pairs);
+      if (c === v && typeof v === 'string' && v !== '' && !_API_UUID_RE.test(v)) _slugSeen = true;
+      return c;
+    };
+    var keySid = _cn(sid), keyArgs = args;
+    if (_argTenant !== '') {
+      keyArgs = args.slice(); keyArgs[0] = _cn(args[0]);
+    } else if (_argSid !== '') {
+      var _a0c = {}, _a0k = Object.keys(_a0);
+      for (var ki = 0; ki < _a0k.length; ki++) _a0c[_a0k[ki]] = _a0[_a0k[ki]];
+      _a0c.schoolId = _cn(_argSid);
+      keyArgs = args.slice(); keyArgs[0] = _a0c;
+    }
+    var raw = JSON.stringify([keyArgs, keySid]);
     if (raw.length > API_CACHE_ARGSKEY_MAX) return { fn: o.fn, reject: 'len' };
-    return { fn: o.fn, argsKey: encodeURIComponent(raw) };
+    var out = { fn: o.fn, argsKey: encodeURIComponent(raw) };
+    if (_slugSeen && !pairs) out.canon = true;
+    return out;
   } catch (e) { return null; }
 }
 
@@ -2858,10 +2891,13 @@ function _portalHref(kind, key) {
    (`… || window.SCHOOL_ID`)، ويعيده `__homeTenantKey` ⇒ مدخلٌ واحدٌ للشكلين.
    🔒 **UUID حصراً** — slugٌ لم يُحَلّ لا يُحقَن (الصفحةُ تعمل كما كانت). والقيمةُ مطابقةٌ
    للشكل فلا تحمل محرفاً يكسر السكربت، ومع ذلك تُكتب بـ`JSON.stringify`. */
+/* 38b: و`window.__CANON_SCHOOL__` معه — سكربتُ الجسر في الصفحة يفضّله على `?school=` الخام،
+   فرابطُ الـslug ورابطُ الـUUID يرسلان المعرّفَ نفسَه (مفاتيحُ الكاش والبصمة والهوية واحدة). */
 function _schoolIdScript(key) {
   var k = String(key || '');
   if (!_SCHOOL_UUID_RE.test(k)) return '';
-  return '<script>window.SCHOOL_ID=window.SCHOOL_ID||' + JSON.stringify(k.toLowerCase()) + ';</' + 'script>';
+  var j = JSON.stringify(k.toLowerCase());
+  return '<script>window.__CANON_SCHOOL__=' + j + ';window.SCHOOL_ID=window.SCHOOL_ID||' + j + ';</' + 'script>';
 }
 function _SchoolIdHead(key) { this.html = _schoolIdScript(key); }
 _SchoolIdHead.prototype.element = function (el) {
@@ -3248,6 +3284,12 @@ export default {
       var _acStale = null;
       if (request.method !== 'GET' && url.search === '') {
         _acProbe = _apiCacheProbe(init.body);
+        /* 38b: مستأجرٌ بالـslug ⇒ المفتاحُ يُعاد بناؤه بالـUUID من سجلّ الـslugs **المخزَّن وحده**
+           (قراءةُ كاشٍ واحدة، بلا GAS على مسار الـAPI). غيابُ السجلّ ⇒ المفتاحُ كما وصل. */
+        if (_acProbe && _acProbe.canon) {
+          var _acDoc = await _slugsDocFromCache(url.origin);
+          _acProbe = _apiCacheProbe(init.body, (_acDoc && _acDoc.pairs) || {});
+        }
         /* دالّةٌ مؤهَّلةٌ اسماً لكنّ شكلَها رُفض ⇒ سطرٌ واحد. بلا هذا تبقى الميزةُ خامدةً
            لأكبر مستهلكيها والسجلُّ يبدو طبيعياً — وهي فئةُ الفشل الصامت بعينها. */
         if (_acProbe && _acProbe.reject) {
