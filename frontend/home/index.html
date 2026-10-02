@@ -33,7 +33,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/home';
-    window.WEB_BUILD_TS = 202610020808;
+    window.WEB_BUILD_TS = 202610020945;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
   })();
 </script>
@@ -1037,6 +1037,53 @@ img,video,iframe{max-width:100%;display:block}
   .sub-gate .sg-local-box{ background: #1e293b; border-color: #334155; }
   .sub-gate .sg-nm, .sub-gate .sg-lw, .sub-gate .sg-note, .sub-gate .sg-end{ color: #94a3b8; }
 }
+
+#admOpenBtn[hidden], .adm-ov[hidden], .adm-ov [hidden]{ display: none !important; }
+:root.adm-open { overflow: hidden; }
+.adm-ov{
+  position: fixed; inset: 0; z-index: 99998; background: rgba(6,15,30,.72);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px 16px; overflow-y: auto; font-family: inherit;
+}
+.adm-box{
+  background: #fff; color: #0f172a; width: 100%; max-width: 560px;
+  border-radius: 18px; padding: 22px 18px; box-sizing: border-box; position: relative;
+  box-shadow: 0 24px 60px rgba(0,0,0,.35);
+}
+.adm-box h2{ margin: 0 0 4px; font-size: 21px; font-weight: 900; }
+.adm-box .adm-sub{ margin: 0 0 14px; font-size: 14px; color: #475569; }
+.adm-x{
+  position: absolute; top: 12px; left: 12px; width: 40px; height: 40px; border-radius: 50%;
+  border: 0; background: #f1f5f9; color: #0f172a; font-size: 18px; cursor: pointer;
+}
+.adm-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.adm-f{ display: flex; flex-direction: column; gap: 5px; font-size: 14px; font-weight: 700; }
+.adm-f.adm-wide{ grid-column: 1 / -1; }
+.adm-f input, .adm-f select, .adm-f textarea{
+  font: inherit; font-weight: 500; font-size: 16px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid #cbd5e1; background: #fff; color: inherit; width: 100%; box-sizing: border-box;
+}
+.adm-f input:focus, .adm-f select:focus, .adm-f textarea:focus{ outline: 2px solid #1a5ec7; outline-offset: 1px; }
+.adm-f .adm-ltr{ direction: ltr; text-align: right; }
+.adm-f [aria-invalid="true"]{ border-color: #e8384f; }
+.adm-req{ color: #e8384f; }
+.adm-hp{ position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.adm-msg{ margin: 12px 0 0; font-size: 14px; font-weight: 700; min-height: 1.2em; }
+.adm-msg.adm-err{ color: #b91c1c; }
+.adm-actions{ display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.adm-actions .hbtn{ flex: 1 1 auto; justify-content: center; padding: 13px 20px; }
+.adm-actions .hbtn[disabled]{ opacity: .6; cursor: wait; transform: none; }
+.adm-actions .adm-cancel{ background: #e2e8f0; color: #0f172a; }
+.adm-done{ text-align: center; padding: 10px 0; }
+.adm-done .adm-no{ font-size: 22px; font-weight: 900; direction: ltr; margin: 8px 0; letter-spacing: .5px; }
+@media (max-width: 520px){ .adm-grid{ grid-template-columns: 1fr; } }
+@media (prefers-color-scheme: dark){
+  .adm-box{ background: #0f172a; color: #e2e8f0; }
+  .adm-box .adm-sub{ color: #94a3b8; }
+  .adm-x{ background: #1e293b; color: #e2e8f0; }
+  .adm-f input, .adm-f select, .adm-f textarea{ background: #1e293b; border-color: #334155; }
+  .adm-msg.adm-err{ color: #fca5a5; }
+}
 </style>
 </head>
 <body>
@@ -1326,6 +1373,10 @@ window.__homeApplyCachedBrand();
          data-portal="teacher" class="hbtn hbtn-gold" target="_blank" rel="noopener">
          <i class="fas fa-right-to-bracket"></i> تسجيل الدخول
       </a>
+      
+      <button type="button" id="admOpenBtn" class="hbtn hbtn-outline" hidden aria-haspopup="dialog" aria-controls="admModal">
+        📝 طلب التحاق
+      </button>
     </div>
     <div class="hero-chips">
       <div class="hero-chip" hidden><i class="fas fa-calendar-check"></i> <span id="hcYears"></span> عاماً من التميز</div>
@@ -1517,6 +1568,56 @@ window.__homeApplyCachedBrand();
     </div>
   </div>
 </section>
+
+<div id="admModal" class="adm-ov" hidden>
+  <div class="adm-box" role="dialog" aria-modal="true" aria-labelledby="admTitle" aria-describedby="admSub">
+    <button type="button" class="adm-x" id="admClose" aria-label="إغلاق">✕</button>
+    <h2 id="admTitle">📝 طلب التحاق</h2>
+    <p class="adm-sub" id="admSub">املؤوا البيانات، وستتواصل معكم المدرسة لاستكمال التسجيل.</p>
+    <form id="admForm" novalidate autocomplete="on">
+      <div class="adm-grid">
+        <label class="adm-f adm-wide">اسم الطالب رباعياً <span class="adm-req" aria-hidden="true">*</span>
+          <input name="studentName" id="admStudentName" type="text" maxlength="80" required autocomplete="off"></label>
+        <label class="adm-f">تاريخ الميلاد <span class="adm-req" aria-hidden="true">*</span>
+          <input name="birthDate" type="date" required></label>
+        <label class="adm-f">الجنس <span class="adm-req" aria-hidden="true">*</span>
+          <select name="gender" required><option value="">— اختر —</option><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></label>
+        <label class="adm-f adm-wide">الصف المطلوب <span class="adm-req" aria-hidden="true">*</span>
+          <select name="grade" id="admGrade" required><option value="">— اختر —</option></select></label>
+        <label class="adm-f">اسم ولي الأمر <span class="adm-req" aria-hidden="true">*</span>
+          <input name="parentName" type="text" maxlength="80" required autocomplete="name"></label>
+        <label class="adm-f">صلة القرابة
+          <input name="relation" type="text" maxlength="30" placeholder="أب، أم، أخ…"></label>
+        <label class="adm-f">رقم الجوال <span class="adm-req" aria-hidden="true">*</span>
+          <input name="phone" class="adm-ltr" type="tel" inputmode="tel" maxlength="20" required autocomplete="tel"></label>
+        <label class="adm-f">رقم جوال بديل
+          <input name="phone2" class="adm-ltr" type="tel" inputmode="tel" maxlength="20"></label>
+        <label class="adm-f adm-wide">العنوان
+          <input name="address" type="text" maxlength="300"></label>
+        <label class="adm-f">المدرسة السابقة
+          <input name="prevSchool" type="text" maxlength="300"></label>
+        <label class="adm-f">آخر صف أكمله
+          <input name="lastGrade" type="text" maxlength="60"></label>
+        <label class="adm-f adm-wide">ملاحظات
+          <textarea name="notes" rows="2" maxlength="300"></textarea></label>
+        <div class="adm-hp" aria-hidden="true"><label>اترك هذا الحقل فارغاً<input name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
+        <label class="adm-f adm-wide"><span id="admQuestion">سؤال التحقق…</span> <span class="adm-req" aria-hidden="true">*</span>
+          <input name="answer" class="adm-ltr" type="text" inputmode="numeric" maxlength="3" required autocomplete="off"></label>
+      </div>
+      <p class="adm-msg" id="admMsg" role="status" aria-live="polite"></p>
+      <div class="adm-actions">
+        <button type="submit" class="hbtn hbtn-gold" id="admSubmit">إرسال الطلب</button>
+        <button type="button" class="hbtn adm-cancel" id="admCancel">إلغاء</button>
+      </div>
+    </form>
+    <div class="adm-done" id="admDone" hidden>
+      <p id="admDoneMsg">تم استلام طلبكم، وستتواصل معكم المدرسة.</p>
+      <p>رقم الطلب (احتفظوا به):</p>
+      <p class="adm-no" id="admNo"></p>
+      <div class="adm-actions"><button type="button" class="hbtn hbtn-gold" id="admDoneClose">إغلاق</button></div>
+    </div>
+  </div>
+</div>
 
 <div id="homeLb" onclick="if(event.target===this)homeLbClose()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;">
   <button onclick="homeLbClose()" aria-label="إغلاق" style="position:absolute;top:16px;left:16px;background:rgba(255,255,255,.16);color:#fff;border:none;width:46px;height:46px;border-radius:50%;font-size:22px;cursor:pointer;">✕</button>
@@ -2613,6 +2714,7 @@ function loadHomeBundle(){
         _homeSafeApply('theme',   function(){ _homeApplyBrandTheme(b); });
         _homeSafeApply('reviews', function(){ _homeRenderReviews(b.reviews || []); });
         _homeSafeApply('library',  function(){ _homeWireLibraryLinks(); });
+        _homeSafeApply('admission', function(){ _admWire(b); });   // 36i: زرّ «طلب التحاق»
         _homeSafeApply('portals',  function(){
           _homeApplyPortalLinks(b.schoolId);
         });
@@ -2644,6 +2746,186 @@ function loadHomeBundle(){
       .withFailureHandler(function(){_homeBundleFallback('')})
       .getHomePageBundle(_homeActiveSchoolId());
   } catch(e){_homeBundleFallback('');}
+}
+
+var _ADM = { school: '', nonce: '', issuedAt: 0, busy: false, wired: false, lastFocus: null };
+var _ADM_FIELDS = ['studentName','birthDate','gender','grade','parentName','relation','phone','phone2',
+  'address','prevSchool','lastGrade','notes','answer'];
+
+function _admWire(b){
+  var btn = $('admOpenBtn');
+  if(!btn) return;
+  var open = !!(b && b.page && b.page.admissionOpen === true && b.schoolId);
+  btn.hidden = !open;
+  if(!open) return;
+  _ADM.school = String(b.schoolId);
+  if(_ADM.wired) return;
+  _ADM.wired = true;
+  btn.addEventListener('click', _admOpen);
+  $('admClose').addEventListener('click', _admClose);
+  $('admCancel').addEventListener('click', _admClose);
+  $('admDoneClose').addEventListener('click', _admClose);
+  $('admForm').addEventListener('submit', _admSubmit);
+  $('admModal').addEventListener('click', function(e){ if(e.target === this) _admClose(); });
+  $('admModal').addEventListener('keydown', _admKeys);
+}
+
+function _admMsg(text, isErr){
+  var m = $('admMsg');
+  if(!m) return;
+  m.textContent = text || '';
+  m.className = 'adm-msg' + (isErr ? ' adm-err' : '');
+}
+
+function _admVisitorId(){
+  var v = '';
+  try { v = _homeVisitorId(); } catch(e) { v = ''; }
+  if(!/^v[0-9A-Za-z_-]{4,80}$/.test(v)){
+    if(!window._pubVidMem) window._pubVidMem = 'v' + Date.now() + '' + Math.floor(Math.random() * 100000);
+    v = window._pubVidMem;
+  }
+  return v;
+}
+
+function _admFillGrades(list){
+  var sel = $('admGrade');
+  if(!sel || !list || !list.length) return;
+  var keep = sel.value;
+  while(sel.options.length > 1) sel.remove(1);
+  for(var i = 0; i < list.length; i++){
+    var o = document.createElement('option');
+    o.value = String(list[i]);
+    o.textContent = String(list[i]);
+    sel.appendChild(o);
+  }
+  if(keep) sel.value = keep;
+}
+
+function _admChallenge(){
+  _ADM.nonce = '';
+  var q = $('admQuestion');
+  if(q) q.textContent = 'جاري تحميل سؤال التحقق…';
+  try{
+    google.script.run
+      .withSuccessHandler(function(r){
+        if(!r || r.ok !== true){
+          if(q) q.textContent = 'سؤال التحقق';
+          _admMsg((r && r.error) || 'تعذّر فتح النموذج حالياً، حاول لاحقاً', true);
+          $('admSubmit').disabled = true;
+          return;
+        }
+        _ADM.nonce = String(r.nonce || '');
+        _ADM.issuedAt = Date.now();
+        if(q) q.textContent = String(r.question || 'سؤال التحقق');
+        _admFillGrades(r.grades);
+        $('admSubmit').disabled = false;
+      })
+      .withFailureHandler(function(){
+        if(q) q.textContent = 'سؤال التحقق';
+        _admMsg('تعذّر الاتصال، تحقّق من الإنترنت ثم أعد فتح النموذج', true);
+      })
+      .issueAdmissionChallenge(_ADM.school);
+  } catch(e){ _admMsg('تعذّر الاتصال، حاول لاحقاً', true); }
+}
+
+function _admOpen(){
+  var f = $('admForm'), m = $('admModal');
+  if(!f || !m) return;
+  _ADM.lastFocus = document.activeElement;
+  f.reset();
+  f.hidden = false;
+  $('admDone').hidden = true;
+  for(var i = 0; i < _ADM_FIELDS.length; i++){ var el = f.elements[_ADM_FIELDS[i]]; if(el) el.removeAttribute('aria-invalid'); }
+  try { f.elements.birthDate.max = new Date().toISOString().substring(0, 10); } catch(e) {}
+  _admMsg('');
+  $('admSubmit').disabled = true;
+  m.hidden = false;
+  document.documentElement.classList.add('adm-open');
+  setTimeout(function(){ try { $('admStudentName').focus(); } catch(e) {} }, 30);
+  _admChallenge();
+}
+
+function _admClose(){
+  var m = $('admModal');
+  if(!m || m.hidden) return;
+  m.hidden = true;
+  document.documentElement.classList.remove('adm-open');
+  try { if(_ADM.lastFocus && _ADM.lastFocus.focus) _ADM.lastFocus.focus(); } catch(e) {}
+}
+
+function _admKeys(e){
+  if(e.key === 'Escape'){ e.preventDefault(); _admClose(); return; }
+  if(e.key !== 'Tab') return;
+  var box = $('admModal').querySelector('.adm-box');
+  var all = box.querySelectorAll('button, input, select, textarea');
+  var list = [];
+  for(var i = 0; i < all.length; i++){
+    if(all[i].tabIndex >= 0 && !all[i].disabled && all[i].offsetParent !== null) list.push(all[i]);
+  }
+  if(!list.length) return;
+  var first = list[0], last = list[list.length - 1];
+  if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+}
+
+function _admSubmit(e){
+  e.preventDefault();
+  if(_ADM.busy) return;
+  var f = $('admForm');
+  var p = {}, i, el, missing = null;
+  for(i = 0; i < _ADM_FIELDS.length; i++){
+    el = f.elements[_ADM_FIELDS[i]];
+    p[_ADM_FIELDS[i]] = el ? String(el.value || '').trim() : '';
+    if(el){
+      var bad = el.required && !p[_ADM_FIELDS[i]];
+      if(bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+      if(bad && !missing) missing = el;
+    }
+  }
+  if(missing){ _admMsg('أكملوا الحقول المطلوبة (*)', true); missing.focus(); return; }
+  if(!_ADM.nonce){ _admMsg('سؤال التحقق لم يُحمَّل بعد، انتظروا لحظة', true); return; }
+  p.website = String(f.elements.website.value || '');
+  p.visitorId = _admVisitorId();
+  p.nonce = _ADM.nonce;
+  _ADM.busy = true;
+  $('admSubmit').disabled = true;
+  _admMsg('جاري إرسال الطلب…');
+  var wait = Math.max(0, 4200 - (Date.now() - _ADM.issuedAt));
+  setTimeout(function(){
+    try{
+      google.script.run
+        .withSuccessHandler(function(r){
+          _ADM.busy = false;
+          $('admSubmit').disabled = false;
+          if(r && r.ok === true){
+            $('admNo').textContent = String(r.requestNo || '');
+            $('admDoneMsg').textContent = String(r.message || 'تم استلام طلبكم، وستتواصل معكم المدرسة');
+            f.hidden = true;
+            $('admDone').hidden = false;
+            _ADM.nonce = '';
+            try { $('admDoneClose').focus(); } catch(e2) {}
+            return;
+          }
+          _admMsg((r && r.error) || 'تعذّر إرسال الطلب حالياً، حاول لاحقاً', true);
+          if(r && r.field && f.elements[r.field]){
+            f.elements[r.field].setAttribute('aria-invalid', 'true');
+            try { f.elements[r.field].focus(); } catch(e3) {}
+          }
+          if(r && r.retry){ f.elements.answer.value = ''; _admChallenge(); }
+          if(r && r.closed) $('admSubmit').disabled = true;
+        })
+        .withFailureHandler(function(){
+          _ADM.busy = false;
+          $('admSubmit').disabled = false;
+          _admMsg('تعذّر الاتصال، تحقّق من الإنترنت ثم أعد الإرسال', true);
+        })
+        .submitAdmissionApplication(_ADM.school, p);
+    } catch(e4){
+      _ADM.busy = false;
+      $('admSubmit').disabled = false;
+      _admMsg('تعذّر الاتصال، حاول لاحقاً', true);
+    }
+  }, wait);
 }
 
 var _HOME_SUB_MSG = {
