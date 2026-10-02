@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610021150;
+    window.WEB_BUILD_TS = 202610021258;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -12207,7 +12207,7 @@ function _rpmLoad(){
     _rpm = m;
     callServer('getSupervisorPermsConfigProtected', {}, function(res){
       if(!res||!res.success) return fail(res?res.error:'');
-      _spvList = res.supervisors || [];
+      _spvSetList(res.supervisors);
       _rpmShow(_rpmTab);
     }, function(err){ fail(err.message); });
   }, function(err){ fail(err.message); });
@@ -12439,17 +12439,49 @@ function _spvSetRole(){
     setTimeout(_spvRenderPeople, 900);
   }, function(err){ _rpmStatus('spv-role-status', false, err.message); });
 }
+/* 37g: بصمةُ صفّ الصلاحيات كما حُمِّل — تطبيعُ الخادم نفسُه (_supNormList_/_supPermsFp_ في TeacherCore.js):
+   تقسيمٌ على , ، وسطرٍ جديد، تشذيب، بلا تكرار، مرتّبة. تُرسل expect مع الحفظ فيرفض الخادمُ حفظاً من شاشةٍ قديمة. */
+function _spvNormList(v){
+  var src=Object.prototype.toString.call(v)==='[object Array]'?v:[v], out=[];
+  for(var i=0;i<src.length;i++){ var x=src[i]; if(x===null||x===undefined) continue;
+    var parts=String(x).split(/[,،\n]/);
+    for(var j=0;j<parts.length;j++){ var t=parts[j].trim(); if(t && out.indexOf(t)<0) out.push(t); } }
+  return out.sort();
+}
+function _spvFp(s){
+  s=s||{};
+  return _spvNormList(s.grades||[]).join('،')+'¦'+_spvNormList(s.sections||[]).join('،')+'¦'+
+         _spvNormList(s.pages||[]).join('،')+'¦'+_spvNormList(s.caps||[]).join('،')+'¦'+String(s.notes==null?'':s.notes).trim();
+}
+function _spvSetList(list){
+  _spvList = list || [];
+  for(var i=0;i<_spvList.length;i++) if(typeof _spvList[i].fp!=='string') _spvList[i].fp=_spvFp(_spvList[i]);
+}
+var SPV_STALE_MSG = 'تغيّرت صلاحيات هذا الشخص منذ فتح الشاشة — أُعيد التحميل، راجع ثم احفظ';
+/* حفظٌ رُفض لأنّ الصفّ تغيّر: إعادةُ تحميل القائمة (لا إعادة محاولة)، ثم إعادةُ رسم الشخص نفسِه مع الرسالة. */
+function _spvReloadStale(){
+  callServer('getSupervisorPermsConfigProtected', {}, function(res){
+    if(!res||!res.success) return _rpmStatus('spv-status', false, SPV_STALE_MSG+' — '+(res?res.error:'تعذّر التحميل'));
+    _spvSetList(res.supervisors);
+    _spvRenderPeople();
+    _rpmStatus('spv-status', false, SPV_STALE_MSG);
+  }, function(err){ _rpmStatus('spv-status', false, SPV_STALE_MSG+' — '+err.message); });
+}
 function _spvSave(){
   if(!_spvCurrent) return;
   _rpmStatus('spv-status', true, 'جارٍ الحفظ...');
   var cur=null; for(var d0=0;d0<_spvList.length;d0++) if(_spvList[d0].name===_spvCurrent) cur=_spvList[d0];
   var sc=_spvScopeCollect();
   var p={ name:_spvCurrent, grades:sc.grades, sections:sc.sections,
-          pages:_spvCollect('spv-pages'), caps:_spvCapsTokens(cur||{}), notes:(document.getElementById('spv-notes')||{}).value||'' };
+          pages:_spvCollect('spv-pages'), caps:_spvCapsTokens(cur||{}), notes:(document.getElementById('spv-notes')||{}).value||'',
+          expect:(cur&&typeof cur.fp==='string')?cur.fp:_spvFp(cur||{}) };
   callServer('saveSupervisorPermsProtected', p, function(res){
+    if(res&&res.stale){ _rpmStatus('spv-status', false, SPV_STALE_MSG); return _spvReloadStale(); }
     if(!res||!res.success) return _rpmStatus('spv-status', false, res?res.error:'خطأ');
     _rpmStatus('spv-status', true, res.message);
-    for(var i=0;i<_spvList.length;i++){ if(_spvList[i].name===_spvCurrent){ _spvList[i].grades=p.grades; _spvList[i].sections=p.sections; _spvList[i].pages=p.pages; _spvList[i].caps=p.caps; _spvList[i].notes=p.notes; } }
+    var sv=res.saved||p;
+    for(var i=0;i<_spvList.length;i++){ if(_spvList[i].name===_spvCurrent){ _spvList[i].grades=sv.grades; _spvList[i].sections=sv.sections; _spvList[i].pages=sv.pages; _spvList[i].caps=sv.caps; _spvList[i].notes=sv.notes;
+      _spvList[i].fp=(typeof res.fp==='string')?res.fp:_spvFp(_spvList[i]); } }
   }, function(err){ _rpmStatus('spv-status', false, err.message); });
 }
 
@@ -39047,9 +39079,14 @@ function ev_renderCoverage() {
     if ((w.shared || []).length) { var b = []; for (var j = 0; j < w.shared.length; j++) b.push(lbl(w.shared[j]) + ' (' + escapeHtml(w.shared[j].supervisors.join(' + ')) + ')'); h += '<div class="alert alert-warning">👥 فصولٌ مشتركة بين أكثر من مشرف: ' + b.join('، ') + '</div>'; }
     if (w.onlyWholeSchool) h += '<div class="alert alert-info">ℹ️ ' + w.onlyWholeSchool + ' فصلاً لا يغطّيه إلا مشرفو «كل المدرسة».</div>';
     if (!h) h = '<div class="alert alert-success">✅ كلُّ فصلٍ له مشرفٌ واحد.</div>';
-    if (hasCap('rolePerms.manage')) h += '<button type="button" class="btn btn-primary btn-sm" style="margin-bottom:8px" onclick="showSection(\'supervisorPerms\')">🛡️ ضبط فصول المشرفين</button>';
+    EV.covSups = sups;
+    if (hasCap('rolePerms.manage')) h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">' +
+      '<button type="button" class="btn btn-primary btn-sm" onclick="showSection(\'supervisorPerms\')">🛡️ ضبط فصول المشرفين</button>' +
+      '<button type="button" class="btn btn-sm" onclick="ev_scopeLoad()">🔎 اقتراح من النشاط</button></div><div id="ev-scope"></div>';
     var head = '<th>الفصل</th><th>الطلاب</th>';
-    for (var s = 0; s < sups.length; s++) head += '<th style="font-size:.8rem" title="' + (sups[s].wholeSchool ? (sups[s].allToken ? 'جميع الفصول' : 'اختار كلّ الفصول') : sups[s].classes + ' فصل') + '">' +
+    var canPerms = hasCap('rolePerms.manage');
+    for (var s = 0; s < sups.length; s++) head += '<th style="font-size:.8rem' + (canPerms ? ';cursor:pointer;text-decoration:underline dotted' : '') + '"' +
+      (canPerms ? ' onclick="ev_openPerms(' + s + ')"' : '') + ' title="' + (sups[s].wholeSchool ? (sups[s].allToken ? 'جميع الفصول' : 'اختار كلّ الفصول') : sups[s].classes + ' فصل') + (canPerms ? ' — انقر لضبط صلاحياته' : '') + '">' +
       escapeHtml(sups[s].name) + (sups[s].wholeSchool ? ' 🌐' : '') + (sups[s].hasPerms ? '' : ' ⚪') + '</th>';
     var rows = '';
     for (var c = 0; c < cls.length; c++) {
@@ -39061,8 +39098,128 @@ function ev_renderCoverage() {
       rows += '<tr' + (!x.supervisors.length ? ' style="background:#fef2f2"' : (x.dedicated.length > 1 ? ' style="background:#fffbeb"' : '')) + '><td>' + lbl(x) + '</td><td>' + x.students + '</td>' + cells + '</tr>';
     }
     document.getElementById('evBody').innerHTML = h + '<div class="table-wrap" style="overflow-x:auto"><table><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<div style="font-size:.8rem;color:var(--text-muted);margin-top:4px">✔ مشرفٌ مخصّص للفصل · ● مشرف «كل المدرسة» · 🌐 نطاقه كلُّ المدرسة · ⚪ بلا صفّ صلاحيات.</div>';
+      '<div style="font-size:.8rem;color:var(--text-muted);margin-top:4px">✔ مشرفٌ مخصّص للفصل · ● مشرف «كل المدرسة» · 🌐 نطاقه كلُّ المدرسة · ⚪ بلا صفّ صلاحيات' + (canPerms ? ' · انقر اسم المشرف لضبط صلاحياته' : '') + '.</div>';
   }, function (e) { ev_err(String((e && e.message) || e)); });
+}
+/* يفتح شاشة الصلاحيات على المشرف نفسه (renderSupervisorPerms(focusName)) */
+function ev_openPerms(i) {
+  var s = (EV.covSups || [])[i];
+  if (s) showSection('supervisorPerms', s.name);
+}
+
+/* ── 37g: اقتراحُ نطاقات المشرفين من النشاط (getSupervisorScopeSuggestionsProtected) والتطبيق (applySupervisorScopesProtected) ──
+   لكلّ مشرف: مربّعُ «تطبيق» (غير محدَّد افتراضياً) وفصولٌ: ✔ = ضمن نطاقه بعد التطبيق. الأخضر مُضاف، الأحمر يُزال، الرماديّ باقٍ.
+   الخادمُ يعيد قراءة الصفّ ويقارن البصمة، ويكتب الصفوف والشعب فقط. */
+var EV_SCOPE_CONF = { 'عالية': '#059669', 'متوسطة': '#d97706', 'منخفضة': '#dc2626' };
+var EV_SCOPE_WHOLE_WARN = 'هذا المشرف نطاقه كل المدرسة الآن؛ التطبيق سيحصره في الفصول المحددة';
+function ev_scopeLoad(days) {
+  var box = document.getElementById('ev-scope');
+  if (!box) return;
+  box.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  var p = {}; if (days) p.days = days;
+  callServer('getSupervisorScopeSuggestionsProtected', p, function (r) {
+    if (!r || !r.success) { box.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر') + '</div>'; return; }
+    EV.scope = r;
+    box.innerHTML = ev_scopeHtml(r);
+  }, function (e) { box.innerHTML = '<div class="alert alert-danger">' + escapeHtml(String((e && e.message) || e)) + '</div>'; });
+}
+function _evScopeLbl(c) { return escapeHtml(c.cls + (c.section ? ' ' + c.section : '')); }
+function _evScopeScope(g, s) { return escapeHtml((g || []).join('، ') + ((s || []).length ? ' | ' + s.join('، ') : '')); }
+function ev_scopeHtml(r) {
+  var a = r.auto || {}, last = a.last, w = r.weights || {}, h = '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin:8px 0">';
+  h += '<div class="alert ' + (a.enabled ? 'alert-success' : 'alert-info') + '" style="margin-bottom:8px">🤖 التوزيع الآليّ الليليّ: <b>' + (a.enabled ? 'مفعّل' : 'معطّل') + '</b>' +
+    (a.enabled ? ' — يضيف كلَّ ليلة فصلاً عالي الثقة بلا مشرفٍ مخصّص فقط، ولا يحذف شيئاً، ولا يلمس مشرفاً نطاقُه كلُّ المدرسة أو في ملاحظاته «يدوي».'
+      : ' — لتفعيله اكتب في ورقة «الاعدادات» المفتاح «' + escapeHtml(a.key || '') + '» بالقيمة «نعم».') +
+    ' مدّة الأدلّة من المفتاح «' + escapeHtml(a.daysKey || '') + '» (30–365).';
+  if (last && last.enabled) h += '<br>آخر تشغيل: ' + escapeHtml(last.at || last.day || '') + ' — أُضيف ' + (Number(last.added) || 0) + ' فصلاً' +
+    ((last.supervisors || []).length ? ' (' + last.supervisors.map(function (x) { return escapeHtml(x.name) + ': ' + escapeHtml((x.added || []).join('، ')); }).join(' · ') + ')' : '') + '.';
+  h += '</div>';
+  h += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:8px"><div class="form-group" style="margin:0"><label class="form-label">الأيام</label>' +
+    '<input type="number" class="form-control" id="evs-days" min="30" max="365" value="' + (Number(r.days) || 90) + '" style="width:90px"></div>' +
+    '<button type="button" class="btn btn-sm" onclick="ev_scopeLoad((document.getElementById(\'evs-days\')||{}).value)">تحديث</button>' +
+    '<span style="font-size:.8rem;color:var(--text-muted)">منذ ' + escapeHtml(r.cutoff || '') + ' · الحضور ×' + Number(w.att) + ' · الغياب ×' + Number(w.abs) + ' · السلوك ×' + Number(w.beh) +
+    ' (السلوكُ في فصلٍ يدرّسه المشرف لا يُحسب)' +
+    ((Number(r.behaviourWindowDays) || 0) < (Number(r.days) || 0) ? ' · سجلّ السلوك المقروء يغطّي آخر ' + Number(r.behaviourWindowDays) + ' يوماً فقط' : '') + '</span></div>';
+  var conf = {}, i, j;
+  for (i = 0; i < (r.classes || []).length; i++) conf[r.classes[i].cls + '|' + r.classes[i].section] = r.classes[i];
+  var sups = r.supervisors || [], any = false;
+  for (i = 0; i < sups.length; i++) {
+    var s = sups[i], cur = s.current || {}, d = s.diff || {}, evm = {};
+    for (j = 0; j < (s.evidence || []).length; j++) evm[s.evidence[j].cls + '|' + s.evidence[j].section] = s.evidence[j];
+    var badges = (cur.wholeSchool ? ' <span title="نطاقه الحاليّ كلُّ المدرسة">🌐</span>' : '') + (cur.locked ? ' <span title="في ملاحظاته «يدوي»: الآليّ لا يلمسه">🔒</span>' : '') +
+      (cur.hasPerms ? '' : ' <span title="بلا صفّ صلاحيات — احفظه من شاشة الصلاحيات أولاً">⚪</span>');
+    h += '<div style="border-top:1px solid #f1f5f9;padding:8px 0">';
+    if (d.noEvidence) { h += '<b>' + escapeHtml(s.name) + '</b>' + badges + ' <span style="color:var(--text-muted);font-size:.85rem">— لا أدلّة كافية، لا تغيير مقترح.</span></div>'; continue; }
+    any = true;
+    var dis = cur.hasPerms ? '' : ' disabled';
+    h += '<label style="font-weight:700;cursor:pointer"><input type="checkbox" class="evs-sup" data-i="' + i + '"' + dis + '> تطبيق على ' + escapeHtml(s.name) + '</label>' + badges +
+      '<div style="font-size:.8rem;color:var(--text-muted);margin:2px 0 4px">الحاليّ: ' + (cur.wholeSchool ? 'كل المدرسة' : _evScopeScope(cur.grades, cur.sections)) +
+      ' ← المقترح: ' + _evScopeScope(s.proposed.grades, s.proposed.sections) + '</div>' +
+      (cur.wholeSchool ? '<div class="alert alert-warning" style="margin:2px 0 4px;padding:4px 8px;font-size:.8rem">' + EV_SCOPE_WHOLE_WARN + '</div>' : '') +
+      '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    var chip = function (c, kind) {
+      var k = c.cls + '|' + c.section, e = evm[k], cc = conf[k], col = kind === 'add' ? '#059669' : (kind === 'rem' ? '#dc2626' : '#64748b');
+      var info = e ? ('حضور ' + e.att + ' · غياب ' + e.abs + ' · سلوك ' + e.beh + ' = ' + e.score) : 'بلا أدلّة له';
+      var cf = (cc && cc.top === s.name && cc.confidence) ? ' <b style="color:' + (EV_SCOPE_CONF[cc.confidence] || '#64748b') + '">' + escapeHtml(cc.confidence) + '</b>' : '';
+      return '<label title="' + escapeHtml(info) + '" style="font-size:.8rem;border:1px solid ' + col + ';color:' + col + ';border-radius:8px;padding:2px 6px;cursor:pointer">' +
+        '<input type="checkbox" class="evs-c" data-i="' + i + '" data-k="' + escapeHtml(k) + '"' + (kind === 'rem' ? '' : ' checked') + dis + '> ' +
+        (kind === 'add' ? '+ ' : (kind === 'rem' ? '− ' : '')) + _evScopeLbl(c) + cf + ' <span style="color:#94a3b8">(' + (e ? Number(e.score) : 0) + ')</span></label>';
+    };
+    for (j = 0; j < (d.added || []).length; j++) h += chip(d.added[j], 'add');
+    for (j = 0; j < (d.unchanged || []).length; j++) h += chip(d.unchanged[j], 'keep');
+    for (j = 0; j < (d.removed || []).length; j++) h += chip(d.removed[j], 'rem');
+    h += '</div></div>';
+  }
+  if ((r.contested || []).length) {
+    h += '<div style="margin-top:8px"><b>⚖️ فصولٌ متنازَعٌ عليها (ثقةٌ منخفضة):</b> اختر مشرفاً إن شئت (يُضاف عند تطبيق ذلك المشرف).<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">';
+    for (j = 0; j < r.contested.length; j++) {
+      var ct = r.contested[j], opts = '<option value="">—</option>';
+      for (var q = 0; q < (ct.candidates || []).length; q++) opts += '<option value="' + escapeHtml(ct.candidates[q].name) + '">' + escapeHtml(ct.candidates[q].name) + ' (' + Number(ct.candidates[q].score) + ')</option>';
+      h += '<label style="font-size:.85rem">' + _evScopeLbl(ct) + ' <select class="form-select evs-ct" data-k="' + escapeHtml(ct.cls + '|' + ct.section) + '" onchange="ev_scopeContested(this)" style="width:auto;display:inline-block">' + opts + '</select></label>';
+    }
+    h += '</div></div>';
+  }
+  if ((r.unassigned || []).length) h += '<div class="alert alert-warning" style="margin-top:8px">🚫 فصولٌ بلا أيّ نشاطٍ لمشرف في المدّة: ' + r.unassigned.map(_evScopeLbl).join('، ') + '</div>';
+  if (any) h += '<button type="button" class="btn btn-primary btn-sm" style="margin-top:8px" onclick="ev_scopeApply()">تطبيق المحدد</button>' +
+    '<div style="font-size:.8rem;color:var(--text-muted);margin-top:4px">✔ = ضمن نطاق المشرف بعد التطبيق · + مُضاف · − يُزال (غيرُ محدَّد افتراضياً: حدِّده لإبقائه) · الرقم = النقاط. تُكتب «الصفوف» و«الشعب» وحدهما.</div>';
+  else h += '<div class="alert alert-info" style="margin-top:8px">لا اقتراحات: لا نشاطَ كافٍ للمشرفين في المدّة.</div>';
+  return h + '</div>';
+}
+/* اختيارُ مشرفٍ لفصلٍ متنازَع يحدّد مربّعَ «تطبيق» له */
+function ev_scopeContested(sel) {
+  var r = EV.scope, nm = sel.value;
+  if (!r || !nm) return;
+  for (var i = 0; i < r.supervisors.length; i++) if (r.supervisors[i].name === nm) {
+    var cb = document.querySelector('.evs-sup[data-i="' + i + '"]');
+    if (cb && !cb.disabled) cb.checked = true;
+  }
+}
+function ev_scopeApply() {
+  var r = EV.scope; if (!r) return;
+  var picks = {}, cts = document.querySelectorAll('.evs-ct'), items = [], whole = [], i, j;
+  for (j = 0; j < cts.length; j++) if (cts[j].value) (picks[cts[j].value] = picks[cts[j].value] || []).push(cts[j].getAttribute('data-k'));
+  var sel = document.querySelectorAll('.evs-sup:checked');
+  for (i = 0; i < sel.length; i++) {
+    var si = Number(sel[i].getAttribute('data-i')), s = r.supervisors[si]; if (!s) continue;
+    var keys = [], cs = document.querySelectorAll('.evs-c[data-i="' + si + '"]:checked');
+    for (j = 0; j < cs.length; j++) keys.push(cs[j].getAttribute('data-k'));
+    var extra = picks[s.name] || [];
+    for (j = 0; j < extra.length; j++) if (keys.indexOf(extra[j]) === -1) keys.push(extra[j]);
+    if (!keys.length) { toast(escapeHtml('«' + s.name + '»: لا فصلَ محدَّداً — النطاقُ الفارغ يعني كل المدرسة، فلن يُرسل'), 'warning'); continue; }
+    items.push({ name: s.name, id: s.id, fp: s.current.fp, classes: keys });
+    if (s.current.wholeSchool) whole.push(s.name);
+  }
+  if (!items.length) { toast('حدِّد مشرفاً واحداً على الأقل', 'info'); return; }
+  if (!window.confirm('تطبيق النطاق المحدَّد على ' + items.length + ' مشرف؟ يسري عند دخولهم التالي.' +
+    (whole.length ? '\n\n⚠️ ' + whole.join('، ') + ': ' + EV_SCOPE_WHOLE_WARN + '.' : ''))) return;
+  callServer('applySupervisorScopesProtected', { items: items }, function (res) {
+    var errs = [];
+    for (var k = 0; res && res.results && k < res.results.length; k++) if (!res.results[k].ok) errs.push(res.results[k].name + ': ' + res.results[k].error);
+    if (!res || !res.success) showError(escapeHtml((res && res.error) || 'تعذّر التطبيق'));
+    else toast(escapeHtml(res.message || 'تم'), 'success');
+    if (errs.length && res && res.success) showError(escapeHtml(errs.join(' · ')));
+    if (res && res.written) ev_renderCoverage();
+  }, function (e) { showError(escapeHtml(String((e && e.message) || e))); });
 }
 
 </script>
