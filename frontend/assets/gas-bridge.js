@@ -331,7 +331,10 @@
   var WRITE_RECOVER_DELAY_MS = 3000;
   /* كتاباتٌ لا تدخل طابورَ OfflineSync لكنها تحمل `opId` وتسترجع جوابَها بعد 502 —
      حفظُ الدرجات: التلقائيُّ يُعيد دفعتَه بنفسه، واليدويُّ ينتظر المعلّمُ نتيجتَه. */
-  var RECOVERABLE_ONLINE = { saveGradesProtected: true, autoSaveGradesBatchProtected: true };
+  /* الدفعتان 30/31: الحجزُ والحركةُ الماليّة والتقييم — إعادةُ محاولةٍ بلا `opId` بعد 502 كانت ستسجّل
+     الدفعةَ أو التقييمَ مرّتين (الخادمُ يُرجِع جوابَ المعرّف نفسِه ولا يُنفّذ ثانيةً). */
+  var RECOVERABLE_ONLINE = { saveGradesProtected: true, autoSaveGradesBatchProtected: true,
+    addPlaygroundTxProtected: true, savePlaygroundBookingProtected: true, saveEvaluationProtected: true };
   var RECOVER_DELAYS_MS = [3000, 6000, 12000];
   /* معرّفُ عمليّةٍ يطابق `API_OP_ID_RE` في الخادم (`[A-Za-z0-9_-]{8,64}`). */
   function newOpId() {
