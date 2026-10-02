@@ -3950,6 +3950,55 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(seg.indexOf('CF-Connecting-IP') > 0 && !/ip\s*:/.test(seg), 'يُقرأ IP للحدّ وحده ولا يُسجَّل');
 })();
 
+// ── حدُّ طلب الالتحاق العامّ لكلّ IP (الدفعة 36o · 2026-10-02) ────────────────────
+(function () {
+  console.log('');
+  console.log('حدُّ طلب الالتحاق العامّ:');
+  function check(ok, label) { if (!ok) failed++; console.log((ok ? '  ✅ ' : '  ❌ ') + label); }
+  var a = src.indexOf('var ADM_RATE_RULES');
+  var b = src.indexOf('/* ═══ نهايةُ حدّ طلب الالتحاق ═══ */');
+  check(a >= 0 && b > a, 'ضابط: استُخرجت الكتلةُ النقيّة (وإلّا لا يُقاس شيء — خروجٌ أحمر)');
+  if (!(a >= 0 && b > a)) return;
+  var ac = vm.createContext({ String: String, Object: Object, JSON: JSON });
+  vm.runInContext(src.slice(a, b), ac);
+  function fnOf(body) { ac.__b = body; return vm.runInContext('_admissionFnOf(__b)', ac); }
+  function rate(fn, ip, t) { ac.__f = fn; ac.__ip = ip; ac.__t = t; return vm.runInContext('_admissionRate(__f, __ip, __t)', ac); }
+  var rules = vm.runInContext('ADM_RATE_RULES', ac);
+  check(rules.issueAdmissionChallenge.max === 20 && rules.issueAdmissionChallenge.win === 600000, 'السؤال: 20 لكلّ 10 دقائق');
+  check(rules.submitAdmissionApplication.max === 10 && rules.submitAdmissionApplication.win === 3600000, 'الإرسال: 10 لكلّ ساعة (CGNAT)');
+  check(fnOf('{"fn":"issueAdmissionChallenge","args":["s"]}') === 'issueAdmissionChallenge' &&
+        fnOf('{"fn":"submitAdmissionApplication","args":["s",{}]}') === 'submitAdmissionApplication', 'الدالّتان العامّتان ⇒ داخل الحدّ');
+  check(fnOf('{"pad":"' + new Array(400).join('x') + '","fn":"submitAdmissionApplication"}') === 'submitAdmissionApplication',
+        '🔴 حقلٌ طويلٌ قبل `fn` ⇒ يُلتقَط رغم ذلك (لا نافذة الـ200 حرف)');
+  check(fnOf('{"fn":"issueAdmissionChallenge","fn":"getHomePageBundle"}') === '' && fnOf('{"fn":"getHomePageBundle"}') === '' &&
+        fnOf('{"fn":"constructor"}') === '' && fnOf('{"fn":"toString"}') === '' && fnOf('not json') === '' && fnOf('') === '',
+        '🔴 ضابط معاكس: دالّةٌ أخرى/مفتاحٌ مكرَّر آخرُه غيرُها/constructor/غيرُ JSON ⇒ لا كبح');
+  var okN = 0, i;
+  for (i = 0; i < 20; i++) if (rate('issueAdmissionChallenge', '1.1.1.1', 1000)) okN++;
+  check(okN === 20 && rate('issueAdmissionChallenge', '1.1.1.1', 2000) === false, 'السؤال: أوّلُ 20 مسموحة والـ21 في النافذة مكبوحة');
+  check(rate('issueAdmissionChallenge', '2.2.2.2', 2000) === true, 'وعنوانٌ آخر لا يتأثّر');
+  check(rate('issueAdmissionChallenge', '1.1.1.1', 1000 + 600000) === true, 'ونافذةٌ جديدة (بعد 10 دقائق) ⇒ يُسمَح من جديد');
+  okN = 0;
+  for (i = 0; i < 10; i++) if (rate('submitAdmissionApplication', '1.1.1.1', 5000)) okN++;
+  check(okN === 10 && rate('submitAdmissionApplication', '1.1.1.1', 5000 + 3599000) === false, 'الإرسال: أوّلُ 10 مسموحة والحادي عشر قبل الساعة مكبوح');
+  check(rate('submitAdmissionApplication', '1.1.1.1', 5000 + 3600000) === true, 'وبعد الساعة ⇒ يُسمَح من جديد');
+  check(rate('issueAdmissionChallenge', '3.3.3.3', 9000) === true && rate('submitAdmissionApplication', '3.3.3.3', 9000) === true,
+        'العدّادان منفصلان لكلّ دالّة (السؤال لا يستهلك الإرسال)');
+  check(rate('getHomePageBundle', '1.1.1.1', 1) === true, 'ضابط: دالّةٌ خارج القواعد ⇒ مسموحة دائماً');
+  /* الوصل: بعد حدّ المشاهدات، قبل الكاش والمقعد، مقصورٌ على home وPOST، والردُّ بشكل الصفحة. */
+  var w = src.indexOf('_admissionFnOf(init.body)');
+  var cIdx = src.indexOf('_acProbe = _apiCacheProbe(init.body)');
+  var bIdx = src.indexOf('_bhHeld = await _bhAcquire(app');
+  check(w > 0 && w < cIdx && w < bIdx, '🔴 الكبحُ يقع قبل كاش الحافّة وقبل حجز المقعد (صفرُ حصّة GAS فوق الحدّ)');
+  var seg = w > 0 ? src.slice(src.lastIndexOf('var _admFn', w), src.indexOf('// ── كاشُ الحافّة', w)) : '';
+  check(/request\.method === 'POST' && app === 'home'/.test(seg), 'مقصورٌ على POST لتطبيق `home`');
+  check(seg.indexOf('_bhFn') < 0, '🔴 لا يعتمد على `_bhFn`');
+  check(/JSON\.stringify\(\{ ok: true, result: \{ ok: false, error: ADM_RATE_MSG \} \}\)/.test(seg) &&
+        vm.runInContext('ADM_RATE_MSG', ac) === 'محاولات كثيرة، حاول لاحقاً',
+        '🔴 الردُّ `{ok:true, result:{ok:false, error: ADM_RATE_MSG}}` — الصفحة تعرض الرسالة ولا يعيد الجسرُ المحاولة');
+  check(seg.indexOf('CF-Connecting-IP') > 0 && !/ip\s*:/.test(seg), 'يُقرأ IP للحدّ وحده ولا يُسجَّل');
+})();
+
 /* ── جدول الاختبارات على الحافّة (2026-09-28، الدفعة 11): `v` إلزاميٌّ للتخزين ── */
 console.log('');
 console.log('كاشُ الحافّة — جدول الاختبارات مبصومٌ بجيله:');
