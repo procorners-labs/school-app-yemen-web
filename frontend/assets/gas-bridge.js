@@ -344,7 +344,9 @@
     addPlaygroundTxProtected: true, savePlaygroundBookingProtected: true, saveEvaluationProtected: true,
     /* 37: تعديلُ التقييم والحفظُ الجماعيّ للشبكة الشهرية */
     updateEvaluationProtected: true, saveEvaluationsBatchProtected: true, approveEvaluationsProtected: true,
-    applySupervisorScopesProtected: true };
+    applySupervisorScopesProtected: true,
+    /* 37h: السلوكُ والغيابُ الجماعيّ — إعادةٌ بلا `opId` بعد 502 كانت تُسجّل السلوكَ مرّتين */
+    addViolationProtected: true, addViolationsBulkProtected: true, saveAttendanceProtected: true };
   var RECOVER_DELAYS_MS = [3000, 6000, 12000];
   /* معرّفُ عمليّةٍ يطابق `API_OP_ID_RE` في الخادم (`[A-Za-z0-9_-]{8,64}`). */
   function newOpId() {

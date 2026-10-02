@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610021258;
+    window.WEB_BUILD_TS = 202610022043;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2848,7 +2848,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;" id="att-bulk-actions">
           <button onclick="att_markAllPresent()" style="padding:7px 16px;background:#2e7d32;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">✅ الكل حاضر</button>
           <button onclick="att_markAllAbsent()" style="padding:7px 16px;background:#c62828;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">❌ الكل غائب</button>
-          <button onclick="att_saveAll()" style="padding:7px 20px;background:#1565c0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:bold;">💾 حفظ جميع السجلات</button>
+          <button id="att-save-all-btn" onclick="att_saveAll()" style="padding:7px 20px;background:#1565c0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:bold;">💾 حفظ جميع السجلات</button>
           <button onclick="att_applyToSelected('حاضر')"
   style="padding:8px 14px;background:#388e3c;color:#fff;
          border:none;border-radius:8px;cursor:pointer;font-size:13px;">
@@ -3732,7 +3732,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
           <input class="form-control" id="vioCustomText" placeholder="مثال: ساعد زميلاً متأخراً على فهم الدرس">
         </div>
         <div class="form-group mb-3" id="vioPolarityWrap" style="display:none">
-          <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+          <label class="form-label">التصنيف <span style="color:var(--danger)">*</span> <small style="color:#666;">«تعزيز» للشكر والإشادة، «ملاحظة» لما يحتاج متابعة</small></label>
           <div style="display:flex;gap:8px;">
             <button type="button" class="tf-tab" id="vioPolBtnMerit" onclick="vioSetPolarity('merit')">✅ تعزيز</button>
             <button type="button" class="tf-tab" id="vioPolBtnViolation" onclick="vioSetPolarity('violation')">⚠️ ملاحظة</button>
@@ -3766,7 +3766,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
         <input class="form-control" id="bulkVioCustomText" placeholder="مثال: متأخر عن الطابور">
       </div>
       <div class="form-group mb-3" id="bulkVioPolarityWrap" style="display:none">
-        <label class="form-label">التصنيف (اختياري — يُقترَح تلقائياً من النص إن تُرك فارغاً)</label>
+        <label class="form-label">التصنيف <span style="color:var(--danger)">*</span> <small style="color:#666;">«تعزيز» للشكر والإشادة، «ملاحظة» لما يحتاج متابعة</small></label>
         <div style="display:flex;gap:8px;">
           <button type="button" class="tf-tab" id="bulkVioPolBtnMerit" onclick="bulkVioSetPolarity('merit')">✅ تعزيز</button>
           <button type="button" class="tf-tab" id="bulkVioPolBtnViolation" onclick="bulkVioSetPolarity('violation')">⚠️ ملاحظة</button>
@@ -3776,7 +3776,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('bulkVioModal')">إلغاء</button>
-      <button class="btn btn-primary" onclick="sdir_bulkBehaviorSave()">💾 تسجيل للمحددين</button>
+      <button class="btn btn-primary" id="bulkVioSaveBtn" onclick="sdir_bulkBehaviorSave()">💾 تسجيل للمحددين</button>
     </div>
   </div>
 </div>
@@ -8732,6 +8732,8 @@ function _fetchListsFromServer(callback) {
         examPapersByGrade: r.examPapersByGrade || {},
         // ★ التصنيفُ المحسوم لكلّ نوعِ سلوك — تقرأ منه قائمتا «تعزيزٌ إيجابيّ» و«ملاحظة».
         violationPolarityResolved: r.violationPolarityResolved || {},
+        // ★ (37h) التصنيفُ **الصريح** من «القوائم» وحده — نموذجا تسجيل السلوك يختارانه مسبقاً، وبدونه يُطلَب الاختيار.
+        violationPolarity: r.violationPolarity || {},
         subjectExpansionMap: r.subjectExpansionMap || {},
         _ts            : Date.now()
       };
@@ -20320,6 +20322,7 @@ function openViolationModal() {
   var polWrapEl = document.getElementById('vioPolarityWrap'); if (polWrapEl) polWrapEl.style.display = 'none';
   document.getElementById('vioReply').value = '';
   vioSetPolarity('');
+  var _vsb = document.getElementById('vioSaveBtn'); if (_vsb) _vsb.disabled = false;
   openModal('violationModal');
 }
 
@@ -20338,7 +20341,17 @@ function vioTypeOnChange() {
   // الافتراض «تعزيز إيجابي» (قابل للتغيير يدوياً لـ«ملاحظة» إن كان السلوك فعلاً سلبياً) — لا يوجد
   // عنصر إيجابي بالقوائم المُعرَّفة مسبقاً أصلاً، فالتخمين الآلي من الكلمات المفتاحية كان يُصنِّف
   // حتى نصوصاً إيجابية واضحة كمخالفة.
-  vioSetPolarity(isCustom ? 'merit' : '');
+  // (37h) التصنيفُ **إلزاميّ**: لا افتراضَ للنصّ الحرّ، والبندُ الجاهز يُختار له مسبقاً تصنيفُه الصريح
+  // في «القوائم» وحده (لا تخمين الكلمات — «ملاحظة خاصة» مع ردِّ شكرٍ كانت تُحفظ مخالفة).
+  vioSetPolarity('');
+  var _explicit = vioExplicitPolarity(isCustom ? '' : (sel ? sel.value : ''));
+  if (_explicit) vioSetPolarity(_explicit);
+}
+// (37h) تصنيفُ البند الصريح من «القوائم» ('merit' | 'violation' | '').
+function vioExplicitPolarity(type) {
+  var map = (App.lists && App.lists.violationPolarity) ? App.lists.violationPolarity : {};
+  var p = type ? map[type] : '';
+  return (p === 'merit' || p === 'violation') ? p : '';
 }
 
 // التصنيف الصريح الذي يختاره الأستاذ عند كتابة نوع السلوك بنفسه: 'merit' | 'violation' | '' (اقتراح تلقائي).
@@ -20481,6 +20494,14 @@ function saveViolation() {
     toast(isCustom ? 'يرجى كتابة نوع السلوك' : 'يرجى اختيار نوع السلوك', 'warning');
     return;
   }
+  if (_vioPolarity !== 'merit' && _vioPolarity !== 'violation') {
+    toast('اختر التصنيف: «تعزيز» للشكر والإشادة أو «ملاحظة» لما يحتاج متابعة', 'warning');
+    return;
+  }
+  // (37h) زرُّ الحفظ معطَّلٌ حتى يعود الردّ — ضغطتان سريعتان كانتا تسجّلان السلوك مرّتين.
+  var saveBtn = document.getElementById('vioSaveBtn');
+  if (saveBtn && saveBtn.disabled) return;
+  if (saveBtn) saveBtn.disabled = true;
 
   showLoading('جاري حفظ التسجيل...');
   callServer('addViolationProtected', {
@@ -20492,6 +20513,7 @@ function saveViolation() {
     polarity: _vioPolarity
   }, function(r) {
     hideLoading();
+    if (saveBtn) saveBtn.disabled = false;
     if (r && r.success) {
       toast(r.message || 'تم التسجيل بنجاح', 'success');
       closeModal('violationModal');
@@ -27883,6 +27905,7 @@ function att_saveSingle(code) {
   if (!student) return;
 
   var btn = document.getElementById('att-save-btn-' + code);
+  if (btn && btn.classList.contains('saving')) return;   // (37h) حفظٌ جارٍ لهذا الطالب — لا إرسالَ ثانٍ
   if (btn) {
     btn.classList.remove('changed');
     btn.classList.add('saving');
@@ -27964,6 +27987,10 @@ function att_saveAll() {
     att_setStatus('⚠️ لا توجد بيانات للحفظ', '#ff9800');
     return;
   }
+  // (37h) زرُّ «حفظ جميع السجلات» معطَّلٌ حتى يعود الردّ (منعُ الإرسال المزدوج).
+  var saveAllBtn = document.getElementById('att-save-all-btn');
+  if (saveAllBtn && saveAllBtn.disabled) return;
+  if (saveAllBtn) saveAllBtn.disabled = true;
   att_setStatus('⏳ جارٍ الحفظ...', '#1149a3');
   var records = [];
   for (var i = 0; i < _attStudents.length; i++) {
@@ -27984,6 +28011,7 @@ function att_saveAll() {
     date: _attDate,
     records: records
   }, function(res) {
+    if (saveAllBtn) saveAllBtn.disabled = false;
     if (!res || !res.success) {
       att_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828');
       return;
@@ -27992,6 +28020,7 @@ function att_saveAll() {
     if (res.absentList && res.absentList.length > 0) att_showWaSection(res.absentList);
     att_updateSummary();
   }, function(err) {
+    if (saveAllBtn) saveAllBtn.disabled = false;
     att_setStatus('❌ خطأ في الحفظ: ' + err.message, '#c62828');
   });
 }
@@ -33459,6 +33488,7 @@ function _bulkVioPrepModal(rows, codes) {
   var polWrapEl = document.getElementById('bulkVioPolarityWrap'); if (polWrapEl) polWrapEl.style.display = 'none';
   var rep = document.getElementById('bulkVioReply'); if (rep) rep.value = '';
   bulkVioSetPolarity('');
+  var _bsb = document.getElementById('bulkVioSaveBtn'); if (_bsb) _bsb.disabled = false;
   openModal('bulkVioModal');
 }
 
@@ -33473,7 +33503,10 @@ function bulkVioTypeOnChange() {
   if (polWrapEl) polWrapEl.style.display = hasType ? 'block' : 'none';
   // إعادة ضبط التصنيف عند أي تغيير للنوع — نفس منطق vioTypeOnChange (بما في ذلك افتراض
   // «تعزيز إيجابي» للنوع الحرّ).
-  bulkVioSetPolarity(isCustom ? 'merit' : '');
+  // (37h) التصنيفُ إلزاميّ — نفس منطق vioTypeOnChange (الصريح من «القوائم» وحده يُختار مسبقاً).
+  bulkVioSetPolarity('');
+  var _explicit = (typeof vioExplicitPolarity === 'function') ? vioExplicitPolarity(isCustom ? '' : (sel ? sel.value : '')) : '';
+  if (_explicit) bulkVioSetPolarity(_explicit);
 }
 
 // التصنيف الصريح للتسجيل الجماعي: 'merit' | 'violation' | '' (اقتراح تلقائي).
@@ -33494,12 +33527,20 @@ function sdir_bulkBehaviorSave() {
     ? (document.getElementById('bulkVioCustomText').value || '').trim()
     : (typeSel ? typeSel.value : '');
   if (!type) { toast(isCustom ? 'اكتب نوع السلوك' : 'اختر نوع السلوك', 'warning'); return; }
+  if (_bulkVioPolarity !== 'merit' && _bulkVioPolarity !== 'violation') {
+    toast('اختر التصنيف: «تعزيز» للشكر والإشادة أو «ملاحظة» لما يحتاج متابعة', 'warning'); return;
+  }
   var reply = (document.getElementById('bulkVioReply') || {}).value || '';
+  // (37h) زرُّ الحفظ معطَّلٌ حتى يعود الردّ (منعُ الإرسال المزدوج).
+  var saveBtn = document.getElementById('bulkVioSaveBtn');
+  if (saveBtn && saveBtn.disabled) return;
+  if (saveBtn) saveBtn.disabled = true;
   showLoading('جاري تسجيل السلوك لـ ' + rows.length + ' طالب…');
   callServer('addViolationsBulkProtected',
     { rows: rows, codes: SDIR._bulkCodes || [], violation: type, reply: reply.trim(), teacherName: App.user.teacherName, polarity: _bulkVioPolarity },
     function (r) {
       hideLoading();
+      if (saveBtn) saveBtn.disabled = false;
       if (r && r.success) {
         toast(r.message || ('تم التسجيل لـ ' + (r.count || 0) + ' طالب'), 'success');
         closeModal('bulkVioModal');
@@ -33510,7 +33551,7 @@ function sdir_bulkBehaviorSave() {
         showError(r ? r.error : 'فشل التسجيل الجماعي');
       }
     },
-    function (e) { hideLoading(); toast('❌ ' + (e.message || e), 'error'); }
+    function (e) { hideLoading(); if (saveBtn) saveBtn.disabled = false; toast('❌ ' + (e.message || e), 'error'); }
   );
 }
 
