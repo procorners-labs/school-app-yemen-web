@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610020808;
+    window.WEB_BUILD_TS = 202610020945;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2779,6 +2779,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </button>
   <button class="sidebar-item" id="si-studentStatus" onclick="showSection('studentStatus')">
     <span class="si-icon">🔎</span> بيان حالة طالب
+  </button>
+  <button class="sidebar-item" id="si-docArchive" onclick="showSection('docArchive')" style="display:none;">
+    <span class="si-icon">🗂️</span> أرشيف الوثائق
+  </button>
+  <button class="sidebar-item" id="si-textbooks" onclick="showSection('textbooks')" style="display:none;">
+    <span class="si-icon">📚</span> الكتب المدرسية
+  </button>
+  <button class="sidebar-item" id="si-admissions" onclick="showSection('admissions')" style="display:none;">
+    <span class="si-icon">📝</span> طلبات القبول
+  </button>
+  <button class="sidebar-item" id="si-promotion" onclick="showSection('promotion')" style="display:none;">
+    <span class="si-icon">🎓</span> الترقية والعام الدراسي
   </button>
 </div>
 <div class="sidebar-divider"></div>
@@ -11154,6 +11166,10 @@ function _sectionRenderers() {
     dutyFollowup: renderDutyFollowup,
     evaluations: renderEvaluations,
     playground: renderPlayground,
+    docArchive: da_render,
+    textbooks: tb_render,
+    admissions: adm_render,
+    promotion: pro_render,
     certificates: renderCertificates,
     scoresheets: renderScoreSheets,
     calendar: renderCalendar,
@@ -11394,6 +11410,12 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-playground':       { roles:['admin','deputy','activities'],                 accountant:true,  supervisor:{ configurable:true, label:'⚽ الملعب', defaultVisible:false } },
   'si-studentDirectory': { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🎒 أسماء الطلاب',              defaultVisible:true  } },
   'si-studentStatus':    { roles:['admin','deputy','activities','it','teacher'],  accountant:true,  supervisor:{ configurable:true, label:'🔎 بيان حالة طالب',            defaultVisible:true  } },
+  // الدفعة 36: الخادمُ يفحص القدرةَ بنفسه — `archive.view` · `books.view` · `admissions.manage` · `promotion.review`.
+  // القبولُ والترقيةُ لا تُمنحان للمشرف ⇒ مخفيّتان عنه دوماً (لا تُفعَّل له صفحةٌ يرفضها الخادم).
+  'si-docArchive':       { roles:['admin','deputy','it'],                         accountant:false, supervisor:{ configurable:true, label:'🗂️ أرشيف الوثائق',             defaultVisible:true  } },
+  'si-textbooks':        { roles:['admin','deputy'],                              accountant:true,  supervisor:{ configurable:true, label:'📚 الكتب المدرسية',            defaultVisible:false } },
+  'si-admissions':       { roles:['admin','deputy','it'],                         accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
+  'si-promotion':        { roles:[] /* 36: يظهر للمدير والوكيل بعد شاشة الترقية (36q) */, accountant:false, supervisor:{ configurable:false, alwaysHidden:true } },
   'si-letterheads':      { roles:['admin','deputy','teacher'],                    accountant:false, supervisor:{ configurable:true, label:'🗂️ ديباجات المدرسة',           defaultVisible:true  } },
   // غير مُدارة بنظام صلاحيات المشرف (supervisor:null) — سلوك حالي محفوظ حرفياً، لا تغيير:
   // si-circulars تبقى بحالتها الافتراضية (ظاهرة) لكل مشرف بصرف النظر عن pagePerms؛ si-social
@@ -27302,7 +27324,9 @@ function renderStudentsList() {
     for (var fh = 0; fh < _fhCodes.length; fh++) { if (_fhCodes[fh] === _c) { feesHidden = true; break; } }
     var statusBadge = feesHidden
       ? '<span class="badge badge-warning">🔒 رسومه مخفية</span>'
-      : '<span class="badge badge-info">🟢 نشط</span>';
+      : (st.status ? '<span class="badge badge-danger">' + escapeHtml(st.status) + '</span>' : '<span class="badge badge-info">🟢 نشط</span>');
+    // (36n) المنسحب/الخريج يبقى في القائمة المالية (قد يكون عليه رصيد) بشارةٍ بجانب اسمه
+    var enrollBadge = st.status ? ' <span class="badge badge-warning" style="font-size:.7rem;">' + escapeHtml(st.status) + '</span>' : '';
     var actionBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">';
     actionBtn += '<button class="btn btn-sm btn-secondary" title="إرسال إشعار سداد لهذا الطالب (يظهر في «ملاحظاتي» لديه)" onclick="sendStudentPaymentNotice(\'' + _c + '\')">📨</button>';
     actionBtn += '<button class="btn btn-sm btn-secondary" title="طباعة كشف حساب الطالب" onclick="printStudentStatement(\'' + _c + '\')">🖨️</button>';
@@ -27316,7 +27340,7 @@ function renderStudentsList() {
     html += '<tr>';
     html += '<td>' + (start + i + 1) + '</td>';
     html += '<td><span class="badge badge-info">' + escapeHtml(st.code || '') + '</span></td>';
-    html += '<td style="text-align:right; font-weight:500;">' + escapeHtml(st.name || '') + '</td>';
+    html += '<td style="text-align:right; font-weight:500;">' + escapeHtml(st.name || '') + enrollBadge + '</td>';
     html += '<td>' + escapeHtml(st.grade || '') + '</td>';
     html += '<td>' + escapeHtml(st.section || '') + '</td>';
     html += '<td>' + fees.toLocaleString() + '</td>';
@@ -33975,6 +33999,8 @@ function sdir_openAdd() {
     '<div class="form-group mb-2"><label class="form-label">اسم الطالب *</label><input class="form-control" id="sadd-name"></div>' +
     '<div class="form-row mb-2"><div class="form-group"><label class="form-label">الفصل</label><select class="form-select" id="sadd-grade">' + buildSelectOptions(grades, 'اختر الفصل', '', false) + '</select></div>' +
     '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="sadd-section">' + buildSelectOptions(sections, 'اختر الشعبة', '', false) + '</select></div></div>' +
+    '<div class="form-row mb-2"><div class="form-group"><label class="form-label">الجنس</label><select class="form-select" id="sadd-gender"><option value="">—</option><option value="ذكر">ذكر</option><option value="انثى">انثى</option></select></div>' +
+    '<div class="form-group"><label class="form-label">تاريخ الميلاد</label><input class="form-control" id="sadd-birth" type="date" max="' + new Date().toISOString().substring(0, 10) + '"></div></div>' +
     '<div class="form-group mb-2"><label class="form-label">رقم الجوال</label><input class="form-control" id="sadd-phone" placeholder="7xxxxxxxx"></div>' +
     '<div class="form-group mb-2"><label class="form-label">كلمة المرور (اختياري — تُولّد تلقائياً)</label><input class="form-control" id="sadd-pass"></div>' +
     '<div class="form-group mb-3"><label class="form-label">إجمالي الرسوم</label><input class="form-control" id="sadd-fees" type="number"></div>' +
@@ -33993,6 +34019,8 @@ function sdir_submitAdd() {
     grade: document.getElementById('sadd-grade').value,
     section: document.getElementById('sadd-section').value,
     phone: (document.getElementById('sadd-phone').value || '').trim(),
+    gender: (document.getElementById('sadd-gender') || {}).value || '',
+    birthDate: (document.getElementById('sadd-birth') || {}).value || '',
     password: (document.getElementById('sadd-pass').value || '').trim(),
     fees: (document.getElementById('sadd-fees').value || '')
   };
@@ -34005,13 +34033,13 @@ function sdir_submitAdd() {
                   (r.existingCode ? (' — كود: ' + escapeHtml(r.existingCode)) : '');
         statusEl.innerHTML = '<div class="alert alert-warning">⚠️ الاسم «' + escapeHtml(r.existingName || name) + '» موجود مسبقاً' + det + '</div>';
       } else {
-        statusEl.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>';
+        statusEl.innerHTML = '<div class="alert alert-danger">' + escapeHtml((r && r.error) || 'فشل') + '</div>';
       }
       return;
     }
     // طالب جديد يجب أن يظهر فوراً في السلوك الجماعي والتعاميم والاقتراح التلقائي للأسماء
     try { ClientCache.clear('sdir_'); ClientCache.clear('student_names_'); } catch (eCc) {}
-    toast('✅ تمت الإضافة — كلمة المرور: ' + r.password, 'success', 5000);
+    toast('✅ تمت الإضافة — الكود: ' + r.code + (r.classId ? ' — الفصل: ' + r.classId : '') + ' — كلمة المرور: ' + r.password, 'success', 6000);
     sdir_closeAdd(); sdir_load();
   }, function (e) { statusEl.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
@@ -38610,6 +38638,1936 @@ function pg_statement(idx) {
     '<table><thead><tr><th>إيصال</th><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>البيان</th></tr></thead><tbody>' + (rows || '<tr><td colspan="5">لا توجد حركات</td></tr>') + '</tbody></table>' +
     '<p>السعر: ' + _pgMoney(b.price) + ' · المدفوع: ' + _pgMoney(b.paid) + ' · <b>المتبقّي: ' + _pgMoney(b.remaining) + '</b></p>';
   _pgPrintWin('كشف حساب حجز — الملعب', inner);
+}
+
+</script>
+<!-- ═══ الدفعة 36: أرشيف الوثائق، الكتب المدرسية، طلبات القبول، الترقية ═══ -->
+<script>
+/* ═══ الدفعة 36k: أرشيف وثائق الطلاب — الواجهة (الخادم: DocArchive.js 36f، صور الوثائق: DocArchiveDrive.js 36j) ═══
+   تبويبات: «ملف طالب» و«النواقص» و«توزيع» لحامل archive.view، و«سحب ملف» و«الوثائق المطلوبة» لحامل archive.manage.
+   الخادمُ يفحص كلَّ شيءٍ بنفسه؛ هذا عرضٌ فقط. كلُّ نصٍّ ديناميكيٍّ يُهرَّب (escapeHtml / textContent)، ولا معالجَ
+   مضمَّناً يحمل نصّاً من البيانات: الأزرار تحمل data-da (+ data-i / data-code / data-id) ويلتقطها مستمعٌ واحدٌ مفوَّض.
+   البحث عن الطالب يعيد استعمال الدليل الخفيف getStudentsDirectoryProtected({lean:1}) بمفتاح كاشه نفسه. */
+var DA = { tab: 'file', cat: null, students: null, cur: null, wd: null, miss: null, dist: null, school: null,
+  upIdx: -1, viewUrl: '', lastPrint: null };
+var DA_MAX_SCAN = 4 * 1024 * 1024;
+var DA_SCAN_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+var DA_ST_RECEIVED = 'مستلمة';
+var DA_ST_WITHDRAWN = 'مسحوبة';
+
+function _daCanView() { return hasCap('archive.view') || hasCap('archive.manage'); }
+function _daCanManage() { return hasCap('archive.manage'); }
+function _daEl(id) { return document.getElementById(id); }
+function _daVal(id) { var e = _daEl(id); return e ? String(e.value == null ? '' : e.value) : ''; }
+function _daTrim(s) { return String(s == null ? '' : s).replace(/^\s+|\s+$/g, ''); }
+function _daCls(g, s) { return _daTrim(_daTrim(g) + ' ' + _daTrim(s)); }
+/* toast يكتب innerHTML ⇒ الرسالةُ (وقد تحمل نصّاً من الورقة) تُهرَّب هنا دائماً. */
+function _daMsg(m, type) { toast(escapeHtml(String(m == null ? '' : m)), type || 'info'); }
+function _daFail(r, dflt) { _daMsg((r && r.error) || dflt || 'تعذّر', 'error'); }
+function _daNetErr(e) { return String((e && e.message) || e || 'شبكة'); }
+function _daSkel() { return '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>'; }
+function _daAlert(kind, text) { return '<div class="alert alert-' + kind + '">' + escapeHtml(text) + '</div>'; }
+function _daToday() {
+  var d = new Date(), m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+}
+
+function da_render() {
+  if (!_daCanView()) { toast('هذه الصفحة للإدارة والمشرفين', 'error'); showSection('dashboard'); return; }
+  var el = _daEl('dynamicContent');
+  if (!el) return;
+  _daCloseScan();
+  el.innerHTML =
+    '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(59,130,246,.12)">🗂️</div>' +
+      '<div class="section-header-title">أرشيف الوثائق</div>' +
+    '</div><div class="section-body">' +
+      '<div id="daTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>' +
+      '<div id="daBody">' + _daSkel() + '</div>' +
+      '<input type="file" id="da-file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">' +
+    '</div></div>';
+  _daEl('daTabs').addEventListener('click', _daOnClick);
+  var body = _daEl('daBody');
+  body.addEventListener('click', _daOnClick);
+  body.addEventListener('input', _daOnInput);
+  _daEl('da-file').addEventListener('change', _daOnFile);
+  if (!_daCanManage() && (DA.tab === 'withdraw' || DA.tab === 'catalog')) DA.tab = 'file';
+  da_tab(DA.tab);
+}
+
+function _daTabs() {
+  var t = [['file', '📁 ملف طالب'], ['missing', '⚠️ النواقص'], ['dist', '📊 توزيع']];
+  if (_daCanManage()) { t.push(['withdraw', '📤 سحب ملف']); t.push(['catalog', '⚙️ الوثائق المطلوبة']); }
+  return t;
+}
+
+function da_tab(name) {
+  var tabs = _daTabs(), ok = false, h = '';
+  for (var k = 0; k < tabs.length; k++) if (tabs[k][0] === name) ok = true;
+  if (!ok) name = 'file';
+  DA.tab = name;
+  _daCloseScan();
+  for (var i = 0; i < tabs.length; i++) {
+    h += '<button type="button" class="btn btn-sm ' + (tabs[i][0] === name ? 'btn-primary' : 'btn-secondary') +
+      '" data-da="tab" data-tab="' + tabs[i][0] + '">' + tabs[i][1] + '</button>';
+  }
+  var bar = _daEl('daTabs');
+  if (bar) bar.innerHTML = h;
+  var body = _daEl('daBody');
+  if (!body) return;
+  body.innerHTML = _daSkel();
+  if (name === 'missing') _daRenderMissingTab();
+  else if (name === 'dist') _daRenderDistTab();
+  else if (name === 'withdraw') _daRenderWithdrawTab();
+  else if (name === 'catalog') _daRenderCatalogTab(false);
+  else _daRenderFileTab();
+}
+
+/* ── التفويض: نقرةٌ واحدة ومدخلٌ واحد لكلّ عناصر الصفحة ── */
+function _daOnClick(ev) {
+  var t = ev.target, root = this;
+  while (t && t !== root && !(t.getAttribute && t.getAttribute('data-da'))) t = t.parentNode;
+  if (!t || t === root || !t.getAttribute) return;
+  var act = t.getAttribute('data-da'), i = parseInt(t.getAttribute('data-i'), 10);
+  if (act === 'tab') da_tab(t.getAttribute('data-tab'));
+  else if (act === 'pick') da_openStudent(t.getAttribute('data-code'), t.getAttribute('data-ctx'));
+  else if (act === 'save') da_saveDocs();
+  else if (act === 'reload') _daReloadCur();
+  else if (act === 'up') _daStartUpload(i);
+  else if (act === 'view') _daViewScan(i);
+  else if (act === 'rcpt') _daToggleReceipt();
+  else if (act === 'rcptGo') da_receipt();
+  else if (act === 'wprint') _daPrintWithdrawal(t.getAttribute('data-id'));
+  else if (act === 'miss') da_loadMissing();
+  else if (act === 'missPrint') _daPrintMissing();
+  else if (act === 'dist') da_loadDist();
+  else if (act === 'distPrint') _daPrintDist();
+  else if (act === 'wdGo') da_withdraw();
+  else if (act === 'catSave') da_saveCatalogItem();
+  else if (act === 'catEdit') _daEditCatalogItem(i);
+  else if (act === 'catNew') _daResetCatalogForm();
+  else if (act === 'catToggle') _daToggleCatalogItem(i);
+  else if (act === 'seedPreview') da_seedPreview();
+  else if (act === 'seedConfirm') da_seedConfirm();
+  else if (act === 'lastPrint') { if (DA.lastPrint) _daPrint(DA.lastPrint.title, DA.lastPrint.html); }
+}
+function _daOnInput(ev) {
+  var t = ev.target, ctx = t && t.getAttribute && t.getAttribute('data-da-search');
+  if (ctx) _daSearch(ctx);
+}
+
+/* ── اختيار الطالب: الدليل الخفيف مرّةً واحدة، والبحث بالاسم أو الكود محلّياً ── */
+function _daLoadStudents(cb, onErr) {
+  if (DA.students) { cb(DA.students); return; }
+  // (36n) مع المنسحب/الخريج لفتح ملفّه — مفتاحُ كاشٍ مستقلّ عن «sdir_lean_…» (التعاميم تطلب النشطين فقط)
+  var key = 'sdir_lean_all_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.token) || '');
+  callServer('getStudentsDirectoryProtected', { lean: 1, includeInactive: 1 }, key, 180, function (r) {
+    if (!r || !r.success) { if (onErr) onErr((r && r.error) || 'تعذّر جلب قائمة الطلاب'); return; }
+    DA.students = r.students || [];
+    cb(DA.students);
+  }, function (e) { if (onErr) onErr(_daNetErr(e)); });
+}
+function _daPickerHtml(ctx) {
+  return '<div class="form-group"><label class="form-label">ابحث عن الطالب بالاسم أو الكود</label>' +
+    '<input type="text" class="form-control" id="da-q-' + ctx + '" data-da-search="' + ctx + '" autocomplete="off" placeholder="🔍 اسم / كود"></div>' +
+    '<div id="da-res-' + ctx + '" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>';
+}
+function _daSearch(ctx) {
+  var box = _daEl('da-res-' + ctx);
+  if (!box) return;
+  var q = _tcNorm(_daVal('da-q-' + ctx));
+  if (!q) { box.innerHTML = ''; return; }
+  if (!DA.students) box.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">⏳ جاري تحميل قائمة الطلاب…</span>';
+  _daLoadStudents(function (list) {
+    var b = _daEl('da-res-' + ctx);
+    if (!b || _tcNorm(_daVal('da-q-' + ctx)) !== q) return;      // كُتب غيرُه أو تغيّر التبويب في أثناء التحميل
+    var out = [], more = false;
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      if (s._daHay == null) s._daHay = _tcNorm((s.name || '') + ' ' + (s.code || ''));
+      if (s._daHay.indexOf(q) < 0) continue;
+      if (out.length >= 20) { more = true; break; }
+      out.push(s);
+    }
+    if (!out.length) { b.innerHTML = '<span style="color:var(--text-muted);font-size:.85rem">لا نتائج</span>'; return; }
+    var h = '';
+    for (var j = 0; j < out.length; j++) {
+      h += '<button type="button" class="btn btn-secondary btn-sm" data-da="pick" data-ctx="' + ctx + '" data-code="' + escapeHtml(out[j].code) + '">' +
+        escapeHtml(out[j].name) + (out[j].status ? ' <span style="color:var(--danger,#c0392b);font-weight:700">(' + escapeHtml(out[j].status) + ')</span>' : '') +
+        ' <span style="opacity:.7">· ' + escapeHtml(out[j].code) + ' · ' + escapeHtml(_daCls(out[j].grade, out[j].section)) + '</span></button>';
+    }
+    if (more) h += '<span style="color:var(--text-muted);font-size:.8rem;align-self:center">… اكتب أكثر لتضييق النتائج</span>';
+    b.innerHTML = h;
+  }, function (msg) { var b = _daEl('da-res-' + ctx); if (b) b.innerHTML = _daAlert('warning', msg); });
+}
+
+function da_openStudent(code, ctx) {
+  code = _daTrim(code);
+  if (!code) return;
+  var wd = ctx === 'wd', box = _daEl(wd ? 'da-wstu' : 'da-stu');
+  var q = _daEl('da-q-' + (wd ? 'wd' : 'file')), res = _daEl('da-res-' + (wd ? 'wd' : 'file'));
+  if (q) q.value = '';
+  if (res) res.innerHTML = '';
+  if (box) box.innerHTML = _daSkel();
+  callServer('getStudentDocsProtected', { code: code }, function (r) {
+    var b = _daEl(wd ? 'da-wstu' : 'da-stu');
+    if (!r || !r.success) { if (b) b.innerHTML = _daAlert('warning', (r && r.error) || 'تعذّر جلب وثائق الطالب'); return; }
+    if (wd) { DA.wd = r; if (b) _daRenderWithdrawForm(); }
+    else { DA.cur = r; if (b) _daRenderStudent(); }
+  }, function (e) {
+    var b = _daEl(wd ? 'da-wstu' : 'da-stu');
+    if (b) b.innerHTML = _daAlert('danger', _daNetErr(e));
+  });
+}
+function _daReloadCur() { if (DA.cur && DA.cur.student) da_openStudent(DA.cur.student.code, 'file'); }
+
+function _daLastBar() {
+  if (!DA.lastPrint) return '';
+  return '<div class="alert alert-info" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+    '<span style="flex:1">آخر مستند: ' + escapeHtml(DA.lastPrint.title) + '</span>' +
+    '<button type="button" class="btn btn-secondary btn-sm" data-da="lastPrint">🖨️ طباعة مرة أخرى</button></div>';
+}
+function _daStudentHead(r) {
+  var s = r.student || {};
+  return '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+    '<div><b style="font-size:1.05rem">' + escapeHtml(s.name) + '</b>' +
+      '<div style="color:var(--text-muted);font-size:.85rem">الكود: ' + escapeHtml(s.code) + ' · الفصل: ' + escapeHtml(_daCls(s.grade, s.section)) +
+      (s.enrolled === false ? ' · <span class="badge badge-warning">' + escapeHtml(s.enrollment || 'غير مقيّد') + '</span>' : '') + '</div></div>' +
+    '<div>' + (r.complete ? '<span class="badge badge-success">✔️ مكتمل</span>' : '<span class="badge badge-danger">ناقص</span>') + '</div></div>';
+}
+
+/* ── تبويب «ملف طالب» ── */
+function _daRenderFileTab() {
+  var body = _daEl('daBody');
+  if (!body) return;
+  body.innerHTML = '<div id="da-last">' + _daLastBar() + '</div>' + _daPickerHtml('file') + '<div id="da-stu"></div>';
+  if (DA.cur) _daRenderStudent();
+}
+
+function _daStatusSelect(i, cur, man) {
+  var opts = ['', DA_ST_RECEIVED, 'معفاة'];
+  if (cur && opts.indexOf(cur) === -1) opts.push(cur);           // «مسحوبة» تُعرض كما هي
+  var h = '<select class="form-select" id="da-st-' + i + '" style="min-width:110px"' + (man ? '' : ' disabled') + '>';
+  for (var k = 0; k < opts.length; k++) {
+    h += '<option value="' + escapeHtml(opts[k]) + '"' + (opts[k] === (cur || '') ? ' selected' : '') + '>' + escapeHtml(opts[k] || '—') + '</option>';
+  }
+  return h + '</select>';
+}
+
+function _daRenderStudent() {
+  var box = _daEl('da-stu'), r = DA.cur;
+  if (!box || !r) return;
+  var man = _daCanManage() && r.canManage !== false, req = r.required || [];
+  var h = '<div class="section-card" style="margin:10px 0"><div class="section-body">' + _daStudentHead(r);
+  if (!r.complete && r.missing && r.missing.length) h += '<div class="alert alert-warning" style="margin-top:8px">النواقص: ' + escapeHtml(r.missing.join('، ')) + '</div>';
+  if (r.gradeKnown === false) h += _daAlert('info', 'صفّ الطالب غير معروف في قائمة صفوف المدرسة، فلا تُحسب له وثائق مطلوبة.');
+  if (!req.length) {
+    h += _daAlert('info', 'لا توجد وثائق مطلوبة لصفّ هذا الطالب في الكتالوج' + (man ? ' — أضفها من تبويب «الوثائق المطلوبة».' : '.'));
+  } else {
+    h += '<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>الوثيقة</th><th>إلزامية</th><th>الحالة</th><th>تاريخ الاستلام</th><th>ملاحظات</th><th>صورة الوثيقة</th></tr></thead><tbody>';
+    for (var i = 0; i < req.length; i++) {
+      var it = req[i];
+      h += '<tr><td>' + escapeHtml(it.name) + '</td><td>' + (it.mandatory ? 'نعم' : 'لا') + '</td><td>' + _daStatusSelect(i, it.status, man) +
+        '</td><td>' + escapeHtml(it.receivedAt || '—') + '</td><td><input type="text" class="form-control" id="da-nt-' + i + '" maxlength="300" style="min-width:120px" value="' +
+        escapeHtml(it.notes || '') + '"' + (man ? '' : ' disabled') + '></td><td style="white-space:nowrap">' +
+        (man ? '<button type="button" class="btn btn-secondary btn-sm" data-da="up" data-i="' + i + '" title="صورة JPG / PNG / WEBP أو PDF حتى 4 ميغابايت">⬆️ رفع</button> ' : '') +
+        (it.hasScan ? '<button type="button" class="btn btn-secondary btn-sm" data-da="view" data-i="' + i + '">👁️ عرض</button>' : '<span class="muted" style="font-size:12px">لا صورة</span>') + '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
+    (man && req.length ? '<button type="button" class="btn btn-primary" data-da="save">💾 حفظ</button>' +
+      '<button type="button" class="btn btn-secondary" data-da="rcpt">🧾 إيصال استلام</button>' : '') +
+    '<button type="button" class="btn btn-secondary" data-da="reload">🔄 تحديث</button></div>';
+  if (man) h += '<div id="da-rc" style="display:none;margin-top:10px"></div>';
+  var oth = r.others || [];
+  if (oth.length) {
+    h += '<h4 style="margin:14px 0 6px">وثائق مسجّلة خارج المطلوب حالياً</h4><div class="table-wrap"><table><thead><tr><th>الوثيقة</th><th>الحالة</th><th>تاريخ الاستلام</th><th>ملاحظات</th></tr></thead><tbody>';
+    for (var j = 0; j < oth.length; j++) {
+      h += '<tr><td>' + escapeHtml(oth[j].name) + '</td><td>' + escapeHtml(oth[j].status) + '</td><td>' + escapeHtml(oth[j].receivedAt || '—') + '</td><td>' + escapeHtml(oth[j].notes || '') + '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  h += _daWithdrawalsList(r);
+  box.innerHTML = h + '</div></div>';
+}
+
+function _daWithdrawalsList(r) {
+  var w = r.withdrawals || [];
+  if (!w.length) return '';
+  var h = '<h4 style="margin:14px 0 6px">سجلّ سحب الملف</h4><div class="table-wrap"><table><thead><tr><th>رقم السحب</th><th>التاريخ</th><th>السبب</th><th>المدرسة المنقول إليها</th><th></th></tr></thead><tbody>';
+  for (var i = 0; i < w.length; i++) {
+    h += '<tr><td>' + escapeHtml(w[i].withdrawId) + '</td><td>' + escapeHtml(w[i].date) + '</td><td>' + escapeHtml(w[i].reason) + '</td><td>' + escapeHtml(w[i].toSchool || '—') +
+      '</td><td><button type="button" class="btn btn-secondary btn-sm" data-da="wprint" data-id="' + escapeHtml(w[i].withdrawId) + '">🖨️ طباعة</button></td></tr>';
+  }
+  return h + '</tbody></table></div>';
+}
+
+// البنودُ التي تغيّرت حالتُها أو ملاحظتُها عن المعروض فقط.
+function _daChangedItems(req) {
+  var items = [];
+  for (var i = 0; i < req.length; i++) {
+    if (!_daEl('da-st-' + i)) continue;
+    var it = req[i], st = _daVal('da-st-' + i), nt = _daVal('da-nt-' + i);
+    if (st !== (it.status || '') || nt !== (it.notes || '')) items.push({ docId: it.docId, status: st, notes: nt });
+  }
+  return items;
+}
+
+function da_saveDocs() {
+  var r = DA.cur;
+  if (!r || !r.student || !_daCanManage()) return;
+  var items = _daChangedItems(r.required || []);
+  if (!items.length) { _daMsg('لا توجد تغييرات للحفظ', 'info'); return; }
+  showLoading('جاري الحفظ...');
+  callServer('saveStudentDocsBulkProtected', { code: r.student.code, items: items, fingerprint: r.student.fingerprint }, function (res) {
+    hideLoading();
+    if (!res || !res.success) { _daFail(res, 'تعذّر الحفظ'); if (res && res.stale) _daReloadCur(); return; }
+    _daMsg(res.message || 'تم الحفظ', 'success');
+    _daReloadCur();
+  }, function (e) {
+    hideLoading();
+    _daMsg('انقطع الردّ (' + _daNetErr(e) + ') — حُدِّثت البطاقة؛ تحقّق منها قبل إعادة الحفظ', 'error');
+    _daReloadCur();
+  });
+}
+
+/* ── إيصال الاستلام: الوثائق المستلمة محدَّدةٌ افتراضياً ── */
+function _daToggleReceipt() {
+  var box = _daEl('da-rc'), r = DA.cur;
+  if (!box || !r) return;
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  var all = (r.required || []).concat(r.others || []), h = '';
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].status === DA_ST_WITHDRAWN) continue;
+    h += '<label style="display:inline-flex;gap:4px;align-items:center;margin:0 0 6px 12px"><input type="checkbox" data-doc="' + escapeHtml(all[i].docId) + '"' +
+      (all[i].status === DA_ST_RECEIVED ? ' checked' : '') + '> ' + escapeHtml(all[i].name) + '</label>';
+  }
+  box.innerHTML = '<div class="filter-bar"><div class="filter-bar-title">🧾 إيصال استلام وثائق من ولي الأمر</div>' +
+    '<div class="form-row" style="margin-bottom:6px">' +
+      '<div class="form-group"><label class="form-label">اسم المسلِّم *</label><input type="text" class="form-control" id="da-rc-name" maxlength="120"></div>' +
+      '<div class="form-group"><label class="form-label">صفته</label><input type="text" class="form-control" id="da-rc-rel" maxlength="60" placeholder="ولي الأمر"></div>' +
+    '</div><div id="da-rc-docs">' + (h || _daAlert('info', 'لا توجد وثائق')) + '</div>' +
+    '<div style="color:var(--text-muted);font-size:.8rem;margin:4px 0 8px">الإيصال لا يغيّر حالات الوثائق — احفظ الحالات أولاً.</div>' +
+    '<button type="button" class="btn btn-primary btn-sm" data-da="rcptGo">🧾 تسجيل الإيصال وطباعته</button></div>';
+  box.style.display = '';
+}
+function _daCheckedDocs(boxId) {
+  var out = [], box = _daEl(boxId);
+  if (!box) return out;
+  var cbs = box.querySelectorAll('input[type=checkbox][data-doc]');
+  for (var i = 0; i < cbs.length; i++) if (cbs[i].checked) out.push({ docId: cbs[i].getAttribute('data-doc'), name: _daTrim(cbs[i].parentNode.textContent) });
+  return out;
+}
+function da_receipt() {
+  var r = DA.cur;
+  if (!r || !r.student) return;
+  var party = _daTrim(_daVal('da-rc-name')), rel = _daTrim(_daVal('da-rc-rel')), docs = _daCheckedDocs('da-rc-docs'), ids = [];
+  if (!party) { _daMsg('اكتب اسم المسلِّم', 'warning'); return; }
+  if (!docs.length) { _daMsg('اختر وثيقة واحدة على الأقل', 'warning'); return; }
+  for (var i = 0; i < docs.length; i++) ids.push(docs[i].docId);
+  showLoading('جاري تسجيل الإيصال...');
+  callServer('createDocsReceiptProtected', { code: r.student.code, type: 'استلام', docs: ids, partyName: party, partyRelation: rel }, function (res) {
+    hideLoading();
+    if (!res || !res.success) { _daFail(res, 'تعذّر تسجيل الإيصال'); return; }
+    if (res.school) DA.school = res.school;
+    _daMsg(res.message || 'تم تسجيل الإيصال', 'success');
+    var box = _daEl('da-rc');
+    if (box) box.style.display = 'none';
+    _daPrint('إيصال استلام ' + ((res.receipt && res.receipt.receiptId) || ''), _daReceiptHtml(res.receipt, res.school));
+  }, function (e) { hideLoading(); _daMsg('انقطع الردّ (' + _daNetErr(e) + ') — قد يكون الإيصال سُجّل؛ تحقّق قبل الإعادة', 'error'); });
+}
+
+/* ── صور الوثائق (36j): رفعٌ base64 بفحصٍ محلّيّ للنوع والحجم، وعرضٌ عبر blob URL في نافذةٍ داخل الصفحة ── */
+function _daScanType(f) {
+  var t = String((f && f.type) || '').toLowerCase();
+  if (t === 'image/jpg' || t === 'image/pjpeg') t = 'image/jpeg';
+  if (!t) {                                                       // بعض أجهزة أندرويد لا تعطي النوع ⇒ من الامتداد
+    var m = /\.([a-z0-9]+)$/i.exec(String((f && f.name) || '')), ext = m ? m[1].toLowerCase() : '';
+    t = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf' }[ext] || '';
+  }
+  return DA_SCAN_TYPES.indexOf(t) === -1 ? '' : t;
+}
+function _daStartUpload(i) {
+  var it = DA.cur && (DA.cur.required || [])[i];
+  if (!it || !_daCanManage()) return;
+  DA.upIdx = i;
+  var f = _daEl('da-file');
+  if (!f) return;
+  f.value = '';
+  f.click();
+}
+function _daOnFile() {
+  var f = this.files && this.files[0], r = DA.cur, it = r && (r.required || [])[DA.upIdx];
+  if (!f || !it || !r.student) return;
+  var type = _daScanType(f);
+  if (!type) { _daMsg('نوع الملف غير مسموح — المسموح: صورة JPG أو PNG أو WEBP، أو ملف PDF', 'warning'); return; }
+  if (f.size > DA_MAX_SCAN) { _daMsg('حجم الملف أكبر من 4 ميغابايت — صغّر الصورة أو اضغط ملف PDF', 'warning'); return; }
+  var code = r.student.code, fp = r.student.fingerprint, docId = it.docId, fileName = String(f.name || 'scan').slice(0, 150);
+  var reader = new FileReader();
+  reader.onload = function () {
+    var s = String(reader.result || ''), k = s.indexOf(','), b64 = k >= 0 ? s.slice(k + 1) : '';
+    if (!b64) { _daMsg('تعذّرت قراءة الملف', 'error'); return; }
+    showLoading('جاري رفع صورة الوثيقة...');
+    callServer('uploadArchiveScanProtected', { code: code, docId: docId, fileName: fileName, mimeType: type, base64: b64, fingerprint: fp }, function (res) {
+      hideLoading();
+      if (!res || !res.success) { _daFail(res, 'تعذّر رفع الملف'); if (res && res.stale) _daReloadCur(); return; }
+      _daMsg(res.message || 'تم حفظ صورة الوثيقة', 'success');
+      _daReloadCur();
+    }, function (e) { hideLoading(); _daMsg('انقطع الردّ (' + _daNetErr(e) + ') — اضغط «عرض» للتحقّق قبل إعادة الرفع', 'error'); });
+  };
+  reader.onerror = function () { _daMsg('تعذّرت قراءة الملف', 'error'); };
+  reader.readAsDataURL(f);
+}
+function _daViewScan(i) {
+  var r = DA.cur, it = r && (r.required || [])[i];
+  if (!it || !r.student) return;
+  showLoading('جاري جلب صورة الوثيقة...');
+  callServer('fetchArchiveScanProtected', { code: r.student.code, docId: it.docId }, function (res) {
+    hideLoading();
+    if (!res || !res.success || !res.base64) { _daMsg((res && res.error) || 'لا توجد صورة محفوظة لهذه الوثيقة', (res && res.noFile) ? 'info' : 'error'); return; }
+    _daShowScan(res.name || it.name, res.mimeType, res.base64);
+  }, function (e) { hideLoading(); _daMsg(_daNetErr(e), 'error'); });
+}
+function _daB64Blob(b64, mime) {
+  var bin = atob(b64), n = bin.length, u = new Uint8Array(n);
+  for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+  return new Blob([u], { type: mime });
+}
+function _daShowScan(name, mime, b64) {
+  _daCloseScan();
+  mime = String(mime || '').toLowerCase();
+  var isImg = /^image\/(jpeg|png|webp)$/.test(mime), isPdf = mime === 'application/pdf';
+  if (!isImg && !isPdf) { _daMsg('نوع ملف غير متوقَّع', 'error'); return; }
+  var url;
+  try { url = URL.createObjectURL(_daB64Blob(b64, mime)); } catch (e) { _daMsg('تعذّر فتح الملف على هذا الجهاز', 'error'); return; }
+  DA.viewUrl = url;
+  name = String(name || 'scan');
+  var ov = document.createElement('div');
+  ov.id = 'da-scan-ov';
+  ov.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:10050;background:rgba(15,23,42,.85);display:flex;flex-direction:column;padding:10px;direction:rtl';
+  var bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:8px;align-items:center;color:#fff;margin-bottom:8px';
+  var t = document.createElement('strong');
+  t.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  t.textContent = name;
+  var dl = document.createElement('a');
+  dl.className = 'btn btn-secondary btn-sm';
+  dl.href = url;
+  dl.download = name.replace(/[\\\/:*?"<>|]+/g, '_') + (isPdf && !/\.pdf$/i.test(name) ? '.pdf' : '');
+  dl.textContent = '⬇️ تنزيل';
+  var x = document.createElement('button');
+  x.type = 'button';
+  x.className = 'btn btn-danger btn-sm';
+  x.textContent = '✕ إغلاق';
+  x.onclick = _daCloseScan;
+  bar.appendChild(t); bar.appendChild(dl); bar.appendChild(x);
+  var area = document.createElement('div');
+  area.style.cssText = 'flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;border-radius:8px;background:' + (isPdf ? '#fff' : 'transparent');
+  var v;
+  if (isImg) {
+    v = document.createElement('img');
+    v.alt = '';
+    v.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain';
+  } else {
+    v = document.createElement('iframe');
+    v.title = name;
+    v.style.cssText = 'width:100%;height:100%;border:0';
+  }
+  v.src = url;
+  area.appendChild(v);
+  ov.appendChild(bar); ov.appendChild(area);
+  document.body.appendChild(ov);
+}
+function _daCloseScan() {
+  var ov = _daEl('da-scan-ov');
+  if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  if (DA.viewUrl) { try { URL.revokeObjectURL(DA.viewUrl); } catch (e) {} DA.viewUrl = ''; }
+}
+
+/* ── تبويب «النواقص» ── */
+function _daWithCatalog(fn, force) {
+  if (DA.cat && !force) { fn(); return; }
+  callServer('listArchiveCatalogProtected', {}, function (r) {
+    if (!r || !r.success) { var b = _daEl('daBody'); if (b) b.innerHTML = _daAlert('warning', (r && r.error) || 'تعذّر جلب الكتالوج'); return; }
+    DA.cat = r;
+    fn();
+  }, function (e) { var b = _daEl('daBody'); if (b) b.innerHTML = _daAlert('danger', _daNetErr(e)); });
+}
+function _daRenderMissingTab() {
+  _daWithCatalog(function () {
+    var body = _daEl('daBody');
+    if (!body || DA.tab !== 'missing') return;
+    var grades = (DA.cat && DA.cat.grades) || [], secs = (App.lists && App.lists.sections) || [];
+    body.innerHTML = '<div class="filter-bar"><div class="form-row" style="margin-bottom:0">' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="da-mg">' + buildSelectOptions(grades, 'كل الصفوف', (DA.miss && DA.miss.grade) || '') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الشعبة</label><select class="form-select" id="da-ms">' + buildSelectOptions(secs, 'كل الشعب', (DA.miss && DA.miss.section) || '') + '</select></div>' +
+      '<div class="form-group" style="align-self:flex-end;flex:0;white-space:nowrap"><button type="button" class="btn btn-primary" data-da="miss">عرض</button> ' +
+      '<button type="button" class="btn btn-secondary" data-da="missPrint">🖨️ طباعة</button></div>' +
+      '</div></div><div id="da-miss-out"></div>';
+    da_loadMissing();
+  });
+}
+function da_loadMissing() {
+  var out = _daEl('da-miss-out');
+  if (!out) return;
+  var g = _daVal('da-mg'), s = _daVal('da-ms');
+  out.innerHTML = _daSkel();
+  callServer('getArchiveMissingReportProtected', { grade: g, section: s }, function (r) {
+    var o = _daEl('da-miss-out');
+    if (!o) return;
+    if (!r || !r.success) { o.innerHTML = _daAlert('warning', (r && r.error) || 'تعذّر جلب التقرير'); return; }
+    DA.miss = { r: r, grade: g, section: s };
+    o.innerHTML = _daMissingHtml(r);
+  }, function (e) { var o = _daEl('da-miss-out'); if (o) o.innerHTML = _daAlert('danger', _daNetErr(e)); });
+}
+// للشاشة وللطباعة معاً (النصُّ كلُّه مُهرَّب).
+function _daMissingHtml(r) {
+  var groups = (r && r.groups) || [];
+  var h = '<p style="margin:6px 0 10px"><b>المقيّدون:</b> ' + escapeHtml(String((r && r.enrolled) || 0)) +
+    ' · <b>الملفات الناقصة:</b> ' + escapeHtml(String((r && r.incomplete) || 0)) + '</p>';
+  if (!groups.length) return h + _daAlert('success', 'كل ملفات الطلاب المقيّدين في هذا النطاق مكتملة.');
+  for (var i = 0; i < groups.length; i++) {
+    var g = groups[i], st = g.students || [];
+    h += '<h4 style="margin:12px 0 6px">' + escapeHtml(_daCls(g.grade, g.section) || '—') + ' — ' + st.length + ' من ' + escapeHtml(String(g.enrolled || 0)) + '</h4>' +
+      '<div class="table-wrap"><table><thead><tr><th>#</th><th>الكود</th><th>الاسم</th><th>الوثائق الناقصة</th></tr></thead><tbody>';
+    for (var j = 0; j < st.length; j++) {
+      h += '<tr><td>' + (j + 1) + '</td><td>' + escapeHtml(st[j].code) + '</td><td>' + escapeHtml(st[j].name) + '</td><td>' + escapeHtml((st[j].missing || []).join('، ')) + '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  return h;
+}
+function _daPrintMissing() {
+  if (!DA.miss || !DA.miss.r) { _daMsg('اعرض التقرير أولاً', 'warning'); return; }
+  var f = _daCls(DA.miss.grade, DA.miss.section);
+  _daPrint('تقرير نواقص الوثائق', _daBrandHtml(DA.school) + '<h2>تقرير نواقص وثائق الطلاب</h2>' +
+    '<div class="info"><span><b>النطاق:</b> ' + escapeHtml(f || 'كل الفصول') + '</span><span><b>التاريخ:</b> ' + _daToday() + '</span></div>' +
+    _daMissingHtml(DA.miss.r));
+}
+
+/* ── تبويب «توزيع» ── */
+function _daRenderDistTab() {
+  var body = _daEl('daBody');
+  if (!body) return;
+  body.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+    '<button type="button" class="btn btn-secondary btn-sm" data-da="dist">🔄 تحديث</button>' +
+    '<button type="button" class="btn btn-secondary btn-sm" data-da="distPrint">🖨️ طباعة</button></div><div id="da-dist-out"></div>';
+  da_loadDist();
+}
+function da_loadDist() {
+  var out = _daEl('da-dist-out');
+  if (!out) return;
+  out.innerHTML = _daSkel();
+  callServer('getArchiveDistributionReportProtected', {}, function (r) {
+    var o = _daEl('da-dist-out');
+    if (!o) return;
+    if (!r || !r.success) { o.innerHTML = _daAlert('warning', (r && r.error) || 'تعذّر جلب التقرير'); return; }
+    DA.dist = r;
+    o.innerHTML = _daDistHtml(r);
+  }, function (e) { var o = _daEl('da-dist-out'); if (o) o.innerHTML = _daAlert('danger', _daNetErr(e)); });
+}
+function _daPct(a, b) { return b ? Math.round(a / b * 100) + '%' : '—'; }
+function _daDistHtml(r) {
+  var cls = (r && r.classes) || [], t = (r && r.totals) || {};
+  if (!cls.length) return _daAlert('info', 'لا توجد بيانات.');
+  var n = function (v) { return escapeHtml(String(v || 0)); };
+  var h = '<p style="margin:6px 0 10px"><b>العام الدراسي:</b> ' + escapeHtml((r && r.year) || '') + '</p>' +
+    '<div class="table-wrap"><table><thead><tr><th>الصف</th><th>الشعبة</th><th>المقيّدون</th><th>مكتمل</th><th>ناقص</th><th>نسبة الاكتمال</th><th>المنسحبون هذا العام</th></tr></thead><tbody>';
+  for (var i = 0; i < cls.length; i++) {
+    var c = cls[i];
+    h += '<tr><td>' + escapeHtml(c.grade || '—') + '</td><td>' + escapeHtml(c.section || '—') + '</td><td>' + n(c.enrolled) + '</td><td>' + n(c.complete) +
+      '</td><td>' + n(c.incomplete) + '</td><td>' + _daPct(+c.complete || 0, +c.enrolled || 0) + '</td><td>' + n(c.withdrawn) + '</td></tr>';
+  }
+  return h + '<tr><td colspan="2"><b>المجموع</b></td><td><b>' + n(t.enrolled) + '</b></td><td><b>' + n(t.complete) + '</b></td><td><b>' + n(t.incomplete) +
+    '</b></td><td><b>' + _daPct(+t.complete || 0, +t.enrolled || 0) + '</b></td><td><b>' + n(t.withdrawn) + '</b></td></tr></tbody></table></div>';
+}
+function _daPrintDist() {
+  if (!DA.dist) { _daMsg('اعرض التقرير أولاً', 'warning'); return; }
+  _daPrint('توزيع ملفات الطلاب', _daBrandHtml(DA.school) + '<h2>توزيع ملفات الطلاب حسب الفصل</h2>' +
+    '<div class="info"><span><b>التاريخ:</b> ' + _daToday() + '</span></div>' + _daDistHtml(DA.dist));
+}
+
+/* ── تبويب «سحب ملف» (archive.manage) ── */
+function _daRenderWithdrawTab() {
+  var body = _daEl('daBody');
+  if (!body) return;
+  if (!_daCanManage()) { body.innerHTML = _daAlert('warning', 'غير مصرح'); return; }
+  body.innerHTML = '<div id="da-last">' + _daLastBar() + '</div>' +
+    _daAlert('info', 'سحب الملف لا يحذف الطالب: تُسجَّل «حالة القيد = منسحب»، وتتحوّل الوثائق المسلَّمة إلى «مسحوبة»، ويُنشأ إيصال تسليم.') +
+    _daPickerHtml('wd') + '<div id="da-wstu"></div>';
+  if (DA.wd) _daRenderWithdrawForm();
+}
+function _daRenderWithdrawForm() {
+  var box = _daEl('da-wstu'), r = DA.wd;
+  if (!box || !r) return;
+  var s = r.student || {};
+  var h = '<div class="section-card" style="margin:10px 0"><div class="section-body">' + _daStudentHead(r);
+  if (s.enrolled === false) {
+    box.innerHTML = h + _daAlert('warning', 'الطالب ليس مقيّداً (حالة القيد: ' + (s.enrollment || '—') + ') — لا سحب. لتسليم وثائق استعمل إيصال تسليم.') +
+      _daWithdrawalsList(r) + '</div></div>';
+    return;
+  }
+  var all = (r.required || []).concat(r.others || []), docs = '';
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].status !== DA_ST_RECEIVED) continue;
+    docs += '<label style="display:inline-flex;gap:4px;align-items:center;margin:0 0 6px 12px"><input type="checkbox" checked data-doc="' + escapeHtml(all[i].docId) + '"> ' +
+      escapeHtml(all[i].name) + '</label>';
+  }
+  h += '<div class="form-row" style="margin-top:10px">' +
+      '<div class="form-group" style="flex:2"><label class="form-label">سبب السحب *</label><input type="text" class="form-control" id="da-w-reason" maxlength="300"></div>' +
+      '<div class="form-group"><label class="form-label">المدرسة المنقول إليها</label><input type="text" class="form-control" id="da-w-to" maxlength="150"></div>' +
+    '</div><div class="form-row">' +
+      '<div class="form-group"><label class="form-label">اسم مستلم الملف *</label><input type="text" class="form-control" id="da-w-rname" maxlength="120"></div>' +
+      '<div class="form-group"><label class="form-label">صفته</label><input type="text" class="form-control" id="da-w-rrel" maxlength="60" placeholder="ولي الأمر"></div>' +
+      '<div class="form-group"><label class="form-label">رقم هويته</label><input type="text" class="form-control" id="da-w-rid" maxlength="40" inputmode="numeric"></div>' +
+    '</div><div class="form-label" style="margin-bottom:4px">الوثائق المسلَّمة (المستلمة محدَّدةٌ افتراضياً)</div>' +
+    '<div id="da-w-docs">' + (docs || _daAlert('info', 'لا توجد وثائق مستلمة في ملف الطالب.')) + '</div>' +
+    '<button type="button" class="btn btn-danger" style="margin-top:8px" data-da="wdGo">📤 سحب الملف</button>' +
+    _daWithdrawalsList(r) + '</div></div>';
+  box.innerHTML = h;
+}
+function da_withdraw() {
+  var r = DA.wd;
+  if (!r || !r.student || !_daCanManage()) return;
+  var s = r.student, reason = _daTrim(_daVal('da-w-reason')), to = _daTrim(_daVal('da-w-to'));
+  var rname = _daTrim(_daVal('da-w-rname')), rrel = _daTrim(_daVal('da-w-rrel')), rid = _daTrim(_daVal('da-w-rid'));
+  if (!reason) { _daMsg('اكتب سبب السحب', 'warning'); return; }
+  if (!rname) { _daMsg('اكتب اسم مستلم الملف', 'warning'); return; }
+  var docs = _daCheckedDocs('da-w-docs'), ids = [], names = [];
+  for (var i = 0; i < docs.length; i++) { ids.push(docs[i].docId); names.push(docs[i].name); }
+  /* confirmAction يكتب الرسالة بـ textContent — لا تهريب هنا ولا حقن. */
+  var msg = 'الطالب: ' + s.name + '\nالكود: ' + s.code + '\nالفصل: ' + _daCls(s.grade, s.section) +
+    '\nالسبب: ' + reason + (to ? '\nإلى: ' + to : '') +
+    '\nالمستلم: ' + rname + (rrel ? ' (' + rrel + ')' : '') +
+    '\nالوثائق المسلَّمة (' + names.length + '): ' + (names.length ? names.join('، ') : 'لا شيء') +
+    '\n\nلا يُحذف الطالب؛ تصبح حالة قيده «منسحب».';
+  confirmAction('تأكيد سحب ملف الطالب', msg, '⚠️', function () {
+    showLoading('جاري سحب الملف...');
+    callServer('withdrawStudentFileProtected', { code: s.code, reason: reason, toSchool: to, receiverName: rname, receiverRelation: rrel,
+      receiverId: rid, docs: ids, fingerprint: s.fingerprint }, function (res) {
+      hideLoading();
+      if (!res || !res.success) { _daFail(res, 'تعذّر سحب الملف'); if (res && res.stale) da_openStudent(s.code, 'wd'); return; }
+      _daMsg(res.message || 'تم سحب الملف', 'success');
+      DA.cur = null; DA.miss = null; DA.dist = null;
+      da_openStudent(s.code, 'wd');
+      if (res.withdrawId) _daPrintWithdrawal(res.withdrawId);
+    }, function (e) {
+      hideLoading();
+      _daMsg('انقطع الردّ (' + _daNetErr(e) + ') — لا تُعِد الضغط: حُدِّثت بيانات الطالب، تحقّق من سجلّ السحب أولاً', 'error');
+      da_openStudent(s.code, 'wd');
+    });
+  }, { okText: '📤 سحب الملف' });
+}
+function _daPrintWithdrawal(id) {
+  id = _daTrim(id);
+  if (!id) return;
+  showLoading('جاري تجهيز الاستمارة...');
+  callServer('printWithdrawalDataProtected', { withdrawId: id }, function (r) {
+    hideLoading();
+    if (!r || !r.success || !r.withdrawal) { _daFail(r, 'تعذّر جلب بيانات السحب'); return; }
+    if (r.school) DA.school = r.school;
+    var html = _daWithdrawHtml(r.withdrawal, r.school);
+    if (r.receipt) html += '<div class="dapb"></div>' + _daReceiptHtml(r.receipt, r.school, r.withdrawal);
+    _daPrint('استمارة سحب ' + id, html);
+  }, function (e) { hideLoading(); _daMsg(_daNetErr(e), 'error'); });
+}
+
+/* ── تبويب «الوثائق المطلوبة» (archive.manage) ── */
+function _daRenderCatalogTab(force) {
+  var body = _daEl('daBody');
+  if (!body) return;
+  if (!_daCanManage()) { body.innerHTML = _daAlert('warning', 'غير مصرح'); return; }
+  _daWithCatalog(function () {
+    var b = _daEl('daBody');
+    if (!b || DA.tab !== 'catalog') return;
+    var items = (DA.cat && DA.cat.items) || [];
+    if (!items.length) {
+      b.innerHTML = _daAlert('info', 'كتالوج الوثائق المطلوبة فارغ. يمكنك إنشاء قائمة افتراضية من صفوف المدرسة (معاينة أولاً ثم اعتماد)، أو إضافة الوثائق واحدةً واحدة.') +
+        '<button type="button" class="btn btn-primary" data-da="seedPreview">📋 إنشاء القائمة الافتراضية</button><div id="da-seed" style="margin-top:10px"></div>' +
+        '<div style="margin-top:14px">' + _daCatalogFormHtml(0) + '</div>';
+      return;
+    }
+    var h = _daCatalogFormHtml(items.length) +
+      '<div class="table-wrap"><table><thead><tr><th>الترتيب</th><th>الوثيقة</th><th>من صف</th><th>إلى صف</th><th>إلزامية</th><th>فعّالة</th><th></th></tr></thead><tbody>';
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      h += '<tr' + (it.active ? '' : ' style="opacity:.55"') + '><td>' + escapeHtml(String(it.order || '')) + '</td><td>' + escapeHtml(it.name) +
+        (it.notes ? '<div style="color:var(--text-muted);font-size:.8rem">' + escapeHtml(it.notes) + '</div>' : '') + '</td><td>' + escapeHtml(it.from || '— مفتوح —') +
+        '</td><td>' + escapeHtml(it.to || '— مفتوح —') + '</td><td>' + (it.mandatory ? 'نعم' : 'لا') + '</td><td>' + (it.active ? '✔️' : '—') +
+        '</td><td style="white-space:nowrap"><button type="button" class="btn btn-secondary btn-sm" data-da="catEdit" data-i="' + i + '">✏️ تعديل</button> ' +
+        '<button type="button" class="btn btn-secondary btn-sm" data-da="catToggle" data-i="' + i + '">' + (it.active ? '🚫 تعطيل' : '✅ تفعيل') + '</button></td></tr>';
+    }
+    b.innerHTML = h + '</tbody></table></div><p style="color:var(--text-muted);font-size:.85rem">لا تُحذف وثيقة: عطّلها فتتوقّف مطالبة الطلاب بها ويبقى ما سُجّل لها.</p>';
+  }, force);
+}
+function _daGradeOpts(sel) {
+  var grades = ((DA.cat && DA.cat.grades) || []).slice(), h = '<option value="">— مفتوح —</option>';
+  if (sel && grades.indexOf(sel) === -1) grades.push(sel);
+  for (var i = 0; i < grades.length; i++) h += '<option value="' + escapeHtml(grades[i]) + '"' + (grades[i] === sel ? ' selected' : '') + '>' + escapeHtml(grades[i]) + '</option>';
+  return h;
+}
+function _daCatalogFormHtml(count) {
+  return '<div class="filter-bar"><div class="filter-bar-title" id="da-c-title">➕ وثيقة جديدة</div><div class="form-row" style="margin-bottom:0">' +
+    '<input type="hidden" id="da-c-id">' +
+    '<div class="form-group" style="flex:2"><label class="form-label">اسم الوثيقة *</label><input type="text" class="form-control" id="da-c-name" maxlength="120"></div>' +
+    '<div class="form-group"><label class="form-label">من صف</label><select class="form-select" id="da-c-from">' + _daGradeOpts('') + '</select></div>' +
+    '<div class="form-group"><label class="form-label">إلى صف</label><select class="form-select" id="da-c-to">' + _daGradeOpts('') + '</select></div>' +
+    '<div class="form-group" style="max-width:110px"><label class="form-label">الترتيب</label><input type="number" min="0" class="form-control" id="da-c-order" value="' + (count + 1) + '"></div>' +
+    '<div class="form-group" style="flex:0;white-space:nowrap"><label class="form-label">إلزامية</label><input type="checkbox" id="da-c-mand" checked></div>' +
+    '<div class="form-group" style="flex:0;white-space:nowrap"><label class="form-label">فعّالة</label><input type="checkbox" id="da-c-active" checked></div>' +
+    '</div><div class="form-row" style="margin-bottom:0">' +
+    '<div class="form-group" style="flex:3"><label class="form-label">ملاحظات</label><input type="text" class="form-control" id="da-c-notes" maxlength="300"></div>' +
+    '<div class="form-group" style="align-self:flex-end;flex:0;white-space:nowrap"><button type="button" class="btn btn-primary" data-da="catSave">💾 حفظ</button> ' +
+    '<button type="button" class="btn btn-secondary" data-da="catNew">جديد</button></div>' +
+    '</div></div>';
+}
+function _daSetVal(id, v) { var e = _daEl(id); if (e) e.value = v; }
+function _daResetCatalogForm() {
+  var items = (DA.cat && DA.cat.items) || [];
+  _daSetVal('da-c-id', ''); _daSetVal('da-c-name', ''); _daSetVal('da-c-notes', ''); _daSetVal('da-c-order', String(items.length + 1));
+  var f = _daEl('da-c-from'), t = _daEl('da-c-to'), m = _daEl('da-c-mand'), a = _daEl('da-c-active'), ti = _daEl('da-c-title');
+  if (f) f.innerHTML = _daGradeOpts('');
+  if (t) t.innerHTML = _daGradeOpts('');
+  if (m) m.checked = true;
+  if (a) a.checked = true;
+  if (ti) ti.textContent = '➕ وثيقة جديدة';
+}
+function _daEditCatalogItem(i) {
+  var it = ((DA.cat && DA.cat.items) || [])[i];
+  if (!it) return;
+  _daSetVal('da-c-id', it.docId); _daSetVal('da-c-name', it.name); _daSetVal('da-c-notes', it.notes || ''); _daSetVal('da-c-order', String(it.order || 0));
+  var f = _daEl('da-c-from'), t = _daEl('da-c-to'), m = _daEl('da-c-mand'), a = _daEl('da-c-active'), ti = _daEl('da-c-title'), n = _daEl('da-c-name');
+  if (f) f.innerHTML = _daGradeOpts(it.from || '');
+  if (t) t.innerHTML = _daGradeOpts(it.to || '');
+  if (m) m.checked = !!it.mandatory;
+  if (a) a.checked = !!it.active;
+  if (ti) ti.textContent = '✏️ تعديل الوثيقة ' + it.docId;
+  if (n) { try { n.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} n.focus(); }
+}
+function _daSaveCatalog(p, okMsg) {
+  showLoading('جاري الحفظ...');
+  callServer('saveArchiveCatalogItemProtected', p, function (r) {
+    hideLoading();
+    if (!r || !r.success) { _daFail(r, 'تعذّر الحفظ'); return; }
+    _daMsg(r.message || okMsg || 'تم', 'success');
+    DA.cur = null; DA.wd = null; DA.miss = null; DA.dist = null;   // المطلوبُ تغيّر
+    _daRenderCatalogTab(true);
+  }, function (e) { hideLoading(); _daMsg('انقطع الردّ (' + _daNetErr(e) + ') — حُدِّث الكتالوج؛ تحقّق قبل الإعادة', 'error'); _daRenderCatalogTab(true); });
+}
+function da_saveCatalogItem() {
+  var m = _daEl('da-c-mand'), a = _daEl('da-c-active');
+  var p = { name: _daTrim(_daVal('da-c-name')), from: _daVal('da-c-from'), to: _daVal('da-c-to'),
+    mandatory: !!(m && m.checked), active: !!(a && a.checked), notes: _daTrim(_daVal('da-c-notes')) };
+  var id = _daVal('da-c-id'), ord = _daTrim(_daVal('da-c-order'));
+  if (id) p.docId = id;
+  if (ord !== '') p.order = ord;            // فارغٌ ⇒ لا يُرسل (الخادم يضع الجديد آخراً)
+  if (!p.name) { _daMsg('اكتب اسم الوثيقة', 'warning'); return; }
+  _daSaveCatalog(p);
+}
+function _daToggleCatalogItem(i) {
+  var it = ((DA.cat && DA.cat.items) || [])[i];
+  if (!it) return;
+  if (!it.active) { _daSaveCatalog({ docId: it.docId, active: true }); return; }
+  confirmAction('تعطيل وثيقة', 'تعطيل «' + it.name + '»؟\nلا تُحذف؛ تتوقّف مطالبة الطلاب بها ويبقى ما سُجّل لها.', '🚫', function () {
+    _daSaveCatalog({ docId: it.docId, active: false });
+  }, { okText: '🚫 تعطيل' });
+}
+function da_seedPreview() {
+  var box = _daEl('da-seed');
+  if (!box) return;
+  box.innerHTML = _daSkel();
+  callServer('seedArchiveCatalogProtected', {}, function (r) {
+    var b = _daEl('da-seed');
+    if (!b) return;
+    if (!r || !r.success) { b.innerHTML = _daAlert('warning', (r && r.error) || 'تعذّرت المعاينة'); return; }
+    var items = r.items || [];
+    if (!items.length) { b.innerHTML = _daAlert('warning', 'لا توجد صفوف معرّفة للمدرسة لبناء القائمة.'); return; }
+    var h = _daAlert('info', 'معاينة — لم يُكتب شيء (' + items.length + ' وثيقة). راجع القائمة ثم اعتمدها؛ يمكن تعديلها لاحقاً.') +
+      '<div class="table-wrap"><table><thead><tr><th>#</th><th>الوثيقة</th><th>من صف</th><th>إلى صف</th><th>إلزامية</th></tr></thead><tbody>';
+    for (var i = 0; i < items.length; i++) {
+      h += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(items[i].name) + '</td><td>' + escapeHtml(items[i].from || '—') + '</td><td>' + escapeHtml(items[i].to || '—') +
+        '</td><td>' + escapeHtml(items[i].mandatory || '') + '</td></tr>';
+    }
+    b.innerHTML = h + '</tbody></table></div><button type="button" class="btn btn-primary" style="margin-top:8px" data-da="seedConfirm">✅ اعتماد القائمة</button>';
+  }, function (e) { var b = _daEl('da-seed'); if (b) b.innerHTML = _daAlert('danger', _daNetErr(e)); });
+}
+function da_seedConfirm() {
+  showLoading('جاري الحفظ...');
+  callServer('seedArchiveCatalogProtected', { confirm: true }, function (r) {
+    hideLoading();
+    if (!r || !r.success) { _daFail(r, 'تعذّر الحفظ'); _daRenderCatalogTab(true); return; }
+    _daMsg(r.message || 'تم', 'success');
+    DA.cur = null; DA.wd = null; DA.miss = null; DA.dist = null;
+    _daRenderCatalogTab(true);
+  }, function (e) { hideLoading(); _daMsg('انقطع الردّ (' + _daNetErr(e) + ') — حُدِّث الكتالوج؛ تحقّق قبل الإعادة', 'error'); _daRenderCatalogTab(true); });
+}
+
+/* ── الطباعة: نافذة _docPrintWindow المشتركة + ترويسة المدرسة من ردّ الخادم (school) ── */
+var DA_PRINT_CSS =
+  '*{box-sizing:border-box;font-family:"Segoe UI",Tahoma,Arial,sans-serif}body{margin:0;padding:10mm;color:#1a2233}' +
+  '.dah{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1149a3;padding-bottom:10px;margin-bottom:14px}' +
+  '.dal{height:70px;max-width:120px;object-fit:contain}.dan{font-size:21px;font-weight:800;color:#1149a3}.dap{font-size:12px;color:#555}' +
+  'h2{font-size:18px;margin:6px 0 12px;text-align:center}h4{font-size:14px;margin:12px 0 6px}' +
+  'table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}th,td{border:1px solid #c7cede;padding:6px 8px;text-align:right}' +
+  'th{background:#eef2fb}.info{display:flex;flex-wrap:wrap;gap:6px 24px;font-size:14px;margin-bottom:10px}.info b{color:#1149a3}' +
+  '.alert{border:1px solid #c7cede;border-radius:6px;padding:8px;margin:8px 0}' +
+  '.sig{display:flex;justify-content:space-between;gap:16px;margin-top:36px;font-size:13px}.sig div{flex:1;text-align:center}' +
+  '.dapb{page-break-after:always;break-after:page;height:1px}';
+function _daSafeLogo(u) { u = String(u || ''); return /^(https:|data:image\/)/i.test(u) ? u : ''; }
+function _daBrandHtml(sc) {
+  sc = sc || {};
+  var name = sc.name || ((typeof cert_schoolName === 'function') ? cert_schoolName() : '') || 'المدرسة';
+  var logo = _daSafeLogo(sc.logo);
+  return '<div class="dah">' + (logo ? '<img class="dal" src="' + escapeHtml(logo) + '" alt="">' : '') +
+    '<div><div class="dan">' + escapeHtml(name) + '</div>' + (sc.phone ? '<div class="dap">' + escapeHtml(sc.phone) + '</div>' : '') +
+    (sc.address ? '<div class="dap">' + escapeHtml(sc.address) + '</div>' : '') + '</div></div>';
+}
+function _daDocsList(docs) {
+  if (Object.prototype.toString.call(docs) !== '[object Array]') docs = String(docs || '') ? String(docs).split('، ') : [];
+  if (!docs.length) return '<p>لا توجد وثائق.</p>';
+  var h = '<table><thead><tr><th style="width:40px">#</th><th>الوثيقة</th></tr></thead><tbody>';
+  for (var i = 0; i < docs.length; i++) h += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(docs[i]) + '</td></tr>';
+  return h + '</tbody></table>';
+}
+// stu (اختياري) يكمل بيانات الطالب حين لا يحملها الإيصال (إيصالُ السحب).
+function _daReceiptHtml(rc, sc, stu) {
+  rc = rc || {}; stu = stu || {};
+  var out = rc.type === 'تسليم';
+  var name = rc.name || stu.name || '', code = rc.code || stu.code || '', cls = _daCls(rc.grade || stu.grade, rc.section || stu.section);
+  return _daBrandHtml(sc) + '<h2>إيصال ' + (out ? 'تسليم' : 'استلام') + ' وثائق</h2>' +
+    '<div class="info"><span><b>رقم الإيصال:</b> ' + escapeHtml(rc.receiptId || '') + '</span><span><b>التاريخ:</b> ' + escapeHtml(rc.date || '') + '</span></div>' +
+    '<div class="info"><span><b>الطالب:</b> ' + escapeHtml(name) + '</span><span><b>الكود:</b> ' + escapeHtml(code) + '</span>' +
+      (cls ? '<span><b>الفصل:</b> ' + escapeHtml(cls) + '</span>' : '') + '</div>' +
+    '<p>' + (out ? 'سلّمت المدرسة الوثائق التالية إلى:' : 'استلمت المدرسة الوثائق التالية من:') + ' <b>' + escapeHtml(rc.partyName || '') + '</b>' +
+      (rc.partyRelation ? ' (' + escapeHtml(rc.partyRelation) + ')' : '') + '</p>' +
+    _daDocsList(rc.docs) +
+    '<div class="sig"><div>' + (out ? 'المستلم' : 'المسلِّم') + '<br>' + escapeHtml(rc.partyName || '') + '<br><br>التوقيع: ............</div>' +
+    '<div>المسجِّل<br>' + escapeHtml(rc.by || '') + '<br><br>التوقيع: ............</div><div>ختم المدرسة<br><br><br>............</div></div>';
+}
+function _daWithdrawHtml(w, sc) {
+  w = w || {};
+  return _daBrandHtml(sc) + '<h2>استمارة سحب ملف طالب</h2>' +
+    '<div class="info"><span><b>رقم السحب:</b> ' + escapeHtml(w.withdrawId || '') + '</span><span><b>تاريخ السحب:</b> ' + escapeHtml(w.date || '') + '</span>' +
+      (w.year ? '<span><b>العام الدراسي:</b> ' + escapeHtml(w.year) + '</span>' : '') + '</div>' +
+    '<table><tbody>' +
+      '<tr><th style="width:30%">اسم الطالب</th><td>' + escapeHtml(w.name || '') + '</td></tr>' +
+      '<tr><th>الكود</th><td>' + escapeHtml(w.code || '') + '</td></tr>' +
+      '<tr><th>الصف والشعبة</th><td>' + escapeHtml(_daCls(w.grade, w.section)) + '</td></tr>' +
+      '<tr><th>سبب السحب</th><td>' + escapeHtml(w.reason || '') + '</td></tr>' +
+      '<tr><th>المدرسة المنقول إليها</th><td>' + escapeHtml(w.toSchool || '—') + '</td></tr>' +
+      (w.financeStatus ? '<tr><th>الحالة المالية</th><td>' + escapeHtml(w.financeStatus) + '</td></tr>' : '') +
+      '<tr><th>مستلم الملف</th><td>' + escapeHtml(w.receiverName || '') + (w.receiverRelation ? ' (' + escapeHtml(w.receiverRelation) + ')' : '') + '</td></tr>' +
+      (w.receiverId ? '<tr><th>رقم هوية المستلم</th><td>' + escapeHtml(w.receiverId) + '</td></tr>' : '') +
+    '</tbody></table>' +
+    '<h4>الوثائق المسلَّمة</h4>' + _daDocsList(w.docs) +
+    '<div class="sig"><div>مستلم الملف<br>' + escapeHtml(w.receiverName || '') + '<br><br>التوقيع: ............</div>' +
+    '<div>المسؤول المالي<br><br><br>التوقيع: ............</div><div>مدير المدرسة<br><br><br>التوقيع والختم: ............</div></div>' +
+    (w.by ? '<p style="font-size:12px;color:#667;margin-top:18px">سجّله: ' + escapeHtml(w.by) + '</p>' : '');
+}
+function _daPrint(title, bodyHtml) {
+  DA.lastPrint = { title: String(title || ''), html: bodyHtml };
+  var bar = _daEl('da-last');
+  if (bar) bar.innerHTML = _daLastBar();
+  if (typeof _docPrintWindow === 'function') return _docPrintWindow(title, '@page{size:A4;margin:10mm}', DA_PRINT_CSS, bodyHtml);
+  var w = window.open('', '_blank');
+  if (!w) { toast('اسمح بالنوافذ المنبثقة للطباعة', 'warning'); return null; }
+  w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title><style>' + DA_PRINT_CSS + '</style></head><body>' + bodyHtml + '</body></html>');
+  w.document.close();
+  return w;
+}
+
+</script>
+<script>
+/* ═══ الدفعة 36l: الكتب المدرسية (Textbooks.js) ═══
+   تبويبات: «المخزون» و«السجل والتقارير» (books.view)، «صرف/إرجاع طالب» (عرضٌ للكلّ، الأزرار لـ books.manage)،
+   «توريد / مرتجع / تسوية» (books.manage فقط). الخادمُ يفحص كلَّ شيءٍ بنفسه ويحسب المخزون؛ هذا عرضٌ فقط.
+   لا نصَّ مستخدمٍ داخل معالِجٍ مضمَّن: المعالِجات تحمل أرقامَ فهارسَ في TB فقط. */
+var TB = { tab: 'stock', meta: null, stock: null, fee: null, stmt: null, stuList: [], report: null, voucher: null, searchSeq: 0 };
+
+var TB_TYPES = ['توريد', 'صرف_لطالب', 'إرجاع_طالب', 'إرجاع_للمورد', 'تسوية_جرد'];
+var TB_TYPE_LABEL = { 'توريد': 'توريد', 'صرف_لطالب': 'صرف لطالب', 'إرجاع_طالب': 'مرتجع طالب', 'إرجاع_للمورد': 'مرتجع للمورد', 'تسوية_جرد': 'تسوية جرد' };
+
+function _tbIso(d) {
+  var m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+}
+function _tbTypeLabel(t) { return TB_TYPE_LABEL[t] || String(t || ''); }
+function _tbNum(v) { var n = Number(v); return isNaN(n) ? 0 : n; }
+function _tbVal(id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+function _tbCanManage() { return hasCap('books.manage') && !(TB.meta && TB.meta.canManage === false); }
+function _tbErrBox(msg) { return '<div class="alert alert-warning">' + escapeHtml(msg || 'تعذّر الجلب') + '</div>'; }
+function _tbFail(boxId) {
+  return function (e) { var b = document.getElementById(boxId); if (b) b.innerHTML = '<div class="alert alert-danger">' + escapeHtml(String((e && e.message) || e)) + '</div>'; };
+}
+// CSV: حارسُ الصيغ (= + - @) ثمّ اقتباسٌ كامل؛ الأرقامُ تُكتب كما هي.
+function _tbCsvQ(s) {
+  s = String(s === null || s === undefined ? '' : s);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+function _tbCsvDownload(name, rows) {
+  var lines = [], school = (window._schoolBrand && window._schoolBrand.name) || '';
+  if (school) { lines.push(_tbCsvQ(school)); lines.push(''); }
+  for (var i = 0; i < rows.length; i++) {
+    var cells = [];
+    for (var j = 0; j < rows[i].length; j++) cells.push(typeof rows[i][j] === 'number' ? String(rows[i][j]) : _tbCsvQ(rows[i][j]));
+    lines.push(cells.join(','));
+  }
+  _downloadText(name, lines.join('\r\n'), 'text/csv');
+}
+function _tbLinesText(lines) {
+  var out = [];
+  for (var i = 0; lines && i < lines.length; i++) out.push(lines[i].subject + (_tbNum(lines[i].qty) !== 1 ? ' (' + _tbNum(lines[i].qty) + ')' : ''));
+  return out.join('، ');
+}
+function _tbMuted(s) { return s ? '<div style="font-size:.8rem;color:var(--text-muted)">' + escapeHtml(s) + '</div>' : ''; }
+
+/* ── الهيكل والتبويبات ── */
+function tb_render() {
+  if (!hasCap('books.view') && !hasCap('books.manage')) { toast('هذه الصفحة للإدارة والمحاسب والمشرفين', 'error'); showSection('dashboard'); return; }
+  var el = document.getElementById('dynamicContent');
+  if (!el) return;
+  el.innerHTML =
+    '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(16,185,129,.12)">📚</div>' +
+      '<div class="section-header-title">' + escapeHtml('الكتب المدرسية: المخزون والصرف') + '</div>' +
+    '</div><div class="section-body">' +
+      '<div id="tbTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>' +
+      '<div id="tbBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
+    '</div></div>';
+  tb_tab(TB.tab);
+}
+
+// قائمةُ الصفوف وموادّها ومخزونها الحاليّ (listBookGradesSubjectsProtected) — تُجلب مرّةً وتُعاد بعد كلّ كتابة.
+function tb_withMeta(fn) {
+  if (TB.meta) { fn(); return; }
+  callServer('listBookGradesSubjectsProtected', {}, function (r) {
+    if (!r || !r.success) { var b = document.getElementById('tbBody'); if (b) b.innerHTML = _tbErrBox(r && r.error); return; }
+    TB.meta = r; fn();
+  }, _tbFail('tbBody'));
+}
+
+function tb_tab(name) {
+  if (name === 'intake' && !_tbCanManage()) name = 'stock';
+  TB.tab = name;
+  var tabs = [['stock', '📦 المخزون'], ['student', '🎒 صرف/إرجاع طالب']];
+  if (_tbCanManage()) tabs.push(['intake', '🚚 توريد / مرتجع / تسوية']);
+  tabs.push(['log', '🧾 السجل والتقارير']);
+  var h = '';
+  for (var i = 0; i < tabs.length; i++) {
+    h += '<button type="button" class="btn btn-sm ' + (tabs[i][0] === name ? 'btn-primary' : 'btn-secondary') + '" onclick="tb_tab(\'' + tabs[i][0] + '\')">' + tabs[i][1] + '</button>';
+  }
+  var t = document.getElementById('tbTabs');
+  if (t) t.innerHTML = h;
+  tb_withMeta(function () {
+    if (TB.tab !== name) return;
+    if (name === 'stock') tb_renderStockShell();
+    else if (name === 'student') tb_renderStudentShell();
+    else if (name === 'intake') tb_renderIntakeShell();
+    else tb_renderLogShell();
+  });
+}
+
+function _tbGradeOptions(withAll, cur) {
+  var gs = (TB.meta && TB.meta.grades) || [], h = withAll ? '<option value="">كل الصفوف</option>' : '<option value="">— اختر الصف —</option>';
+  for (var i = 0; i < gs.length; i++) {
+    var v = String(gs[i].gnum);
+    h += '<option value="' + escapeHtml(v) + '"' + (v === cur ? ' selected' : '') + '>' + escapeHtml(gs[i].grade) + '</option>';
+  }
+  return h;
+}
+function _tbGradeByNum(v) {
+  var gs = (TB.meta && TB.meta.grades) || [];
+  for (var i = 0; v !== '' && i < gs.length; i++) if (String(gs[i].gnum) === String(v)) return gs[i];
+  return null;
+}
+
+/* ── 1) المخزون ── */
+function tb_renderStockShell() {
+  var body = document.getElementById('tbBody');
+  if (!body) return;
+  body.innerHTML =
+    '<div class="filter-bar"><div class="form-row" style="margin-bottom:0">' +
+      '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="tb-sg" onchange="tb_loadStock()">' + _tbGradeOptions(true, '') + '</select></div>' +
+      '<div class="form-group" style="align-self:flex-end"><button type="button" class="btn btn-primary" onclick="tb_loadStock()">عرض</button> ' +
+      '<button type="button" class="btn btn-secondary" onclick="tb_printStock()">🖨️ طباعة</button> ' +
+      '<button type="button" class="btn btn-secondary" onclick="tb_exportStock()">⬇️ CSV</button></div>' +
+    '</div></div><div id="tb-fee"></div><div id="tb-stock"><div class="sk-line skeleton"></div></div>';
+  tb_loadStock();
+}
+
+function tb_loadStock() {
+  var out = document.getElementById('tb-stock'), feeBox = document.getElementById('tb-fee'), g = _tbVal('tb-sg');
+  if (!out) return;
+  out.innerHTML = '<div class="sk-line skeleton"></div>';
+  TB.fee = null;
+  if (feeBox) feeBox.innerHTML = '';
+  callServer('getBookStockProtected', g ? { grade: g } : {}, function (r) {
+    if (_tbVal('tb-sg') !== g) return;
+    if (!r || !r.success) { out.innerHTML = _tbErrBox(r && r.error); return; }
+    TB.stock = r; TB.stock.gradeFilter = g;
+    tb_drawStock();
+  }, _tbFail('tb-stock'));
+  if (!g) return;
+  // رسوم الكتب للعرض فقط (من «جدول_الرسوم»)؛ تُعدَّل من صفحة المالية.
+  callServer('getBooksFeeInfoProtected', { grade: g }, function (r) {
+    var box = document.getElementById('tb-fee');
+    if (!box || _tbVal('tb-sg') !== g || !r || !r.success) return;
+    TB.fee = r;
+    var txt = r.found
+      ? 'رسوم الكتب لـ' + r.grade + ': ' + _tbNum(r.booksFee) + (r.booksFee1 ? ' — رسوم كتب1: ' + _tbNum(r.booksFee1) : '') + (r.booksDiscount ? ' — خصم الكتب: ' + _tbNum(r.booksDiscount) : '')
+      : 'لا توجد رسوم كتب مسجّلة لـ' + r.grade + ' في «جدول_الرسوم».';
+    box.innerHTML = '<div class="alert alert-info">💵 ' + escapeHtml(txt) + ' <span style="font-size:.8rem;color:var(--text-muted)">(للعرض فقط)</span></div>';
+  }, function () {});
+}
+
+function tb_drawStock() {
+  var out = document.getElementById('tb-stock'), d = TB.stock;
+  if (!out || !d) return;
+  var rows = d.rows || [], all = !d.gradeFilter;
+  if (!rows.length) { out.innerHTML = '<div class="alert alert-info">لا توجد موادّ مسجّلة في «المقررات».</div>'; return; }
+  var tot = { 'in': 0, issued: 0, sret: 0, vret: 0, adj: 0, stock: 0, need: 0, shortage: 0 }, shortCount = 0;
+  var h = '<div style="font-size:.85rem;color:var(--text-muted);margin-bottom:6px">العام الدراسي ' + escapeHtml(d.year) +
+    ' — الاحتياج = المقيّدون في الصف − ما صُرف لهم هذا العام، والعجز = الاحتياج − المخزون.</div>' +
+    '<div class="table-wrap"><table><thead><tr>' + (all ? '<th>الصف</th>' : '') +
+    '<th>المادة</th><th>توريد</th><th>صرف</th><th>مرتجع طالب</th><th>مرتجع للمورد</th><th>تسوية</th><th>المخزون</th><th>الاحتياج</th><th>العجز</th></tr></thead><tbody>';
+  for (var i = 0; i < rows.length; i++) {
+    var x = rows[i], short = _tbNum(x.shortage) > 0;
+    if (short) shortCount++;
+    for (var k in tot) if (tot.hasOwnProperty(k)) tot[k] += _tbNum(x[k]);
+    h += '<tr' + (short ? ' style="background:rgba(239,68,68,.08)"' : '') + '>' + (all ? '<td>' + escapeHtml(x.grade) + '</td>' : '') +
+      '<td>' + escapeHtml(x.subject) + '</td><td>' + _tbNum(x['in']) + '</td><td>' + _tbNum(x.issued) + '</td><td>' + _tbNum(x.sret) +
+      '</td><td>' + _tbNum(x.vret) + '</td><td>' + _tbNum(x.adj) + '</td><td><b>' + _tbNum(x.stock) + '</b></td>' +
+      '<td title="مقيّدون: ' + _tbNum(x.enrolled) + ' — صُرف هذا العام: ' + _tbNum(x.issuedYear) + '">' + _tbNum(x.need) + '</td>' +
+      '<td' + (short ? ' style="color:#dc2626;font-weight:700"' : '') + '>' + _tbNum(x.shortage) + '</td></tr>';
+  }
+  h += '<tr style="font-weight:700"><td' + (all ? ' colspan="2"' : '') + '>المجموع</td><td>' + tot['in'] + '</td><td>' + tot.issued + '</td><td>' + tot.sret +
+    '</td><td>' + tot.vret + '</td><td>' + tot.adj + '</td><td>' + tot.stock + '</td><td>' + tot.need + '</td><td>' + tot.shortage + '</td></tr>';
+  h += '</tbody></table></div>';
+  if (shortCount) h = '<div class="alert alert-danger">⚠️ عجزٌ في ' + shortCount + ' مادة — الصفوف المظلَّلة بالأحمر.</div>' + h;
+  out.innerHTML = h;
+}
+
+function tb_exportStock() {
+  var d = TB.stock;
+  if (!d || !d.rows) { toast('اعرض المخزون أولاً', 'warning'); return; }
+  var rows = [['الصف', 'المادة', 'توريد', 'صرف', 'مرتجع طالب', 'مرتجع للمورد', 'تسوية', 'المخزون', 'المقيّدون', 'صُرف هذا العام', 'الاحتياج', 'العجز']];
+  for (var i = 0; i < d.rows.length; i++) {
+    var x = d.rows[i];
+    rows.push([x.grade, x.subject, _tbNum(x['in']), _tbNum(x.issued), _tbNum(x.sret), _tbNum(x.vret), _tbNum(x.adj), _tbNum(x.stock),
+      _tbNum(x.enrolled), _tbNum(x.issuedYear), _tbNum(x.need), _tbNum(x.shortage)]);
+  }
+  _tbCsvDownload('مخزون_الكتب_' + _tbIso(new Date()) + '.csv', rows);
+}
+
+function tb_printStock() {
+  var d = TB.stock;
+  if (!d || !d.rows) { toast('اعرض المخزون أولاً', 'warning'); return; }
+  var g = _tbGradeByNum(d.gradeFilter), rows = '';
+  for (var i = 0; i < d.rows.length; i++) {
+    var x = d.rows[i], short = _tbNum(x.shortage) > 0;
+    rows += '<tr' + (short ? ' style="background:#fde8e8"' : '') + '><td>' + escapeHtml(x.grade) + '</td><td>' + escapeHtml(x.subject) + '</td><td>' + _tbNum(x['in']) +
+      '</td><td>' + _tbNum(x.issued) + '</td><td>' + _tbNum(x.sret) + '</td><td>' + _tbNum(x.vret) + '</td><td>' + _tbNum(x.adj) + '</td><td><b>' + _tbNum(x.stock) +
+      '</b></td><td>' + _tbNum(x.need) + '</td><td>' + _tbNum(x.shortage) + '</td></tr>';
+  }
+  var fee = (TB.fee && TB.fee.found) ? '<span>رسوم الكتب: <b>' + _tbNum(TB.fee.booksFee) + '</b></span>' : '';
+  var inner = '<h2>تقرير مخزون الكتب المدرسية</h2><div class="info"><span>الصف: <b>' + escapeHtml(g ? g.grade : 'كل الصفوف') + '</b></span>' +
+    '<span>العام الدراسي: <b>' + escapeHtml(d.year) + '</b></span><span>التاريخ: <b>' + _tbIso(new Date()) + '</b></span>' + fee + '</div>' +
+    '<table><thead><tr><th>الصف</th><th>المادة</th><th>توريد</th><th>صرف</th><th>مرتجع طالب</th><th>مرتجع للمورد</th><th>تسوية</th><th>المخزون</th><th>الاحتياج</th><th>العجز</th></tr></thead><tbody>' +
+    rows + '</tbody></table>';
+  _tbPrint('مخزون الكتب', inner);
+}
+
+/* ── 2) صرف/إرجاع طالب ── */
+function tb_renderStudentShell() {
+  var body = document.getElementById('tbBody');
+  if (!body) return;
+  body.innerHTML =
+    '<div class="filter-bar"><div class="form-row" style="margin-bottom:0">' +
+      '<div class="form-group" style="flex:2"><label class="form-label">ابحث عن طالب (الاسم أو الكود)</label>' +
+        '<div class="search-wrap"><input type="text" class="form-control" id="tb-sq" autocomplete="off" placeholder="اكتب حرفين على الأقل..." oninput="tb_searchStu(this.value)" onkeydown="if(event.key===\'Enter\'){tb_stuByCode();}"><span class="search-icon">🔍</span></div></div>' +
+      '<div class="form-group" style="align-self:flex-end"><button type="button" class="btn btn-primary" onclick="tb_stuByCode()">عرض بالكود</button></div>' +
+    '</div><div id="tb-sres"></div></div>' +
+    '<div id="tb-stuMsg"></div><div id="tb-stmt"></div>';
+  if (TB.stmt && TB.stmt.student) tb_loadStmt(TB.stmt.student.code);
+}
+
+// البحث بـ searchStudentsForTeacher (نفس دالّة بحث المخالفات)؛ نتيجةُ الطلب الأحدث فقط تُعرض.
+function tb_searchStu(q) {
+  clearTimeout(window._tbSearchTimer);
+  var box = document.getElementById('tb-sres'), query = String(q || '').trim();
+  if (!box) return;
+  if (query.length < 2) { TB.searchSeq++; box.innerHTML = ''; return; }
+  window._tbSearchTimer = setTimeout(function () {
+    var seq = ++TB.searchSeq;
+    box.innerHTML = '<div style="padding:8px;color:var(--text-muted)">🔍 جاري البحث...</div>';
+    callServer('searchStudentsForTeacher', { query: query, filters: { includeInactive: true }, includeInactive: true }, function (r) {   // (36n) المنسحب يُرجع كتبه
+      if (seq !== TB.searchSeq) return;
+      TB.stuList = ((r && r.success && r.data) || []).slice(0, 20);
+      if (!TB.stuList.length) { box.innerHTML = '<div class="alert alert-warning" style="margin-top:8px">لم يُعثر على طالب بـ «' + escapeHtml(query) + '»</div>'; return; }
+      var h = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:260px;overflow:auto">';
+      for (var i = 0; i < TB.stuList.length; i++) {
+        var s = TB.stuList[i];
+        h += '<button type="button" class="btn btn-secondary btn-sm" style="text-align:right;justify-content:flex-start" onclick="tb_pickStu(' + i + ')">' +
+          '<b>' + escapeHtml(s.name) + '</b> <span class="badge badge-info">' + escapeHtml(s.grade) + '</span> ' +
+          (s.section ? '<span class="badge badge-info">' + escapeHtml(s.section) + '</span> ' : '') +
+          '<span style="font-size:.8rem;color:var(--text-muted)">' + escapeHtml(s.code) + '</span></button>';
+      }
+      box.innerHTML = h + '</div>';
+    }, _tbFail('tb-sres'));
+  }, 400);
+}
+
+function tb_pickStu(i) {
+  var s = TB.stuList[i];
+  if (!s) return;
+  var box = document.getElementById('tb-sres'); if (box) box.innerHTML = '';
+  var inp = document.getElementById('tb-sq'); if (inp) inp.value = s.name || s.code;
+  tb_loadStmt(s.code);
+}
+function tb_stuByCode() {
+  var code = _tbVal('tb-sq');
+  if (!code) { toast('اكتب كود الطالب', 'warning'); return; }
+  clearTimeout(window._tbSearchTimer); TB.searchSeq++;
+  var box = document.getElementById('tb-sres'); if (box) box.innerHTML = '';
+  tb_loadStmt(code);
+}
+
+function tb_loadStmt(code) {
+  var out = document.getElementById('tb-stmt'), msg = document.getElementById('tb-stuMsg');
+  if (!out) return;
+  if (msg) msg.innerHTML = '';
+  out.innerHTML = '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div>';
+  callServer('getStudentBooksStatementProtected', { code: code }, function (r) {
+    if (!r || !r.success) { out.innerHTML = _tbErrBox(r && r.error); return; }
+    TB.stmt = r;
+    tb_drawStmt();
+  }, _tbFail('tb-stmt'));
+}
+
+function tb_drawStmt() {
+  var out = document.getElementById('tb-stmt'), d = TB.stmt;
+  if (!out || !d) return;
+  var st = d.student || {}, manage = _tbCanManage() && d.canManage !== false, subs = d.subjects || [], other = d.otherHeld || [];
+  var h = '<div class="filter-bar"><div class="filter-bar-title">🎒 ' + escapeHtml(st.name) + ' <span style="font-size:.85rem;color:var(--text-muted)">' +
+    escapeHtml(st.code) + ' — ' + escapeHtml(st.grade) + (st.section ? ' / ' + escapeHtml(st.section) : '') + ' — العام ' + escapeHtml(d.year) + '</span></div>';
+  if (!st.enrolled) h += '<div class="alert alert-warning">الطالب غير مقيّد (' + escapeHtml(st.status) + ') — لا تُصرف له كتب، ويمكن استرجاع ما بيده.</div>';
+  h += '<div class="table-wrap"><table><thead><tr>' + (manage ? '<th><input type="checkbox" onchange="tb_checkAll(this.checked)" title="تحديد الكل"></th>' : '') +
+    '<th>المادة</th><th>الحالة هذا العام</th><th>بيده</th><th>صُرف</th><th>أُرجع</th><th>آخر صرف</th><th>آخر إرجاع</th><th>المخزون</th></tr></thead><tbody>';
+  for (var i = 0; i < subs.length; i++) {
+    var s = subs[i], got = _tbNum(s.issuedThisYear) > 0, noStock = _tbNum(s.stock) < 1;
+    var badge = got ? '<span class="badge badge-success">مُستلَم</span>' : (noStock ? '<span class="badge badge-danger">لم يُستلم — لا مخزون</span>' : '<span class="badge badge-warning">لم يُستلم</span>');
+    h += '<tr>' + (manage ? '<td><input type="checkbox" id="tb-sc-' + i + '"></td>' : '') + '<td>' + escapeHtml(s.subject) + '</td><td>' + badge + '</td><td><b>' + _tbNum(s.held) +
+      '</b></td><td>' + _tbNum(s.issued) + '</td><td>' + _tbNum(s.returned) + '</td><td>' + escapeHtml(s.lastIssue) + '</td><td>' + escapeHtml(s.lastReturn) +
+      '</td><td' + (noStock ? ' style="color:#dc2626;font-weight:700"' : '') + '>' + _tbNum(s.stock) + '</td></tr>';
+  }
+  if (!subs.length) h += '<tr><td colspan="' + (manage ? 9 : 8) + '">لا موادّ مستحقّة.</td></tr>';
+  h += '</tbody></table></div>';
+  if (other.length) {
+    h += '<h4 style="margin-top:12px">📕 كتبٌ بيده من صفوفٍ أو موادّ أخرى</h4><div class="table-wrap"><table><thead><tr>' + (manage ? '<th></th>' : '') +
+      '<th>الصف</th><th>المادة</th><th>بيده</th><th>آخر صرف</th></tr></thead><tbody>';
+    for (var j = 0; j < other.length; j++) {
+      var o = other[j];
+      h += '<tr>' + (manage ? '<td><input type="checkbox" id="tb-oc-' + j + '"></td>' : '') + '<td>' + escapeHtml(o.grade) + '</td><td>' + escapeHtml(o.subject) + '</td><td>' + _tbNum(o.held) +
+        '</td><td>' + escapeHtml(o.lastIssue) + '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  if (manage) {
+    h += '<div class="form-row" style="margin-top:10px;margin-bottom:0">' +
+      '<div class="form-group"><label class="form-label">رقم المستند (اختياري)</label><input type="text" class="form-control" id="tb-docNo" maxlength="60"></div>' +
+      '<div class="form-group" style="flex:2"><label class="form-label">ملاحظات</label><input type="text" class="form-control" id="tb-notes" maxlength="300"></div>' +
+    '</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+      (st.enrolled ? '<button type="button" class="btn btn-primary" onclick="tb_issue(false)">📤 صرف المحدد</button>' +
+        '<button type="button" class="btn btn-success" onclick="tb_issue(true)">📚 صرف الكل (غير المستلَم)</button>' : '') +
+      '<button type="button" class="btn btn-warning" onclick="tb_returnSel()">↩️ إرجاع المحدد</button></div>';
+  }
+  h += '</div>';
+  var mv = d.movements || [], idx = [];
+  for (var m = 0; m < mv.length; m++) idx.push(m);
+  h += mv.length ? '<h4 style="margin-top:14px">🧾 حركات الطالب (' + mv.length + ')</h4>' + _tbMovTable('s', mv, idx, manage, false)
+    : '<div class="alert alert-info" style="margin-top:10px">لا توجد حركات لهذا الطالب.</div>';
+  out.innerHTML = h;
+}
+
+function tb_checkAll(on) {
+  var subs = (TB.stmt && TB.stmt.subjects) || [];
+  for (var i = 0; i < subs.length; i++) { var c = document.getElementById('tb-sc-' + i); if (c) c.checked = !!on; }
+}
+
+// رفضُ الخادم: `lacking` (لا مخزون) أو `duplicate` (سبق الصرف) قائمةً واضحة.
+function tb_showRefusal(r) {
+  var msg = document.getElementById('tb-stuMsg');
+  var h = '<div class="alert alert-danger"><b>' + escapeHtml((r && r.error) || 'تعذّر الحفظ') + '</b>';
+  var list = (r && (r.lacking || r.duplicate)) || null;
+  if (list && list.length) {
+    h += '<div style="margin-top:6px">' + (r.lacking ? 'لا يوجد مخزون من هذه الكتب — ورِّدها أولاً أو أزلها من التحديد:' : 'سبق صرف هذه الكتب للطالب هذا العام:') + '</div><ul style="margin:6px 0">';
+    for (var i = 0; i < list.length; i++) h += '<li><b>' + escapeHtml(list[i]) + '</b></li>';
+    h += '</ul>';
+  }
+  h += '</div>';
+  if (msg) { msg.innerHTML = h; msg.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  else showError((r && r.error) || 'تعذّر الحفظ');
+}
+
+function tb_issue(all) {
+  var d = TB.stmt;
+  if (!d || !d.student || !_tbCanManage()) return;
+  var subs = d.subjects || [], ids = [], names = [], dup = [];
+  if (all) {
+    for (var a = 0; a < subs.length; a++) if (_tbNum(subs[a].issuedThisYear) <= 0) names.push(subs[a].subject);
+    if (!names.length) { toast('استلم الطالب كلّ كتب صفّه لهذا العام', 'info'); return; }
+  } else {
+    for (var i = 0; i < subs.length; i++) {
+      var c = document.getElementById('tb-sc-' + i);
+      if (!c || !c.checked) continue;
+      if (_tbNum(subs[i].issuedThisYear) > 0) dup.push(subs[i].subject);
+      else { ids.push(subs[i].sid || subs[i].subject); names.push(subs[i].subject); }
+    }
+    if (dup.length) { tb_showRefusal({ error: 'أزل من التحديد ما استلمه الطالب هذا العام', duplicate: dup }); return; }
+    if (!ids.length) { toast('اختر مادةً واحدةً على الأقل', 'warning'); return; }
+  }
+  if (!window.confirm('صرف ' + names.length + ' كتاب للطالب ' + d.student.name + '؟\n' + names.join('، '))) return;
+  var p = { code: d.student.code, docNo: _tbVal('tb-docNo'), notes: _tbVal('tb-notes') };
+  if (!all) p.subjectIds = ids;
+  var stu = d.student, year = d.year;
+  showLoading('جاري الصرف...');
+  callServer('issueBooksToStudentProtected', p, function (r) {
+    hideLoading();
+    if (!r || !r.success) { tb_showRefusal(r); return; }
+    toast(r.message || 'تم الصرف', 'success');
+    var lines = [], got = r.subjects || names;
+    for (var k = 0; k < got.length; k++) lines.push({ subject: got[k], qty: 1 });
+    tb_printTx({ id: r.receipt || r.txId, date: _tbIso(new Date()), type: 'صرف_لطالب', grade: stu.grade, section: stu.section, code: stu.code,
+      name: stu.name, year: year, doc: p.docNo, notes: p.notes, lines: lines });
+    tb_refreshAfterWrite();
+    tb_loadStmt(stu.code);
+  }, function (e) { hideLoading(); showError(e); });
+}
+
+function tb_returnSel() {
+  var d = TB.stmt;
+  if (!d || !d.student || !_tbCanManage()) return;
+  var subs = d.subjects || [], other = d.otherHeld || [], ids = [], names = [], notHeld = [];
+  for (var i = 0; i < subs.length; i++) {
+    var c = document.getElementById('tb-sc-' + i);
+    if (!c || !c.checked) continue;
+    if (_tbNum(subs[i].held) <= 0) { notHeld.push(subs[i].subject); continue; }
+    // «رقم_الصف|معرّف_المادة» يختار نسخةَ صفّ الطالب الحاليّ؛ مادةٌ بلا معرّف يطابقها الخادمُ بالاسم.
+    ids.push(subs[i].sid ? (d.gnum + '|' + subs[i].sid) : subs[i].subject);
+    names.push(subs[i].subject);
+  }
+  for (var j = 0; j < other.length; j++) {
+    var oc = document.getElementById('tb-oc-' + j);
+    if (!oc || !oc.checked) continue;
+    ids.push(other[j].key); names.push(other[j].subject + ' (' + other[j].grade + ')');
+  }
+  if (notHeld.length) { tb_showRefusal({ error: 'ليست بيد الطالب — أزلها من التحديد: ' + notHeld.join('، ') }); return; }
+  if (!ids.length) { toast('اختر الكتب المرتجعة', 'warning'); return; }
+  if (!window.confirm('استرجاع ' + ids.length + ' كتاب من الطالب ' + d.student.name + '؟\n' + names.join('، '))) return;
+  var p = { code: d.student.code, subjectIds: ids, notes: _tbVal('tb-notes') };
+  var stu = d.student, year = d.year;
+  showLoading('جاري الاسترجاع...');
+  callServer('returnBooksFromStudentProtected', p, function (r) {
+    hideLoading();
+    if (!r || !r.success) { tb_showRefusal(r); return; }
+    toast(r.message || 'تم الاسترجاع', 'success');
+    var lines = [];
+    for (var k = 0; k < names.length; k++) lines.push({ subject: names[k], qty: 1 });
+    tb_printTx({ id: r.receipt || r.txId, date: _tbIso(new Date()), type: 'إرجاع_طالب', grade: stu.grade, section: stu.section, code: stu.code,
+      name: stu.name, year: year, notes: p.notes, lines: lines });
+    tb_refreshAfterWrite();
+    tb_loadStmt(stu.code);
+  }, function (e) { hideLoading(); showError(e); });
+}
+
+// بعد أيّ كتابة تتغيّر أرقامُ المخزون ⇒ تُجلب القوائم من جديد عند فتح أيّ تبويب.
+function tb_refreshAfterWrite() { TB.meta = null; TB.stock = null; }
+
+/* ── جدول الحركات (كشف الطالب والسجل) — الفهارسُ فهارسُ القائمة الأصليّة في TB ── */
+function _tbMovList(src) { return src === 's' ? ((TB.stmt && TB.stmt.movements) || []) : ((TB.report && TB.report.movements) || []); }
+
+function _tbMovTable(src, list, idx, manage, showWho) {
+  var h = '<div class="table-wrap"><table><thead><tr><th>الرقم</th><th>التاريخ</th><th>النوع</th><th>الصف</th>' + (showWho ? '<th>الطالب / الجهة</th>' : '') +
+    '<th>الكتب</th><th>المسجّل</th><th>الحالة</th><th></th></tr></thead><tbody>';
+  for (var p = 0; p < idx.length; p++) {
+    var i = idx[p], m = list[i], who = m.code ? (m.name + ' (' + m.code + ')') : (m.party || m.source || '');
+    h += '<tr' + (m.cancelled ? ' style="opacity:.55"' : '') + '><td>' + escapeHtml(m.id) + '</td><td>' + escapeHtml(m.date) + '</td><td>' + escapeHtml(_tbTypeLabel(m.type)) +
+      '</td><td>' + escapeHtml(m.grade) + '</td>' + (showWho ? '<td>' + escapeHtml(who) + '</td>' : '') +
+      '<td>' + escapeHtml(_tbLinesText(m.lines)) + _tbMuted(m.notes) + '</td><td>' + escapeHtml(m.by) + '</td><td>' +
+      (m.cancelled ? '<span class="badge badge-danger">ملغاة</span>' + _tbMuted(m.cancelledBy) : '<span class="badge badge-success">سارية</span>') +
+      '</td><td style="white-space:nowrap"><button type="button" class="btn btn-secondary btn-sm" title="طباعة" onclick="tb_printMov(\'' + src + '\',' + i + ')">🖨️</button>' +
+      (manage && !m.cancelled ? ' <button type="button" class="btn btn-danger btn-sm" onclick="tb_cancelMov(\'' + src + '\',' + i + ')">🚫 إلغاء</button>' : '') + '</td></tr>';
+  }
+  return h + '</tbody></table></div>';
+}
+
+function tb_printMov(src, i) {
+  var m = _tbMovList(src)[i];
+  if (!m) return;
+  var x = {}, k;
+  for (k in m) if (m.hasOwnProperty(k)) x[k] = m[k];
+  if (src === 's' && TB.stmt && TB.stmt.student && !x.section) x.section = TB.stmt.student.section;
+  tb_printTx(x);
+}
+
+// الإلغاءُ بعلامةٍ لا بحذف: سببٌ مطلوب، والبصمةُ `fp` كما عُرضت (الخادمُ يرفض إن تغيّرت الحركة).
+function tb_cancelMov(src, i) {
+  if (!_tbCanManage()) return;
+  var m = _tbMovList(src)[i];
+  if (!m || m.cancelled) return;
+  var reason = window.prompt('سبب إلغاء الحركة ' + m.id + ' (' + _tbTypeLabel(m.type) + ') — تبقى في السجلّ مُعلَّمةً ملغاة:', '');
+  if (reason === null) return;
+  if (!String(reason).replace(/\s+/g, '')) { toast('اكتب سبب الإلغاء', 'warning'); return; }
+  var reload = function () {
+    if (src === 's') { if (TB.stmt && TB.stmt.student) tb_loadStmt(TB.stmt.student.code); }
+    else tb_loadReport();
+  };
+  showLoading('جاري الإلغاء...');
+  callServer('cancelBookTxProtected', { txId: m.id, reason: reason, fingerprint: m.fp }, function (r) {
+    hideLoading();
+    if (!r || !r.success) { showError((r && r.error) || 'تعذّر الإلغاء'); if (r && r.stale) reload(); return; }
+    toast(r.message || 'تم الإلغاء', 'success');
+    tb_refreshAfterWrite();
+    reload();
+  }, function (e) { hideLoading(); showError(e); });
+}
+
+/* ── 3) توريد / مرتجع للمورد / تسوية ── */
+function tb_renderIntakeShell() {
+  var body = document.getElementById('tbBody');
+  if (!body) return;
+  if (!_tbCanManage()) { body.innerHTML = _tbErrBox('غير مصرح'); return; }
+  var srcs = (TB.meta && TB.meta.sources) || [], sOpts = '', today = _tbIso(new Date());
+  for (var i = 0; i < srcs.length; i++) sOpts += '<option value="' + escapeHtml(srcs[i]) + '">' + escapeHtml(srcs[i]) + '</option>';
+  body.innerHTML =
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">نوع الحركة *</label><select class="form-select" id="tb-mode" onchange="tb_modeChanged()">' +
+        '<option value="in">🚚 توريد (استلام كتب)</option><option value="vret">↪️ مرتجع للمورد</option><option value="adj">⚖️ تسوية جرد</option></select></div>' +
+      '<div class="form-group"><label class="form-label">الصف *</label><select class="form-select" id="tb-ig" onchange="tb_drawIntakeRows()">' + _tbGradeOptions(false, '') + '</select></div>' +
+      '<div class="form-group" id="tb-f-source"><label class="form-label">المصدر *</label><select class="form-select" id="tb-isource">' + sOpts + '</select></div>' +
+      '<div class="form-group" id="tb-f-party"><label class="form-label" id="tb-l-party">الجهة (المورّد)</label><input type="text" class="form-control" id="tb-iparty" maxlength="120"></div>' +
+    '</div><div class="form-row">' +
+      '<div class="form-group" id="tb-f-doc"><label class="form-label">رقم المستند</label><input type="text" class="form-control" id="tb-idoc" maxlength="60"></div>' +
+      '<div class="form-group" id="tb-f-date"><label class="form-label">التاريخ</label><input type="date" class="form-control" id="tb-idate" value="' + today + '" max="' + today + '"></div>' +
+      '<div class="form-group" style="flex:2"><label class="form-label" id="tb-l-notes">ملاحظات</label><input type="text" class="form-control" id="tb-inotes" maxlength="300"></div>' +
+    '</div><div id="tb-ihint" style="font-size:.85rem;color:var(--text-muted);margin-bottom:6px"></div>' +
+    '<div id="tb-irows"></div><div id="tb-imsg"></div>';
+  tb_modeChanged();
+}
+
+function tb_modeChanged() {
+  var mode = _tbVal('tb-mode') || 'in';
+  var show = function (id, on) { var el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('tb-f-source', mode === 'in');
+  show('tb-f-party', mode !== 'adj');
+  show('tb-f-doc', mode !== 'adj');
+  show('tb-f-date', mode !== 'adj');
+  var lp = document.getElementById('tb-l-party'), ln = document.getElementById('tb-l-notes'), hint = document.getElementById('tb-ihint');
+  if (lp) lp.textContent = mode === 'vret' ? 'الجهة المرتجَع إليها *' : 'الجهة (المورّد)';
+  if (ln) ln.textContent = mode === 'adj' ? 'سبب التسوية *' : 'ملاحظات';
+  if (hint) hint.textContent = mode === 'adj'
+    ? 'اكتب الفرق فقط: موجبٌ لزيادة المخزون وسالبٌ لنقصه (مثل -3). لا يصير المخزون سالباً.'
+    : (mode === 'vret' ? 'الكمية المرتجعة لا تتجاوز المخزون الحالي.' : 'اكتب الكمية المستلَمة لكلّ مادة، واترك الباقي فارغاً.');
+  var msg = document.getElementById('tb-imsg'); if (msg) msg.innerHTML = '';
+  tb_drawIntakeRows();
+}
+
+function tb_drawIntakeRows() {
+  var box = document.getElementById('tb-irows'), g = _tbGradeByNum(_tbVal('tb-ig')), mode = _tbVal('tb-mode') || 'in';
+  if (!box) return;
+  if (!g) { box.innerHTML = '<div class="alert alert-info">اختر الصف لعرض موادّه.</div>'; return; }
+  var subs = g.subjects || [];
+  if (!subs.length) { box.innerHTML = '<div class="alert alert-info">لا موادّ لهذا الصف في «المقررات».</div>'; return; }
+  var h = '<div class="table-wrap"><table><thead><tr><th>المادة</th><th>المخزون الحالي</th><th>الكمية</th></tr></thead><tbody>';
+  for (var i = 0; i < subs.length; i++) {
+    h += '<tr><td>' + escapeHtml(subs[i].subject) + '</td><td>' + _tbNum(subs[i].stock) + '</td><td><input type="number" class="form-control" id="tb-q-' + i +
+      '" step="1"' + (mode === 'adj' ? '' : ' min="1"') + (mode === 'vret' ? ' max="' + _tbNum(subs[i].stock) + '"' : '') + ' style="max-width:120px"></td></tr>';
+  }
+  h += '</tbody></table></div><button type="button" class="btn btn-primary" style="margin-top:8px" onclick="tb_saveIntake()">💾 حفظ الحركة</button>';
+  box.innerHTML = h;
+}
+
+function tb_saveIntake() {
+  if (!_tbCanManage()) return;
+  var mode = _tbVal('tb-mode') || 'in', gv = _tbVal('tb-ig'), g = _tbGradeByNum(gv), msg = document.getElementById('tb-imsg');
+  if (!g) { toast('اختر الصف', 'warning'); return; }
+  var subs = g.subjects || [], items = [], lines = [], over = [], total = 0;
+  for (var i = 0; i < subs.length; i++) {
+    var raw = _tbVal('tb-q-' + i);
+    if (raw === '') continue;
+    var n = Number(raw);
+    if (isNaN(n) || Math.floor(n) !== n || n === 0 || (mode !== 'adj' && n < 0)) {
+      toast('كمية «' + subs[i].subject + '» غير صحيحة (عددٌ صحيح' + (mode === 'adj' ? ' غير صفريّ' : ' موجب') + ')', 'warning'); return;
+    }
+    var have = _tbNum(subs[i].stock);
+    if ((mode === 'vret' && n > have) || (mode === 'adj' && have + n < 0)) over.push(subs[i].subject + ' (المتاح ' + have + ')');
+    items.push({ subjectId: subs[i].sid || subs[i].subject, qty: n });
+    lines.push({ subject: subs[i].subject, qty: n });
+    total += n;
+  }
+  if (!items.length) { toast('اكتب كميةً لمادةٍ واحدةٍ على الأقل', 'warning'); return; }
+  if (over.length) { toast((mode === 'adj' ? 'التسوية تجعل المخزون سالباً: ' : 'الكمية أكبر من المخزون: ') + over.join('، '), 'warning'); return; }
+  var notes = _tbVal('tb-inotes'), party = _tbVal('tb-iparty'), doc = _tbVal('tb-idoc'), date = _tbVal('tb-idate');
+  var fn, p, type;
+  if (mode === 'adj') {
+    if (!notes) { toast('سبب التسوية مطلوب', 'warning'); return; }
+    fn = 'adjustBookStockProtected'; type = 'تسوية_جرد'; p = { grade: gv, items: items, notes: notes };
+  } else if (mode === 'vret') {
+    if (!party) { toast('الجهة المرتجَع إليها مطلوبة', 'warning'); return; }
+    fn = 'returnBooksToSupplierProtected'; type = 'إرجاع_للمورد'; p = { grade: gv, party: party, docNo: doc, date: date, notes: notes, items: items };
+  } else {
+    fn = 'recordBookIntakeProtected'; type = 'توريد'; p = { grade: gv, source: _tbVal('tb-isource'), party: party, docNo: doc, date: date, notes: notes, items: items };
+  }
+  if (!window.confirm(_tbTypeLabel(type) + ' — ' + g.grade + ': ' + lines.length + ' مادة، المجموع ' + total + '. متابعة؟')) return;
+  showLoading('جاري الحفظ...');
+  callServer(fn, p, function (r) {
+    hideLoading();
+    if (!r || !r.success) { if (msg) msg.innerHTML = '<div class="alert alert-danger">' + escapeHtml((r && r.error) || 'تعذّر الحفظ') + '</div>'; else showError((r && r.error) || 'تعذّر الحفظ'); return; }
+    toast(r.message || 'تم الحفظ', 'success');
+    TB.voucher = { id: r.receipt || r.txId, date: mode === 'adj' ? _tbIso(new Date()) : (date || _tbIso(new Date())), type: type, grade: g.grade,
+      source: mode === 'in' ? p.source : '', party: mode === 'adj' ? '' : party, doc: mode === 'adj' ? '' : doc, notes: notes, lines: lines };
+    tb_refreshAfterWrite();
+    tb_withMeta(function () {
+      tb_drawIntakeRows();
+      var m2 = document.getElementById('tb-imsg');
+      if (m2) m2.innerHTML = '<div class="alert alert-success" style="margin-top:8px">' + escapeHtml(r.message || 'تم الحفظ') +
+        ' <button type="button" class="btn btn-secondary btn-sm" onclick="tb_printTx(TB.voucher)">🖨️ طباعة السند</button></div>';
+    });
+  }, function (e) { hideLoading(); showError(e); });
+}
+
+/* ── 4) السجل والتقارير ── */
+function tb_renderLogShell() {
+  var body = document.getElementById('tbBody');
+  if (!body) return;
+  var now = new Date(), from = _tbIso(new Date(now.getFullYear(), now.getMonth(), 1)), to = _tbIso(now), tOpts = '<option value="">الكل</option>';
+  for (var t = 0; t < TB_TYPES.length; t++) tOpts += '<option value="' + escapeHtml(TB_TYPES[t]) + '">' + escapeHtml(_tbTypeLabel(TB_TYPES[t])) + '</option>';
+  body.innerHTML =
+    '<div class="filter-bar"><div class="form-row" style="margin-bottom:0">' +
+      '<div class="form-group"><label class="form-label">من</label><input type="date" class="form-control" id="tb-from" value="' + from + '"></div>' +
+      '<div class="form-group"><label class="form-label">إلى</label><input type="date" class="form-control" id="tb-to" value="' + to + '"></div>' +
+      '<div class="form-group"><label class="form-label">النوع</label><select class="form-select" id="tb-tf" onchange="tb_drawReport()">' + tOpts + '</select></div>' +
+      '<div class="form-group"><label class="form-label">إظهار الملغاة</label><input type="checkbox" id="tb-showC" checked onchange="tb_drawReport()"></div>' +
+      '<div class="form-group" style="align-self:flex-end"><button type="button" class="btn btn-primary" onclick="tb_loadReport()">عرض</button> ' +
+      '<button type="button" class="btn btn-secondary" onclick="tb_printReport()">🖨️ طباعة</button> ' +
+      '<button type="button" class="btn btn-secondary" onclick="tb_exportReport()">⬇️ CSV</button></div>' +
+    '</div></div><div id="tb-report"><div class="sk-line skeleton"></div></div>';
+  tb_loadReport();
+}
+
+function tb_loadReport() {
+  var out = document.getElementById('tb-report');
+  if (!out) return;
+  var from = _tbVal('tb-from'), to = _tbVal('tb-to');
+  if (from && to && from > to) { out.innerHTML = _tbErrBox('تاريخ البداية بعد تاريخ النهاية'); return; }
+  out.innerHTML = '<div class="sk-line skeleton"></div>';
+  callServer('getBooksTotalsReportProtected', { from: from, to: to }, function (r) {
+    if (!r || !r.success) { out.innerHTML = _tbErrBox(r && r.error); return; }
+    TB.report = r;
+    tb_drawReport();
+  }, _tbFail('tb-report'));
+}
+
+// فهارسُ الحركات المعروضة بعد مرشّح النوع والملغاة.
+function _tbReportPick() {
+  var r = TB.report, tf = _tbVal('tb-tf'), showC = !!(document.getElementById('tb-showC') || {}).checked, out = [];
+  var list = (r && r.movements) || [];
+  for (var i = 0; i < list.length; i++) {
+    if (tf && list[i].type !== tf) continue;
+    if (!showC && list[i].cancelled) continue;
+    out.push(i);
+  }
+  return out;
+}
+
+function tb_drawReport() {
+  var out = document.getElementById('tb-report'), r = TB.report;
+  if (!out || !r) return;
+  var icons = ['🚚', '📤', '↩️', '↪️', '⚖️'], h = '<div class="stats-grid">';
+  for (var t = 0; t < TB_TYPES.length; t++) {
+    var bt = (r.byType && r.byType[TB_TYPES[t]]) || { lines: 0, qty: 0 };
+    h += '<div class="stat-card"><div class="stat-icon" style="background:var(--primary-glow)">' + icons[t] + '</div><div><div class="stat-value">' + _tbNum(bt.qty) +
+      '</div><div class="stat-label">' + escapeHtml(_tbTypeLabel(TB_TYPES[t])) + ' (' + _tbNum(bt.lines) + ' سطر)</div></div></div>';
+  }
+  h += '</div>';
+  var bg = r.byGrade || [];
+  if (bg.length) {
+    h += '<h4 style="margin-top:12px">حسب الصف (بلا الملغاة)</h4><div class="table-wrap"><table><thead><tr><th>الصف</th><th>توريد</th><th>صرف</th><th>مرتجع طالب</th><th>مرتجع للمورد</th><th>تسوية</th><th>صافي الحركة</th></tr></thead><tbody>';
+    for (var g = 0; g < bg.length; g++) {
+      var x = bg[g];
+      h += '<tr><td>' + escapeHtml(x.grade) + '</td><td>' + _tbNum(x['توريد']) + '</td><td>' + _tbNum(x['صرف_لطالب']) + '</td><td>' + _tbNum(x['إرجاع_طالب']) +
+        '</td><td>' + _tbNum(x['إرجاع_للمورد']) + '</td><td>' + _tbNum(x['تسوية_جرد']) + '</td><td><b>' + _tbNum(x.net) + '</b></td></tr>';
+    }
+    h += '</tbody></table></div>';
+  }
+  var pick = _tbReportPick(), all = r.movements || [], manage = _tbCanManage() && r.canManage !== false;
+  if (r.truncated) h += '<div class="alert alert-warning" style="margin-top:10px">يُعرض أحدث ' + all.length + ' حركة من ' + _tbNum(r.txCount) + ' — ضيّق المدى لرؤية الباقي.</div>';
+  h += pick.length ? '<h4 style="margin-top:14px">🧾 آخر الحركات (' + pick.length + ')</h4>' + _tbMovTable('r', all, pick, manage, true)
+    : '<div class="alert alert-info" style="margin-top:10px">لا توجد حركات في هذا المدى.</div>';
+  out.innerHTML = h;
+}
+
+function tb_exportReport() {
+  var r = TB.report;
+  if (!r) { toast('اعرض التقرير أولاً', 'warning'); return; }
+  var pick = _tbReportPick(), all = r.movements || [];
+  var rows = [['رقم الحركة', 'التاريخ', 'النوع', 'الصف', 'المادة', 'الكمية', 'كود الطالب', 'اسم الطالب', 'المصدر', 'الجهة', 'رقم المستند', 'المسجّل', 'ملاحظات', 'ملغاة', 'الإلغاء']];
+  for (var p = 0; p < pick.length; p++) {
+    var m = all[pick[p]], ls = m.lines || [];
+    for (var j = 0; j < ls.length; j++) {
+      rows.push([m.id, m.date, _tbTypeLabel(m.type), m.grade, ls[j].subject, _tbNum(ls[j].qty), m.code, m.name, m.source, m.party, m.doc, m.by, m.notes,
+        m.cancelled ? 'نعم' : '', m.cancelledBy]);
+    }
+  }
+  rows.push([]);
+  for (var t = 0; t < TB_TYPES.length; t++) {
+    var bt = (r.byType && r.byType[TB_TYPES[t]]) || { qty: 0 };
+    rows.push([_tbTypeLabel(TB_TYPES[t]), _tbNum(bt.qty)]);
+  }
+  _tbCsvDownload('حركات_الكتب_' + (r.from || 'البداية') + '_' + (r.to || _tbIso(new Date())) + '.csv', rows);
+}
+
+function tb_printReport() {
+  var r = TB.report;
+  if (!r) { toast('اعرض التقرير أولاً', 'warning'); return; }
+  var kp = '';
+  for (var t = 0; t < TB_TYPES.length; t++) {
+    var bt = (r.byType && r.byType[TB_TYPES[t]]) || { qty: 0 };
+    kp += '<div class="kp">' + escapeHtml(_tbTypeLabel(TB_TYPES[t])) + '<b>' + _tbNum(bt.qty) + '</b></div>';
+  }
+  var bg = r.byGrade || [], gRows = '';
+  for (var g = 0; g < bg.length; g++) {
+    var x = bg[g];
+    gRows += '<tr><td>' + escapeHtml(x.grade) + '</td><td>' + _tbNum(x['توريد']) + '</td><td>' + _tbNum(x['صرف_لطالب']) + '</td><td>' + _tbNum(x['إرجاع_طالب']) +
+      '</td><td>' + _tbNum(x['إرجاع_للمورد']) + '</td><td>' + _tbNum(x['تسوية_جرد']) + '</td><td>' + _tbNum(x.net) + '</td></tr>';
+  }
+  var pick = _tbReportPick(), all = r.movements || [], mRows = '';
+  for (var p = 0; p < pick.length; p++) {
+    var m = all[pick[p]], who = m.code ? (m.name + ' (' + m.code + ')') : (m.party || m.source || '');
+    mRows += '<tr' + (m.cancelled ? ' style="text-decoration:line-through;color:#888"' : '') + '><td>' + escapeHtml(m.id) + '</td><td>' + escapeHtml(m.date) + '</td><td>' +
+      escapeHtml(_tbTypeLabel(m.type)) + '</td><td>' + escapeHtml(m.grade) + '</td><td>' + escapeHtml(who) + '</td><td>' + escapeHtml(_tbLinesText(m.lines)) + '</td></tr>';
+  }
+  var inner = '<h2>تقرير حركات الكتب المدرسية</h2><div class="info"><span>من: <b>' + escapeHtml(r.from || 'البداية') + '</b></span><span>إلى: <b>' + escapeHtml(r.to || _tbIso(new Date())) +
+    '</b></span><span>عدد الحركات: <b>' + _tbNum(r.txCount) + '</b></span></div><div class="tot">' + kp + '</div>' +
+    (gRows ? '<h3>حسب الصف (بلا الملغاة)</h3><table><thead><tr><th>الصف</th><th>توريد</th><th>صرف</th><th>مرتجع طالب</th><th>مرتجع للمورد</th><th>تسوية</th><th>الصافي</th></tr></thead><tbody>' + gRows + '</tbody></table>' : '') +
+    (mRows ? '<h3>الحركات</h3><table><thead><tr><th>الرقم</th><th>التاريخ</th><th>النوع</th><th>الصف</th><th>الطالب / الجهة</th><th>الكتب</th></tr></thead><tbody>' + mRows + '</tbody></table>' : '');
+  _tbPrint('تقرير حركات الكتب', inner);
+}
+
+/* ── الطباعة: _docPrintWindow + ترويسة _tfBrandHeader وتنسيق _tfStmtCss (المالية) ── */
+function _tbBrandHeader() {
+  var fr = window._tfRes;
+  if (fr && fr.brand && fr.brand.name && typeof _tfBrandHeader === 'function') return _tfBrandHeader(true);
+  // هويّةُ المالية لم تُحمَّل بعد ⇒ الشكلُ نفسه من هويّة المدرسة المحمَّلة عند الدخول.
+  var b = window._schoolBrand || {}, name = b.name || (typeof cert_schoolName === 'function' ? cert_schoolName() : '');
+  return '<div class="bh">' + (b.logo ? '<img class="bl" src="' + escapeHtml(b.logo) + '" alt="">' : '') + '<div class="bn"><div class="b1">' + escapeHtml(name) + '</div>' +
+    (b.phone ? '<div class="bp">' + escapeHtml(b.phone) + '</div>' : '') + (b.address ? '<div class="bp">' + escapeHtml(b.address) + '</div>' : '') + '</div></div>';
+}
+function _tbPrint(title, inner) {
+  var css = (typeof _tfStmtCss === 'function') ? _tfStmtCss()
+    : 'body{font-family:Tahoma,Arial,sans-serif;padding:14mm;color:#111}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:6px;text-align:center}';
+  css += 'h3{font-size:15px;margin:14px 0 6px}.sig{display:flex;justify-content:space-between;gap:12px;margin-top:36px;font-size:13px}';
+  _docPrintWindow(title, '', css, _tbBrandHeader() + inner);
+}
+
+// سندٌ لأيّ حركة: إيصال صرف/استرجاع لطالب، أو سند توريد/مرتجع للمورد/تسوية.
+function tb_printTx(m) {
+  if (!m) return;
+  var stu = m.type === 'صرف_لطالب' || m.type === 'إرجاع_طالب';
+  var title = m.type === 'صرف_لطالب' ? 'إيصال صرف كتب مدرسية' : (m.type === 'إرجاع_طالب' ? 'إيصال استرجاع كتب مدرسية' :
+    (m.type === 'توريد' ? 'سند توريد كتب' : (m.type === 'إرجاع_للمورد' ? 'سند مرتجع كتب للمورد' : 'سند تسوية جرد الكتب')));
+  var info = '<span>رقم الإيصال: <b>' + escapeHtml(m.id) + '</b></span><span>التاريخ: <b>' + escapeHtml(m.date) + '</b></span>';
+  if (stu) {
+    info += '<span>الطالب: <b>' + escapeHtml(m.name) + '</b></span><span>الكود: <b>' + escapeHtml(m.code) + '</b></span>' +
+      '<span>الصف: <b>' + escapeHtml(m.grade) + (m.section ? ' / ' + escapeHtml(m.section) : '') + '</b></span>' + (m.year ? '<span>العام: <b>' + escapeHtml(m.year) + '</b></span>' : '');
+  } else {
+    info += '<span>الصف: <b>' + escapeHtml(m.grade) + '</b></span>' + (m.source ? '<span>المصدر: <b>' + escapeHtml(m.source) + '</b></span>' : '') +
+      (m.party ? '<span>الجهة: <b>' + escapeHtml(m.party) + '</b></span>' : '');
+  }
+  if (m.doc) info += '<span>رقم المستند: <b>' + escapeHtml(m.doc) + '</b></span>';
+  if (m.cancelled) info += '<span style="color:#dc2626"><b>ملغاة</b> ' + escapeHtml(m.cancelledBy || '') + '</span>';
+  var rows = '', total = 0, ls = m.lines || [];
+  for (var i = 0; i < ls.length; i++) {
+    total += _tbNum(ls[i].qty);
+    rows += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(ls[i].subject) + '</td><td>' + _tbNum(ls[i].qty) + '</td></tr>';
+  }
+  var who = m.by || (App.user && (App.user.name || App.user.teacherName)) || '';
+  var party = stu ? (m.type === 'صرف_لطالب' ? 'المستلم (الطالب/ولي الأمر)' : 'المسلِّم (الطالب/ولي الأمر)') : (m.type === 'تسوية_جرد' ? 'المراجِع' : 'المورّد / الجهة');
+  var inner = '<h2>' + escapeHtml(title) + '</h2><div class="info">' + info + '</div>' +
+    '<table><thead><tr><th>#</th><th>المادة</th><th>العدد</th></tr></thead><tbody>' + rows +
+    '<tr><td colspan="2"><b>المجموع</b></td><td><b>' + total + '</b></td></tr></tbody></table>' +
+    (m.notes ? '<p>ملاحظات: ' + escapeHtml(m.notes) + '</p>' : '') +
+    '<div class="sig"><div>' + party + ': ............<br><br>التوقيع: ............</div>' +
+    '<div>أمين المخزن: ' + escapeHtml(who) + '<br><br>التوقيع: ............</div><div>الختم</div></div>';
+  _tbPrint(title + ' ' + (m.id || ''), inner);
+}
+
+</script>
+<script>
+/* ═══ الدفعة 36m: طلبات القبول والتسجيل (Admissions.js) ═══
+   فتح/إغلاق التقديم الإلكتروني، قائمة الطلبات بفلاتر، تفاصيل الطلب، والقرار: قبول (قيدٌ بكود وكلمة مرور) أو رفض (بسبب)
+   أو قيد المراجعة. الخادمُ يفحص `admissions.manage` والبصمةَ بنفسه؛ هذا عرضٌ فقط. لا معالجاتٍ مضمّنةٌ فيها نصُّ مستخدم:
+   الأزرار تحمل فهرساً في ADM.items فقط، وكلُّ نصٍّ ديناميكيّ يمرّ بـ escapeHtml. */
+var ADM = { data: null, items: [], classes: [], open: false, last: null };
+
+function _admStatusLabel(s) { return String(s || '').replace(/_/g, ' '); }
+function _admStatusColor(s) {
+  if (s === 'مقبول') return '#16a34a';
+  if (s === 'مرفوض') return '#dc2626';
+  if (s === 'قيد_المراجعة') return '#d97706';
+  if (s === 'مكرر') return '#7c3aed';
+  return '#2563eb';
+}
+function _admBadge(s) {
+  return '<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;font-weight:700;color:#fff;background:' +
+    _admStatusColor(s) + '">' + escapeHtml(_admStatusLabel(s)) + '</span>';
+}
+
+function adm_render() {
+  if (!hasCap('admissions.manage')) { toast('هذه الصفحة للإدارة وقسم الحاسوب', 'error'); showSection('dashboard'); return; }
+  var el = document.getElementById('dynamicContent');
+  if (!el) return;
+  el.innerHTML =
+    '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(245,158,11,.12)">📝</div>' +
+      '<div class="section-header-title">' + escapeHtml('طلبات القبول') + '</div>' +
+    '</div>' +
+    '<div class="section-body">' +
+      '<div id="adm-head"><div class="sk-line skeleton"></div></div>' +
+      '<div class="filter-bar"><div class="form-row" style="margin-bottom:0">' +
+        '<div class="form-group"><label class="form-label">الحالة</label><select class="form-select" id="adm-fStatus" onchange="adm_load()">' +
+          '<option value="open">بانتظار قرار</option><option value="">الكل</option>' +
+          '<option value="جديد">جديد</option><option value="مكرر">مكرر</option><option value="قيد_المراجعة">قيد المراجعة</option>' +
+          '<option value="مقبول">مقبول</option><option value="مرفوض">مرفوض</option>' +
+        '</select></div>' +
+        '<div class="form-group"><label class="form-label">الصف</label><select class="form-select" id="adm-fGrade" onchange="adm_load()"><option value="">الكل</option></select></div>' +
+        '<div class="form-group" style="flex:2"><label class="form-label">بحث (الاسم، الجوال، رقم الطلب)</label><input type="text" class="form-control" id="adm-fQ" maxlength="80" onkeydown="if(event.key===\'Enter\')adm_load()"></div>' +
+        '<div class="form-group" style="align-self:flex-end"><button type="button" class="btn btn-primary" onclick="adm_load()">🔎 عرض</button></div>' +
+      '</div></div>' +
+      '<div id="adm-list"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div>' +
+    '</div></div>';
+  adm_loadSettings();
+  adm_load();
+}
+
+/* ── الترويسة: حالة التقديم + العدّادات ── */
+function adm_loadSettings() {
+  callServer('getAdmissionSettingsProtected', {}, function (r) {
+    var box = document.getElementById('adm-head');
+    if (!box) return;
+    if (!r || !r.success) { box.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر الجلب') + '</div>'; return; }
+    ADM.open = !!r.open;
+    var c = r.counts || {}, chips = '', order = ['جديد', 'مكرر', 'قيد_المراجعة', 'مقبول', 'مرفوض'];
+    for (var i = 0; i < order.length; i++) {
+      chips += '<span style="display:inline-flex;gap:6px;align-items:center;margin:0 0 6px 8px">' + _admBadge(order[i]) +
+        '<b>' + escapeHtml(String(c[order[i]] || 0)) + '</b></span>';
+    }
+    box.innerHTML =
+      '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+          '<span style="font-weight:700">التقديم الإلكتروني:</span>' +
+          '<span style="padding:3px 12px;border-radius:999px;font-weight:700;color:#fff;background:' + (ADM.open ? '#16a34a' : '#6b7280') + '">' +
+            (ADM.open ? 'مفتوح' : 'مغلق') + '</span>' +
+          '<button type="button" class="btn btn-sm ' + (ADM.open ? 'btn-secondary' : 'btn-success') + '" onclick="adm_toggleOpen()">' +
+            (ADM.open ? '🔒 إغلاق التقديم' : '🔓 فتح التقديم') + '</button>' +
+        '</div>' +
+        '<div>' + chips + '</div>' +
+      '</div>' +
+      (r.sheetExists ? '' : '<div class="alert alert-info">لم تُنشأ ورقة «طلبات_القبول» بعد — تُنشأ تلقائياً عند فتح التقديم.</div>') +
+      '<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">' + escapeHtml(r.note || '') + '</div>';
+  }, function (e) {
+    var box = document.getElementById('adm-head');
+    if (box) box.innerHTML = '<div class="alert alert-danger">' + escapeHtml(String((e && e.message) || e)) + '</div>';
+  });
+}
+
+function adm_toggleOpen() {
+  var willOpen = !ADM.open;
+  if (!window.confirm(willOpen ? 'فتح التقديم الإلكتروني؟ سيظهر زرّ «طلب التحاق» في الصفحة العامة للمدرسة.' : 'إغلاق التقديم الإلكتروني؟ لن تُقبل طلباتٌ جديدة من الصفحة العامة.')) return;
+  showLoading('جاري الحفظ...');
+  callServer('setAdmissionOpenProtected', { open: willOpen }, function (r) {
+    hideLoading();
+    if (!r || !r.success) { showError((r && r.error) || 'تعذّر الحفظ'); return; }
+    toast(r.message || 'تم', 'success');
+    if (r.note) toast(r.note, 'info', 6000);
+    adm_loadSettings();
+    adm_load();
+  }, function (e) { hideLoading(); showError(e); });
+}
+
+/* ── القائمة ── */
+function adm_load() {
+  var box = document.getElementById('adm-list');
+  if (!box) return;
+  var v = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  var p = { status: v('adm-fStatus'), grade: v('adm-fGrade'), q: v('adm-fQ').trim() };
+  callServer('listAdmissionApplicationsProtected', p, function (r) {
+    var b = document.getElementById('adm-list');
+    if (!b) return;
+    if (!r || !r.success) { b.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر الجلب') + '</div>'; return; }
+    ADM.data = r; ADM.items = r.items || []; ADM.classes = r.classes || [];
+    adm_fillGradeFilter(p.grade);
+    adm_renderList();
+  }, function (e) {
+    var b = document.getElementById('adm-list');
+    if (b) b.innerHTML = '<div class="alert alert-danger">' + escapeHtml(String((e && e.message) || e)) + '</div>';
+  });
+}
+
+function _admGrades() {
+  var out = [], seen = {}, cl = ADM.classes || [];
+  for (var i = 0; i < cl.length; i++) if (cl[i].grade && !seen[cl[i].grade]) { seen[cl[i].grade] = 1; out.push(cl[i].grade); }
+  if (!out.length && typeof myGrades === 'function') out = myGrades() || [];
+  return out;
+}
+
+function adm_fillGradeFilter(cur) {
+  var sel = document.getElementById('adm-fGrade');
+  if (!sel) return;
+  var gs = _admGrades(), h = '<option value="">الكل</option>';
+  for (var i = 0; i < gs.length; i++) h += '<option value="' + escapeHtml(gs[i]) + '"' + (gs[i] === cur ? ' selected' : '') + '>' + escapeHtml(gs[i]) + '</option>';
+  sel.innerHTML = h;
+}
+
+function adm_renderList() {
+  var box = document.getElementById('adm-list');
+  if (!box) return;
+  var d = ADM.data || {}, items = ADM.items;
+  if (!d.sheetExists) { box.innerHTML = '<div class="alert alert-info">لا توجد طلبات بعد.</div>'; return; }
+  if (!items.length) { box.innerHTML = '<div class="alert alert-info">لا توجد طلبات مطابقة.</div>'; return; }
+  var h = '<div style="font-size:.85rem;color:var(--text-muted);margin-bottom:6px">' + escapeHtml(String(d.total || items.length)) + ' طلباً' +
+    (d.truncated ? ' — يُعرض أحدث ' + items.length + ' فقط، ضيّق البحث' : '') + '</div>' +
+    '<div class="table-wrap"><table><thead><tr><th>رقم الطلب</th><th>التاريخ</th><th>الطالب</th><th>الصف المطلوب</th><th>ولي الأمر</th><th>الجوال</th><th>الحالة</th><th></th></tr></thead><tbody>';
+  for (var i = 0; i < items.length; i++) {
+    var x = items[i];
+    h += '<tr><td>' + escapeHtml(x.requestNo) + '</td><td>' + escapeHtml(String(x.date || '').replace('T', ' ').substring(0, 16)) + '</td>' +
+      '<td>' + escapeHtml(x.name) + (x.code ? '<div style="font-size:.8rem;color:var(--text-muted)">كود: ' + escapeHtml(x.code) + '</div>' : '') + '</td>' +
+      '<td>' + escapeHtml(x.grade) + '</td><td>' + escapeHtml(x.parentName) + '</td><td dir="ltr">' + escapeHtml(x.phone) + '</td>' +
+      '<td>' + _admBadge(x.status) + '</td>' +
+      '<td><button type="button" class="btn btn-sm btn-primary" onclick="adm_open(' + i + ')">عرض</button></td></tr>';
+  }
+  box.innerHTML = h + '</tbody></table></div>';
+}
+
+/* ── تفاصيل الطلب والقرار ── */
+function adm_close() { var w = document.getElementById('adm-modal-host'); if (w && w.parentNode) w.parentNode.removeChild(w); }
+
+function _admModal(inner) {
+  adm_close();
+  var d = document.createElement('div');
+  d.id = 'adm-modal-host';
+  d.innerHTML = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)adm_close()">' +
+    '<div style="background:var(--surface);border-radius:14px;max-width:640px;width:100%;padding:22px;max-height:92vh;overflow:auto">' + inner + '</div></div>';
+  document.body.appendChild(d);
+}
+
+function adm_open(i) {
+  var x = ADM.items[i];
+  if (!x) return;
+  var rows = [
+    ['رقم الطلب', x.requestNo], ['تاريخ الطلب', String(x.date || '').replace('T', ' ')], ['المصدر', x.source],
+    ['اسم الطالب', x.name], ['تاريخ الميلاد', x.birthDate], ['الجنس', x.gender], ['الصف المطلوب', x.grade],
+    ['اسم ولي الأمر', x.parentName], ['صلة القرابة', x.relation], ['رقم الجوال', x.phone], ['جوال بديل', x.phone2],
+    ['العنوان', x.address], ['المدرسة السابقة', x.prevSchool], ['آخر صف مكتمل', x.lastGrade], ['ملاحظات ولي الأمر', x.parentNotes],
+    ['العام الدراسي', x.year], ['تاريخ القرار', x.decisionDate], ['قرار بواسطة', x.decidedBy], ['سبب الرفض', x.rejectReason],
+    ['الكود المُنشأ', x.code], ['معرّف الفصل', x.classId], ['الشعبة', x.section]
+  ];
+  var t = '<div class="table-wrap"><table><tbody>';
+  for (var k = 0; k < rows.length; k++) {
+    if (rows[k][1] === undefined || rows[k][1] === null || rows[k][1] === '') continue;
+    t += '<tr><th style="width:38%">' + escapeHtml(rows[k][0]) + '</th><td>' + escapeHtml(rows[k][1]) + '</td></tr>';
+  }
+  t += '</tbody></table></div>';
+  var acts = '';
+  if (x.status === 'مقبول' && x.code) {
+    acts = '<div class="alert alert-success">الطلب مقبول — كود الطالب: <b>' + escapeHtml(x.code) + '</b></div>';
+  } else {
+    acts = '<h4 style="margin:14px 0 8px">✅ قبول الطلب وقيد الطالب</h4>' + _admAcceptForm(x) +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+        '<button type="button" class="btn btn-success" onclick="adm_decide(' + i + ',\'قبول\')">✅ قبول</button>' +
+        (x.status !== 'قيد_المراجعة' ? '<button type="button" class="btn btn-warning" onclick="adm_decide(' + i + ',\'قيد_المراجعة\')">⏳ قيد المراجعة</button>' : '') +
+      '</div>' +
+      (x.status !== 'مرفوض' ?
+        '<h4 style="margin:16px 0 8px">❌ رفض الطلب</h4>' +
+        '<div class="form-group mb-2"><label class="form-label">سبب الرفض *</label><textarea class="form-control" id="adm-reason" rows="2" maxlength="300"></textarea></div>' +
+        '<button type="button" class="btn btn-danger" onclick="adm_decide(' + i + ',\'رفض\')">❌ رفض</button>' : '');
+  }
+  _admModal(
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">' +
+      '<h3 style="margin:0;color:#0F2C5C">📝 طلب ' + escapeHtml(x.requestNo) + '</h3>' + _admBadge(x.status) + '</div>' +
+    t + acts + '<div id="adm-status" style="margin-top:10px"></div>' +
+    '<div style="margin-top:12px"><button type="button" class="btn btn-secondary" onclick="adm_close()">إغلاق</button></div>');
+}
+
+// اختيارُ الفصل من سجلّ «الفصول» (القيمة = فهرسٌ في ADM.classes)؛ بلا سجلٍّ ⇒ قائمتا الصف والشعبة العامّتان.
+function _admAcceptForm(x) {
+  var cl = ADM.classes || [], h = '';
+  var gKey = function (g) { return String(g || '').replace(/[أإآ]/g, 'ا').replace(/^(ال)?صف\s+/, '').replace(/\s+/g, ' ').trim(); };
+  if (cl.length) {
+    var opts = '<option value="">اختر الفصل</option>', picked = false;
+    for (var i = 0; i < cl.length; i++) {
+      var sel = !picked && gKey(cl[i].grade) === gKey(x.grade);
+      if (sel) picked = true;
+      opts += '<option value="' + i + '"' + (sel ? ' selected' : '') + '>' + escapeHtml(cl[i].grade + ' — ' + cl[i].section) + '</option>';
+    }
+    h += '<div class="form-group mb-2"><label class="form-label">الفصل والشعبة *</label><select class="form-select" id="adm-class">' + opts + '</select></div>';
+  } else {
+    var gs = (typeof myGrades === 'function' ? myGrades() : []) || [], ss = (typeof mySections === 'function' ? mySections() : []) || [];
+    h += '<div class="form-row mb-2"><div class="form-group"><label class="form-label">الصف *</label><select class="form-select" id="adm-grade">' +
+      buildSelectOptions(gs, 'اختر الصف', x.grade || '', false) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">الشعبة *</label><select class="form-select" id="adm-section">' +
+      buildSelectOptions(ss, 'اختر الشعبة', '', false) + '</select></div></div>';
+  }
+  h += '<div class="form-group mb-2"><label class="form-label">إجمالي الرسوم (اختياري)</label><input type="number" class="form-control" id="adm-fees" min="0" step="any"></div>';
+  return h;
+}
+
+function adm_decide(i, decision) {
+  var x = ADM.items[i], st = document.getElementById('adm-status');
+  if (!x || !st) return;
+  var p = { requestNo: x.requestNo, decision: decision, fingerprint: x.fingerprint };
+  if (decision === 'رفض') {
+    p.reason = ((document.getElementById('adm-reason') || {}).value || '').trim();
+    if (!p.reason) { st.innerHTML = '<div class="alert alert-warning">اكتب سبب الرفض</div>'; return; }
+  }
+  if (decision === 'قبول') {
+    var cs = document.getElementById('adm-class');
+    if (cs) {
+      var c = ADM.classes[parseInt(cs.value, 10)];
+      if (!c) { st.innerHTML = '<div class="alert alert-warning">اختر الفصل والشعبة</div>'; return; }
+      p.classId = c.id; p.grade = c.grade; p.section = c.section;
+    } else {
+      p.grade = (document.getElementById('adm-grade') || {}).value || '';
+      p.section = (document.getElementById('adm-section') || {}).value || '';
+      if (!p.grade || !p.section) { st.innerHTML = '<div class="alert alert-warning">اختر الصف والشعبة</div>'; return; }
+    }
+    p.fees = (document.getElementById('adm-fees') || {}).value || '';
+    if (!window.confirm('قبول «' + x.name + '» وقيده طالباً في ' + p.grade + ' — ' + p.section + '؟')) return;
+  }
+  st.innerHTML = '<div style="color:var(--text)">⏳ جاري الحفظ…</div>';
+  callServer('decideAdmissionProtected', p, function (r) {
+    var s2 = document.getElementById('adm-status');
+    if (!r || !r.success) {
+      if (!s2) return;
+      if (r && r.duplicate) {
+        s2.innerHTML = '<div class="alert alert-warning">⚠️ ' + escapeHtml(r.error || 'الاسم موجود مسبقاً') +
+          '<div style="margin-top:6px">الطالب الموجود: <b>' + escapeHtml(r.existingName || '') + '</b>' +
+          (r.existingCode ? ' — كود: ' + escapeHtml(r.existingCode) : '') +
+          (r.existingGrade ? ' — ' + escapeHtml(r.existingGrade) + (r.existingSection ? '/' + escapeHtml(r.existingSection) : '') : '') +
+          (r.existingPhone ? ' — 📞 ' + escapeHtml(r.existingPhone) : '') + '</div></div>';
+      } else {
+        s2.innerHTML = '<div class="alert alert-danger">' + escapeHtml((r && r.error) || 'فشل') + '</div>';
+        if (r && r.stale) adm_load();
+      }
+      return;
+    }
+    try { ClientCache.clear('sdir_'); ClientCache.clear('student_names_'); } catch (eCc) {}
+    adm_loadSettings(); adm_load();
+    if (decision === 'قبول') { ADM.last = r; adm_showAccepted(); return; }
+    toast(r.message || 'تم', 'success');
+    adm_close();
+  }, function (e) {
+    var s2 = document.getElementById('adm-status');
+    if (s2) s2.innerHTML = '<div class="alert alert-danger">' + escapeHtml(String((e && e.message) || e)) + '</div>';
+  });
+}
+
+/* ── بعد القبول: بطاقة النجاح (نسخ/طباعة «بطاقة القبول») ── */
+function adm_showAccepted() {
+  var r = ADM.last;
+  if (!r) return;
+  var warn = '', notes = (r.warnings || []).concat(r.extrasNotes || []);
+  for (var i = 0; i < notes.length; i++) warn += '<div class="alert alert-warning" style="margin-top:6px">' + escapeHtml(notes[i]) + '</div>';
+  var docs = r.requiredDocs || [], dl = '';
+  for (var j = 0; j < docs.length; j++) dl += '<li>' + escapeHtml(docs[j].name) + (docs[j].mandatory ? ' <b>*</b>' : '') + '</li>';
+  var books = r.books || [], bl = '';
+  for (var k = 0; k < books.length; k++) bl += '<li>' + escapeHtml(books[k].subject) + '</li>';
+  _admModal(
+    '<h3 style="margin:0 0 12px;color:#16a34a">✅ ' + escapeHtml(r.message || 'تم القبول') + '</h3>' +
+    '<div class="table-wrap"><table><tbody>' +
+      '<tr><th style="width:38%">الطالب</th><td>' + escapeHtml(r.studentName) + '</td></tr>' +
+      '<tr><th>الفصل</th><td>' + escapeHtml((r.grade || '') + (r.section ? ' — ' + r.section : '')) + '</td></tr>' +
+      '<tr><th>كود الطالب</th><td><b style="font-size:1.2rem">' + escapeHtml(r.code) + '</b></td></tr>' +
+      '<tr><th>كلمة المرور</th><td><b style="font-size:1.2rem" dir="ltr">' + escapeHtml(r.password || '—') + '</b></td></tr>' +
+    '</tbody></table></div>' +
+    (r.password ? '<div style="font-size:.85rem;color:var(--text-muted)">احفظ كلمة المرور الآن أو اطبع البطاقة — لا تُعرض مرّةً ثانية.</div>' : '') +
+    warn +
+    (dl ? '<h4 style="margin:12px 0 6px">📄 الوثائق المطلوبة</h4><ul style="margin:0;padding-inline-start:20px">' + dl + '</ul>' : '') +
+    (bl ? '<h4 style="margin:12px 0 6px">📚 الكتب المستحقّة</h4><ul style="margin:0;padding-inline-start:20px">' + bl + '</ul>' : '') +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
+      '<button type="button" class="btn btn-primary" onclick="adm_printCard()">🖨️ طباعة بطاقة القبول</button>' +
+      '<button type="button" class="btn btn-secondary" onclick="adm_copyCard()">📋 نسخ البيانات</button>' +
+      '<button type="button" class="btn btn-secondary" onclick="adm_close()">إغلاق</button>' +
+    '</div>');
+}
+
+function adm_copyCard() {
+  var r = ADM.last;
+  if (!r) return;
+  var text = 'بيانات القبول\nالطالب: ' + (r.studentName || '') + '\nالفصل: ' + (r.grade || '') + (r.section ? ' — ' + r.section : '') +
+    '\nكود الطالب: ' + (r.code || '') + (r.password ? '\nكلمة المرور: ' + r.password : '') + '\nرقم الطلب: ' + (r.requestNo || '');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { toast('📋 تم النسخ', 'success'); }, function () { window.prompt('انسخ البيانات:', text); });
+  } else {
+    window.prompt('انسخ البيانات:', text);
+  }
+}
+
+// ترويسةُ المدرسة بـ _tfBrandHeader (تقرأ window._tfRes.brand): تُمرَّر علامةُ المدرسة من ردّ الخادم مؤقّتاً ثمّ تُعاد.
+function _admWithBrand(school, fn) {
+  var prev = window._tfRes, sb = window._schoolBrand || {}, s = school || {};
+  window._tfRes = { brand: { name: s.name || sb.name || '', logo: s.logo || sb.logo || '', phone: s.phone || sb.phone || '',
+    address: s.address || sb.address || '', color: sb.color || '' } };
+  try { return fn(); } finally { window._tfRes = prev; }
+}
+
+function adm_printCard() {
+  var r = ADM.last;
+  if (!r) return;
+  var docs = r.requiredDocs || [], books = r.books || [], dl = '', bl = '';
+  for (var i = 0; i < docs.length; i++) dl += '<li>' + escapeHtml(docs[i].name) + (docs[i].mandatory ? ' <b>(إلزامية)</b>' : '') + '</li>';
+  for (var j = 0; j < books.length; j++) bl += '<li>' + escapeHtml(books[j].subject) + '</li>';
+  var parts = _admWithBrand(r.school, function () { return { head: _tfBrandHeader(true), css: _tfStmtCss() }; });
+  var body = parts.head +
+    '<h2>بطاقة القبول</h2>' +
+    '<table><tbody>' +
+      '<tr><th>اسم الطالب</th><td>' + escapeHtml(r.studentName) + '</td><th>رقم الطلب</th><td>' + escapeHtml(r.requestNo) + '</td></tr>' +
+      '<tr><th>الصف</th><td>' + escapeHtml(r.grade) + '</td><th>الشعبة</th><td>' + escapeHtml(r.section) + '</td></tr>' +
+      '<tr><th>كود الطالب</th><td><b>' + escapeHtml(r.code) + '</b></td><th>كلمة المرور</th><td><b dir="ltr">' + escapeHtml(r.password || '—') + '</b></td></tr>' +
+      '<tr><th>تاريخ القيد</th><td colspan="3">' + escapeHtml(r.enrollDate || '') + '</td></tr>' +
+    '</tbody></table>' +
+    '<h3 style="font-size:15px;margin:14px 0 6px">📄 الوثائق المطلوب تسليمها</h3>' + (dl ? '<ol>' + dl + '</ol>' : '<p>—</p>') +
+    '<h3 style="font-size:15px;margin:14px 0 6px">📚 الكتب المدرسية للاستلام</h3>' + (bl ? '<ol>' + bl + '</ol>' : '<p>—</p>') +
+    '<p style="font-size:12px;color:#555">يدخل الطالب أو وليّ أمره إلى بوابة الطالب بالكود وكلمة المرور أعلاه، ويُنصح بتغيير كلمة المرور بعد أوّل دخول.</p>' +
+    '<div class="foot"><span>الموظف: ' + escapeHtml((App.user && App.user.name) || '') + '</span><span>التوقيع والختم: ..................</span></div>';
+  _docPrintWindow('بطاقة القبول — ' + (r.studentName || ''), '', parts.css, body);
+}
+
+</script>
+<script>
+/* ═══ الدفعة 36: الترقية ونهاية العام الدراسي ═══
+   هيكلٌ أوّليّ (36c): الصفحةُ مسجَّلةٌ في الشريط و`_sectionRenderers` وتعرض بطاقةً مؤقّتة.
+   الخادمُ يفحص `promotion.review` بنفسه؛ هذا عرضٌ فقط. */
+var PRO = { data: null };
+
+function pro_render() {
+  if (!hasCap('promotion.review')) { toast('هذه الصفحة للمدير والوكيل', 'error'); showSection('dashboard'); return; }
+  var el = document.getElementById('dynamicContent');
+  if (!el) return;
+  el.innerHTML =
+    '<div class="section-card"><div class="section-header">' +
+      '<div class="section-header-icon" style="background:rgba(139,92,246,.12)">🎓</div>' +
+      '<div class="section-header-title">' + escapeHtml('الترقية والعام الدراسي') + '</div>' +
+    '</div>' +
+    '<div class="section-body">' +
+      '<div class="empty-state">' +
+        '<div class="es-icon">🎓</div>' +
+        '<div class="es-title">' + escapeHtml('قيد الإنشاء — الدفعة 36') + '</div>' +
+        '<div class="es-sub">' + escapeHtml('مراجعة نتائج نهاية العام: الناجحون والمكملون والباقون والخريجون، ثم الانتقال إلى العام الجديد.') + '</div>' +
+      '</div>' +
+    '</div></div>';
 }
 
 </script>
