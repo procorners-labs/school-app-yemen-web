@@ -1316,7 +1316,7 @@ function _publicViewRate(ip, now) {
    ⚠️ IP مشتركٌ في اليمن (CGNAT): الحدُّ لكلّ دالّةٍ على حدة، والسؤالُ أسخى من الإرسال. **ولا يُسجَّل عنوانُ IP.** */
 var ADM_RATE_RULES = {
   issueAdmissionChallenge   : { win: 600000,  max: 20 },   // 20 سؤالاً / 10 دقائق
-  submitAdmissionApplication: { win: 3600000, max: 10 }    // 10 إرسالات / ساعة (CGNAT: عنوانٌ واحد لعدّة أسر)
+  submitAdmissionApplication: { win: 3600000, max: 30 }    // 30 إرسالاً / ساعة (CGNAT: عنوانٌ واحد لعدّة أسر — كان 10)
 };
 var ADM_RATE_TRACK_MAX = 5000;
 var ADM_RATE_MSG = 'محاولات كثيرة، حاول لاحقاً';

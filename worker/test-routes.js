@@ -3965,7 +3965,7 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   function rate(fn, ip, t) { ac.__f = fn; ac.__ip = ip; ac.__t = t; return vm.runInContext('_admissionRate(__f, __ip, __t)', ac); }
   var rules = vm.runInContext('ADM_RATE_RULES', ac);
   check(rules.issueAdmissionChallenge.max === 20 && rules.issueAdmissionChallenge.win === 600000, 'السؤال: 20 لكلّ 10 دقائق');
-  check(rules.submitAdmissionApplication.max === 10 && rules.submitAdmissionApplication.win === 3600000, 'الإرسال: 10 لكلّ ساعة (CGNAT)');
+  check(rules.submitAdmissionApplication.max === 30 && rules.submitAdmissionApplication.win === 3600000, 'الإرسال: 30 لكلّ ساعة (CGNAT)');
   check(fnOf('{"fn":"issueAdmissionChallenge","args":["s"]}') === 'issueAdmissionChallenge' &&
         fnOf('{"fn":"submitAdmissionApplication","args":["s",{}]}') === 'submitAdmissionApplication', 'الدالّتان العامّتان ⇒ داخل الحدّ');
   check(fnOf('{"pad":"' + new Array(400).join('x') + '","fn":"submitAdmissionApplication"}') === 'submitAdmissionApplication',
@@ -3979,8 +3979,8 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
   check(rate('issueAdmissionChallenge', '2.2.2.2', 2000) === true, 'وعنوانٌ آخر لا يتأثّر');
   check(rate('issueAdmissionChallenge', '1.1.1.1', 1000 + 600000) === true, 'ونافذةٌ جديدة (بعد 10 دقائق) ⇒ يُسمَح من جديد');
   okN = 0;
-  for (i = 0; i < 10; i++) if (rate('submitAdmissionApplication', '1.1.1.1', 5000)) okN++;
-  check(okN === 10 && rate('submitAdmissionApplication', '1.1.1.1', 5000 + 3599000) === false, 'الإرسال: أوّلُ 10 مسموحة والحادي عشر قبل الساعة مكبوح');
+  for (i = 0; i < 30; i++) if (rate('submitAdmissionApplication', '1.1.1.1', 5000)) okN++;
+  check(okN === 30 && rate('submitAdmissionApplication', '1.1.1.1', 5000 + 3599000) === false, 'الإرسال: أوّلُ 30 مسموحة والحادي والثلاثون قبل الساعة مكبوح');
   check(rate('submitAdmissionApplication', '1.1.1.1', 5000 + 3600000) === true, 'وبعد الساعة ⇒ يُسمَح من جديد');
   check(rate('issueAdmissionChallenge', '3.3.3.3', 9000) === true && rate('submitAdmissionApplication', '3.3.3.3', 9000) === true,
         'العدّادان منفصلان لكلّ دالّة (السؤال لا يستهلك الإرسال)');
