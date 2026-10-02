@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202610030104;
+    window.WEB_BUILD_TS = 202610030248;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2863,7 +2863,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '754031a';
+  var STU_BUILD = '30481a1';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -5582,6 +5582,7 @@ function renderGradesWithRefresh(r) {
 // نفس ترتيب GS_ORDERED_MONTHS (student/GradeSchema.js) — مكرَّرة هنا عمداً
 // لأنها ثابت عميلي بحت (لا مشاركة كود بين الخادم والمتصفح)، بنفس نمط
 // monthOrder المكرَّر أصلاً في StudentLogic.js لغرض مشابه.
+// 38f: the portal's ONE month fallback; getStudentBootBundle's `months.ordered` replaces it (older server: kept).
 var GRADES_MONTH_ORDER = ['محرم', 'صفر', 'نصف العام', 'جماد اول', 'جماد ثاني', 'نهاية العام'];
 
 // السلوك القديم بلا أي تغيير — خط الدفاع الأخير عند غياب/عدم تطابق monthRanges.
@@ -7903,24 +7904,23 @@ function loadHomeToday() {
     });
 }
 
-// تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد).
+// 38f: the portal's ONE week fallback; getStudentBootBundle's `days` ({week, schoolDays}, SCHED_WEEK) replaces it.
+var STU_WEEK_DAYS = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+var STU_BASE_DAYS = STU_WEEK_DAYS.slice(0, 5);
+function _stuDayKey(d) { return String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا'); }   // = _tcDayKey_ (server)
+function _stuDayByJs(jsDay) { return STU_WEEK_DAYS[((Number(jsDay) + 1) % 7 + 7) % 7] || ''; }   // 0 = الأحد … 6 = السبت
+// تطبيع اسم اليوم: يوحّد صيغ الهمزة/المسافات (الإثنين→الاثنين، الاحد→الأحد) إلى تهجئة STU_WEEK_DAYS.
 // مشترك بين renderHomeToday و renderSchedule (كان مكرَّراً حرفياً في كليهما).
 function normDay(d) {
-  var x = String(d || '').replace(/\s+/g, '').replace(/[إأآ]/g, 'ا');
-  var map = {
-    'السبت': 'السبت', 'الاحد': 'الأحد', 'الأحد': 'الأحد',
-    'الاثنين': 'الاثنين', 'الإثنين': 'الاثنين',
-    'الثلاثاء': 'الثلاثاء', 'الاربعاء': 'الأربعاء', 'الأربعاء': 'الأربعاء',
-    'الخميس': 'الخميس'
-  };
-  return map[x] || d;
+  var x = _stuDayKey(d);
+  for (var i = 0; i < STU_WEEK_DAYS.length; i++) if (_stuDayKey(STU_WEEK_DAYS[i]) === x) return STU_WEEK_DAYS[i];
+  return d;
 }
 function renderHomeToday(r) {
   var body = $('homeTodayBody'); if (!body) return;
   APP._todaySched = r;
   var now = new Date();
-  var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
-  var todayName = dayByJs[now.getDay()] || '';
+  var todayName = _stuDayByJs(now.getDay());   // 38f
   var firstName = APP.user.firstName || APP.user.name || '';
   if (_schedDayCount(todayName) === 0) {
     body.innerHTML = '<div class="ht-banner off">🌴 ' + esc(firstName) + '، اليوم ' + esc(todayName) + ' عطلة — استرخِ واستعد ليوم دراسي مشرق!</div>';
@@ -8052,9 +8052,9 @@ function renderSchedule(r) {
      والأرضيةُ محفوظة: مدرسةٌ بلا خميسٍ ترى جدولَها كما هو حرفياً.
      ⚠️ والتطبيعُ يسبق المطابقة — `normDay` يوحّد صيغَ الهمزة، وبدونه يُقرأ «الاربعاء»
      يوماً سادساً فتنشأ عمودٌ مكرَّر. */
-  var STU_WEEK_ORDER = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+  var STU_WEEK_ORDER = STU_WEEK_DAYS;   // 38f: one week list (from the boot reply)
   var daySeen = {};
-  var cfgDays = (window.SCHED_TIMES_CFG && window.SCHED_TIMES_CFG.days) || ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء'];
+  var cfgDays = (window.SCHED_TIMES_CFG && window.SCHED_TIMES_CFG.days) || STU_BASE_DAYS;
   for (var cd = 0; cd < cfgDays.length; cd++) daySeen[cfgDays[cd]] = 1;
   for (var dq = 0; dq < r.schedule.length; dq++) {
     var dnq = normDay(r.schedule[dq].day);
@@ -8096,8 +8096,7 @@ function renderSchedule(r) {
   // ── الوقت اللحظي للجهاز ──
   var now = new Date();
   var jsDay = now.getDay(); // 0=الأحد..6=السبت
-  var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
-  var todayName = dayByJs[jsDay] || '';
+  var todayName = _stuDayByJs(jsDay);   // 38f
   var nowMin = now.getHours() * 60 + now.getMinutes();
   var isWeekend = (_schedDayCount(todayName) === 0);
   var todayCount = _schedDayCount(todayName) || periods;
@@ -8376,8 +8375,7 @@ function _examDayName(dateStr) {
   if (!y || !mo || !d) return '';
   var dt = new Date(y, mo - 1, d);
   if (isNaN(dt.getTime())) return '';
-  var dayByJs = { 6: 'السبت', 0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة' };
-  return dayByJs[dt.getDay()] || '';
+  return _stuDayByJs(dt.getDay());   // 38f: STU_WEEK_DAYS (_stu-js-schedule)
 }
 
 // نصّ تاريخ عربي مقروء ("18 يوليو") من "yyyy-mm-dd" — نفس أسلوب بناء Date من مكوّنات محلية أعلاه
@@ -9442,6 +9440,14 @@ function _stuBootLoad() {
       /* 🔒 38e2: الحزمةُ تردّ `{ok:false, blocked:true}` لجلسةٍ مستعادةٍ محجوبةٍ مالياً (38g) ⇒ نفسُ شاشة الحجب
          التي يعرضها الدخول، لا تفرُّعٌ إلى نداءاتٍ بديلةٍ تُحمِّل الأقسامَ واحداً واحداً. */
       if (r && r.blocked) { _stuShowBlockedScreen(r); return; }
+      /* 38f: الأشهر من الخادم (GradeSchema.js) — خادمٌ أقدم بلا الحقل ⇒ يبقى الاحتياطُ الوحيد GRADES_MONTH_ORDER. */
+      try {
+        if (r && r.months && r.months.ordered && r.months.ordered.length && typeof GRADES_MONTH_ORDER !== 'undefined') GRADES_MONTH_ORDER = r.months.ordered.slice();
+        if (r && r.days && r.days.week && r.days.week.length === 7 && typeof STU_WEEK_DAYS !== 'undefined') {   // والأيام (SCHED_WEEK)
+          STU_WEEK_DAYS = r.days.week.slice();
+          if (r.days.schoolDays && r.days.schoolDays.length) STU_BASE_DAYS = r.days.schoolDays.slice();
+        }
+      } catch (eMo) {}
       if (!r || !r.ok) {
         /* ردٌّ وصل بحمولةٍ فاشلة ⇒ الخادمُ نفّذ ولم يُشبَع ⇒ التفرّعُ مشروع.
            (‏مسارُ الإشباع لا يصل هنا أصلاً: الجسرُ يستدعي `withFailureHandler`.) */
