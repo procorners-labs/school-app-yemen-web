@@ -234,7 +234,10 @@ var SLOW_ADMIN_FNS = {
   previewPromotionProtected     : 1,   // teacher — مقترحات الترقية (36h: تقرأ المدرسة كلّها)
   savePromotionDraftProtected   : 1,   // teacher — حفظ مسودة الترقية (36h)
   startYearRolloverProtected    : 1,   // teacher — معاينة الترحيل السنوي تقرأ المدرسة كلّها (36o؛ التنفيذ مهمّةٌ خلفيّة)
-  restoreFromRolloverSnapshotProtected: 1   // teacher — الاسترجاع من لقطة الترحيل (36o)
+  restoreFromRolloverSnapshotProtected: 1,  // teacher — الاسترجاع من لقطة الترحيل (36o)
+  promoteSingleStudentProtected : 1,   // teacher — ترقية طالب واحد + مزامنة قائمة الدرجات (36o)
+  getEvaluationIndicatorsProtected: 1,  // teacher — مؤشرات التقييم (37c: حتى 60 معلماً + التزام الدرجات بلا كاش)
+  getSupervisionTeamProtected   : 1    // teacher — فريق المشرف (37a: التعيينات + الطلاب + حالة الشهر)
 };
 /* نفسُ حارس `_bhIsLoginBody`: تحليلٌ حقيقيّ مقيَّدُ الحجم و`hasOwnProperty`، وأيُّ شكٍّ
    ⇒ النافذةُ العادية (fail-closed على الامتياز). */
