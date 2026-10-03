@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610030443;
+    window.WEB_BUILD_TS = 202610030530;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -27247,6 +27247,12 @@ function _asCan(cap) {
   if (App.user && App.user.can) return hasCap(cap);
   return isFullAdmin();
 }
+/* 38z1: التصديرُ على `students.records` في الخادم (`adminExportStudents`) — جلسةٌ قديمةٌ بلا `can` ⇒ المديرُ والوكيل كما كان. */
+function _asCanExport() {
+  if (App.user && App.user.can) return hasCap('students.records');
+  var r = (App.user || {}).role;
+  return r === 'admin' || r === 'deputy';
+}
 
 function renderAdminStudents() {
   if (!App.user) { toast('بيانات المستخدم غير متوفرة', 'error'); showSection('dashboard'); return; }
@@ -27255,7 +27261,11 @@ function renderAdminStudents() {
     showSection('dashboard');
     return;
   }
+  /* 38z1: الصفحةُ وقائمةُ الطلاب بقدرة `students.admin`؛ بطاقتا الإعدادات (العرض، الحجب، الإشعارات) بقدرة
+     `finance.manage` وحدها — كما يفحصها الخادم، فلا تظهر بطاقةٌ يرفض الخادمُ تحميلَها أو حفظها. */
+  var _fin = _asCan('finance.manage');
   var html = '';
+  if (_fin) {
   html += '<div class="section-card" style="margin-bottom:20px;">';
   html += '<div class="section-header">';
   html += '<div class="section-header-icon" style="background:rgba(245,158,11,.1)">⚙️</div>';
@@ -27293,11 +27303,12 @@ function renderAdminStudents() {
   html += '<button class="btn btn-primary" onclick="saveFinancialBlockSettings()">🔒 حفظ إعدادات الحجب المالي</button>';
   html += '</div>';
   html += '</div>';
+  }
   html += '<div class="section-card">';
   html += '<div class="section-header">';
   html += '<div class="section-header-icon" style="background:rgba(16,185,129,.1)">🎒</div>';
   html += '<div class="section-header-title">قائمة الطلاب</div>';
-  html += '<button class="btn btn-secondary btn-sm" onclick="exportStudentsList()">📤 تصدير</button>';
+  if (_asCanExport()) html += '<button class="btn btn-secondary btn-sm" onclick="exportStudentsList()">📤 تصدير</button>';
   html += '</div>';
   html += '<div class="section-body">';
   html += '<div class="form-row mb-3">';
@@ -27315,7 +27326,7 @@ function renderAdminStudents() {
   if (_fltRestore('stud', ['studFilterGrade', 'studFilterSection', 'studSearch'])) {
     filterGradeCascade('studFilterGrade', 'studFilterSection', null);
   }
-  loadBlockSettings();
+  if (_fin) loadBlockSettings();
   loadStudentsList();
 }
 
@@ -27435,6 +27446,7 @@ function saveFinancialBlockSettings() {
 
 function unblockStudent(studentCode) {
   if (!studentCode) return;
+  if (!_asCan('finance.manage')) { toast('غير مصرح لك بهذه العملية', 'error'); return; }   // 38z1: `adminUnblockStudent` = finance.manage
   confirmAction(
     'إلغاء حجب الطالب',
     'هل تريد إلغاء حجب الطالب (' + studentCode + ') وإضافته إلى قائمة الاستثناءات؟',
@@ -27459,6 +27471,7 @@ function unblockStudent(studentCode) {
 // (ج4) إرسال إشعار سداد لطالب واحد — يُكتب في «الملاحظات» ويظهر في «ملاحظاتي» بمنصة الطالب
 function sendStudentPaymentNotice(code) {
   if (!code) return;
+  if (!_asCan('finance.manage')) { toast('غير مصرح لك بهذه العملية', 'error'); return; }   // 38z1: كالخادم
   var all = window._allStudentsRaw || [], st = null, i;
   for (i = 0; i < all.length; i++) { if ((all[i].code || '') === code) { st = all[i]; break; } }
   if (!st) { showError('تعذّر إيجاد بيانات الطالب'); return; }
@@ -27514,6 +27527,7 @@ function toggleStudentFeesHidden(code, hide) {
 // (ج4) طباعة كشف حساب طالب — يعيد استخدام _tfPrintStatement (يحتاج بيانات المالية _tfRes، فيُحمّلها عند اللزوم)
 function printStudentStatement(code) {
   if (!code) return;
+  if (!_asCan('finance.manage')) { toast('غير مصرح لك بهذه العملية', 'error'); return; }   // 38z1: التقرير الماليّ = finance.manage
   if (window._tfRes && window._tfRes.studentAccounts && window._tfRes.studentAccounts.length) {
     _tfPrintStatement(code);
     return;
@@ -27624,6 +27638,7 @@ function renderStudentsList() {
   html += '<th>الرسوم</th><th>المسدد</th><th>نسبة التسديد</th><th>🔑 دخول</th><th>⏱️ الاستخدام (د)</th><th>الحالة</th><th>إجراءات</th>';
   html += '</tr></thead><tbody>';
 
+  var _finRow = _asCan('finance.manage');
   for (var i = 0; i < list.length; i++) {
     var st = list[i];
     var fees = parseFloat(st.fees) || 0;
@@ -27639,12 +27654,17 @@ function renderStudentsList() {
       : (st.status ? '<span class="badge badge-danger">' + escapeHtml(st.status) + '</span>' : '<span class="badge badge-info">🟢 نشط</span>');
     // (36n) المنسحب/الخريج يبقى في القائمة المالية (قد يكون عليه رصيد) بشارةٍ بجانب اسمه
     var enrollBadge = st.status ? ' <span class="badge badge-warning" style="font-size:.7rem;">' + escapeHtml(st.status) + '</span>' : '';
+    // 38z1: أزرارُ الصفّ الثلاثة تنادي دوالَّ «finance.manage» ⇒ لا تظهر لحامل `students.admin` وحده.
     var actionBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">';
+    if (_finRow) {
     actionBtn += '<button class="btn btn-sm btn-secondary" title="إرسال إشعار سداد لهذا الطالب (يظهر في «ملاحظاتي» لديه)" onclick="sendStudentPaymentNotice(\'' + _c + '\')">📨</button>';
     actionBtn += '<button class="btn btn-sm btn-secondary" title="طباعة كشف حساب الطالب" onclick="printStudentStatement(\'' + _c + '\')">🖨️</button>';
     actionBtn += feesHidden
       ? '<button class="btn btn-sm btn-warning" title="الرسوم محجوبة عن هذا الطالب — اضغط لإظهارها في منصته" onclick="toggleStudentFeesHidden(\'' + _c + '\', false)">👁️</button>'
       : '<button class="btn btn-sm btn-secondary" title="الرسوم ظاهرة لهذا الطالب — اضغط لحجبها عن منصته" onclick="toggleStudentFeesHidden(\'' + _c + '\', true)">🔒</button>';
+    } else {
+    actionBtn += '<span style="color:var(--text-muted)">—</span>';
+    }
     actionBtn += '</div>';
 
     var pctClass = (pct >= 80) ? 'badge-success' : ((pct >= 50) ? 'badge-warning' : 'badge-danger');
@@ -27699,7 +27719,7 @@ function _stlGoPage(n) {
 }
 
 function exportStudentsList() {
-  var _xr = (App.user||{}).role; if(_xr!=='admin' && _xr!=='deputy') return;   /* يطابق `students.records` خادمياً */
+  if (!_asCanExport()) return;   /* 38z1: يطابق `students.records` خادمياً (كان الدورَ حرفياً) */
   showLoading('جاري التصدير...');
   callServer('adminExportStudents', {}, function(r) {
     hideLoading();
