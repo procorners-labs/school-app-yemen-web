@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610030847;
+    window.WEB_BUILD_TS = 202610030949;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -3878,7 +3878,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       <p id="confirmMessage" style="font-size:.95rem;line-height:1.6;white-space:pre-line;"></p>
     </div>
     <div class="modal-footer">
-      <!-- ⚠️ المعرّف إلزاميّ: `_js-news-cards-notes` كان يحاول إخفاء هذا الزرّ بـ
+      <!-- ⚠️ المعرّف إلزاميّ: `_tp-news-cards` كان يحاول إخفاء هذا الزرّ بـ
            `getElementById('confirmCancelBtn')` وهو **غيرُ موجود** ⇒ `if (cancelBtn)`
            يبتلع الإخفاق صامتاً، فيظهر «إلغاء» بجوار «✕ إغلاق» في نافذة إحصاءٍ لا تُلغى. -->
       <button class="btn btn-secondary" id="confirmCancelBtn" onclick="closeModal('confirmModal')">إلغاء</button>
@@ -4436,7 +4436,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
            الرسالة، أو نداءُ الهوية أخفق. وفي كلتيهما تصل رسالةُ مدرسةٍ أخرى إلى أولياء أمور
            مدرسةٍ ثالثة.
            ⇒ القالبُ صار **بمتغيّرات** (`[اسم المدرسة]` · `[هاتف المدرسة]`) تُحَلّ وقتَ بناء
-           الرابط من `window._schoolBrand` (‏`_js-profile-attendance.html::att_schoolName`
+           الرابط من `window._schoolBrand` (‏`_tp-attendance.html::att_schoolName`
            و`att_schoolPhone`) — فصفرُ هويةِ مالكٍ في الترميز، والحلُّ غيرُ مشروط. */
       }
       /* 📞 هاتفُ المدرسة وعنوانُها على شاشة الدخول (قرار مالك 2026-09-03) — من حمولة
@@ -4661,7 +4661,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
       wrap.style.display = 'block';
     }
     /* 38b: حُذف `load()` الميّت (`if (false)`، كان يقارن `s.schoolId === req` بالمعرّف الخام). الدليلُ معطَّلٌ هنا
-       بطلب المالك (يظهر في الصفحة العامة وحدها)؛ وتبقى البطاقةُ نفسَ مكوّن `_stu-js-tail.html`. */
+       بطلب المالك (يظهر في الصفحة العامة وحدها)؛ وتبقى البطاقةُ نفسَ مكوّن `_stu-js-partner-schools.html`. */
   })();
 // ══════════════════════════════════════════════════════
 // Smart Client Cache مع TTL
@@ -4997,7 +4997,7 @@ function _csHandleSessionExpired(forToken) {
   if (_csSessionExpiredShown) return;
   _csSessionExpiredShown = true;
 
-  /* 🔴 التنظيف يطابق `forceLogout` (‏`_js-platform-reviews.html`): بدونه يبقى التوكن الميّت
+  /* 🔴 التنظيف يطابق `forceLogout` (‏`_js-session-boot.html`): بدونه يبقى التوكن الميّت
      في `App.user` فيُحقَن في كل نداءٍ تالٍ (‏`callServer` أدناه)، وتواصل النبضة ضربَ
      `teacherHeartbeatProtected` به — أي نداءاتٌ محكومٌ عليها بالفشل تُغذّي الإشباع نفسه. */
   try { if (App.sessionInterval) { clearInterval(App.sessionInterval); App.sessionInterval = null; } } catch (e) {}
@@ -5099,7 +5099,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
 
      ⚠️ **قيدٌ عابرٌ لملفَّين، رصدَته المراجعة، ويحرسه `bootBundlePrefetchIsFirstGuard`:**
      الفائدة كلُّها مشروطة بأن يكون `_teacherBootBundlePrefetch` **أوّلَ فعلٍ شبكيّ**
-     في `bootApp` (‏`_js-platform-reviews.html`) — فطابور `_pendingCalls` يُسجَّل
+     في `bootApp` (‏`_js-session-boot.html`) — فطابور `_pendingCalls` يُسجَّل
      متزامناً عند إرسالها، ونبضةُ `_startHeartbeat` تصل عند 1,200ms. فلو أُجِّلت
      الحزمةُ خلف نداءٍ آخر، وجدت النبضةُ الطابورَ فارغاً ⇒ **سقوطٌ صامت إلى سلوك
      اليوم**: لا عطل، لكن هدفَ هذه البوّابة يضيع بلا أن يحمرّ شيء.
@@ -5548,7 +5548,7 @@ var GRADE_SCHEMA = null;        // ← كائن تكوين الدرجات الك
 /* راية تعافٍ لمرّة واحدة: يرفعها مسار فشل/بطء الحزمة، وتستهلكها أوّل نبضة **ناجحة**
    فتجلب النقاط حينها — بعد تعافي الحصّة، لا لحظة إشباعها. */
 var _bootDeferredExtras = false;
-/* 🚦 عَلَمُ أوّل رسم — يرفعه `_bootTryShow` (في `_js-platform-reviews.html`) عبر
+/* 🚦 عَلَمُ أوّل رسم — يرفعه `_bootTryShow` (في `_js-session-boot.html`) عبر
    `window` لأن علاماته محلّيةٌ داخل `bootApp` فلا تُرى من هنا.
    وجودُه لأنّ **رقماً ثابتاً لا يعرف متى انتهى الإقلاع**: أوّل نبضة كانت عند 1200ms
    حرفيّاً، فتقع **داخل** نافذة الحزمة والقوائم وتُضيف تنفيذَي GAS (النبضة + عدّادات
@@ -6029,7 +6029,7 @@ function buildSelectOptions(arr, placeholder, selectedVal, allowAll) {
   }
   var h = '<option value="">' + escapeHtml(placeholder) + '</option>';
   if (allowAll) {
-    h += '<option value="الكل"' + (selectedVal === 'الكل' ? ' selected' : '') + '>الكل</option>';
+    h += '<option value="الكل"' + (_isAllTok(selectedVal) ? ' selected' : '') + '>الكل</option>';
   }
   for (var i = 0; i < arr.length; i++) {
     var v = arr[i];
@@ -6047,8 +6047,30 @@ function fillSelect(id, arr, placeholder, selectedVal, allowAll) {
   }
 }
 
+/* 42f: the client copy of the one «all» vocabulary (server `_isAllToken_` / `_hasAllToken_`, teacher/_Normalize.js;
+   same tokens, same kinds). The student portal holds the same two functions in `_stu-js-core`.
+   Tests and comparisons only: code that writes or shows a token (<option value="الكل">) keeps its literal.
+   Guard: tests/vocab_html_42f.test.js (no literal «all» compare in teacher/*.html, lists equal the server). */
+function _isAllTok(v, kind) {
+  var s = (v === null || v === undefined) ? '' : String(v);
+  s = s.replace(/[​-‏‪-‮⁦-⁩﻿]/g, ' ').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+  if (!s) return false;
+  if (s === 'الكل' || s === 'الجميع' || s === '*') return true;
+  var k = (kind === 'class' || kind === 'section' || kind === 'subject') ? kind : '';
+  if ((!k || k === 'class') && (s === 'جميع الفصول' || s === 'كل الفصول' || s === 'جميع الصفوف' || s === 'كل الصفوف')) return true;
+  if ((!k || k === 'section') && (s === 'جميع الشعب' || s === 'كل الشعب')) return true;
+  if ((!k || k === 'subject') && (s === 'جميع المواد' || s === 'كل المواد')) return true;
+  return false;
+}
+function _hasAllTok(list, kind) {
+  if (!list) return false;
+  if (typeof list === 'string') return _isAllTok(list, kind);
+  for (var i = 0; i < list.length; i++) if (_isAllTok(list[i], kind)) return true;
+  return false;
+}
+
 function isAllFilter(val) {
-  return !val || val === '' || val === 'الكل';
+  return !val || _isAllTok(val);
 }
 
 /* ★ **القدرةُ من الخادم لا من الدور** (قرارُ مالكٍ 2026-09-24 — «كلُّ دورٍ بصلاحيّته»).
@@ -6135,7 +6157,7 @@ function myGrades() {
     return (App.lists && App.lists.grades) ? App.lists.grades.slice() : [];
   }
   var cls = App.user.classes || [];
-  if (cls.indexOf('جميع الفصول') !== -1) {
+  if (_hasAllTok(cls, 'class')) {
     return (App.lists && App.lists.grades) ? App.lists.grades.slice() : [];
   }
   return cls.slice();
@@ -6147,7 +6169,7 @@ function mySections() {
     return (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
   }
   var secs = App.user.sections || [];
-  if (secs.indexOf('جميع الشعب') !== -1) {
+  if (_hasAllTok(secs, 'section')) {
     return (App.lists && App.lists.sections) ? App.lists.sections.slice() : [];
   }
   return secs.slice();
@@ -6159,7 +6181,7 @@ function mySubjects() {
     return (App.lists && App.lists.subjects) ? App.lists.subjects.slice() : [];
   }
   var subs = App.user.subjects || [];
-  if (subs.indexOf('جميع المواد') !== -1) {
+  if (_hasAllTok(subs, 'subject')) {
     return (App.lists && App.lists.subjects) ? App.lists.subjects.slice() : [];
   }
   return subs.slice();
@@ -6182,11 +6204,11 @@ function getMyGradesForSubject(subject) {
   if (!asg || !subject) return myGrades();
   var out = [], seen = {};
   for (var i = 0; i < asg.length; i++) {
-    if (asg[i].subject !== subject && asg[i].subject !== 'جميع المواد') continue;
+    if (asg[i].subject !== subject && !_isAllTok(asg[i].subject, 'subject')) continue;
     var grs = asg[i].grades || [];
     for (var k = 0; k < grs.length; k++) {
       var g = grs[k].grade;
-      if (g === 'جميع الفصول') {
+      if (_isAllTok(g, 'class')) {
         return (App.lists && App.lists.grades) ? App.lists.grades.slice() : myGrades();
       }
       if (g && !seen[g]) { seen[g] = true; out.push(g); }
@@ -6201,7 +6223,7 @@ function getMyGradesForSubject(subject) {
 // من بيانات النظام، مع تراجع آمن للقائمة الكاملة إن لم يوجد ربط للصف.
 function subjectsForGrade(grade) {
   var all = (App.lists && App.lists.subjects) ? App.lists.subjects.slice() : [];
-  var noGrade = (!grade || grade === 'جميع الفصول' || grade === 'الكل');
+  var noGrade = (!grade || _isAllTok(grade, 'class'));
 
   // معلم عادي: يُقيَّد بمواده هو **دائماً** — حتى بلا صف محدد (بلا صف ⇒ اتحاد مواده
   //   عبر كل صفوفه، لا مواد الصف/المدرسة كاملة). كان الفرع «بلا صف ⇒ الكل» أعلى
@@ -6214,9 +6236,9 @@ function subjectsForGrade(grade) {
       for (var i = 0; i < asg.length; i++) {
         var grs = asg[i].grades || [];
         for (var k = 0; k < grs.length; k++) {
-          if (noGrade || grs[k].grade === grade || grs[k].grade === 'جميع الفصول') {
+          if (noGrade || grs[k].grade === grade || _isAllTok(grs[k].grade, 'class')) {
             var sj = asg[i].subject;
-            if (sj && sj !== 'جميع المواد' && !seen[sj]) { seen[sj] = true; out.push(sj); }
+            if (sj && !_isAllTok(sj, 'subject') && !seen[sj]) { seen[sj] = true; out.push(sj); }
           }
         }
       }
@@ -6296,7 +6318,7 @@ function gradableSubjectsForGrade(grade) {
   var curric = (grade && App.lists && App.lists.curriculumByGrade) ? App.lists.curriculumByGrade[grade] : null;
   for (var i = 0; i < subs.length; i++) {
     var sj = subs[i];
-    if (!sj || sj === 'جميع المواد') continue;
+    if (!sj || _isAllTok(sj, 'subject')) continue;
     if (_isNonGradedSubjClient(sj)) continue;
     if (curric && curric.length && curric.indexOf(sj) === -1) {
       var expanded = _expandAssignedSubjectForGrade(sj, grade);
@@ -6311,7 +6333,7 @@ function gradableSubjectsForGrade(grade) {
   // بلا مقرر، مع إبقاء استبعاد غير المُقيَّمة (الحجب الخادمي يظل الحكم النهائي).
   if (!out.length) {
     for (var j = 0; j < subs.length; j++) {
-      if (subs[j] && subs[j] !== 'جميع المواد' && !_isNonGradedSubjClient(subs[j])) out.push(subs[j]);
+      if (subs[j] && !_isAllTok(subs[j], 'subject') && !_isNonGradedSubjClient(subs[j])) out.push(subs[j]);
     }
   }
   return out;
@@ -6332,10 +6354,10 @@ function gradesVisibleSections(subject, grade) {
   var pref = loadGradesVisPref();
   var out = [];
   for (var i = 0; i < base.length; i++) {
-    if (base[i] === 'جميع الشعب' || !pref.hiddenSections[base[i]]) out.push(base[i]);
+    if (_isAllTok(base[i], 'section') || !pref.hiddenSections[base[i]]) out.push(base[i]);
   }
   var real = 0;
-  for (var k = 0; k < out.length; k++) { if (out[k] !== 'جميع الشعب') real++; }
+  for (var k = 0; k < out.length; k++) { if (!_isAllTok(out[k], 'section')) real++; }
   return real ? out : base;
 }
 
@@ -6455,12 +6477,12 @@ function getMySectionsForGradeSubject(subject, grade) {
   if (!asg) {
     var leg = _legacyMySectionsForGrade(grade);
     // إزالة بادئة «جميع الشعب» للحصول على القائمة الخام
-    return (leg[0] === 'جميع الشعب') ? leg.slice(1) : leg;
+    return _isAllTok(leg[0], 'section') ? leg.slice(1) : leg;
   }
   var out = [], seen = {};
   for (var i = 0; i < asg.length; i++) {
     if (subject) {
-      var subjMatches = (asg[i].subject === subject || asg[i].subject === 'جميع المواد');
+      var subjMatches = (asg[i].subject === subject || _isAllTok(asg[i].subject, 'subject'));
       // مادة تكليف جامعة (الاجتماعيات) قد تنقسم لهذا الصف تحديداً إلى موادها
       // الفرعية — subject الوارد هنا هو الاسم الفرعي بعد إصلاح gradableSubjectsForGrade،
       // فلا يطابق asg[i].subject الخام الجامع بلا هذا التوسع (وإلا قائمة شعبة فارغة).
@@ -6472,7 +6494,7 @@ function getMySectionsForGradeSubject(subject, grade) {
     }
     var grs = asg[i].grades || [];
     for (var k = 0; k < grs.length; k++) {
-      if (grade && grs[k].grade !== grade && grs[k].grade !== 'جميع الفصول') continue;
+      if (grade && grs[k].grade !== grade && !_isAllTok(grs[k].grade, 'class')) continue;
       var secs = grs[k].sections || [];
       for (var m = 0; m < secs.length; m++) {
         var sv = secs[m];
@@ -6514,7 +6536,7 @@ function _legacyMySectionsForGrade(grade) {
     return allSec;
   }
   var mySec = App.user.sections || [];
-  if (mySec.indexOf('جميع الشعب') !== -1) {
+  if (_hasAllTok(mySec, 'section')) {
     var allSecForTeacher = (App.lists && App.lists.sections) ? App.lists.sections.slice() : ['أ', 'ب', 'ج'];
     allSecForTeacher = _secNarrowByGrade(allSecForTeacher, grade);
     if (allSecForTeacher.length > 1) return ['جميع الشعب'].concat(allSecForTeacher);
@@ -6608,7 +6630,7 @@ function _fltKey(page) {
   return _tcSchoolLsKey('tcflt_', '_' + who + '_' + page);   // 38b: بالـUUID مع نقل المفتاح القديم
 }
 /* 🔤 **تسمياتُ الأدوار — مصدرٌ واحدٌ لكلّ سطح (2026-09-13، بلاغُ مالك).**
- * التفصيلُ والعلّةُ في `_js-news-cards-notes.html::_roleLabelFull`.
+ * التفصيلُ والعلّةُ في `_tp-profile.html::_roleLabelFull`.
  * **الخلاصة:** كان `admin` يُعرض «مدير النظام» في صفحةٍ و«المدير» في أخرى و«مدير»
  * في ثالثة ⇒ **المستخدمُ يظنّها أدواراً مختلفة**. والاسمُ الكنسيُّ يتبع عمودَ «الدور»
  * في ورقة «المدرسين» — فما يقرؤه المالكُ في بياناته هو ما يراه في واجهته.
@@ -7177,7 +7199,7 @@ function prAdmin_setStatusFilter(status) {
   PRA.filterStatus = status;
   PRA.selected = {};
   var sel = document.getElementById('praFilterStatus');
-  if (sel) sel.value = (status === 'الكل') ? 'الكل' : status;
+  if (sel) sel.value = _isAllTok(status) ? 'الكل' : status;
   prAdmin_renderStats();
   prAdmin_renderTable();
 }
@@ -7214,12 +7236,12 @@ function _prStatusBadgeHtml(status) {
 
 function prAdmin_currentFilteredList() {
   var list = PRA.reviews.slice();
-  if (PRA.filterStatus === 'الكل') {
+  if (_isAllTok(PRA.filterStatus)) {
     list = list.filter(function (r) { return r.status !== 'مؤرشف'; });
   } else {
     list = list.filter(function (r) { return r.status === PRA.filterStatus; });
   }
-  if (PRA.filterType !== 'الكل') {
+  if (!_isAllTok(PRA.filterType)) {
     list = list.filter(function (r) { return r.submitterType === PRA.filterType; });
   }
   if (PRA.search) {
@@ -9265,7 +9287,7 @@ function closeAllModals() {
  *
  * 🔴 **تُعيد ضبط الحالة في كل نداء — والسبب مقيس لا احتياط.** المودال **مشترَك**
  * (‏`confirmModal` واحد في `Teacher Dashboard.html`)، ومستهلكوه يعيدون تشكيله:
- * `_js-news-cards-notes.html::showNewsViewers` يجعل زرّ التأكيد «✕ إغلاق» ويُسند إليه
+ * `_tp-news-cards.html::showNewsViewers` يجعل زرّ التأكيد «✕ إغلاق» ويُسند إليه
  * `onclick` يُغلق فقط، ويحاول إخفاء زرّ الإلغاء. فبلا إعادة ضبطٍ هنا يرث **أوّلُ
  * تأكيدٍ بعده** نصَّ «✕ إغلاق» على زرٍّ يُنفّذ عمليةً هدّامة — تسميةٌ تقول عكسَ ما تفعل.
  * ⇒ العنوانُ والأيقونةُ والرسالةُ **ونصُّ الزرّ وصنفُه وظهورُ الإلغاء** كلُّها تُكتب
@@ -11077,7 +11099,7 @@ function _circFillSections() {
   var g = document.getElementById('circGrade');
   var grade = g ? g.value : 'الجميع';
   var html = '<option value="الجميع">كل الشعب</option>';
-  if (grade && grade !== 'الجميع') {
+  if (grade && !_isAllTok(grade, 'class')) {
     var secs = (typeof getMySectionsForGrade === 'function' ? getMySectionsForGrade(grade) : []) || [];
     for (var i = 0; i < secs.length; i++) html += '<option value="' + esc(secs[i]) + '">' + esc(secs[i]) + '</option>';
   }
@@ -11168,8 +11190,8 @@ function _circRenderStudentSelect(wrap) {
   var shown = 0;
   for (var i = 0; i < all.length; i++) {
     var st = all[i];
-    if (g !== 'الجميع' && _safeS(st.grade) !== g) continue;
-    if (s !== 'الجميع' && _safeS(st.section) !== s) continue;
+    if (!_isAllTok(g, 'class') && _safeS(st.grade) !== g) continue;
+    if (!_isAllTok(s, 'section') && _safeS(st.section) !== s) continue;
     var code = _safeS(st.code), name = _safeS(st.name);
     var val = code || name;
     var label = (code ? (code + ' - ') : '') + name + (st.section ? (' (' + _safeS(st.section) + ')') : '');
@@ -11233,8 +11255,8 @@ function _circAfterWrite() {
 
 function _circScopeChip(c) {
   var parts = [];
-  if (c.grade && c.grade !== 'الجميع') parts.push(esc(c.grade));
-  if (c.section && c.section !== 'الجميع') parts.push(esc(c.section));
+  if (c.grade && !_isAllTok(c.grade, 'class')) parts.push(esc(c.grade));
+  if (c.section && !_isAllTok(c.section, 'section')) parts.push(esc(c.section));
   var teachers = (c.teachers || '').trim();
   var students = (c.students || '').trim();
   if (teachers) parts.push('معلمون: ' + esc(teachers));
@@ -11412,7 +11434,7 @@ function _sectionRenderers() {
     activitySup: renderActivitySup,
     notes: renderNotes,
     mySchedule: renderMySchedule,
-    reports: renderReports,      // 38d: _js-certificates-scoresheets.html (the stub in _js-ui-shell.html was removed)
+    reports: renderReports,      // 38d: _tp-reports.html (the stub in _js-ui-shell.html was removed)
     adminActivities: renderAdminActivities,
     adminStudents: renderAdminStudents,
     studentDirectory: renderStudentDirectory,
@@ -11659,7 +11681,9 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   'si-attendance':       { roles:['admin','deputy'],                              accountant:false, supervisor:{ configurable:true, label:'📋 الغياب اليومي',             defaultVisible:true  } },
   'si-teacher-absence':  { roles:['admin','deputy'],                              accountant:true, /* 2026-09-24: قرارُ مالك — غيابُ المعلّمين مع المحاسب */ supervisor:{ configurable:true, label:'🧑‍🏫 غياب المعلمين',        defaultVisible:true  } },
   'si-teachers-mgmt':    { roles:['admin','deputy','it'],                         accountant:true, /* 2026-09-24: `accounts.manage` = المدير والوكيل والحاسوب والمحاسب */ supervisor:{ configurable:false, alwaysHidden:true } },   // 2026-09-23: `accounts.manage` لا تمنح المشرف ⇒ لا تُفعَّل له صفحةٌ يرفضها الخادم
-  'si-adminStudents':    { roles:['admin'],                                       accountant:false, /* 38e: `students.admin` · 2026-09-24: الخادمُ يقبل المديرَ وحدَه (`saveBlockSettings`/`renderAdminStudents`) ⇒ لا تُفعَّل لمشرفٍ صفحةٌ يرفضها */ supervisor:{ configurable:false, alwaysHidden:true } },
+  // 42e: `students.admin` (المديرُ افتراضياً) كالشهادات: مخفيّةٌ عن المشرف افتراضياً، وتعليمُها في صفحاته يمنحه القدرةَ
+  // نفسَها خادمياً (pagePerms ⇒ caps). القائمةُ وحدها؛ إعداداتُ الحجب والإشعارات على `finance.manage` داخل الصفحة (38z1).
+  'si-adminStudents':    { roles:['admin'],                                       accountant:false, supervisor:{ configurable:true, label:'🔒 الحجب المالي',             defaultVisible:false } },
   'si-adminActivities':  { roles:['admin','deputy','activities'],                 accountant:false, supervisor:{ configurable:true, label:'📋 جميع الأنشطة',              defaultVisible:true  } },
   // المحاسب: مسموح **خادمياً منذ البداية** (`_tcCanCertificates` تُرجِع true للمحاسب صراحةً،
   // وتعليق `getScoreSheetsDataProtected` يقول «مدير/وكيل/محاسب») — وكانت القائمة وحدها تُخفيهما.
@@ -17365,7 +17389,7 @@ function schedDist_onGradeChange() {
     grid.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">اختر فصلاً لعرض جدوله</div></div>';
     return;
   }
-  if (grade === 'الكل') {
+  if (_isAllTok(grade, 'class')) {
     sSel.innerHTML = '<option value="الكل" selected>الكل</option>';
     sSel.disabled = true; // لا معنى لاختيار شعبة منفردة والصف نفسه "الكل"
     schedDist_showAllView();
@@ -17404,7 +17428,7 @@ function schedDist_loadFullGrid() {
   var box = document.getElementById('sdGrid');
   if (SD_BOOT.grid) {
     var g = SD_BOOT.grid; SD_BOOT.grid = null;
-    if (SCHED_DIST.className !== 'الكل') return;
+    if (!_isAllTok(SCHED_DIST.className, 'class')) return;
     SD_FULL_GRID.rows = g.rows || [];
     SD_FULL_GRID.days = g.days || [];
     SD_FULL_GRID.periods = g.periods || [];
@@ -17413,14 +17437,14 @@ function schedDist_loadFullGrid() {
     return;
   }
   callServer('getFullScheduleGridProtected', {}, function (r) {
-    if (SCHED_DIST.className !== 'الكل') return; // المستخدم بدّل لفصل محدَّد قبل وصول الرد
+    if (!_isAllTok(SCHED_DIST.className, 'class')) return; // المستخدم بدّل لفصل محدَّد قبل وصول الرد
     if (!r || !r.success) { box.innerHTML = '<div class="alert alert-warning">' + escapeHtml((r && r.error) || 'تعذّر تحميل الجدول الكامل') + '</div>'; return; }
     SD_FULL_GRID.rows = r.rows || [];
     SD_FULL_GRID.days = r.days || [];
     SD_FULL_GRID.periods = r.periods || [];
     SD_FULL_GRID.periodsByDay = r.periodsByDay || null;
     schedDist_renderFullGrid();
-  }, function (e) { if (SCHED_DIST.className !== 'الكل') return; box.innerHTML = '<div class="alert alert-danger">' + escapeHtml(e.message || e) + '</div>'; });
+  }, function (e) { if (!_isAllTok(SCHED_DIST.className, 'class')) return; box.innerHTML = '<div class="alert alert-danger">' + escapeHtml(e.message || e) + '</div>'; });
 }
 function schedDist_setFullGridView(v) {
   SD_FULL_GRID.view = v;
@@ -17431,7 +17455,7 @@ function schedDist_setFullGridView(v) {
 }
 function schedDist_renderFullGrid() {
   var box = document.getElementById('sdGrid');
-  if (SCHED_DIST.className !== 'الكل') return; // المستخدم بدّل لفصل محدَّد قبل اكتمال التحميل
+  if (!_isAllTok(SCHED_DIST.className, 'class')) return; // المستخدم بدّل لفصل محدَّد قبل اكتمال التحميل
   var days = SD_FULL_GRID.days, periods = SD_FULL_GRID.periods, rows = SD_FULL_GRID.rows;
   if (!rows.length) {
     box.innerHTML = '<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">لا توجد حصص مُسنَدة بعد في جدول المدرسة</div></div>';
@@ -17513,7 +17537,7 @@ function schedDist_renderFullGrid() {
 // "الكل" قيمة صحيحة أيضاً لكنها ليست مفتاح فصل).
 function schedDist_refreshView() {
   if (!SCHED_DIST.className) return;
-  if (SCHED_DIST.className === 'الكل') schedDist_showAllView();
+  if (_isAllTok(SCHED_DIST.className, 'class')) schedDist_showAllView();
   else schedDist_loadClass();
 }
 // شريط تقدّم لكل معلّم (نسبة إنجاز حصص/أسبوع الفعلية) — نفس مكوّنات .progress/
@@ -20273,7 +20297,7 @@ function applyHomeworkFilters() {
   _hwSortOrder = sortOrd;
 
   var myClasses = App.user && App.user.classes ? App.user.classes : [];
-  var hasAll = myClasses.indexOf('جميع الفصول') !== -1;
+  var hasAll = _hasAllTok(myClasses, 'class');
 
   var list = [];
   for (var i = 0; i < _hwAllData.length; i++) {
@@ -21758,7 +21782,7 @@ function _tcPlayVideo(el) {
 }
 
 // شعار المدرسة (overlay) على صور الأخبار — يُجلب مرّة ويُكاش
-/* يفوّض إلى `_tsLh3` في `_js-news-studio-spec.html` — **مُطبِّعٌ واحدٌ في المشروع**.
+/* يفوّض إلى `_tsLh3` في `_tp-news-studio.html` — **مُطبِّعٌ واحدٌ في المشروع**.
    كانت نسختان بنفس الـregex وعرضَين مختلفين، وذاك بالضبط ما يتباعد صامتاً: إصلاحُ
    نمطِ رابطٍ في إحداهما يترك الأخرى تُلوّث اللوحة. و`=w200` يبقى هنا لأنه مقاسُ
    شارةِ الشعار فعلاً — الفارقُ عرضٌ مقصود لا صيغةٌ ثانية. */
@@ -21853,7 +21877,7 @@ var _TC_DSGN_REGISTRY = [
   { k:'photo_deep', l:'صورة — تعتيم عميق', c:'#0B1930', g:['#060f1e','#0f2545'], re:null, ph:1, ov:0.68, i:'M3 5h4l2-2h6l2 2h4v14H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
   { k:'photo_warm', l:'صورة — دافئ',       c:'#C2410C', g:['#431407','#c2410c'], re:null, ph:1, ov:0.55, i:'M3 5h4l2-2h6l2 2h4v14H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
   /* ── استوديو الأغلفة: أربعة عشر تخطيطاً مستورَداً من Claude Design (2026-09-03) ──
-     كلٌّ يحمل `sd` = رقم التخطيط في `_js-news-studio.html` (‏_TS_LAYOUTS)، و`ph:1`
+     كلٌّ يحمل `sd` = رقم التخطيط في `_tp-news-studio.html` (‏_TS_LAYOUTS)، و`ph:1`
      فيخضع لنفس قيد قوالب الصور: لا يُعرَض إلّا لخبرٍ يحمل صورةً فعلية.
      🔴 و`i` إلزاميٌّ ولو لم يُرسَم في هذه التخطيطات: `_newsDesignSanitize` يرفض
         اللقطة **كلَّها** بمسارٍ فارغ ⇒ الاختيار يضيع صامتاً عند الحفظ.
@@ -22273,7 +22297,7 @@ function _tcDrawMotif(ctx, id, x, y, w, h, rotDeg, color) {
 /* imgUrl (اختياري، أُضيف أخيراً كي تبقى كل الاستدعاءات التسعية القديمة صالحة كما هي):
    يُستعمَل فقط مع قوالب الصورة (meta.ph) — تُرسَم الصورة كطبقة سفلى تحت الإطار والنافذة. */
 function _tcCoverHtml(text, dateLabel, meta, sizeKey, compact, stage, decor, gender, gid, imgUrl, qrUrl) {
-  /* قوالب استوديو الأغلفة (‏_js-news-studio.html) — تخطيطاتٌ كاملةٌ مستقلّة، لا
+  /* قوالب استوديو الأغلفة (‏_tp-news-studio.html) — تخطيطاتٌ كاملةٌ مستقلّة، لا
      تباينَ تعتيمٍ فوق تخطيط الإطار. تُصرَف قبل أيّ بناء كي لا يُحسَب إطارٌ يُهمَل.
      🔴 والشرط `imgUrl` لا `meta.sd` وحده: هذه القوالب بلا صورة تُنتج مستطيلاً
         أسودَ بلا محتوى — والتراجع الصحيح هو غلافُ الإطار المعتاد لا فراغ.
@@ -23335,7 +23359,7 @@ function _tcFirstNewsImage(rawAttach) {
    «عدّلتُ المعاينة ولم يتغيّر المنشور».
 
    🟢 والاصطلاحُ ليس جديداً على المستودع: `_tcComputeCoverSlides`
-      (‏`_js-news-feed.html:1428`) دالّةُ قياسٍ/تقسيمٍ **نقيّة** يتقاسمها مسارُ HTML
+      (‏`_tp-news.html`) دالّةُ قياسٍ/تقسيمٍ **نقيّة** يتقاسمها مسارُ HTML
       ومسارُ canvas منذ إدخال الأغلفة النصّية. نحن نُعمّمها من «النصّ» إلى
       «التخطيط كلّه» — لا نُنشئ اصطلاحاً ثانياً يتباعد عنها.
 
@@ -23999,7 +24023,7 @@ function _tsSolveCached(spec, S, W, H, measure, sd) {
    ═══════════════════════════════════════════════════════════════════════════ */
 var _TS_SPECS = [];
 
-/* ① غلاف كامل — الصورة تحمل الخبر. (المرجع: `_js-news-studio.html::_tsD1`) */
+/* ① غلاف كامل — الصورة تحمل الخبر. (المرجع: `_tsD1` في هذا الملف) */
 _TS_SPECS[1] = { k: 'studio_full', root: { t: 'layer', ch: [
 
   { t: 'img', slot: 'image', fit: 'cover' },
@@ -24457,13 +24481,13 @@ _TS_SPECS[10] = { k: 'studio_strips', root: { t: 'layer', ch: [
       مسارَ تحجيمٍ ثانٍ يتباعد عن الأول.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* 🔴 **قُسِم الاستوديو إلى ثلاثة ملفّات 2026-09-20 — والقسمةُ هي ما يجعل إثباتَ
+/* 🔴 **قُسِم الاستوديو إلى ثلاثة أجزاء 2026-09-20 (وهي منذ 40g أقسامٌ متتالية في `_tp-news-studio.html`) — والقسمةُ هي ما يجعل إثباتَ
    «المعاينة = المنشور» ممكناً أصلاً:**
 
-     `_js-news-studio-spec.html`  المواصفةُ والحالّ — **نقيٌّ بلا DOM**، يُقيَّم في
+     قسمُ المواصفة (أوّل الملف)  المواصفةُ والحالّ — **نقيٌّ بلا DOM**، يُقيَّم في
                                    Node فتُقاس الهندسةُ بلا متصفّح.
-     `_js-news-studio.html`  (هنا) مُصيِّرُ HTML للمعاينة.
-     `_js-news-studio-paint.html`  مُصيِّرُ canvas للصورة المنشورة.
+     قسمُ المعاينة  (هنا) مُصيِّرُ HTML للمعاينة.
+     قسمُ الرسم  مُصيِّرُ canvas للصورة المنشورة.
 
    و`_TS_BASE` و`_tsQ` و`_TS_FONT` انتقلت إلى ملفّ المواصفة: **مُدوِّرٌ واحد**
    يتقاسمه المساران، وتعريفُها هنا ثانيةً كان سيُنتج انحرافَ تقريبٍ بين المعاينة
@@ -25155,7 +25179,7 @@ function _tsArabize(s) {
    ───────────────────────────────────────────────────────────────────────────
    هذا هو نصفُ العقد الذي لم يكن موجوداً: التخطيطاتُ الأربعةَ عشر كانت HTML يُعرَض
    ولا يُنتج صورةً إطلاقاً، وما يُنشر على Meta تركيبٌ بسيطٌ يتجاهل التخطيطَ كلَّه
-   (`_js-boot-app.html::_smpComposite`) ⇒ «عدّلتُ التصميم ولم يتغيّر المنشور»
+   (`_tp-news-social-publish.html::_smpComposite`) ⇒ «عدّلتُ التصميم ولم يتغيّر المنشور»
    **سلوكٌ بنيويٌّ لا عطل**. وهنا يُغلَق.
 
    🔴 **صفرُ حسابٍ هندسيّ هنا** — كما في مُصيِّر HTML حرفياً، ويحرسه نفسُ التأكيد:
@@ -26404,7 +26428,7 @@ function canDeleteParentNote(note) {
   if (isFullAdmin() || isDeputy()) return true;
   if (isSupervisor()) {
     var myClasses = (App.user && App.user.classes) ? App.user.classes : [];
-    if (myClasses.indexOf('جميع الفصول') !== -1) return true;
+    if (_hasAllTok(myClasses, 'class')) return true;
     return myClasses.indexOf(note.grade) !== -1;
   }
   return false;
@@ -26865,7 +26889,7 @@ function _schedGridTableHtml(rows, opts) {
           var it = items[k];
           if (k > 0) cellHtml += '<div style="border-top:1px dashed var(--border);margin:3px 0;padding-top:3px;"></div>';
           cellHtml += '<div style="font-weight:700;color:var(--primary);">' + escapeHtml(it.subject || '—') + '</div>';
-          cellHtml += '<div style="font-size:.72rem;color:var(--purple);font-weight:600;">' + escapeHtml((it.grade || '') + (it.section && it.section !== 'جميع الشعب' ? ' ' + it.section : '')) + '</div>';
+          cellHtml += '<div style="font-size:.72rem;color:var(--purple);font-weight:600;">' + escapeHtml((it.grade || '') + (it.section && !_isAllTok(it.section, 'section') ? ' ' + it.section : '')) + '</div>';
           if (opts.showTeacher && it.teacher) cellHtml += '<div style="font-size:.65rem;color:var(--text-muted);">' + escapeHtml(it.teacher) + '</div>';
         }
       }
@@ -26990,7 +27014,7 @@ function _schedPrintGridTable(rows) {
         var x = items[k];
         if (k > 0) cell += '<hr style="border:none;border-top:1px dashed #999;margin:2px 0">';
         cell += '<div class="subj">' + escapeHtml(x.subject || '') + '</div>';
-        cell += '<div class="meta">' + escapeHtml((x.grade || '') + (x.section && x.section !== 'جميع الشعب' ? ' ' + x.section : '')) + '</div>';
+        cell += '<div class="meta">' + escapeHtml((x.grade || '') + (x.section && !_isAllTok(x.section, 'section') ? ' ' + x.section : '')) + '</div>';
         if (x.teacher) cell += '<div class="tch">' + escapeHtml(x.teacher) + '</div>';
       }
       if (!items.length) cell = '—';
@@ -27010,8 +27034,8 @@ function _schedPrintGrid(page) {
   var f = _schedReadFilters(), subt = [];
   if (f.teacher) subt.push('المعلم: ' + f.teacher);
   if (f.subj) subt.push('المادة: ' + f.subj);
-  if (f.grade && f.grade !== 'الكل') subt.push('الفصل: ' + f.grade);
-  if (f.section && f.section !== 'الكل') subt.push('الشعبة: ' + f.section);
+  if (f.grade && !_isAllTok(f.grade, 'class')) subt.push('الفصل: ' + f.grade);
+  if (f.section && !_isAllTok(f.section, 'section')) subt.push('الشعبة: ' + f.section);
   if (f.day) subt.push('اليوم: ' + f.day);
   var _schedLogo = window._schoolLogo ? ('<img src="' + escapeHtml(window._schoolLogo) + '" alt="" />') : '';
   var body = '<div class="sched-page"><div class="sched-head">' + _schedLogo + '<h2>' + escapeHtml(sn || 'جدول الحصص') + '</h2></div><h4>جدول الحصص' + (subt.length ? (' — ' + escapeHtml(subt.join(' · '))) : '') + '</h4>' + _schedPrintGridTable(rows) + '</div>';
@@ -27048,8 +27072,8 @@ function _schedShare() {
   lines.push('📅 جدول الحصص' + (sn ? ' — ' + sn : ''));
   if (f.teacher) lines.push('المعلم: ' + f.teacher);
   if (f.subj)    lines.push('المادة: ' + f.subj);
-  if (f.grade   && f.grade   !== 'الكل') lines.push('الفصل: '  + f.grade);
-  if (f.section && f.section !== 'الكل') lines.push('الشعبة: ' + f.section);
+  if (f.grade   && !_isAllTok(f.grade, 'class')) lines.push('الفصل: '  + f.grade);
+  if (f.section && !_isAllTok(f.section, 'section')) lines.push('الشعبة: ' + f.section);
   if (f.day)     lines.push('اليوم: ' + f.day);
   lines.push('إجمالي الحصص: ' + rows.length);
   lines.push('');
@@ -27067,7 +27091,7 @@ function _schedShare() {
     dayRows.sort(function(a, b) { return parseInt(a.period, 10) - parseInt(b.period, 10); });
     for (var j = 0; j < dayRows.length; j++) {
       var x = dayRows[j];
-      var cls = (x.grade || '') + (x.section && x.section !== 'جميع الشعب' ? ' ' + x.section : '');
+      var cls = (x.grade || '') + (x.section && !_isAllTok(x.section, 'section') ? ' ' + x.section : '');
       var tch = x.teacher ? ' (' + x.teacher + ')' : '';
       lines.push('  ح' + x.period + ': ' + (x.subject || '') + (cls ? ' — ' + cls : '') + tch);
     }
@@ -27228,7 +27252,7 @@ function _schedBuildCanvas(rows, schoolName) {
         ctx.textBaseline = 'top';
         ctx.fillText(_schedTruncStr(x0.subject || '', 13), cx + COL_W / 2, rowY + 7);
         // الفصل + الشعبة
-        var cls = (x0.grade || '') + (x0.section && x0.section !== 'جميع الشعب' ? ' ' + x0.section : '');
+        var cls = (x0.grade || '') + (x0.section && !_isAllTok(x0.section, 'section') ? ' ' + x0.section : '');
         ctx.fillStyle = '#7c3aed';
         ctx.font = '10px Tahoma';
         ctx.fillText(cls, cx + COL_W / 2, rowY + 27);
@@ -27410,7 +27434,7 @@ function renderAdminStudents() {
   html += '<div class="form-row">';
   html += '<div class="form-group"><label class="form-label">نسبة الحجب (%)</label><input type="number" class="form-control" id="blockPercentageInput" min="0" max="100" step="1" placeholder="0 = معطَّل" style="width:160px;"></div>';
   html += '</div>';
-  html += '<small style="color:var(--text-muted);display:block;margin:4px 0 12px;">إن انخفضت نسبة سداد الطالب عن هذه القيمة يُحجب دخوله بالكامل عن منصته حتى تسديد رسومه. صفر = معطَّل (لا حجب). لاستثناء طالب معيّن، استخدم زر «🔓 إلغاء الحجب» أسفل جدول الطلاب.</small>';
+  html += '<small style="color:var(--text-muted);display:block;margin:4px 0 12px;">إن كانت نسبة سداد حساب الأسرة بهذه القيمة أو أقلّ يُحجب دخول الطالب إلى منصته حتى التسديد. صفر أو فارغ = معطَّل (لا حجب). زرّا 🔒/👁️ في جدول الطلاب يُخفيان الرسوم أو يُظهرانها في منصة الطالب فقط، ولا يرفعان الحجب.</small>';
   html += '<button class="btn btn-primary" onclick="saveFinancialBlockSettings()">🔒 حفظ إعدادات الحجب المالي</button>';
   html += '</div>';
   html += '</div>';
@@ -27846,7 +27870,7 @@ function exportStudentsList() {
  *
  * 🔴 **العلّةُ المقيسة: ثلاثةُ أسماءٍ لدورٍ واحد.** `admin` كان يُعرض **«مدير النظام»**
  * هنا · و**«المدير»** في `TeacherStaffAdmin.js::roleMap` · و**«مدير»** في
- * `_js-visits.html::VT_ROLE_LABELS` — والشيتُ الحيُّ يكتب **«المدير»**.
+ * `_tp-visits.html::VT_ROLE_LABELS` — والشيتُ الحيُّ يكتب **«المدير»**.
  * ⇒ **المستخدمُ يرى اسمَين مختلفَين لحسابه في صفحتين، فيظنّهما دورَين**، وهو بالضبط
  * بلاغُ المالك: «سواء كان المدير أو مدير النظام هو شيءٌ واحد».
  * وليست `admin` وحدَها: `it` = «تقنية»/«مسؤول الحاسوب (IT)»/«الحاسوب» ·
@@ -27864,7 +27888,7 @@ function exportStudentsList() {
  *
  * 🔴 **وموضعُها `_js-core-bridge` لا هنا — والترتيبُ ليس ذوقاً:** الأجزاءُ كتلُ
  * `<script>` متتابعةٌ في صفحةٍ واحدة، و`_js-core-bridge` **أوّلُ مُدرَجٍ** (‏السطر 1169)
- * بينما `_js-visits` **آخرُها** (‏1249). فتعريفُ الخريطة هنا يجعل أيَّ قراءةٍ **وقتَ
+ * بينما `_tp-visits` **آخرُها** (‏1249). فتعريفُ الخريطة هنا يجعل أيَّ قراءةٍ **وقتَ
  * التحميل** في جزءٍ أسبقَ تقرأ `undefined` بلا خطإٍ ظاهر. ⇒ المصدرُ يسبق مستهلكيه.
  */
 function _roleLabelFull(u) {
@@ -28934,7 +28958,7 @@ function tm_clearAssignments(){ document.getElementById('tm-assignments-list').i
 function tm_addAssignment(data){ var list=document.getElementById('tm-assignments-list'); var lists=_tmLists||{}; var grades=lists.grades||[]; var subjects=lists.subjects||[]; var sections=lists.sections||[]; var idx=list.children.length; var div=document.createElement('div'); div.className='asgn-row'; div.id='asgn-'+idx; var subjOpts='<option value="">-- المادة --</option>'; for(var si=0;si<subjects.length;si++) subjOpts+='<option value="'+subjects[si]+'"'+(data&&data.subject===subjects[si]?' selected':'')+'>'+subjects[si]+'</option>'; if(data&&data.subject&&subjects.indexOf(data.subject)===-1) subjOpts+='<option value="'+data.subject+'" selected>'+data.subject+'</option>'; var gradeOpts='<option value="">-- الفصل --</option>'; for(var gi=0;gi<grades.length;gi++) gradeOpts+='<option value="'+grades[gi]+'"'+(data&&data.grade===grades[gi]?' selected':'')+'>'+grades[gi]+'</option>'; if(data&&data.grade&&grades.indexOf(data.grade)===-1) gradeOpts+='<option value="'+data.grade+'" selected>'+data.grade+'</option>';
   // ★ شعبة متعدّدة الاختيار (لا قائمة مفردة): تدعم تحديد شعب جزئية («أ,ب» فقط لا كل الشعب)
   //   بلا فقدان الدقّة عند الحفظ — انظر teacher/CLAUDE.md بند "النطاق الدقيق" وتقرير الفصل الذرّي.
-  var secRaw=(data&&data.section)||''; var secIsAll=(secRaw==='جميع الشعب'); var secTokens=(!secIsAll&&secRaw)?secRaw.split(/[،,]+/):[];
+  var secRaw=(data&&data.section)||''; var secIsAll=_isAllTok(secRaw,'section'); var secTokens=(!secIsAll&&secRaw)?secRaw.split(/[،,]+/):[];
   var secHtml='<label class="asgn-sec-lbl"><input type="checkbox" class="asgn-sec-all" onchange="tm_onSecAllToggle(this)"'+(secIsAll?' checked':'')+'> الكل</label>';
   for(var seci=0;seci<sections.length;seci++){ var sv=sections[seci]; var checked=(!secIsAll&&secTokens.indexOf(sv)!==-1); secHtml+='<label class="asgn-sec-lbl"><input type="checkbox" class="asgn-sec-opt" value="'+sv+'" onchange="tm_onSecOptToggle(this)"'+(checked?' checked':'')+(secIsAll?' disabled':'')+'> '+sv+'</label>'; }
   div.innerHTML='<select class="asgn-subject">'+subjOpts+'</select><select class="asgn-grade">'+gradeOpts+'</select><div class="asgn-section-group" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 8px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:12px;">'+secHtml+'</div><button onclick="tm_removeAssignment(this)" style="padding:4px 10px;background:#ffebee;color:#c62828;border:none;border-radius:6px;cursor:pointer;">✕</button>';
@@ -30148,8 +30172,8 @@ function cert_fillFilters(months, grades, sections){
   var sEl=document.getElementById('cert-section');
   if(sEl){
     var cs=sEl.value || 'جميع الشعب';
-    var so='<option value="جميع الشعب"'+(cs==='جميع الشعب'?' selected':'')+'>— جميع الشعب —</option>';
-    for(var k=0;k<sections.length;k++){ var sv=String(sections[k]); if(!sv||sv==='جميع الشعب') continue; so+='<option value="'+escapeHtml(sv)+'"'+(cs===sv?' selected':'')+'>'+escapeHtml(sv)+'</option>'; }
+    var so='<option value="جميع الشعب"'+(_isAllTok(cs,'section')?' selected':'')+'>— جميع الشعب —</option>';
+    for(var k=0;k<sections.length;k++){ var sv=String(sections[k]); if(!sv||_isAllTok(sv,'section')) continue; so+='<option value="'+escapeHtml(sv)+'"'+(cs===sv?' selected':'')+'>'+escapeHtml(sv)+'</option>'; }
     sEl.innerHTML=so;
   }
 }
@@ -31269,12 +31293,12 @@ function ss_fillFilters(months,grades,sections){
   var mEl=document.getElementById('ss-month');
   if(mEl){ var cm=mEl.value; mEl.innerHTML=gmsMonthOptionsReadonly(months,'— اختر الفترة —',cm); }
   var gEl=document.getElementById('ss-grade');
-  if(gEl){ var cg=gEl.value||'الكل'; var go='<option value="الكل"'+(cg==='الكل'?' selected':'')+'>— كل الصفوف —</option>';
-    for(var j=0;j<grades.length;j++){ var gv=String(grades[j]); if(!gv||gv==='الكل')continue; go+='<option value="'+escapeHtml(gv)+'"'+(cg===gv?' selected':'')+'>'+escapeHtml(gv)+'</option>'; }
+  if(gEl){ var cg=gEl.value||'الكل'; var go='<option value="الكل"'+(_isAllTok(cg,'class')?' selected':'')+'>— كل الصفوف —</option>';
+    for(var j=0;j<grades.length;j++){ var gv=String(grades[j]); if(!gv||_isAllTok(gv,'class'))continue; go+='<option value="'+escapeHtml(gv)+'"'+(cg===gv?' selected':'')+'>'+escapeHtml(gv)+'</option>'; }
     gEl.innerHTML=go; }
   var sEl=document.getElementById('ss-section');
-  if(sEl){ var cs=sEl.value||'جميع الشعب'; var so='<option value="جميع الشعب"'+(cs==='جميع الشعب'?' selected':'')+'>— جميع الشعب —</option>';
-    for(var k=0;k<sections.length;k++){ var sv=String(sections[k]); if(!sv||sv==='جميع الشعب')continue; so+='<option value="'+escapeHtml(sv)+'"'+(cs===sv?' selected':'')+'>'+escapeHtml(sv)+'</option>'; }
+  if(sEl){ var cs=sEl.value||'جميع الشعب'; var so='<option value="جميع الشعب"'+(_isAllTok(cs,'section')?' selected':'')+'>— جميع الشعب —</option>';
+    for(var k=0;k<sections.length;k++){ var sv=String(sections[k]); if(!sv||_isAllTok(sv,'section'))continue; so+='<option value="'+escapeHtml(sv)+'"'+(cs===sv?' selected':'')+'>'+escapeHtml(sv)+'</option>'; }
     sEl.innerHTML=so; }
 }
 
@@ -31359,7 +31383,7 @@ function ss_winCss(){
 function ss_exportCsv(){
   if((App.user||{}).role==='accountant') return;
   if(!SS.data || !(SS.data.students||[]).length){ toast('لا توجد بيانات للتصدير','warning'); return; }
-  var d=SS.data, students=d.students||[], subjects=d.subjects||[], isAll=(d.grade==='الكل');
+  var d=SS.data, students=d.students||[], subjects=d.subjects||[], isAll=_isAllTok(d.grade,'class');
   var tpl=[]; for(var i=0;i<students.length;i++){ var sj=students[i].subjects||[]; for(var j=0;j<sj.length;j++){ var gg=sj[j].grades||[]; if(gg.length>tpl.length) tpl=gg; } }
   var nSub=tpl.length||1;
   function esc(v){ v=(v==null?'':String(v)); return /[",\n\r]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
@@ -31421,7 +31445,7 @@ function ss_renderReport(){
 }
 
 function ss_tableHtml(students,subjects,tpl){
-  var nSub=tpl.length||1, isAll=(SS.data.grade==='الكل');
+  var nSub=tpl.length||1, isAll=_isAllTok(SS.data.grade,'class');
   // رأس مزدوج
   var fixed='<th rowspan="2">#</th><th rowspan="2">الكود</th><th rowspan="2" class="nm">الاسم</th>' +
     (isAll?'<th rowspan="2">الصف</th>':'') + '<th rowspan="2">الشعبة</th><th rowspan="2" class="avg">المعدل</th>';
@@ -36209,7 +36233,7 @@ function _tfRender(res){
   h+='<div class="tf-kpi-group-label">🎓 أموال الطلاب</div>'+
      '<div class="tf-kpis">'+
      _tfKpi(_tfComma(k.expected), 'إجمالي الرسوم', '', 'var(--tf-blue)', false)+
-     _tfKpi(_tfComma(k.outstanding), 'المتبقّي على الطلاب', (k.overdueCount||0)+' متأخّر', 'var(--tf-orange)', false)+
+     _tfKpi(_tfComma(k.outstanding), 'المتبقّي على الطلاب', (k.overdueCount||0)+' حساب أسرة متأخّر', 'var(--tf-orange)', false)+
      _tfKpi(_tfComma(k.students), 'عدد الطلاب', '', 'var(--text)', false)+
      _tfKpi(_tfComma(k.prevDebt), 'مديونية أعوام سابقة', (k.prevDebtCount||0)+' طالب', 'var(--tf-magenta)', false)+
      _tfKpi(_tfComma(k.discountTotal), 'إجمالي التخفيضات', (k.discountedCount||0)+' طالب', 'var(--tf-teal)', false)+
@@ -38664,7 +38688,7 @@ function _inOnChange(ev) {
 /* ═══ الدفعة 31b/31c + 37: تقييم المعلمين والمشرفين (Evaluations.js) ═══
    تبويبات: «تقييماتي» للجميع؛ «فريقي» و«التقييم الشهري» و«نموذج تقييم» و«السجل» لمن يملك evaluations.manage/
    evaluations.supervisors؛ و«التغطية» و«البنود والاستراتيجيات» لمن يملك evaluations.supervisors.
-   الفريقُ والشبكةُ والتغطية في _js-evaluations-grid.html. الخادمُ يفحص كلَّ شيءٍ بنفسه؛ هذا عرضٌ فقط.
+   الفريقُ والشبكةُ والتغطية في _tp-evaluations-grid.html. الخادمُ يفحص كلَّ شيءٍ بنفسه؛ هذا عرضٌ فقط.
    قرار المالك: التقييمُ الجديد مسودةٌ لا يراها الموظّف حتى يعتمدها كاتبُه أو المديرُ/الوكيل (approveEvaluationsProtected)؛
    و«تقييماتي» تعرض المعتمدَ وحده بعدد التعديلات وآخرها، بلا تفاصيل سجلّ التعديلات.
    لا نداءات ثقيلة عند فتح الصفحة: كلُّ تبويبٍ يجلب بياناته حين يُفتح. */
@@ -39304,7 +39328,7 @@ function ev_saveItem() {
   }, function (e) { hideLoading(); showError(e); });
 }
 
-/* ═══ الدفعة 37: فريقي + التقييم الشهري (شبكة صح/خطأ) + لوحة التغطية — تكملة _js-evaluations.html ═══
+/* ═══ الدفعة 37: فريقي + التقييم الشهري (شبكة صح/خطأ) + لوحة التغطية — تكملة _tp-evaluations.html ═══
    «فريقي»: getSupervisionTeamProtected (معلمو النطاق بفصولهم وعدد طلابهم، وأسماء الطلاب عند النقر).
    «التقييم الشهري»: المعلمون صفوفاً والبنود أعمدةً، والاقتراح الآليّ بجانب كلّ خانة، والحفظُ الجماعيّ
    saveEvaluationsBatchProtected (60 صفّاً في النداء). «التغطية»: getSupervisionCoverageProtected (للمدير والوكيل).
@@ -39590,7 +39614,7 @@ function ev_gridSave() {
   next();
 }
 
-/* اعتمادُ مسودّات الشبكة: صفٌّ واحد أو كلُّ مسودّاتك القابلة للاعتماد (60 في النداء، ev_approveIds في _js-evaluations.html) */
+/* اعتمادُ مسودّات الشبكة: صفٌّ واحد أو كلُّ مسودّاتك القابلة للاعتماد (60 في النداء، ev_approveIds في _tp-evaluations.html) */
 function ev_gridApprove(i) {
   var row = EV.grid && EV.grid.rows[i];
   if (!row || !row.own || !row.m.id) return;

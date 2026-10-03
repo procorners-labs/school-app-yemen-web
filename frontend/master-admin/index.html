@@ -35,7 +35,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/master-admin';
-    window.WEB_BUILD_TS = 202610030847;
+    window.WEB_BUILD_TS = 202610030949;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
     var _rawSid = qs.get('school') || qs.get('schoolId') || '';
     var _canon = String(window.__CANON_SCHOOL__ || '').toLowerCase();
@@ -332,7 +332,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f8;color:#222;
       <!-- رابط الصفحة الرئيسية.
            🔴 كان `onclick="DeploymentClient.go('master')"` و`_DeploymentClient.html` **يتيمٌ
            تماماً** في هذا المشروع (صفرُ `include` وصفرُ `createTemplateFromFile` عليه)
-           ⇒ `ReferenceError` عند كلّ ضغطة. ونظيرُه في `teacher/_js-platform-reviews.html`
+           ⇒ `ReferenceError` عند كلّ ضغطة. ونظيرُه في `teacher/_js-session-boot.html`
            سليمٌ لأنه يفحص `window.DeploymentClient` ويهبط إلى رابطٍ مطلق.
            🟢 والعلاجُ هنا **إزالةُ الرمز لا حراستُه**: رابطٌ مطلقٌ على النطاق القانونيّ —
            يعمل من `/gas/master-admin` ومن `/exec` معاً، بلا جافاسكربت أصلاً.
@@ -2155,9 +2155,13 @@ function _tsRenderHtml(d) {
   }
   return h;
 }
+/* (42c) أوّلُ «قياس» لكلّ نافذةٍ يقرأ مخزَّنَ الخادم (300ث)؛ الضغطُ ثانيةً على النافذة نفسها تحديثٌ صريح (`noCache`).
+   تُحفظ النافذةُ بعد النجاح فقط ⇒ قياسٌ أُجهض عند 26ث يُقرأ من المخزَّن في الضغطة التالية بعد أن يكمله الخادم. */
+var _tsShown = {};
 function transport_load() {
   var body = document.getElementById('ts-body'), meta = document.getElementById('ts-meta');
   var win = (document.getElementById('ts-window') || {}).value || '24h';
+  var force = !!_tsShown[win];
   if (body) body.innerHTML = 'جارٍ القياس…';
   google.script.run
     .withSuccessHandler(function (res) {
@@ -2167,14 +2171,16 @@ function transport_load() {
         return;
       }
       var d = res.data || {};
+      _tsShown[win] = 1;
       if (meta) meta.textContent = 'عمرُ القياس ' + (d.cacheAgeS || 0) + 'ث · ' +
-        ((d.window && d.window.from) || '') + ' → ' + ((d.window && d.window.to) || '');
+        ((d.window && d.window.from) || '') + ' → ' + ((d.window && d.window.to) || '') +
+        (res.cached ? ' · مخزَّنٌ منذ ' + (res.cacheAgeSec || 0) + 'ث (اضغط «قياس» ثانيةً للتحديث)' : '');
       if (body) body.innerHTML = _tsRenderHtml(d);
     })
     .withFailureHandler(function () {
       if (body) body.innerHTML = '<span style="color:#c62828;">تعذّر الاتصال بالخادم</span>';
     })
-    .getTransportStatsProtected({ token: App.token, window: win });
+    .getTransportStatsProtected({ token: App.token, window: win, noCache: force });
 }
 
 function errors_load() {

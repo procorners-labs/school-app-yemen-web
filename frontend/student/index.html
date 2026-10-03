@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202610030847;
+    window.WEB_BUILD_TS = 202610030949;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2863,16 +2863,38 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '19285c0';
+  var STU_BUILD = '5a44f7c';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
-   لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
+   لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_sp-home` و`_sp-reports`.
    العلّة التي أنشأه: الكاشُ ١٨٠ث في الطرفين بينما نافذةُ التحديث القسريّ **٦٠ ألف مللي**
    — أي أقصرَ من عمر الكاش نفسه فتُبطله بنيوياً؛ والقياسُ الحيّ `getStudentReports`
    **756 نداءً/٢٤س بإخفاق 52.1٪** و`srv p50 = 104ms` ⇒ ضحيّةُ تزاحمٍ لا بطءُ كود.
    ⇒ رقمٌ واحد يستهلكه الجميع، فانحرافُهما يصير مستحيلاً لا مرصوداً (بند 113). */
 var STU_REPORTS_TTL_SEC = 180;
 var STU_REPORTS_TTL_MS  = STU_REPORTS_TTL_SEC * 1000;
+
+/* 42f: the client copy of the one «all» vocabulary (server `_isAllToken_` / `_hasAllToken_`, teacher/_Normalize.js;
+   same tokens, same kinds). The teacher dashboard holds the same two functions in `_js-core-bridge`.
+   Tests and comparisons only: code that writes or shows a token keeps its literal.
+   Guard: tests/vocab_html_42f.test.js (no literal «all» compare in teacher/*.html, lists equal the server). */
+function _isAllTok(v, kind) {
+  var s = (v === null || v === undefined) ? '' : String(v);
+  s = s.replace(/[​-‏‪-‮⁦-⁩﻿]/g, ' ').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+  if (!s) return false;
+  if (s === 'الكل' || s === 'الجميع' || s === '*') return true;
+  var k = (kind === 'class' || kind === 'section' || kind === 'subject') ? kind : '';
+  if ((!k || k === 'class') && (s === 'جميع الفصول' || s === 'كل الفصول' || s === 'جميع الصفوف' || s === 'كل الصفوف')) return true;
+  if ((!k || k === 'section') && (s === 'جميع الشعب' || s === 'كل الشعب')) return true;
+  if ((!k || k === 'subject') && (s === 'جميع المواد' || s === 'كل المواد')) return true;
+  return false;
+}
+function _hasAllTok(list, kind) {
+  if (!list) return false;
+  if (typeof list === 'string') return _isAllTok(list, kind);
+  for (var i = 0; i < list.length; i++) if (_isAllTok(list[i], kind)) return true;
+  return false;
+}
 
 /* 🚪 بوّابةُ «اختر مدرستك» للطالب (2026-09-29، الدفعة 20-ب) — نظيرُ `__TC_NO_TENANT__` في
    `teacher/_js-core-bridge.html` حرفياً في المنطق: «الرابطُ ثمّ البوّابة، ولا حلقةَ ثالثة».
@@ -3150,8 +3172,9 @@ function _stuGen(name) {
 function _stuSchedArgs() {
   var a = { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId };
   var g = _stuGen('sched');
-  // + a 30-minute slot: the schedule settings (day start, periods) raise no generation.
-  if (g) a.v = g + '.' + Math.floor(Date.now() / 1800000);
+  // 42g: v = schedGen alone. saveScheduleSettingsProtected bumps sched since 38j, so the old 30-minute
+  // slot is no longer needed; the worker accepts both forms (old pages still send gen.slot).
+  if (g) a.v = g;
   return a;
 }
 function _stuHwArgs() {
@@ -4133,7 +4156,7 @@ function _stuUnifiedToStudent(res) {
            retryAfterSec: res.retryAfterSec, attemptsLeft: res.attemptsLeft, systemError: !!res.systemError };
 }
 
-/* نفسُ حقول `_finishTeacherLoginSuccess` (`_js-platform-reviews.html`) حرفياً — الاختبار يقارنهما. */
+/* نفسُ حقول `_finishTeacherLoginSuccess` (`_js-session-boot.html`) حرفياً — الاختبار يقارنهما. */
 function _stuStaffSessionData(r, schoolId) {
   return {
     token       : r.token,
@@ -5435,8 +5458,8 @@ function renderHomeCirculars(items) {
   for (var i = 0; i < max; i++) {
     var c = items[i];
     var scope = '';
-    if (c.grade && c.grade !== 'الجميع') scope = esc(c.grade);
-    if (c.section && c.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(c.section);
+    if (c.grade && !_isAllTok(c.grade, 'class')) scope = esc(c.grade);
+    if (c.section && !_isAllTok(c.section, 'section')) scope += (scope ? ' - ' : '') + esc(c.section);
     h += '<div class="circ-item">' +
            (c.title ? '<div class="circ-title">📌 ' + esc(c.title) + '</div>' : '') +
            '<div class="circ-body">' + nl2br(c.body) + '</div>' +
@@ -5467,7 +5490,7 @@ function _quickStatsPlaceholder() {
 var _tabLoadedAt = {};
 
 /* عمرُ كاش التقارير يُقرأ من `STU_REPORTS_TTL_SEC` في `_stu-js-core` — رقمٌ واحد
-   يستهلكه هذا الجزء و`_stu-js-shell` و`_stu-js-reports` معاً (بند 194). */
+   يستهلكه هذا الجزء و`_stu-js-shell` و`_sp-reports` معاً (بند 194). */
 
 /* ★ الطلاء مفصولٌ عن الجلب (2026-08-29) — مستهلكان لا واحد: `loadQuickStats` أدناه،
    و`_stuApplyBootQuickStats` الذي يستقبل نفس الحمولة من **حزمة الإقلاع** بلا نداءٍ ثانٍ.
@@ -5502,7 +5525,7 @@ function _stuRenderQuickStats(data) {
    🔴 **يُخزَّن النجاحُ وحده**: حمولةُ `{ok:false}` مُخزَّنةً تُجمّد العطلَ ١٨٠ ثانية على
    كلّ التنفيذات — أسوأ من العطل نفسه (بند 191، ونفسُ شرط `success !== false` المطبَّق على
    التعاميم في `_stuBootLoad`).
-   🔴 **والمفتاح مطابقٌ حرفياً** لمفتاح `loadQuickStats` و`_stu-js-reports`، وإلّا صار
+   🔴 **والمفتاح مطابقٌ حرفياً** لمفتاح `loadQuickStats` و`_sp-reports`، وإلّا صار
    للحمولة الواحدة مفتاحان ينحرفان (بند 187).
    يُرجِع `true` إن استُهلكت الحمولة فعلاً — والمنادي يقرّر التراجع بناءً عليه لا بناءً
    على وجود الحقل (بند 157: الأثرُ لا الاسم). */
@@ -6205,8 +6228,8 @@ function renderCirculars(items) {
   for (var i = 0; i < vis.length; i++) {
     var c = vis[i];
     var scope = '';
-    if (c.grade && c.grade !== 'الجميع') scope = esc(c.grade);
-    if (c.section && c.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(c.section);
+    if (c.grade && !_isAllTok(c.grade, 'class')) scope = esc(c.grade);
+    if (c.section && !_isAllTok(c.section, 'section')) scope += (scope ? ' - ' : '') + esc(c.section);
     h += '<div class="circ-item">' +
            (c.title ? '<div class="circ-title">📌 ' + esc(c.title) + '</div>' : '') +
            '<div class="circ-body">' + nl2br(c.body) + '</div>' +
@@ -7347,8 +7370,8 @@ function newsCardHTML(n) {
   var textCover = media ? '' : _stuTextCover(n);
 
   var scope = '';
-  if (n.grade && n.grade !== 'الجميع') scope = esc(n.grade);
-  if (n.section && n.section !== 'الجميع') scope += (scope ? ' - ' : '') + esc(n.section);
+  if (n.grade && !_isAllTok(n.grade, 'class')) scope = esc(n.grade);
+  if (n.section && !_isAllTok(n.section, 'section')) scope += (scope ? ' - ' : '') + esc(n.section);
 
   return '<article class="news-card" data-news-id="' + esc(n.id) + '">' +
          '<div class="head">' +
@@ -7688,7 +7711,7 @@ function markNewsViewed(newsId) {
 }
 
 /* ── markNewsViewedBatch — نداءٌ واحد لكل أخبار الصفحة (بند 206) ─────────────
-   🔴 **العلّة:** `_stu-js-news.html` كان يُطلق `markNewsViewed` **داخل حلقة `for`**
+   🔴 **العلّة:** `_sp-news.html` كان يُطلق `markNewsViewed` **داخل حلقة `for`**
    على كل خبر معروض (حتى `pageSize = 8`). و`markNewsViewed` تستدعي `google.script.run`
    **خاماً** ⇒ النداءات **لا تمرّ بـ`_stuRunGated` ولا بسقف `STU_MAX_INFLIGHT = 3`** —
    أي أنها كانت المسارَ الوحيد في المنصّة الذي يتجاوز بوّابةَ التزامن نفسها. وثمانيةُ
@@ -8407,7 +8430,7 @@ function _examDayName(dateStr) {
   if (!y || !mo || !d) return '';
   var dt = new Date(y, mo - 1, d);
   if (isNaN(dt.getTime())) return '';
-  return _stuDayByJs(dt.getDay());   // 38f: STU_WEEK_DAYS (_stu-js-schedule)
+  return _stuDayByJs(dt.getDay());   // 38f: STU_WEEK_DAYS (_sp-schedule)
 }
 
 // نصّ تاريخ عربي مقروء ("18 يوليو") من "yyyy-mm-dd" — نفس أسلوب بناء Date من مكوّنات محلية أعلاه
@@ -9795,7 +9818,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // ★ عزل المدارس: إن طُلبت مدرسة عبر الرابط (?school=) تختلف عن جلسة محفوظة لمدرسة أخرى،
   //   أزِل الجلسة القديمة وأظهِر دخول المدرسة المطلوبة (حتى لا تظهر بيانات مدرسة سابقة).
   /* 🔴 **معامل الاستعلام وحده** — لا `window.SCHOOL_ID` (2026-08-13). نظيرُ الإصلاح في
-     `teacher/_js-certificates-scoresheets.html`: منذ صيرورة المسارات
+     `teacher/_js-startup.html`: منذ صيرورة المسارات
      `/student/<tab>/<slug>` صار الحقن يضع الـslug النصّي في `window.SCHOOL_ID`، بينما
      `savedSession.user.schoolId` معرّفٌ قانوني ⇒ **لا يتساويان أبداً** ⇒ إسقاط الجلسة
      ⇒ الرابط العميق يُخرج المستخدم. والتعليق أعلاه يقول نيّة الحارس: «(`?school=`)».
