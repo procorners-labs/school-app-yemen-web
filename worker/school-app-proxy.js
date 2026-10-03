@@ -1501,7 +1501,7 @@ var _RESERVED_TOP_PATHS = {
 /* تحويلاتُ المضيف نفسِه — `Location` نسبيٌّ دائماً (انظر المعالج «1و-ب»).
    🔒 بـ`hasOwnProperty` لا `obj[k]`: مسارٌ مثل `/constructor` يجب ألّا يطابق شيئاً. */
 var _SAME_HOST_REDIRECTS = {
-  '/pricing': '/#pricing',
+  '/pricing': '/home/pricing.html',  // 39k (2026-10-03): الأسعار صفحةٌ مستقلّة
   '/register': '/master-admin/register.html',
   /* 🧹 نسخةٌ مكرّرةٌ من صفحة الخبر (2026-09-25 · قرارُ المالك): صفرُ زيارةٍ في 7 أيام، والأصلُ
      `/home/newsarticle.html`. **والاستعلامُ يُحفَظ** (`?news=<id>`) — انظر المعالج. */
@@ -4095,7 +4095,7 @@ export default {
     // ── 1و-ب) `/pricing` و`/register` — تحويلٌ على المضيف نفسِه (2026-09-19) ─────
     //   🔴 العلّة المقيسة (جلسة `SchoolApp-gas`): `/register` كان يُقرأ **slug مدرسة** فيذهب
     //      إلى GAS ثمّ يردّ ٤٠٤ «المدرسة غير موجودة» بعد ~8 ثوانٍ؛ و`/pricing` ٤٠٤ من Pages.
-    //   · `/pricing` ⇒ `/#pricing` — قرارُ المالك: الأسعارُ في قسم الصفحة الرئيسية وحدَه.
+    //   · `/pricing` ⇒ `/home/pricing.html` — منذ 39k (2026-10-03) الأسعارُ صفحةٌ مستقلّة (كانت `/#pricing`).
     //   · `/register` ⇒ `/master-admin/register.html` (صفحةُ التسجيل القائمة).
     //   ‏301 **بعمرٍ محدود** (ساعة) لا بلا رأس: الدائمُ بلا `Cache-Control` يُثبَّت في المتصفّح
     //   للأبد، وقرارُ `/pricing` تغيّر مرّتين. و`Location` **نسبيٌّ** ⇒ لا يعبر مضيفاً أبداً

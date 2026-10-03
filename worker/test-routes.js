@@ -4060,7 +4060,7 @@ console.log('تحويلاتُ المضيف نفسِه وحقنُ SCHOOL_ID:');
   var f, s;
   try { vm.runInContext(rd + sid, ctx); f = vm.runInContext('_sameHostRedirectFor', ctx); s = vm.runInContext('_schoolIdScript', ctx); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
-  check(f('/pricing') === '/#pricing' && f('/pricing/') === '/#pricing', '`/pricing` ⇒ `/#pricing` (وبشرطةٍ مائلة)');
+  check(f('/pricing') === '/home/pricing.html' && f('/pricing/') === '/home/pricing.html', '`/pricing` ⇒ `/home/pricing.html` (وبشرطةٍ مائلة) — 39k');
   check(f('/register') === '/master-admin/register.html', '`/register` ⇒ صفحةُ التسجيل');
   check(f('/') === '' && f('/abdaawatmuaz') === '' && f('/pricing/x') === '' && f('/constructor') === '' &&
         f('/toString') === '' && f('') === '',
