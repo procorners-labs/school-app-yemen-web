@@ -1977,9 +1977,13 @@ var LOGIN_MARGIN_MIN_MS = 2000;
        **بالصدفة**: حارس `SchoolApp-gas` يفحص `_LOGIN_TIMEOUT > 24000` — رقمٌ كُتب
        **قبل** نافذة الدخول أصلاً. رصدَته المراجعة (بند 113: معرّفٌ عند المستهلك قد
        يكون أضيق منه عند المنتج). الآن الطرفان يُقرآن ويُطرحان. */
-    var cli = fs.readFileSync(
-      path.join(GAS, 'teacher', '_js-platform-reviews.html'), 'utf8');
-    var cliM  = /var _LOGIN_TIMEOUT\s*=\s*(\d+)/.exec(cli);
+    /* gas 40g: الأجزاء أُعيدت تسميتها، فنبحث عن التعريف في كلّ teacher/_*.html بدل اسمٍ ثابت */
+    var cliM = null;
+    fs.readdirSync(path.join(GAS, 'teacher')).filter(function (f) { return /^_.*\.html$/.test(f); })
+      .some(function (f) {
+        cliM = /var _LOGIN_TIMEOUT\s*=\s*(\d+)/.exec(fs.readFileSync(path.join(GAS, 'teacher', f), 'utf8'));
+        return !!cliM;
+      });
     check(!!cliM, 'قُرئت مهلةُ العميل `_LOGIN_TIMEOUT` من مصدر GAS (فشلُ الاستخراج = عمى لا نجاح)');
     check(worstLoginMs > 0, 'ضابط: أسوأُ زمنٍ مُحاكىً مقيسٌ فعلاً قبل طرحه (‏' + worstLoginMs + 'ms)');
     if (cliM && worstLoginMs > 0) {
