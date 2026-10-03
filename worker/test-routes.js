@@ -1888,6 +1888,127 @@ var LOGIN_MARGIN_MIN_MS = 2000;
     check(SA('{"fn":"runIdMigrationProtected","x":"' + new Array(5000).join('a') + '"}') === false, 'الجسم الضخم ⇒ النافذة العادية');
     check(SA(null) === false && SA('not json') === false, 'غيرُ النصّ وغيرُ JSON ⇒ false');
   })();
+  /* ═══ (الدفعة 42a) `READ_BUDGET_MS` — قراءاتُ `HEDGE_FNS` 50ث، وكلُّ ما عداها كما كان ═══
+     سلوكيٌّ بالدوالّ الحقيقيّة من المصدر (`_readBudgetMs` · `_readBudgetFor` · `_hedgeFnOf` · حارسا
+     الدخول وأدوات المدير)، ونصّيٌّ للتوصيل في الحلقة، وحسابيٌّ لأسوأ زمنٍ مقابل مهلة الجسر. */
+  (function () {
+    console.log('\n⏱️ READ_BUDGET_MS — ميزانيةُ القراءات (42a):');
+    function cutBlock(startMark, endMark, excludeEnd) {
+      var a = src.indexOf(startMark); if (a < 0) return '';
+      var b = src.indexOf(endMark, a); if (b < 0) return '';
+      return src.slice(a, excludeEnd ? b : b + endMark.length);
+    }
+    var hb = cutBlock('var HEDGE_AT_MS', '\n/* ═══ `GAS_LEG_SPLIT`', true);
+    var lb = cutBlock('var BH_LOGIN_FNS = {', '\n};');
+    var lf = cutBlock('function _bhIsLoginBody(', '\n}');
+    var sb = cutBlock('var SLOW_ADMIN_FNS = {', '\n};');
+    var sf = cutBlock('function _slowAdminBody(', '\n}');
+    var okCut = !!(hb && lb && lf && sb && sf) && hb.indexOf('function _readBudgetFor(') > 0;
+    check(okCut, 'ضابط: استُخرجت كتلةُ ميزانية القراءة وحارساها من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
+    if (!okCut) return;
+    var rctx = vm.createContext({ setTimeout: setTimeout, clearTimeout: clearTimeout, AbortController: AbortController });
+    vm.runInContext('var BH_LOGIN_BODY_MAX = 4096;\n' + lb + '\n' + lf + '\n' + sb + '\n' + sf + '\n' + hb, rctx);
+    var RB = vm.runInContext('_readBudgetMs', rctx), RF = vm.runInContext('_readBudgetFor', rctx);
+    var HF = vm.runInContext('_hedgeFnOf', rctx);
+    var ON = { READ_BUDGET_MS: '50000' };
+    var B = function (o) { return JSON.stringify(o); };
+
+    /* ① القيمة: fail-closed على كلّ ما ليس رقماً داخل 26000..55000. */
+    check(RB(ON) === 50000 && RB({ READ_BUDGET_MS: '26000' }) === 26000 && RB({ READ_BUDGET_MS: '55000' }) === 55000,
+          '① القيمةُ الصالحة تُقبل (50000 · وحدّا المدى 26000 و55000)');
+    check(RB({}) === 0 && RB(null) === 0 && RB({ READ_BUDGET_MS: 'off' }) === 0 && RB({ READ_BUDGET_MS: '' }) === 0 &&
+          RB({ READ_BUDGET_MS: 'abc' }) === 0 && RB({ READ_BUDGET_MS: '5e4' }) === 0 && RB({ READ_BUDGET_MS: '50000.5' }) === 0 &&
+          RB({ READ_BUDGET_MS: '25999' }) === 0 && RB({ READ_BUDGET_MS: '55001' }) === 0 && RB({ READ_BUDGET_MS: '-50000' }) === 0,
+          '🔒 ① fail-closed: غيابٌ · `off` · غيرُ رقم · خارج المدى ⇒ 0 (السلوكُ القديم)');
+
+    /* ② المؤهَّل: POST · `HEDGE_FNS` · بلا `opId` · لا بائت ⇒ 50ث. */
+    var rd = B({ fn: 'getGrades', args: [{ switchToken: 't' }], schoolId: 'S' });
+    check(RF(ON, 'student', 'POST', rd, false) === 50000, '② قراءةُ `HEDGE_FNS` (student/getGrades) ⇒ 50000');
+    check(RF(ON, 'teacher', 'POST', B({ fn: 'getTeacherBootBundle', args: [] }), false) === 50000 &&
+          RF(ON, 'home', 'POST', B({ fn: 'getHomePageBundle', args: ['x'] }), false) === 50000,
+          '② وقراءاتُ teacher وhome في القائمة كذلك');
+    /* `wantReview` يمنع الاحتياطيَّ (نسختان متوازيتان) ولا يمنع الميزانية (تنفيذٌ واحدٌ يُسلَّم ردُّه). */
+    var wr = B({ fn: 'getStudentBootBundle', args: [{ wantReview: true }] });
+    check(HF('student', 'POST', wr) === '' && RF(ON, 'student', 'POST', wr, false) === 50000,
+          '② `getStudentBootBundle` مع `wantReview`: لا احتياطيّ (كما كان) لكن الميزانيةُ الطويلة تسري');
+
+    /* ③ كلُّ ما عداه ⇒ 0 = 26ث كما كان. */
+    check(RF({}, 'student', 'POST', rd, false) === 0 && RF({ READ_BUDGET_MS: 'off' }, 'student', 'POST', rd, false) === 0,
+          '③ المفتاحُ مطفأ ⇒ 0 (26ث)');
+    check(RF(ON, 'student', 'POST', B({ fn: 'getGrades', args: [], opId: 'op1' }), false) === 0,
+          '③ 🔒 كتابة (`opId`) ⇒ 0');
+    check(RF(ON, 'student', 'POST', rd, true) === 0, '③ 🔴 نسخةٌ بائتةٌ معروفة (`_acStale`) ⇒ 0 — يبقى 26ث فيُخدَم البائتُ سريعاً');
+    check(RF(ON, 'student', 'GET', rd, false) === 0, '③ GET ⇒ 0');
+    check(RF(ON, 'teacher', 'POST', B({ fn: 'saveGradesProtected', args: [] }), false) === 0 &&
+          RF(ON, 'student', 'POST', B({ fn: 'getClassFeedBundle', args: [] }), false) === 0 &&
+          RF(ON, 'master', 'POST', B({ fn: 'getGrades', args: [] }), false) === 0,
+          '③ دالّةٌ خارج `HEDGE_FNS` (أو تطبيقٌ آخر) ⇒ 0');
+    check(RF(ON, 'student', 'POST', B({ fn: 'loginStudent', args: [] }), false) === 0 &&
+          RF(ON, 'teacher', 'POST', B({ fn: 'getReportsBundleProtected', args: [] }), false) === 0,
+          '③ دخولٌ وأداةُ مدير ⇒ 0 (لهما ميزانيتاهما 50ث و90ث)');
+    check(RF(ON, 'student', 'POST', '{"fn":"getGrades","fn":"saveGradesProtected"}', false) === 0 &&
+          RF(ON, 'student', 'POST', B({ fn: 'toString' }), false) === 0 &&
+          RF(ON, 'student', 'POST', '{"fn":"getGrades","x":"' + new Array(5000).join('a') + '"}', false) === 0 &&
+          RF(ON, 'student', 'POST', 'not json', false) === 0 && RF(ON, 'student', 'POST', null, false) === 0,
+          '🔒 ③ مفتاحٌ مكرَّر · `toString` · جسمٌ ضخم · غيرُ JSON ⇒ 0');
+    /* 🔒 ضابطٌ معاكس: استثناءا الدخول وأداة المدير **يعملان فعلاً** لا لأن الاسمين غائبان عن `HEDGE_FNS` صدفةً. */
+    vm.runInContext('HEDGE_FNS.student.loginStudent = 1; HEDGE_FNS.teacher.runIdMigrationProtected = 1;', rctx);
+    check(HF('student', 'POST', B({ fn: 'loginStudent', args: [] })) === 'loginStudent' &&
+          RF(ON, 'student', 'POST', B({ fn: 'loginStudent', args: [] }), false) === 0 &&
+          RF(ON, 'teacher', 'POST', B({ fn: 'runIdMigrationProtected', args: [] }), false) === 0,
+          '🔒 ضابطٌ معاكس: اسمٌ دخوليّ أو أداةُ مدير **داخل** `HEDGE_FNS` ⇒ 0 (الحارسان يعملان)');
+
+    /* ④ التوصيلُ في الحلقة: الترتيبُ يجعل الدخولَ وأدواتِ المدير تتغلّب، و`_acStale` معروفٌ قبله. */
+    var iRb  = src.search(/\n\s*var _readBudget = isPost \? _readBudgetFor\(env, app, init\.method, init\.body, !!_acStale\) : 0;/);
+    var iSet = src.search(/\n\s*if \(_readBudget\) TOTAL_BUDGET_MS = _readBudget - _bhWaited;/);
+    var iTot = src.search(/\n\s*var TOTAL_BUDGET_MS = \(isPost \? \d+ : \d+\) - _bhWaited;/);
+    var iLog = src.search(/\n\s*if \(isPost && _bhIsLoginBody\(init\.body\)\) TOTAL_BUDGET_MS = LOGIN_POST_BUDGET_MS/);
+    var iSa  = src.search(/\n\s*if \(_slowAdmin\) TOTAL_BUDGET_MS = SLOW_ADMIN_BUDGET_MS/);
+    var iSt  = src.indexOf("if (_acFresh === 'stale') _acStale = _acHit;");
+    check(iRb > 0 && iSet > iRb, '④ الميزانيةُ الطويلة **مطبَّقةٌ** في الحلقة (لا ثابتٌ ميّت)');
+    check(iTot > 0 && iTot < iRb && iSet < iLog && iLog < iSa, '④ الترتيب: العامّ ⇒ القراءة ⇒ الدخول ⇒ أدوات المدير (الأخيران يتغلّبان)');
+    check(iSt > 0 && iSt < iRb, '④ 🔴 `_acStale` يُلتقَط **قبل** حساب الميزانية (فالاستثناءُ يرى البائت)');
+    check(/\n\s*rb: _readBudget \? 1 : undefined \}\);/.test(src), '④ `rb:1` على سطر `ev:\'gas\'` حين تسري (ويغيب غيرَ ذلك)');
+
+    /* ⑤ الحدود: الظلّ · المقعد · مهلةُ الجسر. */
+    var g = function (re) { var m = re.exec(src); return m ? Number(m[1]) : NaN; };
+    var MAXR = g(/var READ_BUDGET_MAX_MS = (\d+);/), MINR = g(/var READ_BUDGET_MIN_MS = (\d+);/);
+    var CAP = g(/var SHADOW_CAP_MS\s*=\s*(\d+)/), TTL = g(/var BH_SEAT_TTL_MS = (\d+);/);
+    var MARG = attM ? Number(attM[1]) : NaN, POSTB = budM ? Number(budM[1]) : NaN;
+    check(MINR === POSTB, '⑤ أدنى المدى (' + MINR + ') = ميزانيةُ POST العامّة (' + POSTB + ') — لا تقصيرَ ممكن');
+    check(CAP >= MAXR && CAP > MAXR - MARG, '⑤ سقفُ الظلّ (' + CAP + ') ≥ أقصى المدى (' + MAXR + ') ⇒ يبقى للظلّ ما يراقبه بعد المهلة');
+    check(TTL > MAXR + 2000, '⑤ 🔴 عمرُ المقعد (' + TTL + ') أطولُ من أقصى المدى بهامش — لا يُحصَد مقعدُ قراءةٍ حيّ');
+    var wrTxt = '';
+    try { wrTxt = fs.readFileSync(path.join(__dirname, '..', 'wrangler.jsonc'), 'utf8'); } catch (e) { wrTxt = ''; }
+    var wrM = /"READ_BUDGET_MS":\s*"([^"]*)"/.exec(wrTxt);
+    check(!!wrM, '⑤ `READ_BUDGET_MS` مُعلَنٌ صراحةً في wrangler.jsonc');
+    var conf = wrM ? RB({ READ_BUDGET_MS: wrM[1] }) : 0;
+    /* أسوأُ زمنٍ بالقيمة المنشورة — بنفس نموذج محاكاة الدخول أعلاه (مهلةٌ واحدة، أو نقلٌ سريعٌ ثمّ نومٌ ثمّ محاولة). */
+    var worstRead = -1;
+    if (conf && napM && minM) {
+      var NAPr = Number(napM[1]), MINAr = Number(minM[1]);
+      var planR = function (e, b) { var t = b - e - MARG; return (t < MINAr) ? 0 : t; };
+      for (var W = 0; W <= 9000; W += 100) {       // `_bhWaitMs` ≤ 9000
+        var bud = conf - W, e1 = Math.min(NAPr, bud);
+        worstRead = Math.max(worstRead, W + Math.max(planR(0, bud), e1 + planR(e1, bud)));
+      }
+    }
+    console.log('  ℹ️ القيمةُ المنشورة: ' + (wrM ? wrM[1] : '—') + ' ⇒ ' + (conf ? conf + 'ms' : 'مطفأ (26ث)') +
+                ' · أسوأُ زمنِ قراءةٍ مُحاكىً: ' + (worstRead > 0 ? worstRead + 'ms' : '—'));
+    if (conf) check(worstRead > 0 && worstRead <= conf, '⑤ أسوأُ زمنِ قراءةٍ (' + worstRead + 'ms) مسقوفٌ بالميزانية (' + conf + 'ms)');
+    var brP = path.join(GAS, 'assets', 'gas-bridge.js');
+    if (fs.existsSync(brP)) {
+      var xm = /SLOW_ADMIN_FNS\.hasOwnProperty\(fnName\) \? \d+ : (\d+)\)/.exec(fs.readFileSync(brP, 'utf8'));
+      check(!!xm, '⑤ قُرئت مهلةُ XHR العامّة من `assets/gas-bridge.js` (فشلُ الاستخراج = عمى لا نجاح)');
+      if (xm) {
+        var xmo = Number(xm[1]);
+        check(xmo - MAXR >= LOGIN_MARGIN_MIN_MS,
+              '⑤ 🔴 أقصى المدى (' + MAXR + 'ms) تحت مهلة الجسر (' + xmo + 'ms) بهامش ' + (xmo - MAXR) + 'ms ≥ ' + LOGIN_MARGIN_MIN_MS);
+      }
+    } else {
+      console.log('  ⏭️  SKIPPED: `assets/gas-bridge.js` غير متاح (' + brP + ') — لم تُقارَن مهلةُ XHR');
+    }
+  })();
   check(!!winM && !!attM && !!budM && !!napM && !!minM && !!lbM,
         'قُرئت ثوابتُ الحلقة الخمسة من المصدر (فشلُ الاستخراج = عمى لا نجاح)');
   var worstLoginMs = -1;
@@ -2396,6 +2517,46 @@ console.log('كاشُ الحافّة لنداءات GAS العامّة (سلوك
   // ⑪ 🔒 وسيطٌ كائنيّ بمفتاحٍ خارج المحصورة — وهو المسارُ الذي يحمل توكناً لو حمله.
   var pTok = probe(JSON.stringify({ fn: 'getHomeScheduleBundle', args: [{ token: 'x' }] }));
   check(!!pTok && !pTok.argsKey, '🔒 وسيطٌ كائنيّ بمفتاحٍ مجهول ⇒ لا كاش');
+
+  /* ⑪ب (42a) `getHomeScheduleBundle`: الشكلان `gen.slot` (صفحاتٌ أقدم) و`gen` وحدَه (العميلُ الجديد) مقبولان،
+     كلاهما 1800، ومفتاحاهما مختلفان، والجيلُ يُقرأ منهما لنافذة الكتابة (`vGenTs`). */
+  (function () {
+    var now = Date.now();
+    var sb = function (v) {
+      var a = { schoolId: 'S', klass: 'الأول', section: 'أ' };
+      if (v !== undefined) a.v = v;
+      return probe(JSON.stringify({ fn: 'getHomeScheduleBundle', args: [a] }));
+    };
+    var gOld = String(now - 60000), slot = String(Math.floor(now / 1800000));
+    var pSlot = sb(gOld + '.' + slot), pPlain = sb(gOld), pNone = sb();
+    check(!!pSlot && !!pSlot.argsKey && pSlot.ttl === 1800, '42a: `v = gen.slot` (صفحاتٌ أقدم) ⇒ يُقبل بـ1800 كما كان');
+    check(!!pPlain && !!pPlain.argsKey && pPlain.ttl === 1800, '42a: `v = gen` وحدَه (العميلُ الجديد) ⇒ يُقبل بـ1800');
+    check(!!pNone && !!pNone.argsKey && !pNone.ttl, '42a: بلا `v` ⇒ 600 كما كان (لا `ttl` خاصّ)');
+    check(pSlot.argsKey !== pPlain.argsKey && pPlain.argsKey !== pNone.argsKey, '42a: الشكلان (وغيابُ `v`) ثلاثةُ مفاتيح مختلفة');
+    check(pSlot.genTs === now - 60000 && pPlain.genTs === now - 60000, '42a: الجيلُ يُقرأ من الشكلين (الجزءُ قبل النقطة · أو `v` كلُّه)');
+    check(!sb('17900').argsKey && !sb('0').argsKey && !sb('012345678901').argsKey && !sb('x').argsKey &&
+          !sb('12345678901234567').argsKey && !sb(gOld + '.').argsKey,
+          '🔒 42a: `gen` وحدَه طابعٌ بالملّي ثانية فقط (10–16 رقماً بلا صفرٍ بادئ) — القصيرُ والمشوَّه لا يُخزَّن');
+    var bodyS = JSON.stringify({ settings: { ok: true }, schedule: { ok: true } });
+    check(put('https://x', 'student', sb(String(now - 2000)), bodyS) === false,
+          '42a: `v = gen` حديثُ الرفع (2ث) ⇒ لا تخزين داخل `API_GEN_FLUSH_MS`');
+    check(put('https://x', 'student', pPlain, bodyS) === true, '42a: `v = gen` عمرُه دقيقة ⇒ يُخزَّن');
+  })();
+
+  /* ⑪ج (42a) `getStudentExamSchedule` صار يعلن `vGenTs` — `examGen` طابعُ `Date.now()` لحظةَ الرفع. */
+  (function () {
+    var now = Date.now();
+    var eb = function (v) {
+      return probe(JSON.stringify({ fn: 'getStudentExamSchedule', args: [{ schoolId: 'S', klass: 'الأول', v: v }] }));
+    };
+    var bodyE = JSON.stringify({ ok: true, months: [{ name: 'محرم' }] });
+    var eNew = eb(String(now - 2000)), eOld = eb(String(now - 20000));
+    check(!!eNew && eNew.genTs === now - 2000, '42a: جدولُ الاختبارات يحمل `genTs` من `v`');
+    check(put('https://x', 'student', eNew, bodyE) === false, '42a: جدولُ اختباراتٍ رُفع جيلُه قبل 2ث ⇒ لا تخزين');
+    check(put('https://x', 'student', eOld, bodyE) === true, '42a: وبعد 20ث ⇒ يُخزَّن (ضابطٌ معاكس)');
+    check(/getStudentExamSchedule:\s*\{\s*args: _apiArgsExamSched,\s*ttl: \d+,\s*vGenTs: true,/.test(src),
+          '42a: `vGenTs: true` مُعلَنٌ في مدخل `getStudentExamSchedule`');
+  })();
 
   // ⑫ إخفاقُ الكاش يُرجِع null لا يرمي.
   check(get('https://x', 'teacher', probe(JSON.stringify({ fn: 'getStudentSchoolBrand', args: ['zzz'] }))) === null,
@@ -3872,7 +4033,8 @@ console.log('حقنُ OG لزواحف المعاينة وحدَها:');
         check(/await _settleLimited\(jobs, DEV_STATS_CONCURRENCY\)/.test(src) && !/Promise\.allSettled\(jobs\)/.test(src),
               '🔴 البناءُ موصولٌ بالتوازي المحدود لا بـ`allSettled` على وعودٍ منطلقة');
         var lim = vm.runInContext('DEV_STATS_CONCURRENCY', ds);
-        check(typeof lim === 'number' && lim >= 1 && lim <= 3, '🔴 `DEV_STATS_CONCURRENCY` بين 1 و3 (الثابتُ نفسُه لا قيمةُ الاختبار) [' + lim + ']');
+        /* 42a: السقفُ 4 (كان 3) — 429 قِيس عند تسعةٍ معاً، والأربعةُ نصفُها تقريباً. */
+        check(typeof lim === 'number' && lim >= 1 && lim <= 4, '🔴 `DEV_STATS_CONCURRENCY` بين 1 و4 (الثابتُ نفسُه لا قيمةُ الاختبار) [' + lim + ']');
         return settle([], 2).then(function (e) { check(e.length === 0, 'قائمةٌ فارغة ⇒ تُحلّ فوراً (لا وعدَ معلَّق)'); });
       });
     });
