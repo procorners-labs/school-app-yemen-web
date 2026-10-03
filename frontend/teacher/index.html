@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610030530;
+    window.WEB_BUILD_TS = 202610030544;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -816,7 +816,10 @@
     .sidebar::-webkit-scrollbar-track { background: transparent; }
     /* منع الوميض: تُخفى كل العناصر القابلة للتقييد حتى تُحسم القائمة حسب الدور
        (initSidebarByRole يضيف .role-ready). العناصر الظاهرة للجميع مستثناة بالمعرّف. */
-    .sidebar:not(.role-ready) .sidebar-item:not(#si-dashboard):not(#si-myTasks):not(#si-profile):not(#si-help) { display: none !important; }
+    .sidebar:not(.role-ready) .sidebar-item:not(#si-dashboard):not(#si-activitiesTasks):not(#si-profile):not(#si-help) { display: none !important; }
+    /* 40h: أزرارُ الصفحات التي صارت تبويبات — مصدرُ «التبويب مسموح؟» لا عنصرٌ يُعرَض. !important لأن طبقاتِ
+       الإظهار (`_sbSyncSections`/`_sbApplyGrantOverlay`) تضبط display القسمِ نفسِه. */
+    .sidebar .sb-tab-src { display: none !important; }
 
     /* ─── قسم القائمة الجانبية ─── */
     .sidebar-section { margin-bottom: 4px; }
@@ -1337,6 +1340,9 @@
     }
     .tab-btn:hover { color:var(--primary); }
     .tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); }
+    /* 40h: شريطُ تبويبات الصفحات المدموجة (‏`_ptMount`) — صنفٌ مستقلّ لا `.tabs` لأن
+       `switchActivitiesTab` تستعلم `.tabs .tab-btn` في الصفحة كلِّها. */
+    .pt-bar { display:flex; gap:4px; border-bottom:2px solid var(--border); margin-bottom:16px; overflow-x:auto; }
     .tab-panel { display:none; }
     .tab-panel.active { display:block; animation:fadeIn .25s ease; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
@@ -1778,6 +1784,7 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   .btn-group        { width: 100%; justify-content: flex-end; }
 
   .tabs             { gap: 0; padding-bottom: 2px; }
+  .pt-bar           { gap: 0; padding-bottom: 2px; }
   .tab-btn          { padding: 9px 12px; font-size: .82rem; }
 
   /* تحسين بطاقة الخبر على الموبايل */
@@ -2718,8 +2725,6 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-calendar"   onclick="showSection('calendar')">  <span class="si-icon">🗓️</span> التقويم المدرسي</button>
   <button class="sidebar-item" id="si-news"       onclick="showSection('news')" title="نشر الأخبار والإشعارات للطلاب وأولياء الأمور">      <span class="si-icon">📢</span> نشر الاخبار</button>
   <button class="sidebar-item" id="si-circulars"  onclick="showSection('circulars')"> <span class="si-icon">📜</span> التعاميم الإدارية <span class="badge" id="badge-circulars" style="display:none;"></span></button>
-  <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> إدارة المحتوى والأنشطة</button>
-  <button type="button" class="sidebar-item" id="si-activitySup" onclick="showSection('activitySup')" style="display:none;"><span class="si-icon">🗂️</span> إدارة الأنشطة والإشراف</button>
   <button class="sidebar-item" id="si-reports"    onclick="showSection('reports')">   <span class="si-icon">📊</span> التقارير</button>
   <button class="sidebar-item" id="si-notes"      onclick="showSection('notes')">
     <span class="si-icon">💬</span> ملاحظات أولياء الأمور
@@ -2727,7 +2732,8 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   </button>
   <button class="sidebar-item" id="si-attendance" onclick="showSection('attendance')"><span class="si-icon">📋</span> الغياب اليومي</button>
   <button class="sidebar-item" id="si-teacher-absence" onclick="showSection('teacher-absence')"><span class="si-icon">🧑‍🏫</span> غياب المعلمين</button>
-  <button type="button" class="sidebar-item" id="si-letterheads" onclick="showSection('letterheads')" style="display:none;"><span class="si-icon">🗂️</span> ديباجات المدرسة</button>
+  <!-- 40h: «هوية المدرسة» = تبويبا بيانات المدرسة + ديباجات المدرسة (الأزرار الأصلية في .sb-tab-src أسفل الشريط) -->
+  <button type="button" class="sidebar-item" id="si-schoolIdentity" onclick="showSection('schoolIdentity')" style="display:none;"><span class="si-icon">🏫</span> هوية المدرسة</button>
 </div>
 <!-- قسم التحكم الاجتماعي (مدير/وكيل/الأنشطة) -->
 <div class="sidebar-section" id="socialSection" style="display:none;">
@@ -2750,22 +2756,18 @@ input, select, textarea, .form-control, .form-select, .grade-input {
        أخفى الأداةَ عن مالك المنصّة نفسه حتى طلبها ظانّاً أنها غير مبنيّة (2026-08-10). -->
   <button class="sidebar-item" id="si-schedSettings"   onclick="showSection('schedSettings')">  <span class="si-icon">📆</span> توزيع الحصص والتواقيت</button>
   <button class="sidebar-item" id="si-schoolTemplate"  onclick="showSection('schoolTemplate')" style="display:none;"><span class="si-icon">🏫</span> قالب تزويد المدرسة</button>
-  <button class="sidebar-item" id="si-schoolBrand"     onclick="showSection('schoolBrand')" style="display:none;"><span class="si-icon">🖼️</span> بيانات المدرسة</button>
-  <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
   <button class="sidebar-item" id="si-adminStudents"   onclick="showSection('adminStudents')">  <span class="si-icon">🔒</span> الحجب المالي</button>
   <button class="sidebar-item" id="si-platformReviewsAdmin" onclick="showSection('platformReviewsAdmin')"> <span class="si-icon">⭐</span> تقييمات المنصة</button>
-  <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
-  <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
+  <!-- 40h: «الشهادات والكشوف» = تبويبا الشهادات + الكشوفات -->
+  <button class="sidebar-item" id="si-certsSheets" onclick="showSection('certsSheets')" style="display:none;"><span class="si-icon">🏅</span> الشهادات والكشوف</button>
 </div>
 <div class="sidebar-divider"></div>
 <div class="sidebar-section">
   <span class="sidebar-label">المهام والإشراف</span>
-  <button class="sidebar-item" id="si-myTasks" onclick="showSection('myTasks')">
-    <span class="si-icon">✅</span> مهامي
+  <!-- 40h: «الأنشطة والمهام» = مهامي + إدارة المهام + إدارة الأنشطة والإشراف + جميع الأنشطة + إدارة المحتوى -->
+  <button class="sidebar-item" id="si-activitiesTasks" onclick="showSection('activitiesTasks')">
+    <span class="si-icon">✅</span> الأنشطة والمهام
     <span class="si-badge-notes" id="myTasksBadge" style="display:none;">0</span>
-  </button>
-  <button class="sidebar-item" id="si-tasksMgmt" onclick="showSection('tasksMgmt')" style="display:none;">
-    <span class="si-icon">🗂️</span> إدارة المهام والإشراف
   </button>
   <button class="sidebar-item" id="si-incidents" onclick="showSection('incidents')" style="display:none;">
     <span class="si-icon">🚨</span> حوادث الطلاب
@@ -2816,6 +2818,25 @@ input, select, textarea, .form-control, .form-select, .grade-input {
   <button class="sidebar-item" id="si-platformReview" onclick="openPlatformReviewModal()">
     <span class="si-icon">⭐</span> قيّم تجربتك
   </button>
+</div>
+<!-- 40h: صفحاتٌ صارت تبويبات — أزرارُها الأصلية باقيةٌ هنا **بلا تغيير** (المعرّف والنداء والنمط):
+     كلُّ طبقات الإظهار (الأدوار/المحاسب/المشرف/السحب/المنح) تضبط style.display لها كما كانت، فصار
+     معناه «التبويب مسموح أم لا». القسمُ مخفيٌّ دائماً (.sb-tab-src في CSS)، وزرُّ المجموعة الظاهر
+     يحسبه `_sbApplyMergedPages` (‏PAGE_TAB_GROUPS في _js-nav-permissions). -->
+<div class="sidebar-section sb-tab-src" aria-hidden="true">
+  <button class="sidebar-item" id="si-certificates"    onclick="showSection('certificates')">   <span class="si-icon">🏅</span> الشهادات</button>
+  <button class="sidebar-item" id="si-scoresheets"    onclick="showSection('scoresheets')">    <span class="si-icon">📋</span> الكشوفات</button>
+  <button class="sidebar-item" id="si-schoolBrand"     onclick="showSection('schoolBrand')" style="display:none;"><span class="si-icon">🖼️</span> بيانات المدرسة</button>
+  <button type="button" class="sidebar-item" id="si-letterheads" onclick="showSection('letterheads')" style="display:none;"><span class="si-icon">🗂️</span> ديباجات المدرسة</button>
+  <button class="sidebar-item" id="si-myTasks" onclick="showSection('myTasks')">
+    <span class="si-icon">✅</span> مهامي
+  </button>
+  <button class="sidebar-item" id="si-tasksMgmt" onclick="showSection('tasksMgmt')" style="display:none;">
+    <span class="si-icon">🗂️</span> إدارة المهام والإشراف
+  </button>
+  <button type="button" class="sidebar-item" id="si-activitySup" onclick="showSection('activitySup')" style="display:none;"><span class="si-icon">🗂️</span> إدارة الأنشطة والإشراف</button>
+  <button class="sidebar-item" id="si-adminActivities" onclick="showSection('adminActivities')"><span class="si-icon">📋</span> جميع الأنشطة</button>
+  <button type="button" class="sidebar-item" id="si-contentHub" onclick="showSection('contentHub')"><span class="si-icon">🎨</span> إدارة المحتوى والأنشطة</button>
 </div>
     </aside>
 
@@ -11429,6 +11450,8 @@ function _sectionRenderers() {
 function _sectionIsRenderable(name) {
   if (!name) return false;
   if (PORTAL_STATIC_SECTIONS.hasOwnProperty(name)) return true;
+  /* 40h: اسمُ مجموعةٍ يُعرَض (‏`showSection` تحوّله إلى تبويبه) ولا يُحفَظ أبداً. */
+  if (typeof PAGE_TAB_GROUPS === 'object' && PAGE_TAB_GROUPS.hasOwnProperty(name)) return true;
   var r = null;
   try { r = _sectionRenderers(); } catch (e) { return true; }
   return typeof r[name] === 'function';
@@ -11445,6 +11468,9 @@ function showSection(name, opt) {
     // إيقاف استطلاع "متصلين الآن" الدوري (صفحة الزيارات) عند مغادرتها لأي قسم آخر —
     // لا آلية تنظيف مؤقّتات مركزية هنا، فيلزم إيقافه صراحة قبل عرض أي قسم جديد.
     if (typeof _visitsStopPolling === 'function') { try { _visitsStopPolling(); } catch (eVp) {} }
+    /* 40h: اسمُ مجموعةٍ (زرُّ الشريط) ⇒ تبويبٌ حقيقيّ **قبل** الحفظ ومزامنة الرابط أدناه — فما
+       يُخزَّن في localStorage ويُكتَب في المسار اسمُ صفحةٍ قديمٌ دائماً، لا اسمُ مجموعة. */
+    if (typeof PAGE_TAB_GROUPS === 'object' && PAGE_TAB_GROUPS.hasOwnProperty(name)) name = _ptPickTab(name);
     // 🔖 حفظ القسم الحالي كي تعود إعادة التحميل لنفس المكان لا للصفحة الرئيسية
     App.currentSection = name;
     /* 🔴 لا يُحفَظ قسمٌ لا يُعرَض — وهذا **جذرُ الحالة اللاصقة** لا عَرَضُها:
@@ -11554,6 +11580,8 @@ function showSection(name, opt) {
           '<div class="es-sub">سيتم إتاحتها قريباً</div>' +
         '</div>';
     }
+    // 40h: شريطُ تبويبات المجموعة أعلى الصفحة (حين يُسمَح بتبويبَين فأكثر)؛ وإزالتُه لغيرها.
+    try { if (typeof _ptMount === 'function') _ptMount(name); } catch (ePt) {}
 
     // تحديث العنصر النشط في القائمة الجانبية
     updateActiveSidebarItem(name);
@@ -11584,11 +11612,13 @@ function showSection(name, opt) {
 function updateActiveSidebarItem(name) {
   var allSidebarItems = document.querySelectorAll('.sidebar-item');
   var expectedId = 'si-' + name;
+  // 40h: التبويبُ يُبرِز زرَّ مجموعته الظاهر أيضاً
+  var groupId = (typeof PAGE_TAB_OF === 'object' && PAGE_TAB_OF.hasOwnProperty(name)) ? 'si-' + PAGE_TAB_OF[name] : '';
   for (var i = 0; i < allSidebarItems.length; i++) {
     var item = allSidebarItems[i];
     // تجاهل العناصر التي ليس لها id أو لا تمثل زر صفحة
     if (item && item.id) {
-      if (item.id === expectedId) {
+      if (item.id === expectedId || (groupId && item.id === groupId)) {
         item.classList.add('active');
       } else {
         item.classList.remove('active');
@@ -11696,6 +11726,144 @@ var SIDEBAR_PERMISSIONS_MANIFEST = {
   // زر عام يفتح مودالاً (لا showSection) — ظاهر للجميع بنفس منطق si-profile/si-help.
   'si-platformReview':   { roles:null, accountant:true,  supervisor:null }
 };
+
+/* ── 40h: صفحاتٌ مدموجةٌ في زرٍّ واحدٍ بتبويبات (قرار المالك 2026-10-03) ──────────────────────
+   معرّفاتُ الصفحات القديمة التسعة **باقيةٌ وحدةَ الصلاحية** وصارت تبويبات: في المانيفست أعلاه،
+   وفي `PAGE_CAPABILITY_MAP`، وفي pagePerms المحفوظة، وفي localStorage والرابط. أزرارُها الأصلية
+   باقيةٌ بلا تغيير داخل `.sb-tab-src` المخفيّ دائماً، فكلُّ طبقة إظهارٍ تضبطها كما كانت ⇒ معنى
+   display عليها صار «التبويب مسموح أم لا».
+   ومعرّفُ المجموعة **للعرض وحدَه**: لا يدخل المانيفست ولا خريطة القدرات ولا يُحفَظ أبداً (الحفظُ
+   الخادميّ يُسقط المعرّفات المجهولة). نسختُه الخادمية `PAGE_MERGE_GROUPS` (‏_PageCapabilityMap.js)،
+   ويفرض تطابقَهما tests/page_merge_40h.test.js. */
+var PAGE_TAB_GROUPS = {
+  certsSheets:     { label: 'الشهادات والكشوف', tabs: ['certificates', 'scoresheets'] },
+  schoolIdentity:  { label: 'هوية المدرسة',     tabs: ['schoolBrand', 'letterheads'] },
+  activitiesTasks: { label: 'الأنشطة والمهام',  tabs: ['myTasks', 'tasksMgmt', 'activitySup', 'adminActivities', 'contentHub'] }
+};
+var PAGE_TAB_OF = (function () {
+  var out = {};
+  for (var g in PAGE_TAB_GROUPS) {
+    if (!PAGE_TAB_GROUPS.hasOwnProperty(g)) continue;
+    for (var i = 0; i < PAGE_TAB_GROUPS[g].tabs.length; i++) out[PAGE_TAB_GROUPS[g].tabs[i]] = g;
+  }
+  return out;
+})();
+var PT_STORE_KEY = 'teacherPageTab_v1';   // { <group>: <آخر تبويب> }
+
+/* التبويبُ مسموح = زرُّه الأصلي موجودٌ وليس display:none — نفسُ معيار `_savedSectionOrDashboard`. */
+function _ptTabAllowed(tab) {
+  var el = document.getElementById('si-' + tab);
+  return !!el && el.style.display !== 'none';
+}
+function _ptAllowedTabs(group) {
+  var g = PAGE_TAB_GROUPS[group], out = [];
+  if (!g) return out;
+  for (var i = 0; i < g.tabs.length; i++) if (_ptTabAllowed(g.tabs[i])) out.push(g.tabs[i]);
+  return out;
+}
+function _ptReadStore() {
+  var m = null;
+  try { m = JSON.parse(localStorage.getItem(PT_STORE_KEY) || 'null'); } catch (e) { m = null; }
+  return (m && typeof m === 'object') ? m : {};
+}
+function _ptRemember(group, tab) {
+  try { var m = _ptReadStore(); m[group] = tab; localStorage.setItem(PT_STORE_KEY, JSON.stringify(m)); } catch (e) {}
+}
+/* اسمُ مجموعة ⇒ تبويبٌ حقيقيّ: آخرُ تبويبٍ فُتح إن بقي مسموحاً، وإلّا أوّلُ مسموح، وإلّا اللوحة. */
+function _ptPickTab(group) {
+  var allowed = _ptAllowedTabs(group);
+  var last = _ptReadStore()[group];
+  if (last && allowed.indexOf(last) !== -1) return last;
+  return allowed.length ? allowed[0] : 'dashboard';
+}
+/* اسمُ صفحةٍ للعرض في شاشة الضبط: «المجموعة › الصفحة» للتبويب، ونصُّ الزرّ لغيره. */
+function _ptPageLabel(id, el) {
+  var base = String((el && el.textContent) || id).replace(/\s+/g, ' ').trim();
+  var t = String(id).replace(/^si-/, '');
+  return PAGE_TAB_OF.hasOwnProperty(t) ? PAGE_TAB_GROUPS[PAGE_TAB_OF[t]].label + ' › ' + base : base;
+}
+
+/* شريطُ التبويبات أعلى `#dynamicContent`. صنفُه `pt-bar` لا `.tabs`: `switchActivitiesTab`
+   تستعلم `.tabs .tab-btn` في الصفحة كلِّها. والنداءُ صفةُ onclick (لا خاصيّة) كي يبقى عاملاً
+   لو أُعيد تسلسلُ المحتوى نصّاً. */
+var _ptCur = null, _ptObs = null, _ptReadds = 0;
+function _ptGo(tab) {
+  if (PAGE_TAB_OF.hasOwnProperty(tab)) _ptRemember(PAGE_TAB_OF[tab], tab);
+  showSection(tab);
+}
+function _ptBuildBar(group, tab) {
+  var allowed = _ptAllowedTabs(group);
+  var bar = document.createElement('div');
+  bar.className = 'pt-bar';
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', PAGE_TAB_GROUPS[group].label);
+  for (var i = 0; i < allowed.length; i++) {
+    var t = allowed[i], b = document.createElement('button'), lab = document.getElementById('si-' + t);
+    b.setAttribute('type', 'button');
+    b.className = 'tab-btn pt-tab' + (t === tab ? ' active' : '');
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+    b.setAttribute('data-pt', t);
+    b.setAttribute('onclick', "_ptGo('" + t + "')");
+    b.textContent = String((lab && lab.textContent) || t).replace(/\s+/g, ' ').trim();
+    bar.appendChild(b);
+  }
+  return bar;
+}
+function _ptHasBar(dyn) {
+  var c = dyn.children || [];
+  for (var i = 0; i < c.length; i++) if (String(c[i].className || '').indexOf('pt-bar') !== -1) return true;
+  return false;
+}
+function _ptMount(name) {
+  var dyn = document.getElementById('dynamicContent');
+  if (!dyn) return;
+  var olds = dyn.querySelectorAll('.pt-bar');
+  for (var i = 0; i < olds.length; i++) if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
+  _ptCur = null;
+  var group = PAGE_TAB_OF.hasOwnProperty(name) ? PAGE_TAB_OF[name] : '';
+  if (!group) return;
+  _ptRemember(group, name);
+  if (_ptAllowedTabs(group).length < 2) return;
+  _ptCur = { group: group, tab: name };
+  _ptReadds = 0;
+  dyn.insertBefore(_ptBuildBar(group, name), dyn.firstChild);
+  _ptWatch(dyn);
+}
+/* نداءٌ متأخّرٌ يُعيد كتابة `#dynamicContent` (‏activitySup · schoolBrand) يمحو الشريط — يُعاد
+   ما دام التبويبُ نفسُه معروضاً؛ محروسٌ بعدّادٍ فلا حلقةَ مع شيفرةٍ تمحو باستمرار. */
+function _ptWatch(dyn) {
+  if (_ptObs || typeof MutationObserver !== 'function') return;
+  _ptObs = new MutationObserver(function () {
+    if (!_ptCur || typeof App !== 'object' || !App || App.currentSection !== _ptCur.tab) return;
+    if (_ptHasBar(dyn) || _ptReadds >= 20) return;
+    _ptReadds++;
+    try { dyn.insertBefore(_ptBuildBar(_ptCur.group, _ptCur.tab), dyn.firstChild); } catch (e) {}
+  });
+  _ptObs.observe(dyn, { childList: true });
+}
+
+/* زرُّ المجموعة ظاهرٌ ⇔ أيُّ زرٍّ أصليٍّ من تبويباتها ليس display:none — يُنادى **آخرَ**
+   `initSidebarByRole` بعد كلّ الطبقات. ثمّ يُصلَح ظهورُ قسمه وحدَه (نمطُ `_sbApplyCapHide`/
+   `_sbApplyGrantOverlay`؛ لا `_sbSyncSections` عامّةً تُعيد قسمَ السوشل المُخفى قسراً). */
+function _sbApplyMergedPages() {
+  for (var g in PAGE_TAB_GROUPS) {
+    if (!PAGE_TAB_GROUPS.hasOwnProperty(g)) continue;
+    var btn = document.getElementById('si-' + g);
+    if (!btn) continue;
+    var any = _ptAllowedTabs(g).length > 0;
+    btn.style.display = any ? '' : 'none';
+    var sec = btn.parentNode;
+    while (sec && sec !== document.body && !(sec.className && String(sec.className).indexOf('sidebar-section') !== -1)) sec = sec.parentNode;
+    if (!sec || sec === document.body) continue;
+    if (any) { sec.style.display = ''; continue; }
+    var items = sec.querySelectorAll('.sidebar-item'), vis = false;
+    for (var k = 0; k < items.length; k++) if (items[k].style.display !== 'none') { vis = true; break; }
+    if (!vis) sec.style.display = 'none';
+  }
+  // هبوطُ المحاسب يقع داخل `_sbApplyAccountant` قبل طبقتَي السحب والمنح ⇒ يُعاد رسمُ الشريط بحالتها الأخيرة.
+  if (typeof App === 'object' && App && App.currentSection && PAGE_TAB_OF.hasOwnProperty(App.currentSection)) _ptMount(App.currentSection);
+}
 
 // دوال اشتقاق نقية (بلا حالة) — كل واحدة تبني عرضاً واحداً من المصدر الموحَّد أعلاه فقط.
 function _sbBuildTableRules(manifest) {
@@ -11970,6 +12138,7 @@ function initSidebarByRole() {
     else                            { _sbApplyTable(role); }
     _sbApplyCapHide(u);
     _sbApplyGrantOverlay(u);
+    _sbApplyMergedPages();   // 40h: آخرَ الطبقات — أزرارُ المجموعات من حالة أزرار تبويباتها
   } catch (eSb) {
     // لا تُبقِ القائمة محجوبة عند خطأ — أظهِرها كي لا يُحبَس المستخدم.
     console.warn('initSidebarByRole error:', eSb);
@@ -11977,13 +12146,6 @@ function initSidebarByRole() {
   /* شارةُ الملاحظات تُرسم من حزمة الإشعارات (`loadNotifCountsBundle` ⇒ `_applyNotesBadge`)
      لا بنداءٍ مستقلٍّ في كلّ إقلاع. (خطّة 09-23-ب · 1-أ) */
   if (sidebar) sidebar.classList.add('role-ready');   // يرفع حجب الوميض (CSS)
-
-  /* 🔬 **قياسُ الانحراف — بعد اكتمال البناء لا أثناءه.**
-     🔴 والموضعُ حاكم: قبلَ `role-ready` تكون عناصرُ لم تُطبَّق عليها القواعدُ بعد،
-     فيُقاس **وسطُ البناء** لا نتيجتُه — ويُبلَّغ انحرافٌ وهميٌّ يُلاحَق بلا سبب.
-     ⚠️ ومؤجَّلٌ عن مسار الإقلاع الحارّ: المنصّةُ مخنوقةٌ على طابور القبول، ونداءُ
-     قياسٍ يزاحم نداءَ بياناتٍ **يُسمّن العلّةَ التي نقيسها**. */
-  try { setTimeout(_reportPageVisibilityDrift, 4000); } catch (eD) {}
 }
 
 // ==================== صلاحيات المشرف: فهرس الصفحات + البوابة ====================
@@ -12081,7 +12243,7 @@ var HELP_TOPICS_CATALOG = [
       "لكل تعميم أزرار: ✏️ تعديل، ✅/🚫 تفعيل أو تعطيل، 🗑️ حذف نهائي (بتأكيد)."
     ]}
   ]},
-  { id:'contentHub', label:'إدارة المحتوى والأنشطة', icon:'🎨', category:'الأدوات الأكاديمية', body:[
+  { id:'contentHub', label:'إدارة المحتوى والأنشطة', icon:'🎨', category:'المهام والإشراف', body:[
     {type:'p', text:"ارفع صوراً وفيديوهات توثّق أنشطتك — بمبادرة منك أو تنفيذاً لمهمة كلَّفتك بها إدارة الأنشطة — لمراجعتها واعتمادها قبل نشرها رسمياً على وسائل التواصل الخاصة بالمدرسة."},
     {type:'ol', items:[
       "من بطاقة «رفع محتوى»: اختر الفئة (إعلان/نشاط/إنجاز/فعالية)، اكتب عنواناً ووصفاً، وارفق صوراً أو فيديوهات (حتى ٢٥MB لكل ملف، يمكن اختيار عدّة ملفات دفعة واحدة).",
@@ -12090,7 +12252,7 @@ var HELP_TOPICS_CATALOG = [
     ]},
     {type:'tip', text:"📬 ما ترفعه يصل لمشرفة الأنشطة/الإدارة للمراجعة والاعتماد، ثم التصميم والنشر النهائي — لا يظهر تلقائياً على حسابات التواصل الاجتماعي فور الرفع."}
   ]},
-  { id:'activitySup', label:'إدارة الأنشطة والإشراف', icon:'🗂️', category:'الأدوات الأكاديمية', body:[
+  { id:'activitySup', label:'إدارة الأنشطة والإشراف', icon:'🗂️', category:'المهام والإشراف', body:[
     {type:'p', text:"لوحة إشراف مشرفة/مشرف الأنشطة — تكليف المعلمين ومراجعة واعتماد ما يرفعونه."},
     {type:'ul', items:[
       "📌 تكليف مهمة: اختر معلماً، حدِّد موعداً نهائياً، واكتب عنوان ووصف المهمة.",
@@ -12212,11 +12374,11 @@ var HELP_TOPICS_CATALOG = [
     ]},
     {type:'tip', text:"📑 يمكنك أيضاً تنزيل/رفع ورقة واحدة فقط من القالب (بدل الملف كاملاً) إن أردت تحديث جزء محدَّد فقط."}
   ]},
-  { id:'schoolBrand', label:'بيانات المدرسة', icon:'🖼️', category:'إدارة النظام', body:[
+  { id:'schoolBrand', label:'بيانات المدرسة', icon:'🖼️', category:'الأدوات الأكاديمية', body:[
     {type:'p', text:"عدِّل شعار مدرستك وروابط التواصل الاجتماعي (واتساب/فيسبوك/انستغرام/يوتيوب) ولون الثيم — تظهر هذه البيانات في دليل المدارس العام."},
     {type:'tip', text:"🔗 زر «اتصل بفيسبوك» يفتح نافذة تسجيل دخول فيسبوك الرسمية؛ بعد الموافقة تتحدَّث الصفحة تلقائياً لتُظهر حالة الاتصال."}
   ]},
-  { id:'adminActivities', label:'جميع الأنشطة', icon:'📋', category:'إدارة النظام', body:[
+  { id:'adminActivities', label:'جميع الأنشطة', icon:'📋', category:'المهام والإشراف', body:[
     {type:'p', text:"سجلّ شامل لكل ما نشره معلّمو المدرسة، في 3 تبويبات: 📝 الواجبات، 📢 الأخبار، ⚠️ السلوكيات — مرتَّبة بالأحدث أولاً."},
     {type:'ul', items:[
       "الواجبات والأخبار: تعديل (✏️) أو حذف (🗑️) لكل عنصر.",
@@ -12327,11 +12489,15 @@ var HELP_TOPICS_CATALOG = [
 // حاوية أب (sidebar-section/adminSection) لا يعكسه فحص style.display على العنصر وحده — لا تعليمات
 // عن صفحة لا يصل إليها المستخدم (قيد صريح، راجع teacher/CLAUDE.md).
 function _helpVisibleTopics() {
-  var out = [], i, t, el;
+  var out = [], i, t, el, grp;
   for (i = 0; i < HELP_TOPICS_CATALOG.length; i++) {
     t = HELP_TOPICS_CATALOG[i];
     el = document.getElementById('si-' + t.id);
-    if (el && el.offsetParent !== null) out.push(t);
+    /* 40h: زرُّ التبويب داخل `.sb-tab-src` المخفيّ دائماً (offsetParent دوماً null) ⇒ يُقاس بـdisplay
+       زرِّه مع ظهور زرّ مجموعته. */
+    grp = PAGE_TAB_OF.hasOwnProperty(t.id) ? document.getElementById('si-' + PAGE_TAB_OF[t.id]) : null;
+    if (grp) { if (el && el.style.display !== 'none' && grp.offsetParent !== null) out.push(t); }
+    else if (el && el.offsetParent !== null) out.push(t);
   }
   return out;
 }
@@ -12359,61 +12525,6 @@ function _helpRenderBlocks(blocks) {
     }
   }
   return html;
-}
-
-/* 🔬 **مِجَسُّ انحرافِ العرض — يقيس ولا يُغيّر شيئاً.**
- *
- * 🎯 **العلّة:** مَن يرى أيَّ صفحةٍ يقرّره اليومَ **مصدران متوازيان** — الخادمُ بقدراته،
- * والعميلُ بـ`SIDEBAR_PERMISSIONS_MANIFEST` وخمسِ دوالِّ اشتقاقٍ فوقه. **وقد انحرفا
- * مرّتين موثَّقتين** (بندا teacher 29 و30: عنصرٌ ظاهرٌ يردّ «غير مصرَّح»، والعكس).
- *
- * 🔴 **والعلاجُ النهائيُّ ليس حارساً ثالثاً بل إلغاءَ إمكان الانحراف:** الخادمُ يحسب
- * القائمةَ بالمُحكِّم نفسِه، والعميلُ يعرض ما قيل له. **لكنّ القلبَ لا يقع قبل الإثبات** —
- * فهذا المِجَسُّ يُرسل ما قرّره العميلُ فعلاً ويقارنه بحكم الخادم، **ويُسجَّل الاختلافُ
- * وحدَه**. ⇒ صفرُ تغييرٍ في العرض، ورقمٌ يقرّر متى يُقلَب المصدر.
- *
- * ⚠️ **ويُرسَل مرّةً واحدةً لكلّ جلسةِ تبويب** — نداءٌ في كلّ إقلاعٍ يُثقل حصّةً مشبَعةً
- * أصلاً، والمقارنةُ لا تتغيّر داخل الجلسة الواحدة.
- * 🔴 **وخلفيٌّ بلا معالجِ نجاحٍ يُغيّر شيئاً** — فشلُه لا يُرى ولا يُبلَّغ للمستخدم:
- * مِجَسُّ قياسٍ لا يجوز أن يُنتج رسالةَ خطأٍ لمعلّمٍ يعمل. */
-var _pgDriftSent = false;
-function _reportPageVisibilityDrift(){
-  try {
-    if (_pgDriftSent) return;
-    if (!App || !App.user || !App.user.token) return;
-    _pgDriftSent = true;
-    var seen = [];
-    var items = document.querySelectorAll('[id^="si-"]');
-    for (var i = 0; i < items.length; i++) {
-      /* 🔴 **المقروءُ هو العرضُ الفعليُّ بعد كلّ التطبيقات** — لا نيّةُ المصفوفة.
-         وقراءةُ المصفوفة كانت ستقيس ما نظنّه لا ما يراه المستخدم. */
-      if (items[i].style.display !== 'none') seen.push(items[i].id);
-    }
-    if (!seen.length) return;   /* قبل بناء الشريط — لا يُقاس فراغٌ عابر */
-
-    /* 🔴 **عبر `_csRunBackground` لا بنداءٍ خام — وأمسك الخطأَ حارسٌ قائمٌ في نفس
-       الدفعة** («نداءات `google.script.run` الخام ≤ ٢٨ · المقيس ٢٩»).
-       🎯 **والقناةُ الخلفيّةُ هي الصحيحةُ لهذا تحديداً:** المِجَسُّ **يُسقَط عند
-       الازدحام** بدل أن يزاحم نداءَ بياناتٍ على حصّةٍ مشبَعة — وقياسٌ يُؤجَّل لا يضرّ،
-       وقياسٌ يُبطئ المستخدمَ يُناقض غرضَه.
-       ⚠️ **ولا يُعاد ضبطُ `_pgDriftSent` عند الإسقاط عمداً** — إعادتُه تجعل المِجَسَّ
-       يحاول في كلّ إقلاعٍ لاحقٍ داخل نفس الجلسة، وهو ما بُني العلَمُ لمنعه. */
-    if (typeof _csRunBackground === 'function' && typeof callServer === 'function') {
-      _csRunBackground('reportPageVisibilityDriftProtected', function (done) {
-        /* 🔴 **`callServer` لا `google.script.run` خامّاً — والفرقُ ليس أسلوبياً.**
-           حارسُ السقّاطة («نداءات خام ≤ ٢٨») أمسك أوّلَ صياغةٍ لي، **وهو محقّ**:
-           النداءُ الخام يتجاوز تصنيفَ الخطأ وإعادةَ المحاولة وبوّابةَ التزامن.
-           🎯 **ولم أرفع السقفَ ولم أنقل الكودَ إلى ملفٍّ مستثنى** — كلاهما التفافٌ على
-           حارسٍ صادق؛ والعلاجُ أن يمرّ المِجَسُّ بالقناة كما يمرّ كلُّ نداءٍ آخر.
-           ⚠️ ومُعالِجا النجاح والفشل **يستدعيان `done()` وحدَه** ⇒ صفرُ أثرٍ على العرض
-           وصفرُ رسالةٍ للمستخدم: مِجَسُّ قياسٍ لا يجوز أن يُنتج خطأً لمعلّمٍ يعمل. */
-        callServer('reportPageVisibilityDriftProtected',
-          { token: App.user.token, clientPages: seen },
-          function(){ done(); },
-          function(){ done(); });
-      }, function(){ /* أُسقط للازدحام — ولا شيءَ يُقال للمستخدم */ });
-    }
-  } catch (e) { /* مِجَسٌّ لا يُسقط شيئاً */ }
 }
 
 // تطبيق صلاحيات صفحات المشرف على القائمة الجانبية
@@ -12495,7 +12606,7 @@ function _rpmPageCatalog(){
   for(var k in pc){ if(!pc.hasOwnProperty(k)||SKIP[k]) continue;
     if(pc[k] && (!grant[pc[k]] || !_rpmMayGrant(pc[k]))) continue;
     var el=document.getElementById(k); if(!el) continue;
-    out.push({ key:k, label:(el.textContent||k).replace(/\s+/g,' ').trim(), cap:pc[k]||'' });
+    out.push({ key:k, label:_ptPageLabel(k, el), cap:pc[k]||'' });   // 40h: التبويبُ «المجموعة › الصفحة»
   }
   return out;
 }
@@ -12539,7 +12650,7 @@ function _rpmVisiblePages(role, eff, extra, supPages){
   for(k in pc) if(pc.hasOwnProperty(k) && pc[k] && eff[pc[k]]) set[k]=1;
   for(k in set){ if(!set.hasOwnProperty(k)) continue; if(pc[k] && !eff[pc[k]]) continue;
     var el=document.getElementById(k); if(!el) continue;
-    out.push((el.textContent||k).replace(/\s+/g,' ').trim()); }
+    out.push(_ptPageLabel(k, el)); }
   return out;
 }
 function _rpmPreviewHtml(labels){
@@ -27771,7 +27882,9 @@ function _profileAvailablePages() {
     var it = items[i];
     if (it.id === 'si-profile') continue;
     if (it.style && it.style.display === 'none') continue;
-    var txt = (it.textContent || '').replace(/\s+/g, ' ').replace(/\b0\b/g, '').trim();
+    // 40h: زرُّ المجموعة ملخّصٌ لتبويباته ⇒ تُعرَض التبويباتُ المسموحة نفسُها «المجموعة › الصفحة»
+    if (typeof PAGE_TAB_GROUPS === 'object' && PAGE_TAB_GROUPS.hasOwnProperty(String(it.id).replace(/^si-/, ''))) continue;
+    var txt = (typeof _ptPageLabel === 'function' ? _ptPageLabel(it.id, it) : (it.textContent || '')).replace(/\s+/g, ' ').replace(/\b0\b/g, '').trim();
     if (!txt) continue;
     chips += '<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:5px 10px;margin:3px;font-size:12px">' + escapeHtml(txt) + '</span>';
   }
