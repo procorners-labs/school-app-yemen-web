@@ -238,7 +238,10 @@ var SLOW_ADMIN_FNS = {
   promoteSingleStudentProtected : 1,   // teacher — ترقية طالب واحد + مزامنة قائمة الدرجات (36o)
   getEvaluationIndicatorsProtected: 1,  // teacher — مؤشرات التقييم (37c: حتى 60 معلماً + التزام الدرجات بلا كاش)
   getSupervisionTeamProtected   : 1,   // teacher — فريق المشرف (37a: التعيينات + الطلاب + حالة الشهر)
-  seedCurriculumRegistryProtected: 1   // teacher — زرع سجلّ المناهج (38c: انقطع عند 25.7ث)
+  seedCurriculumRegistryProtected: 1,  // teacher — زرع سجلّ المناهج (38c: انقطع عند 25.7ث)
+  getReportsBundleProtected     : 1,   // teacher — حزمة التقارير (42a: جزءُ p0 وحدَه 19.7ث و32.9ث في [RPT-BUNDLE])
+  getReportsCoreProtected       : 1,   // teacher — نواة التقارير (42a: p90 = 16.2ث في [LOAD])
+  getAllTeacherActivityReportProtected: 1  // teacher — نشاطُ كلّ المعلمين (42a: 15ث مقيس)
 };
 /* نفسُ حارس `_bhIsLoginBody`: تحليلٌ حقيقيّ مقيَّدُ الحجم و`hasOwnProperty`، وأيُّ شكٍّ
    ⇒ النافذةُ العادية (fail-closed على الامتياز). */
@@ -422,8 +425,10 @@ function _hedgeOn(env) {
   catch (e) { return false; }
 }
 /** اسمُ الدالّة إن كان الطلبُ مؤهَّلاً للاحتياطيّ، وإلّا `''`. 🔴 يُقرأ بـ`JSON.parse` لا برجيكس
- *  (نفسُ درس `_bhIsLoginBody`: المفتاحُ المكرَّر يُنفَّذ آخرُه). وأيُّ شكٍّ ⇒ `''` (fail-closed). */
-function _hedgeFnOf(app, method, body) {
+ *  (نفسُ درس `_bhIsLoginBody`: المفتاحُ المكرَّر يُنفَّذ آخرُه). وأيُّ شكٍّ ⇒ `''` (fail-closed).
+ *  `anyArgs` (‏42a، ميزانيةُ القراءة وحدَها): لا يُفحص `HEDGE_UNSAFE_ARGS` — ذاك يمنع **نسختين
+ *  متوازيتين**، والميزانيةُ الأطول تنفيذٌ واحدٌ يُسلَّم ردُّه بدل أن يُرمى. */
+function _hedgeFnOf(app, method, body, anyArgs) {
   try {
     if (method !== 'POST' || typeof body !== 'string' || body.length > HEDGE_BODY_MAX) return '';
     var set = HEDGE_FNS[app];
@@ -433,7 +438,7 @@ function _hedgeFnOf(app, method, body) {
     if (Object.prototype.hasOwnProperty.call(o, 'opId')) return '';
     if (!Object.prototype.hasOwnProperty.call(set, o.fn)) return '';
     var ua = Object.prototype.hasOwnProperty.call(HEDGE_UNSAFE_ARGS, o.fn) ? HEDGE_UNSAFE_ARGS[o.fn] : '';
-    if (ua) {
+    if (ua && !anyArgs) {
       var args = Array.isArray(o.args) ? o.args : [];
       for (var i = 0; i < args.length; i++) {
         if (args[i] && typeof args[i] === 'object' && args[i][ua]) return '';
@@ -507,6 +512,42 @@ function _gasHedgedFetch(startLeg, primaryCtl, hedgeAtMs, hedgeStart, hedgeEnd, 
     }, hedgeAtMs);
     run('p', primaryCtl.signal);
   });
+}
+
+/* ═══ `READ_BUDGET_MS` — ميزانيةُ القراءات 50ث (‏2026-10-03 · الدفعة 42a، بموافقة المالك) ═══════
+   🎯 **القياس (لوحة «صحّة النقل»، 24 ساعة):** `abort_budget` = **13.2٪**، وسطرُ الظلّ: **37.6٪** من
+   المقطوع ردّ بجسم دالّتنا خلال 49ث ⇒ تجاوز عتبةَ قاعدة المالك «26ب» (‏≥25٪ ⇒ تُرفع ميزانيةُ قراءات
+   `HEDGE_FNS` إلى 50ث خلف متغيّر بيئة).
+   🔒 **الشروطُ كلُّها معاً، وأيُّ شكٍّ ⇒ 26ث كما كانت:** POST · اسمٌ في `HEDGE_FNS` لتطبيقه
+   (‏`_hedgeFnOf` نفسُه: تحليلٌ مقيَّدُ الحجم و`hasOwnProperty`) · بلا `opId` · ليست دخولاً
+   (`BH_LOGIN_FNS`) ولا أداةَ مدير (`SLOW_ADMIN_FNS`) · ولا نسخةَ بائتةً معروفةً للطلب (`_acStale`)
+   — معها تبقى 26ث كي يُخدَم البائتُ سريعاً عند `abort_budget`.
+   🟢 **لا حِملَ إضافيٌّ على GAS:** التنفيذُ يُكمل هناك على أيّ حال؛ الفرقُ أنّ ردَّه يُسلَّم بدل أن
+   يُرمى. ولا إعادةَ على المهلة (`_gasShouldRetry`) ⇒ تنفيذٌ واحدٌ كما كان.
+   ⚖️ **الحدود:** ‏`GAS_ATTEMPT_MARGIN_MS` ⇒ أسوأُ زمنٍ 49.7ث تحت `xhr.timeout = 60000` في الجسر ·
+   `SHADOW_CAP_MS` (55,000) أعلى من أقصى المقبول هنا فيبقى للظلّ ما يراقبه · `BH_SEAT_TTL_MS` (96,000)
+   أطولُ بهامشٍ فلا يُحصَد مقعدٌ حيّ. ويُعلَّم السطرُ `rb:1` في `ev:'gas'` لفصله في `/dev-stats`.
+   🔒 **fail-closed:** غيابُ المتغيّر · `off` · غيرُ رقم · خارج 26000..55000 ⇒ السلوكُ القديم حرفياً.
+   ↩️ **التراجع:** `"READ_BUDGET_MS": "off"` في `wrangler.jsonc`. */
+var READ_BUDGET_MIN_MS = 26000;
+var READ_BUDGET_MAX_MS = 55000;
+function _readBudgetMs(env) {
+  try {
+    var s = String((env && env.READ_BUDGET_MS) || '').trim();
+    if (!/^[0-9]{5}$/.test(s)) return 0;
+    var n = Number(s);
+    return (n >= READ_BUDGET_MIN_MS && n <= READ_BUDGET_MAX_MS) ? n : 0;
+  } catch (e) { return 0; }
+}
+/** الميزانيةُ الطويلة لهذا الطلب بالملّي ثانية، أو `0` (= السلوكُ القديم). */
+function _readBudgetFor(env, app, method, body, staleKnown) {
+  try {
+    var ms = _readBudgetMs(env);
+    if (!ms || staleKnown) return 0;
+    if (!_hedgeFnOf(app, method, body, true)) return 0;
+    if (_bhIsLoginBody(body) || _slowAdminBody(body)) return 0;
+    return ms;
+  } catch (e) { return 0; }
 }
 
 /* ═══ `GAS_LEG_SPLIT` — فصلُ ساقَي النداء قياساً محضاً (‏2026-09-23 · خطّةٌ مشتركة) ═══════
@@ -1015,8 +1056,10 @@ function _devStatsDiagOf(reason) {
   return { st: 0, code: null, msg: String((reason && reason.message) || 'error').replace(/[0-9a-f]{32}/gi, '…').slice(0, 160) };
 }
 /* تنفيذُ دوالَّ تُرجع وعوداً بتوازٍ لا يتجاوز `limit`، والنتيجةُ **بشكل `Promise.allSettled` وترتيبه**
-   حرفياً (`{status, value|reason}` بفهرس الدالّة) ⇒ لا يتغيّر شيءٌ في قارئ النتائج. */
-var DEV_STATS_CONCURRENCY = 2;
+   حرفياً (`{status, value|reason}` بفهرس الدالّة) ⇒ لا يتغيّر شيءٌ في قارئ النتائج.
+   42a: 2 ⇒ 4 — لوحةُ المالك (`getTransportStatsProtected`) تُجهَض 32٪ وهي تنتظر ١٤ استعلاماً اثنين اثنين.
+   و429 قِيس عند **تسعةٍ معاً** لا أربعة؛ وإن عاد فسببُه يظهر في `diag` القسم (`_devStatsDiagOf`) ⇒ التراجع: 2. */
+var DEV_STATS_CONCURRENCY = 4;
 function _settleLimited(thunks, limit) {
   return new Promise(function (resolve) {
     var out = new Array(thunks.length), next = 0, done = 0, n = thunks.length;
@@ -2192,7 +2235,10 @@ function _apiArgsScalars(args) {
    (‏`teacher/StudentLogic.js`). المفاتيح محصورةٌ صراحةً: مفتاحٌ مجهولٌ = احتمالُ توكن. */
 /* 38k (35c): `v` اختياريّ = `schedGen.خانةُ ٣٠ دقيقة` من حزمة الإقلاع (جيلُ `sched` في GAS يرفعه كلُّ
    بناءٍ للجدول؛ والخانةُ لأن إعداداتِ الجدول لا ترفع جيلاً). معه ⇒ `ttlV` (1800) لأن تعديلَ الجدول يغيّر
-   المفتاح فوراً؛ وبلاه (صفحةٌ أقدم) ⇒ سلوكُ اليوم حرفياً (`ttl` 600). `v` مشوَّهٌ ⇒ لا تخزين. */
+   المفتاح فوراً؛ وبلاه (صفحةٌ أقدم) ⇒ سلوكُ اليوم حرفياً (`ttl` 600). `v` مشوَّهٌ ⇒ لا تخزين.
+   42a: ويُقبل `v = schedGen` وحدَه بلا خانة (العميلُ الجديد — `saveScheduleSettingsProtected` صار يرفع
+   `sched`)، بشرط أن يكون طابعاً بالملّي ثانية (10–16 رقماً، `Date.now()` في `_tcGenBumpByKey_`) فيصلح
+   لـ`vGenTs`. الشكلان مفتاحان مختلفان (`v` داخل المفتاح)، وكلاهما `ttlV` 1800. */
 var _API_SCHED_KEYS = { schoolId: 1, klass: 1, 'class': 1, section: 1, v: 1 };
 function _apiArgsSchedule(args) {
   if (args.length !== 1) return false;
@@ -2205,7 +2251,7 @@ function _apiArgsSchedule(args) {
     if (!_API_SCHED_KEYS.hasOwnProperty(k[i])) return false;
     if (!_apiSafeScalar(o[k[i]])) return false;
   }
-  if (Object.prototype.hasOwnProperty.call(o, 'v')) return /^[1-9][0-9]{0,15}\.[0-9]{1,10}$/.test(o.v);
+  if (Object.prototype.hasOwnProperty.call(o, 'v')) return /^[1-9][0-9]{0,15}\.[0-9]{1,10}$/.test(o.v) || /^[1-9][0-9]{9,15}$/.test(o.v);
   return k.length <= 3;
 }
 
@@ -2374,6 +2420,7 @@ var API_CACHE_FNS = {
   getStudentExamSchedule: {
     args: _apiArgsExamSched,
     ttl: 600,
+    vGenTs: true,   // 42a: `examGen` = `Date.now()` لحظةَ الرفع (`_stuExamSchedBump_` ⇒ `_tcGenBumpByKey_`) ⇒ لا تخزين خلال 15 ث منه (انظر `API_GEN_FLUSH_MS`)
     ok: function (b) { return b.ok === true && Array.isArray(b.months) && b.months.length > 0; }
   },
   /* واجباتُ الفصل (38k، 35c) — انظر `_apiArgsHomework`: المفتاحُ يحمل `hwGen` فأيُّ كتابةٍ تغيّره.
@@ -2657,7 +2704,8 @@ function _apiCacheProbe(body, pairs) {
     /* 38k: مدّةٌ أطول لنداءٍ يحمل جيلاً (`v`) — `ttlV` في مدخل الدالّة (‏`getHomeScheduleBundle`). */
     if (API_CACHE_FNS[o.fn].ttlV && _a0 && typeof _a0.v === 'string') out.ttl = API_CACHE_FNS[o.fn].ttlV;
     /* 38z1: الجيلُ (الجزءُ قبل أوّل نقطة من `v`) طابعٌ زمنيّ بالملّي ثانية ⇒ `_apiCachePut` لا يخزّن
-       خلال `API_GEN_FLUSH_MS` منه (انظر تعريفه). للدالّتين اللتين تعلنان `vGenTs` وحدهما. */
+       خلال `API_GEN_FLUSH_MS` منه (انظر تعريفه). لما يعلن `vGenTs` وحدَه (الجدول · الواجبات · وجدولُ
+       الاختبارات منذ 42a). `v` بلا نقطة (الواجبات · الاختبارات · الجدولُ الجديد) ⇒ الجيلُ هو `v` كلُّه. */
     if (API_CACHE_FNS[o.fn].vGenTs && _a0 && typeof _a0.v === 'string') {
       var _gTs = Number(_a0.v.split('.')[0]);
       if (_gTs > 0) out.genTs = _gTs;
@@ -3545,6 +3593,10 @@ export default {
          📖 `_docs/2026-09-21-سقف-الإجهاض-من-جهة-الوركر.md` · وبند
             `gas-abort-ceiling-raised-doPost-26500` يحمل خطَّ الأساس النهاريّ. */
       var TOTAL_BUDGET_MS = (isPost ? 26000 : 24000) - _bhWaited;
+      /* 42a: قراءاتُ `HEDGE_FNS` 50ث خلف `READ_BUDGET_MS` (انظر `_readBudgetFor`). `_acStale` معروفٌ هنا
+         (يُلتقَط أعلاه قبل حجز المقعد) ⇒ طلبٌ له نسخةٌ بائتة يبقى على 26ث فيُخدَم البائتُ سريعاً. */
+      var _readBudget = isPost ? _readBudgetFor(env, app, init.method, init.body, !!_acStale) : 0;
+      if (_readBudget) TOTAL_BUDGET_MS = _readBudget - _bhWaited;
       if (isPost && _bhIsLoginBody(init.body)) TOTAL_BUDGET_MS = LOGIN_POST_BUDGET_MS - _bhWaited;   // الدخول 50ث (الدفعة 14و)
       var _slowAdmin = isPost && _slowAdminBody(init.body);
       if (_slowAdmin) TOTAL_BUDGET_MS = SLOW_ADMIN_BUDGET_MS - _bhWaited;   // أدوات المدير 90ث (الدفعة 25أ)
@@ -3798,7 +3850,9 @@ export default {
                  /* 🛟 الاحتياطيّ — للطلب المؤهَّل وحدَه، وإلّا تغيب الحقولُ كلّياً. `hg` منطقيٌّ
                     (أُطلق أم لا) · `hw` مَن سُلِّم ردُّه: `p` الأصليّ · `h` الاحتياطيّ · `-` لا أحد. */
                  hg: _hgRec ? _hgRec.hg : undefined, hw: _hgRec ? _hgRec.hw : undefined,
-                 hms: _hgRec ? _hgRec.hms : undefined });
+                 hms: _hgRec ? _hgRec.hms : undefined,
+                 /* 42a: `rb:1` = طُبّقت ميزانيةُ القراءة الطويلة (`READ_BUDGET_MS`)، وإلّا يغيب الحقل. */
+                 rb: _readBudget ? 1 : undefined });
         if (_hgSeat) { _bhRelease(_hgSeat); _hgSeat = null; }   // حارسٌ: لا مقعدَ احتياطيٍّ يتسرّب
         // التحرير يغطّي نقاط الخروج كلها: الاستجابة العادية وأي استثناء غير متوقّع
         // (الرفض 503 يخرج قبل الـtry ولا يحجز مقعداً أصلاً). بلا هذا، أي مسار خروج
