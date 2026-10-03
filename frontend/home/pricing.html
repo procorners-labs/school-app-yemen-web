@@ -34,7 +34,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/home';
-    window.WEB_BUILD_TS = 202610030624;
+    window.WEB_BUILD_TS = 202610030639;
     window.SCHOOL_ID = qs.get('school') || qs.get('schoolId') || window.SCHOOL_ID || '';
     var _rawSid = qs.get('school') || qs.get('schoolId') || '';
     var _canon = String(window.__CANON_SCHOOL__ || '').toLowerCase();
@@ -280,7 +280,7 @@ html[lang=ar] .en-only{display:none}
         <p id="pricingLoading" class="pl-note" data-i18n="pr_loading">جارٍ تحميل الباقات…</p>
       </div>
       <p class="pl-note" data-i18n="pr_cur">الأسعار بالدولار الأمريكي، ويُدفع ما يعادلها بالريال اليمني وفق سعر الصرف يوم التعاقد، ويمكن السداد بالبطاقة أو تحويلاً محلّياً.</p>
-      <p class="pl-note en-only" data-i18n="pr_ar_note">تُعرض أسماء الباقات وتفاصيلها كما نُشرت بالعربية.</p>
+      <p class="pl-note en-only" id="pzArNote" hidden data-i18n="pr_ar_note">تُعرض أسماء الباقات وتفاصيلها كما نُشرت بالعربية.</p>
 
       
       <div class="pz-box" id="pzCalcBox">
@@ -687,10 +687,26 @@ function pzPlanFor(students){
   }
   return ps.length ? ps[ps.length - 1] : null;
 }
+function spTx(x, k){
+  if(!x) return '';
+  var ar = x[k] == null ? '' : String(x[k]);
+  if(SP_LANG !== 'en') return ar;
+  var en = x[k + '_en'] == null ? '' : String(x[k + '_en']).replace(/^\s+|\s+$/g, '');
+  if(en) return en;
+  if(ar.replace(/^\s+|\s+$/g, '')) PZ.arOnly = true;
+  return ar;
+}
+function spFeats(x){
+  var f = (x && x.features) || [];
+  if(SP_LANG === 'en' && x && x.features_en && x.features_en.length) return x.features_en;
+  if(SP_LANG === 'en' && f.length) PZ.arOnly = true;
+  return f;
+}
 function spRenderPlans(){
   var grid = spEl('pricingGrid'), data = PZ.data;
   if(!grid || !data) return;
-  var list = [], html = '', i, j;
+  var list = [], html = '', i, j, fl;
+  PZ.arOnly = false;
   if(data.trial) list.push(data.trial);
   for(i = 0; i < data.plans.length; i++) list.push(data.plans[i]);
   var md = pzMaxDisc(data.discounts || {});
@@ -698,14 +714,16 @@ function spRenderPlans(){
     var p = list[i] || {};
     var bc = ({trial:1, standard:1, premium:1})[p.badgeClass] ? p.badgeClass : 'standard';
     var isTrial = bc === 'trial';
+    var trialPrice = (SP_LANG === 'ar') ? p.price : p.price_en;
     var priceHtml = isTrial
-      ? '<div class="pl-price pl-free"><b>' + spEscP((SP_LANG === 'ar' && p.price) ? p.price : T('pz_free')) + '</b></div>'
+      ? '<div class="pl-price pl-free"><b>' + spEscP(trialPrice ? trialPrice : T('pz_free')) + '</b></div>'
       : '<div class="pl-price"><b>' + spEscP(SP_LANG === 'en' ? pzMoney(p.amountUsd) : pzFmt(p.amountUsd)) + '</b><span>' + spEscP(T('pz_per_year')) + '</span></div>';
     var feats = '';
-    for(j = 0; j < (p.features || []).length; j++) feats += '<li>' + spEscP(p.features[j]) + '</li>';
+    fl = spFeats(p);
+    for(j = 0; j < fl.length; j++) feats += '<li>' + spEscP(fl[j]) + '</li>';
     html += '<article class="pl pb-' + bc + '">' +
-      (p.badge ? '<span class="pl-badge">' + spEscP(p.badge) + '</span>' : '') +
-      '<h3>' + spEscP(p.name || p.id) + '</h3>' + priceHtml +
+      (p.badge ? '<span class="pl-badge">' + spEscP(spTx(p, 'badge')) + '</span>' : '') +
+      '<h3>' + spEscP(spTx(p, 'name') || p.id) + '</h3>' + priceHtml +
       (isTrial ? (p.limit ? '<p class="pl-limit">' + spEscP(T('pz_upto', { n: String(p.limit) })) + '</p>' : '')
                : '<p class="pl-range">' + spEscP(pzRange(p)) + '</p>') +
       ((!isTrial && md.pct > 0) ? '<span class="pl-disc">' + spEscP(T('pz_save_upto', { p: md.pct, y: md.years })) + '</span>' : '') +
@@ -720,23 +738,26 @@ function spRenderPlans(){
   var keep = sel ? sel.value : '';
   for(i = 0; i < data.plans.length; i++){
     var q = data.plans[i];
-    rows += '<tr><td>' + spEscP(q.name) + '</td><td>' + spEscP(pzRange(q)) + '</td><td><b>' + pzMoney(q.amountUsd) + '</b></td>' +
+    rows += '<tr><td>' + spEscP(spTx(q, 'name')) + '</td><td>' + spEscP(pzRange(q)) + '</td><td><b>' + pzMoney(q.amountUsd) + '</b></td>' +
       '<td>+' + pzMoney(Math.round(q.amountUsd * q.accountingPct / 100)) + '</td>' +
       '<td>+' + pzMoney(Math.round(q.amountUsd * q.branchPct / 100)) + '</td></tr>';
-    opts += '<option value="' + spEscP(q.id) + '">' + spEscP(q.name + ' (' + pzRange(q) + ')') + '</option>';
+    opts += '<option value="' + spEscP(q.id) + '">' + spEscP(spTx(q, 'name') + ' (' + pzRange(q) + ')') + '</option>';
   }
   if(body) body.innerHTML = rows;
   if(sel){ sel.innerHTML = opts; if(keep) sel.value = keep; }
 
-  var sv = spEl('pzServices'), tm = spEl('pzTerms'), nt = spEl('pzNotes'), h;
+  var sv = spEl('pzServices'), tm = spEl('pzTerms'), nt = spEl('pzNotes'), h, nl;
   if(sv && data.services){ h = ''; for(i = 0; i < data.services.length; i++){ var s = data.services[i];
-    h += '<div class="pz-card"><h4>' + spEscP(s.title) + '</h4><p>' + spEscP(s.desc) + '</p>' + (s.price ? '<div class="pz-price">' + spEscP(s.price) + '</div>' : '') + '</div>'; }
+    h += '<div class="pz-card"><h4>' + spEscP(spTx(s, 'title')) + '</h4><p>' + spEscP(spTx(s, 'desc')) + '</p>' + (s.price ? '<div class="pz-price">' + spEscP(spTx(s, 'price')) + '</div>' : '') + '</div>'; }
     sv.innerHTML = h; }
   if(tm && data.terms){ h = ''; for(i = 0; i < data.terms.length; i++){
-    h += '<div class="pz-card"><h4>' + spEscP(data.terms[i].title) + '</h4><p>' + spEscP(data.terms[i].text) + '</p></div>'; }
+    h += '<div class="pz-card"><h4>' + spEscP(spTx(data.terms[i], 'title')) + '</h4><p>' + spEscP(spTx(data.terms[i], 'text')) + '</p></div>'; }
     tm.innerHTML = h; }
-  if(nt && data.notes){ h = ''; for(i = 0; i < data.notes.length; i++) h += '<li>' + spEscP(data.notes[i]) + '</li>';
+  nl = (SP_LANG === 'en' && data.notes_en && data.notes_en.length) ? data.notes_en : data.notes;
+  if(SP_LANG === 'en' && nl && nl === data.notes) PZ.arOnly = true;
+  if(nt && nl){ h = ''; for(i = 0; i < nl.length; i++) h += '<li>' + spEscP(nl[i]) + '</li>';
     nt.innerHTML = h; }
+  var an = spEl('pzArNote'); if(an) an.hidden = !(SP_LANG === 'en' && PZ.arOnly);
 }
 function pzFail(err){
   var grid = spEl('pricingGrid'), why = '';
@@ -770,7 +791,7 @@ function pzCalc(){
   var plan = pzPlanFor(students);
   var r = pzCompute(plan, spEl('pzAccounting').checked, spEl('pzBranches').value, spEl('pzYears').value);
   function cell(lbl, val, cls){ return '<div' + (cls ? ' class="' + cls + '"' : '') + '><small>' + spEscP(lbl) + '</small><b>' + val + '</b></div>'; }
-  var h = cell(T('c_plan'), spEscP(plan.name)) + cell(T('c_acad'), pzMoney(r.academic));
+  var h = cell(T('c_plan'), spEscP(spTx(plan, 'name'))) + cell(T('c_acad'), pzMoney(r.academic));
   if(r.acc) h += cell(T('c_acc'), pzMoney(r.acc));
   if(r.branches) h += cell(T('c_branches', { n: r.branches }), pzMoney(r.branchesTotal));
   var commit = r.years > 1 && r.pct > 0;
