@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/student';
-    window.WEB_BUILD_TS = 202610030248;
+    window.WEB_BUILD_TS = 202610030329;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -2863,7 +2863,7 @@ a { color: var(--pr); text-decoration: none; }
      البناءُ بـ`(window.SCHOOL_ID || '')` فلا يمسّ قرارَ 2026-08-13 في `_stu-js-boot-runtime`. */
   var SERVER_SCHOOL_ID = (window.SCHOOL_ID || '');
   // Build stamp (teacher/_BuildStamp.js): callback errors carry it as [fn=… b=…] in سجل_الأخطاء.
-  var STU_BUILD = '30481a1';
+  var STU_BUILD = '8b8ac77';
 
   /* 🔴 **مصدرُ حقيقةٍ واحد لعمر تقارير الطالب** (بند 194) — ويعيش في **أوّل جزءٍ يُحمَّل**
    لأن مستهلكيه موزَّعون على `_stu-js-shell` و`_stu-js-home` و`_stu-js-reports`.
@@ -3127,7 +3127,38 @@ function _stuReportsKey() {
   return 'reports_' + (APP.user.schoolId || '') + '_' + APP.user.id;
 }
 function _stuSchedKey() {
-  return 'sched_bundle_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section;
+  var g = _stuGen('sched');   // 38k: a new timetable generation is a new key (no 10-minute wait on the device)
+  return 'sched_bundle_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section + (g ? '_' + g : '');
+}
+/* 38k (35c): the class schedule and the class homework at the edge. The boot bundle returns `schedGen`
+   and `hwGen` (server generations, raised by every timetable / homework write); the portal sends them as
+   `v`, so the worker keeps these class-level reads for long and a write changes the key at once.
+   No generation (older server, or a warm boot after it expired) ⇒ no `v` ⇒ exactly the old request.
+   Class-level only: no token, no student code in these requests. */
+function _stuSetGen(name, g) {
+  g = String(g || '');
+  if (!/^[1-9][0-9]{0,15}$/.test(g)) return;
+  APP.gens = APP.gens || {};
+  APP.gens[name] = g;
+  try { ClientCache.set(name + '_gen_' + (APP.user.schoolId || ''), g, 180); } catch (eG) {}
+}
+function _stuGen(name) {
+  var g = '';
+  try { g = String((APP.gens && APP.gens[name]) || ClientCache.get(name + '_gen_' + (APP.user.schoolId || '')) || ''); } catch (eG) { g = ''; }
+  return /^[1-9][0-9]{0,15}$/.test(g) ? g : '';
+}
+function _stuSchedArgs() {
+  var a = { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId };
+  var g = _stuGen('sched');
+  // + a 30-minute slot: the schedule settings (day start, periods) raise no generation.
+  if (g) a.v = g + '.' + Math.floor(Date.now() / 1800000);
+  return a;
+}
+function _stuHwArgs() {
+  var a = { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId };
+  var g = _stuGen('hw');
+  if (g) a.v = g;
+  return a;
 }
 
 /* هل الفشلُ عابرٌ (إشباع/شبكة) أم منطقيٌّ من الخادم؟ — التراجعُ للبائت للأوّل وحده.
@@ -6021,8 +6052,8 @@ function loadHomework(force) {
 
 callServerSmart(
   'getAssignmentsForStudent',
-  { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
-  'homework_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section,   // مبصومٌ بالمدرسة؛ القديمُ يبقى مهمَلاً
+  _stuHwArgs(),   // 38k: + v (hwGen) when known
+  'homework_' + (APP.user.schoolId || '') + '_' + APP.user.class + '_' + APP.user.section + (_stuGen('hw') ? '_' + _stuGen('hw') : ''),   // مبصومٌ بالمدرسة (والجيل، 38k)؛ القديمُ يبقى مهمَلاً
   180,
   function (data) {
     APP.loaded.homework = true;
@@ -7887,7 +7918,7 @@ function loadHomeToday() {
   // تنفيذَين منفصلَين متوازيَين — تقليل عدد التنفيذات المتزامنة عند فتح "الرئيسية" (راجع
   // _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-الاقلاع.md).
   callServerSmart('getHomeScheduleBundle',
-    { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+    _stuSchedArgs(),   // 38k: + v (schedGen) when known
     _stuSchedKey(), 600,
     function (bundle) {
       if (bundle && bundle.settings) _applySchedSettings(bundle.settings);
@@ -8005,7 +8036,7 @@ function loadSchedule(force) {
      كاشَ جلسةٍ يعمل فيبني عليه (فئةُ «كودٌ سليمٌ بلا مستهلك» — بند 157). */
   callServerSmart(
     'getHomeScheduleBundle',
-    { klass: APP.user.class, section: APP.user.section, schoolId: APP.user.schoolId },
+    _stuSchedArgs(),   // 38k: + v (schedGen) when known
     force ? null : _stuSchedKey(),
     600,
     function (bundle) {
@@ -9504,6 +9535,9 @@ function _stuBootLoad() {
         APP.examGen = String(r.examGen);
         try { ClientCache.set('exam_gen_' + (APP.user.schoolId || ''), APP.examGen, 180); } catch (eEg) {}
       }
+      // 38k: class schedule / homework edge keys (sent as `v` by _stuSchedArgs / _stuHwArgs).
+      if (r.schedGen) _stuSetGen('sched', r.schedGen);
+      if (r.hwGen) _stuSetGen('hw', r.hwGen);
 
       /* ── نظرة سريعة ── (2026-08-29)
          🔴 القرارُ من **قيمة الاستهلاك** لا من وجود الحقل: `_stuApplyBootQuickStats`
