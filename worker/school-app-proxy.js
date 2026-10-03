@@ -2168,6 +2168,11 @@ var API_CACHE_ARGSKEY_MAX = 200;
    ⚠️ **والمقايضةُ معلَنة:** عشرُ دقائق **أضيقُ ممّا أُقرّ فعلاً** — `getHomeScheduleBundle`
    مقبولٌ فيها بياتُ ١٨٠٠ث بقرار مالك. والبديلُ عن «محتوى أقدمَ قليلاً» صفحةٌ مكسورة. */
 var API_STALE_MAX_S      = 600;
+/* 38z1: نافذةُ الكتابة. جيلا `sched`/`hw` في GAS = `Date.now()` لحظةَ الرفع (`_tcGenBumpByKey_`)،
+   والرفعُ يسبق وصولَ الكتابة إلى الورقة ⇒ قراءةٌ خلال ثوانٍ قد ترى القديم. GAS نفسُه لا يخزّن
+   قائمةَ الواجبات خلال 10 ث من الرفع (`STU_GEN_FLUSH_MS`)؛ والحافّةُ لا تخزّن خلال 15 ث (هامشٌ
+   لفرق الساعتين) — وإلّا ثبّتت ردّاً قديماً تحت `v` الجديد 1800 ث. الفحصُ والخدمةُ كما هما. */
+var API_GEN_FLUSH_MS     = 15000;
 
 /** قيمةٌ قياديّة مقبولة في مفتاح الكاش: نصٌّ قصير بلا أحرف تحكّم. */
 function _apiSafeScalar(v) {
@@ -2331,6 +2336,7 @@ var API_CACHE_FNS = {
        ⇒ 1800 (قرارُ المالك 2026-09-06): إعادةُ بناء الجدول ترفع الجيلَ فيتغيّر المفتاح فوراً، وتعديلُ
        الإعدادات وحده يظهر خلال الخانة. نداءٌ بلا `v` (صفحةٌ أقدم) ⇒ `ttl` 600 كما هو. */
     ttlV: 1800,
+    vGenTs: true,   // 38z1: لا تخزين خلال 15 ث من رفع `schedGen` (انظر `API_GEN_FLUSH_MS`)
     /* كلُّ عضوٍ مغلَّفٌ بمعالج خطئه في GAS ويردّ `{ok:false,error}` عند الإخفاق.
        فالشرط: العضوان حاضران **ولا أحدهما خطأ**.
        ⚠️ **وكان مكتوباً هنا «عند غياب ورقة الجدول» — وبطَل 2026-09-05:** المسطّحةُ
@@ -2376,6 +2382,7 @@ var API_CACHE_FNS = {
   getAssignmentsForStudent: {
     args: _apiArgsHomework,
     ttl: 1800,
+    vGenTs: true,   // 38z1: لا تخزين خلال 15 ث من رفع `hwGen` (انظر `API_GEN_FLUSH_MS`)
     ok: function (b) { return Array.isArray(b) && b.length > 0; }
   },
   /* 🟢 **`checkAppVersion(pkg)` — 2026-09-17.** تقرأ خصائصَ السكربت وحدها
@@ -2649,6 +2656,12 @@ function _apiCacheProbe(body, pairs) {
     var out = { fn: o.fn, argsKey: encodeURIComponent(raw) };
     /* 38k: مدّةٌ أطول لنداءٍ يحمل جيلاً (`v`) — `ttlV` في مدخل الدالّة (‏`getHomeScheduleBundle`). */
     if (API_CACHE_FNS[o.fn].ttlV && _a0 && typeof _a0.v === 'string') out.ttl = API_CACHE_FNS[o.fn].ttlV;
+    /* 38z1: الجيلُ (الجزءُ قبل أوّل نقطة من `v`) طابعٌ زمنيّ بالملّي ثانية ⇒ `_apiCachePut` لا يخزّن
+       خلال `API_GEN_FLUSH_MS` منه (انظر تعريفه). للدالّتين اللتين تعلنان `vGenTs` وحدهما. */
+    if (API_CACHE_FNS[o.fn].vGenTs && _a0 && typeof _a0.v === 'string') {
+      var _gTs = Number(_a0.v.split('.')[0]);
+      if (_gTs > 0) out.genTs = _gTs;
+    }
     if (_slugSeen && !pairs) out.canon = true;
     return out;
   } catch (e) { return null; }
@@ -2747,6 +2760,8 @@ async function _apiCachePut(origin, app, probe, text) {
     var b = (json && json.result) ? json.result : json;   // نفس تفكيك `_brandRefresh`
     if (!b || typeof b !== 'object') return false;
     if (!API_CACHE_FNS[probe.fn].ok(b)) return false;
+    // 38z1: جيلٌ رُفع قبل أقلّ من 15 ث ⇒ الكتابةُ ربما لم تصل الورقةَ بعد ⇒ لا تخزين (الردُّ يُخدَم كما هو).
+    if (probe.genTs && Date.now() - probe.genTs < API_GEN_FLUSH_MS) return false;
     await caches.default.put(
       _apiCacheKey(origin, app, probe.fn, probe.argsKey),
       new Response(text, {
