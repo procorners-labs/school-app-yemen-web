@@ -4314,7 +4314,11 @@ console.log('`frontend/` المخدوم ضدّ السياسة النافذة:');
      الحارسُ على خمسةِ وسومٍ مشروعةٍ كلَّ يوم. */
   var PROBES = [
     { d: "object-src 'none'",   re: /<object[\s>]|<embed[\s>]|createElement\(\s*['"](?:object|embed)['"]/i },
-    { d: "form-action 'self'",  re: /<form[\s>]|createElement\(\s*['"]form['"]/i },
+    /* 41b (2026-10-03): `form-action 'self'` يحجب الإرسالَ إلى أصلٍ آخر فقط. `<form>` بلا `action`
+       (أو بـ`action` نسبيّ) يُرسَل إلى الأصل نفسه فيمرّ، ونموذجُ القبول (36i، `home/index.html`) بلا
+       `action` ويُرسَل بـJS مع `preventDefault`. ⇒ المِجَسّ يمسك `action` المطلق (`//` أو مخطّط مثل
+       `https:`/`javascript:`) والإنشاءَ البرمجيّ `createElement('form')` كما كان. */
+    { d: "form-action 'self'",  re: /<form\b[^>]*\saction\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:|\/\/)|createElement\(\s*['"]form['"]/i },
     { d: "base-uri 'self'",     re: /<base[^>]*\shref\s*=|createElement\(\s*['"]base['"]/i }
   ];
 
