@@ -2613,7 +2613,7 @@ console.log('كاشُ الحافّة — موضعُ الاعتراض (بنيوي
      المعالجُ دالّةُ `fetch` كاملةٌ ولا تُحاكى في هذا الملفّ، فالمقيسُ هنا **صيغةُ الشرط
      وترتيبُه** لا سلوكُه. 🟢 **والسلوكُ مقيسٌ حيث يمكن:** بوّابةُ الطزاجة (⑬ أعلاه)
      سلوكيّةٌ بـ`vm` بستّة فحوصٍ — فلا يُقرأ هذا القسمُ وحدَه شهادةً على الميزة. */
-  check(/_apiCacheFreshness\(_acProbe\.fn, _acHit\.age\)/.test(seg),
+  check(/_apiCacheFreshness\(_acProbe\.fn, _acHit\.age(, _acProbe)?\)/.test(seg),   // 38k: + the probe (its `ttlV`)
         '🔴 الإصابةُ تمرّ بالبوّابة — لا تُخدَم بمجرّد وجود المدخل');
   var iGate = seg.indexOf('_apiCacheFreshness');
   var iHit  = seg.indexOf("act: 'hit'");
@@ -3146,7 +3146,7 @@ console.log('كاشُ الحافّة — `ttl` جدول الحصص (سلوكي �
   var aEnd = src.indexOf('\n};', aIdx) + 3;
   check(aIdx >= 0 && aEnd > aIdx, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
   if (aIdx < 0 || aEnd <= aIdx) return;
-  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {}, _apiArgsClassFeed: function () {} });
+  var actx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {}, _apiArgsClassFeed: function () {}, _apiArgsHomework: function () {} });
   var fns;
   try { vm.runInContext(src.slice(aIdx, aEnd), actx); fns = vm.runInContext('API_CACHE_FNS', actx); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }
@@ -3208,7 +3208,7 @@ console.log('عقدُ كاش الحافّة المنشور — مطابقةٌ ث
   var aEnd2 = src.indexOf('\n};', aIdx2) + 3;
   check(aIdx2 >= 0 && aEnd2 > aIdx2, 'ضابط: استُخرجت `API_CACHE_FNS` من المصدر');
   if (aIdx2 < 0 || aEnd2 <= aIdx2) return;
-  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {}, _apiArgsClassFeed: function () {} });
+  var cctx = vm.createContext({ _apiArgsScalars: function () {}, _apiArgsSchedule: function () {}, _apiArgsExamSched: function () {}, _apiArgsClassFeed: function () {}, _apiArgsHomework: function () {} });
   var live;
   try { vm.runInContext(src.slice(aIdx2, aEnd2), cctx); live = Object.keys(vm.runInContext('API_CACHE_FNS', cctx)); }
   catch (e) { check(false, 'ضابط: الكتلة قابلةٌ للتشغيل — ' + e.message); return; }

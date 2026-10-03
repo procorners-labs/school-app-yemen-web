@@ -2185,19 +2185,42 @@ function _apiArgsScalars(args) {
 
 /* ‏`getHomeScheduleBundle(params)` وحدها تأخذ **كائناً** — `{schoolId, klass|class, section}`
    (‏`teacher/StudentLogic.js`). المفاتيح محصورةٌ صراحةً: مفتاحٌ مجهولٌ = احتمالُ توكن. */
-var _API_SCHED_KEYS = { schoolId: 1, klass: 1, 'class': 1, section: 1 };
+/* 38k (35c): `v` اختياريّ = `schedGen.خانةُ ٣٠ دقيقة` من حزمة الإقلاع (جيلُ `sched` في GAS يرفعه كلُّ
+   بناءٍ للجدول؛ والخانةُ لأن إعداداتِ الجدول لا ترفع جيلاً). معه ⇒ `ttlV` (1800) لأن تعديلَ الجدول يغيّر
+   المفتاح فوراً؛ وبلاه (صفحةٌ أقدم) ⇒ سلوكُ اليوم حرفياً (`ttl` 600). `v` مشوَّهٌ ⇒ لا تخزين. */
+var _API_SCHED_KEYS = { schoolId: 1, klass: 1, 'class': 1, section: 1, v: 1 };
 function _apiArgsSchedule(args) {
   if (args.length !== 1) return false;
   var o = args[0];
   if (!o || typeof o !== 'object') return false;
   if (Object.prototype.toString.call(o) === '[object Array]') return false;
   var k = Object.keys(o);
-  if (k.length > 3) return false;
+  if (k.length > 4) return false;
   for (var i = 0; i < k.length; i++) {
     if (!_API_SCHED_KEYS.hasOwnProperty(k[i])) return false;
     if (!_apiSafeScalar(o[k[i]])) return false;
   }
-  return true;
+  if (Object.prototype.hasOwnProperty.call(o, 'v')) return /^[1-9][0-9]{0,15}\.[0-9]{1,10}$/.test(o.v);
+  return k.length <= 3;
+}
+
+/* ‏`getAssignmentsForStudent(params)` — `{schoolId, klass|class, section, v}` (38k، 35c).
+   واجباتُ الفصل/الشعبة: متطابقةٌ لكلّ طلاب الشعبة ولا تحمل حقلاً لطالبٍ بعينه (لا رمز ولا كود).
+   🔴 `v` إلزاميّ = `hwGen` (جيلُ الواجبات في GAS: `hw_all` يرفعه كلُّ إضافةٍ/تعديلٍ/حذف، و`hw` الأرشفة
+   والترحيل) ⇒ الكتابةُ تغيّر المفتاح فوراً. بلا `v` صالح (صفحةٌ أقدم) ⇒ لا تخزين ويمرّ إلى GAS كما كان. */
+var _API_HW_KEYS = { schoolId: 1, klass: 1, 'class': 1, section: 1, v: 1 };
+function _apiArgsHomework(args) {
+  if (args.length !== 1) return false;
+  var o = args[0];
+  if (!o || typeof o !== 'object') return false;
+  if (Object.prototype.toString.call(o) === '[object Array]') return false;
+  var k = Object.keys(o);
+  if (k.length > 4) return false;
+  for (var i = 0; i < k.length; i++) {
+    if (!_API_HW_KEYS.hasOwnProperty(k[i])) return false;
+    if (!_apiSafeScalar(o[k[i]])) return false;
+  }
+  return typeof o.v === 'string' && /^[1-9][0-9]{0,15}$/.test(o.v);
 }
 
 /* ‏`getStudentExamSchedule(params)` — `{schoolId, klass|class|grade, v}` (2026-09-28، الدفعة 11).
@@ -2304,6 +2327,10 @@ var API_CACHE_FNS = {
        ↩️ **ليعود 1800 أو أطول:** GAS يُرجع `schedGen` في حزمة الإقلاع، والعميلُ يرسل
        `v = schedGen.slot`، ويُضاف `v` إلى `_API_SCHED_KEYS` شرطاً للتخزين (نمطُ `_apiArgsClassFeed`). */
     ttl: 600,
+    /* 🟢 **38k (35c): تحقّق ما سبق.** نداءٌ يحمل `v` (= `schedGen.خانةُ ٣٠ دقيقة`، انظر `_apiArgsSchedule`)
+       ⇒ 1800 (قرارُ المالك 2026-09-06): إعادةُ بناء الجدول ترفع الجيلَ فيتغيّر المفتاح فوراً، وتعديلُ
+       الإعدادات وحده يظهر خلال الخانة. نداءٌ بلا `v` (صفحةٌ أقدم) ⇒ `ttl` 600 كما هو. */
+    ttlV: 1800,
     /* كلُّ عضوٍ مغلَّفٌ بمعالج خطئه في GAS ويردّ `{ok:false,error}` عند الإخفاق.
        فالشرط: العضوان حاضران **ولا أحدهما خطأ**.
        ⚠️ **وكان مكتوباً هنا «عند غياب ورقة الجدول» — وبطَل 2026-09-05:** المسطّحةُ
@@ -2342,6 +2369,14 @@ var API_CACHE_FNS = {
     args: _apiArgsExamSched,
     ttl: 600,
     ok: function (b) { return b.ok === true && Array.isArray(b.months) && b.months.length > 0; }
+  },
+  /* واجباتُ الفصل (38k، 35c) — انظر `_apiArgsHomework`: المفتاحُ يحمل `hwGen` فأيُّ كتابةٍ تغيّره.
+     الردُّ مصفوفةٌ (`{ok:true, result:[…]}`). 🔒 **المصفوفةُ الفارغة لا تُخزَّن:** GAS يُرجع `[]` عند
+     خطأ القراءة أيضاً، وتثبيتُه كان سيُخفي الواجبات حتى الكتابة التالية. */
+  getAssignmentsForStudent: {
+    args: _apiArgsHomework,
+    ttl: 1800,
+    ok: function (b) { return Array.isArray(b) && b.length > 0; }
   },
   /* 🟢 **`checkAppVersion(pkg)` — 2026-09-17.** تقرأ خصائصَ السكربت وحدها
      (‏`teacher/AppVersionCheck.js`) ⇒ لا جلسة ولا توكن ولا مستأجر. وقِيس أنها تبلغ
@@ -2612,6 +2647,8 @@ function _apiCacheProbe(body, pairs) {
     var raw = JSON.stringify([keyArgs, keySid]);
     if (raw.length > API_CACHE_ARGSKEY_MAX) return { fn: o.fn, reject: 'len' };
     var out = { fn: o.fn, argsKey: encodeURIComponent(raw) };
+    /* 38k: مدّةٌ أطول لنداءٍ يحمل جيلاً (`v`) — `ttlV` في مدخل الدالّة (‏`getHomeScheduleBundle`). */
+    if (API_CACHE_FNS[o.fn].ttlV && _a0 && typeof _a0.v === 'string') out.ttl = API_CACHE_FNS[o.fn].ttlV;
     if (_slugSeen && !pairs) out.canon = true;
     return out;
   } catch (e) { return null; }
@@ -2630,7 +2667,8 @@ async function _apiCacheGet(origin, app, probe) {
 }
 
 /** مدّةُ طزاجةِ دالّةٍ بعينها — الجدولُ أوّلاً ثمّ الافتراضُ العامّ. */
-function _apiTtlFor(fn) {
+function _apiTtlFor(fn, probe) {
+  if (probe && probe.ttl > 0) return probe.ttl;   // 38k: `ttlV` لنداءٍ بجيل (انظر `_apiCacheProbe`)
   return (API_CACHE_FNS[fn] && API_CACHE_FNS[fn].ttl) || API_CACHE_TTL_S;
 }
 
@@ -2646,9 +2684,9 @@ function _apiTtlFor(fn) {
 
    🔒 و`age < 0` (‏مدخلٌ بلا `X-Api-Ts` فلا يُحكَم على عمره) ⇒ `expired` — **fail-closed**:
    ما لا نعرف عمرَه لا نخدمه، لا طازجاً ولا بائتاً. */
-function _apiCacheFreshness(fn, age) {
+function _apiCacheFreshness(fn, age, probe) {
   if (typeof age !== 'number' || age < 0) return 'expired';
-  var ttl = _apiTtlFor(fn);
+  var ttl = _apiTtlFor(fn, probe);
   if (age <= ttl) return 'fresh';
   if (age <= ttl + API_STALE_MAX_S) return 'stale';
   return 'expired';
@@ -2718,7 +2756,7 @@ async function _apiCachePut(origin, app, probe, text) {
              انقضاء طزاجته فيصلح للتراجع عند `abort_budget`. والطزاجةُ صارت تُفرَض في
              `_apiCacheFreshness` أعلاه لا هنا — **ولا يُعاد هذا السطرُ إلى `ttl` وحده
              ظنّاً أنه تضييقٌ آمن**: ذلك يُعيد البائتَ إلى الإهمال فيعود الـ٥٠٢ صامتاً. */
-          'Cache-Control': 'max-age=' + (_apiTtlFor(probe.fn) + API_STALE_MAX_S),
+          'Cache-Control': 'max-age=' + (_apiTtlFor(probe.fn, probe) + API_STALE_MAX_S),
           'X-Api-Ts': String(Date.now())
         }
       })
@@ -3302,7 +3340,7 @@ export default {
           if (_acHit) {
             /* 🔴 البوّابةُ صريحةٌ هنا لأن `match` لم تعُد تفرضها (انظر `_apiCacheFreshness`).
                والبائتُ يُخدَم هنا **فوراً مع تحديثٍ خلفيّ** (SWR · 2026-09-19 — أدناه)، أو للتراجع عند الإجهاض حين لا `ctx`. */
-            var _acFresh = _apiCacheFreshness(_acProbe.fn, _acHit.age);
+            var _acFresh = _apiCacheFreshness(_acProbe.fn, _acHit.age, _acProbe);
             if (_acFresh === 'fresh') {
               _bhLog({ ev: 'apicache', act: 'hit', app: app, fn: _acProbe.fn,
                        k: _apiKeyFp(_acProbe.argsKey),

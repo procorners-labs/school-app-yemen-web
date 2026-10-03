@@ -19,14 +19,15 @@
     "«تعذّر الجلب» ≠ «اسمٌ مفقود» — ويجب أن يميّزهما برمزين، وإلّا صار حارساً",
     "يُنذر كاذباً عند أوّل انقطاعٍ فيُتجاهَل."
   ],
-  "contractVersion": 2,
-  "updatedOn": "2026-09-30",
+  "contractVersion": 3,
+  "updatedOn": "2026-10-03",
   "source": "worker/school-app-proxy.js :: API_CACHE_FNS",
   "guardedBy": "worker/test-routes.js",
   "freshness": {
     "getClassFeedBundle": "key v = newsGen.circGen.slot10 (gen-keyed)",
     "getStudentExamSchedule": "key v = exam schedule gen (gen-keyed)",
-    "getHomeScheduleBundle": "ttl 600, no sched gen in key (GAS does not expose it yet; batch 28l)"
+    "getHomeScheduleBundle": "with v = schedGen.slot30: ttl 1800 (gen-keyed, 38k); without v (older pages): ttl 600",
+    "getAssignmentsForStudent": "key v = homework gen hwGen (required; gen-keyed, 38k); empty list not stored"
   },
   "cachedFunctions": [
     "getHomePageBundle",
@@ -35,6 +36,7 @@
     "getHomeScheduleBundle",
     "getClassFeedBundle",
     "getStudentExamSchedule",
+    "getAssignmentsForStudent",
     "checkAppVersion",
     "getAppUrls",
     "listPartnerSchoolsPublic",
