@@ -30,7 +30,10 @@
     promoteSingleStudentProtected: 1,
     getEvaluationIndicatorsProtected: 1,
     getSupervisionTeamProtected: 1,
-    seedCurriculumRegistryProtected: 1
+    seedCurriculumRegistryProtected: 1,
+    getReportsBundleProtected: 1,
+    getReportsCoreProtected: 1,
+    getAllTeacherActivityReportProtected: 1
   };
 
   /* 🔒 (الدفعة 29a2 · 2026-10-01) **دوالُّ الدخول تتجاوز طبقة العمل دون اتصال كلَّها:** نقلٌ خامٌ واحد —
