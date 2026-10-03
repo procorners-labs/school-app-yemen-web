@@ -37,7 +37,7 @@
   (function(){
     var qs = new URLSearchParams(window.location.search);
     window.GAS_ENDPOINT = '/gas/teacher';
-    window.WEB_BUILD_TS = 202610030329;
+    window.WEB_BUILD_TS = 202610030353;
     var _pm = /^\/(teacher|student)\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i.exec(window.location.pathname || '') || [];
     var _pSlug = _pm[3] || '';
     if (!_pSlug && _pm[2] && !qs.get('school') && !qs.get('schoolId')) {
@@ -4650,34 +4650,79 @@ input, select, textarea, .form-control, .form-select, .grade-input {
    الأمس بثقة. ويُقاس **من لحظة الانتهاء** لا من لحظة الكتابة — لأن `e` وحدها مخزَّنة. */
 var CS_STALE_MAX_AGE_MS = 30 * 60 * 1000;
 
+/* 38c: **localStorage، لا sessionStorage** — التبويبُ الجديد يبدأ دافئاً. والمفتاحُ مبصومٌ داخلياً بهويّة
+   الجلسة (المدرسة القانونيّة UUID + المعلّم)، فحسابان على جهازٍ واحد لا يقرأ أحدُهما مدخلاتِ الآخر،
+   و`clear()` عند الخروج يمحو مدخلاتِ هذا المستخدم وحده. بلا مستخدمٍ (شاشة الدخول) يبقى المخزنُ
+   sessionStorage كما كان. مدخلٌ فوق `CS_LS_MAX_BYTES` لا يُخزَّن، وكلُّ وصولٍ للتخزين داخل try/catch.
+   ورودُ الدخول/الجلسة لا يُخزَّن أبداً (`_csNeverCache` في `callServer`). */
+var CS_LS_MAX_BYTES = 500 * 1024;
+var _csLsSwept = false;
+
 var ClientCache = {
   _prefix: 'app_cache_',
 
-  set: function(key, data, ttlSeconds) {
+  /* هويّةُ المدخلات: '<schoolId>|<teacherId أو الاسم>|' — '' قبل الدخول. */
+  _id: function () {
     try {
-      var obj = {
-        d: data,
-        e: Date.now() + (ttlSeconds || 180) * 1000
-      };
-      sessionStorage.setItem(this._prefix + key, JSON.stringify(obj));
+      var u = (typeof App !== 'undefined' && App && App.user) || null;
+      if (!u || !u.schoolId) return '';
+      var who = u.teacherId || u.teacherName || '';
+      return who ? (String(u.schoolId) + '|' + String(who) + '|') : '';
+    } catch (e) { return ''; }
+  },
+  _store: function (id) {
+    if (id) { try { if (window.localStorage) return window.localStorage; } catch (e) {} }
+    try { return window.sessionStorage || null; } catch (e2) { return null; }
+  },
+  /* يمحو مدخلاتنا المنتهية منذ أكثر من سقف البائت — لكلّ الهويّات (مستخدمٌ سابقٌ لم يخرج). */
+  _sweep: function (st, force) {
+    if (!st || (_csLsSwept && !force)) return 0;
+    _csLsSwept = true;
+    var gone = 0;
+    try {
+      var keys = [], now = Date.now();
+      for (var i = 0; i < st.length; i++) { var k = st.key(i); if (k && k.indexOf(this._prefix) === 0) keys.push(k); }
+      for (var j = 0; j < keys.length; j++) {
+        var o = null;
+        try { o = JSON.parse(st.getItem(keys[j]) || 'null'); } catch (eP) { o = null; }
+        if (!o || typeof o.e !== 'number' || now - o.e > CS_STALE_MAX_AGE_MS) { st.removeItem(keys[j]); gone++; }
+      }
+    } catch (e) {}
+    return gone;
+  },
+
+  set: function(key, data, ttlSeconds) {
+    var id = this._id(), st = this._store(id);
+    if (!st) return;
+    var raw = null;
+    try { raw = JSON.stringify({ d: data, e: Date.now() + (ttlSeconds || 180) * 1000 }); } catch (eJ) { raw = null; }
+    if (!raw || raw.length > CS_LS_MAX_BYTES) { this.del(key); return; }   // أكبر من السقف ⇒ لا نُبقي نسخةً أقدم أيضاً
+    var full = this._prefix + id + key;
+    if (id) this._sweep(st);
+    try {
+      st.setItem(full, raw);
     } catch (e) {
       try {
-        var keys = [];
-        for (var i = 0; i < sessionStorage.length; i++) {
-          var k = sessionStorage.key(i);
-          if (k && k.indexOf(this._prefix) === 0) keys.push(k);
+        if (!this._sweep(st, true)) {
+          var keys = [];
+          for (var i = 0; i < st.length; i++) {
+            var k = st.key(i);
+            if (k && k.indexOf(this._prefix) === 0) keys.push(k);
+          }
+          for (var j = 0; j < Math.floor(keys.length / 2); j++) {
+            st.removeItem(keys[j]);
+          }
         }
-        for (var j = 0; j < Math.floor(keys.length / 2); j++) {
-          sessionStorage.removeItem(keys[j]);
-        }
-        sessionStorage.setItem(this._prefix + key, JSON.stringify(obj));
+        st.setItem(full, raw);
       } catch (e2) { /* تجاهل */ }
     }
   },
 
   get: function(key) {
     try {
-      var raw = sessionStorage.getItem(this._prefix + key);
+      var id = this._id(), st = this._store(id);
+      if (!st) return null;
+      var raw = st.getItem(this._prefix + id + key);
       if (!raw) return null;
       var obj = JSON.parse(raw);
       /* 🔴 **لا `removeItem` عند الانتهاء** (بند 196) — القراءةُ أوّلُ ما ينفّذه
@@ -4693,7 +4738,9 @@ var ClientCache = {
   /** يقرأ مدخلاً **منتهيَ الصلاحية** بلا حذفٍ وبلا تجديدِ عمر — للتراجع عند الإشباع وحده. */
   getStale: function(key) {
     try {
-      var raw = sessionStorage.getItem(this._prefix + key);
+      var id = this._id(), st = this._store(id);
+      if (!st) return null;
+      var raw = st.getItem(this._prefix + id + key);
       if (!raw) return null;
       var obj = JSON.parse(raw);
       if (!obj || typeof obj.e !== 'number') return null;
@@ -4705,21 +4752,30 @@ var ClientCache = {
   },
 
   del: function(key) {
-    try { sessionStorage.removeItem(this._prefix + key); } catch (e) {}
+    var id = this._id(), st = this._store(id);
+    try { if (st) st.removeItem(this._prefix + id + key); } catch (e) {}
   },
 
+  /* يمحو مدخلاتِ **هذا المستخدم** (أو بادئةً منها). و`clear()` بلا وسيطٍ (الخروج) يمحو أيضاً بقايا
+     sessionStorage بالشكل القديم (قبل 38c). */
   clear: function(prefix) {
-    try {
-      var keysToDelete = [];
-      var fullPrefix = this._prefix + (prefix || '');
-      for (var i = 0; i < sessionStorage.length; i++) {
-        var k = sessionStorage.key(i);
-        if (k && k.indexOf(fullPrefix) === 0) keysToDelete.push(k);
-      }
-      for (var j = 0; j < keysToDelete.length; j++) {
-        sessionStorage.removeItem(keysToDelete[j]);
-      }
-    } catch (e) {}
+    var id = this._id();
+    var stores = [[this._store(id), this._prefix + id + (prefix || '')]];
+    if (id && !prefix) stores.push([this._store(''), this._prefix]);
+    for (var s = 0; s < stores.length; s++) {
+      var st = stores[s][0], fullPrefix = stores[s][1];
+      if (!st) continue;
+      try {
+        var keysToDelete = [];
+        for (var i = 0; i < st.length; i++) {
+          var k = st.key(i);
+          if (k && k.indexOf(fullPrefix) === 0) keysToDelete.push(k);
+        }
+        for (var j = 0; j < keysToDelete.length; j++) {
+          st.removeItem(keysToDelete[j]);
+        }
+      } catch (e) {}
+    }
   }
 };
 
@@ -4832,14 +4888,14 @@ function _csRelease() {
   }
 }
 
-function _csRunGated(fnName, run) {
+function _csRunGated(fnName, run, forceRead) {   // 38d: forceRead — a read whose name has no get/check/list prefix (CMS smm*)
   /* 🔴 **العقدُ واحدٌ للطرفين: `run` يستقبل دائماً دالّةَ إفراج.** الكتابةُ تستقبل
      دالّةً فارغة لا `undefined` — رصدَه معملُ إجهادٍ كتبتُه لهذه البوّابة نفسها:
      مستدعٍ يكتب `f()` كان يرمي `f is not a function` على مسار الكتابة وحده. والإنتاجُ
      كان محميّاً بـ`|| function(){}` عند نقطة الاستدعاء، لكن **عقدٌ يختلف بين فرعين
      يُنتج علّةً عند أوّل مستدعٍ لا يعرف الفرق** — والتوحيدُ أرخص من تذكّره. */
   var NOOP = function () {};
-  if (!_csIsRead(fnName)) { run(NOOP); return; }    // كتابةٌ ⇒ فوريّة بلا سقف
+  if (!forceRead && !_csIsRead(fnName)) { run(NOOP); return; }    // كتابةٌ ⇒ فوريّة بلا سقف
   var released = false;
   function once() { if (released) return; released = true; _csRelease(); }
   function start() {
@@ -4964,6 +5020,14 @@ function _gsrFail(fnName) {
   };
 }
 
+/* 38c: ClientCache persists now (localStorage), so a login-type reply (session, token, switchToken) must never
+   reach it — the same rule as `LOGIN_FNS` in assets/offline-sync.js (name contains login, or a listed name). */
+var CS_NEVER_CACHE_FNS = { checkSession: 1, switchStudentAccount: 1, refreshStudentSiblings: 1, handleCmsAutoLogin: 1 };
+function _csNeverCache(fnName) {
+  fnName = String(fnName || '');
+  return /login|logout/i.test(fnName) || Object.prototype.hasOwnProperty.call(CS_NEVER_CACHE_FNS, fnName);
+}
+
 function callServer(fnName, params, a3, a4, a5, a6) {
   // ── تطبيع المعاملات تلقائياً حسب النوع ──
   var cacheKey = null, ttl = 0, callback = null, errorCallback = null;
@@ -4986,6 +5050,7 @@ function callServer(fnName, params, a3, a4, a5, a6) {
   if (typeof callback !== 'function') {
     callback = function(){};
   }
+  if (cacheKey && _csNeverCache(fnName)) cacheKey = null;   // 38c: login/session replies are never stored
 
   // ── فحص الكاش ──
   if (cacheKey && typeof ClientCache !== 'undefined') {
@@ -5194,6 +5259,97 @@ function callServer(fnName, params, a3, a4, a5, a6) {
     else { try { callback({ success: false, error: 'تعذّر إرسال الطلب' }); } catch (e) {} }
   }
   });
+}
+
+/* ══ 38d: محمِّلُ بيانات الصفحات المشترك ══════════════════════════════════════════════════════════
+   `_pageData_(key, fn, {ttl, gen, args, force, el, transport}, cb)` — بيتٌ واحد لما كانت كلُّ صفحةٍ تكتبه:
+   · ذاكرةٌ في التبويب، مفتاحُها هويّةُ الجلسة (المدرسة + المعلّم) + `key`، بعمر `ttl` ثانية (افتراضاً 60)
+     وجيلٍ اختياريّ `gen`: جيلٌ آخر ⇒ جلبٌ جديد. يُحفَظ الردُّ الناجحُ وحده.
+   · نداءٌ طائرٌ واحد لكلّ مفتاح: مستدعٍ ثانٍ ينضمّ إليه (كان التقويمُ وأسماءُ المعلمين يُجلبان مرّتين).
+   · التحميلُ والخطأ في مكانٍ واحد: `el` (عنصرٌ أو id) يأخذ مؤشّرَ التحميل، وعند الفشل رسالةً وزرَّ «إعادة
+     المحاولة» — ولا يُنادى `cb` حينها. وبلا `el` يستقبل `cb(value, err)` ردَّ الفشل كما يفعل callServer.
+   · `transport: 'cms'` ⇒ `callCMS` عبر طابور القراءات (سقف 3 نداءات معاً).
+   · الإبطالُ بعد الكتابة: `_pageDataDrop_(prefix)`؛ والخروجُ (`clearSession`) يمحو الكلّ. */
+var _PD_MEM = {}, _PD_FLY = {}, _PD_RETRY = {}, _pdSeq = 0;
+function _pdId_() {
+  try {
+    var u = (typeof App !== 'undefined' && App && App.user) || null;
+    return u ? ((u.schoolId || '') + '|' + (u.teacherId || u.teacherName || '') + '|') : '|';
+  } catch (e) { return '|'; }
+}
+function _pdEl_(el) {
+  if (!el) return null;
+  if (typeof el === 'string') { try { return document.getElementById(el); } catch (e) { return null; } }
+  return el;
+}
+function _pdLoading_(el) {
+  try { el.innerHTML = '<p class="pd-loading" style="text-align:center;color:var(--text-light,#94a3b8);padding:20px;">⏳ جارٍ التحميل...</p>'; } catch (e) {}
+}
+function _pdError_(w, err) {
+  var id = ++_pdSeq;
+  _PD_RETRY[id] = function () {
+    var o = {}; for (var k in w.opts) { if (w.opts.hasOwnProperty(k)) o[k] = w.opts[k]; }
+    o.force = true;
+    _pageData_(w.key, w.fn, o, w.cb);
+  };
+  try {
+    w.el.innerHTML = '<div class="pd-error" style="text-align:center;color:#c62828;padding:16px;">⚠️ ' +
+      escapeHtml(String(err || 'تعذّر التحميل')) +
+      ' <button type="button" class="btn btn-sm btn-secondary" onclick="_pageDataRetry_(' + id + ')">🔄 إعادة المحاولة</button></div>';
+  } catch (e) {}
+}
+function _pageDataRetry_(id) {
+  var f = _PD_RETRY[id];
+  delete _PD_RETRY[id];
+  if (typeof f === 'function') f();
+}
+function _pdCall_(fn, args, transport, done) {
+  if (transport === 'cms') {
+    callCMS(fn, args, function (res, err) { done(err ? null : res, err ? String(err) : null); }, { read: true });
+    return;
+  }
+  callServer(fn, args || {}, function (r) {
+    var bad = !r || r.success === false || r.ok === false;
+    done(r, bad ? ((r && r.error) || 'تعذّر التحميل') : null);
+  }, function (e) {
+    var m = (e && e.message) || 'فشل الاتصال بالخادم';
+    done({ success: false, error: m, __transport: true }, m);   // __transport: the call never reached our code
+  });
+}
+function _pageData_(key, fn, opts, cb) {
+  opts = opts || {};
+  var full = _pdId_() + key;
+  var gen = (opts.gen === undefined || opts.gen === null) ? '' : String(opts.gen);
+  var ttlMs = ((opts.ttl === undefined || opts.ttl === null) ? 60 : Number(opts.ttl)) * 1000;
+  var el = _pdEl_(opts.el);
+  var m = _PD_MEM[full];
+  if (!opts.force && m && m.gen === gen && (Date.now() - m.at) < ttlMs) {
+    setTimeout(function () {
+      try { if (typeof cb === 'function') cb(m.v, null); } catch (e) { console.error('cb error:', e); _csReport('cb', fn, e); }
+    }, 0);
+    return;
+  }
+  var w = { key: key, fn: fn, opts: opts, cb: cb, el: el };
+  if (el) _pdLoading_(el);
+  if (_PD_FLY[full]) { _PD_FLY[full].push(w); return; }
+  _PD_FLY[full] = [w];
+  _pdCall_(fn, opts.args, opts.transport, function (v, err) {
+    var q = _PD_FLY[full] || [];
+    delete _PD_FLY[full];
+    if (!err) _PD_MEM[full] = { v: v, at: Date.now(), gen: gen, k: key };
+    for (var i = 0; i < q.length; i++) {
+      var it = q[i];
+      if (err && it.el) { _pdError_(it, err); continue; }
+      try { if (typeof it.cb === 'function') it.cb(v, err); } catch (e) { console.error('cb error:', e); _csReport('cb', fn, e); }
+    }
+  });
+}
+/* يُنسي المفاتيحَ التي تبدأ بـ`prefix` (لكلّ الهويّات)؛ بلا وسيطٍ يُنسي الكلّ. */
+function _pageDataDrop_(prefix) {
+  for (var k in _PD_MEM) {
+    if (!_PD_MEM.hasOwnProperty(k)) continue;
+    if (!prefix || String(_PD_MEM[k].k || '').indexOf(prefix) === 0) delete _PD_MEM[k];
+  }
 }
 
 // ==================== HEARTBEAT (مدة الاستخدام) ====================
@@ -5606,35 +5762,9 @@ function gmsAdminToggleMonth(month, open, el) {
   });
 }
 
-/**
- * جلب تكوين نظام الدرجات (الأشهر + أنواع الفترات + الحقول)
- * تُستدعى من bootApp() قبل عرض أي قسم.
- * @param {Function} callback — تُستدعى بعد نجاح التحميل (أو الفشل مع fallback)
- */
-function loadSchemaConfig(callback) {
-  callServer('getSchemaConfig', {}, 'schema_config', 600, function(res) {
-    if (res && res.success) {
-      ALL_MONTHS   = res.orderedMonths || BOOT_DEF_MONTHS;   // 38f: one fallback (BOOT_DEF_*)
-      TERM_MONTHS  = res.termMonths   || BOOT_DEF_TERM;
-      GRADE_SCHEMA = res;
-    } else {
-      // Fallback في حالة فشل الخادم — نضمن عدم تعطل الواجهة
-      ALL_MONTHS  = BOOT_DEF_MONTHS;
-      TERM_MONTHS = BOOT_DEF_TERM;
-    }
-    if (typeof callback === 'function') callback();
-  }, function() {
-    // خطأ في الاتصال — استخدام الافتراضيات
-    ALL_MONTHS  = BOOT_DEF_MONTHS;
-    TERM_MONTHS = BOOT_DEF_TERM;
-    if (typeof callback === 'function') callback();
-  });
-}
-
 // يجمع getSchemaConfig+getV3Config في نداء واحد (getBootConfigBundle) بدل نداءَين منفصلَين —
 // تقليل التنفيذات المتزامنة عند الإقلاع (راجع _docs/2026-07-27-حصة-تنفيذ-متزامن-30-وتقليل-حمل-
-// الاقلاع.md). غير مؤجَّلة (تحجب أول عرض عبر _bootTryShow تماماً مثل loadSchemaConfig سلفها) —
-// لا حذف لـ loadSchemaConfig نفسها.
+// الاقلاع.md). غير مؤجَّلة (تحجب أول عرض عبر _bootTryShow). 38d: حُذف سلفُها الميّت loadSchemaConfig.
 // 🔒 مفتاح الكاش يضمّ schoolId منذ أن صارت الحمولة تحمل `monthsState` التابعة للمستأجر.
 // كان 'boot_config_v1' ثابتاً بلا مدرسة — صحيحاً وقتها (ثوابت بحتة)، ويصير تسريباً عابر
 // المدارس بمجرّد إضافة أي حقل تابع للمستأجر (المدير يبدّل مدرسة في نفس التبويب).
@@ -5682,23 +5812,26 @@ function _bootConfigCacheKey() {
    يُطيل نافذةَ عرضِ حالةٍ ناقصة بلا مقابل. */
 var BOOT_SCHEMA_RELEASE_MS = 8000;   // < بوّابة العرض 9ث في bootApp — لا تُرفَع فوقها
 var BOOT_EXTRAS_RELEASE_MS = 24000;  // > سقف الوسيط المقيس 23,701ms — لا تُخفَض تحته
-function _teacherBootBundlePrefetch(done, onSchemaReady) {
+/* 38c: `done(status, reply)` — the reply carries `listsGen`/`schedGen`. `opts.needGen` (saved lists not
+   confirmed lately) skips the all-warm shortcut: the bundle (~1 s) is the cheap way to learn the lists
+   generation, far cheaper than refetching the lists (~4 s). */
+function _teacherBootBundlePrefetch(done, onSchemaReady, opts) {
   var finished = false, schemaReleased = false;
   var releaseSchema = function () {
     if (schemaReleased) return;
     schemaReleased = true;
     if (typeof onSchemaReady === 'function') { try { onSchemaReady(); } catch (eS) {} }
   };
-  var finish = function (status) {
+  var finish = function (status, reply) {
     releaseSchema();   // استقرار الحزمة يُفرج عن المخطط فوراً إن لم يكن أُفرِج بالمؤقّت
-    if (!finished) { finished = true; try { done(status); } catch (eD) {} }
+    if (!finished) { finished = true; try { done(status, reply); } catch (eD) {} }
   };
   try {
     var sid = (App.user && App.user.schoolId) || '';
     var haveBoot   = !!ClientCache.get(_bootConfigCacheKey());
     var haveNotif  = !!ClientCache.get('notif_bundle_' + sid);
     var havePoints = !!ClientCache.get('my_points_header_' + sid);
-    if (haveBoot && haveNotif && havePoints) { finish('warm'); return; }
+    if (haveBoot && haveNotif && havePoints && !(opts && opts.needGen)) { finish('warm'); return; }
     setTimeout(releaseSchema, BOOT_SCHEMA_RELEASE_MS);
     setTimeout(function () { finish('slow'); }, BOOT_EXTRAS_RELEASE_MS);
     callServer('getTeacherBootBundle', {}, function (r) {
@@ -5718,7 +5851,7 @@ function _teacherBootBundlePrefetch(done, onSchemaReady) {
           }
         }
       } catch (eSeed) {}
-      finish((r && r.ok) ? 'ok' : 'failed');
+      finish((r && r.ok) ? 'ok' : 'failed', r);
     }, function () { finish('failed'); });
   } catch (eB) { finish('failed'); }
 }
@@ -5952,10 +6085,6 @@ function isDeputy() {
 
 function isSupervisor() {
   return !!(App.user && App.user.role === 'supervisor');
-}
-
-function isAccountant() {
-  return !!(App.user && App.user.role === 'accountant');
 }
 
 function myGrade() {
@@ -6700,14 +6829,6 @@ function showError(e) {
   var msg = typeof e === 'string' ? e : ((e && e.message) ? e.message : JSON.stringify(e));
   toast(msg, 'error', 6000);
 }
-function showAutoSave(msg) {
-  msg = msg || '✅ تم الحفظ التلقائي';
-  var el = document.getElementById('autoSaveIndicator');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(el._t);
-  el._t = setTimeout(function() { el.classList.remove('show'); }, 2800);
-}
 
 // ==================== تقييمات المنصة (Phase 1) ====================
 var _prRating = 0;
@@ -7346,10 +7467,10 @@ function prReq_open() {
   prReq_switchTab('معلم');
   if (!PR_REQ.loaded) {
     PR_REQ.loaded = true;
-    callServer('getTeacherNamesProtected', {}, function (r) {
+    _pageData_('teacher_names', 'getTeacherNamesProtected', { ttl: 300 }, function (r) {   // 38d: shared key
       PR_REQ.teachers = (r && r.success && r.teachers) || [];
       prReq_renderList();
-    }, function () {});
+    });
     callServer('getStudentsBriefForReviewRequestProtected', {}, function (r) {
       PR_REQ.students = (r && r.success && r.students) || [];
       prReq_renderList();
@@ -7782,7 +7903,7 @@ function loadSession() {
 }
 function clearSession() {
   try { sessionStorage.removeItem('teacherSession'); } catch(e) {}
-  try { sessionStorage.removeItem('teacherLists_v5'); } catch(e) {}
+  try { sessionStorage.removeItem('teacherLists_v5'); } catch(e) {}   // 38c: old per-tab copy (lists now in ClientCache, purged below)
   try { localStorage.removeItem(_TEACHER_LS_KEY); } catch(e) {}
   try { localStorage.removeItem('teacherHandoffAt'); } catch(e) {}
   try { ClientCache.clear(); } catch(e) {} // ✅ يمسح أيضاً كل كاش callServer المخزَّن بـsessionStorage
@@ -7791,6 +7912,7 @@ function clearSession() {
      فأي نداء مطويّ لم يعد بعد يبقى حيّاً عبر تسجيل الخروج ويُسلَّم للجلسة التالية.
      مفتاح الطيّ مبصوم بالهوية أصلاً (`_csFoldIdentity`) فهذا حزامٌ ثانٍ لا بديل. */
   try { _pendingCalls = {}; } catch(e) {}
+  try { _pageDataDrop_(); } catch(e) {}   // 38d: page loader memory (circulars, calendar, names, social…)
   try { _bootDeferredExtras = false; } catch(e) {}
   /* 🔒 29a2: وأيُّ ردِّ دخولٍ بقي في كاش العمل دون اتصال (IndexedDB)، وفحصُ هذه الجلسة المخزَّن (`checkSession`
      يحمل توكنَها) — يبقى مخزَّناً ما دامت حيّةً للاستعادة دون اتصال، ويُمسح هنا حين تنتهي. الموقعُ المستضاف وحده. */
@@ -8386,36 +8508,6 @@ function biomRevokeDevice(deviceId) {
   }, function () { toast('تعذّر الاتصال بالخادم', 'error'); });
 }
 
-function goHome() {
-  if (window.DeploymentClient && typeof window.DeploymentClient.go === 'function') {
-    window.DeploymentClient.go('home');
-  } else {
-    var fallback = '/home/index.html';
-    try {
-      if (window.top && window.top.location) {
-        window.top.location.href = fallback;
-      } else {
-        window.location.href = fallback;
-      }
-    } catch(e) {
-      window.location.href = fallback;
-    }
-  }
-}
-
-function _navigateSafely(url) {
-  if (!url) return;
-  try {
-    if (window.top && window.top.location) {
-      window.top.location.href = url;
-    } else {
-      window.location.href = url;
-    }
-  } catch (e) {
-    window.location.href = url;
-  }
-}
-
 function confirmLogout() {
   confirmAction('تسجيل الخروج', 'هل تريد الخروج من المنصة؟', '🚪', doLogout);
 }
@@ -8492,14 +8584,37 @@ function showLoginScreen() {
 }
 
 // ════════════════════════════════════════════════════════
-// ⭐ bootApp — مُعدَّلة لاستدعاء loadSchemaConfig أولاً
+// ⭐ bootApp — حزمة الإقلاع + القوائم + المخطط (loadBootConfig)
 // ════════════════════════════════════════════════════════
 // شريط تحذير لمدير المدرسة: مهلة قراءةٍ فقط بعد انتهاء الاشتراك، أو اقترابٌ من حدّ الخطة.
 // تحذيرٌ فقط بلا منع (قرار المالك). يُعرض مرّةً في الجلسة.
+/* 38c: only for whoever the server answers (`accounts.manage`, the same test as `_authCan_`; a session without
+   `can` = the admin role), and at most once per 6 h per school: the reply is kept in localStorage and the
+   banner is drawn from it in between (it was one GAS call per boot for every role). */
+var PLAN_USAGE_TTL_MS = 6 * 60 * 60 * 1000;
+function _planUsageAllowed() {
+  if (!App.user) return false;
+  if (App.user.can) return !!App.user.can['accounts.manage'];
+  return App.user.role === 'admin';
+}
+function _planUsageKey() { return 'plan_usage_ck_' + ((App.user && App.user.schoolId) || ''); }
 function _planUsageBanner() {
   try {
     if (!App.user || !App.user.token || window.__planBannerShown) return;
+    if (!_planUsageAllowed()) return;
+    var key = _planUsageKey(), saved = null;
+    try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (eLs) { saved = null; }
+    if (saved && saved.at && (Date.now() - saved.at) < PLAN_USAGE_TTL_MS) { _planUsageShow(saved.r); return; }
+    // the stamp is written before the call, so quick reboots do not send parallel calls (as pr_req_ck_t_)
+    try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), r: null })); } catch (eLs2) {}
     google.script.run.withSuccessHandler(function (r) {
+      if (r && r.success) { try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), r: r })); } catch (eLs3) {} }
+      _planUsageShow(r);
+    }).withFailureHandler(_gsrFail('getPlanUsageProtected')).getPlanUsageProtected({ token: App.user.token });
+  } catch (e) {}
+}
+function _planUsageShow(r) {
+  try {
       if (!r || !r.success || !r.show || window.__planBannerShown) return;
       window.__planBannerShown = true;
       var msg = r.status === 'GRACE'
@@ -8519,7 +8634,6 @@ function _planUsageBanner() {
       bar.appendChild(close);
       var main = document.getElementById('mainApp');
       if (main) main.insertBefore(bar, main.firstChild);
-    }).withFailureHandler(_gsrFail('getPlanUsageProtected')).getPlanUsageProtected({ token: App.user.token });
   } catch (e) {}
 }
 
@@ -8655,18 +8769,11 @@ function bootApp() {
   initSessionTimer(App.user.expiresIn || 28800);
 
   // ── تحميل القوائم + تحميل Schema ──
-  var cachedLists = null;
-  try {
-    var raw = sessionStorage.getItem('teacherLists_v5');
-    if (raw) {
-      var parsed = JSON.parse(raw);
-      if (parsed._ts && (Date.now() - parsed._ts) < 30 * 60 * 1000) {
-        cachedLists = parsed;
-      }
-    }
-  } catch(e) {
-    cachedLists = null;
-  }
+  /* 38c: القوائمُ المحفوظة (localStorage، بجيلها من الخادم) تُرسَم فوراً، ويُسأل الخادمُ عن الجيل عبر حزمة
+     الإقلاع: مطابقٌ ⇒ صفرُ نداءٍ للقوائم، ومختلفٌ ⇒ تحديثٌ صامت. وبلا قوائم محفوظة يبدأ نداءُ القوائم
+     **مع** الحزمة لا بعدها (38a: وسيطُ الحزمة 0.98 ث، فلا تزاحمَ يبرّر التسلسل). */
+  var _listsEntry = _listsCacheGet();
+  var cachedLists = (_listsEntry && _listsEntry.lists.grades && _listsEntry.lists.grades.length) ? _listsEntry.lists : null;
 
   // Schema والقوائم يُجلبان بالتوازي — كانا متسلسلَين (قوائم ثم Schema) فيتضاعف
   // زمن أول عرض على الشبكات البطيئة. العرض ينتظر اكتمالهما معاً، وشاشة التحميل
@@ -8694,7 +8801,7 @@ function bootApp() {
       : _savedSectionOrDashboard());
   };
   // إن تأخّر ردّ مخطط الدرجات (شبكة بطيئة/TTL منتهٍ) فلا تُترَك الواجهة معلّقة للأبد —
-  // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadSchemaConfig
+  // نتابع بعد مهلة معقولة بنفس حالة الفشل المُتحمَّلة أصلاً داخل loadBootConfig
   // (GRADE_SCHEMA يبقى null، ALL_MONTHS/TERM_MONTHS بقيمهما الافتراضية).
   // ⚠️ هذا السطر الأخير **كان زعماً خاطئاً** حتى 2026-08-11: القيمتان كانتا `[]` عند
   // التصريح والافتراضات محبوسة داخل `loadBootConfig`. صار صحيحاً برفعها إلى
@@ -8707,49 +8814,17 @@ function bootApp() {
     _bootTryShow();
   };
 
-  /* ★ نداءُ القوائم يتسلسل **بعد** حزمة الإقلاع بدل موازاته (2026-09-02).
-
-     🔴 **ما كان:** `_teacherBootBundlePrefetch` غيرُ متزامن **فيعود فوراً**، فينطلق
-     `_fetchListsFromServer` (‏`getListsDataProtected` — قراءةُ ورقةٍ كاملة) **بجواره**
-     ⇒ **تنفيذان ثقيلان متزامنان لكلّ إقلاع**. وسقفُ حصّة Google **تنفيذاتٌ متزامنة**
-     (‏30/حساب) لا عددُها ⇒ التزامنُ هو المتغيّر الحاكم لا حجمُ العمل.
-
-     🔴 **والقياسُ الذي فرض هذا التغيير** (‏نافذة `2026-09-02T11:30Z→14:30Z`، مصدرُه
-     سجلّاتُ الوركر): `/gas/teacher` إخفاق **26.7٪** مع `k=330`. وستُّ عيّناتِ 502 كلُّها
-     `wallTimeMs = 23,700` — **سقفُ ميزانية الوسيط حرفياً** (‏`24,000 − 300`) —
-     بـ`cpuTimeMs` بين 0 و3 و**`srv` غائبٌ تماماً** ⇒ **الوركرُ ينتظر ولا يعمل، وGAS لم
-     يُرجِع شيئاً** ⇒ إشباعُ حصّةٍ عند GAS، والوسيطُ **مُبلِّغٌ لا جانٍ**.
-     ⇒ **رفعُ ميزانية الوسيط مضادُّ الاتجاه**: يحوّل ٥٠٣ رخيصاً (يتراجع الجسرُ لكاش
-     IndexedDB فوراً) إلى ٥٠٢ باهظاً بعد زمنٍ أطول، ويُطيل احتجازَ تنفيذ GAS.
-
-     🟢 **والمسارُ الدافئ مشمولٌ عمداً** — `_refreshListsSilently` تنادي
-     `_fetchListsFromServer` نفسَها، وهو **المسارُ الأشيع** (أكثرُ المستخدمين لهم كاشُ
-     قوائم) ⇒ استثناؤه كان يترك أغلبَ الإقلاعات على العطب.
-
-     🔴 **ولا نقطةَ فشلٍ مفردة:** `_teacherBootBundlePrefetch` **يضمن** استدعاء `done`
-     — مؤقّتُ `finish('slow')` عند `BOOT_EXTRAS_RELEASE_MS` · و`catch` يستدعي
-     `finish('failed')` · و`finish` أحاديُّ التنفيذ. فتعليقُ الخادم لا يمنع القوائم.
-     ⚠️ **و`finish('warm')` متزامنٌ** عند كاشٍ كامل (‏يعود قبل أن يعود المُستدعي) —
-     ولهذا `setTimeout(…, 0)` أدناه: يُخرج البدءَ من الكتلة المتزامنة فلا يعتمد ترتيبٌ
-     على لحظةِ عودةِ دالّةٍ قد ترتدّ فوراً وقد لا ترتدّ.
-
-     ⚠️ **وثمنُه يُقال:** الإقلاعُ **البارد** يبطؤ — النداءان بالتتابع لا بالتوازي.
-     المقايضةُ مقصودة: ثوانٍ على الإقلاع مقابل ربعِ المستخدمين لا يدخلون أصلاً. */
   var _bootListsStarted = false;
-  /* 🔴 **تصريحُ دالّةٍ لا تعبيرٌ مجهول** — و`extractFunctionBody` في
-     `_build/test-regression-guards.js` تطابق `function <اسم>(` حصراً، فالتعبيرُ المجهول
-     يجعل حارسَ التسلسل يعيد `null` **فيحمرّ على كودٍ سليم**. قِيس فعلاً عند كتابته.
-     ⇒ الشكلُ يتبع عقدَ أداة القياس القائمة، ولا تُضعَّف الأداةُ لتقبل شكلاً آخر. */
   function _bootStartLists() {
-    if (_bootListsStarted) return;      // الحزمة قد تُنهي مرّتين نظرياً — البدءُ مرّةً واحدة
+    if (_bootListsStarted) return;      // البدءُ مرّةً واحدة
     _bootListsStarted = true;
-    if (cachedLists && cachedLists.grades && cachedLists.grades.length) {
+    if (cachedLists) {
       _refreshListsSilently();
     } else {
       showLoading('جاري تحميل البيانات...');
       _fetchListsFromServer(function(success) {
         if (!success) {
-          App.lists = _getDefaultLists();
+          if (!App.lists || !App.lists.grades) App.lists = _getDefaultLists();
           toast('تعذر تحميل القوائم الكاملة — قد لا تظهر جميع الخيارات', 'warning', 5000);
         }
         App.initDone = true;
@@ -8758,16 +8833,22 @@ function bootApp() {
     }
   }
 
-  /* 🟢 والمسارُ الدافئ يرسم فوراً بلا انتظار — هذا إسنادٌ محلّيّ بصفر نداء شبكة،
-     فتأجيلُه كان سيؤخّر أوّل رسمٍ بلا أيّ مكسبٍ في التزامن. المؤجَّلُ هو **التحديث
-     الصامت** وحده (وهو النداءُ الشبكيّ). */
-  if (cachedLists && cachedLists.grades && cachedLists.grades.length) {
-    App.lists = cachedLists;
+  if (cachedLists) {
+    App.lists = cachedLists;            // 38c: يُرسم فوراً، والتحقّقُ بالجيل بعد ردّ الحزمة
     App.initDone = true;
     afterLists();
   }
 
-  _teacherBootBundlePrefetch(function (status) {
+  // 38c: قوائمُ محفوظةٌ لم يُؤكَّد جيلُها منذ LISTS_CONFIRM_MS ⇒ لا تُتخطّى الحزمةُ حتى لو كانت أعضاؤها دافئة.
+  var _needGen = !!(cachedLists && !(Date.now() - (_listsEntry.at || 0) < LISTS_CONFIRM_MS));
+  _teacherBootBundlePrefetch(function (status, reply) {
+    // 38c: قوائمُ محفوظة ⇒ تُبقى إن طابق جيلُها جيلَ الخادم، وإلّا تحديثٌ صامت (نداءُ القوائم الوحيد).
+    if (cachedLists) {
+      var _g = reply && reply.listsGen;
+      if (status === 'warm' && !_needGen) { /* أُكِّد الجيلُ قبل أقلّ من LISTS_CONFIRM_MS */ }
+      else if (_g && _listsCacheConfirm(_g)) { /* الجيلُ نفسُه ⇒ صفرُ نداء */ }
+      else setTimeout(_bootStartLists, 0);
+    }
     if (status !== 'failed' && status !== 'slow') {
       // الحزمة بذرت المفاتيح ⇒ إصابتا كاش، صفر نداء. (عضوٌ فشل خادمياً يتراجع لمحمّله
       //  الفردي — ثابت عزل الأعضاء، يبقى بلا مساس.)
@@ -8780,33 +8861,20 @@ function bootApp() {
       try { _ptsWarm = !!ClientCache.get('my_points_header_' + ((App.user && App.user.schoolId) || '')); } catch (ePw) {}
       if (_ptsWarm) setTimeout(_loadMyPointsHeader, 150);
       else _bootDeferredExtras = true;
-      setTimeout(_bootStartLists, 0);
       return;
     }
     /* 🔴 مسار الفشل/البطء هو **لحظة إشباع الحصّة بالضبط**. الجرس والنقاط زينة تفشل
        صامتةً أصلاً، وإطلاقهما هنا يحوّل نداءً فاشلاً واحداً إلى ثلاثة. يتكفّل بهما
-       أوّل نبضة **ناجحة** — أي بعد تعافي الحصّة، وبصفر نداء مجدول إضافي.
-       🔴 **والقوائمُ ليست زينة** — بدونها لا تُبنى الشاشة، فتبدأ في الحالتين. */
+       أوّل نبضة **ناجحة** — أي بعد تعافي الحصّة، وبصفر نداء مجدول إضافي. */
     _bootDeferredExtras = true;
-    setTimeout(_bootStartLists, 0);
   }, function () {
     /* إفراج المخطط — مبكّر ومحاذٍ لبوّابة العرض 9ث، **لا** لمؤقّت الجرس/النقاط 24ث:
        هذا المحمّل يُغذّي أوّل رسم و`_bootTryShow` يعمل مرّة واحدة فلا تصحيح بعده.
        وعند كاش دافئ أو مفتاح بذرته الحزمة فهو إصابة كاش بصفر نداء شبكة أصلاً. */
     loadBootConfig(function() { _bootSchemaDone = true; _bootTryShow(); });
-    /* 🔴 **سقفٌ للتسلسل — وإلّا انقلب التأجيلُ تعليقاً.** بوّابةُ العرض
-       (`if (!_bootListsDone) return`) **غيرُ مشروطة بمؤقّت**، وردُّ الحزمة قد يتأخّر إلى
-       `BOOT_EXTRAS_RELEASE_MS = 24000` ⇒ ربطُ بدءِ القوائم بردّ الحزمة **وحده** يترك
-       المستخدمَ على شاشة التحميل أربعاً وعشرين ثانيةً قبل أن يبدأ النداءُ أصلاً.
-       رصدته المراجعةُ المستقلّة، وأُكّد بالقياس: الثابتُ 24,000 والبوّابةُ غيرُ مشروطة.
-
-       🟢 **والحدُّ مشتقٌّ من نقطةِ تفتيشٍ قائمة لا رقمٌ مخترَع:** `releaseSchema` يقع عند
-       **أقرب** الحدثين — `BOOT_SCHEMA_RELEASE_MS = 8000` أو استقرارُ الحزمة أيّهما أسبق —
-       وهو **دون** بوّابة العرض 9ث عمداً. ⇒ التسلسلُ يبقى قائماً في الحالة الشائعة
-       (الحزمةُ تستقرّ قبل 8ث فتبدأ القوائمُ من ردّها)، **والأسوأُ محدودٌ بـ8ث لا 24ث**.
-       و`_bootStartLists` أحاديُّ التنفيذ ⇒ أسبقُ المسارين يفوز بلا ازدواج. */
-    setTimeout(_bootStartLists, 0);
-  });
+  }, { needGen: _needGen });
+  // 38c: بلا قوائم محفوظة يبدأ نداؤها الآن، بجوار الحزمة لا بعدها (الحزمةُ تبقى أوّلَ نداءٍ — انظر `_csBundleSeederFor`).
+  if (!cachedLists) _bootStartLists();
 
   // (عرض القائمة الجانبية حُسِم مبكراً أعلاه عبر initSidebarByRole — لا تكرار هنا)
   // (⭐ v3 config أصبحت مدمَجة داخل loadBootConfig أعلاه — لا نداء getV3Config منفصل بعد الآن)
@@ -8829,45 +8897,100 @@ function _loadMyPointsHeader() {
   }, function() { /* فشل الاتصال: يبقى الشريط مخفياً */ });
 }
 
+/* ══ 38c: القوائمُ المحفوظة على الجهاز ═══════════════════════════════════════════════════════
+   في ClientCache (localStorage، مبصومةٌ بالمدرسة والمعلّم) بشكل `{lists, gen, at}`: `gen` جيلُ الخادم
+   (`listsGen`)، و`at` آخرُ تأكيدٍ له. تُستعمل ما دام الجيلُ نفسَه، وسقفُ عمرها `LISTS_CACHE_TTL`.
+   🔴 الردُّ الاحتياطيّ (`fallback:true`) يُعرَض ولا يُحفظ أبداً، ولا يُحفظ ردٌّ بلا قوائم. */
+var LISTS_CACHE_KEY  = 'lists_v6';
+var LISTS_CACHE_TTL  = 12 * 60 * 60;        // ث — شبكةُ أمانٍ لكاتبٍ لا يرفع الجيل
+var LISTS_CONFIRM_MS = 10 * 60 * 1000;      // = عمرُ كاش الإقلاع (600 ث): داخلها لا حاجة لسؤال الخادم
+function _listsCacheGet() {
+  try {
+    var e = ClientCache.get(LISTS_CACHE_KEY);
+    return (e && e.lists && typeof e.lists === 'object') ? e : null;
+  } catch (x) { return null; }
+}
+function _listsCacheSet(lists, gen) {
+  if (!lists || !gen) return;               // بلا جيلٍ (خادمٌ أقدم) ⇒ لا حفظ، فلا نسخةَ لا يُعرف متى تقدُم
+  try { ClientCache.set(LISTS_CACHE_KEY, { lists: lists, gen: String(gen), at: Date.now() }, LISTS_CACHE_TTL); } catch (x) {}
+}
+/* يُرجِع true ويجدّد `at` إن طابق الجيلُ المحفوظ جيلَ الخادم. */
+function _listsCacheConfirm(gen) {
+  var e = _listsCacheGet();
+  if (!e || !gen || e.gen !== String(gen)) return false;
+  _listsCacheSet(e.lists, e.gen);
+  return true;
+}
+/* ردُّ الخادم ⇒ شكلُ App.lists (مصدرٌ واحد للنجاح والاحتياط). */
+function _listsFromReply(r) {
+  r = r || {};
+  return {
+    grades         : r.grades     || [],
+    subjects       : r.subjects   || [],
+    sections       : r.sections   || [],
+    violations     : r.violations || [],
+    subjectsByGrade: r.subjectsByGrade || {},
+    // ★ خريطة شعب كل فصل — إسقاطُها هنا يُبطل وعيَ الواجهة بالفصل **صامتاً**
+    //   (هذه الكتلةُ أسقطت مفاتيحَ قبلاً — بند 3 في teacher/CLAUDE.md).
+    sectionsByGrade: r.sectionsByGrade || {},
+    nonGradedSubjects: r.nonGradedSubjects || {},
+    curriculumByGrade: r.curriculumByGrade || {},
+    // ★ أوراقُ الاختبار لكلّ صفّ (من سجلّ «المقررات») — فارغةٌ بحقٍّ لمدرسةٍ بلا سجلّ.
+    examPapersByGrade: r.examPapersByGrade || {},
+    // ★ التصنيفُ المحسوم لكلّ نوعِ سلوك — تقرأ منه قائمتا «تعزيزٌ إيجابيّ» و«ملاحظة».
+    violationPolarityResolved: r.violationPolarityResolved || {},
+    // ★ (37h) التصنيفُ **الصريح** من «القوائم» وحده — نموذجا تسجيل السلوك يختارانه مسبقاً، وبدونه يُطلَب الاختيار.
+    violationPolarity: r.violationPolarity || {},
+    subjectExpansionMap: r.subjectExpansionMap || {},
+    // 38c: فئاتُ المحتوى (مركز المحتوى · مشرف الأنشطة) من الخادم؛ خادمٌ أقدم ⇒ الاحتياطُ الوحيد في _getDefaultLists.
+    contentCategories: (r.contentCategories && r.contentCategories.length) ? r.contentCategories : _getDefaultLists().contentCategories,
+    _ts            : Date.now()
+  };
+}
+
+/* 38c: `lean` ⇒ بلا rawRows (صفحةُ إدارة القوائم وحدها تطلبها: `rawOnly`)، وبلا مفتاح كاش في callServer —
+   الحفظُ هنا بالجيل. ونداءٌ طائرٌ واحد: مستدعٍ ثانٍ ينضمّ إليه. */
+var _listsInflight = null;
 function _fetchListsFromServer(callback) {
   if (!App.user || !App.user.token) {
     if (callback) callback(false);
     return;
   }
-  callServer('getListsDataProtected', { token: App.user.token }, 'lists_data_v3', 1800, function(r) {
+  if (_listsInflight) { _listsInflight.push(callback); return; }
+  _listsInflight = [callback];
+  var _drain = function (ok) {
+    var q = _listsInflight || [];
+    _listsInflight = null;
+    for (var i = 0; i < q.length; i++) { if (typeof q[i] === 'function') { try { q[i](ok); } catch (eCb) {} } }
+  };
+  callServer('getListsDataProtected', { token: App.user.token, lean: true }, function(r) {
     if (r && r.success) {
-      App.lists = {
-        grades         : r.grades     || [],
-        subjects       : r.subjects   || [],
-        sections       : r.sections   || [],
-        violations     : r.violations || [],
-        subjectsByGrade: r.subjectsByGrade || {},
-        // ★ خريطة شعب كل فصل — إسقاطُها هنا يُبطل وعيَ الواجهة بالفصل **صامتاً**
-        //   (هذه الكتلةُ أسقطت مفاتيحَ قبلاً — بند 3 في teacher/CLAUDE.md).
-        sectionsByGrade: r.sectionsByGrade || {},
-        nonGradedSubjects: r.nonGradedSubjects || {},
-        curriculumByGrade: r.curriculumByGrade || {},
-        // ★ أوراقُ الاختبار لكلّ صفّ (من سجلّ «المقررات») — فارغةٌ بحقٍّ لمدرسةٍ بلا سجلّ.
-        examPapersByGrade: r.examPapersByGrade || {},
-        // ★ التصنيفُ المحسوم لكلّ نوعِ سلوك — تقرأ منه قائمتا «تعزيزٌ إيجابيّ» و«ملاحظة».
-        violationPolarityResolved: r.violationPolarityResolved || {},
-        // ★ (37h) التصنيفُ **الصريح** من «القوائم» وحده — نموذجا تسجيل السلوك يختارانه مسبقاً، وبدونه يُطلَب الاختيار.
-        violationPolarity: r.violationPolarity || {},
-        subjectExpansionMap: r.subjectExpansionMap || {},
-        _ts            : Date.now()
-      };
-      try { sessionStorage.setItem('teacherLists_v5', JSON.stringify(App.lists)); } catch(e) {}
-      if (callback) callback(true);
+      App.lists = _listsFromReply(r);
+      _listsCacheSet(App.lists, r.listsGen);
+      _drain(true);
     } else {
       console.warn('getListsDataProtected returned success=false');
-      App.lists = _getDefaultLists();
-      if (callback) callback(false);
+      // 38c: الاحتياطُ يُعرَض ولا يُحفظ — ولا يطمس قوائمَ حقيقيةً معروضةً أصلاً.
+      if (!App.lists || !App.lists.grades || !App.lists.grades.length) {
+        App.lists = (r && r.fallback && r.lists) ? _listsFromReply(r.lists) : _getDefaultLists();
+      }
+      _drain(false);
     }
   }, function(err) {
     console.error('getListsDataProtected failed:', err);
-    App.lists = _getDefaultLists();
-    if (callback) callback(false);
+    if (!App.lists || !App.lists.grades || !App.lists.grades.length) App.lists = _getDefaultLists();
+    _drain(false);
   });
+}
+/* 38d: فئاتُ المحتوى (مركز المحتوى · مشرف الأنشطة) من قوائم الخادم؛ خادمٌ أقدم ⇒ الاحتياطُ الوحيد في _getDefaultLists. */
+function _contentCategories() {
+  var c = App.lists && App.lists.contentCategories;
+  return (c && c.length) ? c.slice() : _getDefaultLists().contentCategories;
+}
+/* 38c: بعد كتابةٍ في القوائم أو المعلمين أو الطلاب من هذه الصفحة — تُنسى النسخةُ المحفوظة وتُجلب جديدة. */
+function _listsReload(cb) {
+  try { ClientCache.del(LISTS_CACHE_KEY); } catch (e) {}
+  _fetchListsFromServer(function (ok) { if (typeof cb === 'function') { try { cb(ok); } catch (eCb) {} } });
 }
 
 function _refreshListsSilently() {
@@ -8901,6 +9024,7 @@ function _getDefaultLists() {
     // ★ حاضرٌ فارغاً بعقدٍ معلَن: `_secNarrowByGrade` تتراجع إلى القائمة المسطّحة عند
     //   الفراغ — وغيابُ المفتاح يُنتج التراجعَ نفسَه لكن بلا أيّ إعلان.
     sectionsByGrade: {},
+    contentCategories: ['إعلان', 'نشاط', 'إنجاز', 'فعالية'],   // 38c: the one client fallback (server: TC_CONTENT_CATEGORIES)
     _ts        : Date.now()
   };
 }
@@ -9420,7 +9544,7 @@ function loadNewsNotifications() {
 function loadCircularsNotifications() {
   try {
     if (typeof App === 'undefined' || !App || !App.user) return;
-    callServer('listCircularsProtected', { manage: false }, 'circ_notif', 120, function (r) {
+    _pageData_('circ_list', 'listCircularsProtected', { ttl: 90, args: { manage: false } }, function (r) {   // 38d: shared key
       if (!r || !r.success) return;
       var list = r.circulars || [];
       // أعلى رقم تعميم حالي مؤشّر «أحدث» تعميم
@@ -9618,11 +9742,6 @@ function markCircularsRead() {
   refreshBellBadge();
 }
 
-function openNewsNotifications() {
-  markNewsRead();
-  showSection('news');
-}
-
 /* ── نافذة الإشعارات المنبثقة (أخبار + ملاحظات أولياء الأمور) ── */
 function _notifOutside(e) {
   var p = document.getElementById('notif-panel');
@@ -9682,7 +9801,8 @@ function _loadNotificationsList() {
     if (!failed.circ) markCircularsRead();
   }
   // 0) التعاميم الإدارية النشطة
-  callServer('listCircularsProtected', { manage: false }, function (r) {
+  _pageData_('circ_list', 'listCircularsProtected', { ttl: 90, args: { manage: false } }, function (r, err) {   // 38d: shared key
+    if (err) { failed.circ = true; render(); return; }
     var list = (r && r.success && r.circulars) ? r.circulars : [];
     if (list.length) {
       parts.circ = '<div style="font-size:11px;color:var(--text-light);padding:6px 10px">📜 التعاميم الإدارية</div>';
@@ -9695,7 +9815,7 @@ function _loadNotificationsList() {
       }
     }
     render();
-  }, function () { failed.circ = true; render(); });
+  });
   // 1) أحدث الأخبار
   callServer('getAllNewsProtected', { page: 1, pageSize: 5 }, function (r) {
     var list = (r && r.success && r.news) ? r.news : [];
@@ -10850,13 +10970,6 @@ function sendSaveNews(data, id) {
 // ==================== SECTION ROUTER (مُحسَّن بالكامل وآمن) ====================
 
 /**
- * دالة احتياطية لصفحة التقارير - في حال عدم اكتمالها
- */
-function renderReports() {
-  toast('نظام التقارير قيد التطوير حالياً', 'info');
-}
-
-/**
  * عرض القسم المطلوب (الصفحة) والقفز إلى المحتوى
  * @param {string} name - اسم القسم (dashboard, grades, homework, ...)
  */
@@ -10965,10 +11078,10 @@ function _circLoadRecipientData(cb) {
   var pending = 0, done = function () { pending--; if (pending <= 0 && cb) cb(); };
   if (needT) {
     pending++;
-    callServer('getTeacherNamesProtected', {}, function (r) {
+    _pageData_('teacher_names', 'getTeacherNamesProtected', { ttl: 300 }, function (r) {   // 38d: shared key
       _circTeacherNames = (r && r.success && r.teachers) ? r.teachers : [];
       done();
-    }, function () { _circTeacherNames = []; done(); });
+    });
   }
   if (needS) {
     pending++;
@@ -11081,20 +11194,19 @@ function renderCirculars() {
   _circLoadList(isMgr);
 }
 
+// 38d: through the shared loader (same key as the dashboard/bell when not managing; loading and error UI in one place).
 function _circLoadList(isMgr) {
-  callServer('listCircularsProtected', { manage: !!isMgr }, function (res) {
+  _pageData_(isMgr ? 'circ_list_mgr' : 'circ_list', 'listCircularsProtected', { ttl: 90, args: { manage: !!isMgr }, el: 'circ-list' }, function (res) {
     var list = document.getElementById('circ-list');
     if (!list) return;
-    if (!res || !res.success) {
-      list.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + (res ? esc(res.error) : 'تعذّر التحميل') + '</p>';
-      return;
-    }
-    _circList = res.circulars || [];
-    _circRenderList(res.isManager === true);
-  }, function (err) {
-    var list = document.getElementById('circ-list');
-    if (list) list.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">❌ ' + esc(err.message || err) + '</p>';
+    _circList = (res && res.circulars) || [];
+    _circRenderList(res && res.isManager === true);
   });
+}
+// 38d: after a circular write every circulars key is forgotten (dashboard card, bell, page).
+function _circAfterWrite() {
+  try { _pageDataDrop_('circ_'); } catch (e) {}
+  _circLoadList(true);
 }
 
 function _circScopeChip(c) {
@@ -11167,7 +11279,7 @@ function saveCircular() {
     if (r && r.success) {
       toast(r.message || 'تم', 'success');
       circResetForm();
-      _circLoadList(true);
+      _circAfterWrite();
     } else {
       showError(r ? r.error : 'فشل النشر');
     }
@@ -11207,7 +11319,7 @@ function circEdit(id) {
 
 function circToggle(id) {
   callServer('toggleCircularActiveProtected', { id: id }, function (r) {
-    if (r && r.success) { toast(r.active ? 'تم التفعيل' : 'تم التعطيل', 'success'); _circLoadList(true); }
+    if (r && r.success) { toast(r.active ? 'تم التفعيل' : 'تم التعطيل', 'success'); _circAfterWrite(); }
     else showError(r ? r.error : 'فشل');
   });
 }
@@ -11217,7 +11329,7 @@ function circDelete(id) {
     'سيُحذف هذا التعميم نهائياً.\n\n🔴 لا يمكن التراجع عن الحذف.',
     '🗑️', function () {
     callServer('deleteCircularProtected', { id: id }, function (r) {
-      if (r && r.success) { toast('تم الحذف', 'success'); _circLoadList(true); }
+      if (r && r.success) { toast('تم الحذف', 'success'); _circAfterWrite(); }
       else showError(r ? r.error : 'فشل الحذف');
     });
   }, { okText: '🗑️ حذف نهائيّ' });
@@ -11278,7 +11390,7 @@ function _sectionRenderers() {
     activitySup: renderActivitySup,
     notes: renderNotes,
     mySchedule: renderMySchedule,
-    reports: renderReports,      // ← دالة احتياطية موجودة الآن
+    reports: renderReports,      // 38d: _js-certificates-scoresheets.html (the stub in _js-ui-shell.html was removed)
     adminActivities: renderAdminActivities,
     adminStudents: renderAdminStudents,
     studentDirectory: renderStudentDirectory,
@@ -14201,7 +14313,7 @@ function ec_ensureLocksLoaded(cb, force) {
 // حصراً (تجنّباً لتكرار واجهة إدارة إجازات في مكانين مختلفين لنفس البيانات).
 function ec_ensureHolidaysLoaded(cb, force) {
   if (!force && _ecTTLoad.holidays === 'ok') { cb(); return; }
-  callServer('getSchoolCalendarProtected', {}, function (res) {
+  _pageData_('school_calendar', 'getSchoolCalendarProtected', { ttl: 300, force: !!force }, function (res) {   // 38d: shared key
     if (!res || !res.success) { _ecCalHolidayRanges = []; _ecTTLoad.holidays = 'failed'; cb(); return; }
     var events = res.events || [];
     _ecCalHolidayRanges = [];
@@ -14214,7 +14326,7 @@ function ec_ensureHolidaysLoaded(cb, force) {
        الفشل هو ألّا يصل ردٌّ أصلاً — والتمييز هو كل الغرض من هذا السجلّ. */
     _ecTTLoad.holidays = 'ok';
     cb();
-  }, function () { _ecCalHolidayRanges = []; _ecTTLoad.holidays = 'failed'; cb(); });
+  });
 }
 
 // هل يقع dateStr ضمن أي فترة إجازة حقيقية من التقويم المدرسي؟ مقارنة نصّية مباشرة (yyyy-mm-dd
@@ -15595,7 +15707,8 @@ function renderDashboard() {
 function loadDashboardCirculars() {
   var box = document.getElementById('dashCirculars');
   if (!box) return;
-  callServer('listCircularsProtected', { manage: false }, 'dash_circulars', 90, function (res) {
+  // 38d: one shared key for the dashboard card, the bell and the notifications panel (was 3 keys + 1 uncached)
+  _pageData_('circ_list', 'listCircularsProtected', { ttl: 90, args: { manage: false } }, function (res) {
     var list = (res && res.success && res.circulars) ? res.circulars : [];
     if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
     var show = list.slice(0, 3);
@@ -15623,7 +15736,7 @@ function loadDashboardCirculars() {
         items +
       '</div>';
     box.style.display = 'block';
-  }, function () { box.style.display = 'none'; });
+  });
 }
 
 /**
@@ -17845,7 +17958,7 @@ function renderTasksMgmt() {
      إلى هذا الـcallback كائناً مُصطنَعاً `{success:false,error}` (‏`_js-core-bridge.html:986`).
      وبلا هذا الفحص يُقرأ ذلك الكائنُ «صفرَ معلّمين» ⇒ قائمةٌ فارغةٌ بلا رسالة، ويُشخَّص
      «لا بيانات» بدل «تعذّر الجلب» — وهما تشخيصان متعاكسان. */
-  callServer('getTeacherNamesProtected', {}, function (r) {
+  _pageData_('teacher_names', 'getTeacherNamesProtected', { ttl: 300 }, function (r) {   // 38d: shared key
     if (r && r.success === false) {
       try { toast('⚠️ تعذّر جلب أسماء المعلمين — أعد المحاولة', 'warning'); } catch (eT) {}
       return;
@@ -18644,12 +18757,11 @@ function renderCalendar() {
     '<div class="section-header-title">التقويم المدرسي 1447-1448هـ</div>' +
     '<button type="button" class="btn btn-sm" title="مساعدة" onclick="_helpOpen(\'calendar\')" style="padding:4px 8px">❓</button>' + addBtn + '</div>' +
     '<div class="section-body" id="calBody"><div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div></div></div>';
-  callServer('getSchoolCalendarProtected', {}, function (r) {
-    var b = document.getElementById('calBody');
-    if (!r || !r.success) { b.innerHTML = '<div class="alert alert-warning">' + ((r && r.error) || 'تعذّر التحميل') + '</div>'; return; }
+  // 38d: shared calendar key; loading and error UI by the loader (with a retry button)
+  _pageData_('school_calendar', 'getSchoolCalendarProtected', { ttl: 300, el: 'calBody' }, function (r) {
     CAL.data = r;
     cal_renderBody();
-  }, function (e) { document.getElementById('calBody').innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
+  });
 }
 function cal_renderBody() {
   var b = document.getElementById('calBody'); if (!b || !CAL.data) return;
@@ -18708,7 +18820,7 @@ function cal_add() {
   if (!g('ce-start')) { st.innerHTML = '<div class="alert alert-warning">تاريخ البداية مطلوب</div>'; return; }
   st.innerHTML = '<div style="color:var(--text)">⏳ جاري الحفظ…</div>';
   callServer('addCalendarEventProtected', { type: g('ce-type'), title: g('ce-title'), start: g('ce-start'), end: g('ce-end'), hijri: g('ce-hijri') }, function (r) {
-    if (r && r.success) { toast('✅ تمت الإضافة', 'success'); renderCalendar(); }
+    if (r && r.success) { toast('✅ تمت الإضافة', 'success'); _pageDataDrop_('school_calendar'); renderCalendar(); }   // 38d
     else st.innerHTML = '<div class="alert alert-danger">' + ((r && r.error) || 'فشل') + '</div>';
   }, function (e) { st.innerHTML = '<div class="alert alert-danger">' + (e.message || e) + '</div>'; });
 }
@@ -18717,7 +18829,7 @@ function cal_delete(id) {
     'سيُحذف هذا الحدث من التقويم المدرسيّ.',
     '🗑️', function () {
     callServer('deleteCalendarEventProtected', { id: id }, function (r) {
-      if (r && r.success) { toast('تم الحذف', 'success'); renderCalendar(); }
+      if (r && r.success) { toast('تم الحذف', 'success'); _pageDataDrop_('school_calendar'); renderCalendar(); }   // 38d
       else toast('❌ ' + ((r && r.error) || 'فشل'), 'error');
     });
   }, { okText: '🗑️ حذف الحدث' });
@@ -18752,15 +18864,18 @@ function _calwPlaceholder() {
 function loadCalendarWidget() {
   var box = document.getElementById('dashCalendar');
   if (!box) return;
-  callServer('getSchoolCalendarProtected', {}, function (r) {
+  // 38d: one shared calendar key (dashboard widget, calendar page, exam-control holidays)
+  _pageData_('school_calendar', 'getSchoolCalendarProtected', { ttl: 300 }, function (r, err) {
+    if (r && r.__transport) {
+      // فشلُ النقل (502/مهلة) كان يُترك بلا معالج ⇒ هيكلٌ عالقٌ أبداً.
+      box.style.display = 'block';
+      box.innerHTML = '<div class="alert alert-warning">تعذّر تحميل التقويم ' +
+        '<button type="button" class="btn btn-sm btn-secondary" onclick="loadCalendarWidget()">🔄 إعادة المحاولة</button></div>';
+      return;
+    }
     if (!r || !r.success) { box.style.display = 'none'; return; }
     window._calData = r;
     _renderCalWidget(r);
-  }, function () {
-    // فشلُ النقل (502/مهلة) كان يُترك بلا معالج ⇒ هيكلٌ عالقٌ أبداً.
-    box.style.display = 'block';
-    box.innerHTML = '<div class="alert alert-warning">تعذّر تحميل التقويم ' +
-      '<button type="button" class="btn btn-sm btn-secondary" onclick="loadCalendarWidget()">🔄 إعادة المحاولة</button></div>';
   });
 }
 function _renderCalWidget(r) {
@@ -19805,48 +19920,6 @@ function triggerAutoSave(inp, ctx) {
       if (r && r.error) toast('خطأ: ' + r.error, 'error');
     }
   });
-}
-// ── جمع الدرجات عند الحفظ الدفعي ──
-function collectGradesForSave() {
-  var grades = [];
-  for (var i = 0; i < GS.students.length; i++) {
-    var s = GS.students[i];
-    var code = s.code;
-
-    if (GS.isTermMonth) {
-      if (GS.isNewTermStruct) {
-        var msI = document.querySelector('input[data-code="' + code + '"][data-type="monthly_score"]');
-        var esI = document.querySelector('input[data-code="' + code + '"][data-type="exam_score"]');
-        var tsI = document.querySelector('input[data-code="' + code + '"][data-type="total_score"]');
-        var msV = msI ? msI.value : '';
-        var esV = esI ? esI.value : '';
-        var tsV = tsI ? tsI.value : '';
-        if (msV !== '' || esV !== '' || tsV !== '') {
-          grades.push({
-            code         : code,
-            monthly_score: msV,
-            exam_score   : esV,
-            total_score  : tsV
-          });
-        }
-      } else {
-        var fgI = document.querySelector('input[data-code="' + code + '"][data-type="final_grade"]');
-        var fgV = fgI ? fgI.value : '';
-        if (fgV !== '') grades.push({ code: code, final_grade: fgV });
-      }
-    } else {
-      var bI = document.querySelector('input[data-code="' + code + '"][data-type="behavior"]');
-      var hI = document.querySelector('input[data-code="' + code + '"][data-type="homework"]');
-      var oI = document.querySelector('input[data-code="' + code + '"][data-type="oral"]');
-      var wI = document.querySelector('input[data-code="' + code + '"][data-type="written"]');
-      var bV = bI ? bI.value : ''; var hV = hI ? hI.value : '';
-      var oV = oI ? oI.value : ''; var wV = wI ? wI.value : '';
-      if (bV || hV || oV || wV) {
-        grades.push({ code: code, behavior: bV, homework: hV, oral: oV, written: wV });
-      }
-    }
-  }
-  return grades;
 }
 function saveAllGrades() {
   if (!GS.students.length) { toast('لا توجد بيانات لحفظها', 'warning'); return; }
@@ -21256,15 +21329,6 @@ function _shareTextOnly(title, text, url, after) {
       ['catch'](function (err) { if (!(err && err.name === 'AbortError')) _shareSheet(title, text, url, after); });
   } else {
     _shareSheet(title, text, url, after);
-  }
-}
-function _shareCopyLink(url) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(function(){
-      toast('📋 تم نسخ رابط الخبر — الصقه أينما شئت', 'success');
-    })['catch'](function(){ try { window.prompt('انسخ رابط الخبر:', url); } catch (e) {} });
-  } else {
-    try { window.prompt('انسخ رابط الخبر:', url); } catch (e) {}
   }
 }
 
@@ -26654,14 +26718,6 @@ function _schedApply() {
   }
 }
 
-// توافق مع النداءات القديمة
-function applyScheduleFilter() { _schedApply(); }
-function searchSchedule() { _schedApply(); }
-function renderScheduleData(rows) {
-  var area = document.getElementById('myScheduleArea');
-  if (area && rows) area.innerHTML = _schedGridTableHtml(rows, { showTeacher: _schedIsPriv() });
-}
-
 function _schedGridTableHtml(rows, opts) {
   opts = opts || {};
   var days = _schedDays();
@@ -28349,9 +28405,9 @@ function tabs_init(){
 }
 var _tabsTeachers=[];
 function tabs_loadTeachers(){
-  callServer('getTeacherNamesProtected', {}, function(res){
+  _pageData_('teacher_names', 'getTeacherNamesProtected', { ttl: 300 }, function(res){   // 38d: shared key
     if(res&&res.success&&res.teachers) _tabsTeachers=res.teachers;
-  }, function(){});
+  });
 }
 function tabs_teacherInput(v){ _acRender('tabs-teacher-ac', _tabsTeachers, v, 'tabs_pickTeacher'); }
 function tabs_pickTeacher(name){ var el=document.getElementById('tabs-teacher'); if(el) el.value=name; _acHideNow('tabs-teacher-ac'); tabs_onTeacherChange(); }
@@ -28727,8 +28783,12 @@ function _tcReadImportFile(file, cb) {
 // ==================== TM (إدارة المعلمين المتقدمة) ====================
 // إظهار si-teachers-mgmt/si-lists-mgmt للمدير انتقل إلى مصدر الحقيقة الموحّد
 // (SIDEBAR_ROLE_RULES في initSidebarByRole) — أُبقِيت الدالة كـ no-op للتوافق.
-function tm_init() { /* لا شيء: عرض القائمة يُدار مركزياً في initSidebarByRole */ }
-function tm_load() { tm_showBackfillBtn(); tm_setStatus('⏳ جارٍ التحميل...', '#1149a3'); document.getElementById('tm-list').innerHTML = '<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; google.script.run.withSuccessHandler(function(listsRes) { if (listsRes && listsRes.success) _tmLists = listsRes; tm_populateGradeFilter(listsRes); }).withFailureHandler(_gsrFail('getEnhancedListsProtected')).getEnhancedListsProtected({ token: App.user.token }); google.script.run.withSuccessHandler(function(res) { tm_setStatus('', ''); if (!res || !res.success) { tm_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828'); return; } _tmAllTeachers = res.teachers || []; tm_render(_tmAllTeachers); tm_renderStats(_tmAllTeachers); }).withFailureHandler(function(err) { tm_setStatus('❌ ' + err.message, '#c62828'); }).adminGetAllTeachersGrouped({ token: App.user.token }); }
+/* 38d: الفصولُ والموادّ والشعب من App.lists (قوائم الإقلاع، وفيها فصولُ «الطلاب» وموادُّ «المدرسين») — كان
+   `getEnhancedListsProtected` يكرّرها ويقرأ «الطلاب» كاملةً في كلّ فتح. وبلا قوائم (فشل الإقلاع) تُجلب مرّة. */
+function _tmUseLists() { _tmLists = App.lists || {}; tm_populateGradeFilter(_tmLists); }
+/* 38d: بعد حفظ معلّمٍ أو حذفه — أسماءُ المعلمين المشتركة تُنسى، والقوائمُ (موادُّ «المدرسين») تُجلب جديدة. */
+function _tmAfterWrite() { try { _pageDataDrop_('teacher_names'); } catch (e) {} _listsReload(function () { _tmUseLists(); }); }
+function tm_load() { tm_showBackfillBtn(); tm_setStatus('⏳ جارٍ التحميل...', '#1149a3'); document.getElementById('tm-list').innerHTML = '<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>'; if (App.lists && App.lists.grades && App.lists.grades.length) _tmUseLists(); else _fetchListsFromServer(function () { _tmUseLists(); }); google.script.run.withSuccessHandler(function(res) { tm_setStatus('', ''); if (!res || !res.success) { tm_setStatus('❌ ' + (res ? res.error : 'خطأ'), '#c62828'); return; } _tmAllTeachers = res.teachers || []; tm_render(_tmAllTeachers); tm_renderStats(_tmAllTeachers); }).withFailureHandler(function(err) { tm_setStatus('❌ ' + err.message, '#c62828'); }).adminGetAllTeachersGrouped({ token: App.user.token }); }
 function tm_populateGradeFilter(listsRes) { var sel = document.getElementById('tm-filter-grade'); if (!sel || !listsRes || !listsRes.grades) return; sel.innerHTML = '<option value="">كل الفصول</option>'; for (var i=0;i<listsRes.grades.length;i++) { var opt=document.createElement('option'); opt.value=opt.textContent=listsRes.grades[i]; sel.appendChild(opt); } }
 function tm_render(teachers) { var container = document.getElementById('tm-list'); if (!teachers || teachers.length===0) { container.innerHTML='<p style="text-align:center;color:#999;padding:30px;">لا يوجد معلمون</p>'; return; } var html=''; for (var i=0;i<teachers.length;i++) { var t=teachers[i]; var roleLabels={admin:['مدير','role-admin'],deputy:['وكيل','role-deputy'],supervisor:['مشرف','role-supervisor'],teacher:['معلم','role-teacher']}; var roleInfo=roleLabels[t.role]||['معلم','role-teacher']; html+='<div class="teacher-card" id="tc-'+i+'"><div class="tc-header"><div style="display:flex;align-items:center;gap:10px;"><div style="width:38px;height:38px;border-radius:50%;background:#1149a3;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;">'+t.name.charAt(0)+'</div><div><div class="tc-name">'+t.name+'</div><span class="tc-role '+roleInfo[1]+'">'+roleInfo[0]+'</span></div></div><div class="tc-actions"><button class="tc-btn tc-btn-edit" onclick="tm_editTeacher(\''+t.name.replace(/'/g,"\\'")+'\')">✏️ تعديل</button><button class="tc-btn tc-btn-del" onclick="tm_deleteTeacher(\''+t.name.replace(/'/g,"\\'")+'\')">🗑️ حذف</button></div></div>'; if (t.role==='teacher'||t.role==='supervisor') { html+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">'; for(var si=0;si<t.subjects.length;si++) html+='<span class="tc-tag" style="background:#e8f5e9;color:#2e7d32;">📚 '+t.subjects[si]+'</span>'; for(var gi=0;gi<t.grades.length;gi++) html+='<span class="tc-tag" style="background:#e3f2fd;color:#1565c0;">🏫 '+t.grades[gi]+'</span>'; for(var sci=0;sci<t.sections.length;sci++) html+='<span class="tc-tag" style="background:#fff3e0;color:#e65100;">🔡 '+t.sections[sci]+'</span>'; html+='</div>'; } html+='<div style="font-size:11px;color:var(--text-light);">'+t.assignments.length+' تعيين'+tm_weeklyBadge(t)+'</div></div>'; } container.innerHTML=html; }
 function tm_renderStats(teachers) { var stats={teacher:0,supervisor:0,deputy:0,admin:0}; for(var i=0;i<teachers.length;i++) stats[teachers[i].role]++; var el=document.getElementById('tm-stats'); if(!el) return; el.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;"><span style="background:#e8eaf6;color:#3949ab;padding:4px 12px;border-radius:20px;font-size:12px;">👨‍🏫 '+stats.teacher+' معلم</span><span style="background:#fce4ec;color:#c62828;padding:4px 12px;border-radius:20px;">👑 '+stats.admin+' مدير</span><span style="background:#fff3e0;color:#e65100;">🔑 '+stats.deputy+' وكيل</span><span style="background:#e8f5e9;color:#2e7d32;">🛡️ '+stats.supervisor+' مشرف</span><span style="background:#f5f5f5;">📊 إجمالي: '+teachers.length+'</span></div>'; }
@@ -28753,12 +28813,12 @@ function tm_collectAssignments(){ var rows=document.getElementById('tm-assignmen
 function tm_weeklyBadge(t){ if(!t||(t.role!=='teacher'&&t.role!=='supervisor')) return ''; var tg=t.weeklyTarget||0, ac=t.weeklyActual||0; if(!tg&&!ac) return ''; var ok=(tg===ac)||!tg; var col=ok?'#2e7d32':(ac<tg?'#e65100':'#c62828'); var note=!tg?'':(ac<tg?' — ينقص '+(tg-ac):(ac>tg?' — يزيد '+(ac-tg):' ✓')); return ' · <span style="color:'+col+';font-weight:600;" title="الفعلي من الجدول / المطلوب">📅 '+ac+(tg?(' / '+tg):'')+' حصة'+note+'</span>'; }
 function tm_setWeekly(t){ var el=document.getElementById('tm-weekly'), hint=document.getElementById('tm-weekly-hint'); if(!el) return; el.value=(t&&t.weeklyTarget)?String(t.weeklyTarget):''; if(hint) hint.textContent=t?('في الجدول الآن: '+(t.weeklyActual||0)+' حصة. الرقم يتبع الجدول تلقائياً؛ وإن رفعته يُوزَّع الناقص فوراً عند الحفظ.'):'عدد الحصص الأسبوعية المطلوبة — تُوزَّع تلقائياً عند الحفظ، ثم يتبع الرقمُ الجدولَ. اتركه فارغاً إن لم يكن له نصاب.'; }
 function tm_getWeekly(){ var el=document.getElementById('tm-weekly'), wk=document.getElementById('tm-weekly-wrap'); if(!el||(wk&&wk.style.display==='none')) return undefined; return String(el.value||'').trim(); }   /* مخفيّ (مدير/وكيل) ⇒ لا يُرسل فتُحفظ القيمة السابقة */
-function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); /* 🆔 التعديلُ يُحدَّد بالمعرّف والاسم الأصليّ لا بالاسم الجديد — وإلّا أُلحِق صفٌّ ثانٍ عند تغيير الاسم */ var tmOrigId=''; if(!isNew){ for(var oi=0;oi<_tmAllTeachers.length;oi++){ if(_tmAllTeachers[oi].name===_tmEditingName){ tmOrigId=_tmAllTeachers[oi].teacherId||''; break; } } } google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); tm_load(); },(res.message.indexOf(' · ')!==-1?5000:1200)); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments, weeklyPeriods:tm_getWeekly(), teacherId:tmOrigId, originalName:(isNew?'':_tmEditingName)}}); }
+function tm_saveTeacher(){ var name=document.getElementById('tm-name').value.trim(); var password=document.getElementById('tm-password').value.trim(); var role=document.getElementById('tm-role').value; var statusEl=document.getElementById('tm-modal-status'); if(!name){ statusEl.innerHTML='<p style="color:#c62828;">❌ اسم المعلم مطلوب</p>'; return; } if(!password){ statusEl.innerHTML='<p style="color:#c62828;">❌ كلمة المرور مطلوبة</p>'; return; } var assignments=[]; if(role==='admin') assignments=[{subject:'المدير',grade:'المدير',section:'المدير'}]; else if(role==='deputy') assignments=[{subject:'الوكيل',grade:'الوكيل',section:'الوكيل'}]; else if(role==='supervisor'){ assignments=tm_collectAssignments(); assignments.unshift({subject:'مشرف',grade:'مشرف',section:'مشرف'}); } else { assignments=tm_collectAssignments(); if(assignments.length===0){ statusEl.innerHTML='<p style="color:#c62828;">❌ أضف تعيين واحد على الأقل</p>'; return; } } statusEl.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; var isNew=(_tmEditingName===null); /* 🆔 التعديلُ يُحدَّد بالمعرّف والاسم الأصليّ لا بالاسم الجديد — وإلّا أُلحِق صفٌّ ثانٍ عند تغيير الاسم */ var tmOrigId=''; if(!isNew){ for(var oi=0;oi<_tmAllTeachers.length;oi++){ if(_tmAllTeachers[oi].name===_tmEditingName){ tmOrigId=_tmAllTeachers[oi].teacherId||''; break; } } } google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } statusEl.innerHTML='<p style="color:#2e7d32;">✅ '+res.message+'</p>'; setTimeout(function(){ tm_closeModal(); _tmAfterWrite(); tm_load(); },(res.message.indexOf(' · ')!==-1?5000:1200)); }).withFailureHandler(function(err){ statusEl.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).adminSaveTeacherGrouped({token:App.user.token, isNew:isNew, teacher:{name:name, password:password, role:role, assignments:assignments, weeklyPeriods:tm_getWeekly(), teacherId:tmOrigId, originalName:(isNew?'':_tmEditingName)}}); }
 function tm_deleteTeacher(name){
   confirmAction('حذف معلّم',
     'المعلّم: ' + name + '\n\nستُحذف جميع تعييناته معه.\n\n🔴 لا يمكن التراجع عن هذه العملية.',
     '🗑️', function () {
-    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); tm_load(); }).withFailureHandler(function(err){ toast('❌ '+err.message, 'error'); }).adminDeleteTeacherByName({token:App.user.token, name:name});
+    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ toast('❌ '+(res?res.error:'خطأ'), 'error'); return; } tm_setStatus('✅ '+res.message,'#2e7d32'); _tmAfterWrite(); tm_load(); }).withFailureHandler(function(err){ toast('❌ '+err.message, 'error'); }).adminDeleteTeacherByName({token:App.user.token, name:name});
   }, { okText: '🗑️ حذف المعلّم' });
 }
 function tm_closeModal(){ document.getElementById('tm-modal').style.display='none'; _tmEditingName=null; }
@@ -28796,24 +28856,34 @@ function tm_backfillRun() {
    ⚠️ **ولا يُلغى التعليلُ الذي بُني عليه التوازي** (بند 229: فشلُ أحدهما لا يجوز أن
    يُفرِغ الآخرَ صامتاً) — **يُحفَظ بنقل `next` إلى المعالجين معاً**، فالثاني ينطلق
    حتى لو فشل الأوّل. **تسلسلٌ لا اقتران.** */
-function lm_load(next){
+/* 38d: القوائمُ من App.lists (قوائم الإقلاع) — ويُطلب من الخادم ما تحتاجه هذه الصفحةُ وحدها: صفوفُ الورقة
+   (`rawOnly`، قراءةُ ورقةٍ واحدة) لأزرار التعديل والحذف. `fresh` (بعد كتابةٍ أو زرّ «تحديث») يجلب القوائمَ
+   جديدةً أيضاً، فتصل التعديلاتُ لبقيّة الصفحات (`App.lists` والنسخةُ المحفوظة). */
+function lm_load(next, fresh){
   var grid=document.getElementById('lm-grid');
   if(grid) grid.innerHTML='<p style="text-align:center;color:#999;padding:30px;">⏳ جارٍ التحميل...</p>';
   /* رميٌ متزامنٌ (لا يقع نظرياً) يجب ألّا يبتلع `next` فتبقى المقرَّراتُ فارغةً
      بلا سبب — نفسُ فخّ بند 78-أ في سلسلة النبضة. */
   var _fired=false;
   function _go(){ if(_fired) return; _fired=true; if(typeof next==='function'){ try{ next(); }catch(eN){} } }
+  var lists=null, rows=null, pol=null, err='', pending=2;
+  function _done(){
+    if(--pending>0) return;
+    if(!lists||!rows){ lm_setStatus('❌ '+(err||'تعذّر التحميل'),'#c62828'); _go(); return; }
+    var d={}; for(var k in lists){ if(lists.hasOwnProperty(k)) d[k]=lists[k]; }
+    d.rawRows=rows; d.violationPolarity=pol||lists.violationPolarity||{};
+    lm_render(d); _go();
+  }
   try{
-    google.script.run
-      .withSuccessHandler(function(res){
-        if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); _go(); return; }
-        lm_render(res); _go();
-      })
-      .withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); _go(); })
-      .getListsDataProtected({token:App.user.token});
+    if(!fresh && App.lists && App.lists.grades && App.lists.grades.length){ lists=App.lists; pending--; }
+    else _listsReload(function(ok){ if(ok || (App.lists && App.lists.grades && App.lists.grades.length)) lists=App.lists; else err='تعذّر تحميل القوائم'; _done(); });
+    callServer('getListsDataProtected', { rawOnly: true }, function(res){
+      if(res&&res.success){ rows=res.rawRows||[]; pol=res.violationPolarity||null; } else err=(res&&res.error)||err||'خطأ';
+      _done();
+    }, function(e){ err=(e&&e.message)||'تعذّر الاتصال'; _done(); });
   }catch(eL){ lm_setStatus('❌ '+(eL&&eL.message||'تعذّر التحميل'),'#c62828'); _go(); }
 }
-function lm_reload(){ lm_load(); }
+function lm_reload(){ lm_load(null, true); }
 /* 🔴 «أنواع السلوكيات» تُعرَض **قائمتين منفصلتين** بقرار مالك 2026-09-21 — ولا يُشطَر
    العمودُ `F` في الورقة: شطرُه يكسر كلَّ قارئٍ للسلوكيات (منصّةُ الطالب · تقاريرُ وليّ
    الأمر · شاشةُ الرصد). ⇒ **الفصلُ في العرض والمخزنُ واحد**، والقسمةُ من
@@ -28843,10 +28913,10 @@ function lm_deleteItem(type,rowIdx,val){   // val: القيمة المعروضة
   confirmAction('حذف عنصر من القوائم',
     'القائمة: ' + type + '\n\nسيُحذف هذا العنصر من ورقة «القوائم».\n⚠️ لن تتأثّر البيانات المرتبطة به سابقاً.',
     '🗑️', function () {
-    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx, value:val});
+    google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ lm_setStatus('❌ '+(res?res.error:'خطأ'),'#c62828'); return; } lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(null, true); }).withFailureHandler(function(err){ lm_setStatus('❌ '+err.message,'#c62828'); }).deleteListItemProtected({token:App.user.token, listType:type, rowIndex:rowIdx, value:val});
   }, { okText: '🗑️ حذف العنصر' });
 }
-function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val})); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, value:val})); } }
+function lm_saveItem(){ var val=document.getElementById('lm-new-value').value.trim(); var status=document.getElementById('lm-modal-status'); if(!val){ status.innerHTML='<p style="color:#c62828;">القيمة لا يمكن أن تكون فارغة</p>'; return; } status.innerHTML='<p style="color:#1149a3;">⏳ جارٍ الحفظ...</p>'; if(_lmIsEditMode && _lmCurrentRow>=0){ google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(null, true); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).updateListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, rowIndex:_lmCurrentRow, newValue:val})); } else { google.script.run.withSuccessHandler(function(res){ if(!res||!res.success){ status.innerHTML='<p style="color:#c62828;">❌ '+(res?res.error:'خطأ')+'</p>'; return; } lm_closeModal(); lm_setStatus('✅ '+res.message,'#2e7d32'); lm_load(null, true); }).withFailureHandler(function(err){ status.innerHTML='<p style="color:#c62828;">❌ '+err.message+'</p>'; }).addListItemProtected(lm_payload({token:App.user.token, listType:_lmCurrentType, value:val})); } }
 // يُلحق `polarity` لقائمة السلوكيات وحدَها. 🔴 ولا يُرسَل للقوائم الأخرى إطلاقاً —
 // إرسالُه معها يجعل الخادمَ يكتب في العمود M على صفوفِ فصولٍ ومواد.
 function lm_payload(p){ if(_lmCurrentType==='violation'){ var s=document.getElementById('lm-polarity'); p.polarity = s ? s.value : ''; } return p; }
@@ -31655,19 +31725,23 @@ function loadReports(force, fresh) {
     '<div id="rpt-student-attendance" style="margin-top:14px;"></div>' +
     '<div id="rpt-tasks" style="margin-top:14px;"></div>';
 
-  _RPT_AFTER_CORE_DONE = false;   // كل فتح للتبويب يُعيد السماح بإطلاقة واحدة
+  /* 38d: الأقسامُ الجانبية (نشاط المعلمين · غياب المعلمين · حضور الطلاب · المهام · متابعة الرصد) تُجمع في نداءٍ
+     واحد `getReportsBundleProtected` بدل خمسة (+ السادس بعد النواة)؛ وما في كاش المتصفّح منها لا يُطلب أصلاً.
+     والنواةُ تبقى نداءً مستقلاً بجواره — وحدَها بلغت قطعَ الـ26 ث مرّتين، فضمُّها يجعل الحزمةَ أبطأ من أبطأ
+     أجزائها. ومتابعةُ الرصد لم تعد تنتظر النواة: نداءان معاً فقط، أقلُّ من سقف الثلاثة. */
   var _rptScope = _rpt_clientScope();
+  _RPT_BATCH = [];
   rep_loadAllTeacherActivity(_rptScope);
   rep_loadTeacherAbsence(_rptScope);
   rep_loadStudentAttendanceStats(_rptScope);
   rep_loadTaskPerformance(_rptScope);
-  // ترسم هيكلاً عظمياً فقط — لا تلمس الشبكة. الجلب الفعلي في _rptAfterCore أدناه.
   rep_loadGradesCompliance();
+  var _rptRole = (App.user && App.user.role) || 'teacher';   // الدور الخام (لا _rpt_clientScope) — نفسُ حارس الخادم
+  if (_rptRole === 'admin' || _rptRole === 'deputy' || _rptRole === 'supervisor') gec_open(_RPT_FRESH);
 
   if (!force && _RPT_CACHE && (Date.now() - _RPT_CACHE_TS) < _RPT_CACHE_TTL_MS) {
     _renderReportsBody(_RPT_CACHE);
-    // ⚠️ هذا المسار **لا يستدعي الخادم إطلاقاً** ⇒ لا callback يُطلق _rptAfterCore.
-    //    بدون هذا السطر كان القسم يبقى هيكلاً عظمياً للأبد عند إعادة فتح التبويب خلال 3 دقائق.
+    _rptFlush();
     _rptAfterCore();
     return;
   }
@@ -31693,32 +31767,49 @@ function loadReports(force, fresh) {
     if (mainEl) mainEl.innerHTML = '<div class="rpt-empty">⚠️ خطأ في الاتصال بالخادم</div>';
     _rptAfterCore();
   });
+  _rptFlush();          // 38d: the side parts, one call next to the core
+  _RPT_FRESH = false;   // «تحديث» لضغطةٍ واحدة: كلُّ نداءات الفتح أُرسلت بقيمته
 }
 
-/**
- * يُطلق «متابعة رصد الدرجات» **بعد** عودة نداء النواة — سادسٌ **متسلسل** لا متوازٍ،
- * فتبقى ذروة التزامن خمسة نداءات كما هي (حصّة الثلاثين — بند 55).
- *
- * ثلاثة شروط، كلٌّ منها أسقط تصميماً أبسط:
- *  • علَم `once`: النواة لها ثلاثة مخارج (نجاح · فشل منطقي · فشل شبكة) وكلها تستدعيها.
- *  • يُستدعى من مسار الكاش السريع أيضاً (لا خادم هناك ⇒ لا callback).
- *  • الدور **الخام** من `App.user.role` لا `_rpt_clientScope()` — الأخير يطوي 'activities'
- *    داخل 'supervisor'، فيُطلق نداءً يرفضه الخادم = إهدار من الحصّة (فخّ بند 29/30).
- */
-var _RPT_AFTER_CORE_DONE = false;
+/* 38d: كانت تُطلق «متابعة رصد الدرجات» بعد النواة (سادسٌ متسلسل)؛ صارت المتابعةُ في الحزمة مع بقيّة الأقسام.
+   تبقى لتصفير «تحديث» بعد أيّ مخرجٍ للنواة. */
 function _rptAfterCore() {
-  var wasFresh = _RPT_FRESH;
-  _RPT_FRESH = false;   // يُصفَّر أوّلاً — ولو خرجت الدالّةُ مبكّراً (مراجعة #1636 ④)
-  if (_RPT_AFTER_CORE_DONE) return;
-  _RPT_AFTER_CORE_DONE = true;
-  var role = (App.user && App.user.role) || 'teacher';
-  if (role === 'admin' || role === 'deputy' || role === 'supervisor') {
-    _RPT_FRESH = wasFresh;  // لنداء المتابعة وحدَه
-    gec_open(wasFresh);     // «تحديث» يُعيد الجلب؛ وإلّا يحترم كاش _GEC_TTL
-  }
-  /* 🔒 «تحديث» لضغطةٍ واحدة: بعد إطلاق كلّ نداءات الفتح يعود العلَم — وإلّا بقي كلُّ تغيير فلترٍ
-     لاحقٍ يتجاوز الكاش ويحسب من جديد. */
+  /* 🔒 «تحديث» لضغطةٍ واحدة — وإلّا بقي كلُّ تغيير فلترٍ لاحقٍ يتجاوز الكاش ويحسب من جديد. */
   _RPT_FRESH = false;
+}
+
+/* ══ 38d: حزمةُ التقارير ════════════════════════════════════════════════════════════════════════
+   أثناء `loadReports` (‏`_RPT_BATCH` مصفوفة) تُجمع طلباتُ الأقسام بدل إرسالها؛ وما في ClientCache منها يُخدَم
+   منه كما كان. `_rptFlush` يرسلها نداءً واحداً، ثمّ:
+   · كلُّ جزءٍ يصل ⇒ يُخزَّن بمفتاحه (إن كان له) ويُسلَّم لمعالجه كما لو جاء من نداءٍ منفرد.
+   · جزءٌ لم يبدأ (`deferred`: تجاوزت الحزمةُ 6 ث) أو غاب ⇒ نداؤه المنفرد كالسابق.
+   · فشلُ الحزمة كلّها أو خادمٌ أقدم بلا الدالّة ⇒ النداءاتُ المنفردة كالسابق (لا يضيع قسم). */
+var _RPT_BATCH = null;
+function _rptCall(fn, args, key, ttl, cb, eb) {
+  var warm = false;
+  if (key && typeof ClientCache !== 'undefined') { try { warm = !!ClientCache.get(key); } catch (eW) { warm = false; } }
+  if (_RPT_BATCH && !warm) { _RPT_BATCH.push({ fn: fn, args: args || {}, key: key, ttl: ttl, cb: cb, eb: eb }); return; }
+  if (key) callServer(fn, args, key, ttl, cb, eb);
+  else callServer(fn, args, cb, eb);
+}
+function _rptFlush() {
+  var batch = _RPT_BATCH;
+  _RPT_BATCH = null;
+  if (!batch || !batch.length) return;
+  var single = function (it) { _rptCall(it.fn, it.args, it.key, it.ttl, it.cb, it.eb); };
+  if (batch.length === 1) { single(batch[0]); return; }
+  var parts = [];
+  for (var i = 0; i < batch.length; i++) parts.push({ id: 'p' + i, fn: batch[i].fn, args: batch[i].args });
+  callServer('getReportsBundleProtected', { parts: parts }, function (r) {
+    if (r && r.requiresLogin) return;   // session ended: no five follow-up calls with a dead token
+    if (!r || r.success !== true || !r.parts) { for (var a = 0; a < batch.length; a++) single(batch[a]); return; }
+    for (var j = 0; j < batch.length; j++) {
+      var it = batch[j], res = r.parts['p' + j];
+      if (res === undefined || res === null) { single(it); continue; }   // deferred
+      if (it.key && res.success !== false && res.ok !== false) { try { ClientCache.set(it.key, res, it.ttl); } catch (eS) {} }
+      try { if (typeof it.cb === 'function') it.cb(res); } catch (eC) { console.error('report part error:', eC); }
+    }
+  }, function () { for (var b = 0; b < batch.length; b++) single(batch[b]); });
 }
 
 // ══════════════════════════════════════════════════════
@@ -31924,7 +32015,7 @@ function rep_loadAllTeacherActivity(scope) {
      لطلبٍ عن شعبةٍ أخرى. */
   var _actKey = 'rpt_allact_' + ((App.user && App.user.schoolId) || '') + '_' + (_RPT_SECTION || '');
   if (_RPT_FRESH && typeof ClientCache !== 'undefined') ClientCache.del(_actKey);
-  callServer('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, _actKey, RPT_CLIENT_TTL, function (res) {
+  _rptCall('getAllTeacherActivityReportProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, _actKey, RPT_CLIENT_TTL, function (res) {
     if (!res || !res.success) { box.innerHTML = ''; return; }
     window._repAllTeachers = res.teachers || [];
     window._repAllTeachersSummary = res.summary || null;
@@ -32051,7 +32142,7 @@ function rep_loadTaskPerformance(scope) {
   if (isManager) {
     var _tsKey = 'task_summaries_' + ((App.user && App.user.schoolId) || '');
     if (_RPT_FRESH && typeof ClientCache !== 'undefined') ClientCache.del(_tsKey);
-    callServer('getAllTaskSummariesProtected', { fresh: _RPT_FRESH }, _tsKey, RPT_CLIENT_TTL, function (res) {
+    _rptCall('getAllTaskSummariesProtected', { fresh: _RPT_FRESH }, _tsKey, RPT_CLIENT_TTL, function (res) {
       if (!res || !res.success) { box.innerHTML = ''; return; }
       window._repTaskList = res.teachers || [];
       window._repTaskGrand = res.grand || null;
@@ -32067,7 +32158,7 @@ function rep_loadTaskPerformance(scope) {
     /* المسار غير الإداري — كان الوحيد في هذه الدالّة بلا كاش عميلي بينما شقيقه
        الإداري أعلاه يُمرِّره منذ البداية (بند 187: شقيقةٌ كُيِّشت وأختُها في نفس
        الملفّ فاتتها). المفتاح مبصوم بالمدرسة **واسم المعلّم** لأنه وسيطُ النداء. */
-    callServer('getTeacherTaskSummaryProtected', { teacherName: (App.user && App.user.teacherName) || '' },
+    _rptCall('getTeacherTaskSummaryProtected', { teacherName: (App.user && App.user.teacherName) || '' },
       'task_self_' + ((App.user && App.user.schoolId) || '') + '_' + ((App.user && App.user.teacherName) || ''), 180, function (res) {
       if (!res || !res.success) { box.innerHTML = ''; return; }
       var s = res.summary || {};
@@ -32155,7 +32246,7 @@ function rep_loadTeacherAbsence(scope){
   var priv=(scope==='admin'||scope==='deputy'||scope==='supervisor');
   box.innerHTML=_rpt_card('🧑‍🏫','غياب المعلمين','<p style="color:#94a3b8;">⏳ جارٍ التحميل...</p>');
   var p=priv?{}:{ teacherName:(App.user&&App.user.teacherName)||'' };
-  callServer('getTeacherAbsenceSummaryProtected', p, 'tabs_' + ((App.user&&App.user.schoolId)||'') + '_' + (p.teacherName||'all'), 180, function(res){
+  _rptCall('getTeacherAbsenceSummaryProtected', p, 'tabs_' + ((App.user&&App.user.schoolId)||'') + '_' + (p.teacherName||'all'), 180, function(res){
     if(!res||!res.success){ box.innerHTML=''; return; }
     window._repTabs=res.summary||[];
     var inner=(!res.summary||!res.summary.length) ? '<p style="color:#94a3b8;">لا توجد سجلات غياب مسجّلة</p>' : rep_tabsTable(res.summary);
@@ -32216,7 +32307,7 @@ function rep_applyAttStats() {
   var _asKey = 'attstats_' + ((App.user && App.user.schoolId) || '') + '_' + p.grade + '_' + p.section + '_' + p.startDate + '_' + p.endDate;
   if (_RPT_FRESH && typeof ClientCache !== 'undefined') ClientCache.del(_asKey);
   p.fresh = _RPT_FRESH;
-  callServer('getAttendanceStatsProtected', p,
+  _rptCall('getAttendanceStatsProtected', p,
     _asKey, RPT_CLIENT_TTL,
     function (res) {
     if (!res || !res.success) { bodyEl.innerHTML = '<p style="color:var(--danger);">⚠️ ' + ((res && res.error) || 'تعذّر تحميل التقرير') + '</p>'; return; }
@@ -32757,7 +32848,7 @@ function rep_loadGradesCompliance() {
   // يرفضه الخادم (نفس فخّ بند 29/30: قائمة العرض ≠ حارس الخادم).
   var role = (App.user && App.user.role) || 'teacher';
   if (role !== 'admin' && role !== 'deputy' && role !== 'supervisor') { box.innerHTML = ''; return; }
-  // هيكل عظمي لا زرّ: القسم يُحمَّل تلقائياً عبر _rptAfterCore بعد عودة النواة.
+  // هيكل عظمي لا زرّ: القسم يُحمَّل تلقائياً مع حزمة الأقسام (38d، `loadReports`).
   // الزرّ السابق كان يعني أن أهمّ تقرير عملي في الصفحة لا يراه أحد بلا نقرة إضافية.
   box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
     '<div class="rpt-empty" style="text-align:right;padding:4px 2px 10px;">' +
@@ -32773,7 +32864,7 @@ function gec_open(force) {
   if (!force && _GEC_DATA && (Date.now() - _GEC_TS) < _GEC_TTL) { _gec_render(_GEC_DATA); return; }
   box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
     '<div class="sk-line skeleton"></div><div class="sk-line skeleton w75"></div><div class="sk-line skeleton w50"></div>');
-  callServer('getGradesEntryComplianceProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, function (r) {
+  _rptCall('getGradesEntryComplianceProtected', { section: _RPT_SECTION || '', fresh: _RPT_FRESH }, null, 0, function (r) {
     if (!r || !r.success) {
       box.innerHTML = _rpt_card('📋', 'متابعة رصد الدرجات',
         '<div class="rpt-empty">⚠️ ' + _tfEsc((r && r.error) || 'تعذّر تحميل متابعة الرصد') + '</div>' +
@@ -33074,7 +33165,25 @@ function smm_openFullCmsApp() {
   window.open(base + '?' + qs, '_blank', 'noopener');
 }
 
-function callCMS(fnName, args, callback) {
+/* 38d: `opts.read` ⇒ the call waits for a slot in the read queue (max 3 at once, `_csRunGated`) like callServer
+   reads; CMS reads used to bypass it. Writes (no opts) go out at once as before. The callback runs once. */
+function callCMS(fnName, args, callback, opts) {
+  var settled = false;
+  var once = function (release) {
+    return function (res, err) {
+      if (settled) return;
+      settled = true;
+      if (release) { try { release(); } catch (eR) {} }
+      callback(res, err);
+    };
+  };
+  if (opts && opts.read && typeof _csRunGated === 'function') {
+    _csRunGated(fnName, function (release) { _callCMSNow(fnName, args, once(release)); }, true);
+    return;
+  }
+  _callCMSNow(fnName, args, once(null));
+}
+function _callCMSNow(fnName, args, callback) {
   var endpoint = _cmsEndpoint();
   var schoolId = window.SCHOOL_ID || (App && App.user && App.user.schoolId) || '';
   if (!Array.isArray(args)) args = args !== undefined ? [args] : [];
@@ -33112,20 +33221,28 @@ function smm_statusMsg(elId, msg, type) {
 function smm_statusClear(elId) { var el = document.getElementById(elId); if (el) el.textContent = ''; }
 
 // ── التهيئة عند فتح القسم (تعيد التحميل دائماً لضمان بيانات المدرسة الحالية) ──
+// 38d: the page's four reads are cached 120 s (key = school + user + fn, `_pageData_`) and go through the read
+// queue. Opening the page reuses them; the «تحديث» button and every write fetch fresh (useCache falsy).
+var SMM_CACHE_TTL = 120;
+function _smmRead(fn, args, useCache, cb) {
+  _pageData_('smm_' + fn, fn, { ttl: SMM_CACHE_TTL, args: args, transport: 'cms', force: !useCache }, function (res, err) {
+    cb(err ? null : res, err);
+  });
+}
 function smm_init() {
   SMM._loaded = false; // إعادة ضبط دائماً للضمان صحة بيانات المدرسة
   // عرض اسم المدرسة في رأس اللوحة
   var lbl = document.getElementById('smm-school-label');
   if (lbl && App.user && App.user.schoolName) lbl.textContent = App.user.schoolName;
-  smm_reload();
+  smm_reload(true);
 }
 
-function smm_reload() {
+function smm_reload(useCache) {
   SMM._loaded = false;
-  smm_loadStats();
-  smm_loadPlan();
-  smm_loadQR();
-  smm_loadAccounts();
+  smm_loadStats(useCache);
+  smm_loadPlan(useCache);
+  smm_loadQR(useCache);
+  smm_loadAccounts(useCache);
 }
 
 // ── تبديل التبويبات ──
@@ -33142,11 +33259,11 @@ function smm_setTab(tab) {
 }
 
 // ── إحصائيات الإحصاءات ──
-function smm_loadStats() {
+function smm_loadStats(useCache) {
   var grid = document.getElementById('smm-dash-cards');
   if (grid) grid.innerHTML = '<div class="smm-card smm-card-loading">⏳ جاري تحميل بيانات المدرسة…</div>';
   // 2026-07-19: smmGetDashboard أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
-  callCMS('smmGetDashboard', { teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
+  _smmRead('smmGetDashboard', { teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, useCache, function(res, err) {
     if (!res) {
       if (grid) grid.innerHTML = '<div class="smm-card smm-card-loading">⚠️ ' + (err || 'لم تُحمَّل البيانات — تأكد من إعداد CMS للمدرسة') + '</div>';
       return;
@@ -33242,11 +33359,11 @@ function smm_setupSystem() {
 }
 
 // ── خطة المحتوى ──
-function smm_loadPlan() {
+function smm_loadPlan(useCache) {
   var tbl = document.getElementById('smm-plan-table');
   if (tbl) tbl.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center;">⏳ جاري التحميل…</div>';
   // smmGetPlan يقبل كائن filters (أو بلا معامل) — 2026-07-19: أصبحت موثَّقة، تحتاج teacherToken.
-  callCMS('smmGetPlan', { filters: {}, teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, function(res, err) {
+  _smmRead('smmGetPlan', { filters: {}, teacherToken: (App.user && App.user.token) || '', schoolId: App.user.schoolId }, useCache, function(res, err) {
     if (!res) {
       if (tbl) tbl.innerHTML = '<div style="color:#c5221f;padding:20px;text-align:center;">⚠️ ' + (err || 'لا يوجد ملف CMS لهذه المدرسة') + '</div>';
       return;
@@ -33399,12 +33516,12 @@ function smm_publishNow() {
 }
 
 // ── QR Codes ──
-function smm_loadQR() {
+function smm_loadQR(useCache) {
   var grid = document.getElementById('smm-qr-grid');
   if (!grid) return;
   grid.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">⏳ جاري التحميل…</div>';
   // 2026-07-19: getAllQRCodes أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
-  callCMS('getAllQRCodes', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, function(res, err) {
+  _smmRead('getAllQRCodes', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, useCache, function(res, err) {
     SMM.qrData = (res && Array.isArray(res)) ? res : (res && res.data ? res.data : []);
     smm_renderQR();
   });
@@ -33459,9 +33576,9 @@ function smm_openQRPage() {
 }
 
 // ── حسابات السوشل ──
-function smm_loadAccounts() {
+function smm_loadAccounts(useCache) {
   // 2026-07-19: smmGetSocialSettings أصبحت موثَّقة (withCmsAuthEither) — تحتاج teacherToken.
-  callCMS('smmGetSocialSettings', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, function(res, err) {
+  _smmRead('smmGetSocialSettings', { schoolId: App.user.schoolId, teacherToken: (App.user && App.user.token) || '' }, useCache, function(res, err) {
     if (!res || !res.success || !res.settings) return;
     var s = res.settings;
     function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
@@ -34478,20 +34595,6 @@ function sstat_print() {
 // يستدعي getMyPlatformLinksProtected (_Tenant.js) — يبني رابط كل بوابة (معلم/طالب/CMS/جدول)
 // لمدرسة الجلسة الحالية من سجل Schools المركزي، فقط للبوابات التي معرّف ملفها موجود. لا كتابة
 // من هنا إطلاقاً. تُعرَض داخل صفحة «بيانات المدرسة» (`renderSchoolBrand`) لا كقسم مستقلّ.
-function renderMyPortals() {
-  var u = App.user || {};
-  var box = document.getElementById('dynamicContent');
-  if (!box) return;
-  if (!(u.role === 'admin' || u.role === 'deputy')) {
-    box.innerHTML = '<div class="empty-state"><div class="es-icon">🔒</div><div class="es-title">صلاحية مدير/نائب مطلوبة</div></div>';
-    return;
-  }
-  box.innerHTML =
-    '<div class="page-head"><h2 style="margin:0;">🔗 منصاتي</h2>' +
-    '<p style="color:var(--text-muted);margin:6px 0 0;font-size:14px;">روابط بوابات مدرستك — افتحها في تبويب جديد أو انسخها لمشاركتها.</p></div>' +
-    '<div id="myPortalsContent" class="section-card">جاري التحميل...</div>';
-  _loadMyPortals();
-}
 
 function _loadMyPortals() {
   var c = document.getElementById('myPortalsContent');
@@ -34705,7 +34808,7 @@ function _myPortalsCopyFallback(url, cb) {
   window.renderContentHub = function () {
     var el = document.getElementById('dynamicContent');
     if (!el) return;
-    var cats = ['إعلان', 'نشاط', 'إنجاز', 'فعالية'];
+    var cats = _contentCategories();   // 38d: from the server lists (was hard-coded here)
     var opts = '';
     for (var i = 0; i < cats.length; i++) { opts += '<option value="' + cats[i] + '">' + cats[i] + '</option>'; }
 
@@ -35279,6 +35382,14 @@ function _myPortalsCopyFallback(url, cb) {
     return '<span class="as-badge ' + c + '">' + _asEsc(st || 'جديد') + '</span>';
   }
 
+  // 38d: the category filter comes from the server lists (was hard-coded here and in the content hub).
+  function _asCatOptions() {
+    var cats = (typeof _contentCategories === 'function') ? _contentCategories() : [];
+    var h = '';
+    for (var i = 0; i < cats.length; i++) h += '<option value="' + _asEsc(cats[i]) + '">' + _asEsc(cats[i]) + '</option>';
+    return h;
+  }
+
   window.renderActivitySup = function () {
     var el = document.getElementById('dynamicContent');
     if (!el) return;
@@ -35320,7 +35431,7 @@ function _myPortalsCopyFallback(url, cb) {
             '<div style="flex:1;min-width:140px"><label class="as-lbl">الحالة</label><select class="as-select" id="as-fstatus" onchange="window.asRenderLibrary()">' +
               '<option value="">الكل</option><option value="جديد">جديد</option><option value="معتمد">معتمد</option><option value="منشور">منشور</option><option value="مرفوض">مرفوض</option></select></div>' +
             '<div style="flex:1;min-width:140px"><label class="as-lbl">الفئة</label><select class="as-select" id="as-fcat" onchange="window.asRenderLibrary()">' +
-              '<option value="">الكل</option><option value="إعلان">إعلان</option><option value="نشاط">نشاط</option><option value="إنجاز">إنجاز</option><option value="فعالية">فعالية</option></select></div>' +
+              '<option value="">الكل</option>' + _asCatOptions() + '</select></div>' +
             '<button type="button" class="as-btn as-btn-gold" onclick="window.asApproveSelected()">✅ اعتماد المحدّد</button>' +
           '</div>' +
           '<div class="as-grid" id="as-lib-grid"><div class="as-empty">⏳ جارٍ التحميل...</div></div>' +
@@ -35368,6 +35479,56 @@ function _myPortalsCopyFallback(url, cb) {
       .asGetDashboardData(token);
   };
 
+  /* ══ 38d: تحديثٌ جزئيّ ══════════════════════════════════════════════════════════════════════
+     بعد كلّ إجراءٍ كان `asLoadDashboard()` يُعيد اللوحة كلَّها (قراءةُ أربع أوراقٍ من ملفّ CMS). الآن يتغيّر
+     في `_asData` العنصرُ الذي تغيّر وحده — بنفس قواعد الخادم (`ActivitySupervisor.js`) — ثمّ تُرسَم الألواحُ من
+     الذاكرة. «تحديث الصفحة» يبقى يجلب كلَّ شيء. */
+  function _asMediaSet(ids, status) {
+    var d = window._asData || {}, lib = d.library || [], groups = d.groups || [];
+    for (var i = 0; i < lib.length; i++) { if (ids[String(lib[i]['media_id'])]) lib[i]['الحالة'] = status; }
+    for (var g = 0; g < groups.length; g++) {
+      var items = groups[g].items || [], hit = false;
+      for (var k = 0; k < items.length; k++) { if (ids[String(items[k].media_id)]) { items[k].status = status; hit = true; } }
+      if (hit && items.length) groups[g].status = items[0].status;   // = _asReadGroups_: حالةُ المجموعة حالةُ أوّل عنصر
+    }
+  }
+  function _asTaskCount(teacher, status, delta) {
+    var ov = (window._asData && window._asData.overview) || [];
+    for (var i = 0; i < ov.length; i++) {
+      if (ov[i].teacher === teacher && ov[i].tasks && ov[i].tasks[status] !== undefined) { ov[i].tasks[status] = Math.max(0, (ov[i].tasks[status] || 0) + delta); return; }
+    }
+  }
+  function _asRefreshLocal() {
+    var d = window._asData;
+    if (!d) { window.asLoadDashboard(); return; }
+    var lib = d.library || [], groups = d.groups || [], approved = 0, published = 0, newCount = 0;
+    for (var i = 0; i < lib.length; i++) {
+      var st = String(lib[i]['الحالة'] || '');
+      if (st === 'معتمد') approved++; else if (st === 'منشور') published++; else if (st === 'جديد') newCount++;
+    }
+    d.reviewGroups = [];
+    for (var g = 0; g < groups.length; g++) { if (String(groups[g].status) === 'جديد') d.reviewGroups.push(groups[g]); }
+    var ov = d.overview || [], byT = {};
+    for (var o = 0; o < ov.length; o++) { byT[ov[o].teacher] = ov[o]; ov[o].media = { total: 0, 'جديد': 0, 'معتمد': 0, 'منشور': 0, 'مرفوض': 0 }; }
+    for (var q = 0; q < groups.length; q++) {
+      var rec = byT[String(groups[q].teacher || '') || 'غير محدد'];
+      if (!rec) continue;
+      var its = groups[q].items || [];
+      for (var k = 0; k < its.length; k++) { rec.media.total++; if (rec.media[its[k].status] !== undefined) rec.media[its[k].status]++; }
+    }
+    d.stats = d.stats || {};
+    d.stats.pendingReview = d.reviewGroups.length;
+    d.stats.pendingTasks = (d.pendingTasks || []).length;
+    d.stats.library = lib.length; d.stats.newMedia = newCount; d.stats.approved = approved; d.stats.published = published;
+    window.asRenderStats(d.stats);
+    window.asRenderReviewGroups(d.reviewGroups);
+    window.asRenderReview(d.pendingTasks || []);
+    window.asRenderOverview(ov);
+    window.asRenderLibrary();
+    window.asRenderPublish();
+  }
+  window._asRefreshLocal = _asRefreshLocal;
+
   window.asRenderStats = function (s) {
     s = s || {};
     var box = document.getElementById('as-stats');
@@ -35412,7 +35573,8 @@ function _myPortalsCopyFallback(url, cb) {
           document.getElementById('as-title').value = '';
           document.getElementById('as-desc').value = '';
           if (typeof toast === 'function') toast('تم تكليف المهمة', 'success');
-          window.asLoadDashboard();
+          _asTaskCount(teacher, 'مُكلّف', 1);   // 38d: partial refresh
+          _asRefreshLocal();
         } else { setS('❌ ' + ((res && res.error) || 'فشل'), '#c0392b'); }
       })
       .withFailureHandler(function (err) { setS('❌ ' + (err && err.message ? err.message : 'خطأ'), '#c0392b'); })
@@ -35456,7 +35618,20 @@ function _myPortalsCopyFallback(url, cb) {
     var note = noteEl ? (noteEl.value || '') : '';
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.success) { if (typeof toast === 'function') toast('تمت المراجعة: ' + res.status, 'success'); window.asLoadDashboard(); }
+        if (res && res.success) {
+          if (typeof toast === 'function') toast('تمت المراجعة: ' + res.status, 'success');
+          // 38d: the task leaves the review list; an approval also approves its media (as _asApproveMediaByTask_)
+          var pt = (window._asData && window._asData.pendingTasks) || [];
+          for (var i = pt.length - 1; i >= 0; i--) { if (pt[i] && pt[i]['task_id'] === t['task_id']) pt.splice(i, 1); }
+          _asTaskCount(t['اسم_المعلم'], 'بانتظار_المراجعة', -1);
+          _asTaskCount(t['اسم_المعلم'], res.status, 1);
+          if (res.status === 'مكتمل') {
+            var ids = {}, lib = (window._asData && window._asData.library) || [];
+            for (var j = 0; j < lib.length; j++) { if (String(lib[j]['task_id']) === String(t['task_id'])) ids[String(lib[j]['media_id'])] = 1; }
+            _asMediaSet(ids, 'معتمد');
+          }
+          _asRefreshLocal();
+        }
         else if (typeof toast === 'function') toast((res && res.error) || 'فشل', 'error');
       })
       .withFailureHandler(function (err) { if (typeof toast === 'function') toast(err && err.message ? err.message : 'خطأ', 'error'); })
@@ -35499,16 +35674,17 @@ function _myPortalsCopyFallback(url, cb) {
     if (st) { st.style.color = '#0F2C5C'; st.innerHTML = '⏳ جارٍ اعتماد ' + boxes.length + ' عنصر...'; }
     var ids = [];
     for (var i = 0; i < boxes.length; i++) ids.push(boxes[i].value);
-    var done = 0, okc = 0;
+    var done = 0, okc = 0, okIds = {};
     function next() {
       if (done >= ids.length) {
         if (st) { st.style.color = '#1b7a3d'; st.innerHTML = '✅ تم اعتماد ' + okc + ' عنصر'; }
-        window.asLoadDashboard();
+        _asMediaSet(okIds, 'معتمد');   // 38d: partial refresh
+        _asRefreshLocal();
         return;
       }
       var id = ids[done];
       google.script.run
-        .withSuccessHandler(function (res) { if (res && res.success) okc++; done++; next(); })
+        .withSuccessHandler(function (res) { if (res && res.success) { okc++; okIds[String(id)] = 1; } done++; next(); })
         .withFailureHandler(function () { done++; next(); })
         .asApproveMedia(token, id);
     }
@@ -35572,7 +35748,14 @@ function _myPortalsCopyFallback(url, cb) {
     var note = noteEl ? (noteEl.value || '') : '';
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.success) { if (typeof toast === 'function') toast(res.message || 'تمت المراجعة', 'success'); window.asLoadDashboard(); }
+        if (res && res.success) {
+          if (typeof toast === 'function') toast(res.message || 'تمت المراجعة', 'success');
+          // 38d: only this group (and its library items) changes status
+          var ids = {}, its = g.items || [];
+          for (var i = 0; i < its.length; i++) ids[String(its[i].media_id)] = 1;
+          _asMediaSet(ids, res.status || (decision === 'اعتماد' ? 'معتمد' : 'مرفوض'));
+          _asRefreshLocal();
+        }
         else if (typeof toast === 'function') toast((res && res.error) || 'فشل', 'error');
       })
       .withFailureHandler(function (err) { if (typeof toast === 'function') toast(err && err.message ? err.message : 'خطأ', 'error'); })
